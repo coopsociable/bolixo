@@ -1,0 +1,266 @@
+/*
+	Edit and present a node based on its type
+*/
+#pragma implementation
+#include <time.h>
+#include <string.h>
+#include <private_msg.h>
+#include <framework.h>
+#include <tlmpnet.h>
+#include "bolixo.h"
+#include "bolixo.m"
+#include "bonode.h"
+
+
+/*
+	Return the modification date in localised format
+*/
+PUBLIC const char *BO_NODEREL::getmodif()
+{
+	time_t ti = modif.getval();
+	struct tm *t = localtime(&ti);
+	char buf[100];
+	// strftime is fun because it produces localised dates, but
+	// they can't be sorted intelligently
+	//strftime (buf,sizeof(buf)-1,"%c",t);
+	snprintf (buf,sizeof(buf)-1,"%04d/%02d/%02d %02d:%02d:%02d"
+		,t->tm_year+1900,t->tm_mon+1,t->tm_mday
+		,t->tm_hour,t->tm_min,t->tm_sec);
+	format_modif = buf;
+	return format_modif.get();
+}
+
+PUBLIC BO_REL::BO_REL()
+{
+	selected = false;
+	orderkey = 0;
+	orderpol = 'T';
+}
+
+PUBLIC BO_NODE::BO_NODE()
+{
+	selected = false;
+	seen = false;
+}
+
+static int cmp_node (const ARRAY_OBJ *o1, const ARRAY_OBJ *o2)
+{
+	const BO_NODE *no1 = (const BO_NODE*)o1;
+	const BO_NODE *no2 = (const BO_NODE*)o2;
+	return no1->name.icmp(no2->name);
+}
+
+
+
+PUBLIC BO_NODE *BO_NODES::set (
+	const char *name,
+	const char *image,
+	const char *modif,
+	const char *uuid,
+	const char *owner,
+	const char *type,
+	const char *descr)
+{
+	BO_NODE *f = NULL;
+	for (int i=0; i<size(); i++){
+		BO_NODE *no = getitem(i);
+		if (no->uuid.cmp(uuid)==0){
+			f = no;
+			break;
+		}
+	}
+	if (f == NULL){
+		f = new BO_NODE;
+		add (f);
+	}
+	f->name = name;
+	f->image = image;
+	f->modif = modif;
+	f->uuid = uuid;
+	f->type = type;
+	if (owner != NULL) f->owner = owner;
+	if (descr != NULL && descr[0] != '\0'){
+		f->descr = descr;
+	}
+	return f;
+}
+static BO_NODE root;
+static void bonode_initroot()
+{
+	root.uuid = ROOTUUID;
+	root.name = MSG_U(I_ROOTNODE,"Racine du document");
+}
+
+
+PUBLIC BO_NODE *BO_NODES::locatebyuuid (const char *uuid) const
+{
+	BO_NODE *ret = NULL;
+	if (strcmp(uuid,ROOTUUID)==0){
+		bonode_initroot();
+		ret = &root;
+	}else{
+		for (int i=0; i<size(); i++){
+			BO_NODE *no = getitem(i);
+			if (no->uuid.cmp(uuid)==0){
+				ret = no;
+				break;
+			}
+		}
+	}
+	return ret;
+}
+
+PUBLIC BO_NODE *BO_NODES::locatebyuuid (const SSTRING &uuid) const
+{
+	return locatebyuuid (uuid.get());
+}
+
+PUBLIC BO_NODE *BO_NODES::locatebyname (const char *name) const
+{
+	BO_NODE *ret = NULL;
+	if (strcmp(name,MSG_R(I_ROOTNODE))==0){
+		bonode_initroot();
+		ret = &root;
+	}else{
+		for (int i=0; i<size(); i++){
+			BO_NODE *no = getitem(i);
+			if (no->name.cmp(name)==0){
+				ret = no;
+				break;
+			}
+		}
+	}
+	return ret;
+}
+
+PUBLIC void BO_NODES::sort()
+{
+	ARRAY::sort (cmp_node);
+}
+
+PUBLIC BO_REL *BO_RELS::locate (
+	const char *uuid1,
+	const char *uuid2,
+	const char *relate)
+{
+	BO_REL *ret = NULL;
+	for (int i=0; i<size(); i++){
+		BO_REL *re = getitem(i);
+		if (re->uuid1.cmp(uuid1)==0
+			&& re->uuid2.cmp(uuid2)==0
+			&& re->relate.cmp(relate)==0){
+			ret = re;
+			break;
+		}
+	}
+	return ret;
+}
+
+/*
+	Find all the uuids have the relation "relate" with uuid
+*/
+PUBLIC int BO_RELS::extract (
+	const char *relate,		// If relate is NULL, find all relation related
+							// to uuid
+	const char *uuid,
+	BO_RELS &tb) const
+{
+	tb.neverdelete();
+	int ret = 0;
+	int n = size();
+	for (int i=0; i<n; i++){
+		BO_REL *r = getitem(i);
+		if ((relate == NULL || r->relate == relate)
+			&& r->uuid2 == uuid){
+			tb.add (r);
+			ret++;
+		}
+	}
+	return ret;
+}
+
+/*
+	Update or add a new BO_REL
+*/
+PUBLIC BO_REL *BO_RELS::set (
+	const char *uuid1,
+	const char *uuid2,
+	const char *relate,
+	const char *modif,
+	const char *type,
+	const char *altname,
+	const char *descr,
+	const char orderpol,
+	unsigned int orderkey)
+{
+	BO_REL *f = NULL;
+	for (int i=0; i<size(); i++){
+		BO_REL *re = getitem(i);
+		if (re->uuid1.cmp(uuid1)==0
+			&& re->uuid2.cmp(uuid2)==0
+			&& re->relate.cmp(relate)==0){
+			f = re;
+			break;
+		}
+	}
+	if (f == NULL){
+		f = new BO_REL;
+		add (f);
+	}
+	f->uuid1 = uuid1;
+	f->uuid2 = uuid2;
+	f->modif = modif;
+	f->type = type;
+	f->relate = relate;
+	f->altname = altname;
+	if (descr != NULL && descr[0] != '\0'){
+		f->descr = descr;
+	}
+	f->orderkey = orderkey;
+	f->orderpol = orderpol;
+	return f;
+}
+
+/*
+	Return the relation type of a given node.
+	A node may have no relation, or may be pointed by other nodes (LINK_RIGHT)
+	or is pointing to other nodes (LINK_LEFT) or both (LINK_BOTH).
+*/
+PUBLIC LINKTYPE BO_RELS::islinked(const char *uuid)
+{
+	int bits = 0;
+	for (int i=0; i<size() && bits != 3; i++){
+		BO_REL *re = getitem(i);
+		if (re->uuid1.cmp(uuid)==0){
+			bits |= 1;
+			if (re->uuid2 == ROOTUUID) bits |= 4;
+		}else if(re->uuid2.cmp(uuid)==0){
+			bits |= 2;
+		}
+	}
+	return (LINKTYPE)bits;
+}
+
+/*
+	Set the seen field of each BO_NODE to false
+*/
+PUBLIC void BO_NODES::resetseen()
+{
+	for (int i=0; i<size(); i++){
+		getitem(i)->seen = false;
+	}
+}
+
+
+<mod>
+void node_edit(
+	_F_FRAMEWORK *framework,
+	TCPCONNECT *con,
+	PRIVATE_MESSAGE &docevent,
+	BO_NODES &nodes,
+	BO_RELS &rels,
+	const char *uuid)		// Node to edit
+{
+}
+</mod>
+

@@ -1,0 +1,949 @@
+#include <stdio.h>
+#include <unistd.h>
+#include <time.h>
+#include <string.h>
+#include <stdlib.h>
+#include <misc.h>
+#include <dialog.h>
+#include <tlmplib.h>
+#include <tlmpnet.h>
+#include <tlmpsql.h>
+#include "bolixo.h"
+#include "bolixo.m"
+//#include "db.h"
+
+static SSTRING bolixod_cnvunixtime (time_t ti)
+{
+	struct tm *t = localtime(&ti);
+	char buf[100];
+	snprintf (buf,sizeof(buf)-1,"%04d/%02d/%02d %02d:%02d:%02d"
+		,t->tm_year+1900,t->tm_mon+1,t->tm_mday
+		,t->tm_hour,t->tm_min,t->tm_sec);
+	return buf;
+}
+
+static SSTRING bolixod_cnvunixtime (const char *t)
+{
+	SSTRING ret;
+	if (t == NULL || t[0] == '\0'){
+		ret = bolixod_cnvunixtime(time(NULL));
+	}else{
+		ret = bolixod_cnvunixtime(atoi(t));
+	}
+	return ret;
+}
+
+
+class BO_CLIENT: public ARRAY_OBJ{
+public:
+	SSTRING user;
+	int userid;
+	int documentid;
+	BOXML_READER reader;	// Used to grab XML inputs from the socket
+	/*~PROTOBEG~ BO_CLIENT */
+public:
+	BO_CLIENT (void);
+	/*~PROTOEND~ BO_CLIENT */
+};
+
+PUBLIC BO_CLIENT::BO_CLIENT()
+{
+	documentid = -1;
+}
+
+<mod>
+static int bo_getdocid(const char *name)
+{
+	glocal int ret = -1;
+	NSQL_ENCODE enc;
+	<call sql_query>("select documentid from documents where name='%s'"
+		,enc.enc(name));
+	<f onerow>
+		glocal.ret = atoi(row[0]);
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+
+/*
+	Retrieve the numeric ID of a user.
+	Returns -1 if not found.
+*/
+<mod>
+static int bo_getuserid(const char *id, int admin )
+{
+	glocal int ret = -1;
+	NSQL_ENCODE enc;
+	<call sql_query>("select userid from users where id='%s' and documentid=%d"
+		,enc.enc(id),admin);
+	<f onerow>
+		glocal.ret = atoi(row[0]);
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+
+/*
+	Search for a user in a document or globally (document 0).
+*/
+static int bo_getguserid (const char *id, int admin)
+{
+	int ret = bo_getuserid (id,admin);
+	if (ret == -1 && admin != 0){
+		ret = bo_getuserid (id,0);
+	}
+	return ret;
+}
+
+<mod>
+static int bo_getuserfromid(int userid, SSTRING &id)
+{
+	glocal int ret = -1;
+	glocal SSTRING *id = &id;
+	<call sql_query>("select id from users where userid=%d"
+		,userid);
+	<f onerow>
+		glocal.id->setfrom (row[0]);
+		glocal.ret = 0;
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+
+<mod>
+static int bo_getnodeid(const char *uuid, int documentid)
+{
+	glocal int ret = -1;
+	if (strcmp(uuid,ROOTUUID)==0){
+		glocal.ret = 0;
+	}else{
+		NSQL_ENCODE enc;
+		<call sql_query>("select nodeid from nodes where uuid='%s' and documentid=%d"
+			,enc.enc(uuid),documentid);
+		<f onerow>
+			glocal.ret = atoi(row[0]);
+		</f>
+		</call>
+	}
+	return glocal.ret;
+}
+</mod>
+
+<mod>
+static void bo_dumpusers (int documentid)
+{
+	<call sql_query>("select userid,id,name,passw from users"
+		" where documentid=%d",documentid);
+	<f onerow>
+		BOXMLENC enc;
+		printf ("<user %s=%s %s=%s %s=%s %s=%s/>\n"
+			,K_USERID,enc.enc(row[0])
+			,K_ID,enc.enc(row[1])
+			,K_NAME,enc.enc(row[2])
+			,K_PASSW,enc.enc(row[3]));
+	</f>
+	</call>
+}
+
+<mod>
+static int bo_deletedoc (const char *name)
+{
+	glocal const char *name = name;
+	glocal int ret = -1;
+	NSQL_ENCODE enc;
+	<call sql_query>("select documentid,ownerid from documents where name='%s'"
+		,enc.enc(name));
+	<f onerow>
+		sql_action ("delete from nodes where documentid=%s",row[0]);
+		sql_action ("delete from relations where documentid=%s",row[0]);
+		sql_action ("delete from documents where documentid=%s",row[0]);
+		sql_action ("delete from users where documentid=%s",row[0]);
+		glocal.ret = 0;
+	</f>
+	<f empty>
+		tlmp_error (MSG_U(E_NODUCUMENT,"Pas de document \"%s\" dans la base\n")
+			,glocal.name);
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+
+<mod>
+static int bo_createdoc (const char *docname, const char *owner)
+{
+	int ret = -1;
+	int ownerid = bo_getuserid (owner,0);
+	if (ownerid == -1){
+		tlmp_error (MSG_U(E_NOUSER,"L'usager %s n'existe pas dans la base\n")
+			,owner);
+	}else{
+		NSQL_ENCODE enc;
+		ret = sql_action ("insert into documents (ownerid,name) values (%d,'%s')"
+			,ownerid,enc.enc(docname));
+	}
+	return ret;
+}
+</mod>
+/*
+	Get the name of a node from its id
+*/
+<mod>
+static int bo_getnodename (int documentid, int nodeid, SSTRING &name)
+{
+	glocal int ret = -1;
+	glocal SSTRING *name = &name;
+	<call sql_query>("select name from nodes"
+		" where documentid=%d and nodeid=%d",documentid,nodeid);
+	<f onerow>
+		glocal.name->setfrom (row[0]);
+		glocal.ret = 0;
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+/*
+	Get the uuid of a node from its id
+*/
+<mod>
+static int bo_getnodeuuid (int documentid, int nodeid, SSTRING &uuid)
+{
+	glocal int ret = -1;
+	if (nodeid == 0){
+		uuid = ROOTUUID;
+		glocal.ret = 0;
+	}else{
+		glocal SSTRING *uuid = &uuid;
+		<call sql_query>("select uuid from nodes"
+			" where documentid=%d and nodeid=%d",documentid,nodeid);
+		<f onerow>
+			glocal.uuid->setfrom (row[0]);
+			glocal.ret = 0;
+		</f>
+		</call>
+	}
+	return glocal.ret;
+}
+</mod>
+
+<mod>
+static void bo_dumpdoc (int documentid)
+{
+	SSTRING where;
+	if (documentid != -1){
+		where.setfromf (" and documents.documentid=%d",documentid);
+	}
+	<call sql_query>("select documents.documentid,documents.name,descr,documents.ownerid,users.id"
+		" from documents,users where documents.ownerid=users.userid %s"
+		,where.get());
+	<f onerow>
+		glocal int documentid = atoi(row[0]);
+		int ownerid = atoi(row[3]);
+		BOXMLENC enc;
+		printf ("<document owner=%s name=%s>\n"
+			"<description>%s</description>\n"
+			,enc.enc(row[4]),enc.enc(row[1]),enc.encnq(row[2]));
+		bo_dumpusers (glocal.documentid);
+		<call sql_query>("select name,image,unix_timestamp(modif),uuid,ownerid,type,descr from nodes"
+			" where documentid=%d",glocal.documentid);
+		<f onerow>
+			SSTRING owner;
+			bo_getuserfromid (atoi(row[4]),owner);
+			BOXMLENC enc;
+			printf ("<node name=%s image=%s modif=%s uuid=%s owner=%s type=%s>%s</node>\n"
+				,enc.enc(row[0]),enc.enc(row[1])
+				,enc.enc(row[2]),enc.enc(row[3])
+				,enc.enc(owner),enc.enc(row[5])
+				,enc.encnq(row[6]));
+		</f>
+		</call>
+		<call sql_query>("select node1,node2,relate,unix_timestamp(modif),type,descr,ownerid,altname,orderpol,orderkey from relations"
+			" where documentid=%d",glocal.documentid);
+		<f onerow>
+			SSTRING uuid1,uuid2,owner;
+			bo_getnodeuuid(glocal.documentid,atoi(row[0]),uuid1);
+			bo_getnodeuuid(glocal.documentid,atoi(row[1]),uuid2);
+			int ownerid = bo_getuserfromid (atoi(row[6]),owner);
+			BOXMLENC enc;
+			printf ("<relation owner=%s uuid1=%s uuid2=%s relate=%s modif=%s type=%s altname=%s orderpol=%s orderkey=%s>%s</relation>\n"
+				,enc.enc(owner),enc.enc(uuid1),enc.enc(uuid2)
+				,enc.enc(row[2]),enc.enc(row[3])
+				,enc.enc(row[4])
+				,enc.enc(row[7]),enc.enc(row[8]),enc.enc(row[9])
+				,enc.encnq(row[5]));
+		</f>
+		</call>
+		printf ("</document>\n");
+	</f>
+	</call>
+}
+</mod>
+
+<mod>
+int main (int argc, char *argv[])
+{
+	glocal bool dumpall = false;
+	glocal const char *dumpdoc = NULL;
+	glocal const char *import = NULL;
+	glocal const char *deletedoc = NULL;
+	glocal const char *createdoc = NULL;
+	glocal bool deletedocs = false;
+	glocal bool listdoc = false;
+	glocal SSTRINGS ports;
+	glocal const char *dbserv = "localhost";
+	glocal const char *dbname = "bolixo";
+	glocal const char *deluser = NULL;
+	glocal const char *adduser = NULL;
+	glocal const char *name = NULL;
+	glocal const char *passwd = NULL;
+	glocal const char *document = NULL;
+	glocal const char *setpasswd = NULL;
+	glocal bool delusers = false;
+	glocal.ports.add ("9876");
+	static const char *tbdic[]={"bolixo","tlmpsql",NULL};
+	int ret = <call tlmpprogram>(argc,argv,tbdic);
+	<f init>
+		setproginfo ("bolixod",version,MSG_U(I_BOLIXOD
+			,"Serveur de documents bolixo"));
+
+		setgrouparg (MSG_U(I_MNGUSER,"Gestion des usagers"));
+		setarg ('a',"adduser",MSG_U(I_ADDUSER,"Ajoute un usager associé à un document ou pas"),glocal.adduser,false);
+		setarg ('k',"deluser",MSG_U(I_DELUSER,"Efface un code usager"),glocal.deluser,false);
+		setarg ('K',"delusers",MSG_U(I_DELUSERS,"Efface les code usagers non propriétaire de documents"),glocal.delusers,false);
+		setarg ('S',"setpasswd",MSG_U(I_SETPASSWD,"Change le mot de passe d'un usager d'un document"),glocal.setpasswd,false);
+
+		setgrouparg (MSG_U(I_DOCMNG,"Gestion de documents"));
+		setarg ('c',"createdoc",MSG_U(I_CREATEDOC,"Création d'un document"),glocal.createdoc,false);
+		setarg ('-',"deldoc",MSG_U(I_DELETEDOC,"Efface un document de la base"),glocal.deletedoc,false);
+		setarg ('-',"deldocs",MSG_U(I_DELETEDOCS,"Efface tous les documents de la base"),glocal.deletedocs,false);
+		setarg ('i',"import",MSG_U(I_IMPORT,"Popule la base de données à partir d'un fichier .bxo"),glocal.import,false);
+		setarg ('l',"listdoc",MSG_U(I_LISTDOC,"Présente la liste des documents"),glocal.listdoc,false);
+		setarg ('u',"dumpall",MSG_U(I_DUMPALL,"Extrait la base de données"),glocal.dumpall,false);
+		setarg ('U',"dumpdoc",MSG_U(I_DUMPDOC,"Extrait un document de la base de données"),glocal.dumpdoc,false);
+
+		setgrouparg (MSG_U(I_NETSECUR,"Réseau et sécurité"));
+		setarg ('p',"port",MSG_U(I_LISTEN,"Écoute sur le(s) port TCP et unix"),glocal.ports,false);
+
+		setgrouparg (MSG_U(I_DBOPT,"Options de base de données"));
+		setarg ('b',"dbname",MSG_U(I_DBNAME,"Nom de la BD"),glocal.dbname,false);
+		setarg ('s',"dbserv",MSG_U(I_DBSERV,"Serveur de BD"),glocal.dbserv,false);
+
+		setgrouparg (MSG_U(I_SUBOPT,"Options subordonnées"));
+		setarg ('n',"name",MSG_U(I_NAME,"Nom de l'usager"),glocal.name,false);
+		setarg ('D',"document",MSG_U(I_DOCUMENT,"Document à traiter"),glocal.document,false);
+		setarg ('P',"password",MSG_U(I_PASSWORD,"Mot de passe"),glocal.passwd,false);
+	</f>
+	<f main_noarg>
+		glocal int ret = -1;
+		query_setdefaultdb (glocal.dbserv,glocal.dbname);
+		if (glocal.dumpall){
+			printf ("%s",XMLINTRO);
+			bo_dumpusers (0);
+			bo_dumpdoc (-1);
+			printf ("%s",XMLEND);
+		}else if (glocal.dumpdoc){
+			int documentid = bo_getdocid (glocal.dumpdoc);
+			if (documentid == -1){
+				tlmp_error (MSG_U(E_NODOC,"Pas de document \"%s\" dans la base\n")
+					,glocal.dumpdoc);
+			}else{
+				printf ("%s",XMLINTRO);
+				bo_dumpdoc (documentid);
+				printf ("%s",XMLEND);
+			}
+		}else if (glocal.listdoc){
+			<call sql_query>("select documents.name,documents.ownerid,users.id"
+				" from documents,users where documents.ownerid=users.userid");
+			<f onerow>
+				printf ("%s\t%s\n",row[2],row[0]);
+			</f>
+			</call>
+			glocal.ret = 0;
+		}else if (glocal.import !=NULL){
+			<call boxml>(glocal.import);
+			<f document>
+				ownerid = bo_getuserid (owner,0);
+				documentid=bo_getdocid(name);
+				if(documentid==-1){
+					NSQL_ENCODE enc;
+					sql_action ("insert into documents (name,descr,ownerid)"
+						" values"
+						" ('%s','%s',%d)"
+						,enc.enc(name),enc.enc(descr),ownerid);
+					documentid=sql_getlastid();
+				}
+				printf ("document documentid %d owner %s name %s\n\t%s\n"
+					,documentid,owner,name,descr);
+			</f>
+			<f user>
+				//printf ("Insertion d'un usager doc=%d ownerid=%d owner=%s id=%s\n",documentid,ownerid,owner,id);
+				int userid = bo_getuserid (id,documentid);
+				if (userid == -1){
+					sql_action ("insert into users (documentid,id,name)"
+						" values"
+						" (%d,'%s','%s')"
+						,documentid,id,name);
+					userid = sql_getlastid();
+				}
+				printf ("user userid %d owner %s id %s name %s\n",userid,owner,id,name);
+			</f>
+			<f node>
+				char tmpuuid[30];
+				if (uuid == NULL || uuid[0] == '\0'){
+					bo_makeuuid(tmpuuid);
+					uuid = tmpuuid;
+				}
+				int ownerid = bo_getguserid(owner,documentid);
+				NSQL_ENCODE enc;
+				SSTRING modifstr = bolixod_cnvunixtime(modif);
+				sql_action ("insert into nodes (documentid,name,descr,modif,image,uuid,ownerid)"
+					" values"
+					" (%d,'%s','%s','%s','%s','%s',%d)"
+					,documentid,enc.enc(name),enc.enc(descr)
+					,enc.enc(modifstr),enc.enc(image),enc.enc(uuid),ownerid);
+				//printf ("node[%d] name %s image %s\n\t%s\n",documentid,name,image,descr);
+			</f>
+			<f relation>
+				int node1id = bo_getnodeid (uuid1,documentid);
+				int node2id = bo_getnodeid (uuid2,documentid);
+				SSTRING modifstr = bolixod_cnvunixtime(modif);
+				NSQL_ENCODE enc;
+				sql_action ("insert into relations"
+					" (documentid,ownerid,node1,node2,relate,modif,altname,orderpol,orderkey,descr)"
+					" values"
+					" (%d,%d,%d,%d,'%s','%s','%s','%c',%d,'%s')"
+					,documentid,docownerid,node1id,node2id
+					,enc.enc(relate),enc.enc(modifstr)
+					,enc.enc(altname)
+					,orderpol,orderkey,enc.enc(descr));
+				printf ("relation[%d] owner %s uuid1 %s relate %s uuid2 %s\n\t%s\n"
+					,documentid,owner,uuid1,relate,uuid2,descr);
+			</f>
+			</call>
+		}else if (glocal.delusers){
+			if (xconf_yesno(
+				MSG_U(Q_DELETEALLUSERS,"Effacer tous les usagers ?")
+				,MSG_U(I_DELETEALLUSERS
+					,"Voulez vous vraiment effacer les codes usager\n"
+					 "qui ne sont pas propriétaire d'un document")
+				,help_nil)==MENU_YES){
+				<call sql_query>("select userid from users where documentid=0");
+				<f onerow>
+					glocal const char *userid=row[0];
+					<call sql_query>("select documentid from documents where ownerid=%s"
+						,row[0]);
+					<f onerow>
+					</f>
+					<f empty>
+						sql_action ("delete from users where userid=%s",glocal.userid);
+					</f>
+					</call>
+				</f>
+				</call>
+			}
+		}else if (glocal.deluser != NULL){
+			NSQL_ENCODE enc;
+			<call sql_query>("select userid from users where id='%s' and ownerid=0"
+				,enc.enc(glocal.deluser));
+			<f empty>
+				tlmp_error (MSG_R(E_NOUSER),glocal.deluser);
+			</f>
+			<f onerow>
+				glocal const char *userid=row[0];
+				glocal SSTRING errors;
+				<call sql_query>("select name from documents where ownerid=%s"
+					,row[0]);
+				<f dostart>
+					glocal.errors.setfromf (MSG_U(E_OWNDOC,"L'usager %s n'est pas propriétaire des documents suivants:\n")
+						,glocal.deluser);
+				</f>
+				<f doend>
+					tlmp_error ("%s",glocal.errors.get());
+				</f>
+				<f onerow>
+					glocal.errors.appendf ("\t%s\n",row[0]);
+				</f>
+				<f empty>
+					sql_action ("delete from users where userid=%s",glocal.userid);
+				</f>
+				</call>
+			</f>
+			</call>
+		}else if (glocal.deletedocs){
+			if(xconf_yesno(
+				MSG_U(Q_DELETEALLDOC,"Effacer tous ?")
+					,MSG_U(I_DELETEALLDOC,"Voulez vous vraiment effacer tous les documents")
+					,help_nil)==MENU_YES){
+				<call sql_query>("select name from documents");
+				<f onerow>
+					bo_deletedoc (row[0]);
+				</f>
+				</call>
+			}
+		}else if (glocal.deletedoc != NULL){
+			glocal.ret = bo_deletedoc (glocal.deletedoc);
+		}else if (glocal.createdoc != NULL){
+			if (glocal.name == NULL){
+				tlmp_error (MSG_U(E_NONAME
+					,"Vous devez préciser le propriétaire du nouveau document\n"
+					 "via l'option --name\n"));
+			}else{
+				glocal.ret = bo_createdoc (glocal.createdoc,glocal.name);
+			}
+		}else if (glocal.adduser != NULL){
+			if (glocal.name == NULL) glocal.name = "";
+			if (glocal.passwd == NULL) glocal.passwd = "";
+			int documentid = 0;
+			if (glocal.document != NULL){
+				documentid = bo_getdocid(glocal.document);
+				if (documentid == -1){
+					tlmp_error (MSG_U(E_UNKNOWNDOC,"Document inconnu: %s\n")
+						,glocal.document);
+				}
+			}
+			if (documentid != -1){
+				NSQL_ENCODE enc;
+				glocal.ret = sql_action ("insert into users (id,name,passw,documentid)"
+					" values"
+					" ('%s','%s',password('%s'),%d)"
+					,enc.enc(glocal.adduser)
+					,enc.enc(glocal.name)
+					,enc.enc(glocal.passwd)
+					,documentid);
+				if (glocal.ret == -1){
+					tlmp_error (MSG_U(E_NONEWUSER,"L'usager n'a pas été ajouté\n"));
+				}
+			}
+		}else if (glocal.setpasswd != NULL){
+			if (glocal.passwd == NULL){
+				tlmp_error (MSG_U(E_NOPASSWD,"Option --setpasswd doit être utilisé avec l'option --password\n"));
+			}else{
+				glocal int documentid = 0;
+				if (glocal.document != NULL){
+					glocal.documentid = bo_getdocid(glocal.document);
+					if (glocal.documentid == -1){
+						tlmp_error (MSG_R(E_UNKNOWNDOC),glocal.document);
+					}
+				}
+				if (glocal.documentid != -1){
+					NSQL_ENCODE enc;
+					<call sql_query>("select userid from users"
+						" where documentid=%d and id='%s'"
+						,glocal.documentid,enc.enc(glocal.setpasswd));
+					<f empty>
+						tlmp_error (MSG_U(E_UNKNOWNUSER
+							,"Usager inconnu\n"));
+					</f>
+					<f onerow>
+						NSQL_ENCODE enc;
+						glocal.ret = sql_action ("update users"
+							" set passw=password('%s')"
+							" where id='%s' and documentid=%d"
+						,enc.enc(glocal.passwd),enc.enc(glocal.setpasswd)
+						,glocal.documentid);
+						if (glocal.ret == -1){
+							tlmp_error (MSG_U(E_PASSNOCHANGE
+								,"Le mot de passe n'a pas été changé\n"));
+						}
+					</f>
+					</call>
+				}
+			}
+		}else{
+			<obj TCPSERVER serv>(glocal.ports.getitem(0)->get(),10*60);
+			<f newclient>
+				sendf ("220 bolixod version %s\n",version);
+				info.data = new BO_CLIENT;
+				settcpnodelay(true);
+			</f>
+			<f receive>
+				debug_printf ("Receive %s\n",line);
+				glocal BO_CLIENT *c = (BO_CLIENT*)info.data;
+				if (glocal.c->reader.reading()){
+					if (strcmp(line,"</bolixo>")==0){
+						<call boxml>(glocal.c->reader,glocal.c->documentid);
+						<f document>
+							end = true;
+						</f>
+						<f node>
+							int ownerid = bo_getguserid (owner,documentid);
+							SSTRING modifstr = bolixod_cnvunixtime(modif);
+							NSQL_ENCODE enc;
+							char tmpuuid[30];
+							if (uuid[0] == '\0'){
+								bo_makeuuid(tmpuuid);
+								uuid = tmpuuid;
+							}
+							int ok = sql_action ("update nodes"
+								" set name='%s',image='%s',modif='%s',ownerid=%d,type='%s',descr='%s'"
+								" where uuid='%s' and documentid=%d"
+								,enc.enc(name),enc.enc(image),enc.enc(modifstr),ownerid
+								,enc.enc(type),enc.enc(descr)
+								,enc.enc(uuid),documentid);
+							if (ok == 0){
+								sql_action ("insert into nodes (documentid,name,image,modif,uuid,ownerid,type,descr)"
+									" values"
+									" (%d,'%s','%s','%s','%s',%d,'%s','%s')"
+									,documentid
+									,enc.enc(name),enc.enc(image),enc.enc(modifstr)
+									,enc.enc(uuid),ownerid
+									,enc.enc(type),enc.enc(descr));
+							}
+						</f>
+						<f relation>
+							int node1id = bo_getnodeid (uuid1,documentid);
+							int node2id = bo_getnodeid (uuid2,documentid);
+							if (node1id != -1 && node2id != -1){
+								int ownerid = glocal.c->userid;
+								SSTRING modifstr = bolixod_cnvunixtime(modif);
+								NSQL_ENCODE enc;
+								sql_action ("replace relations (documentid,node1,node2,ownerid,relate,modif,type,altname,orderpol,orderkey,descr)"
+									" values"
+									" (%d,%d,%d,%d,'%s','%s','%s','%s','%c',%d,'%s')"
+									,documentid,node1id,node2id,ownerid
+									,enc.enc(relate),enc.enc(modifstr)
+									,enc.enc(type)
+									,enc.enc(altname)
+									,orderpol,orderkey,enc.enc(descr));
+							}else{
+								glocal.TCPSERVER.sendf ("500 relation: unknown nodes\n");
+							}
+						</f>
+						</call>
+						glocal.c->reader.reset();
+						void *data;
+						for (int no = iter_init(data); no != -1; no=iter_next(data)){
+							BO_CLIENT *c = (BO_CLIENT*)data;
+							if (c->documentid==glocal.c->documentid){
+								sendtof (no,"%s\n",C_DOCCHANGED);
+							}
+						}
+					}else{
+						glocal.c->reader.append (line);
+					}
+				}else if (strncmp(line,"<?xml",5)==0){
+					glocal.c->reader.append (line);
+				}else{
+					// Command mode
+					glocal SSTRINGS words;
+					glocal int nbwords = str_splitlineq (line,glocal.words);
+					glocal const char *cmd = "";
+					if (glocal.nbwords > 0) glocal.cmd = glocal.words.getitem(0)->get();
+					if (strcmp(glocal.cmd,C_LOGIN)==0){
+						if (glocal.nbwords != 4){
+							send ("500 Invalid login request: login user password document\n");
+						}else{
+							glocal int documentid = bo_getdocid (glocal.words.getitem(3)->get());
+							if (glocal.documentid == -1){
+								send ("500 Unknown document\n");
+							}else{
+								NSQL_ENCODE enc;
+								<call sql_query>("select documentid,userid from users"
+									" where id='%s' and passw=password('%s')"
+									" and (documentid=0 or documentid=%d)"
+									,enc.enc(glocal.words.getitem(1)->get())
+									,enc.enc(glocal.words.getitem(2)->get())
+									,glocal.documentid);
+								<f onerow>
+									glocal.c->userid = atoi(row[1]);
+									glocal.c->documentid = glocal.documentid;
+									glocal.c->user = glocal.words.getitem(1);
+									glocal.TCPSERVER.send ("200 login ok\n");
+								</f>
+								<f empty>
+									sleep(3);	// Slow down the whole server. Hum...
+									glocal.TCPSERVER.send ("500 Invalid user or password\n");
+								</f>
+								</call>
+							}
+						}
+					}else if (strcmp(glocal.cmd,C_LISTDOC)==0){
+						send (XMLINTRO);
+						<call sql_query>("select documents.documentid,documents.name,descr,users.id"
+							" from documents,users"
+							" where documents.ownerid=users.userid");
+						<f onerow>
+							BOXMLENC enc;
+							glocal.TCPSERVER.sendf (
+								"<document documentid=%s name=%s owner=%s>\n"
+								"<description>%s</description>\n"
+								"</document>\n"
+								,enc.enc(row[0]),enc.enc(row[1]),enc.enc(row[3]),enc.enc(row[2]));
+						</f>
+						</call>
+						send (XMLEND);
+					}else if (strcmp(glocal.cmd,C_LISTNODES)==0){
+						send (XMLINTRO);
+						<call sql_query>("select name,unix_timestamp(modif),image,uuid,ownerid,type"
+							" from nodes"
+							" where documentid=%d",glocal.c->documentid);
+						<f onerow>
+							SSTRING owner;
+							bo_getuserfromid (atoi(row[4]),owner);
+							BOXMLENC enc;
+							glocal.TCPSERVER.sendf (
+								"<node name=%s modif=%s image=%s uuid=%s owner=%s type=%s/>\n"
+								,enc.enc(row[0]),enc.enc(row[1]),enc.enc(row[2])
+								,enc.enc(row[3]),enc.enc(owner)
+								,enc.enc(row[5]));
+						</f>
+						</call>
+						send (XMLEND);
+					}else if (strcmp(glocal.cmd,C_LISTRELS)==0){
+						send (XMLINTRO);
+						<call sql_query>("select node1,node2,ownerid,relate,unix_timestamp(modif),type,altname,orderpol,orderkey"
+							" from relations"
+							" where documentid=%d",glocal.c->documentid);
+						<f onerow>
+							SSTRING uuid1,uuid2,ownerstr;
+							int node1ok = bo_getnodeuuid (glocal.c->documentid
+								,atoi(row[0]),uuid1);
+							int node2ok = bo_getnodeuuid (glocal.c->documentid
+								,atoi(row[1]),uuid2);
+							int ownerok = bo_getuserfromid (atoi(row[2]),ownerstr);
+							BOXMLENC enc;
+							glocal.TCPSERVER.sendf (
+								"<relation uuid1=%s uuid2=%s relate=%s owner=%s modif=%s type=%s altname=%s orderpol=%s orderkey=%s/>\n"
+								,enc.enc(uuid1),enc.enc(uuid2),enc.enc(row[3])
+								,enc.enc(ownerstr),enc.enc(row[4]),enc.enc(row[5])
+								,enc.enc(row[6]),enc.enc(row[7]),enc.enc(row[8]));
+						</f>
+						</call>
+						send (XMLEND);
+					}else if (strcmp(glocal.cmd,C_GETNODE)==0 && glocal.nbwords==2){
+						const char *uuid = glocal.words.getitem(1)->get();
+						NSQL_ENCODE enc;
+						send (XMLINTRO);
+						<call sql_query>("select name,unix_timestamp(modif),image,uuid,ownerid,type,descr"
+							" from nodes"
+							" where documentid=%d and uuid='%s'"
+							,glocal.c->documentid,enc.enc(uuid));
+						<f onerow>
+							SSTRING owner;
+							bo_getuserfromid (atoi(row[4]),owner);
+							BOXMLENC enc;
+							glocal.TCPSERVER.sendf (
+								"<node name=%s modif=%s image=%s uuid=%s owner=%s type=%s>%s</node>\n"
+								,enc.enc(row[0]),enc.enc(row[1]),enc.enc(row[2])
+								,enc.enc(row[3]),enc.enc(owner)
+								,enc.enc(row[5])
+								,enc.encnq(row[6]));
+						</f>
+						</call>
+						send (XMLEND);
+					}else if (strcmp(glocal.cmd,C_GETREL)==0 && glocal.nbwords==4){
+						glocal const char *uuid1 = glocal.words.getitem(1)->get();
+						glocal const char *uuid2 = glocal.words.getitem(2)->get();
+						glocal const char *relate = glocal.words.getitem(3)->get();
+						int node1 = bo_getnodeid (glocal.uuid1,glocal.c->documentid);
+						int node2 = bo_getnodeid (glocal.uuid2,glocal.c->documentid);
+						NSQL_ENCODE enc;
+						send (XMLINTRO);
+						<call sql_query>("select unix_timestamp(modif),ownerid,type,altname,orderpol,orderkey,descr"
+							" from relations"
+							" where documentid=%d and node1=%d and node2=%d"
+							" and relate='%s'"
+							,glocal.c->documentid,node1,node2
+							,enc.enc(glocal.relate));
+						<f onerow>
+							BOXMLENC enc;
+							SSTRING ownerstr;
+							int ownerok = bo_getuserfromid (atoi(row[1]),ownerstr);
+							glocal.TCPSERVER.sendf (
+								"<relation uuid1=%s uuid2=%s relate=%s owner=%s modif=%s type=%s altname=%s orderpol=%s orderkey=%s>%s</relation>\n"
+								,enc.enc(glocal.uuid1),enc.enc(glocal.uuid2)
+								,enc.enc(glocal.relate)
+								,enc.enc(ownerstr),enc.enc(row[0])
+								,enc.enc(row[2]),enc.enc(row[3])
+								,enc.enc(row[4]),enc.enc(row[5])
+								,enc.encnq(row[6]));
+						</f>
+						</call>
+						send (XMLEND);
+					}else if (strcmp(glocal.cmd,C_GETROOT)==0){
+						// Find nodes linked to the node 0. Special relation
+						send (XMLINTRO);
+						<call sql_query>("select"
+							" nodes.name,nodes.image,nodes.uuid"
+							" ,nodes.type,nodes.modif,users.id"
+							" from nodes,users,relations"
+							" where nodes.documentid=%d and relations.node1=nodes.nodeid"
+							" and relations.node2 = 0 and users.userid=nodes.ownerid"
+							,glocal.c->documentid);
+						<f onerow>
+							BOXMLENC enc;
+							glocal.TCPSERVER.sendf (
+								"<node name=%s modif=%s image=%s uuid=%s owner=%s type=%s/>\n"
+								,enc.enc(row[0]),enc.enc(row[4]),enc.enc(row[1])
+								,enc.enc(row[2]),enc.enc(row[5])
+								,enc.enc(row[3]));
+						</f>
+						</call>
+						send (XMLEND);
+					}else if (strcmp(glocal.cmd,C_GETORPHAN)==0){
+						// Find nodes not connected as child of any node
+						// They may have child of their own
+						send (XMLINTRO);
+						<call sql_query>("select"
+							" nodes.name,nodes.image,nodes.uuid"
+							" ,nodes.type,nodes.modif,users.id"
+							" from nodes,users"
+							" left join relations on relations.node1=nodes.nodeid"
+							" where nodes.documentid=%d and relations.node1 is null"
+							" and users.userid=nodes.ownerid"
+							,glocal.c->documentid);
+						<f onerow>
+							BOXMLENC enc;
+							glocal.TCPSERVER.sendf (
+								"<node name=%s modif=%s image=%s uuid=%s owner=%s type=%s/>\n"
+								,enc.enc(row[0]),enc.enc(row[4]),enc.enc(row[1])
+								,enc.enc(row[2]),enc.enc(row[5])
+								,enc.enc(row[3]));
+						</f>
+						</call>
+						send (XMLEND);
+					}else if ((strcmp(glocal.cmd,C_GETCHILD)==0
+							|| strcmp(glocal.cmd,C_GETCHILDF)==0)
+						&& glocal.nbwords==2){
+						const char *uuid = glocal.words.getitem(1)->get();
+						int node = bo_getnodeid (uuid,glocal.c->documentid);
+						if (node == -1){
+							glocal.TCPSERVER.sendf ("500 no such node\n");
+						}else{
+							glocal bool sendfull = strcmp(glocal.cmd,C_GETCHILDF)==0;
+							const char *extra = glocal.sendfull ? ",nodes.descr" : "";
+							send (XMLINTRO);
+							<call sql_query>("select"
+								" nodes.name,nodes.image,nodes.uuid"
+								" ,nodes.type,nodes.modif,users.id%s"
+								" from nodes,relations,users"
+								" where relations.node2=%d"
+								" and nodes.nodeid=relations.node1"
+								" and users.userid=nodes.ownerid"
+								,extra,node);
+							<f onerow>
+								BOXMLENC enc;
+								if (glocal.sendfull){
+									glocal.TCPSERVER.sendf (
+										"<node name=%s modif=%s image=%s uuid=%s owner=%s type=%s>%s</node>\n"
+										,enc.enc(row[0]),enc.enc(row[4]),enc.enc(row[1])
+										,enc.enc(row[2]),enc.enc(row[5])
+										,enc.enc(row[3]),enc.encnq(row[6]));
+								}else{
+									glocal.TCPSERVER.sendf (
+										"<node name=%s modif=%s image=%s uuid=%s owner=%s type=%s/>\n"
+										,enc.enc(row[0]),enc.enc(row[4]),enc.enc(row[1])
+										,enc.enc(row[2]),enc.enc(row[5])
+										,enc.enc(row[3]));
+								}
+							</f>
+							</call>
+							send (XMLEND);
+						}
+					}else if (strcmp(glocal.cmd,C_DELNODE)==0 && glocal.nbwords==2){
+						glocal const char *uuid = glocal.words.getitem(1)->get();
+						glocal int nodeid = bo_getnodeid(glocal.uuid,glocal.c->documentid);
+						if (glocal.nodeid == -1){
+							sendf ("500 delnode: no such a node\n");
+						}else{
+							// Check if we have any relation pointing to this node
+							<call sql_query>("select relationid from relations"
+								" where node1=%d or node2=%d"
+								,glocal.nodeid,glocal.nodeid);
+							<f empty>
+								// Ok we are allowed to delete
+								int ok = sql_action ("delete from nodes"
+									" where nodeid=%d"
+								,glocal.nodeid);
+								if (ok != 1){
+									glocal.TCPSERVER.sendf ("500 No node deleted\n");
+								}else{
+									// We send a confirmation that the node is deleted
+									// to every one
+									void *data;
+									for (int no=glocal.TCPSERVER.iter_init(data);
+										no != -1; no = glocal.TCPSERVER.iter_next(data)){
+										BO_CLIENT *c = (BO_CLIENT*)data;
+										if (c->documentid==glocal.c->documentid){
+											BOXMLENC enc;
+											glocal.TCPSERVER.sendto (no,XMLINTRO);
+											glocal.TCPSERVER.sendtof (no,"<%s uuid=%s/>\n"
+												,K_DELNODE,enc.enc(glocal.uuid));
+											glocal.TCPSERVER.sendto (no,XMLEND);
+										}
+									}
+								}
+							</f>
+							<f onerow>
+								end = true;
+								glocal.TCPSERVER.sendf ("500 delnode: Some relations points to this node\n");
+							</f>
+							</call>
+						}
+					}else if (strcmp(glocal.cmd,C_DELRELATION)==0 && glocal.nbwords==4){
+						const char *uuid1 = glocal.words.getitem(1)->get();
+						int node1id = bo_getnodeid(uuid1,glocal.c->documentid);
+						const char *uuid2 = glocal.words.getitem(2)->get();
+						int node2id = bo_getnodeid(uuid2,glocal.c->documentid);
+						const char *relate = glocal.words.getitem(3)->get();
+						NSQL_ENCODE enc;
+						int ok = sql_action ("delete from relations"
+							" where documentid=%d and node1=%d"
+							" and node2=%d and relate='%s'"
+							,glocal.c->documentid,node1id,node2id
+							,enc.enc(relate));
+						if (ok != 1){
+							sendf ("500 No relation deleted\n");
+						}else{
+							void *data;
+							for (int no=glocal.TCPSERVER.iter_init(data);
+								no != -1; no = glocal.TCPSERVER.iter_next(data)){
+								BO_CLIENT *c = (BO_CLIENT*)data;
+								if (c->documentid==glocal.c->documentid){
+									BOXMLENC enc;
+									glocal.TCPSERVER.sendto (no,XMLINTRO);
+									glocal.TCPSERVER.sendtof (no,"<%s uuid1=%s uuid2=%s relate=%s/>\n"
+										,K_DELRELATION
+										,enc.enc(uuid1),enc.enc(uuid2)
+										,enc.enc(relate));
+									glocal.TCPSERVER.sendto (no,XMLEND);
+								}
+							}
+						}
+					}else if (strcmp(glocal.cmd,C_PING)==0){
+						glocal.TCPSERVER.send ("200 pong\n");
+					}else if (strcmp(glocal.cmd,C_XMLPING)==0){
+						#if 1
+							glocal.TCPSERVER.send (XMLINTRO);
+							glocal.TCPSERVER.send ("<node name='pong' modif='20051212' image='' owner='jack' type='text'/>\n");
+							glocal.TCPSERVER.send (XMLEND);
+						#else
+							glocal.TCPSERVER.sendf ("%s%s%s"
+								,XMLINTRO
+								,"<node name='pong' modif='20051212' image='' owner='jack' type='text'/>\n"
+								,XMLEND);
+						#endif
+					}else{
+						send ("500 Invalid request\n");
+					}
+				}
+			</f>
+			<f endclient>
+			</f>
+			</obj>
+			for (int i=1; i<glocal.ports.getnb(); i++){
+				serv.listen (glocal.ports.getitem(i)->get());
+			}
+			serv.loop();
+		}
+		return glocal.ret;
+	</f>
+	</call>
+	return ret;
+}
+</mod>
+

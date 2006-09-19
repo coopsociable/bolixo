@@ -1,0 +1,522 @@
+/*
+	Gestion de courriel dans un document bolixo
+*/
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <stdarg.h>
+#include <misc.h>
+#include <dictionary.h>
+#include <tlmplib.h>
+#include "bolixo.h"
+#pragma implementation
+#include "bomail.h"
+
+static const char T_FOLDER[]="folder";
+static const char T_INTERNAL[]="internal";
+static const char T_COMMENT[]="comment";
+static const char T_FLAGS[]="flags";
+static const char R_MEMBER[]="member";
+static const char R_ATTACH[]="attach";
+static const char R_PART[]="part";
+
+PUBLIC BOMAIL::BOMAIL(
+	const char *document,
+	const char *_user,
+	const char *pass)
+{
+	user = _user;
+	SSTRING errmsg;
+	fd = bomisc_connect ("localhost","9876",_user,pass,document,errmsg);
+	if (fd == -1){
+		tlmp_error (errmsg.get());
+		fout = NULL;
+	}else{
+		fout = fdopen (fd,"w");
+	}
+}
+
+PUBLIC bool BOMAIL::isok()
+{
+	return fd != -1;
+}
+
+
+PUBLIC BOMAIL::~BOMAIL()
+{
+	if (fout != NULL) fclose (fout);
+}
+
+
+PUBLIC int BOMAIL::send (const char *line)
+{
+	int len = strlen(line);
+	return write (fd,line,len) == len ? 0 : -1;
+}
+
+PUBLIC int BOMAIL::sendf (const char *ctl, ...)
+{
+	int ret = -1;
+	if (fout != NULL){
+		va_list list;
+		va_start (list,ctl);
+		int len = vfprintf (fout,ctl,list);
+		fflush (fout);
+		va_end (list);
+		ret = len > 0 ? 0 : -1;
+	}
+	return ret;
+}
+
+PUBLIC int BOMAIL::getfd() const
+{
+	return fd;
+}
+
+PUBLIC int BOMAIL::save (
+	const char *from,
+	const char *msgid,
+	const char *header,
+	const char *text,
+	const SSTRING &folder_uuid,
+	SSTRING &uuid)
+{
+	if (uuid.is_filled()){
+		// The message is already in the database. We are simply
+		// linking the message to the folder
+		link (uuid,folder_uuid);
+	}else{
+		SSTRING now;
+		bo_getnow(now);
+		bo_makeuuid(uuid);
+		BOXMLENC enc;
+		send (XMLINTRO);
+		/*
+			Store the header in the main node of the message.
+		*/
+		sendf ("<node name=%s image=%s modif=%s uuid=%s owner=%s type=%s>%s</node>\n"
+			,enc.enc(msgid)
+			,enc.enc("")
+			,enc.enc(now),enc.enc(uuid)
+			,enc.enc(user)
+			,enc.enc(SIMPLE_HTML),enc.encnq(header));
+		// Add the relation
+		sendf ("<relation uuid1=%s uuid2=%s relate=%s modif=%s owner=%s type=%s/>\n"
+			,enc.enc(uuid),enc.enc(folder_uuid)
+			,enc.enc(R_MEMBER)
+			,enc.enc(now),enc.enc(user)
+			,enc.enc(SIMPLE_HTML));
+		/*
+			Text (and later attachements) will be store as attributes
+		*/
+		SSTRING msgidt,uuidt;
+		msgidt.setfromf ("%s-TEXT",msgid);
+		bo_makeuuid(uuidt);
+		sendf ("<node name=%s image=%s modif=%s uuid=%s owner=%s type=%s>%s</node>\n"
+			,enc.enc(msgidt)
+			,enc.enc("")
+			,enc.enc(now),enc.enc(uuidt)
+			,enc.enc(user)
+			,enc.enc(SIMPLE_HTML),enc.encnq(text));
+		// Add the relation
+		sendf ("<relation uuid1=%s uuid2=%s relate=%s modif=%s owner=%s type=%s/>\n"
+			,enc.enc(uuidt),enc.enc(uuid)
+			,enc.enc(R_PART)
+			,enc.enc(now),enc.enc(user)
+			,enc.enc(SIMPLE_HTML));
+		send (XMLEND);
+	}
+	return 0;
+}
+
+PUBLIC int BOMAIL::attach(
+	const SSTRING &msg_uuid,
+	const char *title,
+	const char *type,
+	const char *attach,
+	int length,
+	SSTRING &att_uuid)
+{
+	SSTRING now;
+	bo_getnow(now);
+	bo_makeuuid(att_uuid);
+	BOXMLENC enc;
+	send (XMLINTRO);
+	sendf ("<node name=%s image=%s modif=%s uuid=%s owner=%s type=%s>%s</node>\n"
+		,enc.enc(title)
+		,enc.enc("")
+		,enc.enc(now),enc.enc(att_uuid)
+		,enc.enc(user)
+		,enc.enc(type),enc.encnq(attach));
+	sendf ("<relation uuid1=%s uuid2=%s relate=%s modif=%s owner=%s type=%s/>\n"
+		,enc.enc(att_uuid),enc.enc(msg_uuid)
+		,enc.enc(R_ATTACH)
+		,enc.enc(now),enc.enc(user)
+		,enc.enc(SIMPLE_HTML));
+	send (XMLEND);
+}
+
+PUBLIC int BOMAIL::find (SSTRING &uuid)
+{
+	return -1;
+}
+
+<mod>
+PUBLIC bool BOMAIL::folder_exist (
+	const char *folder,
+	SSTRING &uuid)
+{
+	glocal bool ret = false;
+	glocal const char *folder = folder;
+	glocal SSTRING *uuid = &uuid;
+	sendf ("%s\n",C_GETROOT);
+	<call bolibfs>(fd);
+	<f node>
+		if (strcmp(name,glocal.folder)==0){
+			end = true;
+			glocal.uuid->setfrom (uuid);
+			glocal.ret = true;
+		}
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+<mod>
+PUBLIC int BOMAIL::link (
+	const SSTRING &mailuuid,
+	const SSTRING &folderuuid)
+{
+	SSTRING now;
+	bo_getnow(now);
+	BOXMLENC enc;
+	send (XMLINTRO);
+	sendf ("<relation uuid1=%s uuid2=%s relate=%s modif=%s owner=%s type=%s/>\n"
+		,enc.enc(mailuuid),enc.enc(folderuuid)
+		,enc.enc(R_MEMBER)
+		,enc.enc(now),enc.enc(user)
+		,enc.enc(SIMPLE_HTML));
+	send (XMLEND);
+	//<call bolibfs>(fd);
+	//</call>
+}
+</mod>
+<mod>
+PUBLIC int BOMAIL::unlink (
+	const SSTRING &mailuuid,
+	const SSTRING &folderuuid)
+{
+	sendf ("%s %s %s %s\n",C_DELRELATION,mailuuid.get(),folderuuid.get(),R_MEMBER);
+	<call bolibfs>(fd);
+	</call>
+	return 0;
+}
+</mod>
+<mod>
+PUBLIC int BOMAIL::saveflags (
+	const SSTRING &mailuuid,
+	bool deleted,
+	bool viewed,
+	bool replied,
+	bool marked,
+	DICTIONARY &vars)
+{
+	glocal bool exist = false;
+	glocal SSTRING txt;
+	glocal SSTRING now;
+	glocal const char *user = user.get();
+	glocal BOMAIL *bo = this;
+	bo_getnow(glocal.now);
+	glocal.txt.appendf ("x-viewed=%d\n",viewed);
+	glocal.txt.appendf ("x-replied=%d\n",replied);
+	glocal.txt.appendf ("x-marked=%d\n",marked);
+	for (int i=0; i<vars.getnb(); i++){
+		glocal.txt.appendf ("y-%s=%s\n",vars.get_var(i),vars.get_val(i));
+	}
+	<call bomail_readmsg>(this,mailuuid,BOMAIL_READFLAGS);
+	<f flags>
+		BOXMLENC enc;
+		glocal.bo->send (XMLINTRO);
+		glocal.bo->sendf ("<node name=%s image=%s modif=%s uuid=%s owner=%s type=%s>%s</node>\n"
+			,enc.enc(T_FLAGS)
+			,enc.enc("")
+			,enc.enc(glocal.now),enc.enc(uuid)
+			,enc.enc(glocal.user)
+			,enc.enc(SIMPLE_HTML),enc.encnq(glocal.txt));
+		glocal.bo->send (XMLEND);
+		glocal.exist = true;
+	</f>
+	</call>
+	if (!glocal.exist){
+		SSTRING uuidt;
+		bo_makeuuid(uuidt);
+		BOXMLENC enc;
+		send (XMLINTRO);
+		sendf ("<node name=%s image=%s modif=%s uuid=%s owner=%s type=%s>%s</node>\n"
+			,enc.enc(T_FLAGS)
+			,enc.enc("")
+			,enc.enc(glocal.now),enc.enc(uuidt)
+			,enc.enc(user)
+			,enc.enc(SIMPLE_HTML),enc.encnq(glocal.txt));
+		// Add the relation
+		sendf ("<relation uuid1=%s uuid2=%s relate=%s modif=%s owner=%s type=%s/>\n"
+			,enc.enc(uuidt),enc.enc(mailuuid)
+			,enc.enc(R_PART)
+			,enc.enc(glocal.now),enc.enc(user)
+			,enc.enc(SIMPLE_HTML));
+		send (XMLEND);
+	}
+	
+	return 0;
+}
+</mod>
+
+<mod>
+PUBLIC int BOMAIL::savecomment (
+	const SSTRING &mailuuid,
+	const SSTRING &comment)
+{
+	glocal bool exist = false;
+	glocal BOMAIL *bo = this;
+	glocal const SSTRING *comment = &comment;
+	glocal SSTRING now;
+	glocal const char *user = user.get();
+	bo_getnow(glocal.now);
+	<call bomail_readmsg>(this,mailuuid,BOMAIL_READCOMMENT);
+	<f comment>
+		BOXMLENC enc;
+		glocal.bo->send (XMLINTRO);
+		glocal.bo->sendf ("<node name=%s image=%s modif=%s uuid=%s owner=%s type=%s>%s</node>\n"
+			,enc.enc(T_COMMENT)
+			,enc.enc("")
+			,enc.enc(glocal.now),enc.enc(uuid)
+			,enc.enc(glocal.user)
+			,enc.enc(SIMPLE_HTML),enc.encnq(glocal.comment));
+		glocal.bo->send (XMLEND);
+		glocal.exist = true;
+	</f>
+	</call>
+	if (!glocal.exist && comment.is_filled()){
+		SSTRING uuidt;
+		bo_makeuuid(uuidt);
+		BOXMLENC enc;
+		send (XMLINTRO);
+		sendf ("<node name=%s image=%s modif=%s uuid=%s owner=%s type=%s>%s</node>\n"
+			,enc.enc(T_COMMENT)
+			,enc.enc("")
+			,enc.enc(glocal.now),enc.enc(uuidt)
+			,enc.enc(user)
+			,enc.enc(SIMPLE_HTML),enc.encnq(comment));
+		// Add the relation
+		sendf ("<relation uuid1=%s uuid2=%s relate=%s modif=%s owner=%s type=%s/>\n"
+			,enc.enc(uuidt),enc.enc(mailuuid)
+			,enc.enc(R_PART)
+			,enc.enc(glocal.now),enc.enc(user)
+			,enc.enc(SIMPLE_HTML));
+		send (XMLEND);
+	}
+	return 0;
+}
+</mod>
+
+PUBLIC int BOMAIL::create_folder (
+	const char *folder,
+	SSTRING &uuid)
+{
+	SSTRING now;
+	bo_getnow(now);
+	bo_makeuuid(uuid);
+	BOXMLENC enc;
+	send (XMLINTRO);
+	sendf ("<node name=%s image=%s modif=%s uuid=%s owner=%s type=%s/>\n"
+		,enc.enc(folder)
+		,enc.enc("")
+		,enc.enc(now),enc.enc(uuid)
+		,enc.enc(user)
+		,enc.enc(T_FOLDER));
+	sendf ("<relation uuid1=%s uuid2=%s relate=%s modif=%s owner=%s type=%s/>\n"
+		,enc.enc(uuid),enc.enc(ROOTUUID)
+		,enc.enc(R_MEMBER)
+		,enc.enc(now),enc.enc(user)
+		,enc.enc(SIMPLE_HTML));
+	send (XMLEND);
+	return 0;
+}
+
+<mod>
+PUBLIC bool BOMAIL::msg_exist (
+	const SSTRING &folder_uuid,
+	const char *msgid,
+	SSTRING &msg_uuid)
+{
+	glocal bool ret = false;
+	glocal SSTRING *msg_uuid = &msg_uuid;
+	glocal const char *msgid = msgid;
+	sendf ("%s %s\n",C_GETCHILD,folder_uuid.get());
+	<call bolibfs>(fd);
+	<f node>
+		if (strcmp(name,glocal.msgid)==0){
+			glocal.msg_uuid->setfrom(uuid);
+			glocal.ret = true;
+			end = true;
+		}
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+
+<mod>
+PUBLIC int BOMAIL::list_folders (
+	SSTRINGS &tb)
+{
+	glocal int ret = 0;
+	glocal SSTRINGS *tb = &tb;
+	sendf ("%s\n",C_GETROOT);
+	<call bolibfs>(fd);
+	<f node>
+		glocal.tb->add (name);
+		glocal.ret++;
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+
+<mod>
+PUBLIC int BOMAIL::getrevision (
+	const SSTRING &uuid)
+{
+	glocal int ret = -1;
+	sendf ("%s %s-REV\n",C_GETNODE,uuid.get());
+	<call bolibfs>(fd);
+	<f node>
+		glocal.ret = atoi(descr);
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+
+<mod>
+PUBLIC int BOMAIL::incrrevision (
+	const SSTRING &uuid)
+{
+	int ret = getrevision(uuid)+1;
+	SSTRING uuidrev;
+	uuidrev.setfromf ("%s-REV",uuid.get());
+
+	SSTRING now;
+	bo_getnow(now);
+
+	BOXMLENC enc;
+	send (XMLINTRO);
+	sendf ("<node name=%s image=%s modif=%s uuid=%s owner=%s type=%s>%d</node>\n"
+		,enc.enc(uuidrev)
+		,enc.enc("")
+		,enc.enc(now),enc.enc(uuidrev)
+		,enc.enc(user)
+		,enc.enc(T_INTERNAL),ret);
+	send (XMLEND);
+	return ret;
+}
+</mod>
+
+
+#ifndef PROTO_EXCL
+_F_bomail_readmsg_header(_F_bomail_readmsg::){}
+_F_bomail_readmsg_body(_F_bomail_readmsg::){}
+_F_bomail_readmsg_attach(_F_bomail_readmsg::){}
+_F_bomail_readmsg_comment(_F_bomail_readmsg::){}
+_F_bomail_readmsg_flags(_F_bomail_readmsg::){}
+#endif
+
+<mod>
+int bomail_readfolder (
+	_F_bomail_readfolder &c,
+	BOMAIL *bo,
+	const SSTRING &uuid)
+{
+	glocal int ret = 0;
+	glocal _F_bomail_readfolder *c = &c;
+	BOXMLENC enc;
+	bo->sendf ("%s %s\n",C_GETCHILDF,enc.enc(uuid));
+	<call bolibfs>(bo->getfd());
+	<f node>
+		// fprintf (stderr,"readfold %s\n",uuid);
+		glocal.c->message (uuid,descr,end);
+		glocal.ret++;
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+
+<mod>
+int bomail_readmsg (
+	_F_bomail_readmsg &c,
+	BOMAIL *bo,
+	const SSTRING &uuid,
+	int flags)
+{
+	glocal int ret = 0;
+	glocal int flags = flags;
+	glocal _F_bomail_readmsg *c = &c;
+	BOXMLENC enc;
+	bo->sendf ("%s %s\n",C_GETNODE,enc.enc(uuid));
+	<call bolibfs>(bo->getfd());
+	<f node>
+		glocal.c->header (descr);
+	</f>
+	</call>
+	if (flags != BOMAIL_READHEAD){
+		bo->sendf ("%s %s\n",C_GETCHILDF,enc.enc(uuid));
+		<call bolibfs>(bo->getfd());
+		<f node>
+			// fprintf (stderr,"node :%s: %d\n",name,glocal.flags);
+			if (strcmp(name,T_COMMENT)==0){
+				if ((glocal.flags & BOMAIL_READCOMMENT)!=0){
+					glocal.c->comment (uuid,descr,end);
+				}
+			}else if (strcmp(name,T_FLAGS)==0){
+				if ((glocal.flags & BOMAIL_READFLAGS)!=0){
+					DICTIONARY dict;
+					SSTRINGS lines;
+					int n = str_cnv2lines (descr,lines);
+					bool deleted = false, replied = false, viewed = false;
+					bool marked = false;
+					for (int i=0; i<n; i++){
+						const char *line = lines.getitem(i)->get();
+						if (strncmp(line,"x-viewed=",9)==0){
+							viewed = atoi(line+9);
+						}else if (strncmp(line,"x-marked=",9)==0){
+							marked = atoi(line+9);
+						}else if (strncmp(line,"x-replied=",10)==0){
+							replied = atoi(line+10);
+						}else if (strncmp(line,"y-",2)==0){
+							const char *pt = strchr(line,'=');
+							if (pt != NULL){
+								SSTRING var;
+								var.setfrom (line+2,(int)(pt-(line+2)));
+								SSTRING val(pt+1);
+								dict.set_str (var.get(),val.get());
+							}
+						}
+					}
+					glocal.c->flags (uuid,false,viewed,replied,marked,dict,descr,end);
+				}
+			}else if (strstr(name,"-TEXT")!=NULL){
+				if ((glocal.flags & BOMAIL_READBODY)!=0){
+					glocal.c->body (uuid,descr,end);
+				}
+			}else{
+				glocal.ret++;
+			}
+		</f>
+		</call>
+	}
+	return glocal.ret;
+}
+</mod>
+
+

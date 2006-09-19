@@ -1,0 +1,1660 @@
+#include <string.h>
+#include <stdlib.h>
+#include <time.h>
+#include <ctype.h>
+#include <diajava.h>
+#include <tlmplib.h>
+#include <tlmpdia.h>
+#include <tlmpnet.h>
+#include <tlmpdia.h>
+#include <framework.h>
+#include "bolixo.m"
+#include "bolixo.h"
+#include "bonode.h"
+#include <proto.h>
+
+class DOCDATA: public FRAMEWORK_DOCUMENT{
+public:
+	SSTRING server;
+	SSTRING port;
+	SSTRING user;
+	SSTRING passwd;
+	SSTRING document;
+	/*~PROTOBEG~ DOCDATA */
+public:
+	DOCDATA (void);
+private:
+	bool same (const FRAMEWORK_DOCUMENT&d);
+public:
+	int seldocument (void);
+	/*~PROTOEND~ DOCDATA */
+};
+
+PRIVATE bool DOCDATA::same (const FRAMEWORK_DOCUMENT &d)
+{
+	const DOCDATA &dd = (const DOCDATA&)d;
+	return server == dd.server
+		&& port == dd.port
+		&& user == dd.user
+		&& document == dd.document;
+}
+
+class BO_MAP: public ARRAY_OBJ{
+public:
+	BO_NODE *node;
+	BO_REL *relate;
+	/*~PROTOBEG~ BO_MAP */
+public:
+	BO_MAP (BO_REL *_relate, BO_NODE *_node);
+	/*~PROTOEND~ BO_MAP */
+};
+
+PUBLIC BO_MAP::BO_MAP(BO_REL *_relate, BO_NODE *_node)
+{
+	relate = _relate;
+	node = _node;
+}
+
+class BO_MAPS: public ARRAY_OBJS<BO_MAP>{
+	/*~PROTOBEG~ BO_MAPS */
+public:
+	int extract (const char *relate,
+		 const char *uuid,
+		 const BO_RELS&rels,
+		 const BO_NODES&nodes);
+	bool seen (BO_NODE *node);
+	void sort (void);
+	/*~PROTOEND~ BO_MAPS */
+};
+
+/*
+	Return true if this node is referenced
+*/
+PUBLIC bool BO_MAPS::seen (BO_NODE *node)
+{
+	bool ret = false;
+	int n = size();
+	for (int i=0; i<n; i++){
+		BO_MAP *m = getitem(i);
+		if (m->node == node){
+			ret = true;
+			break;
+		}
+	}
+	return ret;
+}
+
+/*
+	Extract the list of node connect to this uuid with the "relate" relation
+*/
+PUBLIC int BO_MAPS::extract (
+	const char *relate,
+	const char *uuid,
+	const BO_RELS &rels,
+	const BO_NODES &nodes)
+{
+	int ret = 0;
+	BO_RELS tb;
+	int n = rels.extract (relate,uuid,tb);
+	for (int i=0; i<n; i++){
+		BO_REL *r = tb.getitem(i);
+		const char *s = r->uuid1.get();
+		BO_NODE *no = nodes.locatebyuuid(s);
+		if (no != NULL){
+			add (new BO_MAP(r,no));
+			ret++;
+		}else{
+			fprintf (stderr,"BO_MAPS::extract: Node not found %s\n",s);
+		}
+	}
+	return ret;
+}
+
+static int cmp_by_relate_node(const ARRAY_OBJ *o1, const ARRAY_OBJ *o2)
+{
+	BO_MAP *m1 = (BO_MAP*)o1;
+	BO_MAP *m2 = (BO_MAP*)o2;
+	int ret = m1->relate->relate.icmp(m2->relate->relate);
+	if (ret == 0){
+		ret = m1->relate->orderkey - m2->relate->orderkey;
+		if (ret == 0){
+			ret = m1->node->name.icmp(m2->node->name);
+		}
+	}
+	return ret;
+}
+	
+
+PUBLIC void BO_MAPS::sort()
+{
+	ARRAY::sort (cmp_by_relate_node);
+}
+
+typedef ARRAY_OBJS<BO_MAPS> BO_MAPSS;
+
+enum BO_CMD{
+	BO_SHOWNODES,		// Display the node list
+	BO_SHOWRELS,		// Display the relations
+	BO_SHOWTREE,		// Display the node list in tree form
+	BO_EDITNODE,		// Edit one node
+	BO_EDITREL,			// Edit one rel
+	BO_MAPRELS,			// Connect nodes together graphically
+	BO_SHOWORPHANS		// Display the isolated nodes (orphans)
+};
+
+class BO_DATA: public FRAMEWORK_DOCUMENT{
+public:
+	SSTRING uuid1,uuid2,relate;		// Info to retrieve a node or relation
+	#if 0
+	SSTRING newrelate;				// We are creating a new node related
+									// to uuid1. Once the node is
+									// is created, the relation will be done
+	#endif
+	BO_CMD cmd;
+	BO_DATA(BO_CMD _cmd){
+		cmd = _cmd;
+	}
+	BO_DATA(BO_CMD _cmd, const char *uuid){
+		cmd = _cmd;
+		uuid1 = uuid;
+	}
+	BO_DATA(
+		BO_CMD _cmd,
+		const char *_uuid1,
+		const char *_uuid2,
+		const char *_relate){
+		cmd = _cmd;
+		uuid1 = _uuid1;
+		uuid2 = _uuid2;
+		relate = _relate;
+	}
+	bool same (const FRAMEWORK_DOCUMENT &d)
+	{
+		BO_DATA &dd = (BO_DATA&)d;
+		// We are allowed to create several new nodes or relations at
+		// once, thus the is_filled() check below
+		return uuid1.is_filled()
+			&& uuid1.cmp(dd.uuid1)==0
+			&& uuid2.cmp(dd.uuid2)==0
+			&& relate.cmp(dd.relate)==0
+			&& cmd == dd.cmd;
+	}
+};
+
+static SSTRING def_server;
+static SSTRING def_port;
+static SSTRING def_user;
+static SSTRING def_passwd;
+static const char *def_document = "";
+
+/*
+	Set the global variable defautlts
+*/
+static void bolixo_setdefaults()
+{
+	def_server = linuxconf_getval(D_DEFAULT,D_SERVER,"localhost");
+	def_port = linuxconf_getval(D_DEFAULT,D_PORT,"9876");
+	def_user = linuxconf_getval(D_DEFAULT,D_USER,"");
+	def_passwd = linuxconf_getval(D_DEFAULT,D_PASSWORD,"");
+}
+
+
+/*
+	Edit the defaults for this user
+*/
+static void bolixo_editdefaults()
+{
+	DIALOG dia;
+	dia.settype (DIATYPE_POPUP);
+	SSTRING server (linuxconf_getval(D_DEFAULT,D_SERVER));
+	SSTRING port (linuxconf_getval(D_DEFAULT,D_PORT));
+	SSTRING user (linuxconf_getval(D_DEFAULT,D_USER));
+	SSTRING pass (linuxconf_getval(D_DEFAULT,D_PASSWORD));
+	dia.newf_str (MSG_U(F_DEFSERVER,"Serveur bolixo"),server);
+	dia.newf_str (MSG_U(F_DEFPORT,"Port TCP ou Unix"),port);
+	dia.newf_str (MSG_U(F_USER,"Code usager"),user);
+	dia.newf_str (MSG_U(F_PASS,"Mot de passe"),pass);
+	int nof = 0;
+	while (1){
+		MENU_STATUS code = dia.edit (MSG_U(T_PREFS,"Préférences"),""
+			,help_nil,nof);
+		if (code == MENU_CANCEL || code == MENU_ESCAPE){
+			break;
+		}else{
+			linuxconf_replace (D_DEFAULT,D_SERVER,server);
+			linuxconf_replace (D_DEFAULT,D_PORT,port);
+			linuxconf_replace (D_DEFAULT,D_USER,user);
+			linuxconf_replace (D_DEFAULT,D_PASSWORD,pass);
+			linuxconf_save();
+			break;
+		}
+	}
+}
+
+PUBLIC DOCDATA::DOCDATA()
+{
+	server = def_server;
+	port = def_port;
+	user = def_user;
+	passwd = def_passwd;
+	document = def_document;
+}
+
+<mod>
+PUBLIC int DOCDATA::seldocument()
+{
+	int ret = -1;
+	DIALOG dia;
+	dia.settype (DIATYPE_POPUP);
+	dia.newf_str (MSG_U(F_SERVER,"Serveur bolixo"),server);
+	dia.last_noempty();
+	dia.newf_str (MSG_U(F_PORT,"Port TCP"),port);
+	dia.newf_str (MSG_R(F_USER),user);
+	dia.newf_pass (MSG_R(F_PASS),passwd);
+	dia.newf_str (MSG_U(F_DOCUMENT,"Document"),document);
+	int nof = 0;
+	while (1){
+		MENU_STATUS code = dia.edit (MSG_U(T_SELDOC,"Sélection du document")
+			,"",help_nil,nof);
+		if (code == MENU_CANCEL || code == MENU_ESCAPE){
+			break;
+		}else{
+			ret = 0;
+			break;
+		}
+	}
+	return ret;
+}
+</mod>
+
+/*
+	Draw the representation of a node
+*/
+static void bo_draw (
+	DIALOG &dia,
+	const BO_NODE *node,
+	int x,
+	int y,
+	int w,
+	const char *color)
+{
+	const char *penblack = guiid_setpen ("black",1,GPEN_STYLE_SOLID);
+	const char *brushblue = guiid_setbrush (color,GBRUSH_STYLE_SOLID);
+	const char *dc = guiid_setdc (NULL,penblack,brushblue);
+	const char *image = node->image.get();
+	const char *name = node->name.get();
+	if (stricmp(image,"spec")==0 && 0){
+	}else if (stricmp(image,"interface")==0 && 0){
+	}else{
+		int w_2 = w/2;
+		int x0 = x - w_2;
+		int y0 = y - w_2;
+		dia.gui_passthrough (P_Fillarc,"%d %d %d %d %d %d $dc=%s"
+			,x0,y0,w,w,0,64*360,dc);
+	}
+	char tmp[1000];
+	dia.gui_passthrough (P_Drawtext,"%d %d %s\n",x,y+w+10
+			,diagui_quote (name,tmp));
+}
+
+
+#define MENUID_CLOSE	1000
+#define MENUID_SAVE		1001
+#define MENUID_DELETE	1002
+#define MENUID_NEWNODE	1003
+#define MENUID_NEWREL	1004
+#define MENUID_CHAT		1005
+#define MENUID_PROTOCOL	1006
+#define MENUID_3DMAP	1007
+#define MENUID_ATTRIBS	1008
+#define MENUID_REVERT	1009
+#define MENUID_PRINT	1010
+
+#define TASKID_SAVE		2001
+#define TASKID_CLOSE	2002
+#define TASKID_NEWNODE	2003
+#define TASKID_NEWREL	2004
+#define TASKID_DELETE	2005
+#define TASKID_3DMAP	2006
+#define TASKID_ATTRIBS	2007
+#define TASKID_ADDNODE	2008
+#define TASKID_PREVNODE	2009
+#define TASKID_NEXTNODE	2010
+
+struct TREE_INFO: public ARRAY_OBJ{
+	BO_NODE *node;
+	BO_REL  *rel;
+	TREE_INFO (BO_NODE *_node, BO_REL *_rel){
+		node = _node;
+		rel = _rel;
+	}
+};
+
+static void bo_getprevnextnode (
+	const BO_NODES &nodes,
+	const BO_RELS &rels,
+	const char *cur_uuid,	// Current node. We want the one before
+							// and after
+	const char *parent_uuid,	// The current node is connected to this
+								// parent using the following relation
+	const char *relate,
+	const char *&prev_uuid,
+	const char *&next_uuid)
+{
+	BO_MAPS mp;
+	mp.extract (relate,parent_uuid,rels,nodes);
+	mp.sort();
+	prev_uuid = NULL;
+	next_uuid = NULL;
+	int n = mp.size();
+	for (int i=0; i<n; i++){
+		BO_MAP *r = mp.getitem(i);
+		const char *r_uuid = r->node->uuid.get();
+		if (strcmp(r_uuid,cur_uuid)==0){
+			// Check if there is a next relation
+			if (i < n-1){
+				BO_MAP *nr = mp.getitem(i+1);
+				next_uuid = nr->node->uuid.get();
+			}
+			break;
+		}
+		prev_uuid = r_uuid;
+	}
+}
+
+static const char *bo_getprevnode (
+	const BO_NODES &nodes,
+	const BO_RELS &rels,
+	const char *cur_uuid,	// Current node. We want the one before
+	const char *parent_uuid,	// The current node is connected to this
+								// parent using the following relation
+	const char *relate)
+{
+	const char *prev_uuid,*next_uuid;
+	bo_getprevnextnode (nodes,rels,cur_uuid,parent_uuid,relate,prev_uuid,next_uuid);
+	return prev_uuid;
+}
+static const char *bo_getnextnode (
+	const BO_NODES &nodes,
+	const BO_RELS &rels,
+	const char *cur_uuid,	// Current node. We want the one after
+	const char *parent_uuid,	// The current node is connected to this
+								// parent using the following relation
+	const char *relate)
+{
+	const char *prev_uuid,*next_uuid;
+	bo_getprevnextnode (nodes,rels,cur_uuid,parent_uuid,relate,prev_uuid,next_uuid);
+	return next_uuid;
+}
+
+static void bo_s2html (const SSTRING &s, SSTRING &html)
+{
+	const char *pt = s.get();
+	bool start = true;
+	bool start_ul = false;
+	bool start_ol = false;
+	bool start_pre = false;
+	while (*pt != '\0'){
+		if (*pt == '\n'){
+			if (pt[1] == '\n'){
+				if (start_pre){
+					start_pre = false;
+					html.append ("</pre>\n");
+				}
+				if (start_ul){
+					start_ul = false;
+					html.append ("\t<p>\n</ul>\n");
+				}
+				if (start_ol){
+					start_ol = false;
+					html.append ("\t<p>\n</ol>\n");
+				}
+				html.appendf ("<p>\n");
+				while (*pt == '\n') pt++;
+			}else{
+				html.append ("\n");
+				pt++;
+			}
+			start = true;
+		}else if (*pt == '-' && start){
+			if (!start_ul){
+				html.append ("<ul>\n");
+				start_ul = true;
+			}else{
+				html.append ("\t<p>\n");
+			}
+			pt++;
+			html.append ("<li>");
+			start = false;
+		}else if (*pt == '=' && start){
+			if (!start_ol){
+				html.append ("<ol>\n");
+				start_ol = true;
+			}else{
+				html.append ("\t<p>\n");
+			}
+			pt++;
+			html.append ("<li>");
+			start = false;
+		}else if (*pt == ' ' && start){
+			if (!start_pre){
+				html.append ("<pre>\n");
+				start_pre = true;
+			}
+			html.append ("        ");
+			pt++;
+			start = false;
+		}else{
+			html.append (*pt++);
+			start = false;
+		}
+	}
+	if (start_ul) html.append ("\t<p>\n</ul>\n");
+	if (start_ol) html.append ("\t<p>\n</ol>\n");
+	if (start_pre) html.append ("</pre>\n");
+}
+
+#define _TLMP_bo_drawtree
+
+struct _F_bo_drawtree{
+	#define _F_bo_drawtree_newfile(x) void x newfile(BO_NODE *no,BO_REL *rel, int level, const char *sectnum)
+	virtual _F_bo_drawtree_newfile( )=0;
+	#define _F_bo_drawtree_newdir(x) void x newdir(BO_NODE *no,BO_REL *rel, int level, const char *sectnum)
+	virtual _F_bo_drawtree_newdir( )=0;
+	#define _F_bo_drawtree_newrel(x) void x newrel(BO_REL *rel, int level,const char *sectnum)
+	virtual _F_bo_drawtree_newrel( )=0;
+	#define _F_bo_drawtree_enddir(x) void x enddir()
+	virtual _F_bo_drawtree_enddir( );
+};
+
+void _F_bo_drawtree::enddir(){}
+
+static void bo_sectnum (int level, int sectnum[], SSTRING &s)
+{
+	sectnum[level-1]++;
+	char tmp[200];
+	char *pt = tmp;
+	for (int i=0; i<level; i++){
+		if (i > 0) *pt++ = '.';
+		pt += snprintf (pt,5,"%d",sectnum[i]);
+	}
+	*pt = '\0';
+	s = tmp;
+}
+/*
+	Compose recursivly the tree presentation
+*/
+static void bo_drawtree (
+	_F_bo_drawtree &c,
+	BO_NODES &nodes,
+	int no_node,
+	BO_REL *rel,
+	BO_MAPSS &mps,
+	BO_NODES &shown,
+	int level,
+	int sectnum[20])
+{
+	BO_NODE *no = nodes.getitem(no_node);
+	BO_MAPS *mp = mps.getitem(no_node);
+	for (int i=level; i<20; i++) sectnum[i] = 0;
+	if (mp->size()==0){
+		SSTRING sectstr;
+		bo_sectnum (level,sectnum,sectstr);
+		c.newfile (no,rel,level,sectstr.get());
+	}else{
+		if (no->name.is_filled()){
+			SSTRING sectstr;
+			bo_sectnum (level,sectnum,sectstr);
+			c.newdir (no,rel,level,sectstr.get());
+		}
+		level++;
+		BO_REL *lastrel = NULL;
+		for (int i=0; i<mp->size(); i++){
+			BO_MAP *m = mp->getitem(i);
+			BO_REL *r = m->relate;
+			if (lastrel == NULL || r->relate != lastrel->relate){
+				if (i != 0) c.enddir();
+				lastrel = m->relate;
+				SSTRING sectstr;
+				bo_sectnum (level,sectnum,sectstr);
+				c.newrel (lastrel,level,sectstr.get());
+			}
+			if (shown.lookup(m->node)==-1){
+				shown.add (m->node);
+				int n = nodes.lookup (m->node);
+				bo_drawtree(c,nodes,n,r,mps,shown,level+1,sectnum);
+			}else{
+				SSTRING sectstr;
+				bo_sectnum (level+1,sectnum,sectstr);
+				c.newfile(m->node,lastrel,level+1,sectstr.get());
+			}
+		}
+		c.enddir();
+		c.enddir();
+	}
+}
+
+static void bo_drawtree(
+	_F_bo_drawtree &c,
+	BO_NODES &nodes,
+	BO_RELS &rels)
+{
+	BO_MAPSS mps;
+	nodes.resetseen();
+	BO_MAPS roots;
+	roots.extract (NULL,ROOTUUID,rels,nodes);
+	roots.sort();
+	for (int i=0; i<nodes.size(); i++){
+		BO_NODE *no = nodes.getitem(i);
+		BO_MAPS *mp = new BO_MAPS;
+		mp->extract (NULL,no->uuid.get(),rels,nodes);
+		mp->sort();
+		mps.add (mp);
+		for (int j=0; j<mp->size(); j++){
+			BO_MAP *m = mp->getitem(j);
+			m->node->seen = true;
+		}
+	}
+	// We invent an ORPHAN node to hold the ORPHAN
+	BO_NODE dummy;	// This node won't have any name
+					// and bo_drawtree won't show it
+	BO_REL dummyrel;
+	dummyrel.relate = MSG_R(I_ORPHAN);
+
+	// We take all the orphans and place them
+	// in the orphans map, so they will be 
+	// shown as a branch at the end of the tree
+	{
+		BO_MAPS *mp = new BO_MAPS;
+		for (int i=0; i<nodes.size(); i++){
+			BO_NODE *n = nodes.getitem(i);
+			int islinked = rels.islinked(n->uuid.get());
+			if (islinked == LINK_NONE
+				|| islinked == LINK_RIGHT){
+				mp->add (new BO_MAP(&dummyrel,n));
+			}
+		}
+		mp->sort();
+		mps.add (mp);
+	}
+	nodes.add (&dummy);
+	roots.add (new BO_MAP(&dummyrel,&dummy));
+
+	BO_NODES shown;
+	shown.neverdelete();
+	int sectnum[20];
+	memset (sectnum,0,sizeof(sectnum));
+	for (int i=0; i<roots.size(); i++){
+		BO_MAP *mp = roots.getitem(i);
+		int no_node = nodes.lookup(mp->node);
+		bo_drawtree (c,nodes,no_node,mp->relate,mps,shown,1,sectnum);
+	}
+	nodes.remove (&dummy);
+}
+
+
+<mod>
+int main (int argc, char *argv[])
+{
+	glocal int ret = -1;
+	static const char *tbdic[]={"tlmpwork","bolixo",NULL};
+	int ret = <call tlmpprogram>(argc,argv,tbdic);
+	<f init>
+		bolixo_setdefaults();
+		setproginfo ("bolixo",version,MSG_U(I_BOLIXO,"Éditeur de document bolixo"));
+		setarg ('d',"document",MSG_U(I_DEFDOC,"Document par défaut"),def_document,false);
+		setarg ('p',"password",MSG_U(I_PASSWD,"Mot de passe"),def_passwd,false);
+		setarg ('u',"user",MSG_U(I_DEFUSER,"Usager par défaut"),def_user,false);
+	</f>
+	<f showerror>
+		xconf_error (msg);
+	</f>
+	<f main_noarg>
+		glocal PRIVATE_MESSAGE msgstatus1,msgstatus2,msgprotocol;
+		glocal SSTRING status1,status2;
+		glocal SSTRINGS protocol;
+		<obj FRAMEWORK frm>(MSG_U(T_BOLIXO,"Bolixo"));
+		<f about>
+			<call aboutbox>("bolixo",version);
+			<f authors>
+				printf ("Jacques Gélinas (jack@solucorp.qc.ca)\n");
+			</f>
+			<f license>
+				setgpl();
+			</f>
+			<f intro>
+				printf ("Editeur GUI pour documents bolixo\n");
+			</f>
+			<f see_also>
+			</f>
+			</call>
+		</f>
+		<f menubar>
+			topmenu (MSG_U(M_FILE,"File"));
+			menuentry (1,MSG_U(M_OPEN,"Ouvre un document"));
+			menuentry (MENUID_PRINT,MSG_U(M_PRINT,"Imprime le document"));
+			menuentry (999,MSG_U(M_QUIT,"Termine"));
+			endmenu();
+
+			topmenu (MSG_U(M_DOCUMENT,"Document"));
+			menuentry (2,MSG_U(M_LISTNODE,"Liste des noeuds"));
+			menuentry (3,MSG_U(M_LISTREL,"Liste des relations"));
+			menuentry (4,MSG_U(M_SHOWMAP,"Présentation 3D"));
+			menuentry (5,MSG_U(M_SHOWTREE,"Arborescence des noeuds"));
+			menuentry (6,MSG_U(M_LISTORPHAN,"Liste des orphelins"));
+			menuentry (MENUID_CLOSE,MSG_U(M_CLOSE,"Ferme une vue"));
+			menuentry (MENUID_SAVE,MSG_U(M_SAVE,"Sauve la vue"));
+			menuentry (MENUID_NEWNODE, MSG_U(M_NEWNODE,"Nouvelle node"));
+			menuentry (MENUID_NEWREL, MSG_U(M_NEWREL,"Nouvelle relation"));
+			menuentry (MENUID_3DMAP, MSG_U(M_3DMAP,"Carte 3D des relations"));
+			menuentry (MENUID_ATTRIBS, MSG_U(M_ATTRIBS,"Attributs"));
+			menuentry (MENUID_REVERT, MSG_U(M_REVERT,"Annule les changements"));
+			menuentry (MENUID_DELETE, MSG_U(M_DELETE,"Efface"));
+			endmenu();
+
+			topmenu (MSG_U(M_NODES,"Sujets"));
+			menuentry (101,MSG_U(M_CLEARNODE,"Efface"));
+			endmenu();
+
+			topmenu (MSG_U(M_OPTIONS,"Options"));
+			menuentry (MENUID_CHAT,MSG_U(M_CHAT,"Active conversation"));
+			menuentry (MENUID_PROTOCOL,MSG_U(M_PROTOCOL,"Journal protocole"));
+			endmenu();
+
+			topmenu (MSG_U(M_PREFS,"Préférences"));
+			menuentry (301,MSG_U(M_IDENT,"Identité"));
+			endmenu();
+
+			helpmenu();
+			endmenu();
+		</f>
+		<f menudo>
+			if (id == 999){
+				end();
+			}else if (id == 1){
+				DOCDATA *d = new DOCDATA;
+				if (d->seldocument()!=-1){
+					newdocument(d,1);
+				}else{
+					delete d;
+				}
+			}else if (id == MENUID_PROTOCOL){
+				newdocument((void*)NULL,2);
+			}else if (id == 301){
+				bolixo_editdefaults();
+			}
+		</f>
+		<f taskbar>
+			newbutton(TASKID_SAVE, NULL,MSG_U(B_SAVE,"Sauve"), MSG_U(I_SAVE,"Sauve le document courant"));
+			newbutton(TASKID_CLOSE, NULL,MSG_U(B_CLOSE,"Ferme vue"), MSG_U(I_CLOSE,"Ferme le document courant"));
+			newbutton(TASKID_NEWNODE, NULL,MSG_U(B_NEWNODE,"Nouveau noeud"), MSG_U(I_NEWNODE,"Ajoute un noeud au document courant"));
+			newbutton(TASKID_NEWREL, NULL,MSG_U(B_NEWREL,"Nouvelle relation"), MSG_U(I_NEWREL,"Ajoute une relation au document courant"));
+			newbutton(TASKID_3DMAP, NULL,MSG_U(B_3DMAP,"Carte 3D"), MSG_U(I_3DMAP,"Présente la carte 3D des relations"));
+			newbutton(TASKID_ATTRIBS, NULL,MSG_U(B_ATTRIBS,"Attributs"), MSG_U(I_ATTRIBS,"Présente la liste des attributs de ce noeud"));
+			newbutton(TASKID_DELETE, NULL,MSG_U(B_DELETE,"Efface"), MSG_U(I_DELETE,"Efface l'élément courant"));
+			newbutton(TASKID_ADDNODE, NULL,MSG_U(B_ADDNODE,"Ajout"), MSG_U(I_ADDNODE,"Ajoute/lie un noeud"));
+			newbutton(TASKID_PREVNODE, NULL,MSG_U(B_PREVNODE,"Précédant"), MSG_U(I_PREVNODE,"Noeud précédant dans l'ensemble"));
+			newbutton(TASKID_NEXTNODE, NULL,MSG_U(B_NEXTNODE,"Suivant"), MSG_U(I_NEXTNODE,"Noeud suivant dans l'ensemble"));
+		</f>
+		<f taskdo>
+		</f>
+		<f layout>
+			layout_area1(true);
+			layout_newline();
+			layout_area2(true);
+		</f>
+		<f status>
+			glocal.status1 = "WWWWWWWWWWWWWWWWWWWWW";
+			glocal.status2 = "WWWWWWWWWWWWWWWWWWWWW";
+			<call statusbar>(ending);
+			<f layout>
+				dia.newf_str (NULL,glocal.status1,40);
+				dia.set_lastreadonly();
+				dia.newf_str (NULL,glocal.status2,40);
+				dia.set_lastreadonly();
+				dia.waitfor (glocal.msgstatus1);
+				dia.waitfor (glocal.msgstatus2);
+			</f>
+			<f message>
+				settimer (5);
+			</f>
+			<f timer>
+				glocal.status1.setempty();
+			</f>
+			</call>
+		</f>
+		<f area2>
+			glocal SSTRING text;
+			<obj OBJECTSUB sub>();
+			<f exec>
+				for (int i=0; i<glocal.protocol.size(); i++){
+					glocal.text.appendf ("%s\n",glocal.protocol.getitem(i)->get());
+				}
+				glocal.protocol.remove_all();
+			</f>
+			</obj>
+			sub.exec();
+			glocal OBJECTSUB *sub = &sub;
+			<call statusbar>(info.msgs);
+			<f layout>
+				dia.newf_textarea (NULL,glocal.text,80,5);
+				dia.waitfor (glocal.msgprotocol);
+			</f>
+			<f message>
+				glocal.sub->exec();
+			</f>
+			</call>
+		</f>
+		<f area1>
+			glocal DOCDATA *doc = (DOCDATA*)info.data;
+			glocal FRAMEWORK_INFO *info = &info;
+			glocal TCPCONNECT *con = NULL;
+			glocal PRIVATE_MESSAGE docevent;
+			glocal BOXML_READER reader;
+			glocal BO_NODES nodes;
+			glocal BO_RELS rels;
+			glocal PRIVATE_MESSAGE endcon;
+			<call uithread>();
+			<f thread1>
+				<obj TCPCONNECT con>(glocal.doc->server.get()
+					,glocal.doc->port.get());
+				<f init>
+					glocal.status1 = MSG_U(I_CONNECTED,"Connecté au document");
+					dialog_sendmessage (glocal.msgstatus1);
+					BOXMLENC enc;
+					sendf ("%s %s %s %s\n",C_LOGIN,enc.enc(glocal.doc->user)
+						,enc.enc(glocal.doc->passwd),enc.enc(glocal.doc->document));
+				</f>
+				<f fail>
+					tlmp_error (MSG_U(E_NOCON,"Ne peut connecter au serveur bolixo %s (port %s)")
+						,glocal.doc->server.get(),glocal.doc->port.get());
+				</f>
+				<f oneline>
+					if (strcmp(line,"</bolixo>")==0){
+						<call boxml>(glocal.reader);
+						<f node>
+							glocal.nodes.set (name,image,modif,uuid,owner,type,descr);
+						</f>
+						<f relation>
+							glocal.rels.set (uuid1,uuid2,relate,modif,type,altname,descr,orderpol,orderkey);
+						</f>
+						<f delnode>
+							BO_NODE *no = glocal.nodes.locatebyuuid (uuid);
+							glocal.nodes.remove_del(no);
+						</f>
+						<f delrelation>
+							BO_REL *re = glocal.rels.locate (uuid1,uuid2,relate);
+							glocal.rels.remove_del(re);
+						</f>
+						</call>
+						glocal.reader.reset();
+						glocal.nodes.sort ();
+						dialog_sendmessage (glocal.docevent);
+					}else if (strncmp(line,"<?xml",5)==0){
+						glocal.reader.append (line);
+					}else if (glocal.reader.reading()){
+						glocal.reader.append (line);
+					}else if (strcmp(line,C_DOCCHANGED)==0){
+						sendf ("%s\n%s\n",C_LISTNODES,C_LISTRELS);
+						glocal.status1 = MSG_U(I_DOCCHANGED,"Document changé");
+						dialog_sendmessage (glocal.msgstatus1);
+					}else if (isdigit(line[0])){
+						int val = atoi(line);
+						glocal.protocol.add (line);
+						dialog_sendmessage (glocal.msgprotocol);
+						const char *msg = MSG_U(I_SRVMSG,"Message serveur: %s");
+						if (val >= 500 && val <= 599){
+							msg = MSG_U(E_ERRPROTO,"Erreur: %s");
+						}
+						glocal.status1.setfromf(msg,line);
+						dialog_sendmessage (glocal.msgstatus1);
+					}
+				</f>
+				<f end>
+					// fprintf (stderr,"End connection\n");
+					glocal.con->reconnect();
+				</f>
+				</obj>
+				glocal.con = &con;
+				<obj NETEVENT_MANAGER ev>();
+				<f idle>
+				</f>
+				</obj>
+				ev.add (con);
+				ev.loopgui(10000,glocal.endcon);
+			</f>
+			<f thread2>
+				<obj FRAMEWORK frm>(glocal.doc->document.get(),*glocal.info);
+				<f layout>
+					layout_area1(true);
+					layout_area2(true);
+					layout_newline();
+					layout_area3(false);
+					layout_dispolast (GUI_H_LEFT,2,GUI_V_CENTER,1);
+				</f>
+				<f menudo>
+					if (id == 2){
+						newdocument (new BO_DATA(BO_SHOWNODES),2);
+					}else if (id == 3){
+						newdocument (new BO_DATA(BO_SHOWRELS),2);
+					}else if (id == 4){
+						newdocument (new BO_DATA(BO_MAPRELS),2);
+					}else if (id == 5){
+						newdocument (new BO_DATA(BO_SHOWTREE),1);
+					}else if (id == 6){
+						newdocument (new BO_DATA(BO_SHOWORPHANS),2);
+					}else if (id == MENUID_NEWNODE){
+						newdocument (new BO_DATA(BO_EDITNODE),2);
+					}else if (id == MENUID_NEWREL){
+						newdocument (new BO_DATA(BO_EDITREL),2);
+					}else if (id == MENUID_PRINT){
+						SSTRING tmp;
+						tmp.setfromf ("/tmp/%s.html",glocal.doc->document.get());
+						<call savefile>(tmp.get(),false);
+						<f dowrite>
+							for (int i=0; i<glocal.nodes.size(); i++){
+								BO_NODE *no = glocal.nodes.getitem(i);
+								BOXMLENC enc;
+								glocal.con->sendf ("%s %s\n",C_GETNODE,enc.enc(no->uuid));
+								dialog_waitformessage (glocal.docevent);
+							}
+							glocal FILE *fout = fout;
+							fprintf (fout,"<html>\n");
+							fprintf (fout,"<body>\n");
+							<call bo_drawtree>(glocal.nodes,glocal.rels);
+							<f newdir>
+								fprintf (glocal.fout,"<h%d>%s: %s</h%d>\n<p>\n"
+									,level,sectnum,no->name.get(),level);
+								SSTRING html;
+								bo_s2html (no->descr,html);
+								fprintf (glocal.fout,"%s\n",html.get());
+							</f>
+							<f newrel>
+								fprintf (glocal.fout,"<h%d>%s: %s</h%d>\n<p>\n"
+									,level,sectnum,rel->relate.get(),level);
+							</f>
+							<f newfile>
+								fprintf (glocal.fout,"<h%d>%s: %s</h%d>\n<p>\n"
+									,level,sectnum,no->name.get(),level);
+								SSTRING html;
+								bo_s2html (no->descr,html);
+								fprintf (glocal.fout,"%s\n",html.get());
+							</f>
+							</call>
+							fprintf (fout,"</body>\n</html>\n");
+							return 0;
+						</f>
+						</call>
+					}
+				</f>
+				<f taskdo>
+					if (id == TASKID_NEWNODE){
+						newdocument (new BO_DATA(BO_EDITNODE),2);
+					}else if (id == TASKID_NEWREL){
+						newdocument (new BO_DATA(BO_EDITREL),2);
+					}
+				</f>
+				<f area1>
+					// Various maps of the document
+					glocal FRAMEWORK_INFO *info = &info;
+					glocal FRAMEWORK_MSGS *msgs = &info.msgs;
+					glocal BO_DATA *d = (BO_DATA*)info.data;
+					if (glocal.d->cmd == BO_MAPRELS){
+						// We present the map of the document as seen
+						// from a node.
+						// We present every node connected to this node
+						// and then around this, all unconnected nodes.
+						// Well, not exactly. Nodes connected together
+						// are presented as a single node, disconnected
+						// from this node. So if a node is indirectly
+						// connected, it is not shown, unless you zoom.
+						const char *uuid = glocal.d->uuid1.get();
+						BO_NODE *no = glocal.nodes.locatebyuuid(uuid);
+						if (no != NULL){
+							BO_MAPS members,left,right;
+							members.extract ("partof",uuid,glocal.rels,glocal.nodes);
+							left.extract ("provides",uuid,glocal.rels,glocal.nodes);
+							right.extract ("requires",uuid,glocal.rels,glocal.nodes);
+							right.extract ("extend",uuid,glocal.rels,glocal.nodes);
+							DIALOG dia;
+							waitforall (dia);
+							int pos_left = 20;
+							int pos_center = 150;
+							int pos_right = 250;
+							if (left.size() == 0){
+								pos_center = 50;
+								pos_right = 150;
+							}
+							dia.gui_passthrough (P_Form,"map $w=300 h=400");
+							const char *penblue = guiid_setpen ("blue",1,GPEN_STYLE_SOLID);
+							const char *brushblue = guiid_setbrush ("blue",GBRUSH_STYLE_SOLID);
+							const char *dc = guiid_setdc (NULL,penblue,brushblue);
+fprintf (stderr,"right %d %d %d\n",right.size(),left.size(),members.size());
+							bo_draw (dia,no,pos_center,200,50,"blue");
+							if (members.size() > 0){
+								int incr = 100/members.size();
+								for (int i=0; i<members.size(); i++){
+									BO_MAP *m = members.getitem(i);
+									bo_draw (dia,m->node,pos_center-25,160+i*incr,10,"yellow");
+								}
+							}
+							if (left.size() > 0){
+								int incr = 400/left.size();
+								for (int i=0; i<left.size(); i++){
+									BO_MAP *m = left.getitem(i);
+									bo_draw (dia,m->node,20,20+i*incr,20,"blue");
+								}
+							}
+							if (right.size() > 0){
+								int incr = 400/right.size();
+								for (int i=0; i<right.size(); i++){
+									BO_MAP *m = right.getitem(i);
+									bo_draw (dia,m->node,pos_right,20+i*incr,20,"blue");
+								}
+							}
+							dia.gui_end();
+							dia.waitfor (glocal.docevent);
+							int nof = 0;
+							while (1){
+								SSTRING tmp;
+								tmp.setfromf (MSG_U(T_MAP,"3D: %s"),no->name.get());
+								MENU_STATUS code = dia.edit (tmp.get(),"",help_nil
+									,nof,0);
+								if (code == MENU_CANCEL || code == MENU_ESCAPE){
+									break;
+								}else if (code == MENU_MESSAGE){
+									if (must_end()){
+										break;
+									}else if (isclose()){
+										break;
+									}else if (dialog_testmessage(glocal.docevent)){
+										fprintf (stderr,"Mettre à jour la carte\n");
+									}
+								}
+							}
+						}
+					}else if (glocal.d->cmd == BO_SHOWTREE){
+						<call edittree>(MSG_U(T_TREENODES,"Noeuds/T"),"",help_nil);
+						<f init>
+							nobutton();
+							handle (*glocal.msgs);
+							waitfor (glocal.docevent);
+							waitfor (glocal.info->docmsgs.focus);
+							waitfor (glocal.info->docmsgs.menubar);
+							waitfor (glocal.info->docmsgs.taskbar);
+							setsize (20,20);
+						</f>
+						<f load>
+							<call bo_drawtree>(glocal.nodes,glocal.rels);
+							<f newfile>
+								if (no->selected) glocal.edittree.setnexttagged();
+								glocal.edittree.new_file(no->name.get());
+								glocal.edittree.set_lookup(new TREE_INFO(no,rel));
+							</f>
+							<f newdir>
+								if (no->selected) glocal.edittree.setnexttagged();
+								glocal.edittree.new_subdir(no->name.get());
+								glocal.edittree.set_lookup(new TREE_INFO(no,rel));
+							</f>
+							<f newrel>
+								if (rel->selected) glocal.edittree.setnexttagged();
+								glocal.edittree.new_subdir(rel->relate.get());
+								glocal.edittree.set_lookup(new TREE_INFO(NULL,rel));
+							</f>
+							<f enddir>
+								glocal.edittree.end_subdir();
+							</f>
+							</call>
+						</f>
+						<f message>
+							UISTATE ui;
+							diajava_lastmousestate(ui);
+							if (ui.middleb){
+								end = true;
+							}else if (glocal.FRAMEWORK.ismenuid(MENUID_CLOSE)
+								|| glocal.FRAMEWORK.istaskid(TASKID_CLOSE)
+								|| glocal.FRAMEWORK.isclose()){
+								end = true;
+							}else if (dialog_testmessage(glocal.info->docmsgs.focus)){
+								glocal.status2.setempty();
+								dialog_sendmessage (glocal.msgstatus2);
+							}
+						</f>
+						<f editone>
+							TREE_INFO *ti = (TREE_INFO*)obj;
+							if (ti != NULL){
+								BO_NODE *n = ti->node;
+								BO_REL *r = ti->rel;
+								if (n != NULL){
+									if (uistate.shiftkey){
+										n->selected = !n->selected;
+									}else if (uistate.ctrlkey){
+										glocal.FRAMEWORK.newdocument (new BO_DATA(BO_MAPRELS
+											,n->uuid.get()),1);
+									}else if (uistate.rightb){
+										DIALOG_MENUPOPUP dia;
+										dia.new_menuitem ("",MSG_U(M_EDITNODE,"Édite le noeud"));
+										dia.new_menuitem ("",MSG_U(M_LINK,"Lie le noeud"));
+										dia.new_menuitem ("",MSG_U(M_LINKROOT,"Lie le noeud à la racine"));
+										if (r != NULL){
+											dia.new_menuitem ("",MSG_U(M_UNLINK,"Efface le lien"));
+											dia.new_menuitem ("",MSG_U(M_RAISE,"Monte"));
+											dia.new_menuitem ("",MSG_U(M_LOWER,"Descend"));
+										}
+										int sel = 0;
+										if (dia.editmenu (NULL,sel)==MENU_OK){
+											SSTRING now;
+											bo_getnow(now);
+											if (sel == 0){
+												if (r != NULL){
+													glocal.FRAMEWORK.newdocument (new BO_DATA(BO_EDITNODE
+														,n->uuid.get(),r->uuid2.get()
+														,r->relate.get())
+														,2);
+												}else{
+													glocal.FRAMEWORK.newdocument (new BO_DATA(BO_EDITNODE
+														,n->uuid.get()),2);
+												}
+											}else if(sel == 1){
+												int done = 0;
+												glocal.con->send (XMLINTRO);
+												for (int i=0; i<glocal.nodes.size(); i++){
+													BO_NODE *node = glocal.nodes.getitem(i);
+													if (node->selected){
+														done++;
+														glocal.FRAMEWORK.newdocument (new BO_DATA(BO_EDITREL
+															,n->uuid.get(),node->uuid.get(),""),2);
+													}
+												}
+												for (int i=0; i<glocal.rels.size(); i++){
+													BO_REL *re = glocal.rels.getitem(i);
+													if (re->selected){
+														done++;
+														BOXMLENC enc;
+														glocal.con->sendf ("<relation uuid1=%s uuid2=%s relate=%s modif=%s owner=%s type=%s altname=%s orderpol=%s orderkey=%s/>\n"
+															,enc.enc(n->uuid),enc.enc(re->uuid2)
+															,enc.enc(re->relate)
+															,enc.enc(now),enc.enc(glocal.doc->user)
+															,enc.enc(SIMPLE_HTML)
+															,enc.enc(re->altname),enc.enc("T"),enc.enc("0"));
+													}
+												}
+												glocal.con->send (XMLEND);
+												if (done > 0){
+													glocal.status1.setfromf (MSG_U(I_LINKDONE,"%d liens réalisés"),done);
+													dialog_sendmessage (glocal.msgstatus1);
+												}else{
+													xconf_error (MSG_U(E_NOLINKDONE
+														,"Aucun lien réalisé\n"
+														 "Il n'y avait aucun item sélectionné"));
+												}
+											}else if(sel == 2){
+												BOXMLENC enc;
+												glocal.con->send (XMLINTRO);
+												glocal.con->sendf ("<relation uuid1=%s uuid2=%s relate=%s modif=%s owner=%s type=%s orderpol=%s orderkey=%s/>\n"
+															,enc.enc(n->uuid),enc.enc(ROOTUUID)
+															,enc.enc(MSG_U(I_SECTION,"Section"))
+															,enc.enc(now),enc.enc(glocal.doc->user)
+															,enc.enc(SIMPLE_HTML)
+															,enc.enc("T"),enc.enc("0"));
+												glocal.con->send (XMLEND);
+											}else if(sel == 3){
+												BOXMLENC enc;
+												glocal.con->sendf ("%s %s %s %s\n"
+													,C_DELRELATION
+													,enc.enc(r->uuid1),enc.enc(r->uuid2)
+													,enc.enc(r->relate));
+											}else if (sel == 4 || sel == 5){
+												BO_MAPS mps;
+												mps.extract (r->relate.get(),r->uuid2.get()
+													,glocal.rels,glocal.nodes);
+												mps.sort();
+												int sub=0;
+												int keys[mps.size()];
+												for (int i=0; i<mps.size(); i++){
+													keys[i] = i-sub;
+													BO_MAP *mp = mps.getitem(i);
+													BO_REL *re = mp->relate;
+													if (re == r){
+														if (sel == 4){
+															if (i > 0) keys[i-1]++;
+															keys[i]--;
+														}else{
+															keys[i]++;
+															sub = 1;
+														}
+													}
+												}
+												glocal.con->send (XMLINTRO);
+												for (int i=0; i<mps.size(); i++){
+													int key = keys[i];
+													BO_MAP *mp = mps.getitem(i);
+													BO_REL *re = mp->relate;
+													if (re->orderkey != key){
+														re->orderkey = key;
+														BOXMLENC enc;
+														glocal.con->sendf ("<relation uuid1=%s uuid2=%s relate=%s modif=%s owner=%s type=%s altname=%s orderpol=%s orderkey=%s>%s</relation>\n"
+															,enc.enc(re->uuid1),enc.enc(re->uuid2)
+															,enc.enc(re->relate)
+															,enc.enc(re->modif),enc.enc(glocal.doc->user)
+															,enc.enc(SIMPLE_HTML)
+															,enc.enc(re->altname),enc.enc("T"),enc.enc(re->orderkey),enc.encnq(re->descr));
+													}
+												}
+												glocal.con->send (XMLEND);
+											}
+										}
+									}else{
+										if (r != NULL){
+											glocal.FRAMEWORK.newdocument (new BO_DATA(BO_EDITNODE
+												,n->uuid.get(),r->uuid2.get()
+												,r->relate.get())
+												,2);
+										}else{
+											glocal.FRAMEWORK.newdocument (new BO_DATA(BO_EDITNODE
+												,n->uuid.get()),2);
+										}
+									}
+								}else if (r != NULL){
+									if (uistate.shiftkey){
+										r->selected = !r->selected;
+									}else{
+										glocal.FRAMEWORK.newdocument (new BO_DATA(BO_EDITREL
+											,r->uuid1.get(),r->uuid2.get()
+											,r->relate.get()),2);
+									}
+								}
+							}
+						</f>
+						</call>
+					}
+				</f>
+				<f area3>
+				</f>
+				<f document>
+					glocal FRAMEWORK_INFO *info = &info;
+					glocal FRAMEWORK_MSGS *msgs = &info.msgs;
+					glocal BO_DATA *d = (BO_DATA*)info.data;
+					if (glocal.d->cmd == BO_SHOWNODES
+						|| glocal.d->cmd == BO_SHOWRELS
+						|| glocal.d->cmd == BO_SHOWORPHANS){
+						glocal bool shownodes = glocal.d->cmd == BO_SHOWNODES
+							|| glocal.d->cmd == BO_SHOWORPHANS;
+						glocal int shown = 0;	// How many nodes presented
+						<call editrecords>(
+							glocal.d->cmd == BO_SHOWNODES
+								? MSG_U(T_NODES,"Noeuds")
+								: (glocal.d->cmd == BO_SHOWORPHANS
+									? MSG_U(T_OPHANS,"Orphelins")
+									: MSG_U(T_RELS,"Relations"))
+							,"",help_none);
+						<f head>
+							if (glocal.shownodes){
+								newf_head (MSG_U(H_NODES,"Nom\tImage\tLiens\tAuteur\tType\tModif.\tUuid"));
+							}else{
+								newf_head (MSG_U(H_RELS,"Noeud1\tRelation\tNoeud2\tType\tModif."));
+							}
+							handle (*glocal.msgs);
+							waitfor (glocal.docevent);
+							waitfor (glocal.info->docmsgs.focus);
+							waitfor (glocal.info->docmsgs.menubar);
+							waitfor (glocal.info->docmsgs.taskbar);
+							sethdispo ("lrlllcl");
+							sortpolicy ("aaaaaaa");
+							nobutton();
+						</f>
+						<f load>
+							const char *pensel = guiid_setpen ("red");
+							const char *dcsel = guiid_setdc (NULL,pensel,NULL);
+							const char *dcnsel = guiid_setdc (NULL,NULL,NULL);
+							if (glocal.shownodes){
+								glocal.shown = 0;
+								for (int i=0; i<glocal.nodes.size(); i++){
+									BO_NODE *no = glocal.nodes.getitem(i);
+									setnextdcs (no->selected ? dcsel : dcnsel);
+									const char *name = no->name.get();
+									const char *uuid = no->uuid.get();
+									static const char *tblinkt[]={
+										MSG_U(I_ORPHAN,"Orphelin"),
+										MSG_U(I_LEAF,"Feuille"),
+										MSG_U(I_ORPHANB,"Orph/Bra"),
+										MSG_U(I_BRANCH,"Branche"),
+										MSG_U(I_ROOT,"Racine"),
+										MSG_R(I_ROOT),
+										MSG_U(I_ROOTB,"Racine/Bra"),
+										MSG_R(I_ROOTB),
+									};
+									int islinked = glocal.rels.islinked(uuid);
+									if (islinked == LINK_NONE
+										|| islinked == LINK_RIGHT
+										|| glocal.d->cmd == BO_SHOWNODES){
+										glocal.shown++;
+										new_menuitemf (name,"%s\t%s\t%s\t%s\t%s\t%s"
+											,no->image.get()
+											,tblinkt[islinked]
+											,no->owner.get()
+											,no->type.get(),no->getmodif()
+											,uuid);
+										set_lookup(i);
+									}
+								}
+							}else{
+								for (int i=0; i<glocal.rels.size(); i++){
+									BO_REL *re = glocal.rels.getitem(i);
+									BO_NODE *n1 = glocal.nodes.locatebyuuid(re->uuid1.get());
+									BO_NODE *n2 = glocal.nodes.locatebyuuid(re->uuid2.get());
+									setnextdcs (re->selected ? dcsel : dcnsel);
+									new_menuitemf (n1->name.get()
+										,"%s\t%s\t%s\t%s"
+										,re->relate.get(),n2->name.get()
+										,re->type.get(),re->getmodif());
+								}
+							}
+						</f>
+						<f message>
+							UISTATE ui;
+							diajava_lastmousestate(ui);
+							if (ui.middleb){
+								endedit();
+							}else if (glocal.FRAMEWORK.ismenuid(MENUID_CLOSE)
+								|| glocal.FRAMEWORK.istaskid(TASKID_CLOSE)
+								|| glocal.FRAMEWORK.isclose()){
+								endedit();
+							}else if (dialog_testmessage(glocal.info->docmsgs.focus)){
+								if (glocal.shownodes){
+									glocal.status2.setfromf (MSG_U(I_NBNODES,"%d nodes")
+										,glocal.shown);
+								}else{
+									glocal.status2.setfromf (MSG_U(I_NBRELS,"%d relations")
+										,glocal.rels.size());
+								}
+								dialog_sendmessage (glocal.msgstatus2);
+							}
+						</f>
+						<f editone>
+							if (glocal.shownodes){
+								BO_NODE *n = glocal.nodes.getitem(no);
+								if (uistate.shiftkey){
+									n->selected = !n->selected;
+								}else if (uistate.ctrlkey){
+									glocal.FRAMEWORK.newdocument (new BO_DATA(BO_MAPRELS
+										,n->uuid.get()),1);
+								}else{
+									glocal.FRAMEWORK.newdocument (new BO_DATA(BO_EDITNODE
+										,n->uuid.get()),2);
+								}
+							}else{
+								BO_REL *r = glocal.rels.getitem(no);
+								glocal.FRAMEWORK.newdocument (new BO_DATA(BO_EDITREL
+										,r->uuid1.get(),r->uuid2.get()
+										,r->relate.get()),2);
+							}
+						</f>
+						</call>
+					}else if (glocal.d->cmd == BO_EDITREL){
+						DIALOG dia;
+						const char *uuid1 = glocal.d->uuid1.get();
+						const char *uuid2 = glocal.d->uuid2.get();
+						const char *relate = glocal.d->relate.get();
+						SSTRING name1,name2,relation,descr,altname;
+						{
+							BO_NODE *n1 = glocal.nodes.locatebyuuid(uuid1);
+							BO_NODE *n2 = glocal.nodes.locatebyuuid(uuid2);
+							if (n1 != NULL) name1 = n1->name;
+							if (n2 != NULL) name2 = n2->name;
+							relation = relate;
+						}
+						if (relation.is_empty()) relation = MSG_U(I_PART,"Membres");
+						BO_REL *re = glocal.rels.locate(uuid1,uuid2,relate);
+						if (re != NULL){
+							relation = re->relate;
+							altname = re->altname;
+							descr = re->descr;
+						}
+						FIELD_LIST *list1 = dia.newf_list (MSG_U(F_NODE1,"Nom de la première node"),name1);
+						if (re != NULL) dia.set_lastreadonly();
+						dia.newline();
+						dia.newf_str (MSG_U(F_RELATION,"Relation"),relation);
+						if (re != NULL) dia.set_lastreadonly();
+						dia.newline();
+						FIELD_LIST *list2 = dia.newf_list (MSG_U(F_NODE2,"Nom de la seconde node"),name2);
+						if (re != NULL) dia.set_lastreadonly();
+						if (re == NULL){
+							list1->addopt ("");
+							list2->addopt ("");
+						}
+						// We put the selected node in front of the list
+						bool one_selected = false;
+						for (int i=0; i<glocal.nodes.size(); i++){
+							BO_NODE *n = glocal.nodes.getitem(i);
+							if (n->selected){
+								list1->addopt (n->name.get());
+								list2->addopt (n->name.get());
+								one_selected = true;
+							}
+						}
+						if (one_selected){
+							list1->addopt ("");
+							list2->addopt ("");
+						}
+						list2->addopt (MSG_R(I_ROOTNODE));
+						for (int i=0; i<glocal.nodes.size(); i++){
+							BO_NODE *n = glocal.nodes.getitem(i);
+							list1->addopt (n->name.get());
+							list2->addopt (n->name.get());
+						}
+						dia.newline();
+						dia.newf_str (MSG_U(F_ALTNAME,"Nom alternatif"),altname,60);
+						dia.newline();
+						dia.newf_textarea (NULL,descr,70,15);
+						dia.gui_dispolast (GUI_H_LEFT,2,GUI_V_TOP,1);
+						glocal.FRAMEWORK.waitforall(dia);
+						dia.waitfor (glocal.docevent);
+						if (re != NULL){
+							BOXMLENC enc;
+							glocal.con->sendf ("%s %s %s %s\n",C_GETREL
+								,enc.enc(uuid1),enc.enc(uuid2)
+								,enc.enc(relate));
+						}
+						int nof = 0;
+						bool quit_after_dump = false;
+						while (1){
+							SSTRING tmp;
+							tmp.setfromf ("%s <%s> %s",name1.get(),relate,name2.get());
+							MENU_STATUS code = dia.edit(tmp.get(),"",help_none
+								,nof,0);
+							if (code == MENU_MESSAGE){
+								if (glocal.FRAMEWORK.must_end()){
+									dia.request_dump();
+									quit_after_dump = true;
+								}else if (dialog_testmessage(glocal.docevent)){
+									if (re != NULL){
+										descr = re->descr;
+										dia.reload();
+									}
+								}else if (glocal.FRAMEWORK.ismenuid(MENUID_CLOSE)
+									|| glocal.FRAMEWORK.istaskid(TASKID_CLOSE)
+									|| glocal.FRAMEWORK.isclose()){
+									dia.request_dump();
+									quit_after_dump = true;
+								}else if (glocal.FRAMEWORK.ismenuid(MENUID_SAVE)
+									|| glocal.FRAMEWORK.istaskid(TASKID_SAVE)){
+									dia.request_dump();
+								}else if (glocal.FRAMEWORK.ismenuid(MENUID_DELETE)
+									|| glocal.FRAMEWORK.istaskid(TASKID_DELETE)){
+									if (re == NULL) break;
+									BOXMLENC enc;
+									glocal.con->sendf ("%s %s %s %s\n"
+										,C_DELRELATION
+										,enc.enc(re->uuid1),enc.enc(re->uuid2)
+										,enc.enc(re->relate));
+									break;
+								}else if (dialog_testmessage(glocal.info->docmsgs.focus)){
+									glocal.status2 = "";
+									dialog_sendmessage (glocal.msgstatus2);
+								}
+							}else if (code == MENU_DUMP){
+								dia.save();
+								if (re == NULL
+									&& glocal.rels.locate(name1.get(),name2.get(),relation.get())!=NULL){
+									tlmp_error (MSG_U(E_RELEXIST,"La relation\n\t%s\n\t\t%s\n\t%s\nexiste déjà")
+										,name1.get(),relation.get(),name2.get());
+								}else{
+									SSTRING now;
+									bo_getnow(now);
+									BO_NODE *n1 = glocal.nodes.locatebyname(name1.get());
+									BO_NODE *n2 = glocal.nodes.locatebyname(name2.get());
+									if (n1 != NULL && n2 != NULL){
+										uuid1 = n1->uuid.get();
+										uuid2 = n2->uuid.get();
+										re = glocal.rels.set (uuid1,uuid2,relation.get(),now.get(),SIMPLE_HTML,altname.get(),descr.get(),'T',0);
+										BOXMLENC enc;
+										glocal.con->send (XMLINTRO);
+										glocal.con->sendf ("<relation uuid1=%s uuid2=%s relate=%s modif=%s owner=%s type=%s altname=%s orderpol=%s orderkey=%s>%s</relation>\n"
+											,enc.enc(uuid1),enc.enc(uuid2)
+											,enc.enc(relation)
+											,enc.enc(now),enc.enc(glocal.doc->user)
+											,enc.enc(SIMPLE_HTML)
+											,enc.enc(altname),enc.enc("T"),enc.enc("0"),enc.encnq(descr));
+										glocal.con->send (XMLEND);
+										// This document is now clickable from
+										// the editrecords section.
+										glocal.d->uuid1 = uuid1;
+										glocal.d->uuid2 = uuid2;
+										glocal.d->relate = relation;
+										uuid1 = glocal.d->uuid1.get();
+										uuid2 = glocal.d->uuid2.get();
+										relate = glocal.d->relate.get();
+									}
+									if (quit_after_dump) break;
+								}
+							}
+						}
+					}else if (glocal.d->cmd == BO_EDITNODE){
+						glocal DIALOG dia;
+						glocal const char *uuid = glocal.d->uuid1.get();
+						glocal BO_NODE *parent = glocal.nodes.locatebyuuid(glocal.d->uuid2);
+						glocal BO_NODE *no = glocal.nodes.locatebyuuid(glocal.uuid);
+						glocal SSTRING descr;
+						glocal SSTRING name;
+						glocal SSTRING image;
+						glocal bool saved = false;
+						if (glocal.no == NULL){
+							if (glocal.parent != NULL
+								&& glocal.d->relate == REL_ATTRIBUT){
+								glocal.name.setfromf ("%s / ",glocal.parent->name.get());
+							}
+						}else{
+							BOXMLENC enc;
+							glocal.con->sendf ("%s %s\n",C_GETNODE,enc.enc(glocal.uuid));
+							glocal.name = glocal.no->name;
+							glocal.image = glocal.no->image;
+						}
+						glocal.dia.newf_str (MSG_U(F_NAME,"Nom de la node"),glocal.name,60);
+						glocal.dia.newline();
+						glocal.dia.newf_str (MSG_U(F_IMAGE,"Image"),glocal.image);
+						glocal.dia.newline();
+						glocal.dia.newf_textarea (NULL,glocal.descr,70,15);
+						glocal.dia.gui_dispolast (GUI_H_LEFT,2,GUI_V_TOP,1);
+						glocal.FRAMEWORK.waitforall (glocal.dia);
+						glocal.dia.waitfor (glocal.docevent);
+						<obj OBJECTSUB sub>();
+						<f exec>
+							glocal.saved = false;
+fprintf (stderr,"sub.exec1 name=:%s: :%s:\n",glocal.name.get(),glocal.descr.get());
+							glocal.dia.save();
+fprintf (stderr,"sub.exec2 name=:%s: :%s:\n",glocal.name.get(),glocal.descr.get());
+							// Does the new node already exist
+							if (glocal.name.is_empty()
+								&& glocal.descr.is_empty()
+								&& glocal.image.is_empty()
+								&& glocal.no == NULL){
+								// Empty new node, nothing to save
+								// fake it was saved properly
+								glocal.saved = true;
+							}else if (glocal.name.is_empty()){
+								tlmp_error (MSG_U(E_NODENAME,"Le noeud doit possèder un nom"));
+							}else if (glocal.no == NULL
+								&& glocal.nodes.locatebyname(glocal.name.get())!=NULL){
+								tlmp_error (MSG_U(E_NODEEXIST,"La node\n\t%s\nexiste déjà dans le document")
+									,glocal.name.get());
+							}else{
+								SSTRING now;
+								bo_getnow(now);
+								// Is it a new node.
+								bool newnode = glocal.uuid[0] == '\0';
+								if (newnode){
+									bo_makeuuid(glocal.d->uuid1);
+									glocal.uuid = glocal.d->uuid1.get();
+								}
+								glocal.no = glocal.nodes.set (glocal.name.get(),glocal.image.get(),now.get(),glocal.uuid,glocal.doc->user.get(),SIMPLE_HTML,glocal.descr.get());
+								glocal.nodes.sort();
+								BOXMLENC enc;
+								glocal.con->send (XMLINTRO);
+								glocal.con->sendf ("<node name=%s image=%s modif=%s uuid=%s owner=%s type=%s>%s</node>\n"
+									,enc.enc(glocal.name)
+									,enc.enc(glocal.image)
+									,enc.enc(now),enc.enc(glocal.no->uuid)
+									,enc.enc(glocal.doc->user)
+									,enc.enc(SIMPLE_HTML),enc.encnq(glocal.descr));
+								if (newnode && glocal.parent != NULL){
+									// Add the relation
+									glocal.con->sendf ("<relation uuid1=%s uuid2=%s relate=%s modif=%s owner=%s type=%s/>\n"
+										,enc.enc(glocal.uuid),enc.enc(glocal.parent->uuid)
+										,enc.enc(glocal.d->relate)
+										,enc.enc(now),enc.enc(glocal.doc->user)
+										,enc.enc(SIMPLE_HTML));
+								}
+								glocal.con->send (XMLEND);
+								glocal.saved = true;
+							}
+						</f>
+						</obj>
+						int nof = 0;
+						while (1){
+							if (glocal.no != NULL){
+								glocal.no->selected = true;
+								//dialog_sendmessage (glocal.docevent);
+							}
+							MENU_STATUS code = glocal.dia.edit(glocal.name.get(),"",help_none
+								,nof,0);
+							if (code == MENU_MESSAGE){
+								if (glocal.FRAMEWORK.must_end()){
+									sub.exec();
+									if (glocal.saved) break;
+								}else if (dialog_testmessage(glocal.docevent)){
+									if (glocal.no != NULL){
+										glocal.descr = glocal.no->descr;
+										glocal.dia.reload();
+									}
+								}else if (glocal.FRAMEWORK.ismenuid(MENUID_CLOSE)
+									|| glocal.FRAMEWORK.istaskid(TASKID_CLOSE)
+									|| glocal.FRAMEWORK.isclose()){
+									sub.exec();
+									if (glocal.saved) break;
+								}else if (glocal.FRAMEWORK.istaskid(TASKID_ADDNODE)
+									&& glocal.parent != NULL){
+									sub.exec();
+									if (glocal.saved){
+										glocal.FRAMEWORK.newdocument (new BO_DATA(BO_EDITNODE
+											,"",glocal.parent->uuid.get()
+											,glocal.d->relate.get()),2);
+									}
+								}else if (glocal.FRAMEWORK.istaskid(TASKID_PREVNODE)
+									&& glocal.parent != NULL){
+									sub.exec();
+									if (glocal.saved){
+										const char *prev_uuid = bo_getprevnode(glocal.nodes
+											,glocal.rels
+											,glocal.uuid,glocal.parent->uuid.get(),glocal.d->relate.get());
+										if (prev_uuid != NULL){
+											glocal.FRAMEWORK.newdocument (new BO_DATA(BO_EDITNODE
+												,prev_uuid,glocal.parent->uuid.get()
+												,glocal.d->relate.get()),2);
+											break;
+										}
+									}
+								}else if (glocal.FRAMEWORK.istaskid(TASKID_NEXTNODE)
+									&& glocal.parent != NULL){
+									sub.exec();
+									if (glocal.saved){
+										const char *next_uuid = bo_getnextnode(glocal.nodes
+											,glocal.rels
+											,glocal.uuid,glocal.parent->uuid.get(),glocal.d->relate.get());
+										if (next_uuid != NULL){
+											glocal.FRAMEWORK.newdocument (new BO_DATA(BO_EDITNODE
+												,next_uuid,glocal.parent->uuid.get()
+												,glocal.d->relate.get()),2);
+											break;
+										}
+									}
+								}else if (glocal.FRAMEWORK.ismenuid(MENUID_SAVE)
+									|| glocal.FRAMEWORK.istaskid(TASKID_SAVE)){
+									sub.exec();
+								}else if (glocal.FRAMEWORK.ismenuid(MENUID_DELETE)
+									|| glocal.FRAMEWORK.istaskid(TASKID_DELETE)){
+									if (glocal.no == NULL) break;
+									if (glocal.rels.islinked(glocal.no->uuid.get())){
+										tlmp_error (MSG_U(E_ISLINKED
+											,"Cette node est référencée.\n"
+											 "Vous devez éliminer les relations d'abord"));
+									}else{
+										BOXMLENC enc;
+										glocal.con->sendf ("%s %s\n"
+											,C_DELNODE,enc.enc(glocal.no->uuid));
+										break;
+									}
+								}else if ((glocal.FRAMEWORK.ismenuid(MENUID_3DMAP)
+									|| glocal.FRAMEWORK.istaskid(TASKID_3DMAP))
+									&& glocal.no != NULL){
+									glocal.FRAMEWORK.newdocument (new BO_DATA(BO_MAPRELS
+										,glocal.no->uuid.get()),1);
+								}else if (glocal.FRAMEWORK.ismenuid(MENUID_REVERT)
+									&& glocal.no != NULL){
+									BOXMLENC enc;
+									glocal.con->sendf ("%s %s\n",C_GETNODE,enc.enc(glocal.uuid));
+								}else if ((glocal.FRAMEWORK.ismenuid(MENUID_ATTRIBS)
+									|| glocal.FRAMEWORK.istaskid(TASKID_ATTRIBS))
+									&& glocal.no != NULL){
+									BO_MAPS mp;
+									mp.extract (REL_ATTRIBUT,glocal.uuid,glocal.rels,glocal.nodes);
+									DIALOG_MENUPOPUP pop;
+									pop.new_menuitem ("",MSG_U(M_ADDATTR,"Ajoute un attribut"));
+									pop.new_menuitem ("-","-");
+									for (int i=0; i<mp.size(); i++){
+										BO_MAP *m = mp.getitem(i);
+										BO_NODE *n = m->node;
+										pop.new_menuitem("",n->name.get());
+									}
+									int sel = 0;
+									if (pop.editmenu (NULL,sel)==MENU_OK){
+										if (sel == 0){
+											// Add a new attribute
+											glocal.FRAMEWORK.newdocument (new BO_DATA(BO_EDITNODE
+												,"",glocal.uuid,REL_ATTRIBUT),2);
+										}else if (sel > 1){
+											BO_NODE *n = mp.getitem(sel-2)->node;
+											glocal.FRAMEWORK.newdocument (new BO_DATA(BO_EDITNODE
+												,n->uuid.get(),glocal.uuid,REL_ATTRIBUT),2);
+										}
+									}
+								}else if (dialog_testmessage(glocal.info->docmsgs.focus)){
+									glocal.status2 = "";
+									dialog_sendmessage (glocal.msgstatus2);
+								}
+							}
+						}
+						if (glocal.no != NULL){
+							glocal.no->selected = false;
+							//dialog_sendmessage (glocal.docevent);
+						}
+					}
+				</f>
+				</obj>
+				glocal.con->sendf ("%s\n",C_LISTNODES);
+				dialog_waitformessage (glocal.docevent);
+				glocal.con->sendf ("%s\n",C_LISTRELS);
+				dialog_waitformessage (glocal.docevent);
+				frm.newdocument (new BO_DATA(BO_SHOWTREE),1);
+				frm.newdocument (new BO_DATA(BO_SHOWNODES),2);
+				frm.newdocument (new BO_DATA(BO_SHOWRELS),2);
+				frm.loop();
+				dialog_sendmessage (glocal.endcon);
+			</f>
+			</call>
+		</f>
+		</obj>
+		if (def_passwd.is_filled()
+			&& def_user.is_filled()
+			&& def_document[0] != '\0'){
+			DOCDATA *d = new DOCDATA;
+			frm.newdocument(d,1);
+		}
+		frm.loop();
+		return 0;
+	</f>
+	</call>
+	return ret;
+}
+</mod>
+

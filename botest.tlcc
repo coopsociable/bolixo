@@ -1,0 +1,109 @@
+/*
+	Test program (performance)
+*/
+#include <sys/time.h>
+#include <string.h>
+#include <unistd.h>
+#include <tlmplib.h>
+#include <tlmpnet.h>
+#include "bolibfs.h"
+#include "bolixo.h"
+
+static long long getnow()
+{
+	struct timeval tv;
+	gettimeofday (&tv,NULL);
+	return tv.tv_sec *(long long)1000000 + tv.tv_usec;
+}
+
+
+static void print_time (long long start, const char *msg)
+{
+	long long diff = getnow()-start;
+	fprintf (stderr,"TIME: %s %6ld.%06ld\n",msg,(long)(diff/1000000)
+		,(long)(diff % 1000000));
+}
+
+
+
+<mod>
+int main (int argc, char *argv[])
+{
+	glocal int nb = 100;
+	glocal bool testping = false;
+	glocal bool testxmlping = false;
+	glocal bool testtcpcon = false;
+	static const char *tb[]={"bolixo","tlmpsql",NULL};
+	<call tlmpprogram>(argc,argv,tb);
+	<f init>
+		setarg ('n',"nbiter","Loop count",glocal.nb,false);
+		setarg ('p',"ping","Test the ping command",glocal.testping,false);
+		setarg ('x',"xmlping","Test the xmlping command",glocal.testxmlping,false);
+		setarg ('t',"tcpconnect","Use tcpconnect",glocal.testtcpcon,false);
+	</f>
+	<f main_noarg>
+		SSTRING errmsg;
+		int fd = bomisc_connect("localhost","9876","jack","pass","mail",errmsg);
+		if (fd == -1){
+			tlmp_error ("Can't connect\n");
+		}else{
+			glocal long long start = getnow();
+			if (glocal.testping){
+				glocal int nbline = 0;
+				for (int i=0; i<glocal.nb; i++){
+					write (fd,"ping\n",5);
+					if (glocal.testtcpcon){
+						<call tcpconnect>(fd,10);
+						<f oneline>
+							glocal.nbline++;
+							end = true;
+						</f>
+						</call>
+					}else{
+						char buf[1000];
+						int len = read (fd,buf,sizeof(buf)-1);
+						glocal.nbline++;
+					}
+				}
+				print_time (glocal.start,"ping");
+				fprintf (stderr,"Received %d lines\n",glocal.nbline);
+			}else if (glocal.testxmlping){
+				glocal int nbline = 0;
+				for (int i=0; i<glocal.nb; i++){
+					write (fd,"xmlping\n",8);
+					//fprintf (stderr,"xml %d\n",i);
+					if (glocal.testtcpcon){
+						<call tcpconnect>(fd,10);
+						<f oneline>
+							glocal.nbline++;
+							end = strcmp(line,"</bolixo>")==0;
+							long long diff = getnow() - glocal.start;
+							fprintf (stderr,"%6ld.%06ld Rec :%s: %d\n"
+								,(long)(diff/1000000)
+								,(long)(diff%1000000)
+								,line,end);
+						</f>
+						</call>
+					}else{
+						<call bolibfs>(fd);
+						<f node>
+						</f>
+						</call>
+					}
+				}
+				print_time (glocal.start,"xmlping");
+				if (glocal.testtcpcon){
+					fprintf (stderr,"Received %d lines\n",glocal.nbline);
+				}
+			}else{
+				tlmp_error ("Option -x or -p needed\n");
+				usage();
+			}			
+		}
+		return 0;
+	</f>
+	</call>
+	return 0;
+}
+</mod>
+
