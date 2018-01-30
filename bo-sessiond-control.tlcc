@@ -1,0 +1,89 @@
+/*
+	Command line tool to control trli-sessiond
+*/
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <tlmplib.h>
+#include <tlmpnet.h>
+#include <string>
+#include "fdpass.h"
+
+using namespace std;
+
+#include "proto/trli-sessiond_control.protoch"
+
+<mod>
+int main (int argc, char *argv[])
+{
+	glocal int ret = -1;
+	glocal const char *control = "/var/run/trli-sessiond.sock";
+	glocal.ret = <call tlmpprogram>(argc,argv);
+	<f init>
+		setproginfo ("trli-sessiond-control",VERSION
+			,"Command line tool to control trli-sessiond\n"
+			 "\n"
+			 "\tdebug 0/1\n"
+			 "\tdebugfile filename\n"
+			 "\teraseold nbseconds anonymous normaluser adminuser\n"
+			 "\tlistsessions offset nb\n"
+			 "\tstuffsessions nb\n"
+			 "\tquit\n"
+			 "\tstatus\n"
+			);
+		setarg ('p',"control","Unix socket to reach trlid",glocal.control,false);
+	</f>
+	<f main>
+		int ret = -1;
+		CONNECT_INFO con;
+		con.port = glocal.control;
+		if (strcmp(argv[0],"status")==0 && argc==1){
+			<call trli_sessiond_control_status>(con);
+			<f ok>
+				for (auto x:lines) printf ("%s\n",x);
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"quit")==0 && argc==1){
+			<call trli_sessiond_control_quit>(con);
+			<f ok>
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"listsessions")==0 && argc==3){
+			<call trli_sessiond_control_listsessions>(con,atoi(argv[1]),atoi(argv[2]));
+			<f ok>
+				for (auto x:lines) printf ("%s\n",x);
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"stuffsessions")==0 && argc==2){
+			<call trli_sessiond_control_stuffsessions>(con,atoi(argv[1]));
+			<f ok>
+				printf ("total=%u\n",total);
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"eraseold")==0 && argc==5){
+			<call trli_sessiond_control_eraseold>(con,atoi(argv[1]),atoi(argv[2]),atoi(argv[3]),atoi(argv[4]));
+			<f ok>
+				printf ("deletedanon=%u deleteduser=%u deletedadmin=%u\n",deletedanon,deleteduser,deletedadmin);
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"debug")==0 && argc==2){
+			<call trli_sessiond_control_debug>(con,atoi(argv[1]));
+			<f ok>
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"debugfile")==0 && argc==2){
+			<call trli_sessiond_control_debugfile>(con,argv[1]);
+			<f ok>
+			</f>
+			</call>
+		}else{
+			tlmp_error ("Invalid command: %s\n",argv[0]);
+			usage();
+		}
+		return ret;
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+

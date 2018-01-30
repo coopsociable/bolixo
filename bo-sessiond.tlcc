@@ -1,0 +1,494 @@
+/*
+	Manage web session ID
+*/
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <syslog.h>
+#include <sys/time.h>
+#include <sys/stat.h>
+#include <tlmplib.h>
+#include <string>
+#include <set>
+#include <tlmpnet.h>
+#include <tlmpsql.h>
+#include "fdpass.h"
+
+static DEBUG_KEY D_PROTO ("proto","Protocol information");
+enum CONNECT_TYPE { TYPE_NONE, TYPE_CONTROL, TYPE_CLIENT, TYPE_ADMIN };
+
+struct HANDLE_INFO: public ARRAY_OBJ{
+	CONNECT_TYPE type;
+	int no;
+	std::string host;
+	REQUEST_INFO req;
+	HANDLE_INFO(){
+		no = -1;
+		type = TYPE_NONE;
+	}
+};
+
+#include "proto/trli-sessiond_control.protoh"
+#include "proto/trli-sessiond_client.protoh"
+#include "proto/trli-sessiond_admin.protoh"
+#define session_log_session_NOTNEED
+#include "proto/session_log.protoch"
+#include "proto/session_log.protoh"
+
+using namespace std;
+
+struct VARIABLE{
+	string name;
+	string val;
+	VARIABLE (PARAM_STRING _name, PARAM_STRING _val){
+		name = _name.ptr;
+		val  = _val.ptr;
+	}
+};
+
+struct SESSION_INFO{
+	unsigned userid;
+	string userid_str;
+	string name;
+	string email;
+	unsigned short lang;
+	bool admin;
+	vector<VARIABLE> vars;
+	struct {
+		time_t lastvisit;
+		unsigned nbacc;
+	} stats;
+	SESSION_INFO(){
+		userid = (unsigned)-1;
+		stats.lastvisit = time(NULL);
+		stats.nbacc = 0;
+		lang = 0;
+		admin = false;
+	}
+	SESSION_INFO (unsigned _userid, const string &_userid_str, const char *_name, const char *_email, unsigned short _lang, bool _admin){
+		userid = _userid;
+		userid_str = _userid_str;
+		name = _name;
+		email = _email;
+		lang = _lang;
+		admin = _admin;
+		stats.lastvisit = time(NULL);
+		stats.nbacc=1;
+	}
+};
+
+
+<mod>
+int main (int argc, char *argv[])
+{
+	glocal int ret = -1;
+	glocal int noproc = 1;
+	glocal const char *client_secretfile = "/etc/trli/secrets.client";
+	glocal const char *admin_secretfile = "/etc/trli/secrets.admin";
+	glocal const char *bind = "0.0.0.0";
+	glocal const char *port = "9200";
+	glocal const char *control = "/var/run/trli-sessiond.sock";
+	glocal const char *user = "trli";
+	glocal bool daemon = false;
+	glocal const char *pidfile = "/var/run/trli-sessiond.pid";
+	glocal vector<string> variables;
+
+	glocal.ret = <call tlmpprogram>(argc,argv,"tlmpsql");
+	<f init>
+		setproginfo ("trli-sessiond",VERSION,"Manage web sessions");
+		setgrouparg ("Networking");
+		setarg ('b',"bindaddr","Bind to this address (TCP)",glocal.bind,false);
+		setarg ('p',"tcpport","Listen for command on this TCP port",glocal.port,false);
+		setarg ('c',"control","Unix socket for trlid-control",glocal.control,false);
+		setarg (' ',"variable","Supported web variable",glocal.variables,false);
+		setgrouparg ("Misc.");
+		setarg (' ',"admin-secrets","File holding admin secrets for communication",glocal.admin_secretfile,false);
+		setarg (' ',"client-secrets","File holding client secrets for communication",glocal.client_secretfile,false);
+		setarg (' ',"user","Run the program as this user",glocal.user,false);
+		setarg (' ',"daemon","Run in background",glocal.daemon,false);
+		setarg (' ',"pidfile","FIle holding the PID of the process",glocal.pidfile,false);
+	</f>
+	<f showerror>
+		glocal const char *msg = msg;
+		<call savefile>("/tmp/err.log",true);
+		<f dowrite>
+			fprintf (fout,"%s\n",glocal.msg);
+			return 0;
+		</f>
+		</call>
+		if (glocal.daemon){
+			syslog (LOG_ERR,"%s",msg);
+		}else{
+			fprintf (stderr,"%s",msg);
+		}
+	</f>
+	<f showwarn>
+		if (glocal.daemon){
+			syslog (LOG_WARNING,"%s",msg);
+		}else{
+			fprintf (stderr,"%s",msg);
+		}
+	</f>
+	<f main_noarg>
+		glocal set<string> vars;
+		glocal map<string,SESSION_INFO> sessions;
+		glocal map<string,string> admin_secrets;
+		glocal map<string,string> client_secrets;
+		glocal unsigned long nbrequest_admin = 0;
+		glocal unsigned long nbrequest_client = 0;
+		glocal unsigned long nbsessions_created = 0;
+		glocal CONNECT_INFO con;
+		glocal string controlport = string_f("unix:%s",glocal.control);
+		string clientport = string_f ("unix:/tmp/sessiond-client-%s.sock",glocal.port);
+		string adminport = string_f ("unix:/tmp/sessiond-admin-%s.sock",glocal.port);
+		fdpass_readsecrets (glocal.admin_secretfile,glocal.admin_secrets);
+		fdpass_readsecrets (glocal.client_secretfile,glocal.client_secrets);
+		int ret = -1;
+		for (auto s:glocal.variables) glocal.vars.insert(s);
+		{
+			FILE *fin = fopen ("/tmp/sessions.log","r");
+			if (fin != NULL){
+				<call session_log>(fin);
+				<f session>
+					SESSION_INFO sess(userid, userid_str, name, email, lang, admin);
+					sess.stats.lastvisit = lastvisit;
+					sess.stats.nbacc = nbacc;
+					glocal.sessions[session] = sess;
+					
+				</f>
+				<f session_v1>
+					SESSION_INFO sess(userid, userid_str, name, email, lang, admin);
+					sess.stats.lastvisit = lastvisit;
+					sess.stats.nbacc = nbacc;
+					for (unsigned i=0; i<vars.size(); i++) sess.vars.push_back(VARIABLE(vars[i],vals[i]));
+					glocal.sessions[session] = sess;
+					
+				</f>
+				<f invalid>
+				</f>
+				</call>
+				fclose (fin);
+			}
+		}
+		<obj TCPSERVER s>(glocal.bind,clientport,5);
+		<f newclient>
+			HANDLE_INFO *n = new HANDLE_INFO;
+			info.data = n;
+			if (string_cmp(info.port,glocal.controlport)==0){
+				n->type = TYPE_CONTROL;
+			}else{
+				settcpnodelay(true);
+				char addr[20];
+				const char *fromstr = addr;
+				if (strncmp(info.port,"unix:",5)==0){
+					fromstr = info.port;
+				}else{
+					ipnum_ip2a (from,addr);
+				}
+				n->host = fromstr;
+				n->req.secret = fdpass_findsecret (glocal.client_secrets,fromstr);
+				if (n->req.secret.size() > 0){
+					n->type = TYPE_CLIENT;
+				}else{
+					n->req.secret = fdpass_findsecret (glocal.admin_secrets,fromstr);
+					if (n->req.secret.size() > 0){
+						n->type = TYPE_ADMIN;
+					}else{
+						tlmp_error ("Rejected connexion from IP %s\n",fromstr);
+						endclient = true;
+					}
+				}
+			}
+		</f>
+		<f endclient>
+		</f>
+		<f receive>
+			debug_printf (D_PROTO,"receive line: %s\n",line);
+			HANDLE_INFO *c = (HANDLE_INFO*)info.data;
+			ERROR_PREFIX prefix ("c->type %d host %s secret %s:",c->type,c->host.c_str(),c->req.secret.c_str());
+			if (c->type == TYPE_CONTROL){
+				<call trli_sessiond_control>(this,c->req,line, endserver, endclient, no,c,c->host.c_str());
+				<f status>
+					vector<string> tb;
+					tb.push_back(string_f ("Version %s",VERSION));
+					tb.push_back(string_f ("nbsessions=%lu",glocal.sessions.size()));
+					unsigned long nbanon = 0;
+					unsigned long nbadmin = 0;
+					for (auto x:glocal.sessions){
+						if (x.second.userid ==(unsigned)-1) nbanon++;
+						if (x.second.admin) nbadmin++;
+					}
+					tb.push_back(string_f ("nbanon=%lu",nbanon));
+					tb.push_back(string_f ("nbadmin=%lu",nbadmin));
+					tb.push_back(string_f ("nbsesssions_created=%lu",glocal.nbsessions_created));
+					tb.push_back(string_f ("nbrequest_admin=%lu",glocal.nbrequest_admin));
+					tb.push_back(string_f ("nbrequest_client=%lu",glocal.nbrequest_client));
+					rep_status(tb);
+				</f>
+				<f quit>
+					<call savefile>("/tmp/sessions.log",false);
+					<f dowrite>
+						for (auto &s:glocal.sessions){
+							vector<string> vars;
+							vector<string> vals;
+							for (auto &v:s.second.vars){
+								vars.push_back(v.name);
+								vals.push_back(v.val);
+							}
+							session_log_session_v1(fout,s.first,s.second.userid,s.second.userid_str
+								,s.second.name,s.second.email,s.second.lang,s.second.admin
+								,s.second.stats.lastvisit,s.second.stats.nbacc,vars,vals);
+						}
+						return 0;
+					</f>
+					</call>
+					endserver = true;
+				</f>
+				<f listsessions>
+					unsigned pos = 0;
+					unsigned end = offset+nb-1;
+					vector<string> tb;
+					tb.push_back(string_f("listsessions %u -> %u",offset,end));
+					for (auto it:glocal.sessions){
+						if (pos >end){
+							break;
+						}else if (pos >= offset){
+							char datetime[20];
+							fdpass_asctime (it.second.stats.lastvisit,datetime);
+							string tmp;
+							if (it.second.userid==(unsigned)-1){
+								tmp = string_f ("%07u: %s anonymous %s %u",pos,it.first.c_str()
+									,datetime,it.second.stats.nbacc);
+							}else{
+								tmp = string_f ("%07u: %s %s %s %s %u %lu %d",pos,it.first.c_str()
+									,it.second.name.c_str(),it.second.email.c_str()
+									,datetime,it.second.stats.nbacc
+									,it.second.userid,it.second.admin);
+							}
+							for (auto &v:it.second.vars){
+								tmp += string_f (" %s=%s",v.name.c_str(),v.val.c_str());
+							}
+							tb.push_back(tmp);
+						}
+						pos++;
+					}
+					rep_listsessions(tb);
+				</f>
+				<f stuffsessions>
+					time_t t = time(NULL);
+					for (unsigned i=0; i<nb; i++){
+						char tmp[100];
+						snprintf (tmp,sizeof(tmp)-1,"%010lu-%010u-%010u-a",t,i,i);
+						glocal.sessions[tmp] = SESSION_INFO();
+					}
+					rep_stuffsessions(glocal.sessions.size());
+				</f>
+				<f eraseold>
+					unsigned deletedanon = 0;
+					unsigned deleteduser = 0;
+					unsigned deletedadmin = 0;
+					time_t oldtime = time(NULL)-nbseconds;
+					for (auto it=glocal.sessions.begin(); it!= glocal.sessions.end(); ){
+						auto next = it;
+						next++;
+						if (it->second.stats.lastvisit < oldtime){
+							if (it->second.userid == (unsigned)-1){
+								if (anonymous){
+									glocal.sessions.erase(it);
+									deletedanon++;
+								}
+							}else if (it->second.admin){
+								if (adminuser){
+									glocal.sessions.erase(it);
+									deleteduser++;
+								}
+							}else{
+								if (normaluser){
+									glocal.sessions.erase(it);
+									deletedadmin++;
+								}
+							}
+						}
+						it = next;
+					}
+					rep_eraseold(deletedanon,deleteduser,deletedadmin);
+				</f>
+				<f debug>
+					if (on){
+						debug_seton();
+					}else{
+						debug_setoff();
+					}
+				</f>
+				<f debugfile>
+					debug_setfdebug (filename);
+				</f>
+				<f invalid>
+					tlmp_error ("Control: Invalid command: %s\n",line);
+					endclient = true;
+				</f>
+				</call>
+
+			}else if (c->type == TYPE_CLIENT){
+				glocal.nbrequest_client++;
+				<call trli_sessiond_client>(this,c->req,line, endserver, endclient, no,c,c->host.c_str());
+				<f getsessioninfo>
+					auto it = glocal.sessions.find(sessionid);
+					if (it != glocal.sessions.end()){
+						it->second.stats.lastvisit = time(NULL);
+						it->second.stats.nbacc++;
+						rep_getsessioninfo(true,it->second.name,it->second.lang,it->second.admin,it->second.userid);
+					}else{
+						rep_getsessioninfo(false,"",0,false,0);
+					}
+				</f>
+				<f getsessioninfovars>
+					auto it = glocal.sessions.find(sessionid);
+					vector<const char *> vars;
+					vector<const char *> vals;
+					if (it != glocal.sessions.end()){
+						it->second.stats.lastvisit = time(NULL);
+						it->second.stats.nbacc++;
+						for (auto &v:it->second.vars){
+							vars.push_back(v.name.c_str());
+							vals.push_back(v.val.c_str());
+						}
+						rep_getsessioninfovars(true,it->second.name,it->second.lang,it->second.admin,it->second.userid,vars,vals);
+					}else{
+						rep_getsessioninfovars(false,"",0,false,0,vars,vals);
+					}
+				</f>
+				<f setvar>
+					string msg;
+					bool success = false;
+					if (glocal.vars.count(var)==0){
+						msg = "unknown variable";
+					}else{
+						auto it = glocal.sessions.find(sessionid);
+						if (it != glocal.sessions.end()){
+							bool found = false;
+							for (auto &v:it->second.vars){
+								if (v.name == var){
+									v.val = val;
+									found = true;
+									success = true;
+									msg = "Variable updated";
+									break;
+								}
+							}
+							if (!found){
+								it->second.vars.push_back(VARIABLE(var,val));
+								msg = "Variable added";
+								success = true;
+							}
+						}else{
+							msg = "invalid session";
+						}
+					}
+					rep_setvar (success,msg);
+				</f>
+				<f test>
+					rep_test (true);
+				</f>
+				<f invalid>
+					tlmp_error ("Client: Invalid command: %s\n",line);
+					endclient = true;
+				</f>
+				</call>
+			}else if (c->type == TYPE_ADMIN){
+				glocal.nbrequest_admin++;
+				<call trli_sessiond_admin>(this,c->req,line, endserver, endclient, no,c,c->host.c_str());
+				<f getsessioninfo>
+					auto it = glocal.sessions.find(sessionid);
+					if (it != glocal.sessions.end()){
+						it->second.stats.lastvisit = time(NULL);
+						it->second.stats.nbacc++;
+						rep_getsessioninfo(true,it->second.name.c_str(),it->second.email.c_str(),it->second.lang,it->second.admin,it->second.userid);
+					}else{
+						rep_getsessioninfo(false,"","",0,false,0);
+					}
+				</f>
+				<f getsession>
+					auto it = glocal.sessions.find(sessionid);
+					if (it != glocal.sessions.end()){
+						rep_getsession(it->second.userid,it->second.userid_str.c_str());
+					}else{
+						rep_getsession(0,"");
+					}
+				</f>
+				<f setsession>
+					auto it = glocal.sessions.find(sessionid);
+					if (it == glocal.sessions.end()){
+						tlmp_error ("setsession: %s does not exist\n",sessionid);
+					}else{
+						it->second = SESSION_INFO(userid,userid_str,name,email,lang,admin);
+					}
+				</f>
+				<f deletesession>
+					auto it = glocal.sessions.find(sessionid);
+					if (it != glocal.sessions.end()){
+						glocal.sessions.erase(it);
+					}else{
+						tlmp_error ("deletesession: unknown sessionid %s\n",it->first.c_str());
+					}
+				</f>
+				<f deletesessions>
+					vector<string> sessionids;
+					for (auto it:glocal.sessions){
+						if (it.second.userid==userid) sessionids.push_back(it.first);
+					}
+					for (auto it:sessionids){
+						auto s = glocal.sessions.find(it);
+						if (s != glocal.sessions.end()){
+							glocal.sessions.erase(s);
+						}
+					}
+				</f>
+				<f createsession>
+					auto it = glocal.sessions.find(sessionid);
+					if (it == glocal.sessions.end()){
+						glocal.nbsessions_created++;
+						glocal.sessions[sessionid]=SESSION_INFO();
+					}else{
+						tlmp_error ("createsession: %s already exists\n",sessionid);
+					}
+				</f>
+				<f test>
+					rep_test (true);
+				</f>
+				<f invalid>
+					tlmp_error ("Admin: Invalid command: %s\n",line);
+					endclient = true;
+				</f>
+				</call>
+			}
+		</f>
+		</obj>
+		bool some_errors = false;
+		if (fdpass_setcontrol(s,glocal.control,glocal.user)==-1){
+			some_errors = true;
+		}
+		if (s.listen (NULL,adminport)==-1){
+			some_errors = true;
+		}
+
+		if (!some_errors && s.is_ok()){
+			chmod (clientport.c_str()+5,0666);
+			chmod (adminport.c_str()+5,0666);
+			s.setrawmode(true);
+			if (glocal.daemon){
+				daemon_init(glocal.pidfile,glocal.user);
+			}
+			s.loop();
+			ret = 0;
+		}
+		return ret;
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+
