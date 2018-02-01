@@ -2,7 +2,7 @@ CURDIR=trli
 MANPAGES=/usr/share/man
 PACKAGE_REV:=$(shell ./makeversion $(BUILD_SVNVER))
 PROGS=bod bod-client bod-control bo-writed bo-writed-control bo-sessiond bo-sessiond-control \
-      bolixo-manager bo-log bo-log-control \
+      bo-manager bo-log bo-log-control \
       bo-mon bo-mon-control
 DOCS=
 OPTIONS=-funsigned-char -O2 -Wall -g -DVERSION=\"$(PACKAGE_REV)\" -I/usr/include/tlmp -I/usr/include/trlitool
