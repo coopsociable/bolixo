@@ -2,11 +2,11 @@ CURDIR=trli
 MANPAGES=/usr/share/man
 PACKAGE_REV:=$(shell ./makeversion $(BUILD_SVNVER))
 PROGS=bod bod-client bod-control bo-writed bo-writed-control bo-sessiond bo-sessiond-control \
-      bolixo-manager bo-log bo-log-control fdpass.os \
+      bolixo-manager bo-log bo-log-control \
       bo-mon bo-mon-control
 DOCS=
-OPTIONS=-funsigned-char -O2 -Wall -g -DVERSION=\"$(PACKAGE_REV)\" -I/usr/include/tlmp
-LIBS=-llinuxconf -lstdc++ -lcrypto
+OPTIONS=-funsigned-char -O2 -Wall -g -DVERSION=\"$(PACKAGE_REV)\" -I/usr/include/tlmp -I/usr/include/trlitool
+LIBS=/usr/lib64/trlitool/fdpass.o -llinuxconf -lstdc++ -lcrypto
 .SUFFIXES: .o .tex .tlcc .cc .png .uml
 all: $(PROGS)
 	make -Cweb install
@@ -14,49 +14,46 @@ all: $(PROGS)
 compile: $(PROGS)
 	make -Cweb 
 
-bod: trlid.tlcc fdpass.o proto/trlid_control.protoh proto/trlid_client.protoh proto/trlid_admin.protoh \
-	proto/trli-writed_client.protoh proto/trli-sessiond_client.protoh
-	cctlcc -Wall $(OPTIONS) trlid.tlcc fdpass.o -o trlid $(LIBS) -ltlmpsql -L/usr/lib64/mysql -lmysqlclient
+bod: bod.tlcc proto/bod_control.protoh proto/bod_client.protoh proto/bod_admin.protoh \
+	proto/bo-writed_client.protoh proto/bo-sessiond_client.protoh
+	cctlcc -Wall $(OPTIONS) bod.tlcc -o bod $(LIBS) -ltlmpsql -L/usr/lib64/mysql -lmysqlclient
 
-bod-client: trlid-client.tlcc fdpass.o proto/trlid_client.protoh proto/trlid_admin.protoh \
-	proto/trli-sessiond_admin.protoh
-	cctlcc -Wall $(OPTIONS) trlid-client.tlcc fdpass.o -o trlid-client $(LIBS)
+bod-client: bod-client.tlcc proto/bod_client.protoh proto/bod_admin.protoh \
+	proto/bo-sessiond_admin.protoh
+	cctlcc -Wall $(OPTIONS) bod-client.tlcc -o bod-client $(LIBS)
 
-bod-control: trlid-control.tlcc fdpass.o proto/trlid_control.protoh
-	cctlcc -Wall $(OPTIONS) trlid-control.tlcc fdpass.o -o trlid-control $(LIBS)
+bod-control: bod-control.tlcc proto/bod_control.protoh
+	cctlcc -Wall $(OPTIONS) bod-control.tlcc -o bod-control $(LIBS)
 
-bo-writed: trli-writed.tlcc fdpass.o proto/trli-writed_control.protoh proto/trli-writed_client.protoh \
-	proto/trli-sessiond_admin.protoh proto/trli-log.protoh proto/trli-log-admin.protoh
-	cctlcc -Wall $(OPTIONS) trli-writed.tlcc fdpass.o -o trli-writed $(LIBS) -ltlmpsql -L/usr/lib64/mysql -lmysqlclient
+bo-writed: bo-writed.tlcc proto/bo-writed_control.protoh proto/bo-writed_client.protoh \
+	proto/bo-sessiond_admin.protoh proto/bo-log.protoh proto/bo-log-admin.protoh
+	cctlcc -Wall $(OPTIONS) bo-writed.tlcc -o bo-writed $(LIBS) -ltlmpsql -L/usr/lib64/mysql -lmysqlclient
 
-bo-writed-control: trli-writed-control.tlcc fdpass.o
-	cctlcc -Wall $(OPTIONS) trli-writed-control.tlcc fdpass.o -o trli-writed-control $(LIBS)
+bo-writed-control: bo-writed-control.tlcc
+	cctlcc -Wall $(OPTIONS) bo-writed-control.tlcc -o bo-writed-control $(LIBS)
 
-bo-sessiond: trli-sessiond.tlcc fdpass.o proto/trli-sessiond_control.protoh \
-       	proto/trli-sessiond_client.protoh proto/trli-sessiond_admin.protoh proto/session_log.protoh
-	cctlcc -Wall $(OPTIONS) trli-sessiond.tlcc fdpass.o -o trli-sessiond $(LIBS) -ltlmpsql -L/usr/lib64/mysql -lmysqlclient
+bo-sessiond: bo-sessiond.tlcc proto/bo-sessiond_control.protoh \
+       	proto/bo-sessiond_client.protoh proto/bo-sessiond_admin.protoh proto/session_log.protoh
+	cctlcc -Wall $(OPTIONS) bo-sessiond.tlcc -o bo-sessiond $(LIBS) -ltlmpsql -L/usr/lib64/mysql -lmysqlclient
 
-bo-sessiond-control: trli-sessiond-control.tlcc fdpass.o proto/trli-sessiond_control.protoh
-	cctlcc -Wall $(OPTIONS) trli-sessiond-control.tlcc fdpass.o -o trli-sessiond-control $(LIBS)
+bo-sessiond-control: bo-sessiond-control.tlcc proto/bo-sessiond_control.protoh
+	cctlcc -Wall $(OPTIONS) bo-sessiond-control.tlcc -o bo-sessiond-control $(LIBS)
 
-bo-log: trli-log.tlcc fdpass.o proto/trli-log.protoh proto/trli-log-control.protoh proto/trli-log-admin.protoh
-	cctlcc -Wall $(OPTIONS) trli-log.tlcc fdpass.o -o trli-log $(LIBS) -ltlmpsql -L/usr/lib64/mysql -lmysqlclient
+bo-log: trli-log.tlcc proto/trli-log.protoh proto/trli-log-control.protoh proto/trli-log-admin.protoh
+	cctlcc -Wall $(OPTIONS) trli-log.tlcc -o trli-log $(LIBS) -ltlmpsql -L/usr/lib64/mysql -lmysqlclient
 
-bo-log-control: trli-log-control.tlcc fdpass.o proto/trli-log-control.protoh
-	cctlcc -Wall $(OPTIONS) trli-log-control.tlcc fdpass.o -o trli-log-control $(LIBS) 
+bo-log-control: trli-log-control.tlcc proto/trli-log-control.protoh
+	cctlcc -Wall $(OPTIONS) trli-log-control.tlcc -o trli-log-control $(LIBS) 
 
-bo-manager: trli-manager.tlcc
-	cctlcc -Wall $(OPTIONS) trli-manager.tlcc -o trli-manager $(LIBS)
+bo-manager: bo-manager.tlcc
+	cctlcc -Wall $(OPTIONS) bo-manager.tlcc /usr/lib64/trlitool/manager.o -o bo-manager $(LIBS)
 
-bo-webtest: trli-webtest.tlcc fdpass.o
-	cctlcc -Wall $(OPTIONS) trli-webtest.tlcc fdpass.o -o trli-webtest $(LIBS)
-
-bo-mon: trli-mon.tlcc fdpass.o proto/trlid_client.protoh proto/trli_mon_control.protoh \
+bo-mon: bo-mon.tlcc proto/bod_client.protoh proto/bo_mon_control.protoh \
 		proto/trli_syslog_control.protoh proto/trli_stop_control.protoh
-	cctlcc -Wall $(OPTIONS) trli-mon.tlcc fdpass.o -o trli-mon $(LIBS)
+	cctlcc -Wall $(OPTIONS) bo-mon.tlcc -o bo-mon $(LIBS)
 
-bo-mon-control: trli-mon-control.tlcc fdpass.o proto/trli_mon_control.protoh
-	cctlcc -Wall $(OPTIONS) trli-mon-control.tlcc fdpass.o -o trli-mon-control $(LIBS)
+bo-mon-control: bo-mon-control.tlcc proto/bo_mon_control.protoh
+	cctlcc -Wall $(OPTIONS) bo-mon-control.tlcc -o bo-mon-control $(LIBS)
 
 proto/bo-log-control.protoh: proto/bo-log-control.proto
 	build-protocol --arg "int no" --arg "HANDLE_INFO *c" --name bo_log_control \
