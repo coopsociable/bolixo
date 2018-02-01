@@ -15,7 +15,7 @@
 #include <set>
 #include <tlmpnet.h>
 #include <tlmpsql.h>
-#include "fdpass.h"
+#include <fdpass.h>
 
 static DEBUG_KEY D_PROTO ("proto","Protocol information");
 enum CONNECT_TYPE { TYPE_NONE, TYPE_CONTROL, TYPE_CLIENT, TYPE_ADMIN };
@@ -31,9 +31,9 @@ struct HANDLE_INFO: public ARRAY_OBJ{
 	}
 };
 
-#include "proto/trli-sessiond_control.protoh"
-#include "proto/trli-sessiond_client.protoh"
-#include "proto/trli-sessiond_admin.protoh"
+#include "proto/bo-sessiond_control.protoh"
+#include "proto/bo-sessiond_client.protoh"
+#include "proto/bo-sessiond_admin.protoh"
 #define session_log_session_NOTNEED
 #include "proto/session_log.protoch"
 #include "proto/session_log.protoh"
@@ -86,23 +86,23 @@ int main (int argc, char *argv[])
 {
 	glocal int ret = -1;
 	glocal int noproc = 1;
-	glocal const char *client_secretfile = "/etc/trli/secrets.client";
-	glocal const char *admin_secretfile = "/etc/trli/secrets.admin";
+	glocal const char *client_secretfile = "/etc/bolixo/secrets.client";
+	glocal const char *admin_secretfile = "/etc/bolixo/secrets.admin";
 	glocal const char *bind = "0.0.0.0";
 	glocal const char *port = "9200";
-	glocal const char *control = "/var/run/trli-sessiond.sock";
-	glocal const char *user = "trli";
+	glocal const char *control = "/var/run/bo-sessiond.sock";
+	glocal const char *user = "bolixo";
 	glocal bool daemon = false;
-	glocal const char *pidfile = "/var/run/trli-sessiond.pid";
+	glocal const char *pidfile = "/var/run/bo-sessiond.pid";
 	glocal vector<string> variables;
 
 	glocal.ret = <call tlmpprogram>(argc,argv,"tlmpsql");
 	<f init>
-		setproginfo ("trli-sessiond",VERSION,"Manage web sessions");
+		setproginfo ("bo-sessiond",VERSION,"Manage web sessions");
 		setgrouparg ("Networking");
 		setarg ('b',"bindaddr","Bind to this address (TCP)",glocal.bind,false);
 		setarg ('p',"tcpport","Listen for command on this TCP port",glocal.port,false);
-		setarg ('c',"control","Unix socket for trlid-control",glocal.control,false);
+		setarg ('c',"control","Unix socket for bo-sessiond",glocal.control,false);
 		setarg (' ',"variable","Supported web variable",glocal.variables,false);
 		setgrouparg ("Misc.");
 		setarg (' ',"admin-secrets","File holding admin secrets for communication",glocal.admin_secretfile,false);
@@ -210,7 +210,7 @@ int main (int argc, char *argv[])
 			HANDLE_INFO *c = (HANDLE_INFO*)info.data;
 			ERROR_PREFIX prefix ("c->type %d host %s secret %s:",c->type,c->host.c_str(),c->req.secret.c_str());
 			if (c->type == TYPE_CONTROL){
-				<call trli_sessiond_control>(this,c->req,line, endserver, endclient, no,c,c->host.c_str());
+				<call bo_sessiond_control>(this,c->req,line, endserver, endclient, no,c,c->host.c_str());
 				<f status>
 					vector<string> tb;
 					tb.push_back(string_f ("Version %s",VERSION));
@@ -334,7 +334,7 @@ int main (int argc, char *argv[])
 
 			}else if (c->type == TYPE_CLIENT){
 				glocal.nbrequest_client++;
-				<call trli_sessiond_client>(this,c->req,line, endserver, endclient, no,c,c->host.c_str());
+				<call bo_sessiond_client>(this,c->req,line, endserver, endclient, no,c,c->host.c_str());
 				<f getsessioninfo>
 					auto it = glocal.sessions.find(sessionid);
 					if (it != glocal.sessions.end()){
@@ -400,7 +400,7 @@ int main (int argc, char *argv[])
 				</call>
 			}else if (c->type == TYPE_ADMIN){
 				glocal.nbrequest_admin++;
-				<call trli_sessiond_admin>(this,c->req,line, endserver, endclient, no,c,c->host.c_str());
+				<call bo_sessiond_admin>(this,c->req,line, endserver, endclient, no,c,c->host.c_str());
 				<f getsessioninfo>
 					auto it = glocal.sessions.find(sessionid);
 					if (it != glocal.sessions.end()){
