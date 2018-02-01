@@ -1,0 +1,1766 @@
+/*
+	This program lauch all the components of the trli system over the network.
+	It also program the blackhole system tying all the components together.
+*/
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <pwd.h>
+#include <string.h>
+#include <misc.h>
+#include <tlmplib.h>
+#include <string>
+#include <vector>
+#include <map>
+#include <set>
+#include <manager.h>
+
+using namespace std;
+
+static int trli_chmod (const PARAM_STRING name, int mode)
+{
+	int ret = chmod (name.ptr,mode);
+	if (ret == -1) tlmp_error ("Can't chmod %s (%s)\n",name.ptr,strerror(errno));
+	return ret;
+}
+
+struct SERVER{
+	string sshcmd;
+	string cpcmd;
+	string public_ip;
+	SERVER (const string &_sshcmd, const string &_cpcmd, const string &_ip){
+		sshcmd = _sshcmd;
+		cpcmd = _cpcmd;
+		public_ip = _ip;
+	}
+	SERVER(){}
+};
+
+struct BLACKHOLE {
+	string server;
+	string config;
+	unsigned port;
+	BLACKHOLE (const string &_server, const string &_config, unsigned _port){
+		server = _server;
+		config = _config;
+		port = _port;
+	}
+};
+
+struct TRLID {
+	string server;
+	unsigned port;
+	unsigned workers;
+	string secret;
+	TRLID (const string &_server, unsigned _port, unsigned _workers, const string &_secret){
+		server = _server;
+		port = _port;
+		workers = _workers;
+		secret = _secret;
+	}
+};
+struct WRITED {
+	string server;
+	unsigned port;
+	unsigned workers;
+	string secret;
+	WRITED (const string &_server, unsigned _port, unsigned _workers, const string &_secret){
+		server = _server;
+		port = _port;
+		workers = _workers;
+		secret = _secret;
+	}
+};
+struct SESSIOND {
+	string server;
+	unsigned port;
+	SESSIOND (const string &_server, unsigned _port){
+		server = _server;
+		port = _port;
+	}
+};
+struct SQLD {
+	string server;
+	SQLD (const string &_server){
+		server = _server;
+	}
+};
+struct PROTO {
+	string server;
+	unsigned port;
+	unsigned port_l;
+	unsigned workers;
+	PROTO (const string &_server, unsigned _workers){
+		server = _server;
+		port = 9080;
+		port_l = 9180;
+		workers = _workers;
+	}
+};
+struct WEB {
+	string server;
+	WEB (const string &_server){
+		server = _server;
+	}
+};
+struct MON {
+	string server;
+	string secret;
+	string alarmcmd;
+	MON (const string &_server, const string &_secret, const string &_alarmcmd){
+		server = _server;
+		secret = _secret;
+		alarmcmd = _alarmcmd;
+	}
+};
+static bool closeweb = false;
+static const char *config_dir = "/etc/bolixo";
+static const char *log_dir = "/var/log/bolixo";
+static const char *sock_dir = "/var/run/blackhole";
+static const char *sock_tests_dir = "/var/run/tests";
+static const char *lxcsock_dir = "/var/run/blackhole";
+//static const char *bin_path = "/usr/bin";
+static const char *sbin_path = "/usr/sbin";
+static const char *horizon_ip = "192.168.4.1";
+static const char *horizon_ip2 = "192.168.4.2";
+static const char *dnsproxy_ip = "192.168.4.3";
+static const char *horizon_masterip = "192.168.4.1";
+static const char *sql_trlid_pwd = "trlid.1";
+static const char *sql_trlid_user = "trlid";
+static const char *sql_trli_writed_pwd = "trli_writed.1";
+static const char *sql_trli_writed_user = "trli_writed";
+static const char *trli_user = "bolixo";
+static int trli_userid = -1;
+static const char *blackhole_path = "/usr/sbin";
+static const char *blackhole_user = "blackhole";
+static const char *pid_dir = "/var/run";
+static const char *devlog = "/dev/bolixo.log";
+
+static const char *blackhole_options_conf = "/etc/blackhole-options.conf";
+static const char *blackhole_rules = "/etc/blackhole-rules.sh";
+static const char *horizon_options_conf = "/etc/horizon-options.conf";
+static const char *horizon_rules = "/etc/horizon-rules.sh";
+static const char *conproxy_options_conf = "/etc/conproxy-options.conf";
+
+#define IP_PREFIX "192.168.122."
+static const char *ip_lxc_gateway = IP_PREFIX "1";
+static const char *ip_trlid = IP_PREFIX "2";
+static const char *ip_writed = IP_PREFIX "3";
+static const char *ip_sessiond = IP_PREFIX "4";
+static const char *ip_web = IP_PREFIX "5";
+static const char *ip_web_fail = IP_PREFIX "15";
+static const char *ip_webadm = IP_PREFIX "6";
+static const char *ip_proto = IP_PREFIX "7";
+static const char *ip_webssl = IP_PREFIX "8";
+static const char *ip_webssl_fail = IP_PREFIX "18";
+static const char *ip_sqlduser = IP_PREFIX "9";
+static const char *ip_sqlddata = IP_PREFIX "10";
+static const char *ip_exim = IP_PREFIX "11";
+
+#define IP_PREFIX_P "192.168.5."
+static const char *ip_sqld_p = IP_PREFIX_P "1";
+static const char *ip_trlid_p = IP_PREFIX_P "2";
+static const char *ip_writed_p = IP_PREFIX_P "3";
+static const char *ip_sessiond_p = IP_PREFIX_P "4";
+static const char *ip_web_p = IP_PREFIX_P "5";
+static const char *ip_webadm_p = IP_PREFIX_P "6";
+static const char *ip_proto_p = IP_PREFIX_P "7";
+static const char *ip_webssl_p = IP_PREFIX_P "8";
+
+
+static const char *vs_trlid = "trlid";
+static const char *vs_writed = "writed";
+static const char *vs_sessiond = "sessiond";
+
+struct CONFIG {
+	map<string,SERVER> servers;
+	vector<BLACKHOLE> blackholes;
+	vector<TRLID> trlids;
+	vector<WRITED> writeds;
+	vector<SESSIOND> sessionds;
+	vector<SQLD> sqlddatas;
+	vector<SQLD> sqldusers;
+	vector<PROTO> protos;
+	vector<WEB> webs;
+	vector<WEB> webadms;
+	vector<WEB> webssls;
+	vector<WEB> logs;
+	vector<WEB> computes;
+	vector<WEB> exims;
+	vector<WEB> dnsproxys;
+	vector<MON> monitors;
+};
+static bool preprodmode = false;
+
+static void generateconfig (
+	FILE *fout,
+	const string &theserver,	// We are generating for this server
+					// This will allow some blackhole rule affinity
+	const CONFIG &config,
+	bool devmode)
+{
+	string bk_control_str = string(blackhole_path) + "/blackhole-control -p " + sock_dir + "/blackhole.sock";
+	const char *bk_control = bk_control_str.c_str();
+	const char *rootserver = theserver.c_str();	// For now, there is only one server, so it is the one testing itself
+	// Finds all servers
+	set<string> servers;
+	for (auto x:config.trlids) servers.insert(x.server);
+	for (auto x:config.writeds) servers.insert(x.server);
+	for (auto x:config.sessionds) servers.insert(x.server);
+	for (auto x:config.sqlddatas) servers.insert(x.server);
+	for (auto x:config.sqldusers) servers.insert(x.server);
+	for (auto x:config.protos) servers.insert(x.server);
+	for (auto x:config.webs) servers.insert(x.server);
+	for (auto x:config.webadms) servers.insert(x.server);
+	for (auto x:config.logs) servers.insert(x.server);
+	for (auto x:config.webssls) servers.insert(x.server);
+	for (auto x:config.exims) servers.insert(x.server);
+	for (auto x:config.dnsproxys) servers.insert(x.server);
+	fprintf (fout,"# Connect to all horizons\n");
+	for (auto x:servers) fprintf (fout,"%s horizon %s:%s/horizon-master.sock near\n",bk_control,x.c_str(),sock_dir);
+
+	fprintf (fout,"%s reset-rules\n",bk_control);
+	fprintf (fout,"# rule to connect the browser to the web server\n");
+	const char *prefix = "";
+	for (auto t:config.protos){
+		for (unsigned i=0; i<t.workers; i++){
+			fprintf (fout,"%s %sprotocheck http %s protocheck /tmp/proto-%u.sock\n",bk_control,prefix,t.server.c_str(),t.port+i);
+			fprintf (fout,"%s %sprotocheck httpl %s protocheck /tmp/proto-%u.sock\n",bk_control,prefix,t.server.c_str(),t.port_l+i);
+			prefix = "a";
+		}
+	}
+	prefix = "";
+	fprintf (fout,"%s network internet 0.0.0.0 0.0.0.0\n",bk_control);
+	if (closeweb){
+		fprintf (fout,"/root/closeweb\n");
+	}
+	for (auto s:servers){
+		if (closeweb){
+			fprintf (fout,"%s rule %s internet ip2 80 DROP webssl 80\n",bk_control,s.c_str());
+			fprintf (fout,"%s rule %s internet ip2 443 DROP webssl 443\n",bk_control,s.c_str());
+		}
+		for (auto t:config.webssls){
+			fprintf (fout,"%s %srule %s sqlsource ip0 9080 http:%s web 80\n",bk_control,prefix,s.c_str(),t.server.c_str());
+			fprintf (fout,"%s arule %s sqlsource ip0 9080 http:%s web-fail 80\n",bk_control,s.c_str(),t.server.c_str());
+			if (devmode){
+				fprintf (fout,"%s %srule %s sqlsource ip0 9081 httpl:%s web 80\n",bk_control,prefix,s.c_str(),t.server.c_str());
+				fprintf (fout,"%s %srule %s sqlsource2 ip1 9080  %s webssl 80\n",bk_control,prefix,s.c_str(),t.server.c_str());
+				prefix = "a";
+				fprintf (fout,"%s %srule %s sqlsource2 ip1 9080  %s webssl-fail 80\n",bk_control,prefix,s.c_str(),t.server.c_str());
+			}else{
+				const char *list = closeweb ? "a_testers" : "internet";
+				const char *source = preprodmode ? "" : "/SOURCE";
+				fprintf (fout,"%s %srule %s %s ip2 80  %s webssl%s 80\n",bk_control,prefix,s.c_str(),list,t.server.c_str(),source);
+				fprintf (fout,"%s %srule %s %s ip2 443 %s webssl%s 443\n",bk_control,prefix,s.c_str(),list,t.server.c_str(),source);
+				prefix = "a";
+				fprintf (fout,"%s %srule %s %s ip2 80  %s webssl-fail%s 80\n",bk_control,prefix,s.c_str(),list,t.server.c_str(),source);
+				fprintf (fout,"%s %srule %s %s ip2 443 %s webssl-fail%s 443\n",bk_control,prefix,s.c_str(),list,t.server.c_str(),source);
+				fprintf (fout,"%s setweight %s webssl-fail%s 80 1\n",bk_control,t.server.c_str(),source);
+				fprintf (fout,"%s setweight %s webssl-fail%s 443 1\n",bk_control,t.server.c_str(),source);
+			}
+			prefix = "a";
+		}
+	}
+	fprintf (fout,"# rule to connect the webssl to web servers\n");
+	prefix = "";
+	for (auto t:config.webssls){
+		for (auto x:config.webs){
+			fprintf (fout,"%s %srule %s webssl ip0 9080 http:%s web 80\n",bk_control,prefix,t.server.c_str(),x.server.c_str());
+			fprintf (fout,"%s %srule %s webssl-fail ip0 9080 http:%s web 80\n",bk_control,prefix,t.server.c_str(),x.server.c_str());
+			prefix = "a";
+			fprintf (fout,"%s %srule %s webssl ip0 9080 http:%s web-fail 80\n",bk_control,prefix,t.server.c_str(),x.server.c_str());
+			fprintf (fout,"%s %srule %s webssl-fail ip0 9080 http:%s web-fail 80\n",bk_control,prefix,t.server.c_str(),x.server.c_str());
+			fprintf (fout,"%s setweight %s web-fail 80 1\n",bk_control,x.server.c_str());
+		}
+	}
+	prefix = "";
+	for (auto t:config.webssls){
+		for (auto x:config.webadms){
+			fprintf (fout,"%s %srule %s webssl ip1 9080 http:%s webadm 80\n",bk_control,prefix,t.server.c_str(),x.server.c_str());
+			fprintf (fout,"%s %srule %s webssl-fail ip1 9080 http:%s webadm 80\n",bk_control,prefix,t.server.c_str(),x.server.c_str());
+		}
+		prefix = "a";
+	}
+	prefix = "";
+	fprintf (fout,"# rules to connect services to syslog\n");
+	for (auto l:config.logs){
+		for (auto t:config.trlids){
+			fprintf (fout,"%s %srule %s trlid unix /dev/log %s root %s\n",bk_control,prefix,t.server.c_str(),l.server.c_str(),devlog);
+		}
+		for (auto t:config.writeds){
+			fprintf (fout,"%s %srule %s writed unix /dev/log %s root %s\n",bk_control,prefix,t.server.c_str(),l.server.c_str(),devlog);
+		}
+		for (auto t:config.sessionds){
+			fprintf (fout,"%s %srule %s sessiond unix /dev/log %s root %s\n",bk_control,prefix,t.server.c_str(),l.server.c_str(),devlog);
+		}
+		for (auto t:config.protos){
+			fprintf (fout,"%s %srule %s protocheck unix /dev/log %s root %s\n",bk_control,prefix,t.server.c_str(),l.server.c_str(),devlog);
+		}
+		for (auto t:config.webs){
+			fprintf (fout,"%s %srule %s web unix /dev/log %s root %s\n",bk_control,prefix,t.server.c_str(),l.server.c_str(),devlog);
+			fprintf (fout,"%s %srule %s web-fail unix /dev/log %s root %s\n",bk_control,prefix,t.server.c_str(),l.server.c_str(),devlog);
+		}
+		for (auto t:config.webadms){
+			fprintf (fout,"%s %srule %s webadm unix /dev/log %s root %s\n",bk_control,prefix,t.server.c_str(),l.server.c_str(),devlog);
+		}
+		for (auto t:config.webssls){
+			fprintf (fout,"%s %srule %s webssl unix /dev/log %s root %s\n",bk_control,prefix,t.server.c_str(),l.server.c_str(),devlog);
+			fprintf (fout,"%s %srule %s webssl-fail unix /dev/log %s root %s\n",bk_control,prefix,t.server.c_str(),l.server.c_str(),devlog);
+		}
+		for (auto t:config.sqlddatas){
+			fprintf (fout,"%s %srule %s sqlddata unix /dev/log %s root %s\n",bk_control,prefix,t.server.c_str(),l.server.c_str(),devlog);
+		}
+		for (auto t:config.sqldusers){
+			fprintf (fout,"%s %srule %s sqlduser unix /dev/log %s root %s\n",bk_control,prefix,t.server.c_str(),l.server.c_str(),devlog);
+		}
+		for (auto t:config.exims){
+			fprintf (fout,"%s %srule %s exim unix /dev/log %s root %s\n",bk_control,prefix,t.server.c_str(),l.server.c_str(),devlog);
+		}
+		prefix = "a";
+	}
+	fprintf (fout,"# rules to connect to web trli-stop for monitoring\n");
+	for (auto t:config.webs){
+		const char *server = t.server.c_str();
+		fprintf (fout,"%s rule %s root unix %s/D-web-stop-%s.sock %s web /tmp/trli-stop.sock\n"
+			,bk_control,rootserver,sock_tests_dir,server,server);
+		fprintf (fout,"%s rule %s root unix %s/D-web-fail-stop-%s.sock %s web-fail /tmp/trli-stop.sock\n"
+			,bk_control,rootserver,sock_tests_dir,server,server);
+	}
+	fprintf (fout,"# rules to connect to web for monitoring\n");
+	for (auto t:config.webs){
+		const char *server = t.server.c_str();
+		fprintf (fout,"%s rule %s root unix %s/F-web-80-%s.sock %s web 80\n"
+			,bk_control,rootserver,sock_tests_dir,server,server);
+		fprintf (fout,"%s rule %s root unix %s/F-web-fail-80-%s.sock %s web-fail 80\n"
+			,bk_control,rootserver,sock_tests_dir,server,server);
+	}
+	fprintf (fout,"# rules to connect to webadm trli-stop for monitoring\n");
+	for (auto t:config.webs){
+		const char *server = t.server.c_str();
+		fprintf (fout,"%s rule %s root unix %s/D-webadm-stop-%s.sock %s webadm /tmp/trli-stop.sock\n"
+			,bk_control,rootserver,sock_tests_dir,server,server);
+	}
+	fprintf (fout,"# rules to connect to trli-syslog for monitoring\n");
+	for (auto t:config.logs){
+		const char *server = t.server.c_str();
+		fprintf (fout,"%s rule %s root unix %s/E-syslog-%s.sock %s root %s/trli-syslog.sock\n"
+			,bk_control,rootserver,sock_tests_dir,server,server,sock_dir);
+	}
+	fprintf (fout,"# rules to connect to trli-log for monitoring\n");
+	for (auto t:config.computes){
+		const char *server = t.server.c_str();
+		fprintf (fout,"%s rule %s root unix %s/E-log-%s.sock %s root %s/trli-log.sock\n"
+			,bk_control,rootserver,sock_tests_dir,server,server,sock_dir);
+	}
+	fprintf (fout,"# rules to connect to sessiond for monitoring\n");
+	for (auto t:config.sessionds){
+		const char *server = t.server.c_str();
+		fprintf (fout,"%s rule %s root unix %s/A-sessiond-%s-admin-9200.sock %s sessiond /tmp/sessiond-admin-9200.sock\n"
+			,bk_control,rootserver,sock_tests_dir,server,server);
+		fprintf (fout,"%s rule %s root unix %s/A-sessiond-%s-client-9200.sock %s sessiond /tmp/sessiond-client-9200.sock\n"
+			,bk_control,rootserver,sock_tests_dir,server,server);
+	}
+	fprintf (fout,"# rules to connect to trlid for monitoring\n");
+	for (auto t:config.trlids){
+		const char *server = t.server.c_str();
+		for (unsigned i=0; i<t.workers; i++){
+			unsigned port = 9000+i;
+			fprintf (fout,"%s rule %s root unix %s/B-trlid-%s-client-%u.sock %s trlid /tmp/trlid-client-%u.sock\n"
+				,bk_control,rootserver,sock_tests_dir,server,port,server,port);
+			fprintf (fout,"%s rule %s root unix %s/B-trlid-%s-admin-%u.sock %s trlid /tmp/trlid-admin-%u.sock\n"
+				,bk_control,rootserver,sock_tests_dir,server,port,server,port);
+		}
+	}
+	fprintf (fout,"# rules to connect to exim for monitoring\n");
+	for (auto t:config.exims){
+		const char *server = t.server.c_str();
+		fprintf (fout,"%s rule %s root unix %s/C-exim-%s.sock %s exim 25\n"
+			,bk_control,rootserver,sock_tests_dir,server,server);
+	}
+	fprintf (fout,"# rules to connect to internet to exim\n");
+	for (auto s:servers){
+		prefix = "";
+		for (auto t:config.exims){
+			const char *server = t.server.c_str();
+			fprintf (fout,"%s %srule %s internet ip2 25 %s exim/SOURCE 25\n"
+				,bk_control,prefix,s.c_str(),server);
+			prefix = "a";
+		}
+	}
+		
+	fprintf (fout,"# rules to connect the host to exim\n");
+	for (auto s:servers){
+		prefix = "";
+		for (auto e:config.exims){
+			fprintf (fout,"%s %srule %s root unix /dev/smtp.sock %s exim 25\n"
+				,bk_control,prefix,s.c_str(),e.server.c_str());
+			prefix = "a";
+		}
+	}
+	fprintf (fout,"# rules to connect web to trlid\n");
+	prefix = "";
+	for (auto w:config.webs){
+		for (auto t:config.trlids){
+			for (unsigned i=0; i<t.workers; i++){
+				fprintf (fout,"%s %srule %s web unix /dev/trlid.sock %s %s /tmp/trlid-client-%d.sock\n"
+					,bk_control,prefix,w.server.c_str(),t.server.c_str(),vs_trlid,9000+i);
+				fprintf (fout,"%s %srule %s web-fail unix /dev/trlid.sock %s %s /tmp/trlid-client-%d.sock\n"
+					,bk_control,prefix,w.server.c_str(),t.server.c_str(),vs_trlid,9000+i);
+				if (1 || devmode){
+					fprintf (fout,"%s %srule %s web_p ip0 9000 %s %s /tmp/trlid-client-%d.sock\n"
+						,bk_control,prefix,w.server.c_str(),t.server.c_str(),vs_trlid,9000+i);
+					fprintf (fout,"%s %srule %s sqlsource ip0 9000 %s %s /tmp/trlid-client-%d.sock\n"
+						,bk_control,prefix,w.server.c_str(),t.server.c_str(),vs_trlid,9000+i);
+				}
+				prefix = "a";
+			}
+		}
+	}
+	fprintf (fout,"# rules to connect webadm to trlid\n");
+	prefix = "";
+	for (auto w:config.webadms){
+		for (auto t:config.trlids){
+			for (unsigned i=0; i<t.workers; i++){
+				fprintf (fout,"%s %srule %s webadm unix /dev/trlid.sock %s %s /tmp/trlid-admin-%d.sock\n"
+					,bk_control,prefix,w.server.c_str(),t.server.c_str(),vs_trlid,9000+i);
+				if (1 || devmode){
+					fprintf (fout,"%s %srule %s webadm_p ip0 9000 %s %s /tmp/trlid-admin-%d.sock\n"
+						,bk_control,prefix,w.server.c_str(),t.server.c_str(),vs_trlid,9000+i);
+				}
+				prefix = "a";
+			}
+		}
+	}
+	fprintf (fout,"# rules to connect trlid to trli-writed\n");
+	prefix = "";
+	for (auto t:config.trlids){
+		for (auto w:config.writeds){
+			for (unsigned i=0; i<w.workers; i++){
+				fprintf (fout,"%s %srule %s trlid unix /dev/writed.sock %s %s /tmp/writed-%u.sock\n"
+					,bk_control,prefix,t.server.c_str(),w.server.c_str(),vs_writed,w.port+i);
+				if (devmode){
+					fprintf (fout,"%s %srule %s trlid_p ip0 9100 %s %s /tmp/writed-%u.sock\n"
+						,bk_control,prefix,t.server.c_str(),w.server.c_str(),vs_writed,w.port+i);
+				}
+				prefix = "a";
+			}
+		}
+	}
+	fprintf (fout,"# rules to connect trlid to trli-sessiond\n");
+	prefix = "";
+	for (auto t:config.trlids){
+		for (auto s:config.sessionds){
+			fprintf (fout,"%s %srule %s trlid unix /dev/sessiond.sock %s %s /tmp/sessiond-client-9200.sock\n"
+				,bk_control,prefix,t.server.c_str(),s.server.c_str(),vs_sessiond);
+			if (devmode){
+				fprintf (fout,"%s %srule %s trlid_p ip0 9200 %s %s /tmp/sessiond-client-9200.sock\n"
+					,bk_control,prefix,t.server.c_str(),s.server.c_str(),vs_sessiond);
+			}
+			prefix = "a";
+		}
+	}
+	fprintf (fout,"# rules to connect web to trli-sessiond\n");
+	prefix = "";
+	for (auto w:config.webs){
+		for (auto s:config.sessionds){
+			fprintf (fout,"%s %srule %s web unix /dev/sessiond.sock %s %s /tmp/sessiond-client-9200.sock\n"
+				,bk_control,prefix,w.server.c_str(),s.server.c_str(),vs_sessiond);
+			fprintf (fout,"%s %srule %s web-fail unix /dev/sessiond.sock %s %s /tmp/sessiond-client-9200.sock\n"
+				,bk_control,prefix,w.server.c_str(),s.server.c_str(),vs_sessiond);
+			if (devmode){
+				fprintf (fout,"%s %srule %s web_p ip0 9200 %s %s /tmp/sessiond-client-9200.sock\n"
+					,bk_control,prefix,w.server.c_str(),s.server.c_str(),vs_sessiond);
+				fprintf (fout,"%s %srule %s sqlsource ip0 9200 %s %s /tmp/sessiond-client-9200.sock\n"
+					,bk_control,prefix,w.server.c_str(),s.server.c_str(),vs_sessiond);
+			}
+			prefix = "a";
+		}
+	}
+	fprintf (fout,"# rules to connect webadm to trli-sessiond\n");
+	prefix = "";
+	for (auto w:config.webadms){
+		for (auto s:config.sessionds){
+			fprintf (fout,"%s %srule %s webadm unix /dev/sessiond.sock %s %s /tmp/sessiond-admin-9200.sock\n"
+				,bk_control,prefix,w.server.c_str(),s.server.c_str(),vs_sessiond);
+			if (devmode){
+				fprintf (fout,"%s %srule %s webadm_p ip0 9200 %s %s /tmp/sessiond-admin-9200.sock\n"
+					,bk_control,prefix,w.server.c_str(),s.server.c_str(),vs_sessiond);
+				//fprintf (fout,"%s %srule %s sqlsource ip0 9200 %s %s/%s 9200\n"
+				//	,bk_control,prefix,w.server.c_str(),s.server.c_str(),vs_sessiond,ip_webadm_p);
+			}
+			prefix = "a";
+		}
+	}
+	fprintf (fout,"# rules to connect writed to trli-sessiond\n");
+	prefix = "";
+	for (auto w:config.writeds){
+		for (auto s:config.sessionds){
+			fprintf (fout,"%s %srule %s writed unix /dev/sessiond.sock %s %s /tmp/sessiond-admin-9200.sock\n"
+				,bk_control,prefix,w.server.c_str(),s.server.c_str(),vs_sessiond);
+			if (1 || devmode){
+				fprintf (fout,"%s %srule %s writed_p ip0 9200 %s %s /tmp/sessiond-admin-9200.sock\n"
+					,bk_control,prefix,w.server.c_str(),s.server.c_str(),vs_sessiond);
+			}
+			prefix = "a";
+		}
+	}
+	fprintf (fout,"# rules to connect writed to trli-log compute\n");
+	prefix = "";
+	for (auto w:config.writeds){
+		for (auto s:config.computes){
+			fprintf (fout,"%s %srule %s writed unix /dev/compute.sock %s root %s/compute.sock\n"
+				,bk_control,prefix,w.server.c_str(),s.server.c_str(),sock_dir);
+			prefix = "a";
+		}
+	}
+	fprintf (fout,"# rules to connect writed to news database\n");
+	prefix = "";
+	for (auto w:config.writeds){
+		for (auto s:config.sqlddatas){
+			fprintf (fout,"%s %srule %s writed unix /var/lib/mysql/mysql.sock %s sqlddata /var/lib/mysql/mysql.sock\n"
+				,bk_control,prefix,w.server.c_str(),s.server.c_str());
+			if (1 || devmode){
+				// Patch for development, can't bind the client address of a mysql socket
+				fprintf (fout,"%s %srule %s sqlsource ip0 3307 %s sqlddata /var/lib/mysql/mysql.sock\n"
+					,bk_control,prefix,w.server.c_str(),w.server.c_str());
+			}
+			prefix = "a";
+		}
+	}
+	fprintf (fout,"# rules to connect writed to users database\n");
+	prefix = "";
+	for (auto w:config.writeds){
+		for (auto s:config.sqldusers){
+			fprintf (fout,"%s %srule %s writed unix /var/lib/mysql/mysql-users.sock  %s sqlduser /var/lib/mysql/mysql.sock\n"
+				,bk_control,prefix,w.server.c_str(),s.server.c_str());
+			if (1 || devmode){
+				// Patch for development, can't bind the client address of a mysql socket
+				fprintf (fout,"%s %srule %s sqlsource2 ip1 3307 %s sqlduser /var/lib/mysql/mysql.sock\n"
+					,bk_control,prefix,w.server.c_str(),w.server.c_str());
+			}
+			prefix = "a";
+		}
+	}
+	fprintf (fout,"# rules to connect writed to exim\n");
+	prefix = "";
+	for (auto w:config.writeds){
+		for (auto s:config.exims){
+			fprintf (fout,"%s %srule %s writed unix /dev/smtp.sock %s exim 25\n"
+				,bk_control,prefix,w.server.c_str(),s.server.c_str());
+			prefix = "a";
+		}
+	}
+	fprintf (fout,"# rules to connect trlid to news database\n");
+	prefix = "";
+	for (auto t:config.trlids){
+		for (auto s:config.sqlddatas){
+			fprintf (fout,"%s %srule %s trlid unix /var/lib/mysql/mysql.sock %s sqlddata /var/lib/mysql/mysql.sock\n"
+				,bk_control,prefix,t.server.c_str(),s.server.c_str());
+			if (devmode){
+				// Patch for development, can't bind the client address of a mysql socket
+				//fprintf (fout,"%s %srule %s sqlsource ip0 3307 %s sqlddata 3306\n"
+				//	,bk_control,prefix,t.server.c_str(),s.server.c_str());
+			}
+			prefix = "a";
+		}
+	}
+	fprintf (fout,"# rules to connect exim to dns\n");
+	prefix = "";
+	for (auto t:config.exims){
+		for (auto s:config.dnsproxys){
+			fprintf (fout,"%s %srule %s dnsproxy ip0 8053 %s dnsproxy 8053\n"
+				,bk_control,prefix,t.server.c_str(),s.server.c_str());
+			prefix = "a";
+		}
+	}
+	fprintf (fout,"%s resume\n",bk_control);
+}
+
+static unsigned trli_atou(const string &s)
+{
+	return atoi(s.c_str());
+}
+
+/*
+	Print all configururation for services running on a given server
+*/
+<mod>
+static void print_configs (
+	const string &server,
+	const string &public_ip,
+	const CONFIG &config,
+	bool devmode)
+{
+	glocal const CONFIG *config = &config;
+	glocal bool devmode = devmode;
+	glocal const char *public_ip = public_ip.c_str();
+	glocal string server = server;
+	glocal string stoptrlid;
+	glocal string stopwrited;
+	glocal string stopsessiond;
+	glocal string stopweb;
+	glocal string stopwebadm;
+	glocal string stopwebssl;
+	glocal string stopsqlddata;
+	glocal string stopsqlduser;
+	glocal string stopproto;
+	glocal string stopexim;
+	glocal string stoptrlimon;
+	glocal string stoptrlisyslog;
+	glocal string stopcompute;
+	<call savefile>("/tmp/bkstart.sh",false);
+	<f dowrite>
+		glocal FILE *all_fout = fout;
+		fprintf (fout,"#!/bin/sh\n");
+		if (glocal.devmode){
+			fprintf (fout,"ifconfig | fgrep -q 192.168.4.1 || echo 192.168.4.1 non disponible\n");
+		}else{
+			fprintf (fout,"mkdir -p %s %s\n",sock_dir,log_dir);
+		}
+		// SERVICE blackhole
+		for (auto bk:glocal.config->blackholes){
+			if (bk.server == glocal.server){
+				<call savefile>(blackhole_options_conf,false);
+				<f dowrite>
+					fprintf (fout,"#!/bin/sh\n"
+						"BLACKHOLEOPTIONS=\" --control %s/blackhole.sock --horizon_port 8100"
+						" --statfile %s/blackhole-connect.log --pidfile %s/blackhole.pid"
+						" --conproxyport %s/conproxy.sock"
+						" --debugfile /tmp/blackhole.log\"\n"
+						,sock_dir,log_dir,pid_dir
+						,sock_dir);
+					return 0;
+				</f>
+				</call>
+				trli_chmod (blackhole_options_conf,0755);
+				<call savefile>("/tmp/blackhole.sh",false);
+				<f dowrite>
+					fprintf (fout,"#!/bin/sh\n"
+						". %s\n"
+						"%s/blackhole --daemon $BLACKHOLEOPTIONS\n"
+						,blackhole_options_conf,blackhole_path);
+					return 0;
+				</f>
+				</call>
+				trli_chmod ("/tmp/blackhole.sh",0755);
+				fprintf (glocal.all_fout,"/tmp/blackhole.sh\n");
+				<call savefile>(blackhole_rules,false);
+				<f dowrite>
+					generateconfig (fout,glocal.server,*glocal.config,glocal.devmode);
+					return 0;
+				</f>
+				</call>
+				trli_chmod (blackhole_rules,0755);
+				fprintf (glocal.all_fout,"%s\n",blackhole_rules);
+				<call savefile>("/tmp/blackhole-reload.sh",false);
+				<f dowrite>
+					string bk_control_str = string(blackhole_path) + "/blackhole-control -p " + sock_dir + "/blackhole.sock";
+					const char *bk_control = bk_control_str.c_str();
+					fprintf (fout,"#!/bin/sh\n");
+					fprintf (fout,"%s pause\n",bk_control);
+					fprintf (fout,"%s reset-rules\n",bk_control);
+					fprintf (fout,"%s reset-horizons\n",bk_control);
+					fprintf (fout,"%s reset-wormholes\n",bk_control);
+					fprintf (fout,"/tmp/blackhole-rules.sh\n");
+					fprintf (fout,"%s resume\n",bk_control);
+					return 0;
+				</f>
+				</call>
+				trli_chmod ("/tmp/blackhole-reload.sh",0755);
+			}
+		}
+		// SERVICE horizon
+		<call savefile>(horizon_options_conf,false);
+		<f dowrite>
+			fprintf (fout,"#!/bin/sh\n");
+			if (!glocal.devmode){
+				fprintf (fout,"ifconfig lo:horizon 192.168.4.1 netmask 255.255.255.255\n");
+				fprintf (fout,"ifconfig lo:horizon2 192.168.4.2 netmask 255.255.255.255\n");
+				fprintf (fout,"ifconfig lo:dnsproxy 192.168.4.3 netmask 255.255.255.255\n");
+				fprintf (fout,"ifconfig lo:web 192.168.5.5 netmask 255.255.255.255\n");
+				fprintf (fout,"ifconfig lo:webadm 192.168.5.6 netmask 255.255.255.255\n");
+				fprintf (fout,"ifconfig lo:writed 192.168.5.3 netmask 255.255.255.255\n");
+			}
+			fprintf (fout,"mkdir -p %s\n",sock_tests_dir);
+			fprintf (fout,"rm -f %s/*\n",sock_tests_dir);
+			const char *user = blackhole_user;
+			if (!glocal.devmode){
+				user = "root";
+			}
+			fprintf (fout,
+				"HORIZONOPTIONS=\""
+				" --bind %s,9000 --bind %s,9100 --bind %s,9200 --bind %s,3307 --bind %s,3307"
+				" --bind %s,9080 --bind %s,9081 --bind %s,8053"
+				" --bind %s,9080 --bind %s,9081"
+				" --control %s/horizon.sock --master %s,8100 --master %s/horizon-master.sock --user %s --pidfile %s/horizon.pid"
+				" --conproxyport %s/conproxy.sock --open_network"
+				,horizon_ip,horizon_ip,horizon_ip,horizon_ip,horizon_ip2
+				,horizon_ip,horizon_ip,horizon_ip
+				,horizon_ip2,horizon_ip2
+				,sock_dir,horizon_masterip,sock_dir,user,pid_dir
+				,sock_dir);
+			if (!glocal.devmode){
+				fprintf (fout," --bind %s,25",glocal.public_ip);
+				fprintf (fout," --bind %s,80",glocal.public_ip);
+				fprintf (fout," --bind %s,443",glocal.public_ip);
+				fprintf (fout," --bind 127.0.0.1,8080");
+				fprintf (fout," --open_client");
+			}
+			fprintf (fout,"\"\n");
+			return 0;
+		</f>
+		</call>
+		trli_chmod (horizon_options_conf,0755);
+		<call savefile>("/tmp/horizon.sh",false);
+		<f dowrite>
+			fprintf (fout,". %s\n",horizon_options_conf);
+			fprintf (fout,"%s/horizon --daemon $HORIZONOPTIONS\n",blackhole_path);
+			return 0;
+		</f>
+		</call>
+		trli_chmod ("/tmp/horizon.sh",0755);
+		fprintf (glocal.all_fout,"/tmp/horizon.sh\n");
+		fprintf (glocal.all_fout,"%s\n",horizon_rules);
+		<call savefile>(horizon_rules,false);
+		<f dowrite>
+			string hc_str = string (blackhole_path) + "/horizon-control --port " + sock_dir + "/horizon.sock";
+			const char *hc = hc_str.c_str();
+			fprintf (fout,"#!/bin/sh\n");
+			fprintf (fout,"%s vserver dnsproxy %s\n",hc,dnsproxy_ip);
+			fprintf (fout,"%s vserver sqlsource %s\n",hc,horizon_ip);
+			fprintf (fout,"%s vserver sqlsource2 %s\n",hc,horizon_ip2);
+			fprintf (fout,"%s vserver trlid %s\n",hc,ip_trlid);
+			fprintf (fout,"%s vserver trlid_p %s\n",hc,ip_trlid_p);
+			fprintf (fout,"%s vserver writed %s\n",hc,ip_writed);
+			fprintf (fout,"%s vserver writed_p %s\n",hc,ip_writed_p);
+			fprintf (fout,"%s vserver sessiond %s\n",hc,ip_sessiond);
+			fprintf (fout,"%s vserver sessiond_p %s\n",hc,ip_sessiond_p);
+			fprintf (fout,"%s vserver web %s\n",hc,ip_web);
+			fprintf (fout,"%s vserver web_p %s\n",hc,ip_web_p);
+			fprintf (fout,"%s vserver webadm %s\n",hc,ip_webadm);
+			fprintf (fout,"%s vserver webadm_p %s\n",hc,ip_webadm_p);
+			fprintf (fout,"%s vserver webssl %s\n",hc,ip_webssl);
+			fprintf (fout,"%s vserver webssl_p %s\n",hc,ip_webssl_p);
+			fprintf (fout,"%s vserver sqlddata %s\n",hc,ip_sqlddata);
+			fprintf (fout,"%s vserver sqlduser %s\n",hc,ip_sqlduser);
+			fprintf (fout,"%s vserver sqld_p %s\n",hc,ip_sqld_p);
+			fprintf (fout,"%s vserver proto %s\n",hc,ip_proto);
+			fprintf (fout,"%s vserver proto_p %s\n",hc,ip_proto_p);
+			fprintf (fout,"%s allow %s\n",hc,horizon_masterip);
+			fprintf (fout,"%s vserverdir root /\n",hc);
+
+			// Socket for monitoring
+			for (auto t:glocal.config->sessionds){
+				const char *server = t.server.c_str();
+				unsigned port = 9200;
+				fprintf (fout,"%s --bind unix,%s/A-sessiond-%s-client-%u.sock,root\n"
+					,hc,sock_tests_dir,server,port);
+				fprintf (fout,"%s --bind unix,%s/A-sessiond-%s-admin-%u.sock,root\n"
+					,hc,sock_tests_dir,server,port);
+				fprintf (fout,"chown %s %s/A-sessiond-%s-admin-9200.sock\n"
+					,trli_user,sock_tests_dir,server);
+				fprintf (fout,"chown %s %s/A-sessiond-%s-client-9200.sock\n"
+					,trli_user,sock_tests_dir,server);
+			}
+			fprintf (fout,"# For trlid system tests\n");
+			for (auto t:glocal.config->trlids){
+				const char *server = t.server.c_str();
+				for (unsigned i=0; i<t.workers; i++){
+					unsigned port = 9000+i;
+					fprintf (fout,"%s --bind unix,%s/B-trlid-%s-client-%u.sock,root\n"
+						,hc,sock_tests_dir,server,port);
+					fprintf (fout,"%s --bind unix,%s/B-trlid-%s-admin-%u.sock,root\n"
+						,hc,sock_tests_dir,server,port);
+					fprintf (fout,"chown %s %s/B-trlid-%s-client-%u.sock\n"
+						,trli_user,sock_tests_dir,server,port);
+					fprintf (fout,"chown %s %s/B-trlid-%s-admin-%u.sock\n"
+						,trli_user,sock_tests_dir,server,port);
+				}
+			}
+			fprintf (fout,"# For exim system tests\n");
+			for (auto t:glocal.config->exims){
+				const char *server = t.server.c_str();
+				fprintf (fout,"%s --bind unix,%s/C-exim-%s.sock,root\n"
+					,hc,sock_tests_dir,server);
+				fprintf (fout,"chown %s %s/C-exim-%s.sock\n"
+					,trli_user,sock_tests_dir,server);
+			}
+			fprintf (fout,"# For web 80 system tests\n");
+			for (auto t:glocal.config->webs){
+				const char *server = t.server.c_str();
+				fprintf (fout,"%s --bind unix,%s/F-web-80-%s.sock,root\n"
+					,hc,sock_tests_dir,server);
+				fprintf (fout,"chown %s %s/F-web-80-%s.sock\n"
+					,trli_user,sock_tests_dir,server);
+				fprintf (fout,"%s --bind unix,%s/F-web-fail-80-%s.sock,root\n"
+					,hc,sock_tests_dir,server);
+				fprintf (fout,"chown %s %s/F-web-fail-80-%s.sock\n"
+					,trli_user,sock_tests_dir,server);
+			}
+			fprintf (fout,"# For web trli-stop system tests\n");
+			for (auto t:glocal.config->webs){
+				const char *server = t.server.c_str();
+				fprintf (fout,"%s --bind unix,%s/D-web-stop-%s.sock,root\n"
+					,hc,sock_tests_dir,server);
+				fprintf (fout,"chown %s %s/D-web-stop-%s.sock\n"
+					,trli_user,sock_tests_dir,server);
+				fprintf (fout,"%s --bind unix,%s/D-web-fail-stop-%s.sock,root\n"
+					,hc,sock_tests_dir,server);
+				fprintf (fout,"chown %s %s/D-web-fail-stop-%s.sock\n"
+					,trli_user,sock_tests_dir,server);
+			}
+			fprintf (fout,"# For webadm trli-stop system tests\n");
+			for (auto t:glocal.config->webadms){
+				const char *server = t.server.c_str();
+				fprintf (fout,"%s --bind unix,%s/D-webadm-stop-%s.sock,root\n"
+					,hc,sock_tests_dir,server);
+				fprintf (fout,"chown %s %s/D-webadm-stop-%s.sock\n"
+					,trli_user,sock_tests_dir,server);
+			}
+			fprintf (fout,"# For trli-syslog system tests\n");
+			for (auto t:glocal.config->logs){
+				const char *server = t.server.c_str();
+				fprintf (fout,"%s --bind unix,%s/E-syslog-%s.sock,root\n"
+					,hc,sock_tests_dir,server);
+				fprintf (fout,"chown %s %s/E-syslog-%s.sock\n"
+					,trli_user,sock_tests_dir,server);
+			}
+			fprintf (fout,"# For trli-log system tests\n");
+			for (auto t:glocal.config->computes){
+				const char *server = t.server.c_str();
+				fprintf (fout,"%s --bind unix,%s/E-log-%s.sock,root\n"
+					,hc,sock_tests_dir,server);
+				fprintf (fout,"chown %s %s/E-log-%s.sock\n"
+					,trli_user,sock_tests_dir,server);
+			}
+			if (!glocal.devmode){
+				fprintf (fout,"# Allow the host to send email\n");
+				fprintf (fout,"%s --bind unix,/dev/smtp.sock,root\n"
+					,hc);
+				fprintf (fout,"chown %s /dev/smtp.sock\n"
+					,trli_user);
+			}
+			return 0;
+		</f>
+		</call>
+		trli_chmod (horizon_rules,0755);
+		<call savefile>("/tmp/horizon-debug.sh",false);
+		<f dowrite>
+			string hc_str = string (blackhole_path) + "/horizon-control --port " + sock_dir + "/horizon.sock";
+			const char *hc = hc_str.c_str();
+			fprintf (fout,"#!/bin/sh\n");
+			fprintf (fout,"%s debugfile /tmp/horizon.log\n",hc);
+			fprintf (fout,"if [ \"$1\" = off ]; then\n");
+			 fprintf (fout,"\t%s debug 0\n",hc);
+			fprintf (fout,"elif [ \"$1\" = on ]; then\n");
+			 fprintf (fout,"\t%s debug 1\n",hc);
+			fprintf (fout,"else\n");
+			 fprintf (fout,"\techo on or off\n");
+			fprintf (fout,"fi\n");
+			return 0;
+		</f>
+		</call>
+		trli_chmod ("/tmp/horizon-debug.sh",0755);
+		// SERVICE conproxy
+		<call savefile>("/tmp/conproxy.sh",false);
+		<f dowrite>
+			fprintf (fout,"#!/bin/sh\n"
+				"%s/conproxy"
+				" -p %s/conproxy.sock --user %s --pidfile %s/conproxy.pid --daemon --statfile %s/conproxy-connect.log\n"
+				,blackhole_path,sock_dir,blackhole_user,pid_dir,log_dir);
+			return 0;
+		</f>
+		</call>
+		if (!glocal.devmode){
+			<call savefile>(conproxy_options_conf,false);
+			<f dowrite>
+				fprintf (fout,
+					"MAXHANDLES=10000\n"
+					"CONPROXYOPTIONS=\"-p %s/conproxy.sock --user %s --pidfile %s/conproxy.pid --statfile %s/conproxy-connect.log\"\n"
+					,sock_dir,blackhole_user,pid_dir,log_dir);
+				return 0;
+			</f>
+			</call>
+		}
+		trli_chmod ("/tmp/conproxy.sh",0755);
+		fprintf (glocal.all_fout,"/tmp/conproxy.sh\n");
+		<call savefile>("/tmp/protocheck.sh",false);
+		<f dowrite>
+			fprintf (fout,"#!/bin/sh\n"
+				"%s/protocheck-2factors"
+				" --control %s/protocheck-2factors.sock --user %s --pidfile %s/protocheck-0.pid --daemon"
+				" --follow_mode --unlocked --bind %s --port 9080"
+				" --http %s/http_check.conf\n"
+				,blackhole_path,sock_dir,blackhole_user,pid_dir
+				,ip_proto_p
+				,config_dir);
+			fprintf (fout,"#!/bin/sh\n"
+				"%s/protocheck-2factors"
+				" --control %s/protocheck-2factors-learn.sock --user %s --pidfile %s/protocheck-1.pid --daemon"
+				" --follow_mode --unlocked --bind %s --port 9081"
+				" --http %s/http_check.conf --learnfile /tmp/learn.log\n"
+				,blackhole_path,sock_dir,blackhole_user,pid_dir
+				,ip_proto_p
+				,config_dir);
+			return 0;
+		</f>
+		</call>
+		trli_chmod ("/tmp/protocheck.sh",0755);
+		//fprintf (glocal.all_fout,"/tmp/protocheck.sh\n");
+		return 0;
+	</f>
+	</call>
+	trli_chmod ("/tmp/bkstart.sh",0755);
+	const char *trlistart = "/root/trlistart.sh";
+	const char *trlistop  = "/root/trlistop.sh";
+	if (devmode){
+		trlistart = "/tmp/trlistart.sh";
+		trlistop  = "/tmp/trlistop.sh";
+	}
+	<call savefile>(trlistart,false);
+	<f dowrite>
+		glocal FILE *all_fout = fout;
+		fprintf (fout,"#!/bin/sh\n");
+		{
+			// SERVICE iptables
+			if (!glocal.devmode){
+				const char *iptables_sh = glocal.devmode ? "/tmp/iptables.sh" : "/root/iptables.sh";
+				<call savefile>(iptables_sh,false);
+				<f dowrite>
+					fprintf (fout,"#!/bin/sh\n");
+					fprintf (fout,"iptables --flush\n");
+					fprintf (fout,"iptables --flush -t nat\n");
+					fprintf (fout,"iptables --delete-chain\n");
+					fprintf (fout,"iptables -t nat --delete-chain\n");
+					fprintf (fout,"#iptables -t nat -A OUTPUT -s %s -p tcp -j REDIRECT --to-port 8080\n",ip_exim);
+					fprintf (fout,"iptables -t nat -A POSTROUTING -o eth0 -s %s -j MASQUERADE\n",ip_exim);
+
+					fprintf (fout,"iptables --flush -t mangle\n");
+					fprintf (fout,"iptables -t mangle -X DIVERT\n");
+					fprintf (fout,"iptables -t mangle -N DIVERT\n");
+					fprintf (fout,"iptables -t mangle -A PREROUTING -p tcp -m socket --transparent -j DIVERT\n");
+					#if 0
+						fprintf (fout,"iptables -t mangle -A OUTPUT --src 192.168.122.0/24 -d 192.168.4.0/24 -j ACCEPT\n");
+						fprintf (fout,"iptables -t mangle -A OUTPUT --src 192.168.122.0/24 -d 192.168.122.1 -j ACCEPT\n");
+						fprintf (fout,"iptables -t mangle -A OUTPUT --src %s -p tcp -j MARK --set-xmark 0x1/0xffffffff\n",ip_exim);
+						fprintf (fout,"iptables -t mangle -A OUTPUT --src %s -p tcp -j MARK --set-xmark 0x1/0xffffffff\n",ip_webssl);
+					#endif
+					fprintf (fout,"iptables -t mangle -A DIVERT -j MARK --set-mark 1\n");
+					fprintf (fout,"iptables -t mangle -A DIVERT -j ACCEPT\n");
+					fprintf (fout,"ip rule add fwmark 1 lookup 100\n");
+					fprintf (fout,"ip route add local 0.0.0.0/0 dev lo table 100\n");
+					fprintf (fout,"echo 0 >/proc/sys/net/ipv4/conf/lo/rp_filter\n");
+
+					return 0;
+				</f>
+				</call>
+				trli_chmod (iptables_sh,0755);
+				fprintf (glocal.all_fout,"%s\n",iptables_sh);
+			}
+			// SERVICE dnsproxy
+			{
+				<call savefile>("/var/lib/lxc/udpproxy.sh",false);
+				<f dowrite>
+					fprintf (fout,"#!/bin/sh\n");
+					fprintf (fout,"echo udpproxy\n");
+					fprintf (fout,"/usr/sbin/udpproxy --daemon --udp2tcp --udpport 53 --udphost %s --tcphost %s --tcpport 8053 --bindaddr %s\n"
+						,horizon_ip,horizon_ip,dnsproxy_ip);
+					fprintf (fout,"/usr/sbin/udpproxy --daemon --control %s/udpproxy-out.sock"
+						" --pidfile /var/run/udpproxy-out.pid --tcp2udp --tcphost %s --tcpport 8053 --udpport 53"
+						,sock_dir,dnsproxy_ip);
+					glocal FILE *fout = fout;
+					<call loadfile>("/etc/resolv.conf",true);
+					<f oneline>
+						vector<string> tb;
+						int n = str_splitline(line,' ',tb);
+						if (n == 2 && string_cmp(tb[0],"nameserver")==0){
+							fprintf (glocal.fout," --udphost %s",tb[1].c_str());
+						}
+						return 0;
+					</f>
+					</call>
+					fprintf (fout,"\n");
+					return 0;
+				</f>
+				</call>
+				fprintf (glocal.all_fout,"/var/lib/lxc/udpproxy.sh\n");
+				trli_chmod ("/var/lib/lxc/udpproxy.sh",0755);
+			}
+			// SERVICE trlid
+			for (auto t:glocal.config->trlids){
+				if (t.server == glocal.server){
+					mkdir ("/var/lib/lxc/trlid",0755);
+					glocal const char *secret = t.secret.c_str();
+					glocal int workers = t.workers;
+					<call savefile>("/var/lib/lxc/trlid/trlid.init",false);
+					<f dowrite>
+						fprintf (fout,"export TRLID_PWD=%s\n",sql_trlid_pwd);
+						for (int i=0; i<glocal.workers; i++){
+							fprintf (fout,"%s/trlid ",sbin_path);
+							fprintf (fout,"--tcpport %d --control %s/trlid-%d.sock"
+								" --adminhost %s --adminport /dev/writed.sock --sesshost %s --sessport /dev/sessiond.sock"
+								" --dbserv %s --dbname trli --dbuser %s"
+								" --admin_secrets %s/secrets.admin --client_secrets %s/secrets.client"
+								" --mysecret %s --user %s --sqltcpport 3307 --daemon"
+								" --pidfile /tmp/trlid-%d.pid\n"
+								,9000+i,lxcsock_dir,i
+								,horizon_ip,horizon_ip
+								,"localhost",sql_trlid_user
+								,config_dir,config_dir
+								,glocal.secret,trli_user
+								,i);
+						}
+						return 0;
+					</f>
+					</call>
+					string startfile;	
+					<call lxc_start> ("trlid",ip_trlid,startfile,trli_user,trli_userid);
+					<f horizon>
+						fprintf (fout,"%s/horizon-control -p %s/horizon.sock --bind unix,/dev/writed.sock:/var/lib/lxc/%s/rootfs/dev/writed.sock,%s\n"
+							,blackhole_path,sock_dir,name,name);
+						fprintf (fout,"chown %s /var/lib/lxc/%s/rootfs/dev/writed.sock\n",trli_user,name);
+						fprintf (fout,"%s/horizon-control -p %s/horizon.sock --bind unix,/dev/sessiond.sock:/var/lib/lxc/%s/rootfs/dev/sessiond.sock,%s\n"
+							,blackhole_path,sock_dir,name,name);
+						fprintf (fout,"chown %s /var/lib/lxc/%s/rootfs/dev/sessiond.sock\n",trli_user,name);
+						fprintf (fout,"mkdir -p /var/lib/lxc/%s/rootfs/var/lib/mysql\n",name);
+						fprintf (fout,"%s/horizon-control -p %s/horizon.sock --bind unix,/var/lib/mysql/mysql.sock:/var/lib/lxc/%s/rootfs/var/lib/mysql/mysql.sock,%s\n"
+							,blackhole_path,sock_dir,name,name);
+						fprintf (fout,"chown %s /var/lib/lxc/%s/rootfs/var/lib/mysql/mysql.sock\n",trli_user,name);
+					</f>
+					<f insert>
+					</f>
+					</call>
+					fprintf (glocal.all_fout,"%s\n",startfile.c_str());
+					<call lxc_stop> ("trlid","trlid",glocal.workers,glocal.stoptrlid);
+					<f horizon>
+						fprintf (fout,"%s/horizon-control -p %s/horizon.sock unbindfd unix /dev/writed.sock %s\n"
+							,blackhole_path,sock_dir,name);
+						fprintf (fout,"%s/horizon-control -p %s/horizon.sock unbindfd unix /dev/sessiond.sock %s\n"
+							,blackhole_path,sock_dir,name);
+						fprintf (fout,"%s/horizon-control -p %s/horizon.sock unbindfd unix /var/lib/mysql/mysql.sock %s\n"
+							,blackhole_path,sock_dir,name);
+					</f>
+					<f insert>
+						_F_lxc_stop::insert(fout,name,command,workers);
+					</f>
+					</call>
+					lxc_config ("trlid",ip_trlid);
+					lxc_status ("trlid","trlid",glocal.workers);
+					lxc_debug ("trlid","trlid",glocal.workers);
+				}
+			}
+			// SERVICE writed
+			for (auto t:glocal.config->writeds){
+				if (t.server == glocal.server){
+					mkdir ("/var/lib/lxc/writed",0755);
+					glocal const char *secret = t.secret.c_str();
+					glocal int workers = t.workers;
+					<call savefile>("/var/lib/lxc/writed/writed.init",false);
+					<f dowrite>
+						fprintf (fout,"export TRLI_WRITED_PWD=%s\n",sql_trli_writed_pwd);
+						for (int i=0; i<glocal.workers; i++){
+							fprintf (fout,"%s/trli-writed ",sbin_path);
+							fprintf (fout,"--tcpport %d --control %s/trli-writed-%d.sock"
+								" --logfile %s/trli-writed.log --secrets %s/secrets.client"
+								" --data_dbserv %s --data_dbname %s --data_dbuser %s"
+								" --users_dbserv %s --users_dbname %s --users_dbuser %s"
+								" --sessionhost %s --sessionport /dev/sessiond.sock --sessionbind %s"
+								" --mysecret %s --user %s --sqltcpport 3307 --daemon"
+								" --pidfile /tmp/writed-%d.pid --noproc %d"
+								" --writeonce_proof --writeonce_comment"
+								,9100+i,lxcsock_dir,i
+								,log_dir,config_dir
+								,"localhost","trli",sql_trli_writed_user
+								,"localhost","trliusers",sql_trli_writed_user
+								,horizon_ip,ip_writed
+								,glocal.secret,trli_user
+								,i,i);
+							fprintf (fout," --mailfrom no-reply@truelies.news");
+							if (glocal.devmode){
+								fprintf (fout," --forceaddr jack@dns.solucorp.qc.ca");
+							}else if (closeweb){
+								fprintf (fout," --forceaddr jack@dns.solucorp.qc.ca");
+							}
+							fprintf (fout,"\n");
+						}
+						return 0;
+					</f>
+					</call>
+					string startfile;	
+					<call lxc_start> ("writed",ip_writed,startfile,trli_user,trli_userid);
+					<f horizon>
+						fprintf (fout,"%s/horizon-control -p %s/horizon.sock --bind unix,/dev/compute.sock:/var/lib/lxc/%s/rootfs/dev/compute.sock,%s\n"
+							,blackhole_path,sock_dir,name,name);
+						fprintf (fout,"chown %s /var/lib/lxc/%s/rootfs/dev/compute.sock\n",trli_user,name);
+						fprintf (fout,"%s/horizon-control -p %s/horizon.sock --bind unix,/dev/sessiond.sock:/var/lib/lxc/%s/rootfs/dev/sessiond.sock,%s\n"
+							,blackhole_path,sock_dir,name,name);
+						fprintf (fout,"chown %s /var/lib/lxc/%s/rootfs/dev/sessiond.sock\n",trli_user,name);
+						fprintf (fout,"%s/horizon-control -p %s/horizon.sock --bind unix,/dev/smtp.sock:/var/lib/lxc/%s/rootfs/dev/smtp.sock,%s\n"
+							,blackhole_path,sock_dir,name,name);
+						fprintf (fout,"chown %s /var/lib/lxc/%s/rootfs/dev/smtp.sock\n",trli_user,name);
+						// Sockets for both MySQL servers
+						fprintf (fout,"mkdir -p /var/lib/lxc/%s/rootfs/var/lib/mysql\n",name);
+						fprintf (fout,"%s/horizon-control -p %s/horizon.sock --bind unix,/var/lib/mysql/mysql.sock:/var/lib/lxc/%s/rootfs/var/lib/mysql/mysql.sock,%s\n"
+							,blackhole_path,sock_dir,name,name);
+						fprintf (fout,"chown %s /var/lib/lxc/%s/rootfs/var/lib/mysql/mysql.sock\n",trli_user,name);
+						fprintf (fout,"%s/horizon-control -p %s/horizon.sock --bind unix,/var/lib/mysql/mysql-users.sock:/var/lib/lxc/%s/rootfs/var/lib/mysql/mysql-users.sock,%s\n"
+							,blackhole_path,sock_dir,name,name);
+						fprintf (fout,"chown %s /var/lib/lxc/%s/rootfs/var/lib/mysql/mysql-users.sock\n",trli_user,name);
+					</f>
+					<f insert>
+						fprintf (fout,"mkdir -p /var/lib/lxc/%s/rootfs/var/log/trli\n",name);
+						fprintf (fout,"chown %s /var/lib/lxc/%s/rootfs/var/log/trli\n",trli_user,name);
+					</f>
+					</call>
+					fprintf (glocal.all_fout,"%s\n",startfile.c_str());
+					<call lxc_stop> ("writed","trli-writed",glocal.workers,glocal.stopwrited);
+					<f horizon>
+						fprintf (fout,"%s/horizon-control -p %s/horizon.sock unbindfd unix /dev/compute.sock %s\n"
+							,blackhole_path,sock_dir,name);
+						fprintf (fout,"%s/horizon-control -p %s/horizon.sock unbindfd unix /dev/sessiond.sock %s\n"
+							,blackhole_path,sock_dir,name);
+						fprintf (fout,"%s/horizon-control -p %s/horizon.sock unbindfd unix /dev/smtp.sock %s\n"
+							,blackhole_path,sock_dir,name);
+						fprintf (fout,"%s/horizon-control -p %s/horizon.sock unbindfd unix /var/lib/mysql/mysql.sock %s\n"
+							,blackhole_path,sock_dir,name);
+						fprintf (fout,"%s/horizon-control -p %s/horizon.sock unbindfd unix /var/lib/mysql/mysql-users.sock %s\n"
+							,blackhole_path,sock_dir,name);
+					</f>
+					<f insert>
+						_F_lxc_stop::insert(fout,name,command,workers);
+					</f>
+					</call>
+					lxc_config ("writed",ip_writed);
+					lxc_status ("writed","trli-writed",glocal.workers);
+					lxc_debug ("writed","trli-writed",glocal.workers);
+				}
+			}
+			// SERVICE sessiond
+			for (auto s:glocal.config->sessionds){
+				if (s.server == glocal.server){
+					mkdir ("/var/lib/lxc/sessiond",0755);
+					<call savefile>("/var/lib/lxc/sessiond/sessiond.init",false);
+					<f dowrite>
+						fprintf (fout,"%s/trli-sessiond ",sbin_path);
+						fprintf (fout,"--tcpport 9200 --control %s/trli-sessiond.sock"
+							" --admin-secrets %s/secrets.admin --client-secrets %s/secrets.client"
+							" --user %s --daemon --pidfile /tmp/sessiond.pid"
+							" --variable subject --variable order\n"
+							,lxcsock_dir
+							,config_dir,config_dir
+							,trli_user);
+						return 0;
+					</f>
+					</call>
+					string startfile;	
+					lxc_start ("sessiond",ip_sessiond,startfile);
+					fprintf (glocal.all_fout,"%s\n",startfile.c_str());
+					lxc_stop ("sessiond","trli-sessiond",-1,glocal.stopsessiond);
+					lxc_config ("sessiond",ip_sessiond);
+					lxc_status ("sessiond","trli-sessiond",-1);
+					lxc_debug ("sessiond","trli-sessiond",-1);
+				}
+			}
+			// SERVICE web
+			for (auto s:glocal.config->webs){
+				if (s.server == glocal.server){
+					static const char *tb[]={"web","web-fail"};
+					const char *ip = ip_web;
+					for (auto w:tb){
+						mkdir (string_f("/var/lib/lxc/%s",w).c_str(),0755);
+						<call savefile>(string_f("/var/lib/lxc/%s/%s.init",w,w),false);
+						<f dowrite>
+							fprintf (fout,"/usr/sbin/httpd --daemon\n");
+							fprintf (fout,"%s/trli-stop --daemon --user %s --control /tmp/trli-stop.sock --pidfile /tmp/trli-stop.pid\n",sbin_path,"apache");
+							return 0;
+						</f>
+						</call>
+						string startfile;	
+						<call lxc_start> (w,ip,startfile,"apache",48);
+						<f horizon>
+							fprintf (fout,"%s/horizon-control -p %s/horizon.sock --bind unix,/dev/trlid.sock:/var/lib/lxc/%s/rootfs/dev/trlid.sock,%s\n"
+								,blackhole_path,sock_dir,name,name);
+							fprintf (fout,"chown 48 /var/lib/lxc/%s/rootfs/dev/trlid.sock\n",name);
+							fprintf (fout,"%s/horizon-control -p %s/horizon.sock --bind unix,/dev/sessiond.sock:/var/lib/lxc/%s/rootfs/dev/sessiond.sock,%s\n"
+								,blackhole_path,sock_dir,name,name);
+							fprintf (fout,"chown 48 /var/lib/lxc/%s/rootfs/dev/sessiond.sock\n",name);
+						</f>
+						<f insert>
+							tlmpweb_conf (fout,name);
+							fprintf (fout,"#!/bin/sh\n");
+							fprintf (fout,"cat <<-EOF >/var/lib/lxc/web/rootfs/var/www/html/static.html\n");
+							fprintf (fout,"<html>\n");
+							fprintf (fout,"this is a test\n");
+							fprintf (fout,"</html>\n");
+							fprintf (fout,"EOF\n");
+						</f>
+						</call>
+						fprintf (glocal.all_fout,"%s\n",startfile.c_str());
+						string stopcmd;
+						<call lxc_stop> (w,NULL,-1,stopcmd);
+						<f horizon>
+							fprintf (fout,"%s/horizon-control -p %s/horizon.sock unbindfd unix /dev/trlid.sock %s\n"
+								,blackhole_path,sock_dir,name);
+							fprintf (fout,"%s/horizon-control -p %s/horizon.sock unbindfd unix /dev/sessiond.sock %s\n"
+								,blackhole_path,sock_dir,name);
+						</f>
+						<f insert>
+							fprintf (fout,"lxc-stop -n %s\n",name);
+						</f>
+						</call>
+						glocal.stopweb += string_f("%s\n",stopcmd.c_str());
+						lxc_config (w,ip);
+						ip = ip_web_fail;
+					}
+				}
+			}
+			// SERVICE webadm
+			for (auto s:glocal.config->webadms){
+				if (s.server == glocal.server){
+					mkdir ("/var/lib/lxc/webadm",0755);
+					<call savefile>("/var/lib/lxc/webadm/webadm.init",false);
+					<f dowrite>
+						fprintf (fout,"/usr/sbin/httpd --daemon\n");
+						fprintf (fout,"%s/trli-stop --daemon --user %s --control /tmp/trli-stop.sock --pidfile /tmp/trli-stop.pid\n",sbin_path,"apache");
+						return 0;
+					</f>
+					</call>
+					string startfile;	
+					<call lxc_start> ("webadm",ip_webadm,startfile,"apache",48);
+					<f horizon>
+						fprintf (fout,"%s/horizon-control -p %s/horizon.sock --bind unix,/dev/trlid.sock:/var/lib/lxc/%s/rootfs/dev/trlid.sock,%s\n"
+							,blackhole_path,sock_dir,name,name);
+						fprintf (fout,"chown 48 /var/lib/lxc/%s/rootfs/dev/trlid.sock\n",name);
+						fprintf (fout,"%s/horizon-control -p %s/horizon.sock --bind unix,/dev/sessiond.sock:/var/lib/lxc/%s/rootfs/dev/sessiond.sock,%s\n"
+							,blackhole_path,sock_dir,name,name);
+						fprintf (fout,"chown 48 /var/lib/lxc/%s/rootfs/dev/sessiond.sock\n",name);
+					</f>
+					<f insert>
+						tlmpweb_conf (fout,name);
+					</f>
+					</call>
+					fprintf (glocal.all_fout,"%s\n",startfile.c_str());
+					<call lxc_stop> ("webadm",NULL,-1,glocal.stopwebadm);
+					<f horizon>
+						fprintf (fout,"%s/horizon-control -p %s/horizon.sock unbindfd unix /dev/trlid.sock %s\n"
+							,blackhole_path,sock_dir,name);
+						fprintf (fout,"%s/horizon-control -p %s/horizon.sock unbindfd unix /dev/sessiond.sock %s\n"
+							,blackhole_path,sock_dir,name);
+					</f>
+					<f insert>
+						fprintf (fout,"lxc-stop -n %s\n",name);
+					</f>
+					</call>
+					lxc_config ("webadm",ip_webadm);
+				}
+			}
+			// SERVICE webssl
+			for (auto s:glocal.config->webssls){
+				if (s.server == glocal.server){
+					static const char *tb[]={"webssl","webssl-fail"};
+					const char *ip = ip_webssl;
+					for (auto w:tb){
+						mkdir (string_f("/var/lib/lxc/%s",w).c_str(),0755);
+						<call savefile>(string_f("/var/lib/lxc/%s/%s.init",w,w),false);
+						<f dowrite>
+							fprintf (fout,"/usr/sbin/httpd --daemon\n");
+							return 0;
+						</f>
+						</call>
+						string startfile;	
+						<call lxc_start> (w,ip,startfile,"apache",48);
+						<f insert>
+							fprintf (fout,"#!/bin/sh\n");
+							fprintf (fout,"cat <<-EOF >/var/lib/lxc/%s/rootfs/etc/httpd/conf.d/proxy.conf\n",name);
+							fprintf (fout,"DirectoryIndex index.hc\n");
+							fprintf (fout,"ProxyPass \"/index.hc\" \"http://192.168.4.1:9080/index.hc\"\n");
+							fprintf (fout,"ProxyPass \"/blog.hc\" \"http://192.168.4.1:9080/blog.hc\"\n");
+							fprintf (fout,"ProxyPass \"/admin.hc\" \"http://192.168.4.2:9080/admin.hc\"\n");
+							fprintf (fout,"ProxyPass \"/static.html\" \"http://192.168.4.1:9080/static.html\"\n");
+							fprintf (fout,"EOF\n");
+							if (!glocal.devmode){
+								fprintf (fout,"cat <<-EOF >/var/lib/lxc/%s/rootfs/etc/httpd/conf.d/redirect.conf\n",name);
+								fprintf (fout,"<VirtualHost *:80>\n");
+								fprintf (fout,"Redirect permanent / https://truelies.news/\n");
+								fprintf (fout,"</VirtualHost>\n");
+								fprintf (fout,"EOF\n");
+							}
+							fprintf (fout,"FILE=/etc/httpd/conf.d/le_tls_sni_01_cert_challenge.conf\n");
+							fprintf (fout,"ROOT=/var/lib/lxc/%s/rootfs\n",name);
+							fprintf (fout,"if [ -f $FILE ] ; then\n");
+							fprintf (fout,"    cp -a $FILE $ROOT/etc/httpd/conf.d/.\n");
+							fprintf (fout,"    cp -a $FILE /tmp/.\n");
+							fprintf (fout,"    cp -a /etc/letsencrypt/options-ssl-apache.conf $ROOT/etc/letsencrypt/options-ssl-apache.conf\n");
+							fprintf (fout,"    mkdir -p $ROOT/var/lib/letsencrypt\n");
+							fprintf (fout,"    cp -a /var/lib/letsencrypt/. $ROOT/var/lib/letsencrypt/.\n");
+							fprintf (fout,"fi\n");
+						</f>
+						</call>
+						fprintf (glocal.all_fout,"%s\n",startfile.c_str());
+						string stopcmd;
+						lxc_stop (w,NULL,-1,stopcmd);
+						glocal.stopwebssl += string_f("%s\n",stopcmd.c_str());
+						lxc_config (w,"truelies.news",ip,true);
+						ip = ip_webssl_fail;
+					}
+				}
+			}
+			// SERVICE protocheck
+			for (auto s:glocal.config->protos){
+				if (s.server == glocal.server){
+					glocal PROTO *p = &s;
+					mkdir ("/var/lib/lxc/protocheck",0755);
+					<call savefile>("/var/lib/lxc/protocheck/protocheck.init",false);
+					<f dowrite>
+						for (unsigned i=0; i<glocal.p->workers; i++){
+							fprintf (fout,"%s/protocheck-2factors"
+								" --control %s/protocheck-2factors-%u.sock --user %s --pidfile %s/protocheck-%u.pid --daemon"
+								" --follow_mode --unlocked --bind %s --port unix:/tmp/proto-%u.sock"
+								" --http %s/http_check.conf --errorfile /tmp/error-%u.log\n"
+								,blackhole_path
+								,lxcsock_dir,i,"apache",pid_dir,i
+								,ip_proto,glocal.p->port+i
+								,config_dir,i);
+						}
+						fprintf (fout,"%s/protocheck-2factors"
+							" --control %s/protocheck-2factors-learn.sock --user %s --pidfile %s/protocheck-learn.pid --daemon"
+							" --follow_mode --unlocked --bind %s --port unix:/tmp/proto-%u.sock"
+							" --http %s/http_check.conf --learnfile /tmp/learn.log --errorfile /tmp/error-learn.log\n"
+							,blackhole_path
+							,lxcsock_dir,"apache",pid_dir
+							,ip_proto,glocal.p->port_l
+							,config_dir);
+						return 0;
+					</f>
+					</call>
+					string startfile;	
+					lxc_start ("protocheck",ip_proto,startfile,"apache",48);
+					fprintf (glocal.all_fout,"%s\n",startfile.c_str());
+					<call lxc_stop> ("protocheck",NULL,-1,glocal.stopproto);
+					<f insert>
+						for (unsigned i=0; i<glocal.p->workers; i++){
+							fprintf (fout,"%s/protocheck-2factors-control"
+								" -p /var/lib/lxc/protocheck/rootfs%s/protocheck-2factors-%u.sock quit\n"
+								,blackhole_path,lxcsock_dir,i);
+						}
+						fprintf (fout,"%s/protocheck-2factors-control"
+							" -p /var/lib/lxc/protocheck/rootfs%s/protocheck-2factors-learn.sock quit\n"
+							,blackhole_path,lxcsock_dir);
+						fprintf (fout,"lxc-info -s -n %s | grep -q RUNNING && (echo Force stop %s; lxc-stop -n %s)\n"
+							,name,name,name);
+					</f>
+					</call>
+					lxc_config ("protocheck",ip_proto);
+					lxc_status (blackhole_path,"protocheck","protocheck-2factors",s.workers);
+					lxc_debug (blackhole_path,"protocheck","protocheck-2factors",s.workers);
+				}
+			}
+			// SERVICE sqlddata
+			for (auto s:glocal.config->sqlddatas){
+				if (s.server == glocal.server){
+					string startfile;	
+					config_sql ("sqlddata",ip_sqlddata,startfile,glocal.stopsqlddata);
+					fprintf (glocal.all_fout,"%s\n",startfile.c_str());
+				}
+			}
+			// SERVICE sqlduser
+			for (auto s:glocal.config->sqldusers){
+				if (s.server == glocal.server){
+					string startfile;
+					config_sql ("sqlduser",ip_sqlduser,startfile,glocal.stopsqlduser);
+					fprintf (glocal.all_fout,"%s\n",startfile.c_str());
+				}
+			}
+			// SERVICE exim
+			for (auto s:glocal.config->exims){
+				if (s.server == glocal.server){
+					glocal WEB *p = &s;
+					mkdir ("/var/lib/lxc/exim",0755);
+					<call savefile>("/var/lib/lxc/exim/exim.init",false);
+					<f dowrite>
+						fprintf (fout,"/usr/sbin/exim -bd -q15m\n");	
+						return 0;
+					</f>
+					</call>
+					string startfile;	
+					<call lxc_start> ("exim",ip_exim,startfile,"exim",93);
+					<f insert>
+						fprintf (fout,"echo nameserver %s >/var/lib/lxc/exim/rootfs/etc/resolv.conf\n"
+							,horizon_ip);
+						fprintf (fout,"echo smtp 25/tcp mail >/var/lib/lxc/exim/rootfs/etc/services\n");
+						fprintf (fout,"echo 192.168.122.1 relay >>/var/lib/lxc/%s/rootfs/etc/hosts\n",name);
+						fprintf (fout,"echo 192.168.4.1 norelay >>/var/lib/lxc/%s/rootfs/etc/hosts\n",name);
+						fprintf (fout,"echo root: /dev/null >/var/lib/lxc/%s/rootfs/etc/aliases\n",name);
+						fprintf (fout,"echo exim: /dev/null >>/var/lib/lxc/%s/rootfs/etc/aliases\n",name);
+						fprintf (fout,"echo no-reply: /dev/null >>/var/lib/lxc/%s/rootfs/etc/aliases\n",name);
+						fprintf (fout,"if [ -f /etc/trli/admins.conf ] ; then\n");
+						fprintf (fout,"\t. /etc/trli/admins.conf\n");
+						fprintf (fout,"\techo info: $ADMIN1 >>/var/lib/lxc/%s/rootfs/etc/aliases\n",name);
+						fprintf (fout,"else\n");
+						fprintf (fout,"\techo No /etc/trli/admins.conf\n");
+						fprintf (fout,"fi\n");
+						fprintf (fout,"cp -a /etc/pki /var/lib/lxc/%s/rootfs/etc/pki\n",name);
+						fprintf (fout,"DIRCERTS=/var/lib/lxc/%s/rootfs/etc/pki/tls/certs\n",name);
+						fprintf (fout,"DIRPRIVATE=/var/lib/lxc/%s/rootfs/etc/pki/tls/private\n",name);
+						fprintf (fout,"mkdir -p $DIRCERTS $DIRPRIVATE\n");
+						fprintf (fout,"test -f /etc/letsencrypt/live/truelies.news/cert.pem && cp /etc/letsencrypt/live/truelies.news/cert.pem $DIRCERTS/exim.pem\n");
+						fprintf (fout,"test -f /etc/letsencrypt/live/truelies.news/privkey.pem && cp /etc/letsencrypt/live/truelies.news/privkey.pem $DIRPRIVATE/exim.pem\n");
+					</f>
+					</call>
+					fprintf (glocal.all_fout,"%s\n",startfile.c_str());
+					lxc_stop ("exim",NULL,-1,glocal.stopexim);
+					lxc_config ("exim","truelies.news",ip_exim,true);
+				}
+			}
+		}
+		// SERVICE trli-mon
+		for (auto s:glocal.config->monitors){
+			if (s.server == glocal.server){
+				static const char *mon_sh = "/var/lib/lxc/trli-mon-start.sh";
+				glocal MON *s = &s;
+				<call savefile>(mon_sh,false);
+				<f dowrite>
+					fprintf (fout,"#!/bin/sh\n");
+					fprintf (fout,"%s/trli-mon --daemon --control %s/trli-mon.sock --sock_dir %s --secret %s --user %s --alarmcmd %s\n"
+						,sbin_path,sock_dir,sock_tests_dir,glocal.s->secret.c_str(),trli_user,glocal.s->alarmcmd.c_str());
+					if (glocal.devmode){
+						fprintf (fout,"chown %s %s/trli-mon.sock\n",trli_user,sock_dir);
+					}
+					return 0;
+				</f>
+				</call>
+				trli_chmod (mon_sh,0755);
+				fprintf (fout,"%s\n",mon_sh);
+				static const char *stop_sh = "/var/lib/lxc/trli-mon-stop.sh";
+				<call savefile>(stop_sh,false);
+				<f dowrite>
+					fprintf (fout,"#!/bin/sh\n");
+					fprintf (fout,"%s/trli-mon-control -p %s/trli-mon.sock quit\n",sbin_path,sock_dir);
+					return 0;
+				</f>
+				</call>
+				trli_chmod (stop_sh,0755);
+				glocal.stoptrlimon = stop_sh;
+			}
+		}
+		// SERVICE trli-syslog
+		for (auto s:glocal.config->logs){
+			if (s.server == glocal.server){
+				static const char *mon_sh = "/var/lib/lxc/trli-syslog-start.sh";
+				<call savefile>(mon_sh,false);
+				<f dowrite>
+					fprintf (fout,"#!/bin/sh\n");
+					fprintf (fout,"%s/trli-syslog --daemon --logport %s --control %s/trli-syslog.sock --user %s\n"
+						,sbin_path,devlog,sock_dir,trli_user);
+					if (glocal.devmode){
+						fprintf (fout,"chown %s %s/trli-mon.sock\n",trli_user,sock_dir);
+						fprintf (fout,"chown %s %s\n",trli_user,devlog);
+					}else{
+						fprintf (fout,"chown blackhole %s\n",devlog);
+					}
+					return 0;
+				</f>
+				</call>
+				trli_chmod (mon_sh,0755);
+				fprintf (fout,"%s\n",mon_sh);
+				static const char *stop_sh = "/var/lib/lxc/trli-syslog-stop.sh";
+				<call savefile>(stop_sh,false);
+				<f dowrite>
+					fprintf (fout,"#!/bin/sh\n");
+					fprintf (fout,"%s/trli-syslog-control -p %s/trli-syslog.sock quit\n",sbin_path,sock_dir);
+					return 0;
+				</f>
+				</call>
+				trli_chmod (stop_sh,0755);
+				glocal.stoptrlisyslog = stop_sh;
+			}
+		}
+		// SERVICE compute
+		for (auto s:glocal.config->computes){
+			static const char *compute_start = "/var/lib/lxc/compute-start.sh";
+			<call savefile>(compute_start,false);
+			<f dowrite>
+				fprintf (fout,"#!/bin/sh\n");
+				fprintf (fout,". /root/trli.conf\n");
+				fprintf (fout,"%s/trli-log --daemon --data_dbserv 192.168.4.1 --data_dbuser %s"
+					" --data_dbname trli --sqltcpport 3307"
+					" --control %s/trli-log.sock --unixadmin unix:%s/compute.sock"
+					" --compute --admin-secrets %s/secrets.admin"
+					" /var/lib/lxc/writed/rootfs/%s/trli-writed.log\n"
+					,sbin_path,sql_trli_writed_user
+					,sock_dir,sock_dir
+					,config_dir
+					,log_dir);
+				if (glocal.devmode){
+					fprintf (fout,"chown %s %s/compute.sock\n",trli_user,sock_dir);
+				}
+				return 0;
+			</f>
+			</call>
+			trli_chmod (compute_start,0755);
+			fprintf (fout,"%s\n",compute_start);
+			glocal.stopcompute = "/var/lib/lxc/compute-stop.sh";
+			<call savefile>(glocal.stopcompute,false);
+			<f dowrite>
+				fprintf (fout,"#!/bin/sh\n");
+				fprintf (fout,"%s/trli-log-control -p %s/trli-log.sock quit\n"
+					,sbin_path,sock_dir);
+				return 0;
+			</f>
+			</call>
+			trli_chmod (glocal.stopcompute,0755);
+		}
+		return 0;
+	</f>
+	</call>
+	trli_chmod (trlistart,0755);
+	<call savefile>(trlistop,false);
+	<f dowrite>
+		fprintf (fout,"#!/bin/sh\n");
+		if (glocal.stopcompute.size() > 0) fprintf (fout,"%s\n",glocal.stopcompute.c_str());
+		if (glocal.stoptrlimon.size() > 0) fprintf (fout,"%s\n",glocal.stoptrlimon.c_str());
+		if (glocal.stoptrlid.size() > 0) fprintf (fout,"%s\n",glocal.stoptrlid.c_str());
+		if (glocal.stopwrited.size() > 0) fprintf (fout,"%s\n",glocal.stopwrited.c_str());
+		if (glocal.stopsessiond.size() > 0) fprintf (fout,"%s\n",glocal.stopsessiond.c_str());
+		if (glocal.stopweb.size() > 0) fprintf (fout,"%s\n",glocal.stopweb.c_str());
+		if (glocal.stopwebadm.size() > 0) fprintf (fout,"%s\n",glocal.stopwebadm.c_str());
+		if (glocal.stopwebssl.size() > 0) fprintf (fout,"%s\n",glocal.stopwebssl.c_str());
+		if (glocal.stopsqlddata.size() > 0) fprintf (fout,"%s\n",glocal.stopsqlddata.c_str());
+		if (glocal.stopsqlduser.size() > 0) fprintf (fout,"%s\n",glocal.stopsqlduser.c_str());
+		if (glocal.stopproto.size() > 0) fprintf (fout,"%s\n",glocal.stopproto.c_str());
+		if (glocal.stopexim.size() > 0) fprintf (fout,"%s\n",glocal.stopexim.c_str());
+		if (glocal.stoptrlisyslog.size() > 0) fprintf (fout,"%s\n",glocal.stoptrlisyslog.c_str());
+		fprintf (fout,"killall udpproxy\n");
+		return 0;
+	</f>
+	</call>
+	trli_chmod (trlistop,0755);
+	<call savefile>("/tmp/bkstop.sh",false);
+	<f dowrite>
+		fprintf (fout,"%s/blackhole-control -p %s/blackhole.sock quit\n",blackhole_path,sock_dir);
+		fprintf (fout,"%s/horizon-control -p %s/horizon.sock quit\n",blackhole_path,sock_dir);
+		fprintf (fout,"%s/conproxy-control -p %s/conproxy.sock quit\n",blackhole_path,sock_dir);
+		//fprintf (fout,"%s/protocheck-2factors-control -p %s/protocheck-2factors.sock quit\n",blackhole_path,sock_dir);
+		//fprintf (fout,"%s/protocheck-2factors-control -p %s/protocheck-2factors-learn.sock quit\n",blackhole_path,sock_dir);
+		return 0;
+	</f>
+	</call>
+	trli_chmod ("/tmp/bkstop.sh",0755);
+}
+</mod>
+
+static bool trli_lookup (const char *name, vector<string> &tb)
+{
+	bool ret = false;
+	if (tb.size() > 0){
+		if (strcmp(tb[0].c_str(),"all")==0){
+			ret = true;
+		}else{
+			for (auto x:tb){
+				if (strcmp(x.c_str(),name)==0){
+					ret = true;
+					break;
+				}
+			}
+		}
+	}
+	return ret;
+}
+
+
+<mod>
+int main (int argc, char *argv[])
+{
+	glocal int ret = -1;
+	glocal const char *config_file = "/etc/trli/manager.conf";
+	glocal bool dumpconfig = false;
+	glocal bool devmode = false;
+	glocal vector<string> devip;	// List of services which requires a development IP
+	glocal bool inframode = false;
+	glocal.ret = <call tlmpprogram>(argc,argv);
+	<f init>
+		setproginfo ("trli-manager",VERSION,"Control the trli cluster");
+		setarg ('c',"config","Config file",glocal.config_file,false);
+		setarg (' ',"dump","Dump config (debug)",glocal.dumpconfig,false);
+		setarg (' ',"devip","Use development IP (127.0.0.X) for a given service",glocal.devip,false);
+		setarg (' ',"blackhole_path","Path of blackhole utilities",blackhole_path,false);
+		setgrouparg ("Modes");
+		setarg (' ',"devmode","Sets various parameters to run on a workstation",glocal.devmode,false);
+		setarg (' ',"inframode","Generate config only for infrastructure",glocal.inframode,false);
+		setarg (' ',"preprodmode","Sets various parameters to run in pre-production",preprodmode,false);
+		setgrouparg ("SQL");
+		setarg (' ',"trliduser","SQL user for trlid server",sql_trlid_user,false);
+		setarg (' ',"trlidpwd","SQL password for trlid server",sql_trlid_pwd,false);
+		setarg (' ',"writeduser","SQL user for trli-writed server",sql_trli_writed_user,false);
+		setarg (' ',"writedpwd","SQL password for trli-writed server",sql_trli_writed_pwd,false);
+	</f>
+	<f main>
+		int ret = -1;
+		glocal CONFIG config;
+		if (getenv("TRLID_PWD")!=NULL) sql_trlid_pwd = getenv("TRLID_PWD");
+		if (getenv("TRLI_WRITED_PWD")!=NULL) sql_trli_writed_pwd = getenv("TRLI_WRITED_PWD");
+		closeweb = file_exist("/root/closeweb");
+		<call loadfile>(glocal.config_file,true);
+		<f oneline>
+			const char *pt = str_skip(line);
+			if (*pt != '#' && *pt != '\0'){
+				vector<string> tb;
+				int n = str_splitlineq(pt,tb);
+				if (n > 1){
+					const char *word = tb[0].c_str();
+					if (strcmp(word,"server")==0 && n == 5){
+						glocal.config.servers[tb[1]] = SERVER(tb[2],tb[3],tb[4]);
+					}else if (strcmp(word,"blackhole")==0 && n == 4){
+						glocal.config.blackholes.push_back(BLACKHOLE(tb[1],tb[2],trli_atou(tb[3])));
+					}else if (strcmp(word,"trlid")==0 && n == 5){
+						glocal.config.trlids.push_back(TRLID(tb[1],trli_atou(tb[2]),trli_atou(tb[3]),tb[4]));
+					}else if (strcmp(word,"writed")==0 && n == 5){
+						glocal.config.writeds.push_back(WRITED(tb[1],trli_atou(tb[2]),trli_atou(tb[3]),tb[4]));
+					}else if (strcmp(word,"sessiond")==0 && n == 3){
+						glocal.config.sessionds.push_back(SESSIOND(tb[1],trli_atou(tb[2])));
+					}else if (strcmp(word,"sqlddata")==0 && n == 2){
+						glocal.config.sqlddatas.push_back(SQLD(tb[1]));
+					}else if (strcmp(word,"sqlduser")==0 && n == 2){
+						glocal.config.sqldusers.push_back(SQLD(tb[1]));
+					}else if (strcmp(word,"proto")==0 && n == 3){
+						glocal.config.protos.push_back(PROTO(tb[1],trli_atou(tb[2])));
+					}else if (strcmp(word,"web")==0 && n == 2){
+						glocal.config.webs.push_back(WEB(tb[1]));
+					}else if (strcmp(word,"webadm")==0 && n == 2){
+						glocal.config.webadms.push_back(WEB(tb[1]));
+					}else if (strcmp(word,"webssl")==0 && n == 2){
+						glocal.config.webssls.push_back(WEB(tb[1]));
+					}else if (strcmp(word,"log")==0 && n == 2){
+						glocal.config.logs.push_back(WEB(tb[1]));
+					}else if (strcmp(word,"compute")==0 && n == 2){
+						glocal.config.computes.push_back(WEB(tb[1]));
+					}else if (strcmp(word,"exim")==0 && n == 2){
+						glocal.config.exims.push_back(WEB(tb[1]));
+					}else if (strcmp(word,"dnsproxy")==0 && n == 2){
+						glocal.config.dnsproxys.push_back(WEB(tb[1]));
+					}else if (strcmp(word,"monitor")==0 && n == 4){
+						glocal.config.monitors.push_back(MON(tb[1],tb[2],tb[3]));
+					}else{
+						tlmp_error ("Invalid line %d in configuration file %s\n",noline,info.filename);
+					}
+				}else{
+					tlmp_error ("Invalid line %d in configuration file %s\n",noline,info.filename);
+				}
+			}
+			return 0;
+		</f>
+		<f empty>
+			tlmp_error ("Empty configuration file %s, ending\n",glocal.config_file);
+			exit (-1);
+		</f>
+		<f missing>
+			tlmp_error ("Missing configuration file %s, ending\n",fname);
+			exit (-1);
+		</f>
+		</call>
+		if (glocal.dumpconfig){
+			for (auto x:glocal.config.servers) printf ("server %s sshcmd=%s cpcmd=%s\n",x.first.c_str(),x.second.sshcmd.c_str(),x.second.cpcmd.c_str());
+			for (auto x:glocal.config.blackholes) printf ("blackhole server %s config %s port %u\n",x.server.c_str(),x.config.c_str(),x.port);
+			for (auto x:glocal.config.trlids) printf ("trlid server %s port %u workers %u\n",x.server.c_str(),x.port,x.workers);
+			for (auto x:glocal.config.writeds) printf ("writed server %s port %u workers %u\n",x.server.c_str(),x.port,x.workers);
+			for (auto x:glocal.config.sessionds) printf ("sessiond server %s port %u\n",x.server.c_str(),x.port);
+			for (auto x:glocal.config.sqlddatas) printf ("sqldata server %s\n",x.server.c_str());
+			for (auto x:glocal.config.sqldusers) printf ("sqluser server %s\n",x.server.c_str());
+			for (auto x:glocal.config.protos) printf ("proto server %s\n",x.server.c_str());
+			for (auto x:glocal.config.webs) printf ("web server %s\n",x.server.c_str());
+			for (auto x:glocal.config.webadms) printf ("webadm server %s\n",x.server.c_str());
+			for (auto x:glocal.config.webssls) printf ("webadm server %s\n",x.server.c_str());
+			for (auto x:glocal.config.logs) printf ("log server %s\n",x.server.c_str());
+			for (auto x:glocal.config.computes) printf ("compute server %s\n",x.server.c_str());
+		}
+		if (preprodmode){
+			// Run preprod as an lxc container 
+			#define PIP_PREFIX "192.168.124."
+			ip_lxc_gateway = PIP_PREFIX "1";
+			ip_trlid = PIP_PREFIX "2";
+			ip_writed = PIP_PREFIX "3";
+			ip_sessiond = PIP_PREFIX "4";
+			ip_web = PIP_PREFIX "5";
+			ip_web_fail = PIP_PREFIX "15";
+			ip_webadm = PIP_PREFIX "6";
+			ip_proto = PIP_PREFIX "7";
+			ip_webssl = PIP_PREFIX "8";
+			ip_webssl_fail = PIP_PREFIX "18";
+			ip_sqlduser = PIP_PREFIX "9";
+			ip_sqlddata = PIP_PREFIX "10";
+			ip_exim = PIP_PREFIX "11";
+		}
+		if (glocal.devmode){
+			char path[PATH_MAX];
+			if (getcwd(path,sizeof(path))==NULL){
+				tlmp_error ("Can't get current working directory, aborting\n");
+				exit (-1);
+			}
+			static string dev_config_dir = string(path) +"/data";
+			config_dir = dev_config_dir.c_str();
+			static string dev_log_dir("/tmp");
+			log_dir = dev_log_dir.c_str();
+			static string dev_sock_dir("/tmp");
+			sock_dir = dev_sock_dir.c_str();
+			static string dev_sock_tests_dir("/tmp/tests");
+			sock_tests_dir = dev_sock_tests_dir.c_str();
+			static string dev_sbin_path(path);
+			sbin_path = dev_sbin_path.c_str();
+			devlog = "/tmp/trli.log";
+			blackhole_options_conf = "/tmp/blackhole-options.conf";
+			blackhole_rules = "/tmp/blackhole-rules.sh";
+			horizon_options_conf = "/tmp/horizon-options.conf";
+			horizon_rules = "/tmp/horizon-rules.sh";
+
+			if (trli_lookup("horizon",glocal.devip)){
+				horizon_ip = "127.0.0.10";
+				horizon_ip2 = "127.0.0.11";
+				horizon_masterip = "127.0.0.1";
+			}
+			if (trli_lookup("trlid",glocal.devip)) vs_trlid = "trlid_p";
+			if (trli_lookup("writed",glocal.devip)) vs_writed = "writed_p";
+			if (trli_lookup("sessiond",glocal.devip)) vs_sessiond = "sessiond_p";
+			if (trli_lookup("web",glocal.devip)) ip_web = "192.168.5.5";
+			if (trli_lookup("webadm",glocal.devip)) ip_webadm = "192.168.5.6";
+			if (trli_lookup("webssl",glocal.devip)) ip_webssl = ip_webssl_p;
+			if (trli_lookup("proto",glocal.devip)) ip_proto = "192.168.5.7";
+			if (trli_lookup("sqlddata",glocal.devip)) ip_sqlddata = "127.0.0.1";
+			if (trli_lookup("sqlduser",glocal.devip)) ip_sqlduser = "127.0.0.1";
+
+			uid_t uid = getuid();
+			struct passwd *p = getpwuid(uid);
+			if (p == NULL){
+				tlmp_error ("Can't identify the current user, aborting\n");
+				exit (-1);
+			}
+			static string dev_trli_user(p->pw_name);
+			trli_user = dev_trli_user.c_str();
+			trli_userid = p->pw_uid;
+			blackhole_user = dev_trli_user.c_str();
+			pid_dir = "/tmp";			
+		}else{
+			struct passwd *p = getpwnam(trli_user);
+			if (p == NULL){
+				tlmp_error ("Can't identify the user %s, aborting\n",trli_user);
+				exit (-1);
+			}
+			trli_userid = p->pw_uid;
+		}
+		if (argc == 2 && strcmp(argv[0],"printconfig")==0){
+			const string server(argv[1]);
+			auto s = glocal.config.servers.find(server);
+			if (s == glocal.config.servers.end()){
+				tlmp_error ("Server %s not found in configuration\n",server.c_str());
+			}else{
+				print_configs (server,s->second.public_ip,glocal.config,glocal.devmode);
+			}
+		}
+		return ret;
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+
