@@ -127,8 +127,8 @@ static const char *horizon_ip = "192.168.4.1";
 static const char *horizon_ip2 = "192.168.4.2";
 static const char *dnsproxy_ip = "192.168.4.3";
 static const char *horizon_masterip = "192.168.4.1";
-static const char *sql_trlid_pwd = "trlid.1";
-static const char *sql_trlid_user = "trlid";
+static const char *sql_bod_pwd = "bod.1";
+static const char *sql_bod_user = "bod";
 static const char *sql_trli_writed_pwd = "trli_writed.1";
 static const char *sql_trli_writed_user = "trli_writed";
 static const char *trli_user = "bolixo";
@@ -146,7 +146,7 @@ static const char *conproxy_options_conf = "/etc/conproxy-options.conf";
 
 #define IP_PREFIX "192.168.122."
 static const char *ip_lxc_gateway = IP_PREFIX "1";
-static const char *ip_trlid = IP_PREFIX "2";
+static const char *ip_bod = IP_PREFIX "2";
 static const char *ip_writed = IP_PREFIX "3";
 static const char *ip_sessiond = IP_PREFIX "4";
 static const char *ip_web = IP_PREFIX "5";
@@ -155,13 +155,13 @@ static const char *ip_webadm = IP_PREFIX "6";
 static const char *ip_proto = IP_PREFIX "7";
 static const char *ip_webssl = IP_PREFIX "8";
 static const char *ip_webssl_fail = IP_PREFIX "18";
-static const char *ip_sqlduser = IP_PREFIX "9";
-static const char *ip_sqlddata = IP_PREFIX "10";
+static const char *ip_bosqlduser = IP_PREFIX "9";
+static const char *ip_bosqlddata = IP_PREFIX "10";
 static const char *ip_exim = IP_PREFIX "11";
 
 #define IP_PREFIX_P "192.168.5."
 static const char *ip_sqld_p = IP_PREFIX_P "1";
-static const char *ip_trlid_p = IP_PREFIX_P "2";
+static const char *ip_bod_p = IP_PREFIX_P "2";
 static const char *ip_writed_p = IP_PREFIX_P "3";
 static const char *ip_sessiond_p = IP_PREFIX_P "4";
 static const char *ip_web_p = IP_PREFIX_P "5";
@@ -170,18 +170,18 @@ static const char *ip_proto_p = IP_PREFIX_P "7";
 static const char *ip_webssl_p = IP_PREFIX_P "8";
 
 
-static const char *vs_trlid = "trlid";
+static const char *vs_bod = "bod";
 static const char *vs_writed = "writed";
 static const char *vs_sessiond = "sessiond";
 
 struct CONFIG {
 	map<string,SERVER> servers;
 	vector<BLACKHOLE> blackholes;
-	vector<TRLID> trlids;
+	vector<TRLID> bods;
 	vector<WRITED> writeds;
 	vector<SESSIOND> sessionds;
-	vector<SQLD> sqlddatas;
-	vector<SQLD> sqldusers;
+	vector<SQLD> bosqlddatas;
+	vector<SQLD> bosqldusers;
 	vector<PROTO> protos;
 	vector<WEB> webs;
 	vector<WEB> webadms;
@@ -206,11 +206,11 @@ static void generateconfig (
 	const char *rootserver = theserver.c_str();	// For now, there is only one server, so it is the one testing itself
 	// Finds all servers
 	set<string> servers;
-	for (auto x:config.trlids) servers.insert(x.server);
+	for (auto x:config.bods) servers.insert(x.server);
 	for (auto x:config.writeds) servers.insert(x.server);
 	for (auto x:config.sessionds) servers.insert(x.server);
-	for (auto x:config.sqlddatas) servers.insert(x.server);
-	for (auto x:config.sqldusers) servers.insert(x.server);
+	for (auto x:config.bosqlddatas) servers.insert(x.server);
+	for (auto x:config.bosqldusers) servers.insert(x.server);
 	for (auto x:config.protos) servers.insert(x.server);
 	for (auto x:config.webs) servers.insert(x.server);
 	for (auto x:config.webadms) servers.insert(x.server);
@@ -286,8 +286,8 @@ static void generateconfig (
 	prefix = "";
 	fprintf (fout,"# rules to connect services to syslog\n");
 	for (auto l:config.logs){
-		for (auto t:config.trlids){
-			fprintf (fout,"%s %srule %s trlid unix /dev/log %s root %s\n",bk_control,prefix,t.server.c_str(),l.server.c_str(),devlog);
+		for (auto t:config.bods){
+			fprintf (fout,"%s %srule %s bod unix /dev/log %s root %s\n",bk_control,prefix,t.server.c_str(),l.server.c_str(),devlog);
 		}
 		for (auto t:config.writeds){
 			fprintf (fout,"%s %srule %s writed unix /dev/log %s root %s\n",bk_control,prefix,t.server.c_str(),l.server.c_str(),devlog);
@@ -309,11 +309,11 @@ static void generateconfig (
 			fprintf (fout,"%s %srule %s webssl unix /dev/log %s root %s\n",bk_control,prefix,t.server.c_str(),l.server.c_str(),devlog);
 			fprintf (fout,"%s %srule %s webssl-fail unix /dev/log %s root %s\n",bk_control,prefix,t.server.c_str(),l.server.c_str(),devlog);
 		}
-		for (auto t:config.sqlddatas){
-			fprintf (fout,"%s %srule %s sqlddata unix /dev/log %s root %s\n",bk_control,prefix,t.server.c_str(),l.server.c_str(),devlog);
+		for (auto t:config.bosqlddatas){
+			fprintf (fout,"%s %srule %s bosqlddata unix /dev/log %s root %s\n",bk_control,prefix,t.server.c_str(),l.server.c_str(),devlog);
 		}
-		for (auto t:config.sqldusers){
-			fprintf (fout,"%s %srule %s sqlduser unix /dev/log %s root %s\n",bk_control,prefix,t.server.c_str(),l.server.c_str(),devlog);
+		for (auto t:config.bosqldusers){
+			fprintf (fout,"%s %srule %s bosqlduser unix /dev/log %s root %s\n",bk_control,prefix,t.server.c_str(),l.server.c_str(),devlog);
 		}
 		for (auto t:config.exims){
 			fprintf (fout,"%s %srule %s exim unix /dev/log %s root %s\n",bk_control,prefix,t.server.c_str(),l.server.c_str(),devlog);
@@ -362,14 +362,14 @@ static void generateconfig (
 		fprintf (fout,"%s rule %s root unix %s/A-sessiond-%s-client-9200.sock %s sessiond /tmp/sessiond-client-9200.sock\n"
 			,bk_control,rootserver,sock_tests_dir,server,server);
 	}
-	fprintf (fout,"# rules to connect to trlid for monitoring\n");
-	for (auto t:config.trlids){
+	fprintf (fout,"# rules to connect to bod for monitoring\n");
+	for (auto t:config.bods){
 		const char *server = t.server.c_str();
 		for (unsigned i=0; i<t.workers; i++){
 			unsigned port = 9000+i;
-			fprintf (fout,"%s rule %s root unix %s/B-trlid-%s-client-%u.sock %s trlid /tmp/trlid-client-%u.sock\n"
+			fprintf (fout,"%s rule %s root unix %s/B-bod-%s-client-%u.sock %s bod /tmp/bod-client-%u.sock\n"
 				,bk_control,rootserver,sock_tests_dir,server,port,server,port);
-			fprintf (fout,"%s rule %s root unix %s/B-trlid-%s-admin-%u.sock %s trlid /tmp/trlid-admin-%u.sock\n"
+			fprintf (fout,"%s rule %s root unix %s/B-bod-%s-admin-%u.sock %s bod /tmp/bod-admin-%u.sock\n"
 				,bk_control,rootserver,sock_tests_dir,server,port,server,port);
 		}
 	}
@@ -399,63 +399,63 @@ static void generateconfig (
 			prefix = "a";
 		}
 	}
-	fprintf (fout,"# rules to connect web to trlid\n");
+	fprintf (fout,"# rules to connect web to bod\n");
 	prefix = "";
 	for (auto w:config.webs){
-		for (auto t:config.trlids){
+		for (auto t:config.bods){
 			for (unsigned i=0; i<t.workers; i++){
-				fprintf (fout,"%s %srule %s web unix /dev/trlid.sock %s %s /tmp/trlid-client-%d.sock\n"
-					,bk_control,prefix,w.server.c_str(),t.server.c_str(),vs_trlid,9000+i);
-				fprintf (fout,"%s %srule %s web-fail unix /dev/trlid.sock %s %s /tmp/trlid-client-%d.sock\n"
-					,bk_control,prefix,w.server.c_str(),t.server.c_str(),vs_trlid,9000+i);
+				fprintf (fout,"%s %srule %s web unix /dev/bod.sock %s %s /tmp/bod-client-%d.sock\n"
+					,bk_control,prefix,w.server.c_str(),t.server.c_str(),vs_bod,9000+i);
+				fprintf (fout,"%s %srule %s web-fail unix /dev/bod.sock %s %s /tmp/bod-client-%d.sock\n"
+					,bk_control,prefix,w.server.c_str(),t.server.c_str(),vs_bod,9000+i);
 				if (1 || devmode){
-					fprintf (fout,"%s %srule %s web_p ip0 9000 %s %s /tmp/trlid-client-%d.sock\n"
-						,bk_control,prefix,w.server.c_str(),t.server.c_str(),vs_trlid,9000+i);
-					fprintf (fout,"%s %srule %s sqlsource ip0 9000 %s %s /tmp/trlid-client-%d.sock\n"
-						,bk_control,prefix,w.server.c_str(),t.server.c_str(),vs_trlid,9000+i);
+					fprintf (fout,"%s %srule %s web_p ip0 9000 %s %s /tmp/bod-client-%d.sock\n"
+						,bk_control,prefix,w.server.c_str(),t.server.c_str(),vs_bod,9000+i);
+					fprintf (fout,"%s %srule %s sqlsource ip0 9000 %s %s /tmp/bod-client-%d.sock\n"
+						,bk_control,prefix,w.server.c_str(),t.server.c_str(),vs_bod,9000+i);
 				}
 				prefix = "a";
 			}
 		}
 	}
-	fprintf (fout,"# rules to connect webadm to trlid\n");
+	fprintf (fout,"# rules to connect webadm to bod\n");
 	prefix = "";
 	for (auto w:config.webadms){
-		for (auto t:config.trlids){
+		for (auto t:config.bods){
 			for (unsigned i=0; i<t.workers; i++){
-				fprintf (fout,"%s %srule %s webadm unix /dev/trlid.sock %s %s /tmp/trlid-admin-%d.sock\n"
-					,bk_control,prefix,w.server.c_str(),t.server.c_str(),vs_trlid,9000+i);
+				fprintf (fout,"%s %srule %s webadm unix /dev/bod.sock %s %s /tmp/bod-admin-%d.sock\n"
+					,bk_control,prefix,w.server.c_str(),t.server.c_str(),vs_bod,9000+i);
 				if (1 || devmode){
-					fprintf (fout,"%s %srule %s webadm_p ip0 9000 %s %s /tmp/trlid-admin-%d.sock\n"
-						,bk_control,prefix,w.server.c_str(),t.server.c_str(),vs_trlid,9000+i);
+					fprintf (fout,"%s %srule %s webadm_p ip0 9000 %s %s /tmp/bod-admin-%d.sock\n"
+						,bk_control,prefix,w.server.c_str(),t.server.c_str(),vs_bod,9000+i);
 				}
 				prefix = "a";
 			}
 		}
 	}
-	fprintf (fout,"# rules to connect trlid to trli-writed\n");
+	fprintf (fout,"# rules to connect bod to bo-writed\n");
 	prefix = "";
-	for (auto t:config.trlids){
+	for (auto t:config.bods){
 		for (auto w:config.writeds){
 			for (unsigned i=0; i<w.workers; i++){
-				fprintf (fout,"%s %srule %s trlid unix /dev/writed.sock %s %s /tmp/writed-%u.sock\n"
+				fprintf (fout,"%s %srule %s bod unix /dev/writed.sock %s %s /tmp/writed-%u.sock\n"
 					,bk_control,prefix,t.server.c_str(),w.server.c_str(),vs_writed,w.port+i);
 				if (devmode){
-					fprintf (fout,"%s %srule %s trlid_p ip0 9100 %s %s /tmp/writed-%u.sock\n"
+					fprintf (fout,"%s %srule %s bod_p ip0 9100 %s %s /tmp/writed-%u.sock\n"
 						,bk_control,prefix,t.server.c_str(),w.server.c_str(),vs_writed,w.port+i);
 				}
 				prefix = "a";
 			}
 		}
 	}
-	fprintf (fout,"# rules to connect trlid to trli-sessiond\n");
+	fprintf (fout,"# rules to connect bod to trli-sessiond\n");
 	prefix = "";
-	for (auto t:config.trlids){
+	for (auto t:config.bods){
 		for (auto s:config.sessionds){
-			fprintf (fout,"%s %srule %s trlid unix /dev/sessiond.sock %s %s /tmp/sessiond-client-9200.sock\n"
+			fprintf (fout,"%s %srule %s bod unix /dev/sessiond.sock %s %s /tmp/sessiond-client-9200.sock\n"
 				,bk_control,prefix,t.server.c_str(),s.server.c_str(),vs_sessiond);
 			if (devmode){
-				fprintf (fout,"%s %srule %s trlid_p ip0 9200 %s %s /tmp/sessiond-client-9200.sock\n"
+				fprintf (fout,"%s %srule %s bod_p ip0 9200 %s %s /tmp/sessiond-client-9200.sock\n"
 					,bk_control,prefix,t.server.c_str(),s.server.c_str(),vs_sessiond);
 			}
 			prefix = "a";
@@ -518,12 +518,12 @@ static void generateconfig (
 	fprintf (fout,"# rules to connect writed to news database\n");
 	prefix = "";
 	for (auto w:config.writeds){
-		for (auto s:config.sqlddatas){
-			fprintf (fout,"%s %srule %s writed unix /var/lib/mysql/mysql.sock %s sqlddata /var/lib/mysql/mysql.sock\n"
+		for (auto s:config.bosqlddatas){
+			fprintf (fout,"%s %srule %s writed unix /var/lib/mysql/mysql.sock %s bosqlddata /var/lib/mysql/mysql.sock\n"
 				,bk_control,prefix,w.server.c_str(),s.server.c_str());
 			if (1 || devmode){
 				// Patch for development, can't bind the client address of a mysql socket
-				fprintf (fout,"%s %srule %s sqlsource ip0 3307 %s sqlddata /var/lib/mysql/mysql.sock\n"
+				fprintf (fout,"%s %srule %s sqlsource ip0 3307 %s bosqlddata /var/lib/mysql/mysql.sock\n"
 					,bk_control,prefix,w.server.c_str(),w.server.c_str());
 			}
 			prefix = "a";
@@ -532,12 +532,12 @@ static void generateconfig (
 	fprintf (fout,"# rules to connect writed to users database\n");
 	prefix = "";
 	for (auto w:config.writeds){
-		for (auto s:config.sqldusers){
-			fprintf (fout,"%s %srule %s writed unix /var/lib/mysql/mysql-users.sock  %s sqlduser /var/lib/mysql/mysql.sock\n"
+		for (auto s:config.bosqldusers){
+			fprintf (fout,"%s %srule %s writed unix /var/lib/mysql/mysql-users.sock  %s bosqlduser /var/lib/mysql/mysql.sock\n"
 				,bk_control,prefix,w.server.c_str(),s.server.c_str());
 			if (1 || devmode){
 				// Patch for development, can't bind the client address of a mysql socket
-				fprintf (fout,"%s %srule %s sqlsource2 ip1 3307 %s sqlduser /var/lib/mysql/mysql.sock\n"
+				fprintf (fout,"%s %srule %s sqlsource2 ip1 3307 %s bosqlduser /var/lib/mysql/mysql.sock\n"
 					,bk_control,prefix,w.server.c_str(),w.server.c_str());
 			}
 			prefix = "a";
@@ -552,17 +552,12 @@ static void generateconfig (
 			prefix = "a";
 		}
 	}
-	fprintf (fout,"# rules to connect trlid to news database\n");
+	fprintf (fout,"# rules to connect bod to news database\n");
 	prefix = "";
-	for (auto t:config.trlids){
-		for (auto s:config.sqlddatas){
-			fprintf (fout,"%s %srule %s trlid unix /var/lib/mysql/mysql.sock %s sqlddata /var/lib/mysql/mysql.sock\n"
+	for (auto t:config.bods){
+		for (auto s:config.bosqlddatas){
+			fprintf (fout,"%s %srule %s bod unix /var/lib/mysql/mysql.sock %s bosqlddata /var/lib/mysql/mysql.sock\n"
 				,bk_control,prefix,t.server.c_str(),s.server.c_str());
-			if (devmode){
-				// Patch for development, can't bind the client address of a mysql socket
-				//fprintf (fout,"%s %srule %s sqlsource ip0 3307 %s sqlddata 3306\n"
-				//	,bk_control,prefix,t.server.c_str(),s.server.c_str());
-			}
 			prefix = "a";
 		}
 	}
@@ -597,7 +592,7 @@ static void print_configs (
 	glocal bool devmode = devmode;
 	glocal const char *public_ip = public_ip.c_str();
 	glocal string server = server;
-	glocal string stoptrlid;
+	glocal string stopbod;
 	glocal string stopwrited;
 	glocal string stopsessiond;
 	glocal string stopweb;
@@ -731,8 +726,8 @@ static void print_configs (
 			fprintf (fout,"%s vserver dnsproxy %s\n",hc,dnsproxy_ip);
 			fprintf (fout,"%s vserver sqlsource %s\n",hc,horizon_ip);
 			fprintf (fout,"%s vserver sqlsource2 %s\n",hc,horizon_ip2);
-			fprintf (fout,"%s vserver trlid %s\n",hc,ip_trlid);
-			fprintf (fout,"%s vserver trlid_p %s\n",hc,ip_trlid_p);
+			fprintf (fout,"%s vserver bod %s\n",hc,ip_bod);
+			fprintf (fout,"%s vserver bod_p %s\n",hc,ip_bod_p);
 			fprintf (fout,"%s vserver writed %s\n",hc,ip_writed);
 			fprintf (fout,"%s vserver writed_p %s\n",hc,ip_writed_p);
 			fprintf (fout,"%s vserver sessiond %s\n",hc,ip_sessiond);
@@ -743,8 +738,8 @@ static void print_configs (
 			fprintf (fout,"%s vserver webadm_p %s\n",hc,ip_webadm_p);
 			fprintf (fout,"%s vserver webssl %s\n",hc,ip_webssl);
 			fprintf (fout,"%s vserver webssl_p %s\n",hc,ip_webssl_p);
-			fprintf (fout,"%s vserver sqlddata %s\n",hc,ip_sqlddata);
-			fprintf (fout,"%s vserver sqlduser %s\n",hc,ip_sqlduser);
+			fprintf (fout,"%s vserver bosqlddata %s\n",hc,ip_bosqlddata);
+			fprintf (fout,"%s vserver bosqlduser %s\n",hc,ip_bosqlduser);
 			fprintf (fout,"%s vserver sqld_p %s\n",hc,ip_sqld_p);
 			fprintf (fout,"%s vserver proto %s\n",hc,ip_proto);
 			fprintf (fout,"%s vserver proto_p %s\n",hc,ip_proto_p);
@@ -764,18 +759,18 @@ static void print_configs (
 				fprintf (fout,"chown %s %s/A-sessiond-%s-client-9200.sock\n"
 					,trli_user,sock_tests_dir,server);
 			}
-			fprintf (fout,"# For trlid system tests\n");
-			for (auto t:glocal.config->trlids){
+			fprintf (fout,"# For bod system tests\n");
+			for (auto t:glocal.config->bods){
 				const char *server = t.server.c_str();
 				for (unsigned i=0; i<t.workers; i++){
 					unsigned port = 9000+i;
-					fprintf (fout,"%s --bind unix,%s/B-trlid-%s-client-%u.sock,root\n"
+					fprintf (fout,"%s --bind unix,%s/B-bod-%s-client-%u.sock,root\n"
 						,hc,sock_tests_dir,server,port);
-					fprintf (fout,"%s --bind unix,%s/B-trlid-%s-admin-%u.sock,root\n"
+					fprintf (fout,"%s --bind unix,%s/B-bod-%s-admin-%u.sock,root\n"
 						,hc,sock_tests_dir,server,port);
-					fprintf (fout,"chown %s %s/B-trlid-%s-client-%u.sock\n"
+					fprintf (fout,"chown %s %s/B-bod-%s-client-%u.sock\n"
 						,trli_user,sock_tests_dir,server,port);
-					fprintf (fout,"chown %s %s/B-trlid-%s-admin-%u.sock\n"
+					fprintf (fout,"chown %s %s/B-bod-%s-admin-%u.sock\n"
 						,trli_user,sock_tests_dir,server,port);
 				}
 			}
@@ -988,26 +983,26 @@ static void print_configs (
 				fprintf (glocal.all_fout,"/var/lib/lxc/udpproxy.sh\n");
 				trli_chmod ("/var/lib/lxc/udpproxy.sh",0755);
 			}
-			// SERVICE trlid
-			for (auto t:glocal.config->trlids){
+			// SERVICE bod
+			for (auto t:glocal.config->bods){
 				if (t.server == glocal.server){
-					mkdir ("/var/lib/lxc/trlid",0755);
+					mkdir ("/var/lib/lxc/bod",0755);
 					glocal const char *secret = t.secret.c_str();
 					glocal int workers = t.workers;
-					<call savefile>("/var/lib/lxc/trlid/trlid.init",false);
+					<call savefile>("/var/lib/lxc/bod/bod.init",false);
 					<f dowrite>
-						fprintf (fout,"export TRLID_PWD=%s\n",sql_trlid_pwd);
+						fprintf (fout,"export TRLID_PWD=%s\n",sql_bod_pwd);
 						for (int i=0; i<glocal.workers; i++){
-							fprintf (fout,"%s/trlid ",sbin_path);
-							fprintf (fout,"--tcpport %d --control %s/trlid-%d.sock"
+							fprintf (fout,"%s/bod ",sbin_path);
+							fprintf (fout,"--tcpport %d --control %s/bod-%d.sock"
 								" --adminhost %s --adminport /dev/writed.sock --sesshost %s --sessport /dev/sessiond.sock"
 								" --dbserv %s --dbname trli --dbuser %s"
 								" --admin_secrets %s/secrets.admin --client_secrets %s/secrets.client"
 								" --mysecret %s --user %s --sqltcpport 3307 --daemon"
-								" --pidfile /tmp/trlid-%d.pid\n"
+								" --pidfile /tmp/bod-%d.pid\n"
 								,9000+i,lxcsock_dir,i
 								,horizon_ip,horizon_ip
-								,"localhost",sql_trlid_user
+								,"localhost",sql_bod_user
 								,config_dir,config_dir
 								,glocal.secret,trli_user
 								,i);
@@ -1016,7 +1011,7 @@ static void print_configs (
 					</f>
 					</call>
 					string startfile;	
-					<call lxc_start> ("trlid",ip_trlid,startfile,trli_user,trli_userid);
+					<call lxc_start> ("bod",ip_bod,startfile,trli_user,trli_userid);
 					<f horizon>
 						fprintf (fout,"%s/horizon-control -p %s/horizon.sock --bind unix,/dev/writed.sock:/var/lib/lxc/%s/rootfs/dev/writed.sock,%s\n"
 							,blackhole_path,sock_dir,name,name);
@@ -1033,7 +1028,7 @@ static void print_configs (
 					</f>
 					</call>
 					fprintf (glocal.all_fout,"%s\n",startfile.c_str());
-					<call lxc_stop> ("trlid","trlid",glocal.workers,glocal.stoptrlid);
+					<call lxc_stop> ("bod","bod",glocal.workers,glocal.stopbod);
 					<f horizon>
 						fprintf (fout,"%s/horizon-control -p %s/horizon.sock unbindfd unix /dev/writed.sock %s\n"
 							,blackhole_path,sock_dir,name);
@@ -1046,9 +1041,9 @@ static void print_configs (
 						_F_lxc_stop::insert(fout,name,command,workers);
 					</f>
 					</call>
-					lxc_config ("trlid",ip_trlid);
-					lxc_status ("trlid","trlid",glocal.workers);
-					lxc_debug ("trlid","trlid",glocal.workers);
+					lxc_config ("bod",ip_bod);
+					lxc_status ("bod","bod",glocal.workers);
+					lxc_debug ("bod","bod",glocal.workers);
 				}
 			}
 			// SERVICE writed
@@ -1061,7 +1056,7 @@ static void print_configs (
 					<f dowrite>
 						fprintf (fout,"export TRLI_WRITED_PWD=%s\n",sql_trli_writed_pwd);
 						for (int i=0; i<glocal.workers; i++){
-							fprintf (fout,"%s/trli-writed ",sbin_path);
+							fprintf (fout,"%s/bo-writed ",sbin_path);
 							fprintf (fout,"--tcpport %d --control %s/trli-writed-%d.sock"
 								" --logfile %s/trli-writed.log --secrets %s/secrets.client"
 								" --data_dbserv %s --data_dbname %s --data_dbuser %s"
@@ -1143,7 +1138,7 @@ static void print_configs (
 					mkdir ("/var/lib/lxc/sessiond",0755);
 					<call savefile>("/var/lib/lxc/sessiond/sessiond.init",false);
 					<f dowrite>
-						fprintf (fout,"%s/trli-sessiond ",sbin_path);
+						fprintf (fout,"%s/bo-sessiond ",sbin_path);
 						fprintf (fout,"--tcpport 9200 --control %s/trli-sessiond.sock"
 							" --admin-secrets %s/secrets.admin --client-secrets %s/secrets.client"
 							" --user %s --daemon --pidfile /tmp/sessiond.pid"
@@ -1180,9 +1175,9 @@ static void print_configs (
 						string startfile;	
 						<call lxc_start> (w,ip,startfile,"apache",48);
 						<f horizon>
-							fprintf (fout,"%s/horizon-control -p %s/horizon.sock --bind unix,/dev/trlid.sock:/var/lib/lxc/%s/rootfs/dev/trlid.sock,%s\n"
+							fprintf (fout,"%s/horizon-control -p %s/horizon.sock --bind unix,/dev/bod.sock:/var/lib/lxc/%s/rootfs/dev/bod.sock,%s\n"
 								,blackhole_path,sock_dir,name,name);
-							fprintf (fout,"chown 48 /var/lib/lxc/%s/rootfs/dev/trlid.sock\n",name);
+							fprintf (fout,"chown 48 /var/lib/lxc/%s/rootfs/dev/bod.sock\n",name);
 							fprintf (fout,"%s/horizon-control -p %s/horizon.sock --bind unix,/dev/sessiond.sock:/var/lib/lxc/%s/rootfs/dev/sessiond.sock,%s\n"
 								,blackhole_path,sock_dir,name,name);
 							fprintf (fout,"chown 48 /var/lib/lxc/%s/rootfs/dev/sessiond.sock\n",name);
@@ -1201,7 +1196,7 @@ static void print_configs (
 						string stopcmd;
 						<call lxc_stop> (w,NULL,-1,stopcmd);
 						<f horizon>
-							fprintf (fout,"%s/horizon-control -p %s/horizon.sock unbindfd unix /dev/trlid.sock %s\n"
+							fprintf (fout,"%s/horizon-control -p %s/horizon.sock unbindfd unix /dev/bod.sock %s\n"
 								,blackhole_path,sock_dir,name);
 							fprintf (fout,"%s/horizon-control -p %s/horizon.sock unbindfd unix /dev/sessiond.sock %s\n"
 								,blackhole_path,sock_dir,name);
@@ -1230,9 +1225,9 @@ static void print_configs (
 					string startfile;	
 					<call lxc_start> ("webadm",ip_webadm,startfile,"apache",48);
 					<f horizon>
-						fprintf (fout,"%s/horizon-control -p %s/horizon.sock --bind unix,/dev/trlid.sock:/var/lib/lxc/%s/rootfs/dev/trlid.sock,%s\n"
+						fprintf (fout,"%s/horizon-control -p %s/horizon.sock --bind unix,/dev/bod.sock:/var/lib/lxc/%s/rootfs/dev/bod.sock,%s\n"
 							,blackhole_path,sock_dir,name,name);
-						fprintf (fout,"chown 48 /var/lib/lxc/%s/rootfs/dev/trlid.sock\n",name);
+						fprintf (fout,"chown 48 /var/lib/lxc/%s/rootfs/dev/bod.sock\n",name);
 						fprintf (fout,"%s/horizon-control -p %s/horizon.sock --bind unix,/dev/sessiond.sock:/var/lib/lxc/%s/rootfs/dev/sessiond.sock,%s\n"
 							,blackhole_path,sock_dir,name,name);
 						fprintf (fout,"chown 48 /var/lib/lxc/%s/rootfs/dev/sessiond.sock\n",name);
@@ -1244,7 +1239,7 @@ static void print_configs (
 					fprintf (glocal.all_fout,"%s\n",startfile.c_str());
 					<call lxc_stop> ("webadm",NULL,-1,glocal.stopwebadm);
 					<f horizon>
-						fprintf (fout,"%s/horizon-control -p %s/horizon.sock unbindfd unix /dev/trlid.sock %s\n"
+						fprintf (fout,"%s/horizon-control -p %s/horizon.sock unbindfd unix /dev/bod.sock %s\n"
 							,blackhole_path,sock_dir,name);
 						fprintf (fout,"%s/horizon-control -p %s/horizon.sock unbindfd unix /dev/sessiond.sock %s\n"
 							,blackhole_path,sock_dir,name);
@@ -1357,19 +1352,19 @@ static void print_configs (
 					lxc_debug (blackhole_path,"protocheck","protocheck-2factors",s.workers);
 				}
 			}
-			// SERVICE sqlddata
-			for (auto s:glocal.config->sqlddatas){
+			// SERVICE bosqlddata
+			for (auto s:glocal.config->bosqlddatas){
 				if (s.server == glocal.server){
 					string startfile;	
-					config_sql ("sqlddata",ip_sqlddata,startfile,glocal.stopsqlddata);
+					config_sql ("bosqlddata",ip_bosqlddata,startfile,glocal.stopsqlddata);
 					fprintf (glocal.all_fout,"%s\n",startfile.c_str());
 				}
 			}
-			// SERVICE sqlduser
-			for (auto s:glocal.config->sqldusers){
+			// SERVICE bosqlduser
+			for (auto s:glocal.config->bosqldusers){
 				if (s.server == glocal.server){
 					string startfile;
-					config_sql ("sqlduser",ip_sqlduser,startfile,glocal.stopsqlduser);
+					config_sql ("bosqlduser",ip_bosqlduser,startfile,glocal.stopsqlduser);
 					fprintf (glocal.all_fout,"%s\n",startfile.c_str());
 				}
 			}
@@ -1521,7 +1516,7 @@ static void print_configs (
 		fprintf (fout,"#!/bin/sh\n");
 		if (glocal.stopcompute.size() > 0) fprintf (fout,"%s\n",glocal.stopcompute.c_str());
 		if (glocal.stoptrlimon.size() > 0) fprintf (fout,"%s\n",glocal.stoptrlimon.c_str());
-		if (glocal.stoptrlid.size() > 0) fprintf (fout,"%s\n",glocal.stoptrlid.c_str());
+		if (glocal.stopbod.size() > 0) fprintf (fout,"%s\n",glocal.stopbod.c_str());
 		if (glocal.stopwrited.size() > 0) fprintf (fout,"%s\n",glocal.stopwrited.c_str());
 		if (glocal.stopsessiond.size() > 0) fprintf (fout,"%s\n",glocal.stopsessiond.c_str());
 		if (glocal.stopweb.size() > 0) fprintf (fout,"%s\n",glocal.stopweb.c_str());
@@ -1591,16 +1586,16 @@ int main (int argc, char *argv[])
 		setarg (' ',"inframode","Generate config only for infrastructure",glocal.inframode,false);
 		setarg (' ',"preprodmode","Sets various parameters to run in pre-production",preprodmode,false);
 		setgrouparg ("SQL");
-		setarg (' ',"trliduser","SQL user for trlid server",sql_trlid_user,false);
-		setarg (' ',"trlidpwd","SQL password for trlid server",sql_trlid_pwd,false);
-		setarg (' ',"writeduser","SQL user for trli-writed server",sql_trli_writed_user,false);
-		setarg (' ',"writedpwd","SQL password for trli-writed server",sql_trli_writed_pwd,false);
+		setarg (' ',"boduser","SQL user for bod server",sql_bod_user,false);
+		setarg (' ',"bodpwd","SQL password for bod server",sql_bod_pwd,false);
+		setarg (' ',"writeduser","SQL user for bo-writed server",sql_trli_writed_user,false);
+		setarg (' ',"writedpwd","SQL password for bo-writed server",sql_trli_writed_pwd,false);
 	</f>
 	<f main>
 		int ret = -1;
 		glocal CONFIG config;
-		if (getenv("TRLID_PWD")!=NULL) sql_trlid_pwd = getenv("TRLID_PWD");
-		if (getenv("TRLI_WRITED_PWD")!=NULL) sql_trli_writed_pwd = getenv("TRLI_WRITED_PWD");
+		if (getenv("BOD_PWD")!=NULL) sql_bod_pwd = getenv("BOD_PWD");
+		if (getenv("BO_WRITED_PWD")!=NULL) sql_trli_writed_pwd = getenv("BO_WRITED_PWD");
 		closeweb = file_exist("/root/closeweb");
 		<call loadfile>(glocal.config_file,true);
 		<f oneline>
@@ -1614,16 +1609,16 @@ int main (int argc, char *argv[])
 						glocal.config.servers[tb[1]] = SERVER(tb[2],tb[3],tb[4]);
 					}else if (strcmp(word,"blackhole")==0 && n == 4){
 						glocal.config.blackholes.push_back(BLACKHOLE(tb[1],tb[2],trli_atou(tb[3])));
-					}else if (strcmp(word,"trlid")==0 && n == 5){
-						glocal.config.trlids.push_back(TRLID(tb[1],trli_atou(tb[2]),trli_atou(tb[3]),tb[4]));
+					}else if (strcmp(word,"bod")==0 && n == 5){
+						glocal.config.bods.push_back(TRLID(tb[1],trli_atou(tb[2]),trli_atou(tb[3]),tb[4]));
 					}else if (strcmp(word,"writed")==0 && n == 5){
 						glocal.config.writeds.push_back(WRITED(tb[1],trli_atou(tb[2]),trli_atou(tb[3]),tb[4]));
 					}else if (strcmp(word,"sessiond")==0 && n == 3){
 						glocal.config.sessionds.push_back(SESSIOND(tb[1],trli_atou(tb[2])));
-					}else if (strcmp(word,"sqlddata")==0 && n == 2){
-						glocal.config.sqlddatas.push_back(SQLD(tb[1]));
-					}else if (strcmp(word,"sqlduser")==0 && n == 2){
-						glocal.config.sqldusers.push_back(SQLD(tb[1]));
+					}else if (strcmp(word,"bosqlddata")==0 && n == 2){
+						glocal.config.bosqlddatas.push_back(SQLD(tb[1]));
+					}else if (strcmp(word,"bosqlduser")==0 && n == 2){
+						glocal.config.bosqldusers.push_back(SQLD(tb[1]));
 					}else if (strcmp(word,"proto")==0 && n == 3){
 						glocal.config.protos.push_back(PROTO(tb[1],trli_atou(tb[2])));
 					}else if (strcmp(word,"web")==0 && n == 2){
@@ -1663,11 +1658,11 @@ int main (int argc, char *argv[])
 		if (glocal.dumpconfig){
 			for (auto x:glocal.config.servers) printf ("server %s sshcmd=%s cpcmd=%s\n",x.first.c_str(),x.second.sshcmd.c_str(),x.second.cpcmd.c_str());
 			for (auto x:glocal.config.blackholes) printf ("blackhole server %s config %s port %u\n",x.server.c_str(),x.config.c_str(),x.port);
-			for (auto x:glocal.config.trlids) printf ("trlid server %s port %u workers %u\n",x.server.c_str(),x.port,x.workers);
+			for (auto x:glocal.config.bods) printf ("bod server %s port %u workers %u\n",x.server.c_str(),x.port,x.workers);
 			for (auto x:glocal.config.writeds) printf ("writed server %s port %u workers %u\n",x.server.c_str(),x.port,x.workers);
 			for (auto x:glocal.config.sessionds) printf ("sessiond server %s port %u\n",x.server.c_str(),x.port);
-			for (auto x:glocal.config.sqlddatas) printf ("sqldata server %s\n",x.server.c_str());
-			for (auto x:glocal.config.sqldusers) printf ("sqluser server %s\n",x.server.c_str());
+			for (auto x:glocal.config.bosqlddatas) printf ("bosqldata server %s\n",x.server.c_str());
+			for (auto x:glocal.config.bosqldusers) printf ("bosqluser server %s\n",x.server.c_str());
 			for (auto x:glocal.config.protos) printf ("proto server %s\n",x.server.c_str());
 			for (auto x:glocal.config.webs) printf ("web server %s\n",x.server.c_str());
 			for (auto x:glocal.config.webadms) printf ("webadm server %s\n",x.server.c_str());
@@ -1679,7 +1674,7 @@ int main (int argc, char *argv[])
 			// Run preprod as an lxc container 
 			#define PIP_PREFIX "192.168.124."
 			ip_lxc_gateway = PIP_PREFIX "1";
-			ip_trlid = PIP_PREFIX "2";
+			ip_bod = PIP_PREFIX "2";
 			ip_writed = PIP_PREFIX "3";
 			ip_sessiond = PIP_PREFIX "4";
 			ip_web = PIP_PREFIX "5";
@@ -1688,8 +1683,8 @@ int main (int argc, char *argv[])
 			ip_proto = PIP_PREFIX "7";
 			ip_webssl = PIP_PREFIX "8";
 			ip_webssl_fail = PIP_PREFIX "18";
-			ip_sqlduser = PIP_PREFIX "9";
-			ip_sqlddata = PIP_PREFIX "10";
+			ip_bosqlduser = PIP_PREFIX "9";
+			ip_bosqlddata = PIP_PREFIX "10";
 			ip_exim = PIP_PREFIX "11";
 		}
 		if (glocal.devmode){
@@ -1719,15 +1714,15 @@ int main (int argc, char *argv[])
 				horizon_ip2 = "127.0.0.11";
 				horizon_masterip = "127.0.0.1";
 			}
-			if (trli_lookup("trlid",glocal.devip)) vs_trlid = "trlid_p";
+			if (trli_lookup("bod",glocal.devip)) vs_bod = "bod_p";
 			if (trli_lookup("writed",glocal.devip)) vs_writed = "writed_p";
 			if (trli_lookup("sessiond",glocal.devip)) vs_sessiond = "sessiond_p";
 			if (trli_lookup("web",glocal.devip)) ip_web = "192.168.5.5";
 			if (trli_lookup("webadm",glocal.devip)) ip_webadm = "192.168.5.6";
 			if (trli_lookup("webssl",glocal.devip)) ip_webssl = ip_webssl_p;
 			if (trli_lookup("proto",glocal.devip)) ip_proto = "192.168.5.7";
-			if (trli_lookup("sqlddata",glocal.devip)) ip_sqlddata = "127.0.0.1";
-			if (trli_lookup("sqlduser",glocal.devip)) ip_sqlduser = "127.0.0.1";
+			if (trli_lookup("bosqlddata",glocal.devip)) ip_bosqlddata = "127.0.0.1";
+			if (trli_lookup("bosqlduser",glocal.devip)) ip_bosqlduser = "127.0.0.1";
 
 			uid_t uid = getuid();
 			struct passwd *p = getpwuid(uid);

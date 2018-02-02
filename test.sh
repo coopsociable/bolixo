@@ -16,8 +16,8 @@ fi
 if [ "$BOLIXOLOG" = "" ] ; then
 	BOLIXOLOG=/tmp
 fi
-SOCKU=/var/lib/lxc/sqlduser/rootfs/var/lib/mysql/mysql.sock
-SOCKN=/var/lib/lxc/sqlddata/rootfs/var/lib/mysql/mysql.sock
+SOCKU=/var/lib/lxc/bosqlduser/rootfs/var/lib/mysql/mysql.sock
+SOCKN=/var/lib/lxc/bosqlddata/rootfs/var/lib/mysql/mysql.sock
 EXTRALXCPROG="$EXTRALXCPROG -d/var/run/blackhole -d/var/log/bolixo -e /etc/localtime"
 HORIZONIP1=192.168.4.1
 WRITEDLOG=/tmp/bo-writed.log
@@ -102,9 +102,9 @@ elif [ "$1" = "checks" ]; then # A: Sanity checks
 		echo "*** Horizon not connected"
 	fi
 elif [ "$1" = "files" ] ; then	# db: Access trli database
-	mysql -P3307 -h$DBSERV $DBNAME
+	mysql -uroot -S $SOCKN $DBNAME
 elif [ "$1" = "users" ] ; then # db: Access trliusers database
-	mysql -P3307 -h$DBSERVU $DBNAMEU
+	mysql -uroot -S $SOCKU  $DBNAMEU
 elif [ "$1" = "bod" ] ; then # A: Runs bod
 	OPTIONS="--mysecret foo --admin_secrets $TRLICONF/secrets.admin --client_secrets $TRLICONF/secrets.client --user $USER \
 		--dbserv $TRLID_DBSERV --dbuser $TRLID_DBUSER --dbname $TRLID_DBNAME --bindaddr $IPTRLID \
@@ -126,17 +126,17 @@ elif [ "$1" = "bod" ] ; then # A: Runs bod
 		if [ "$SILENT" = "on" ] ; then
 			echo trlid
 		else
-			echo $TRLIPATH/trlid $OPTIONS
+			echo $BOLIXOPATH/bod $OPTIONS
 		fi
-		$STRACE $TRLIPATH/trlid $OPTIONS
+		$STRACE $BOLIXOPATH/bod $OPTIONS
 	else
 		for ((work=0; work<$WORKERS; work++))
 		do
 			PORT=`expr 9000 + $work`
 			SOCK="/tmp/trlid-$work.sock"
 			WOPTIONS="$OPTIONS --debugfile /tmp/trlid.log --tcpport $PORT --daemon --control $SOCK"
-			echo ./trlid $WOPTIONS 
-			$TRLIPATH/trlid $WOPTIONS
+			echo ./bod $WOPTIONS 
+			$BOLIXOPATH/bod $WOPTIONS
 		done
 	fi
 elif [ "$1" = "bo-writed" ] ; then # A: Runs writed
@@ -162,22 +162,22 @@ elif [ "$1" = "bo-writed" ] ; then # A: Runs writed
 		if [ "$SILENT" = "on" ]; then
 			echo writed
 		else
-			echo $TRLIPATH/trli-writed $OPTIONS 
+			echo $BOLIXOPATH/bo-writed $OPTIONS 
 		fi
-		$STRACE $TRLIPATH/trli-writed $OPTIONS
+		$STRACE $BOLIXOPATH/bo-writed $OPTIONS
 	else
 		for ((work=0; work<$WORKERS; work++))
 		do
 			PORT=`expr 9100 + $work`
 			SOCK="/tmp/trli-writed-$work.sock"
 			WOPTIONS="$OPTIONS --tcpport $PORT --daemon --control $SOCK"
-			echo ./trli-writed $WOPTIONS 
-			$TRLIPATH/trli-writed $WOPTIONS
+			echo ./bo-writed $WOPTIONS 
+			$BOLIXOPATH/bo-writed $WOPTIONS
 		done
 	fi
 elif [ "$1" = "bo-sessiond" ] ; then # A: Runs sessiond
 	OPTIONS="--control /tmp/trli-sessiond.sock --user $USER --client-secrets $TRLICONF/secrets.client \
-		--admin-secrets $TRLICONF/secrets.admin --bindaddr $IPSESSIOND" 
+		--admin-secrets $BOLIXOCONF/secrets.admin --bindaddr $IPSESSIOND" 
 	shift
 	while [ $# -gt 0 ] ; do
 		if [ "$1" = "debug" ] ; then
@@ -190,9 +190,9 @@ elif [ "$1" = "bo-sessiond" ] ; then # A: Runs sessiond
 	if [ "$SILENT" = "on" ] ; then
 		echo sessiond
 	else
-		echo $TRLIPATH/trli-sessiond $OPTIONS
+		echo $BOLIXOPATH/bo-sessiond $OPTIONS
 	fi
-	$STRACE $TRLIPATH/trli-sessiond $OPTIONS
+	$STRACE $BOLIXOPATH/bo-sessiond $OPTIONS
 elif [ "$1" = "reload" ] ; then # S: Reloads the database using writed log
 	$0 resetdb
 	OPTIONS="--data_dbserv $DBSERV --data_dbuser $TRLI_WRITED_DBUSER --data_dbname $DBNAME \
@@ -216,19 +216,19 @@ elif [ "$1" = "cmplxclog" ] ;then # S: Compares the lxc writed log with the refe
 	diff -c data/normuuid.log /tmp/normuuid.log
 elif [ "$1" = "bod-control" ] ; then # A: Talks to bod
 	shift
-	$TRLIPATH/bod-control --control $BOD_SOCK $*
+	$BOLIXOPATH/bod-control --control $BOD_SOCK $*
 elif [ "$1" = "bod-client" ] ; then # A: Executes the bod test client
 	shift
-	$TRLIPATH/bod-client --host "" -p $TRLIDCLIENTPORT --adm_port $TRLIDADMINPORT --sessport $SESSIONDADMINPORT --client_secret foo --admin_secret adm --admin_bind $WEBADMIP "$@"
+	$BOLIXOPATH/bod-client --host "" -p $TRLIDCLIENTPORT --adm_port $TRLIDADMINPORT --sessport $SESSIONDADMINPORT --client_secret foo --admin_secret adm --admin_bind $WEBADMIP "$@"
 elif [ "$1" = "bo-writed-control" ] ; then # A: Talks to writed
 	shift
-	$TRLIPATH/bo-writed-control --control $WRITED_SOCK "$@"
+	$BOLIXOPATH/bo-writed-control --control $WRITED_SOCK "$@"
 elif [ "$1" = "bo-sessiond-control" ] ; then # A: Talks to sessiond
 	shift
-	$TRLIPATH/trli-sessiond-control --control $SESSIOND_SOCK $*
+	$BOLIXOPATH/bo-sessiond-control --control $SESSIOND_SOCK $*
 elif [ "$1" = "createdb" ] ; then # db: Create databases
-	mysqladmin -S $SOCKU create $DBNAMEU
-	mysql -S $SOCKU $DBNAMEU <<-EOF
+	mysqladmin -uroot -S $SOCKU create $DBNAMEU
+	mysql -uroot -S $SOCKU $DBNAMEU <<-EOF
 		create table users (
 			userid int primary key auto_increment,
 			userid_str char(40),
@@ -252,24 +252,46 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 			subjectid int);
 		create index user_sub on user_interest (userid,subjectid);
 	EOF
-	mysqladmin -S $SOCKN create $DBNAME
-	mysql -S $SOCKN $DBNAME <<-EOF
+	mysqladmin -uroot -S $SOCKN create $DBNAME
+	mysql -uroot -S $SOCKN $DBNAME <<-EOF
 		create table id2name(
 			userid int not null,
 			name char(50)
 		);
 		create unique index userid_idx on id2name (userid);
+		insert into id2name (userid,name) values (-1,"Anonymous");
+
+		create table ids (
+			id int primary key auto_increment,
+			uuid char(40)
+		);
+		create index ids_uuid on ids (uuid);
+
 		create table files (
-			fileid char(40),
+			id int,
 			ownerid int default null,
 			modified datetime default current_timestamp,
 			sign char(40)
 		);
-		insert into id2name (userid,name) values (-1,"Anonymous");
+		create index files_id on files (id);
+
+		create table dirs (
+			id int,
+			ownerid int default null,
+			name varchar(100)
+		);
+		create index dirs_id on dirs (id);
+
+		create table dirs_content(
+			id int,
+			fileid int,
+			modified datetime,
+			name varchar(100)
+		);
 	EOF
 elif [ "$1" = "dropdb" ] ; then # db: Drop databases
-	mysqladmin -S $SOCKN -f drop $DBNAME
-	mysqladmin -S $SOCKU -f drop $DBNAMEU
+	mysqladmin -uroot -S $SOCKN -f drop $DBNAME
+	mysqladmin -uroot -S $SOCKU -f drop $DBNAMEU
 elif [ "$1" = "filldb" ] ; then # db: Fill database (old)
 	# Put test data
 	NEWSCNT1=5
@@ -334,7 +356,7 @@ elif [ "$1" = "test-monitor" ] ; then # T: Tests all trlids
 	if [ "$2" = verbose ] ; then
 		OPT=-v
 	fi
-	if $TRLIPATH/bo-mon-control -p /tmp/trli-mon.sock test
+	if $BOLIXOPATH/bo-mon-control -p /tmp/trli-mon.sock test
 	then
 		echo ok
 	else
@@ -462,24 +484,36 @@ elif [ "$1" = "test-sequence-lxc" ] ; then # S: Reloads and fills database lxc m
 	shift
 	$0 test-sequence $*
 elif [ "$1" = "createsqlusers" ] ; then # db: Generates SQL to create users
-	TRLISQL=/tmp/trli.sql
-	USERSQL=/tmp/trliusers.sql
+	TRLISQL=/tmp/files.sql
+	USERSQL=/tmp/users.sql
 	FROMTRLID=192.168.5.2
 	FROMWRITED=192.168.5.3
 	rm -f $TRLISQL $USERSQL
 	(
-	echo "delete from user where user='$TRLID_DBUSER' or user='$TRLI_WRITED_DBUSER';"
-	echo "delete from db where db='$DBNAME' or db='$DBNAMEU';"
-	echo "insert into user (host,user,password) values ('localhost','$TRLID_DBUSER',password('$TRLID_PWD'));"
-	echo "insert into user (host,user,password) values ('localhost','$TRLI_WRITED_DBUSER',password('$TRLI_WRITED_PWD'));"
-	echo "insert into db (host,db,user,select_priv) values ('localhost','$DBNAME','$TRLID_DBUSER','y');"
-	echo "insert into db (host,db,user,select_priv,Insert_priv,Update_priv,Delete_priv) values ('localhost','$DBNAME','$TRLI_WRITED_DBUSER','y','y','y','y');"
+	echo "delete from user;"
+	echo "delete from db;"
+	echo "insert into user (host,user,password,select_priv,Insert_priv,Update_priv,Delete_priv,Create_priv,Drop_priv,Reload_priv,Shutdown_priv,Process_priv,File_priv,Grant_priv,References_priv,
+	Index_priv,Alter_priv,Show_db_priv,Super_priv,
+	Create_tmp_table_priv,Lock_tables_priv,Execute_priv,Repl_slave_priv,Repl_client_priv,Create_view_priv,Show_view_priv,Create_routine_priv,
+        Alter_routine_priv,Create_user_priv,Event_priv,Trigger_priv,Create_tablespace_priv,ssl_cipher,x509_issuer,x509_subject,authentication_string)
+	values
+	('localhost','root',password('$MYSQL_PWD'),'Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','','','','');"
+	echo "create user '$BOD_DBUSER'@'localhost' identified by '$BOD_PWD';"
+	echo "create user '$BO_WRITED_DBUSER'@'localhost' identified by '$BO_WRITED_PWD';"
+	echo "insert into db (host,db,user,select_priv) values ('localhost','$DBNAME','$BOD_DBUSER','y');"
+	echo "insert into db (host,db,user,select_priv,Insert_priv,Update_priv,Delete_priv) values ('localhost','$DBNAME','$BO_WRITED_DBUSER','y','y','y','y');"
 	) >$TRLISQL
 	(
-	echo "delete from user where user='$TRLID_DBUSER' or user='$TRLI_WRITED_DBUSER';"
-	echo "delete from db where db='$DBNAME' or db='$DBNAMEU';"
-	echo "insert into user (host,user,password) values ('localhost','$TRLI_WRITED_DBUSER',password('$TRLI_WRITED_PWD'));"
-	echo "insert into db (host,db,user,select_priv,Insert_priv,Update_priv,Delete_priv) values ('localhost','$DBNAMEU','$TRLI_WRITED_DBUSER','y','y','y','y');"
+	echo "delete from user;"
+	echo "delete from db;"
+	echo "insert into user (host,user,password,select_priv,Insert_priv,Update_priv,Delete_priv,Create_priv,Drop_priv,Reload_priv,Shutdown_priv,Process_priv,File_priv,Grant_priv,References_priv,
+	Index_priv,Alter_priv,Show_db_priv,Super_priv,
+	Create_tmp_table_priv,Lock_tables_priv,Execute_priv,Repl_slave_priv,Repl_client_priv,Create_view_priv,Show_view_priv,Create_routine_priv,
+        Alter_routine_priv,Create_user_priv,Event_priv,Trigger_priv,Create_tablespace_priv,ssl_cipher,x509_issuer,x509_subject,authentication_string)
+	values
+	('localhost','root',password('$MYSQL_PWD'),'Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','','','','');"
+	echo "create user '$BO_WRITED_DBUSER'@'localhost' identified by '$BO_WRITED_PWD';"
+	echo "insert into db (host,db,user,select_priv,Insert_priv,Update_priv,Delete_priv) values ('localhost','$DBNAMEU','$BO_WRITED_DBUSER','y','y','y','y');"
 	) >$USERSQL
 	echo $TRLISQL and $USERSQL were produced
 elif [ "$1" = "printconfig" ] ; then # config:
@@ -496,7 +530,7 @@ elif [ "$1" = "fullconfig" ] ; then # config: Almost complete configuration for 
 			BKPATH=$2
 	fi
 	./bo-manager -c data/manager.conf --blackhole_path $BKPATH \
-		--trliduser $TRLID_DBUSER --writeduser $TRLI_WRITED_DBUSER \
+		--boduser $BOD_DBUSER --writeduser $BO_WRITED_DBUSER \
 		--devmode printconfig testhost
 	cp alarm.sh /tmp
 elif [ "$1" = "prodconfig" ] ; then # config: Complete configuration for production
@@ -505,7 +539,7 @@ elif [ "$1" = "prodconfig" ] ; then # config: Complete configuration for product
 			BKPATH=$2
 	fi
 	$BOLIXOPATH/bo-manager $PREPRODOPTION -c /root/data/manager.conf --blackhole_path $BKPATH \
-		--trliduser $TRLID_DBUSER --writeduser $TRLI_WRITED_DBUSER \
+		--trliduser $BOD_DBUSER --writeduser $BO_WRITED_DBUSER \
 		printconfig localhost
 elif [ "$1" = "infrastatus" ] ; then # prod: Summary of everything
 	blackhole-control -p /tmp/blackhole.sock status
@@ -570,7 +604,7 @@ elif [ "$1" = "lxc0-bod" ]; then # prod:
 		--savefile /var/lib/lxc/bod/bod.save \
 		--restorefile /var/lib/lxc/bod/bod.restore \
 		$EXTRALXCPROG \
-		-i /usr/sbin/trli-init -l /tmp/log -n trlid -p $TRLIPATH/bod >/var/lib/lxc/bod/bod-lxc0.sh
+		-i /usr/sbin/trli-init -l /tmp/log -n trlid -p $BOLIXOPATH/bod >/var/lib/lxc/bod/bod-lxc0.sh
 	chmod +x /var/lib/lxc/bod/bod-lxc0.sh
 elif [ "$1" = "lxc0-writed" ]; then # prod:
 	export LANG=eng
@@ -583,7 +617,7 @@ elif [ "$1" = "lxc0-writed" ]; then # prod:
 		--savefile /var/lib/lxc/writed/writed.save \
 		--restorefile /var/lib/lxc/writed/writed.restore \
 		$EXTRALXCPROG \
-		-i /usr/sbin/trli-init -l /tmp/log -n writed -p $TRLIPATH/trli-writed >/var/lib/lxc/writed/writed-lxc0.sh
+		-i /usr/sbin/trli-init -l /tmp/log -n writed -p $BOLIXOPATH/trli-writed >/var/lib/lxc/writed/writed-lxc0.sh
 	chmod +x /var/lib/lxc/writed/writed-lxc0.sh
 elif [ "$1" = "lxc0-sessiond" ]; then # prod:
 	export LANG=eng
@@ -597,7 +631,7 @@ elif [ "$1" = "lxc0-sessiond" ]; then # prod:
 		--savefile /var/lib/lxc/sessiond/sessiond.save \
 		--restorefile /var/lib/lxc/sessiond/sessiond.restore \
 		$EXTRALXCPROG \
-		-i /usr/sbin/trli-init -l /tmp/log -n sessiond -p $TRLIPATH/bo-sessiond >/var/lib/lxc/sessiond/sessiond-lxc0.sh
+		-i /usr/sbin/trli-init -l /tmp/log -n sessiond -p $BOLIXOPATH/bo-sessiond >/var/lib/lxc/sessiond/sessiond-lxc0.sh
 	chmod +x /var/lib/lxc/sessiond/sessiond-lxc0.sh
 elif [ "$1" = "lxc0-proto" ]; then # prod:
 	export LANG=eng
@@ -655,7 +689,7 @@ elif [ "$1" = "lxc0-web" ]; then # prod:
 		$EXTRALXCPROG \
 		-i /usr/sbin/trli-init -l $LOG -l /tmp/log.web2 \
 		-e /var/www/html/admin.hc \
-		-e $TRLIPATH/trli-stop \
+		-e $BOLIXOPATH/trli-stop \
 		-n webadm -p /usr/sbin/httpd >/var/lib/lxc/webadm/webadm-lxc0.sh
 	chmod +x /var/lib/lxc/webadm/webadm-lxc0.sh
 elif [ "$1" = "lxc0-webssl" ]; then # prod:
