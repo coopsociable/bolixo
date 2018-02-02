@@ -123,6 +123,7 @@ static const char *sock_tests_dir = "/var/run/tests";
 static const char *lxcsock_dir = "/var/run/blackhole";
 //static const char *bin_path = "/usr/bin";
 static const char *sbin_path = "/usr/sbin";
+static const char *project_path = "/usr/sbin";
 static const char *horizon_ip = "192.168.4.1";
 static const char *horizon_ip2 = "192.168.4.2";
 static const char *dnsproxy_ip = "192.168.4.3";
@@ -908,13 +909,13 @@ static void print_configs (
 	</f>
 	</call>
 	trli_chmod ("/tmp/bkstart.sh",0755);
-	const char *trlistart = "/root/trlistart.sh";
-	const char *trlistop  = "/root/trlistop.sh";
+	const char *bo_start = "/root/bolixostart.sh";
+	const char *bo_stop  = "/root/bolixostop.sh";
 	if (devmode){
-		trlistart = "/tmp/trlistart.sh";
-		trlistop  = "/tmp/trlistop.sh";
+		bo_start = "/tmp/bolixostart.sh";
+		bo_stop  = "/tmp/bolixostop.sh";
 	}
-	<call savefile>(trlistart,false);
+	<call savefile>(bo_start,false);
 	<f dowrite>
 		glocal FILE *all_fout = fout;
 		fprintf (fout,"#!/bin/sh\n");
@@ -993,7 +994,7 @@ static void print_configs (
 					<f dowrite>
 						fprintf (fout,"export TRLID_PWD=%s\n",sql_bod_pwd);
 						for (int i=0; i<glocal.workers; i++){
-							fprintf (fout,"%s/bod ",sbin_path);
+							fprintf (fout,"%s/bod ",project_path);
 							fprintf (fout,"--tcpport %d --control %s/bod-%d.sock"
 								" --adminhost %s --adminport /dev/writed.sock --sesshost %s --sessport /dev/sessiond.sock"
 								" --dbserv %s --dbname trli --dbuser %s"
@@ -1028,7 +1029,7 @@ static void print_configs (
 					</f>
 					</call>
 					fprintf (glocal.all_fout,"%s\n",startfile.c_str());
-					<call lxc_stop> ("bod","bod",glocal.workers,glocal.stopbod);
+					<call lxc_stop> ("bod","bod",project_path,glocal.workers,glocal.stopbod);
 					<f horizon>
 						fprintf (fout,"%s/horizon-control -p %s/horizon.sock unbindfd unix /dev/writed.sock %s\n"
 							,blackhole_path,sock_dir,name);
@@ -1038,7 +1039,7 @@ static void print_configs (
 							,blackhole_path,sock_dir,name);
 					</f>
 					<f insert>
-						_F_lxc_stop::insert(fout,name,command,workers);
+						_F_lxc_stop::insert(fout,name,command,command_path,workers);
 					</f>
 					</call>
 					lxc_config ("bod",ip_bod);
@@ -1056,7 +1057,7 @@ static void print_configs (
 					<f dowrite>
 						fprintf (fout,"export TRLI_WRITED_PWD=%s\n",sql_trli_writed_pwd);
 						for (int i=0; i<glocal.workers; i++){
-							fprintf (fout,"%s/bo-writed ",sbin_path);
+							fprintf (fout,"%s/bo-writed ",project_path);
 							fprintf (fout,"--tcpport %d --control %s/trli-writed-%d.sock"
 								" --logfile %s/trli-writed.log --secrets %s/secrets.client"
 								" --data_dbserv %s --data_dbname %s --data_dbuser %s"
@@ -1110,7 +1111,7 @@ static void print_configs (
 					</f>
 					</call>
 					fprintf (glocal.all_fout,"%s\n",startfile.c_str());
-					<call lxc_stop> ("writed","trli-writed",glocal.workers,glocal.stopwrited);
+					<call lxc_stop> ("writed","bo-writed",project_path,glocal.workers,glocal.stopwrited);
 					<f horizon>
 						fprintf (fout,"%s/horizon-control -p %s/horizon.sock unbindfd unix /dev/compute.sock %s\n"
 							,blackhole_path,sock_dir,name);
@@ -1124,7 +1125,7 @@ static void print_configs (
 							,blackhole_path,sock_dir,name);
 					</f>
 					<f insert>
-						_F_lxc_stop::insert(fout,name,command,workers);
+						_F_lxc_stop::insert(fout,name,command,command_path,workers);
 					</f>
 					</call>
 					lxc_config ("writed",ip_writed);
@@ -1138,8 +1139,8 @@ static void print_configs (
 					mkdir ("/var/lib/lxc/sessiond",0755);
 					<call savefile>("/var/lib/lxc/sessiond/sessiond.init",false);
 					<f dowrite>
-						fprintf (fout,"%s/bo-sessiond ",sbin_path);
-						fprintf (fout,"--tcpport 9200 --control %s/trli-sessiond.sock"
+						fprintf (fout,"%s/bo-sessiond ",project_path);
+						fprintf (fout,"--tcpport 9200 --control %s/bo-sessiond.sock"
 							" --admin-secrets %s/secrets.admin --client-secrets %s/secrets.client"
 							" --user %s --daemon --pidfile /tmp/sessiond.pid"
 							" --variable subject --variable order\n"
@@ -1152,10 +1153,10 @@ static void print_configs (
 					string startfile;	
 					lxc_start ("sessiond",ip_sessiond,startfile);
 					fprintf (glocal.all_fout,"%s\n",startfile.c_str());
-					lxc_stop ("sessiond","trli-sessiond",-1,glocal.stopsessiond);
+					lxc_stop ("sessiond","bo-sessiond",project_path,-1,glocal.stopsessiond);
 					lxc_config ("sessiond",ip_sessiond);
-					lxc_status ("sessiond","trli-sessiond",-1);
-					lxc_debug ("sessiond","trli-sessiond",-1);
+					lxc_status ("sessiond","bo-sessiond",-1);
+					lxc_debug ("sessiond","bo-sessiond",-1);
 				}
 			}
 			// SERVICE web
@@ -1194,7 +1195,7 @@ static void print_configs (
 						</call>
 						fprintf (glocal.all_fout,"%s\n",startfile.c_str());
 						string stopcmd;
-						<call lxc_stop> (w,NULL,-1,stopcmd);
+						<call lxc_stop> (w,NULL,NULL,-1,stopcmd);
 						<f horizon>
 							fprintf (fout,"%s/horizon-control -p %s/horizon.sock unbindfd unix /dev/bod.sock %s\n"
 								,blackhole_path,sock_dir,name);
@@ -1237,7 +1238,7 @@ static void print_configs (
 					</f>
 					</call>
 					fprintf (glocal.all_fout,"%s\n",startfile.c_str());
-					<call lxc_stop> ("webadm",NULL,-1,glocal.stopwebadm);
+					<call lxc_stop> ("webadm",NULL,NULL,-1,glocal.stopwebadm);
 					<f horizon>
 						fprintf (fout,"%s/horizon-control -p %s/horizon.sock unbindfd unix /dev/bod.sock %s\n"
 							,blackhole_path,sock_dir,name);
@@ -1295,7 +1296,7 @@ static void print_configs (
 						</call>
 						fprintf (glocal.all_fout,"%s\n",startfile.c_str());
 						string stopcmd;
-						lxc_stop (w,NULL,-1,stopcmd);
+						lxc_stop (w,NULL,NULL,-1,stopcmd);
 						glocal.stopwebssl += string_f("%s\n",stopcmd.c_str());
 						lxc_config (w,"truelies.news",ip,true);
 						ip = ip_webssl_fail;
@@ -1333,7 +1334,7 @@ static void print_configs (
 					string startfile;	
 					lxc_start ("protocheck",ip_proto,startfile,"apache",48);
 					fprintf (glocal.all_fout,"%s\n",startfile.c_str());
-					<call lxc_stop> ("protocheck",NULL,-1,glocal.stopproto);
+					<call lxc_stop> ("protocheck",NULL,NULL,-1,glocal.stopproto);
 					<f insert>
 						for (unsigned i=0; i<glocal.p->workers; i++){
 							fprintf (fout,"%s/protocheck-2factors-control"
@@ -1405,12 +1406,12 @@ static void print_configs (
 					</f>
 					</call>
 					fprintf (glocal.all_fout,"%s\n",startfile.c_str());
-					lxc_stop ("exim",NULL,-1,glocal.stopexim);
-					lxc_config ("exim","truelies.news",ip_exim,true);
+					lxc_stop ("exim",NULL,NULL,-1,glocal.stopexim);
+					lxc_config ("exim","bolixo.org",ip_exim,true);
 				}
 			}
 		}
-		// SERVICE trli-mon
+		// SERVICE bo-mon
 		for (auto s:glocal.config->monitors){
 			if (s.server == glocal.server){
 				static const char *mon_sh = "/var/lib/lxc/trli-mon-start.sh";
@@ -1418,10 +1419,10 @@ static void print_configs (
 				<call savefile>(mon_sh,false);
 				<f dowrite>
 					fprintf (fout,"#!/bin/sh\n");
-					fprintf (fout,"%s/trli-mon --daemon --control %s/trli-mon.sock --sock_dir %s --secret %s --user %s --alarmcmd %s\n"
-						,sbin_path,sock_dir,sock_tests_dir,glocal.s->secret.c_str(),trli_user,glocal.s->alarmcmd.c_str());
+					fprintf (fout,"%s/bo-mon --daemon --control %s/bo-mon.sock --sock_dir %s --secret %s --user %s --alarmcmd %s\n"
+						,project_path,sock_dir,sock_tests_dir,glocal.s->secret.c_str(),trli_user,glocal.s->alarmcmd.c_str());
 					if (glocal.devmode){
-						fprintf (fout,"chown %s %s/trli-mon.sock\n",trli_user,sock_dir);
+						fprintf (fout,"chown %s %s/bo-mon.sock\n",trli_user,sock_dir);
 					}
 					return 0;
 				</f>
@@ -1432,7 +1433,7 @@ static void print_configs (
 				<call savefile>(stop_sh,false);
 				<f dowrite>
 					fprintf (fout,"#!/bin/sh\n");
-					fprintf (fout,"%s/trli-mon-control -p %s/trli-mon.sock quit\n",sbin_path,sock_dir);
+					fprintf (fout,"%s/bo-mon-control -p %s/bo-mon.sock quit\n",project_path,sock_dir);
 					return 0;
 				</f>
 				</call>
@@ -1443,33 +1444,11 @@ static void print_configs (
 		// SERVICE trli-syslog
 		for (auto s:glocal.config->logs){
 			if (s.server == glocal.server){
-				static const char *mon_sh = "/var/lib/lxc/trli-syslog-start.sh";
-				<call savefile>(mon_sh,false);
-				<f dowrite>
-					fprintf (fout,"#!/bin/sh\n");
-					fprintf (fout,"%s/trli-syslog --daemon --logport %s --control %s/trli-syslog.sock --user %s\n"
-						,sbin_path,devlog,sock_dir,trli_user);
-					if (glocal.devmode){
-						fprintf (fout,"chown %s %s/trli-mon.sock\n",trli_user,sock_dir);
-						fprintf (fout,"chown %s %s\n",trli_user,devlog);
-					}else{
-						fprintf (fout,"chown blackhole %s\n",devlog);
-					}
-					return 0;
-				</f>
-				</call>
-				trli_chmod (mon_sh,0755);
-				fprintf (fout,"%s\n",mon_sh);
-				static const char *stop_sh = "/var/lib/lxc/trli-syslog-stop.sh";
-				<call savefile>(stop_sh,false);
-				<f dowrite>
-					fprintf (fout,"#!/bin/sh\n");
-					fprintf (fout,"%s/trli-syslog-control -p %s/trli-syslog.sock quit\n",sbin_path,sock_dir);
-					return 0;
-				</f>
-				</call>
-				trli_chmod (stop_sh,0755);
-				glocal.stoptrlisyslog = stop_sh;
+				string startcmd,stopcmd;
+				const char *devlog_user = "blackhole";
+				if (glocal.devmode) devlog_user = trli_user;
+				config_syslog (startcmd,glocal.stoptrlisyslog,devlog,devlog_user,trli_user);
+				fprintf (fout,"%s\n",startcmd.c_str());
 			}
 		}
 		// SERVICE compute
@@ -1484,7 +1463,7 @@ static void print_configs (
 					" --control %s/trli-log.sock --unixadmin unix:%s/compute.sock"
 					" --compute --admin-secrets %s/secrets.admin"
 					" /var/lib/lxc/writed/rootfs/%s/trli-writed.log\n"
-					,sbin_path,sql_trli_writed_user
+					,project_path,sql_trli_writed_user
 					,sock_dir,sock_dir
 					,config_dir
 					,log_dir);
@@ -1501,7 +1480,7 @@ static void print_configs (
 			<f dowrite>
 				fprintf (fout,"#!/bin/sh\n");
 				fprintf (fout,"%s/trli-log-control -p %s/trli-log.sock quit\n"
-					,sbin_path,sock_dir);
+					,project_path,sock_dir);
 				return 0;
 			</f>
 			</call>
@@ -1510,8 +1489,8 @@ static void print_configs (
 		return 0;
 	</f>
 	</call>
-	trli_chmod (trlistart,0755);
-	<call savefile>(trlistop,false);
+	trli_chmod (bo_start,0755);
+	<call savefile>(bo_stop,false);
 	<f dowrite>
 		fprintf (fout,"#!/bin/sh\n");
 		if (glocal.stopcompute.size() > 0) fprintf (fout,"%s\n",glocal.stopcompute.c_str());
@@ -1531,7 +1510,7 @@ static void print_configs (
 		return 0;
 	</f>
 	</call>
-	trli_chmod (trlistop,0755);
+	trli_chmod (bo_stop,0755);
 	<call savefile>("/tmp/bkstop.sh",false);
 	<f dowrite>
 		fprintf (fout,"%s/blackhole-control -p %s/blackhole.sock quit\n",blackhole_path,sock_dir);
@@ -1699,10 +1678,11 @@ int main (int argc, char *argv[])
 			log_dir = dev_log_dir.c_str();
 			static string dev_sock_dir("/tmp");
 			sock_dir = dev_sock_dir.c_str();
+			manager_set_sock_dir("/tmp");
 			static string dev_sock_tests_dir("/tmp/tests");
 			sock_tests_dir = dev_sock_tests_dir.c_str();
-			static string dev_sbin_path(path);
-			sbin_path = dev_sbin_path.c_str();
+			static string dev_project_path(path);
+			project_path = dev_project_path.c_str();
 			devlog = "/tmp/trli.log";
 			blackhole_options_conf = "/tmp/blackhole-options.conf";
 			blackhole_rules = "/tmp/blackhole-rules.sh";
@@ -1743,6 +1723,7 @@ int main (int argc, char *argv[])
 			}
 			trli_userid = p->pw_uid;
 		}
+		manager_set_manager_user (trli_user,trli_userid);
 		if (argc == 2 && strcmp(argv[0],"printconfig")==0){
 			const string server(argv[1]);
 			auto s = glocal.config.servers.find(server);

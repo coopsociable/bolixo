@@ -20,6 +20,7 @@ SOCKU=/var/lib/lxc/bosqlduser/rootfs/var/lib/mysql/mysql.sock
 SOCKN=/var/lib/lxc/bosqlddata/rootfs/var/lib/mysql/mysql.sock
 EXTRALXCPROG="$EXTRALXCPROG -d/var/run/blackhole -d/var/log/bolixo -e /etc/localtime"
 HORIZONIP1=192.168.4.1
+IPSESSIOND=192.168.5.4
 WRITEDLOG=/tmp/bo-writed.log
 SOCKTESTDIR=/tmp/tests
 if [ -d /var/run/tests ] ; then
@@ -31,12 +32,12 @@ SESSIONDADMINPORT=$SOCKTESTDIR/A-sessiond-*-admin-9200.sock
 if [ "$LXCSOCK" != "" ] ; then
 	TRLID_SOCK=/var/lib/lxc/trlid/rootfs/var/run/blackhole/trlid-0.sock
 	WRITED_SOCK=/var/lib/lxc/writed/rootfs/var/run/blackhole/trli-writed-0.sock
-	SESSIOND_SOCK=/var/lib/lxc/sessiond/rootfs/var/run/blackhole/trli-sessiond.sock
+	SESSIOND_SOCK=/var/lib/lxc/sessiond/rootfs/var/run/blackhole/bo-sessiond.sock
 	WRITEDLOG=/var/lib/lxc/writed/rootfs/var/log/trli/trli-writed.log
 elif [ "$TRLID_SOCK" = "" ] ; then
 	TRLID_SOCK=/tmp/trlid.sock
 	WRITED_SOCK=/tmp/trli-writed.sock
-	SESSIOND_SOCK=/tmp/trli-sessiond.sock
+	SESSIOND_SOCK=/tmp/bo-sessiond.sock
 fi
 mysql_save(){
 	ROOTFS=/var/lib/lxc/$1/rootfs
@@ -176,7 +177,7 @@ elif [ "$1" = "bo-writed" ] ; then # A: Runs writed
 		done
 	fi
 elif [ "$1" = "bo-sessiond" ] ; then # A: Runs sessiond
-	OPTIONS="--control /tmp/trli-sessiond.sock --user $USER --client-secrets $TRLICONF/secrets.client \
+	OPTIONS="--control /tmp/bo-sessiond.sock --user $USER --client-secrets $BOLIXOCONF/secrets.client \
 		--admin-secrets $BOLIXOCONF/secrets.admin --bindaddr $IPSESSIOND" 
 	shift
 	while [ $# -gt 0 ] ; do
@@ -532,7 +533,7 @@ elif [ "$1" = "fullconfig" ] ; then # config: Almost complete configuration for 
 	./bo-manager -c data/manager.conf --blackhole_path $BKPATH \
 		--boduser $BOD_DBUSER --writeduser $BO_WRITED_DBUSER \
 		--devmode printconfig testhost
-	cp alarm.sh /tmp
+	#cp alarm.sh /tmp
 elif [ "$1" = "prodconfig" ] ; then # config: Complete configuration for production
 	BKPATH=/usr/sbin
 	if [ "$2" != "" ]; then
@@ -867,16 +868,16 @@ elif [ "$1" = "checkupdates" ] ; then # prod: Check all containers are up to dat
 	do
 		/usr/sbin/trli-cmp --name $lxc /var/lib/lxc/$lxc/$lxc.files
 	done
-elif [ "$1" = "tail" ] ; then # prod: show end of syslog
-	/usr/sbin/trli-syslog-control -p /tmp/trli-syslog.sock tail
-elif [ "$1" = "logs" ] ; then # prod: show syslogs
-	/usr/sbin/trli-syslog-control -p /tmp/trli-syslog.sock logs
-elif [ "$1" = "syslog-status" ] ; then # prod: show syslog status
-	/usr/sbin/trli-syslog-control -p /tmp/trli-syslog.sock status
-elif [ "$1" = "syslog-reset" ] ; then # prod: show syslog reseterrors
-	/usr/sbin/trli-syslog-control -p /tmp/trli-syslog.sock reseterrors
-elif [ "$1" = "syslog-clear" ] ; then # prod: Clear all messages in syslog
-	/usr/sbin/trli-syslog-control -p /tmp/trli-syslog.sock clearlogs
+elif [ "$1" = "syslog-tail" ] ; then # syslog: show end of syslog
+	/usr/sbin/trli-syslog-control tail
+elif [ "$1" = "syslog-logs" ] ; then # syslog: show syslogs
+	/usr/sbin/trli-syslog-control logs
+elif [ "$1" = "syslog-status" ] ; then # syslog: show syslog status
+	/usr/sbin/trli-syslog-control status
+elif [ "$1" = "syslog-reset" ] ; then # syslog: show syslog reseterrors
+	/usr/sbin/trli-syslog-control reseterrors
+elif [ "$1" = "syslog-clear" ] ; then # syslog: Clear all messages in syslog
+	/usr/sbin/trli-syslog-control clearlogs
 elif [ "$1" = "loadcon" ] ; then # prod: Shows connection load
 	blackhole-control -p /tmp/blackhole.sock connectload
 elif [ "$1" = "loadfail" ] ; then # prod: Control access to normal or fail web (normal,fail,split)
