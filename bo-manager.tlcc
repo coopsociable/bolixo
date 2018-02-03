@@ -130,8 +130,8 @@ static const char *dnsproxy_ip = "192.168.4.3";
 static const char *horizon_masterip = "192.168.4.1";
 static const char *sql_bod_pwd = "bod.1";
 static const char *sql_bod_user = "bod";
-static const char *sql_trli_writed_pwd = "trli_writed.1";
-static const char *sql_trli_writed_user = "trli_writed";
+static const char *sql_bo_writed_pwd = "bo_writed.1";
+static const char *sql_bo_writed_user = "bo_writed";
 static const char *trli_user = "bolixo";
 static int trli_userid = -1;
 static const char *blackhole_path = "/usr/sbin";
@@ -992,12 +992,12 @@ static void print_configs (
 					glocal int workers = t.workers;
 					<call savefile>("/var/lib/lxc/bod/bod.init",false);
 					<f dowrite>
-						fprintf (fout,"export TRLID_PWD=%s\n",sql_bod_pwd);
+						fprintf (fout,"export BOD_PWD=%s\n",sql_bod_pwd);
 						for (int i=0; i<glocal.workers; i++){
 							fprintf (fout,"%s/bod ",project_path);
 							fprintf (fout,"--tcpport %d --control %s/bod-%d.sock"
 								" --adminhost %s --adminport /dev/writed.sock --sesshost %s --sessport /dev/sessiond.sock"
-								" --dbserv %s --dbname trli --dbuser %s"
+								" --dbserv %s --dbname files --dbuser %s"
 								" --admin_secrets %s/secrets.admin --client_secrets %s/secrets.client"
 								" --mysecret %s --user %s --sqltcpport 3307 --daemon"
 								" --pidfile /tmp/bod-%d.pid\n"
@@ -1038,13 +1038,10 @@ static void print_configs (
 						fprintf (fout,"%s/horizon-control -p %s/horizon.sock unbindfd unix /var/lib/mysql/mysql.sock %s\n"
 							,blackhole_path,sock_dir,name);
 					</f>
-					<f insert>
-						_F_lxc_stop::insert(fout,name,command,command_path,workers);
-					</f>
 					</call>
 					lxc_config ("bod",ip_bod);
-					lxc_status ("bod","bod",glocal.workers);
-					lxc_debug ("bod","bod",glocal.workers);
+					lxc_status (project_path,"bod","bod",glocal.workers);
+					lxc_debug (project_path,"bod","bod",glocal.workers);
 				}
 			}
 			// SERVICE writed
@@ -1055,21 +1052,20 @@ static void print_configs (
 					glocal int workers = t.workers;
 					<call savefile>("/var/lib/lxc/writed/writed.init",false);
 					<f dowrite>
-						fprintf (fout,"export TRLI_WRITED_PWD=%s\n",sql_trli_writed_pwd);
+						fprintf (fout,"export BO_WRITED_PWD=%s\n",sql_bo_writed_pwd);
 						for (int i=0; i<glocal.workers; i++){
 							fprintf (fout,"%s/bo-writed ",project_path);
-							fprintf (fout,"--tcpport %d --control %s/trli-writed-%d.sock"
-								" --logfile %s/trli-writed.log --secrets %s/secrets.client"
+							fprintf (fout,"--tcpport %d --control %s/bo-writed-%d.sock"
+								" --logfile %s/bo-writed.log --secrets %s/secrets.client"
 								" --data_dbserv %s --data_dbname %s --data_dbuser %s"
 								" --users_dbserv %s --users_dbname %s --users_dbuser %s"
 								" --sessionhost %s --sessionport /dev/sessiond.sock --sessionbind %s"
 								" --mysecret %s --user %s --sqltcpport 3307 --daemon"
 								" --pidfile /tmp/writed-%d.pid --noproc %d"
-								" --writeonce_proof --writeonce_comment"
 								,9100+i,lxcsock_dir,i
 								,log_dir,config_dir
-								,"localhost","trli",sql_trli_writed_user
-								,"localhost","trliusers",sql_trli_writed_user
+								,"localhost","files",sql_bo_writed_user
+								,"localhost","users",sql_bo_writed_user
 								,horizon_ip,ip_writed
 								,glocal.secret,trli_user
 								,i,i);
@@ -1129,8 +1125,8 @@ static void print_configs (
 					</f>
 					</call>
 					lxc_config ("writed",ip_writed);
-					lxc_status ("writed","trli-writed",glocal.workers);
-					lxc_debug ("writed","trli-writed",glocal.workers);
+					lxc_status (project_path,"writed","bo-writed",glocal.workers);
+					lxc_debug (project_path,"writed","bo-writed",glocal.workers);
 				}
 			}
 			// SERVICE sessiond
@@ -1155,8 +1151,8 @@ static void print_configs (
 					fprintf (glocal.all_fout,"%s\n",startfile.c_str());
 					lxc_stop ("sessiond","bo-sessiond",project_path,-1,glocal.stopsessiond);
 					lxc_config ("sessiond",ip_sessiond);
-					lxc_status ("sessiond","bo-sessiond",-1);
-					lxc_debug ("sessiond","bo-sessiond",-1);
+					lxc_status (project_path,"sessiond","bo-sessiond",-1);
+					lxc_debug (project_path,"sessiond","bo-sessiond",-1);
 				}
 			}
 			// SERVICE web
@@ -1462,8 +1458,8 @@ static void print_configs (
 					" --data_dbname trli --sqltcpport 3307"
 					" --control %s/trli-log.sock --unixadmin unix:%s/compute.sock"
 					" --compute --admin-secrets %s/secrets.admin"
-					" /var/lib/lxc/writed/rootfs/%s/trli-writed.log\n"
-					,project_path,sql_trli_writed_user
+					" /var/lib/lxc/writed/rootfs/%s/bo-writed.log\n"
+					,project_path,sql_bo_writed_user
 					,sock_dir,sock_dir
 					,config_dir
 					,log_dir);
@@ -1555,7 +1551,7 @@ int main (int argc, char *argv[])
 	glocal bool inframode = false;
 	glocal.ret = <call tlmpprogram>(argc,argv);
 	<f init>
-		setproginfo ("trli-manager",VERSION,"Control the trli cluster");
+		setproginfo ("trli-manager",VERSION,"Control the bolix cluster");
 		setarg ('c',"config","Config file",glocal.config_file,false);
 		setarg (' ',"dump","Dump config (debug)",glocal.dumpconfig,false);
 		setarg (' ',"devip","Use development IP (127.0.0.X) for a given service",glocal.devip,false);
@@ -1567,14 +1563,14 @@ int main (int argc, char *argv[])
 		setgrouparg ("SQL");
 		setarg (' ',"boduser","SQL user for bod server",sql_bod_user,false);
 		setarg (' ',"bodpwd","SQL password for bod server",sql_bod_pwd,false);
-		setarg (' ',"writeduser","SQL user for bo-writed server",sql_trli_writed_user,false);
-		setarg (' ',"writedpwd","SQL password for bo-writed server",sql_trli_writed_pwd,false);
+		setarg (' ',"writeduser","SQL user for bo-writed server",sql_bo_writed_user,false);
+		setarg (' ',"writedpwd","SQL password for bo-writed server",sql_bo_writed_pwd,false);
 	</f>
 	<f main>
 		int ret = -1;
 		glocal CONFIG config;
 		if (getenv("BOD_PWD")!=NULL) sql_bod_pwd = getenv("BOD_PWD");
-		if (getenv("BO_WRITED_PWD")!=NULL) sql_trli_writed_pwd = getenv("BO_WRITED_PWD");
+		if (getenv("BO_WRITED_PWD")!=NULL) sql_bo_writed_pwd = getenv("BO_WRITED_PWD");
 		closeweb = file_exist("/root/closeweb");
 		<call loadfile>(glocal.config_file,true);
 		<f oneline>

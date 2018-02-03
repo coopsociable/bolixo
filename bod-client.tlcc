@@ -1,0 +1,377 @@
+/*
+	Command line client to test bod
+*/
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <misc.h>
+#include <sys/wait.h>
+#include <tlmplib.h>
+#include <tlmpnet.h>
+#include <string>
+#include <fdpass.h>
+
+
+using namespace std;
+
+#include "proto/bod_client.protoch"
+#include "proto/bod_admin.protoch"
+#define bo_sessiond_admin_getsessioninfo_NOTNEED
+#define bo_sessiond_admin_test_NOTNEED
+#define bo_sessiond_admin_createsession_NOTNEED
+#define bo_sessiond_admin_deletesessions_NOTNEED
+#define bo_sessiond_admin_setsession_NOTNEED
+#define bo_sessiond_admin_getsession_NOTNEED
+#include "proto/bo-sessiond_admin.protoch"
+
+<mod>
+static string bod_createsession(CONNECT_INFO &con)
+{
+	glocal string ret;
+	<call bod_client_createsession>(con);
+	<f ok>
+		glocal.ret = sessionid;
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+<mod>
+static void bod_deletesession(CONNECT_INFO &con, string &sessionid)
+{
+	<call bo_sessiond_admin_deletesession>(con,sessionid);
+	<f ok>
+	</f>
+	</call>
+}
+</mod>
+static bool verbose = true;
+<mod>
+static string bod_login (CONNECT_INFO &con, PARAM_STRING email, PARAM_STRING password)
+{
+	glocal string ret;
+	glocal const char *email = email.ptr;
+	glocal string sessionid = bod_createsession(con);
+	<call bod_client_login>(con,glocal.sessionid,email,password);
+	<f ok>
+		if (verbose || !success) printf ("\tlogin %s success=%d sessionid=%s\n",glocal.email,success,glocal.sessionid.c_str());
+		if (success) glocal.ret = glocal.sessionid;
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+<mod>
+static string bod_login (CONNECT_INFO &con, const char *user_suffix)
+{
+	glocal string ret;
+	if (user_suffix == NULL){
+		tlmp_error ("bod_login user_suffix=NULL\n");
+		exit (-1);
+	}else if (strcmp(user_suffix,"admin")==0){
+		glocal.ret = bod_login(con,"admin@truelies.news","admin");
+	}else{
+		glocal const char *user_suffix = user_suffix;
+		string email=string("jacques-")+user_suffix+string("@truelies.news");
+		string password=string("pass-")+user_suffix;
+		glocal.ret = bod_login(con,email.c_str(),password.c_str());
+	}
+	return glocal.ret;
+}
+</mod>
+
+<mod>
+static void bod_logout (CONNECT_INFO &con, const PARAM_STRING sessionid)
+{
+	<call bod_client_logout>(con,sessionid);
+	<f ok>
+		if (verbose) printf ("\tlogout\n");
+	</f>
+	</call>
+}
+</mod>
+
+static void test_execute (const char *cmd)
+{
+	if (cmd != NULL) system(cmd);
+}
+
+<mod>
+int main (int argc, char *argv[])
+{
+	glocal int ret = -1;
+	glocal const char *cli_port = "9000";
+	glocal const char *adm_port = "9000";
+	glocal const char *sessport = "9200";
+	glocal const char *host = "192.168.4.1";
+	glocal const char *client_bind = "192.168.5.5";
+	glocal const char *admin_bind = "192.168.5.6";
+	glocal const char *sess_bind = "192.168.5.3";
+	glocal const char *testadduser = NULL;
+	glocal const char *testaddincomplete = NULL;
+	glocal const char *testlogin = NULL;
+	glocal const char *testdeleteuser = NULL;
+	glocal const char *testaddfile = NULL;
+	glocal const char *testmodifyfile = NULL;
+	glocal bool testsystem = false;
+	glocal bool testcreatesessions = false;
+	glocal const char *exec1 = NULL;
+	glocal const char *exec2 = NULL;
+	glocal string client_secret;
+	glocal string admin_secret;
+	glocal int workers = 1;
+	glocal int nbrep = 1;
+	glocal int nbrows = 10;
+	glocal const char *extra = "";
+	glocal const char *extra2 = "";
+	glocal bool idonly = false;
+	glocal const char *loaduserfile = NULL;
+	glocal.ret = <call tlmpprogram>(argc,argv);
+	<f init>
+		setproginfo ("trlid-client",VERSION
+			,"Command line client to test trlid\n"
+			"\n"
+			"\tlogin email password\n"
+			"\tlogout user\n"
+			"\tadduser name email password = confirmid\n"
+			"\tconfirmuser id\n"
+			"\tdeleteuser userid = confirmid\n"
+			"\tconfirmdelete id\n"
+			);
+
+		setarg ('h',"host","Host name of IP of bod server",glocal.host,false);
+		setarg ('p',"cli_port","client TCP port of bod server (or unix path)",glocal.cli_port,false);
+		setarg (' ',"adm_port","admin TCP port of bod server (or unix path)",glocal.adm_port,false);
+		setarg (' ',"sessport","TCP port of sessiond server",glocal.sessport,false);
+		setarg (' ',"client_secret","Secret used to sign client requests",glocal.client_secret,true);
+		setarg (' ',"client_bind","Client IP used to reach the host",glocal.client_bind,false);
+		setarg (' ',"admin_secret","Secret used to sign admin requests",glocal.admin_secret,true);
+		setarg (' ',"admin_bind","Client IP used to reach the host",glocal.admin_bind,false);
+		setarg (' ',"sess_bind","Client IP used to reach sessiond",glocal.sess_bind,false);
+		setgrouparg ("File operations");
+		setarg (' ',"loadusers","Load user accounts from file",glocal.loaduserfile,false);
+		setgrouparg ("Tests");
+		setarg (' ',"exec1","Execute a command in the middle of the test",glocal.exec1,false);
+		setarg (' ',"exec2","Execute a command in the middle of the test",glocal.exec2,false);
+		setarg (' ',"testadduser","Sequence adduser confirmuser",glocal.testadduser,false);
+		setarg (' ',"testaddincomplete","Sequence adduser without confirm",glocal.testaddincomplete,false);
+		setarg (' ',"testlogin","Sequence login logout",glocal.testlogin,false);
+		setarg (' ',"testdeleteuser","Sequence login deleteuser",glocal.testdeleteuser,false);
+		setarg (' ',"testsystem","Test components",glocal.testsystem,false);
+		setarg (' ',"testcreatesessions","Create many sessions",glocal.testcreatesessions,false);
+		setarg (' ',"testaddfile","Create a new file",glocal.testaddfile,false);
+		setarg (' ',"testmodifyfile","Modify a file",glocal.testmodifyfile,false);
+		setgrouparg ("Test parameters");
+		setarg (' ',"workers","Test concurent access",glocal.workers,false);
+		setarg (' ',"nbrep","Number of repetition per worker",glocal.nbrep,false);
+		setarg (' ',"nbrows","Number of rows requested",glocal.nbrows,false);
+		setarg (' ',"extra","Extra string when adding something",glocal.extra,false);
+		setarg (' ',"extra2","Extra second string when adding something",glocal.extra2,false);
+		setarg (' ',"idonly","Shows only ID when listing records",glocal.idonly,false);
+	</f>
+	<f main_noarg>
+		glocal int ret = -1;
+		// Used for testing
+		glocal CONNECT_INFO con_cli;
+		glocal CONNECT_INFO con_adm;
+		glocal CONNECT_INFO con_sess;
+		glocal.con_cli.secret = glocal.client_secret;
+		glocal.con_cli.host = glocal.host;
+		glocal.con_cli.port = glocal.cli_port;
+		glocal.con_cli.bind = glocal.client_bind;
+
+		glocal.con_adm.secret = glocal.admin_secret;
+		glocal.con_adm.host = glocal.host;
+		glocal.con_adm.port = glocal.adm_port;
+		glocal.con_adm.bind = glocal.admin_bind;
+
+		glocal.con_sess.secret = glocal.admin_secret;
+		glocal.con_sess.host = glocal.host;
+		glocal.con_sess.port = glocal.sessport;
+		glocal.con_sess.bind = glocal.sess_bind;
+		if (glocal.loaduserfile != NULL){
+			<call loadfile>(glocal.loaduserfile,true);
+			<f oneline>
+				vector<string> tb;
+				int n = str_splitline(line,' ',tb);
+				if (n == 3){
+					glocal string name  = tb[0];
+					string &email = tb[1];
+					string &pass  = tb[2];
+					string sessionid = bod_createsession(glocal.con_cli);
+					if (sessionid.size() > 0){
+						<call bod_client_adduser>(glocal.con_cli,sessionid,glocal.name,email,pass);
+						<f ok>
+							//printf ("\tid=%s msg=%s\n",confirmid,msg);
+							if (confirmid[0] == '\0'){
+								printf ("\tEmpty confirmid msg=%s\n",msg);
+							}else{
+								<call bod_client_confirmuser>(glocal.con_cli,confirmid);
+								<f ok>
+									printf ("\t%-15s %s\n",glocal.name.c_str(),msg);
+								</f>
+								</call>
+							}
+						</f>
+						</call>
+						bod_deletesession(glocal.con_sess,sessionid);
+					}
+				}
+				return 0;
+			</f>
+			</call>
+		}else if (glocal.testadduser){
+			string name=string("jacques-")+glocal.testadduser;
+			string email=string("jacques-")+glocal.testadduser+string("@truelies.news");
+			string password=string("pass-")+glocal.testadduser;
+			if (strcmp(glocal.testadduser,"admin")==0){
+				name="admin";
+				email="admin@truelies.news";
+				password="admin";
+			}
+			printf ("testadduser email=%s\n",email.c_str());
+			string sessionid = bod_createsession(glocal.con_cli);
+			if (sessionid.size() > 0){
+				<call bod_client_adduser>(glocal.con_cli,sessionid,name,email,password);
+				<f ok>
+					printf ("\tid=%s msg=%s\n",confirmid,msg);
+					if (confirmid[0] == '\0'){
+						printf ("\tEmpty confirmid\n");
+					}else{
+						<call bod_client_confirmuser>(glocal.con_cli,confirmid);
+						<f ok>
+							printf ("\tsuccess=%d %s\n",success,msg);
+						</f>
+						</call>
+					}
+				</f>
+				</call>
+				bod_deletesession(glocal.con_sess,sessionid);
+			}
+		}else if (glocal.testaddincomplete){
+			string name=string("jacques-")+glocal.testaddincomplete;
+			string email=string("jacques-")+glocal.testaddincomplete+string("@truelies.news");
+			string password=string("pass-")+glocal.testaddincomplete;
+			printf ("testaddincomplete email=%s\n",email.c_str());
+			string sessionid = bod_createsession(glocal.con_cli);
+			if (sessionid.size() > 0){
+				<call bod_client_adduser>(glocal.con_cli,sessionid,name,email,password);
+				<f ok>
+					if (confirmid[0] == '\0'){
+						printf ("\tEmpty confirmid: msg=%s\n",msg);
+					}else{
+						printf ("\tid=%s msg=%s\n",confirmid,msg);
+					}
+				</f>
+				</call>
+				bod_deletesession(glocal.con_sess,sessionid);
+			}
+		}else if (glocal.testlogin){
+			glocal string sessionid = bod_createsession(glocal.con_cli);
+			string email=string("jacques-")+glocal.testlogin+string("@truelies.news");
+			string password=string("pass-")+glocal.testlogin;
+			<call bod_client_login>(glocal.con_cli,glocal.sessionid,email,password);
+			<f ok>
+				printf ("testlogin success=%d\n",success);
+				test_execute (glocal.exec1);
+				if (success){
+					<call bod_client_logout>(glocal.con_cli,glocal.sessionid);
+					<f ok>
+						printf ("\tlogout ok\n");
+					</f>
+					</call>
+				}
+			</f>
+			</call>
+		}else if (glocal.testdeleteuser){
+			// We log twice with the same account and then delete the account (A user is allowed to do so)
+			glocal string email=string("jacques-")+glocal.testdeleteuser+string("@truelies.news");
+			glocal string password=string("pass-")+glocal.testdeleteuser;
+			glocal string sessionid1 = bod_createsession(glocal.con_cli);
+			if (strcmp(glocal.testdeleteuser,"admin")==0){
+				glocal.email="admin@truelies.news";
+				glocal.password="admin";
+			}
+			// We start with a login to get a session id
+			<call bod_client_login>(glocal.con_cli,glocal.sessionid1,glocal.email,glocal.password);
+			<f ok>
+				printf ("login1 success=%d sessionid=%s\n",success,glocal.sessionid1.c_str());
+				glocal string sessionid2 = bod_createsession(glocal.con_cli);
+				<call bod_client_login>(glocal.con_cli,glocal.sessionid2,glocal.email,glocal.password);
+				<f ok>
+					printf ("login2 success=%d sessionid=%s\n",success,glocal.sessionid2.c_str());
+					if (success){
+						test_execute (glocal.exec1);
+						<call bod_client_deleteuser>(glocal.con_cli,glocal.sessionid2);
+						<f ok>
+							printf ("deleteuser email=%s deleteid=%s\n",email,confirmid);
+							<call bod_client_confirmdelete>(glocal.con_cli,confirmid);
+							<f ok>
+								printf ("delete done success=%d msg=%s\n",success,msg);
+								test_execute (glocal.exec2);
+							</f>
+							</call>
+						</f>
+						</call>
+					}
+				</f>
+				</call>
+			</f>
+			</call>
+		}else if (glocal.testsystem){
+			for (int i=0; i<glocal.nbrep; i++){
+				<call bod_admin_test>(glocal.con_adm);
+				<f ok>
+					if (internal_error){
+						printf ("Can't talk to bod server\n");
+					}else{
+						printf ("internal_error1=%d writed=%d bdfiles1=%d bdfiles2=%d bdusers=%d sessiond1=%d sessiond2=%d\n"
+							,internal_error1,writed,bdfiles1,bdfiles2,bdusers,sessiond1,sessiond2);
+					}
+				</f>
+				</call>
+			}
+		}else if (glocal.testcreatesessions){
+			printf ("testcreatesessions nbrep=%d\n",glocal.nbrep);
+			for (int i=0; i<glocal.nbrep; i++){
+				string sessionid = bod_createsession(glocal.con_cli);
+				bod_deletesession(glocal.con_sess,sessionid);
+			}
+		}else if (glocal.testaddfile){
+			printf ("addfile %s extra=%s\n",glocal.testaddfile,glocal.extra);
+			string sessionid = bod_login (glocal.con_cli,glocal.testaddfile);
+			if (sessionid.size() > 0){
+				string name = string_f ("file-%s-%s",glocal.testaddfile,glocal.extra);
+				string text = string_f("text-%s %s",glocal.testaddfile,glocal.extra2);
+				<call bod_client_addfile> (glocal.con_cli,sessionid,name,text);
+				<f ok>
+					printf ("\tsuccess=%d fileid=%s msg=%s\n",success,fileid,msg);
+				</f>
+				</call>
+				bod_logout (glocal.con_cli,sessionid);
+			}
+		}else if (glocal.testmodifyfile){
+			printf ("modifyfile %s extra=%s\n",glocal.testmodifyfile,glocal.extra);
+			string sessionid = bod_login (glocal.con_cli,glocal.testmodifyfile);
+			if (sessionid.size() > 0){
+				string name = string_f ("file-%s-%s",glocal.testmodifyfile,glocal.extra);
+				string text = string_f("new text-%s %s",glocal.testmodifyfile,glocal.extra2);
+				<call bod_client_modifyfile> (glocal.con_cli,sessionid,name,text);
+				<f ok>
+					printf ("\tsuccess=%d msg=%s\n",success,msg);
+				</f>
+				</call>
+				bod_logout (glocal.con_cli,sessionid);
+			}
+		}else{
+			tlmp_error ("No test option selected\n");
+			glocal.tlmpprogram.usage();
+		}
+		return glocal.ret;
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+

@@ -26,17 +26,17 @@ SOCKTESTDIR=/tmp/tests
 if [ -d /var/run/tests ] ; then
 	SOCKTESTDIR=/var/run/tests
 fi
-TRLIDCLIENTPORT=$SOCKTESTDIR/B-trlid-*-client-9000.sock
-TRLIDADMINPORT=$SOCKTESTDIR/B-trlid-*-admin-9000.sock
+BODCLIENTPORT=$SOCKTESTDIR/B-bod-*-client-9000.sock
+BODADMINPORT=$SOCKTESTDIR/B-bod-*-admin-9000.sock
 SESSIONDADMINPORT=$SOCKTESTDIR/A-sessiond-*-admin-9200.sock
 if [ "$LXCSOCK" != "" ] ; then
-	TRLID_SOCK=/var/lib/lxc/trlid/rootfs/var/run/blackhole/trlid-0.sock
-	WRITED_SOCK=/var/lib/lxc/writed/rootfs/var/run/blackhole/trli-writed-0.sock
+	BOD_SOCK=/var/lib/lxc/bod/rootfs/var/run/blackhole/bod-0.sock
+	WRITED_SOCK=/var/lib/lxc/writed/rootfs/var/run/blackhole/bo-writed-0.sock
 	SESSIOND_SOCK=/var/lib/lxc/sessiond/rootfs/var/run/blackhole/bo-sessiond.sock
-	WRITEDLOG=/var/lib/lxc/writed/rootfs/var/log/trli/trli-writed.log
+	WRITEDLOG=/var/lib/lxc/writed/rootfs/var/log/bolixo/bo-writed.log
 elif [ "$TRLID_SOCK" = "" ] ; then
-	TRLID_SOCK=/tmp/trlid.sock
-	WRITED_SOCK=/tmp/trli-writed.sock
+	BOD_SOCK=/tmp/bod.sock
+	WRITED_SOCK=/tmp/bo-writed.sock
 	SESSIOND_SOCK=/tmp/bo-sessiond.sock
 fi
 mysql_save(){
@@ -107,8 +107,8 @@ elif [ "$1" = "files" ] ; then	# db: Access trli database
 elif [ "$1" = "users" ] ; then # db: Access trliusers database
 	mysql -uroot -S $SOCKU  $DBNAMEU
 elif [ "$1" = "bod" ] ; then # A: Runs bod
-	OPTIONS="--mysecret foo --admin_secrets $TRLICONF/secrets.admin --client_secrets $TRLICONF/secrets.client --user $USER \
-		--dbserv $TRLID_DBSERV --dbuser $TRLID_DBUSER --dbname $TRLID_DBNAME --bindaddr $IPTRLID \
+	OPTIONS="--mysecret foo --admin_secrets $BOLIXOCONF/secrets.admin --client_secrets $BOLIXOCONF/secrets.client --user $USER \
+		--dbserv $BOD_DBSERV --dbuser $BOD_DBUSER --dbname $BOD_DBNAME --bindaddr 0.0.0.0 \
 		--sqltcpport 3307 --adminhost $HORIZONIP1 --sesshost $HORIZONIP1 --workers 1"
 	shift
 	WORKERS=1
@@ -123,9 +123,9 @@ elif [ "$1" = "bod" ] ; then # A: Runs bod
 		shift
 	done
 	if [ "$WORKERS" = 1 ] ;then
-		OPTIONS="$OPTIONS --control /tmp/trlid.sock"
+		OPTIONS="$OPTIONS --control $BOD_SOCK"
 		if [ "$SILENT" = "on" ] ; then
-			echo trlid
+			echo bod
 		else
 			echo $BOLIXOPATH/bod $OPTIONS
 		fi
@@ -134,18 +134,18 @@ elif [ "$1" = "bod" ] ; then # A: Runs bod
 		for ((work=0; work<$WORKERS; work++))
 		do
 			PORT=`expr 9000 + $work`
-			SOCK="/tmp/trlid-$work.sock"
-			WOPTIONS="$OPTIONS --debugfile /tmp/trlid.log --tcpport $PORT --daemon --control $SOCK"
+			SOCK="/tmp/bod-$work.sock"
+			WOPTIONS="$OPTIONS --debugfile /tmp/bod.log --tcpport $PORT --daemon --control $SOCK"
 			echo ./bod $WOPTIONS 
 			$BOLIXOPATH/bod $WOPTIONS
 		done
 	fi
 elif [ "$1" = "bo-writed" ] ; then # A: Runs writed
-	OPTIONS="--logfile $TRLILOG/trli-writed.log --user $USER --secrets $TRLICONF/secrets.client \
-		--mysecret adm --data_dbserv $TRLI_WRITED_DBSERV --data_dbuser $TRLI_WRITED_DBUSER --data_dbname $TRLI_WRITED_DBNAME \
-		--users_dbserv $TRLI_WRITED_DBSERV --users_dbuser $TRLI_WRITED_DBUSER --users_dbname $TRLI_WRITED_DBNAMEU \
+	OPTIONS="--logfile $BOLIXOLOG/bo-writed.log --user $USER --secrets $BOLIXOCONF/secrets.client \
+		--mysecret adm --data_dbserv $BO_WRITED_DBSERV --data_dbuser $BO_WRITED_DBUSER --data_dbname $BO_WRITED_DBNAME \
+		--users_dbserv $BO_WRITED_DBSERV --users_dbuser $BO_WRITED_DBUSER --users_dbname $BO_WRITED_DBNAMEU \
 		--mailfrom no-reply@solucorp.qc.ca \
-		--sessionhost $HORIZONIP1 --sessionbind $IPWRITED --sqltcpport 3307 --bindaddr $IPWRITED"
+		--sessionhost $HORIZONIP1 --sqltcpport 3307"
 	shift
 	WORKERS=1
 	while [ $# -gt 0 ]; do
@@ -159,7 +159,7 @@ elif [ "$1" = "bo-writed" ] ; then # A: Runs writed
 		shift
 	done
 	if [ "$WORKERS" = 1 ] ;then
-		OPTIONS="$OPTIONS --control /tmp/trli-writed.sock"
+		OPTIONS="$OPTIONS --control /tmp/bo-writed.sock"
 		if [ "$SILENT" = "on" ]; then
 			echo writed
 		else
@@ -170,7 +170,7 @@ elif [ "$1" = "bo-writed" ] ; then # A: Runs writed
 		for ((work=0; work<$WORKERS; work++))
 		do
 			PORT=`expr 9100 + $work`
-			SOCK="/tmp/trli-writed-$work.sock"
+			SOCK="/tmp/bo-writed-$work.sock"
 			WOPTIONS="$OPTIONS --tcpport $PORT --daemon --control $SOCK"
 			echo ./bo-writed $WOPTIONS 
 			$BOLIXOPATH/bo-writed $WOPTIONS
@@ -206,21 +206,21 @@ elif [ "$1" = "reload" ] ; then # S: Reloads the database using writed log
 	./trli-log $OPTIONS $LOG
 elif [ "$1" = "reload-lxc" ] ; then # S: Reloads the database using writed log
 	export LXCSOCK=on
-	$0 reload /var/lib/lxc/writed/rootfs/tmp/trli-writed.log
+	$0 reload /var/lib/lxc/writed/rootfs/tmp/bo-writed.log
 elif [ "$1" = "dumplog" ] ;then # S: Shows the writed log
-	./trli-log --dump --normuuid /var/lib/lxc/writed/rootfs/tmp/trli-writed.log
+	./trli-log --dump --normuuid /var/lib/lxc/writed/rootfs/tmp/bo-writed.log
 elif [ "$1" = "cmplog" ] ;then # S: Compares the writed log with the reference
-	./trli-log --dump --normuuid /tmp/trli-writed.log >/tmp/normuuid.log
+	./trli-log --dump --normuuid /tmp/bo-writed.log >/tmp/normuuid.log
 	diff -c data/normuuid.log /tmp/normuuid.log
 elif [ "$1" = "cmplxclog" ] ;then # S: Compares the lxc writed log with the reference
-	./trli-log --dump --normuuid /var/lib/lxc/writed/rootfs/tmp/trli-writed.log >/tmp/normuuid.log
+	./trli-log --dump --normuuid /var/lib/lxc/writed/rootfs/tmp/bo-writed.log >/tmp/normuuid.log
 	diff -c data/normuuid.log /tmp/normuuid.log
 elif [ "$1" = "bod-control" ] ; then # A: Talks to bod
 	shift
 	$BOLIXOPATH/bod-control --control $BOD_SOCK $*
 elif [ "$1" = "bod-client" ] ; then # A: Executes the bod test client
 	shift
-	$BOLIXOPATH/bod-client --host "" -p $TRLIDCLIENTPORT --adm_port $TRLIDADMINPORT --sessport $SESSIONDADMINPORT --client_secret foo --admin_secret adm --admin_bind $WEBADMIP "$@"
+	$BOLIXOPATH/bod-client --host "" -p $BODCLIENTPORT --adm_port $BODADMINPORT --sessport $SESSIONDADMINPORT --client_secret foo --admin_secret adm "$@"
 elif [ "$1" = "bo-writed-control" ] ; then # A: Talks to writed
 	shift
 	$BOLIXOPATH/bo-writed-control --control $WRITED_SOCK "$@"
@@ -352,12 +352,12 @@ elif [ "$1" = "test-system" ] ; then # T: Tests all trli components
 		NBREP=$1
 	fi
 	$0 bod-client --testsystem --nbrep $NBREP
-elif [ "$1" = "test-monitor" ] ; then # T: Tests all trlids
+elif [ "$1" = "test-monitor" ] ; then # T: Tests all bods
 	OPT=
 	if [ "$2" = verbose ] ; then
 		OPT=-v
 	fi
-	if $BOLIXOPATH/bo-mon-control -p /tmp/trli-mon.sock test
+	if $BOLIXOPATH/bo-mon-control -p /tmp/bo-mon.sock test
 	then
 		echo ok
 	else
@@ -382,8 +382,8 @@ elif [ "$1" = "test-delincomplete" ] ; then # T: Deletes un-confirmed user accou
 	$0 bo-writed-control del_incomplete $1 
 elif [ "$1" = "test-deleteuser" ] ; then # T: Deletes one user account
 	shift
-	$0 bod-client --testdeleteuser $1 --exec1 "$0 trli-sessiond-control listsessions 0 10"
-	#$0 trli-sessiond-control status
+	$0 bod-client --testdeleteuser $1 --exec1 "$0 bo-sessiond-control listsessions 0 10"
+	$0 bo-sessiond-control status
 elif [ "$1" = "test-login" ] ; then # T: Login sequence
 	shift
 	$0 bod-client --testlogin $1 --exec1 "$0 bo-sessiond-control listsessions 0 10"
@@ -394,7 +394,7 @@ elif [ "$1" = "test-rotatelog" ] ; then # prod: Rotate writed log
 	$0 bo-writed-control rotatelog
 elif [ "$1" = "test-sequence" ] ; then # S: Reloads database (big,medium,real,nomail)
 	rm -f $WRITEDLOG
-	$0 trli-writed-control truncatelog	
+	$0 bo-writed-control truncatelog	
 	NEWSCNT1=5
 	NEWSCNT2=10
 	LONG="This is some text"
@@ -414,7 +414,7 @@ elif [ "$1" = "test-sequence" ] ; then # S: Reloads database (big,medium,real,no
 			LONG="<br>This is the first ...... line<br>This is the second ............ line<br>This is the third ............line<br>This is the last line"
 			LONG="$LONG<br>This is the first ...... line<br>This is the second ............ line<br>This is the third ............line<br>This is the last line"
 		elif [ "$1" = "nomail" ] ; then
-			$0 trli-writed-control mailctrl 0 keep
+			$0 bo-writed-control mailctrl 0 keep
 			NOMAIL=on
 		else
 			echo unknown keyword $1: filldb big,real
@@ -429,50 +429,16 @@ elif [ "$1" = "test-sequence" ] ; then # S: Reloads database (big,medium,real,no
 		$0 test-adduser $user
 	done
 	echo "Make user admin administrator"
-	$0 trli-writed-control makeadmin admin@truelies.news 1
-	for ((i=0; i<$NEWSCNT1; i++))
-	do
-		$0 test-addnews A "news$i$LONGTITLE" "$i first<br>$LONG"
-	done
-	$0 test-approvenews
-	for ((i=$NEWSCNT1; i<$NEWSCNT2; i++))
-	do
-		$0 test-addnews A "news$i$LONGTITLE" "$i second<br>$LONG"
-	done
-	$0 test-addproof A
-	$0 test-addcomment A
-	$0 test-listnews IDONLY | while read newsid
-	do
-		$0 test-getnews $newsid
-	done
-	echo ==== getnewnews
-	$0 test-listnewnews | while read newsid rest
-	do
-		if [ "$newsid" != "login" -a "$newsid" != "logout" ] ; then
-			$0 test-getnewnews $newsid
-		fi
-	done
-	echo ==== blog =====
-	for ((i=1; i<30; i++))
-	do
-		$0 trlid-client --testaddblog $i --extra admin
-		for letter in A B C D E F
-		do
-			$0 trlid-client --testaddblogcomment $i --extra $letter
-		done
-	done
+	$0 bo-writed-control makeadmin admin@truelies.news 1
 	echo ==== admin
-	$0 test-rejectnews
-	$0 test-approvenews
 	$0 test-deleteuser D
 	$0 test-deleteuser E
 	$0 test-deleteuser F
-	$0 setsubjects
 	echo ==== sessions
-	$0 trli-sessiond-control listsessions 0 1000
-	$0 trli-writed-control mailctrl 1 keep
+	$0 bo-sessiond-control listsessions 0 1000
+	$0 bo-writed-control mailctrl 1 keep
 elif [ "$1" = "test-sendmail" ] ;then # prod: ask writed to send one email
-	./bo-writed-control -p /var/lib/lxc/writed/rootfs/tmp/trli-writed-0.sock sendmail jack@dns.solucorp.qc.ca test body1
+	./bo-writed-control -p /var/lib/lxc/writed/rootfs/tmp/bo-writed-0.sock sendmail jack@dns.solucorp.qc.ca test body1
 elif [ "$1" = "eraseanon-lxc" ] ; then # prod:
 	export LXCSOCK=on
 	NBSEC=0
@@ -524,7 +490,7 @@ elif [ "$1" = "infraconfig" ] ; then # config: minimal config for development
 	if [ "$2" != "" ]; then
 			BKPATH=$2
 	fi
-	./bo-manager --inframode -c data/manager.conf --devmode --devip writed --devip sessiond --devip trlid --blackhole_path $BKPATH printconfig testhost
+	./bo-manager --inframode -c data/manager.conf --devmode --devip writed --devip sessiond --devip bod --blackhole_path $BKPATH printconfig testhost
 elif [ "$1" = "fullconfig" ] ; then # config: Almost complete configuration for development
 	BKPATH=/usr/sbin
 	if [ "$2" != "" ]; then
@@ -540,7 +506,7 @@ elif [ "$1" = "prodconfig" ] ; then # config: Complete configuration for product
 			BKPATH=$2
 	fi
 	$BOLIXOPATH/bo-manager $PREPRODOPTION -c /root/data/manager.conf --blackhole_path $BKPATH \
-		--trliduser $BOD_DBUSER --writeduser $BO_WRITED_DBUSER \
+		--boduser $BOD_DBUSER --writeduser $BO_WRITED_DBUSER \
 		printconfig localhost
 elif [ "$1" = "infrastatus" ] ; then # prod: Summary of everything
 	blackhole-control -p /tmp/blackhole.sock status
@@ -596,7 +562,7 @@ elif [ "$1" = "blackhole-control" ] ; then # A: Talks to blackhole
 	blackhole-control -p /tmp/blackhole.sock $*
 elif [ "$1" = "lxc0-bod" ]; then # prod:
 	export LANG=eng
-	$0 trlid lxc0 &
+	$0 bod lxc0 &
 	sleep 1
 	$0 bod-control quit
 	mkdir -p /var/lib/lxc/bod
@@ -605,7 +571,7 @@ elif [ "$1" = "lxc0-bod" ]; then # prod:
 		--savefile /var/lib/lxc/bod/bod.save \
 		--restorefile /var/lib/lxc/bod/bod.restore \
 		$EXTRALXCPROG \
-		-i /usr/sbin/trli-init -l /tmp/log -n trlid -p $BOLIXOPATH/bod >/var/lib/lxc/bod/bod-lxc0.sh
+		-i /usr/sbin/trli-init -l /tmp/log -n bod -p $BOLIXOPATH/bod >/var/lib/lxc/bod/bod-lxc0.sh
 	chmod +x /var/lib/lxc/bod/bod-lxc0.sh
 elif [ "$1" = "lxc0-writed" ]; then # prod:
 	export LANG=eng
@@ -618,7 +584,7 @@ elif [ "$1" = "lxc0-writed" ]; then # prod:
 		--savefile /var/lib/lxc/writed/writed.save \
 		--restorefile /var/lib/lxc/writed/writed.restore \
 		$EXTRALXCPROG \
-		-i /usr/sbin/trli-init -l /tmp/log -n writed -p $BOLIXOPATH/trli-writed >/var/lib/lxc/writed/writed-lxc0.sh
+		-i /usr/sbin/trli-init -l /tmp/log -n writed -p $BOLIXOPATH/bo-writed >/var/lib/lxc/writed/writed-lxc0.sh
 	chmod +x /var/lib/lxc/writed/writed-lxc0.sh
 elif [ "$1" = "lxc0-sessiond" ]; then # prod:
 	export LANG=eng
@@ -638,8 +604,8 @@ elif [ "$1" = "lxc0-proto" ]; then # prod:
 	export LANG=eng
 	echo proto
 	DATA=data/http_check.conf
-	if [ -f /etc/trli/http_check.conf ] ; then
-		DATA=/etc/trli/http_check.conf
+	if [ -f /etc/bolixo/http_check.conf ] ; then
+		DATA=/etc/bolixo/http_check.conf
 	fi
 	strace -o /tmp/log /usr/sbin/protocheck-2factors --control /tmp/protocheck-0.sock --user apache --pidfile /tmp/protocheck-0.pid --daemon --follow_mode --unlocked --bind 127.0.0.7 --port 9080 \
 		--http $DATA --learnfile /tmp/learn.log
@@ -690,7 +656,7 @@ elif [ "$1" = "lxc0-web" ]; then # prod:
 		$EXTRALXCPROG \
 		-i /usr/sbin/trli-init -l $LOG -l /tmp/log.web2 \
 		-e /var/www/html/admin.hc \
-		-e $BOLIXOPATH/trli-stop \
+		-e /usr/sbin/trli-stop \
 		-n webadm -p /usr/sbin/httpd >/var/lib/lxc/webadm/webadm-lxc0.sh
 	chmod +x /var/lib/lxc/webadm/webadm-lxc0.sh
 elif [ "$1" = "lxc0-webssl" ]; then # prod:
@@ -790,7 +756,7 @@ elif [ "$1" = "lxc0-exim" ]; then # prod:
 elif [ "$1" = "lxc0s" ] ; then # prod: generates lxc0 scripts for all components
 	$0 checks
 	export SILENT=on
-	$0 lxc0-trlid
+	$0 lxc0-bod
 	$0 lxc0-writed
 	$0 lxc0-sessiond
 	$0 lxc0-proto
@@ -798,11 +764,6 @@ elif [ "$1" = "lxc0s" ] ; then # prod: generates lxc0 scripts for all components
 	$0 lxc0-webssl
 	$0 lxc0-mysql
 	$0 lxc0-exim
-elif [ "$1" = "cmp-lxc0s" ] ; then # prod: generates lxc0 scripts for all components
-	for serv in trlid writed sessiond proto web webssl mysql exim
-	do
-		echo $serv
-	done
 elif [ "$1" = "webprodtest" ] ; then # P: Webtest on production
 	time -p /usr/sbin/trli-webtest -h $PRODIP -p 443 -n 50 -N 20 >/dev/null
 elif [ "$1" = "webtest" ] ; then # P:
@@ -856,7 +817,7 @@ elif [ "$1" = "mailctrl" ] ; then # prod: Control writed sendmail
 		echo "mailctrl 0|1 force_addr"
 		exit 1
 	fi
-	$BOLIXOPATH/bo-writed-control -p /var/lib/lxc/writed/rootfs/var/run/blackhole/trli-writed-0.sock mailctrl $2 "$3"
+	$BOLIXOPATH/bo-writed-control -p /var/lib/lxc/writed/rootfs/var/run/blackhole/bo-writed-0.sock mailctrl $2 "$3"
 elif [ "$1" = "loadusers" ] ; then # prod: Load users from file
 	$0 mailctrl 0 keep
 	$0 bod-client --loadusers ~/.bolixo.users
@@ -864,7 +825,7 @@ elif [ "$1" = "loadusers" ] ; then # prod: Load users from file
 	export LXCSOCK=on
 	$0 bo-writed-control makeadmin admin@bolixo.org 1
 elif [ "$1" = "checkupdates" ] ; then # prod: Check all containers are up to date
-	for lxc in trlid writed sessiond protocheck exim web webadm webssl bosqlddata bosqlduser
+	for lxc in bod writed sessiond protocheck exim web webadm webssl bosqlddata bosqlduser
 	do
 		/usr/sbin/trli-cmp --name $lxc /var/lib/lxc/$lxc/$lxc.files
 	done

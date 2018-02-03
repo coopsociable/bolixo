@@ -2,17 +2,18 @@ CURDIR=trli
 MANPAGES=/usr/share/man
 PACKAGE_REV:=$(shell ./makeversion $(BUILD_SVNVER))
 PROGS=bod bod-client bod-control bo-writed bo-writed-control bo-sessiond bo-sessiond-control \
-      bo-manager bo-log bo-log-control \
-      bo-mon bo-mon-control
+      bo-manager 
+#bo-log bo-log-control \
+#      bo-mon bo-mon-control
 DOCS=
 OPTIONS=-funsigned-char -O2 -Wall -g -DVERSION=\"$(PACKAGE_REV)\" -I/usr/include/tlmp -I/usr/include/trlitool
 LIBS=/usr/lib64/trlitool/fdpass.o -llinuxconf -lstdc++ -lcrypto
 .SUFFIXES: .o .tex .tlcc .cc .png .uml
 all: $(PROGS)
-	make -Cweb install
+	#make -Cweb install
 
 compile: $(PROGS)
-	make -Cweb 
+	#make -Cweb 
 
 bod: bod.tlcc proto/bod_control.protoh proto/bod_client.protoh proto/bod_admin.protoh \
 	proto/bo-writed_client.protoh proto/bo-sessiond_client.protoh
