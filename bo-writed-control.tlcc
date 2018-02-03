@@ -1,0 +1,136 @@
+/*
+	Command line tool to control bo-writed
+*/
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <tlmplib.h>
+#include <tlmpnet.h>
+#include <string>
+#include <fdpass.h>
+
+using namespace std;
+
+#include "proto/bo-writed_control.protoch"
+
+<mod>
+int main (int argc, char *argv[])
+{
+	glocal int ret = -1;
+	glocal const char *control = "/var/run/bo-writed.sock";
+	glocal.ret = <call tlmpprogram>(argc,argv);
+	<f init>
+		setproginfo ("bo-writed-control",VERSION
+			,"Command line tool to control bo-writed\n"
+			 "\n"
+			 "\tdebug 0/1\n"
+			 "\tdebugfile filename\n"
+			 "\tmailctrl 0|1 force_address|keep\n"
+			 "\tmakeadmin email 1|0\n"
+			 "\tquit\n"
+			 "\treload file\n"
+			 "\trotatelog\n"
+			 "\tstatus\n"
+			 "\tsyncdb\n"
+			 "\n"
+			 "\tnewacctresend email\n"
+			 "\tsendmail dest\n"
+			);
+		setarg ('p',"control","Unix socket to reach trlid",glocal.control,false);
+	</f>
+	<f main>
+		glocal int ret = -1;
+		CONNECT_INFO con;
+		con.port = glocal.control;
+		if (strcmp(argv[0],"status")==0 && argc==1){
+			<call bo_writed_control_status>(con);
+			<f ok>
+				for (auto x:lines) printf ("%s\n",x);
+				if (!internal_error) glocal.ret = 0;
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"quit")==0 && argc==1){
+			<call bo_writed_control_quit>(con);
+			<f ok>
+				if (!internal_error) glocal.ret = 0;
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"reload")==0 && argc==1){
+			<call bo_writed_control_reload>(con);
+			<f ok>
+				if (!internal_error) glocal.ret = 0;
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"syncbd")==0 && argc==1){
+			<call bo_writed_control_syncbd>(con);
+			<f ok>
+				if (!internal_error) glocal.ret = 0;
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"debug")==0 && argc==2){
+			<call bo_writed_control_debug>(con,atoi(argv[1]));
+			<f ok>
+				if (!internal_error) glocal.ret = 0;
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"debugfile")==0 && argc==2){
+			<call bo_writed_control_debugfile>(con,argv[1]);
+			<f ok>
+				if (!internal_error) glocal.ret = 0;
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"makeadmin")==0 && argc==3){
+			<call bo_writed_control_makeadmin>(con,argv[1],atoi(argv[2]));
+			<f ok>
+				printf ("\tsuccess=%d msg=%s\n",success,msg);
+				if (success) glocal.ret = 0;
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"rotatelog")==0 && argc==1){
+			<call bo_writed_control_rotatelog>(con);
+			<f ok>
+				printf ("\tsuccess=%d\n",success);
+				if (success) glocal.ret = 0;
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"truncatelog")==0 && argc==1){
+			<call bo_writed_control_truncatelog>(con);
+			<f ok>
+				printf ("\tsuccess=%d\n",success);
+				if (success) glocal.ret = 0;
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"del_incomplete")==0 && argc==2){
+			<call bo_writed_control_del_incomplete>(con,atoi(argv[1]));
+			<f ok>
+				for (auto x:emails) printf ("\tdel_incomplete %s\n",x);
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"sendmail")==0 && argc==4){
+			<call bo_writed_control_sendmail>(con,argv[1],argv[2],argv[3]);
+			<f ok>
+				printf ("success=%d\n",success);
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"newacctresend")==0 && argc==2){
+			<call bo_writed_control_newacctresend>(con,argv[1]);
+			<f ok>
+				printf ("success=%d\n",success);
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"mailctrl")==0 && argc==3){
+			<call bo_writed_control_mailctrl>(con,atoi(argv[1]),argv[2]);
+			<f ok>
+			</f>
+			</call>
+		}else{
+			tlmp_error ("Invalid command: %s\n",argv[0]);
+			usage();
+		}
+		return glocal.ret;
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+

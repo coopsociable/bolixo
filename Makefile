@@ -26,7 +26,7 @@ bod-control: bod-control.tlcc proto/bod_control.protoh
 	cctlcc -Wall $(OPTIONS) bod-control.tlcc -o bod-control $(LIBS)
 
 bo-writed: bo-writed.tlcc proto/bo-writed_control.protoh proto/bo-writed_client.protoh \
-	proto/bo-sessiond_admin.protoh proto/bo-log.protoh proto/bo-log-admin.protoh
+	proto/bo-sessiond_admin.protoh proto/bo-log.protoh
 	cctlcc -Wall $(OPTIONS) bo-writed.tlcc -o bo-writed $(LIBS) -ltlmpsql -L/usr/lib64/mysql -lmysqlclient
 
 bo-writed-control: bo-writed-control.tlcc

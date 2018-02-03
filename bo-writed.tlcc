@@ -1,0 +1,670 @@
+/*
+	This program update databases. It also the only one which can read the users database.
+	This program was copied from the truelies project. This explains the trli_ strings here
+	and there.
+*/
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdarg.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <syslog.h>
+#include <sys/time.h>
+#include <sys/stat.h>
+#include <tlmplib.h>
+#include <algorithm>
+#include <string>
+#include <tlmpnet.h>
+#include <tlmpsql.h>
+#include <fdpass.h>
+
+static DEBUG_KEY D_PROTO ("proto","Protocol information");
+enum CONNECT_TYPE { TYPE_NONE, TYPE_CONTROL, TYPE_CLIENT };
+
+struct HANDLE_INFO: public ARRAY_OBJ{
+	CONNECT_TYPE type;
+	int no;
+	std::string host;
+	REQUEST_INFO req;
+	HANDLE_INFO(){
+		no = -1;
+		type = TYPE_NONE;
+	}
+};
+
+#include "proto/bo-writed_control.protoh"
+#include "proto/bo-writed_client.protoh"
+
+using namespace std;
+
+#define bo_sessiond_admin_getsessioninfo_NOTNEED
+#include "proto/bo-sessiond_admin.protoch"
+#include "proto/bo-log.protoch"
+//#include "proto/bo-log-admin.protoch"
+
+
+/*
+	Create a uniq ID combining the process number of this instance, a random value and the time in micro-seconds
+*/
+static string trli_makeid (int noproc)
+{
+	string ret;
+	char tmp[100];
+	struct timeval t;
+	if (gettimeofday(&t,NULL)!=-1){
+		static int fd = -1;
+		static bool error_shown = false;
+		if (fd == -1){
+			fd = open ("/dev/urandom",O_RDONLY,0);
+		}
+		if (fd == -1){
+			if (!error_shown){
+				tlmp_error ("Can't open /dev/urandom (%s)\n",strerror(errno));
+				error_shown = true;
+			}
+		}else{
+			char buf[8];
+			if (read(fd,buf,8)!=8){
+				close (fd);
+				fd = -1;
+				if (!error_shown){
+					tlmp_error ("Can't read 8 bytes from /dev/urandom (%s)\n",strerror(errno));
+					error_shown = true;
+				}
+			}else{
+				for (int i=0; i<8; i++) snprintf (tmp+i*2,3,"%02x",buf[i]);
+				int n = snprintf (tmp+16,sizeof(tmp)-16-1,"%08lx%08lx",t.tv_sec,t.tv_usec);
+				snprintf (tmp+16+n,sizeof(tmp)-16-n-1,"-%d",noproc);
+				ret = tmp;
+			}
+		}
+	}
+	return ret;
+}	
+
+/*
+	Get the userid associated with the sessionid
+*/
+<mod>
+static unsigned trli_getsessionuser (CONNECT_INFO &con, const char *sessionid, string &userid_str)
+{
+	glocal unsigned userid = 0;
+	glocal string *userid_str = &userid_str;
+	//long long start = fdpass_getnow();
+	//for (int i=0; i<10000; i++){
+	<call bo_sessiond_admin_getsession>(con,sessionid);
+	<f ok>
+		glocal.userid = userid;
+		(*glocal.userid_str) = userid_str;
+	</f>
+	</call>
+	//}
+	//long long end = fdpass_getnow();
+	//printf ("exec time = %lf\n",(end-start)/1000000.0);
+	return glocal.userid;
+}
+</mod>
+static unsigned trli_getsessionuser (CONNECT_INFO &con, const char *sessionid)
+{
+	string tmp;
+	return trli_getsessionuser (con,sessionid,tmp);
+}
+
+/*
+	Return the numerical id if a record exist
+*/
+<mod>
+static int trli_rec_getid(const char *query, ...)
+{
+	va_list list;
+	va_start (list,query);
+	glocal int ret = -1;
+	<call sql_query>(query,list);
+	<f onerow>
+		glocal.ret = atoi(row[0]);
+	</f>
+	</call>
+	va_end (list);
+	return glocal.ret;
+}
+</mod>
+<mod>
+static bool trli_isadmin (NSQL *sq, unsigned userid)
+{
+	glocal bool ret = false;
+	<call sql_query>(*sq,"select admin from users where userid=%u",userid);
+	<f onerow>
+		if (strcmp(row[0],"1")==0) glocal.ret = true;
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+
+static int writed_mail_newaccount(
+	const char *mailserver,
+	const char *mailport,
+	const char *mailfrom,
+	const char *nickname,
+	const char *email,
+	PARAM_STRING id_str)
+{
+	string tmp = string_f(
+		"Hello!\r\n"
+		"\r\n"
+		"You just created an account using nickname %s on truelies.news\r\n"
+		"Just click on the link below to confirm the account.\r\n"
+		"<a href=https://%s/index.hc?webstep=10&confirm=%s>confirm</a>\r\n"
+		"\r\n"
+		"Once done, you will be allowed to fully participate in the validation\r\n"
+		"of all the news out there.\r\n"
+		"\r\n"
+		"Thanks for joining!\r\n"
+		,nickname
+		,"truelies.news",id_str.ptr);
+	return fdpass_sendmail (mailserver,mailport,mailfrom,email
+		,"Account confirmation on truelies.news"
+		,tmp);
+};
+
+
+<mod>
+int main (int argc, char *argv[])
+{
+	glocal int ret = -1;
+	glocal int noproc = 1;
+	glocal const char *secretfile = "/etc/bolixo/secrets.client";
+	glocal const char *bind = "0.0.0.0";
+	glocal const char *port = "9100";
+	glocal const char *control = "/var/run/bo-writed.sock";
+	glocal const char *user = "bolixo";
+	glocal const char *logfile = "/var/log/bolixo/writed.log";
+	glocal const char *data_dbserv = "localhost";
+	glocal const char *data_dbname = "files";
+	glocal const char *data_dbuser = NULL;
+	glocal const char *users_dbserv = "localhost";
+	glocal const char *users_dbname = "users";
+	glocal const char *users_dbuser = NULL;
+	glocal const char *mysecret = NULL;
+	glocal const char *sessionhost = "127.0.0.4";
+	glocal const char *sessionport = "9200";
+	glocal const char *sessionbind = "";
+	glocal const char *computeport = "/dev/compute.sock";
+	glocal const char *sql_tcpport = NULL;
+	glocal const char *mailserver = "unix:";
+	glocal const char *mailport = "/dev/smtp.sock";
+	glocal const char *mailfrom = NULL;
+	glocal bool daemon = false;
+	glocal const char *pidfile = "/var/run/bo-writed.pid";
+	glocal bool writeonce_proof = false;
+	glocal bool writeonce_comment = false;
+	glocal const char *force_addr = NULL;
+
+	glocal.ret = <call tlmpprogram>(argc,argv,"tlmpsql");
+	<f init>
+		setproginfo ("bo-writed",VERSION,"...");
+		setgrouparg ("Networking");
+		setarg ('b',"bindaddr","Bind to this address (TCP)",glocal.bind,false);
+		setarg ('p',"tcpport","Listen for command on this TCP port",glocal.port,false);
+		setarg ('c',"control","Unix socket for trlid-control",glocal.control,false);
+		setgrouparg ("Session server");
+		setarg (' ',"sessionhost","Host running the bo-sessiond server",glocal.sessionhost,false);
+		setarg (' ',"sessionport","Port to reach the bo-sessiond server",glocal.sessionport,false);
+		setarg (' ',"sessionbind","Bind to this IP to talk to bo-sessiond",glocal.sessionbind,false);
+		setarg (' ',"mysecret","Secret used to talk to sessiond",glocal.mysecret,true);
+		setgrouparg ("Compute server");
+		setarg (' ',"computeport","Port to reach the bo-log compute server",glocal.computeport,false);
+		setgrouparg ("Misc.");
+		setarg (' ',"secrets","File holding secrets for communication",glocal.secretfile,false);
+		setarg (' ',"user","Run the program as this user",glocal.user,false);
+		setarg (' ',"logfile","Log file to record request",glocal.logfile,false);
+		setarg (' ',"daemon","Run in background",glocal.daemon,false);
+		setarg (' ',"pidfile","FIle holding the PID of the process",glocal.pidfile,false);
+		setarg (' ',"noproc","Identity of this process (UUID)",glocal.noproc,false);
+		setgrouparg ("Mail");
+		setarg (' ',"mailserver","Mail relay to use",glocal.mailserver,false);
+		setarg (' ',"mailport","TCP port of the relay (or unix socket)",glocal.mailport,false);
+		setarg (' ',"forceaddr","Force email address",glocal.force_addr,false);
+		setarg ( ' ',"mailfrom","Mail sender",glocal.mailfrom,true);
+		setgrouparg ("Database");
+		setarg (' ',"data_dbserv","Database server",glocal.data_dbserv,false);
+		setarg (' ',"data_dbname","Database name",glocal.data_dbname,false);
+		setarg (' ',"data_dbuser","Database user",glocal.data_dbuser,true);
+		setarg (' ',"users_dbserv","Database server for users",glocal.users_dbserv,false);
+		setarg (' ',"users_dbname","Database name for users",glocal.users_dbname,false);
+		setarg (' ',"users_dbuser","Database user for users",glocal.users_dbuser,true);
+		setarg (' ',"sqltcpport","Database TCP port",glocal.sql_tcpport,false);
+	</f>
+	<f showerror>
+		glocal const char *msg = msg;
+		<call savefile>("/tmp/err.log",true);
+		<f dowrite>
+			fprintf (fout,"%s\n",glocal.msg);
+			return 0;
+		</f>
+		</call>
+		if (glocal.daemon){
+			syslog (LOG_ERR,"%s",msg);
+		}else{
+			fprintf (stderr,"%s",msg);
+		}
+	</f>
+	<f showwarn>
+		if (glocal.daemon){
+			syslog (LOG_WARNING,"%s",msg);
+		}else{
+			fprintf (stderr,"%s",msg);
+		}
+	</f>
+	<f main_noarg>
+		glocal bool mailon = true;	// Send confirmation mails (for testing)
+		glocal unsigned long nbrequest_client = 0;
+		glocal FILE *flog = NULL;
+		glocal NSQL *usq;		// SQL handle for the users database
+		glocal CONNECT_INFO con;	// Connection to the session manager
+		glocal CONNECT_INFO con_comp;	// Connection to the bo-log compute server
+		glocal map<string,string> secrets;
+		const char *passwd = getenv("BO_WRITED_PWD");
+		if (passwd == NULL){
+			tlmp_error ("Can't get database password from environment, aborting\n");
+			exit (-1);
+		} 
+		if (glocal.force_addr != NULL) fdpass_set_force_addr(glocal.force_addr);
+		if (glocal.sql_tcpport != NULL) nsql_settcpport (atoi(glocal.sql_tcpport));
+		query_setdefaultdb (glocal.data_dbserv,glocal.data_dbname,glocal.data_dbuser,passwd);
+		query_getdefaultdb()->showerrormode(true);
+		NSQL nsql_sq (glocal.users_dbserv,glocal.users_dbname,glocal.users_dbuser,passwd);
+		nsql_sq.showerrormode (true);
+		nsql_sq.setunixpath ("/var/lib/mysql/mysql-users.sock");
+		glocal.usq = &nsql_sq;
+		fdpass_readsecrets (glocal.secretfile,glocal.secrets);
+		glocal.con.port = glocal.sessionport;
+		glocal.con.bind = glocal.sessionbind;
+		glocal.con.secret = glocal.mysecret;
+		glocal.con_comp.port = glocal.computeport;
+		glocal.con_comp.secret = glocal.mysecret;
+		glocal string clientport = string_f ("unix:/tmp/writed-%s.sock",glocal.port);
+		glocal string controlport = string_f ("unix:%s",glocal.control);
+		glocal.con.fd = -1;
+		int ret = -1;
+		<obj TCPSERVER s>(glocal.bind,glocal.clientport,5);
+		<f newclient>
+			HANDLE_INFO *n = new HANDLE_INFO;
+			info.data = n;
+			if (string_cmp(info.port,glocal.controlport)==0){
+				n->type = TYPE_CONTROL;
+			}else{
+				settcpnodelay(true);
+				n->type = TYPE_CLIENT;
+				char addr[20];
+				const char *addrstr = addr;
+				if (strncmp(info.port,"unix:",5)==0){
+					addrstr = info.port;
+				}else{
+					ipnum_ip2a (from,addr);
+				}
+				n->host = addrstr;
+				n->req.secret = fdpass_findsecret (glocal.secrets,addrstr);
+				debug_printf (D_PROTO,"newclient addr=%s secret=%s\n",addrstr,n->req.secret.c_str());
+				if (n->req.secret.empty()){
+					endclient = true;
+					tlmp_error ("No secret for client %s\n",addrstr);
+				}
+			}
+		</f>
+		<f endclient>
+		</f>
+		<f receive>
+			HANDLE_INFO *c = (HANDLE_INFO*)info.data;
+			debug_printf (D_PROTO,"receive line: %s\n",line);
+			if (c->type == TYPE_CONTROL){
+				<call bo_writed_control>(this,c->req,line, endserver, endclient, no,c,c->host.c_str());
+				<f status>
+					vector<string> tb;
+					tb.push_back(string_f("version %s",VERSION));	
+					tb.push_back(string_f("nbrequest %lu",glocal.nbrequest_client));
+					tb.push_back(string_f("mailctrl %d \"%s\"",glocal.mailon,fdpass_get_force_addr()));
+					rep_status (tb);
+				</f>
+				<f quit>
+					endserver = true;
+				</f>
+				<f syncbd>
+				</f>
+				<f reload>
+				</f>
+				<f debug>
+					if (on){
+						debug_seton();
+					}else{
+						debug_setoff();
+					}
+				</f>
+				<f debugfile>
+					debug_setfdebug (filename);
+				</f>
+				<f makeadmin>
+					glocal bool on = on;
+					glocal const char *email = email;
+					<call sql_query>(*glocal.usq,"select userid,admin from users where email='%s'",email);
+					<f onerow>
+						if (strcmp(row[1],"0")==0){
+							if (!glocal.on){
+								glocal.bo_writed_control.rep_makeadmin(false,"already not admin");
+							}else if (sql_action(*glocal.usq,"update users set admin=1 where userid=%s",row[0])==-1){
+								glocal.bo_writed_control.rep_makeadmin(false,"sql error");
+							}else{
+								glocal.bo_writed_control.rep_makeadmin(true,"");
+								bo_log_makeadmin (glocal.flog,glocal.email,glocal.on);
+							}
+						}else if (glocal.on){
+							glocal.bo_writed_control.rep_makeadmin(false,"already admin");
+						}else{
+							if (sql_action(*glocal.usq,"update users set admin=0 where userid=%s",row[0])==-1){
+								glocal.bo_writed_control.rep_makeadmin(false,"sql error");
+							}else{
+								glocal.bo_writed_control.rep_makeadmin(true,"");
+								bo_log_makeadmin (glocal.flog,glocal.email,glocal.on);
+							}
+						}
+					</f>
+					<f empty>
+						glocal.bo_writed_control.rep_makeadmin(false,"user unknown");
+					</f>
+					</call>
+				</f>
+				<f rotatelog>
+					bool success = false;
+					fclose (glocal.flog);
+					glocal.flog = fopen (glocal.logfile,"a");
+					if (glocal.flog == NULL){
+						glocal.TCPSERVER.sendf ("Can't open logfile %s (%s)\n",glocal.logfile,strerror(errno));
+						tlmp_error ("Can't open logfile %s (%s)\n",glocal.logfile,strerror(errno));
+						exit (-1);
+					}else{
+						success = true;
+					}
+					rep_rotatelog (success);
+				</f>
+				<f truncatelog>
+					bool success = false;
+					fclose (glocal.flog);
+					glocal.flog = fopen (glocal.logfile,"w");
+					if (glocal.flog == NULL){
+						glocal.TCPSERVER.sendf ("Can't open logfile %s (%s)\n",glocal.logfile,strerror(errno));
+						tlmp_error ("Can't open logfile %s (%s)\n",glocal.logfile,strerror(errno));
+						exit (-1);
+					}else{
+						success = true;
+					}
+					rep_truncatelog (success);
+				</f>
+				<f del_incomplete>
+					glocal vector<string> emails;
+					time_t ti = time(NULL)-nbseconds;
+					struct tm *tt = localtime(&ti);
+					char date[100];
+					snprintf (date,sizeof(date)-1,"%04d-%02d-%02d %02d:%02d:%02d"
+						,tt->tm_year+1900,tt->tm_mon+1,tt->tm_mday
+						,tt->tm_hour,tt->tm_min,tt->tm_sec);
+					<call sql_query>(*glocal.usq,"select userid,userid_str,email from users where confirmed is null and created <= '%s'",date);
+					<f onerow>
+						if (sql_action(*glocal.usq,"delete from users where userid=%s",row[0])!=-1){
+							bo_log_del_incomplete(glocal.flog,row[1]);
+							glocal.emails.push_back(row[2]);
+							
+						}
+					</f>
+					</call>	
+					rep_del_incomplete(glocal.emails);
+				</f>
+				<f sendmail>
+					// Test sending mail
+					int success = fdpass_sendmail (glocal.mailserver,glocal.mailport,glocal.mailfrom,addr,subject,body);
+					rep_sendmail (success);
+				</f>
+				<f newacctresend>
+					glocal bool success = false;
+					<call sql_query>(*glocal.usq,"select name,email,userid_str from users where email='%s' and confirmed is null",email);
+					<f onerow>
+						if (writed_mail_newaccount (glocal.mailserver,glocal.mailport,glocal.mailfrom,row[0],row[1],row[2]) != -1){
+							glocal.success = true;
+						}
+					</f>
+					</call>
+					rep_newacctresend (glocal.success);
+				</f>
+				<f mailctrl>
+					glocal.mailon = on;
+					if (strcmp(forceaddr,"keep")!=0) fdpass_set_force_addr (forceaddr);
+				</f>
+				<f invalid>
+					tlmp_error ("Control: Invalid command: %s\n",line);
+					glocal.TCPSERVER.sendf ("Invalid command %s\n",line);
+					endclient = true;
+				</f>
+				</call>
+
+			}else if (c->type == TYPE_CLIENT){
+				glocal.nbrequest_client++;
+				<call bo_writed_client>(this,c->req,line, endserver, endclient, no,c,c->host.c_str());
+				<f adduser>
+					glocal const char *name = name;
+					glocal const char *email = email;
+					glocal const char *password = password;
+					<call sql_query>(*glocal.usq,"select email from users where email='%s'",email);
+					<f onerow>
+						// Email already exist
+						glocal.bo_writed_client.rep_adduser ("","An account using this email already exists");
+					</f>
+					<f empty>
+						<call sql_query>(*glocal.usq,"select name from users where name='%s'",glocal.name);
+						<f onerow>
+							glocal.bo_writed_client.rep_adduser ("","An account is already using this nickname");
+						</f>
+						<f empty>
+							glocal string id_str = trli_makeid (glocal.noproc);
+							if (sql_action(*glocal.usq,"insert into users (name,email,password,userid_str) values ('%s','%s',password('%s'),'%s')"
+								,glocal.name,glocal.email,glocal.password,glocal.id_str.c_str())==-1){
+								glocal.bo_writed_client.rep_adduser ("","can't create");
+							}else if (sql_action("insert into id2name (userid,name) values (%d,'%s')",glocal.usq->getlastid(),glocal.name)==-1){
+								glocal.bo_writed_client.rep_adduser ("","can't create2");
+							}else{
+								glocal.bo_writed_client.rep_adduser (glocal.id_str,"");
+								// Retrieve the password hashed by MySQL
+								<call sql_query>(*glocal.usq,"select password from users where email='%s'",glocal.email);
+								<f onerow>
+									bo_log_adduser (glocal.flog,glocal.id_str,glocal.name,glocal.email,row[0],time(NULL));
+								</f>
+								</call>
+								if (glocal.mailon){
+									writed_mail_newaccount(glocal.mailserver,glocal.mailport,glocal.mailfrom
+										,glocal.name,glocal.email,glocal.id_str);
+								}
+							}
+						</f>
+						</call>
+					</f>
+					</call>
+				</f>
+				<f confirmuser>
+					glocal const char *confirmid = confirmid;
+					<call sql_query>(*glocal.usq,"select userid from users where userid_str='%s' and confirmed is null and disabled is null"
+						,confirmid);
+					<f onerow>
+						if (sql_action(*glocal.usq,"update users set confirmed=now() where userid=%s",row[0])!=-1){
+							glocal.bo_writed_client.rep_confirmuser(true,"New user confirmed");
+							bo_log_confirmuser (glocal.flog,glocal.confirmid,time(NULL));
+						}else{
+							glocal.bo_writed_client.rep_confirmuser(false,"Error, can't confirm new user");
+						}
+					</f>
+					<f empty>
+						printf ("Confirm unknown users: %s\n",glocal.confirmid);
+						glocal.bo_writed_client.rep_confirmuser(false,"Error, unknown confirmation ID");
+					</f>
+					</call>
+				</f>
+				<f deleteuser>
+					glocal const char *sessionid=sessionid;
+					glocal string userid_str;
+					glocal unsigned userid = trli_getsessionuser(glocal.con,sessionid,glocal.userid_str);
+					if (glocal.userid != 0){
+						glocal string deleteid = trli_makeid(glocal.noproc);
+						if (sql_action(*glocal.usq,"update users set deleteid='%s' where userid=%u",glocal.deleteid.c_str()
+							,glocal.userid)!=-1){
+							<call sql_query>(*glocal.usq,"select email from users where userid=%u",glocal.userid);
+							<f onerow>
+								glocal.bo_writed_client.rep_deleteuser (row[0],glocal.deleteid.c_str());
+							</f>
+							</call>
+							bo_log_deleteuser (glocal.flog,glocal.userid_str,glocal.deleteid);
+						}
+					}
+				</f>
+				<f confirmdelete>
+					glocal const char *confirmid = confirmid;
+					<call sql_query>(*glocal.usq,"select userid,userid_str from users where deleteid='%s' and deleted is null and disabled is null"
+						,confirmid);
+					<f onerow>
+						unsigned userid = atoi(row[0]);
+						const char *userid_str = row[1];
+						if (sql_action(*glocal.usq,"update users set deleted=now() where userid=%u",userid)!=-1){
+							// And we terminated all sessions for this user
+							<call bo_sessiond_admin_deletesessions>(glocal.con,userid);
+							<f ok>
+							</f>
+							</call>
+							bo_log_confirmdelete (glocal.flog,userid_str,glocal.confirmid);
+							glocal.bo_writed_client.rep_confirmdelete (true,"");
+						}
+					</f>
+					<f empty>
+						glocal.bo_writed_client.rep_confirmdelete (false,"no user");
+					</f>
+					</call>
+				</f>
+				<f login>
+					glocal const char *email = email;
+					glocal const char *sessionid = sessionid;
+					<call sql_query>(*glocal.usq,"select userid,userid_str,name,email,lang,admin from users where email='%s' and password=password('%s')"
+						" and disabled is null and deleted is null and confirmed is not null and nbfail < 3",email,password);
+					<f onerow>
+						debug_printf (D_PROTO,"login ok\n");
+						int userid = atoi(row[0]);
+						<call bo_sessiond_admin_setsession>(glocal.con,glocal.sessionid,userid,row[1],row[2],row[3],atoi(row[4]),atoi(row[5]));
+						<f ok>
+							if (internal_error){
+								glocal.bo_writed_client.rep_login (false);
+							}else{
+								debug_printf (D_PROTO,"login session ok %s\n",glocal.sessionid);
+								sql_action (*glocal.usq,"update users set lastaccess=now() where email='%s'",glocal.email);
+								glocal.bo_writed_client.rep_login (true);
+							}
+						</f>
+						</call>
+					</f>
+					<f empty>
+						// It fails, why ?
+						debug_printf (D_PROTO,"login failed\n");
+						<call sql_query>(*glocal.usq,"select userid,email,disabled,deleted,confirmed,nbfail from users where email='%s'"
+							,glocal.email);
+						<f onerow>
+							if (row[2] != NULL || row[3] !=  NULL || row[4] == NULL){
+								// disabled or deleted or not confirmed, nothing to do
+							}else if (atoi(row[5]) < 3){
+								sql_action (*glocal.usq,"update users set nbfail=nbfail+1 where email='%s'",glocal.email);
+							}
+						</f>
+						</call>
+						glocal.bo_writed_client.rep_login (false);
+					</f>
+					</call>
+				</f>
+				<f logout>
+					glocal const char *sessionid=sessionid;
+					glocal unsigned userid = trli_getsessionuser(glocal.con,sessionid);
+					if (glocal.userid != 0){
+						<call bo_sessiond_admin_deletesession>(glocal.con,glocal.sessionid);
+						<f ok>
+						</f>
+						</call>
+					}
+				</f>
+				<f createsession>
+					// Create a web session, not associated with any user
+					glocal string sessionid = trli_makeid (glocal.noproc);
+					<call bo_sessiond_admin_createsession>(glocal.con,glocal.sessionid.c_str());
+					<f ok>
+						if (internal_error){
+							glocal.bo_writed_client.rep_createsession ("");
+						}else{
+							debug_printf (D_PROTO,"create session ok %s\n",glocal.sessionid.c_str());
+							glocal.bo_writed_client.rep_createsession (glocal.sessionid.c_str());
+						}
+					</f>
+					</call>
+				</f>
+				<f addfile>
+				</f>
+				<f modifyfile>
+				</f>
+				<f test>
+					glocal bool bdtrli=false;
+					glocal bool bdusers=false;
+					glocal bool sessiond=false;
+					<call sql_query>(*glocal.usq,"select count(*) from users");
+					<f onerow>
+						glocal.bdusers=true;
+					</f>
+					</call>
+					<call sql_query>("select count(*) from id2name");
+					<f onerow>
+						glocal.bdtrli=true;
+					</f>
+					</call>
+					<call bo_sessiond_admin_test>(glocal.con);
+					<f ok>
+						if (success) glocal.sessiond = true;
+					</f>
+					</call>
+					rep_test (glocal.bdtrli,glocal.bdusers,glocal.sessiond);
+				</f>
+				<f invalid>
+					tlmp_error ("Client: Invalid command: %s\n",line);
+					endclient = true;
+				</f>
+				</call>
+				fflush (glocal.flog);
+			}
+		</f>
+		</obj>
+		bool some_errors = false;
+		if (fdpass_setcontrol(s,glocal.control,glocal.user)==-1){
+			some_errors = true;
+		}
+
+		if (!some_errors && s.is_ok()){
+			s.setrawmode(true);
+			chmod (glocal.clientport.c_str()+5,0666);
+			glocal.flog = fopen (glocal.logfile,"a");
+			if (glocal.flog == NULL){
+				tlmp_error ("Can't open logfile %s (%s)\n",glocal.logfile,strerror(errno));
+				exit (-1);
+			}
+			if (glocal.daemon){
+				daemon_init(glocal.pidfile,glocal.user);
+			}
+			s.loop();
+			ret = 0;
+		}
+		fclose (glocal.flog);
+		return ret;
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+
