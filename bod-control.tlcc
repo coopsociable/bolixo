@@ -1,0 +1,67 @@
+/*
+	Command line tool to control bod
+*/
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <tlmplib.h>
+#include <tlmpnet.h>
+#include <string>
+#include <fdpass.h>
+
+using namespace std;
+
+#include "proto/bod_control.protoch"
+
+<mod>
+int main (int argc, char *argv[])
+{
+	glocal int ret = -1;
+	glocal const char *control = "/var/run/trlid.sock";
+	glocal.ret = <call tlmpprogram>(argc,argv);
+	<f init>
+		setproginfo ("trlid-control",VERSION
+			,"Command line tool to control trlid\n"
+			 "\n"
+			 "\tdebug 0/1\n"
+			 "\tdebugfile filename\n"
+			 "\tquit\n"
+			 "\tstatus\n");
+		setarg ('p',"control","Unix socket to reach trlid",glocal.control,false);
+	</f>
+	<f main>
+		int ret = -1;
+		CONNECT_INFO con;
+		con.port = glocal.control;	
+		if (strcmp(argv[0],"status")==0 && argc==1){
+			<call bod_control_status>(con);
+			<f ok>
+				for (auto x:lines) printf ("%s\n",x);
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"quit")==0){
+			<call bod_control_quit>(con);
+			<f ok>
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"debug")==0 && argc==2){
+			<call bod_control_debug>(con,atoi(argv[1]));
+			<f ok>
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"debugfile")==0 && argc==2){
+			<call bod_control_debugfile>(con,argv[1]);
+			<f ok>
+			</f>
+			</call>
+		}else{
+			tlmp_error ("Invalid command: %s\n",argv[0]);
+			usage();
+		}
+		return ret;
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+

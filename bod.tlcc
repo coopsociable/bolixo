@@ -1,0 +1,404 @@
+/*
+	Main server for the project. Hides database logic and controls security/access
+*/
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <syslog.h>
+#include <signal.h>
+#include <sys/stat.h>
+#include <tlmplib.h>
+#include <tlmpnet.h>
+#include <string>
+#include <fdpass.h>
+#include <tlmpsql.h>
+
+
+static DEBUG_KEY D_PROTO ("proto","Protocol information");
+
+enum CONNECT_TYPE { TYPE_NONE, TYPE_CONTROL, TYPE_CLIENT, TYPE_ADMIN };
+
+struct HANDLE_INFO: public ARRAY_OBJ{
+	CONNECT_TYPE type;
+	int no;
+	std::string host;
+	REQUEST_INFO req;
+	std::string userid;
+	HANDLE_INFO(){
+		no = -1;
+		type = TYPE_NONE;
+	}
+};
+
+#include "proto/bod_control.protoh"
+#include "proto/bod_client.protoh"
+#include "proto/bod_admin.protoh"
+
+using namespace std;
+
+
+#include "proto/bo-writed_client.protoch"
+#define bo_sessiond_client_getsessioninfo_NOTNEED
+#define bo_sessiond_client_getsessioninfovars_NOTNEED
+#define bo_sessiond_client_setvar_NOTNEED
+#include "proto/bo-sessiond_client.protoch"
+
+<mod>
+static int trlid_main (
+	const char *bind,
+	const char *portstr,
+	const char *control,	// Unix socket
+	const CONNECT_INFO &con,
+	const CONNECT_INFO &con_sess,
+	const char *user,
+	const char *pidfile,
+	bool daemon,
+	const map<string,string> &admin_secrets,
+	const map<string,string> &client_secrets)
+{
+	int ret = -1;
+	glocal CONNECT_INFO con = con;
+	glocal CONNECT_INFO con_sess = con_sess;
+	glocal const map<string,string> *admin_secrets = &admin_secrets;
+	glocal const map<string,string> *client_secrets = &client_secrets;
+	glocal unsigned long nbrequest_client = 0;
+	glocal unsigned long nbrequest_admin = 0;
+	glocal string unixportclient = string_f("unix:/tmp/trlid-client-%s.sock",portstr);
+	glocal string unixportadmin = string_f("unix:/tmp/trlid-admin-%s.sock",portstr);
+	<obj TCPSERVER s>(bind,glocal.unixportclient,5);
+	<f newclient>
+		HANDLE_INFO *n = new HANDLE_INFO;
+		info.data = n;
+		if (strcmp(info.port,glocal.unixportclient.c_str())==0){
+			n->req.secret = fdpass_findsecret (*glocal.client_secrets,info.port);
+			if (n->req.secret.size() > 0){
+				n->type = TYPE_CLIENT;
+			}else{
+				tlmp_error ("Rejected client connexion from port %s\n",info.port);
+				endclient = true;
+			}
+		}else if (strcmp(info.port,glocal.unixportadmin.c_str())==0){
+			n->req.secret = fdpass_findsecret (*glocal.admin_secrets,info.port);
+			if (n->req.secret.size() > 0){
+				n->type = TYPE_ADMIN;
+			}else{
+				tlmp_error ("Rejected admin connexion from port %s\n",info.port);
+				endclient = true;
+			}
+		}else if (strncmp(info.port,"unix:",5)==0){
+			n->type = TYPE_CONTROL;
+		}else{
+			settcpnodelay(true);
+			char addr[20];
+			ipnum_ip2a (from,addr);
+			n->host = addr;
+			n->req.secret = fdpass_findsecret (*glocal.client_secrets,addr);
+			if (n->req.secret.size() > 0){
+				n->type = TYPE_CLIENT;
+			}else{
+				n->req.secret = fdpass_findsecret (*glocal.admin_secrets,addr);
+				if (n->req.secret.size() > 0){
+					n->type = TYPE_ADMIN;
+				}else{
+					tlmp_error ("Rejected connexion from IP %s\n",addr);
+					endclient = true;
+				}
+			}
+		}
+	</f>
+	<f endclient>
+	</f>
+	<f receive>
+		HANDLE_INFO *c = (HANDLE_INFO*)info.data;
+		glocal HANDLE_INFO *c = c;
+		glocal string userid = c->userid;
+		debug_printf (D_PROTO,"receive line: %s\n",line);
+		if (c->type == TYPE_CONTROL){
+			<call bod_control>(this,c->req,line, endserver, endclient, no,c,c->host.c_str());
+			<f status>
+				vector<string> tb;
+				tb.push_back(string_f("Version %s",VERSION));
+				tb.push_back(string_f ("nbrequest_admin=%lu",glocal.nbrequest_admin));
+				tb.push_back(string_f ("nbrequest_client=%lu",glocal.nbrequest_client));
+				rep_status(tb);
+			</f>
+			<f quit>
+				endserver = true;
+			</f>
+			<f debug>
+				if (on){
+					debug_seton();
+				}else{
+					debug_setoff();
+				}
+			</f>
+			<f debugfile>
+				debug_setfdebug (filename);
+			</f>
+			<f invalid>
+				endclient = true;
+			</f>
+			</call>
+		}else if (c->type == TYPE_CLIENT){
+			glocal.nbrequest_client++;
+			<call bod_client>(this,c->req,line, endserver, endclient,no,c,c->host.c_str());
+			<f createsession>
+				<call bo_writed_client_createsession>(glocal.con);
+				<f ok>
+					glocal.bod_client.rep_createsession(sessionid);
+				</f>
+				</call>
+			</f>
+			<f login>
+				<call bo_writed_client_login>(glocal.con,sessionid,email,password);
+				<f ok>
+					glocal.bod_client.rep_login(success);
+				</f>
+				</call>
+			</f>
+			<f logout>
+				<call bo_writed_client_logout>(glocal.con,sessionid);
+				<f ok>
+				</f>
+				</call>
+			</f>
+			<f adduser>
+				<call bo_writed_client_adduser>(glocal.con,name,email,password);
+				<f ok>
+					glocal.bod_client.rep_adduser (confirmid,msg);
+				</f>
+				</call>
+			</f>
+			<f confirmuser>
+				<call bo_writed_client_confirmuser>(glocal.con,id);
+				<f ok>
+					glocal.bod_client.rep_confirmuser(success,msg);
+				</f>
+				</call>
+			</f>
+			<f deleteuser>
+				<call bo_writed_client_deleteuser>(glocal.con,sessionid);
+				<f ok>
+					glocal.bod_client.rep_deleteuser (email,confirmid);
+				</f>
+				</call>
+			</f>
+			<f confirmdelete>
+				<call bo_writed_client_confirmdelete>(glocal.con,confirmid);
+				<f ok>
+					glocal.bod_client.rep_confirmdelete(success,msg);
+				</f>
+				</call>
+			</f>
+			<f addfile> // sessionid name content = success:b fileid msg
+				<call bo_writed_client_addfile>(glocal.con,sessionid,name,content);
+				<f ok>
+					glocal.bod_client.rep_addfile(success,fileid,msg);
+				</f>
+				</call>
+			</f>
+			<f modifyfile> // sessionid fileid content = success:b msg
+				<call bo_writed_client_modifyfile>(glocal.con,sessionid,fileid,content);
+				<f ok>
+					glocal.bod_client.rep_modifyfile(success,msg);
+				</f>
+				</call>
+			</f>
+			<f invalid>
+				tlmp_error ("CLIENT: Invalid command: %s\n",line);
+				endclient = true;
+			</f>
+			</call>
+		}else if (c->type == TYPE_ADMIN){
+			glocal.nbrequest_admin++;
+			<call bod_admin>(this,c->req,line, endserver, endclient, no,c,c->host.c_str());
+			<f test>
+				glocal bool sessiond1=false;
+				glocal bool sessiond2=false;
+				glocal bool writed = false;
+				glocal bool bdfiles1 = false;
+				glocal bool bdfiles2 = false;
+				glocal bool bdusers = false;
+				glocal bool internal_error1 = false;
+				<call bo_sessiond_client_test>(glocal.con_sess);
+				<f ok>
+					glocal.internal_error1 = internal_error;
+					glocal.sessiond1 = success;
+				</f>
+				</call>
+				<call bo_writed_client_test>(glocal.con);
+				<f ok>
+					glocal.writed = !internal_error;
+					glocal.sessiond2 = sessiond;
+					glocal.bdusers = bdusers;
+					glocal.bdfiles2 = bdfiles;
+				</f>
+				</call>
+				<call sql_query>("select count(*) from id2name");
+				<f onerow>
+					glocal.bdfiles1=true;
+				</f>
+				</call>
+				glocal.bod_admin.rep_test(glocal.internal_error1
+					,glocal.writed,glocal.bdfiles1,glocal.bdfiles2,glocal.bdusers
+					,glocal.sessiond1,glocal.sessiond2);
+			</f>
+			<f invalid>
+				tlmp_error ("ADMIN: Invalid command: %s\n",line);
+				endclient = true;
+			</f>
+			</call>
+		}
+	</f>
+	</obj>
+	bool some_errors = false;
+	if (control != NULL && fdpass_setcontrol(s,control,user)==-1){
+		some_errors = true;
+	}
+	if (s.listen(NULL,glocal.unixportadmin)==-1){
+		tlmp_error ("Can't setup socket on %s (%s)\n",glocal.unixportadmin,strerror(errno));
+		some_errors = true;
+	}
+
+
+	if (!some_errors && s.is_ok()){
+		chmod (glocal.unixportclient.c_str()+5,0666);
+		chmod (glocal.unixportadmin.c_str()+5,0666);
+		s.setrawmode (true);
+		if (daemon){
+			daemon_init(pidfile,user);
+		}
+		s.loop();
+		ret = 0;
+	}
+	return ret;
+}
+</mod>
+<mod>
+int main (int argc, char *argv[])
+{
+	glocal int ret = -1;
+	glocal const char *admin_secretfile = "/etc/bolixo/secrets.admin";
+	glocal const char *client_secretfile = "/etc/bolixo/secrets.client";
+	glocal const char *bind = "0.0.0.0";
+	glocal const char *port = "9000";
+	glocal const char *control = "/var/run/bod.sock";
+	glocal const char *adminhost = "127.0.0.3";
+	glocal const char *adminport = "9100";
+	glocal const char *sesshost = "127.0.0.4";
+	glocal const char *sessport = "9200";
+	glocal const char *user = "bolixo";
+	glocal const char *mysecret = NULL;
+	glocal const char *dbserv = "localhost";
+	glocal const char *dbname = "trli";
+	glocal const char *dbuser = NULL;
+	glocal const char *sql_tcpport = NULL;
+	glocal bool daemon = false;
+	glocal int workers = 1;
+	glocal const char *pidfile = "/var/run/bod.pid";
+
+	signal (SIGPIPE,SIG_IGN);
+	glocal.ret = <call tlmpprogram>(argc,argv,"tlmpsql");
+	<f init>
+		setproginfo ("bod",VERSION,"Implement all business logic");
+		setgrouparg ("Networking");
+		setarg ('b',"bindaddr","Bind to this address (TCP)",glocal.bind,false);
+		setarg ('p',"tcpport","Listen for command on this TCP port",glocal.port,false);
+		setarg ('c',"control","Unix socket for trlid-control",glocal.control,false);
+		setgrouparg ("Admin server");
+		setarg (' ',"adminhost","Host running the trli-writed server",glocal.adminhost,false);
+		setarg (' ',"adminport","Port to reach the trli-writed server",glocal.adminport,false);
+		setarg (' ',"sesshost","Host running the trli-sessiond server",glocal.sesshost,false);
+		setarg (' ',"sessport","Port to reach the trli-sessiond server",glocal.sessport,false);
+		setarg (' ',"mysecret","Secret used to communicate with trli-writed",glocal.mysecret,true);
+		setgrouparg ("Misc.");
+		setarg (' ',"admin_secrets","File holding admin secrets for communication",glocal.admin_secretfile,false);
+		setarg (' ',"client_secrets","File holding client secrets for communication",glocal.client_secretfile,false);
+		setarg (' ',"user","Run the program as this user",glocal.user,false);
+		setarg (' ',"daemon","Run in background",glocal.daemon,false);
+		setarg (' ',"workers","Number of sub-process to lauch",glocal.workers,false);
+		setarg (' ',"pidfile","FIle holding the PID of the process",glocal.pidfile,false);
+		setgrouparg ("Database");
+		setarg (' ',"dbserv","Database server",glocal.dbserv,false);
+		setarg (' ',"dbname","Database name",glocal.dbname,false);
+		setarg (' ',"dbuser","Database user",glocal.dbuser,true);
+		setarg (' ',"sqltcpport","Database TCP port",glocal.sql_tcpport,false);
+	</f>
+	<f showerror>
+		glocal const char *msg = msg;
+		<call savefile>("/tmp/err.log",true);
+		<f dowrite>
+			fprintf (fout,"%s\n",glocal.msg);
+			return 0;
+		</f>
+		</call>
+		if (glocal.daemon){
+			syslog (LOG_ERR,"%s",msg);
+		}else{
+			fprintf (stderr,"%s",msg);
+		}
+	</f>
+	<f showwarn>
+		if (glocal.daemon){
+			syslog (LOG_WARNING,"%s",msg);
+		}else{
+			fprintf (stderr,"%s",msg);
+		}
+	</f>
+	<f main_noarg>
+		glocal CONNECT_INFO con;
+		glocal CONNECT_INFO con_sess;
+		glocal map<string,string> admin_secrets;
+		glocal map<string,string> client_secrets;
+		fdpass_readsecrets (glocal.client_secretfile,glocal.client_secrets);
+		fdpass_readsecrets (glocal.admin_secretfile,glocal.admin_secrets);
+		//glocal.con.host = glocal.adminhost;
+		glocal.con.port = glocal.adminport;
+		glocal.con.secret = glocal.mysecret;
+		glocal.con.bind = glocal.bind;
+		//glocal.con_sess.host = glocal.sesshost;
+		glocal.con_sess.port = glocal.sessport;
+		glocal.con_sess.secret = glocal.mysecret;
+		glocal.con_sess.bind = glocal.bind;
+		if (glocal.sql_tcpport != NULL) nsql_settcpport (atoi(glocal.sql_tcpport));
+		{
+			const char *dbpass = getenv("TRLID_PWD");
+			if (dbpass == NULL){
+				tlmp_error ("Can't get database password from environment,aborting\n");
+				exit (-1);
+			}
+			query_setdefaultdb (glocal.dbserv,glocal.dbname,glocal.dbuser,dbpass);
+		}
+
+		int ret = -1;
+		if (glocal.workers==1){
+			ret = trlid_main (glocal.bind,glocal.port,glocal.control
+				,glocal.con,glocal.con_sess,glocal.user,glocal.pidfile,glocal.daemon
+				,glocal.admin_secrets,glocal.client_secrets);
+		}else{
+			int port = atoi(glocal.port);
+			for (int w=0; w<glocal.workers; w++){
+				char portstr[10];
+				snprintf (portstr,sizeof(portstr)-1,"%d",port+w);
+				string control = string(glocal.control) + string_f("+%d",w);
+				pid_t pid = fork();
+				if (pid == (pid_t)0){
+					ret = trlid_main (glocal.bind,portstr,control.c_str()
+						,glocal.con,glocal.con_sess,glocal.user,glocal.pidfile,false
+						,glocal.admin_secrets,glocal.client_secrets);
+				}else if (pid == (pid_t)-1){
+					tlmp_error("Can't fork (%s), aborting\n",strerror(errno));
+					exit (-1);
+				}else{
+				}
+			}
+		}
+
+		return ret;
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+
