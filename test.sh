@@ -278,19 +278,14 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 		);
 		create index files_id on files (id);
 
-		create table dirs_subdirs (
+		create table dirs_content (
 			dirid int,
-			subdir int,
-			name varchar(100)
-		);
-		create index dirs_subdirs_dirid on dirs_subdirs (dirid);
-
-		create table dirs_files(
-			dirid int,
-			fileid int,
+			itemid int,
 			modified datetime,
+			type char,
 			name varchar(100)
 		);
+		create index dirs_content on dirs_content (dirid);
 	EOF
 elif [ "$1" = "dropdb" ] ; then # db: Drop databases
 	mysqladmin -uroot -S $SOCKN -f drop $DBNAME

@@ -170,57 +170,47 @@ static int writed_mail_newaccount(
 };
 
 <mod>
+<mod>
+static int bo_writed_locate_entry (int dirid, PARAM_STRING fname, char &type)
+{
+	glocal int ret = -1;
+	glocal char type=' ';
+	<call sql_query>("select itemid,type from dirs_content where dirid=%d and name='%s' order by modified",dirid,fname.ptr);
+	<f onerow>
+		glocal.ret = atoi(row[0]);
+		glocal.type = row[1][0];
+		if (glocal.type == ' ') glocal.ret = -1;	// This means the entry was deleted
+	</f>
+	</call>
+	type = glocal.type;
+	return glocal.ret;
+}
+</mod>
 /*
 	Locate a directory and retuns its id
 */
 static int bo_writed_locate_dir (vector<string> &tb)
 {
-	glocal int ret = -1;
+	int ret = -1;
 	if (tb.size()==0){
 		// root dir
-		glocal.ret = 0;
+		ret = 0;
 	}else{
 		int parentid = 0;
 		for (auto &d:tb){
-			<call sql_query>("select subdir from dirs_subdirs where dirid=%d && name='%s'",parentid,d.c_str());
-			<f onerow>
-				glocal.ret = atoi(row[0]);
-			</f>
-			<f empty>
-				glocal.ret = -1;
-			</f>
-			</call>
-			if (glocal.ret == -1) break;
-			parentid = glocal.ret;
+			char type;
+			int dirid = bo_writed_locate_entry (parentid,d,type);
+			if (dirid == -1 || type != 'D'){
+				ret = -1;
+				break;
+			}else{
+				ret = dirid;
+				parentid = dirid;
+			}
 		}
 	}
-	return glocal.ret;
+	return ret;
 }
-</mod>
-<mod>
-static int bo_writed_locate_file (int dirid, const char *fname)
-{
-	glocal int ret = -1;
-	<call sql_query>("select fileid from dirs_files where dirid=%d and name='%s' limit 1",dirid,fname);
-	<f onerow>
-		glocal.ret = atoi(row[0]);
-	</f>
-	</call>
-	return glocal.ret;
-}
-</mod>
-<mod>
-static int bo_writed_locate_subdir (int dirid, const char *fname)
-{
-	glocal int ret = -1;
-	<call sql_query>("select subdir from dirs_subdirs where dirid=%d and name='%s' limit 1",dirid,fname);
-	<f onerow>
-		glocal.ret = atoi(row[0]);
-	</f>
-	</call>
-	return glocal.ret;
-}
-</mod>
 
 static int bo_writed_parse_fname (const char *name, vector<string> &parentdirs, string &basename)
 {
@@ -696,24 +686,22 @@ int main (int argc, char *argv[])
 								rep_mkdir (false,"","Unknown parent directory");
 							}else{
 								const char *fname = basename.c_str();
-								if (bo_writed_locate_file (dirid,fname)!=-1){
-									rep_mkdir (false,"","File with that name exist");
+								char type;
+								int subdirid = bo_writed_locate_entry (dirid,fname,type);
+								if (subdirid != -1){
+									rep_mkdir (false,"","Entry with that name exist");
 								}else{
-									int subdirid = bo_writed_locate_subdir (dirid,fname);
-									if (subdirid == -1){
-										string id = trli_makeid(glocal.noproc);
-										if (sql_action("insert into ids (ownerid,uuid) values (%u,'%s')",userid,id.c_str())==-1){
-											rep_mkdir (false,"","Internal error (ids table)");
-										}else{
-											subdirid = sql_getlastid();
-											if (sql_action("insert into dirs_subdirs (dirid,subdir,name) values (%d,%d,'%s')",dirid,subdirid,fname)==-1){
-												rep_mkdir (false,"","Internal error (dirs_subdirs table)");
-											}else{
-												rep_mkdir (true,"","Ok");
-											} 
-										}
+									string id = trli_makeid(glocal.noproc);
+									if (sql_action("insert into ids (ownerid,uuid) values (%u,'%s')",userid,id.c_str())==-1){
+										rep_mkdir (false,"","Internal error (ids table)");
 									}else{
-										rep_mkdir (false,"","Directory exist");
+										subdirid = sql_getlastid();
+										if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,now(),'D','%s')"
+											,dirid,subdirid,fname)==-1){
+											rep_mkdir (false,"","Internal error (dirs_subdirs table)");
+										}else{
+											rep_mkdir (true,"","Ok");
+										} 
 									}
 								}
 							}
@@ -733,24 +721,21 @@ int main (int argc, char *argv[])
 								rep_addfile (false,"","Invalid parent directory");
 							}else{
 								const char *fname = basename.c_str();
-								if (bo_writed_locate_subdir (dirid,fname) != -1){
-									rep_mkdir (false,"","Directory with that name exist");
+								char type;
+								int fileid = bo_writed_locate_entry (dirid,fname,type);
+								if (fileid != -1){
+									rep_mkdir (false,"","Entry with that name exist");
 								}else{
-									int fileid = bo_writed_locate_file (dirid,fname);
-									if (fileid == -1){
-										string id = trli_makeid(glocal.noproc);
-										if (sql_action("insert into ids (ownerid,uuid) values (%u,'%s')",userid,id.c_str())==-1){
-											rep_addfile (false,"","Internal error (ids table)");
-										}else{
-											fileid = sql_getlastid();
-											if (sql_action("insert into dirs_files (dirid,fileid,modified,name) values (%d,%d,now(),'%s')",dirid,fileid,fname)==-1){
-												rep_addfile (false,"","Internal error (dirs_files table)");
-											}else{
-												rep_addfile (true,"","Ok");
-											} 
-										}
+									string id = trli_makeid(glocal.noproc);
+									if (sql_action("insert into ids (ownerid,uuid) values (%u,'%s')",userid,id.c_str())==-1){
+										rep_addfile (false,"","Internal error (ids table)");
 									}else{
-										rep_addfile (false,"","File exist");
+										fileid = sql_getlastid();
+										if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,now(),'F','%s')",dirid,fileid,fname)==-1){
+											rep_addfile (false,"","Internal error (dirs_files table)");
+										}else{
+											rep_addfile (true,"","Ok");
+										} 
 									}
 								}
 							}
