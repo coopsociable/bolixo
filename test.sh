@@ -451,6 +451,13 @@ elif [ "$1" = "test-sequence-lxc" ] ; then # S: Reloads and fills database lxc m
 	export LXCSOCK=on
 	shift
 	$0 test-sequence $*
+elif [ "$1" = "test-addfile" ] ; then # T: Add one file (letter dir suffix)
+	shift
+	if [ "$1" = "" ] ; then
+		echo test-addfile letter [ dir suffix ]
+		exit 1
+	fi
+	$0 bod-client --testaddfile "$1" --extra "$2" --extra2 "$3"
 elif [ "$1" = "createsqlusers" ] ; then # db: Generates SQL to create users
 	TRLISQL=/tmp/files.sql
 	USERSQL=/tmp/users.sql

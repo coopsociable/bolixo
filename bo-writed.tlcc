@@ -169,6 +169,39 @@ static int writed_mail_newaccount(
 		,tmp);
 };
 
+static int bo_writed_locate_dir (vector<string> tb)
+{
+	return 1;
+}
+<mod>
+static int bo_writed_locate_file (int dirid, const char *fname)
+{
+	glocal int ret = -1;
+	<call sql_query>("select fileid from dirs_content where id=%d and name='%s' limit 1",dirid,fname);
+	<f onerow>
+		glocal.ret = atoi(row[0]);
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+
+static int bo_writed_parse_fname (const char *name, vector<string> &parentdirs, string &basename)
+{
+	int ret = -1;
+	vector<string> tb;
+	int n = str_splitline(name,'/',tb);
+	if (n > 0){
+		if (n > 1){
+			n--;
+			for (int i=0; i<n; i++) parentdirs.push_back(tb[i]);
+		}else{
+			parentdirs.clear();
+		}
+		basename = tb[n-1];
+	}
+	return ret;
+}
 
 <mod>
 int main (int argc, char *argv[])
@@ -607,7 +640,65 @@ int main (int argc, char *argv[])
 					</f>
 					</call>
 				</f>
+				<f mkdir>
+					vector<string> parents;
+					string basename;
+					if (bo_writed_parse_fname (name,parents,basename) == -1){
+						rep_mkdir (false,"","Invalid name");
+					}else{
+						int dirid = bo_writed_locate_dir (parents);
+						if (dirid == -1){
+							rep_mkdir (false,"","Unknown parent directory");
+						}else{
+							const char *fname = basename.c_str();
+							int fileid = bo_writed_locate_file (dirid,fname);
+							if (fileid == -1){
+								string id = trli_makeid(glocal.noproc);
+								if (sql_action("insert into ids (uuid) values ('%s')",id.c_str())==-1){
+									rep_mkdir (false,"","Internal error (ids table)");
+								}else{
+									fileid = sql_getlastid();
+									if (sql_action("insert into dirs_content (id,fileid,modified,name) values (%d,%d,now(),'%s')",dirid,fileid,fname)==-1){
+										rep_mkdir (false,"","Internal error (dirs_content table)");
+									}else{
+										rep_mkdir (true,"","Ok");
+									} 
+								}
+							}else{
+								rep_mkdir (false,"","Directory or file exist");
+							}
+						}
+					}
+				</f>
 				<f addfile>
+					vector<string> parents;
+					string basename;
+					if (bo_writed_parse_fname (name,parents,basename) == -1){
+						rep_addfile (false,"","Invalid name");
+					}else{
+						int dirid = bo_writed_locate_dir (parents);
+						if (dirid == -1){
+							rep_addfile (false,"","Invalid parent directory");
+						}else{
+							const char *fname = basename.c_str();
+							int fileid = bo_writed_locate_file (dirid,fname);
+							if (fileid == -1){
+								string id = trli_makeid(glocal.noproc);
+								if (sql_action("insert into ids (uuid) values ('%s')",id.c_str())==-1){
+									rep_addfile (false,"","Internal error (ids table)");
+								}else{
+									fileid = sql_getlastid();
+									if (sql_action("insert into dirs_content (id,fileid,modified,name) values (%d,%d,now(),'%s')",dirid,fileid,fname)==-1){
+										rep_addfile (false,"","Internal error (dirs_content table)");
+									}else{
+										rep_addfile (true,"","Ok");
+									} 
+								}
+							}else{
+								rep_addfile (false,"","File exist");
+							}
+						}
+					}
 				</f>
 				<f modifyfile>
 				</f>
