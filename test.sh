@@ -265,6 +265,7 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 
 		create table ids (
 			id int primary key auto_increment,
+			ownerid int default null,
 			uuid char(40)
 		);
 		create index ids_uuid on ids (uuid);
@@ -277,15 +278,15 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 		);
 		create index files_id on files (id);
 
-		create table dirs (
-			id int,
-			ownerid int default null,
+		create table dirs_subdirs (
+			dirid int,
+			subdir int,
 			name varchar(100)
 		);
-		create index dirs_id on dirs (id);
+		create index dirs_subdirs_dirid on dirs_subdirs (dirid);
 
-		create table dirs_content(
-			id int,
+		create table dirs_files(
+			dirid int,
 			fileid int,
 			modified datetime,
 			name varchar(100)
@@ -400,8 +401,8 @@ elif [ "$1" = "test-sequence" ] ; then # S: Reloads database (big,medium,real,no
 	NEWSCNT2=10
 	LONG="This is some text"
 	LONGTITLE=
-	NOMAIL=
 	shift
+	$0 bo-writed-control mailctrl 0 keep
 	while [ "$1" != "" ]
 	do
 		if [ "$1" = "big" ] ; then
@@ -414,9 +415,8 @@ elif [ "$1" = "test-sequence" ] ; then # S: Reloads database (big,medium,real,no
 			LONGTITLE=" this is a long title, normally long title, as expected"
 			LONG="<br>This is the first ...... line<br>This is the second ............ line<br>This is the third ............line<br>This is the last line"
 			LONG="$LONG<br>This is the first ...... line<br>This is the second ............ line<br>This is the third ............line<br>This is the last line"
-		elif [ "$1" = "nomail" ] ; then
-			$0 bo-writed-control mailctrl 0 keep
-			NOMAIL=on
+		elif [ "$1" = "mail" ] ; then
+			$0 bo-writed-control mailctrl 1 keep
 		else
 			echo unknown keyword $1: filldb big,real
 			exit 1
@@ -451,6 +451,13 @@ elif [ "$1" = "test-sequence-lxc" ] ; then # S: Reloads and fills database lxc m
 	export LXCSOCK=on
 	shift
 	$0 test-sequence $*
+elif [ "$1" = "test-mkdir" ] ; then # T: Add one director (letter dir suffix)
+	shift
+	if [ "$2" = "" ] ; then
+		echo test-mkdir letter dirpath
+		exit 1
+	fi
+	$0 bod-client --testmkdir "$1" --extra "$2"
 elif [ "$1" = "test-addfile" ] ; then # T: Add one file (letter dir suffix)
 	shift
 	if [ "$1" = "" ] ; then
