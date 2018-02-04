@@ -29,12 +29,13 @@ fi
 BODCLIENTPORT=$SOCKTESTDIR/B-bod-*-client-9000.sock
 BODADMINPORT=$SOCKTESTDIR/B-bod-*-admin-9000.sock
 SESSIONDADMINPORT=$SOCKTESTDIR/A-sessiond-*-admin-9200.sock
+LXCSOCK=on
 if [ "$LXCSOCK" != "" ] ; then
 	BOD_SOCK=/var/lib/lxc/bod/rootfs/var/run/blackhole/bod-0.sock
 	WRITED_SOCK=/var/lib/lxc/writed/rootfs/var/run/blackhole/bo-writed-0.sock
 	SESSIOND_SOCK=/var/lib/lxc/sessiond/rootfs/var/run/blackhole/bo-sessiond.sock
 	WRITEDLOG=/var/lib/lxc/writed/rootfs/var/log/bolixo/bo-writed.log
-elif [ "$TRLID_SOCK" = "" ] ; then
+elif [ "$BOD_SOCK" = "" ] ; then
 	BOD_SOCK=/tmp/bod.sock
 	WRITED_SOCK=/tmp/bo-writed.sock
 	SESSIOND_SOCK=/tmp/bo-sessiond.sock
