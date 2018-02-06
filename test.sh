@@ -29,8 +29,10 @@ fi
 BODCLIENTPORT=$SOCKTESTDIR/B-bod-*-client-9000.sock
 BODADMINPORT=$SOCKTESTDIR/B-bod-*-admin-9000.sock
 SESSIONDADMINPORT=$SOCKTESTDIR/A-sessiond-*-admin-9200.sock
-LXCSOCK=on
-if [ "$LXCSOCK" != "" ] ; then
+if [ "$LXCSOCK" = "" ] ; then
+	LXCSOCK=on
+fi
+if [ "$LXCSOCK" == "on" ] ; then
 	BOD_SOCK=/var/lib/lxc/bod/rootfs/var/run/blackhole/bod-0.sock
 	WRITED_SOCK=/var/lib/lxc/writed/rootfs/var/run/blackhole/bo-writed-0.sock
 	SESSIOND_SOCK=/var/lib/lxc/sessiond/rootfs/var/run/blackhole/bo-sessiond.sock
@@ -446,13 +448,27 @@ elif [ "$1" = "test-sequence-lxc" ] ; then # S: Reloads and fills database lxc m
 	export LXCSOCK=on
 	shift
 	$0 test-sequence $*
-elif [ "$1" = "test-mkdir" ] ; then # T: Add one director (letter dir suffix)
+elif [ "$1" = "test-listdir" ] ; then # T: List content of a directory (letter dir )
+	shift
+	if [ "$2" = "" ] ; then
+		echo test-listdir letter dirpath
+		exit 1
+	fi
+	$0 bod-client --testlistdir "$1" --extra "$2"
+elif [ "$1" = "test-mkdir" ] ; then # T: Add one directory (letter dir )
 	shift
 	if [ "$2" = "" ] ; then
 		echo test-mkdir letter dirpath
 		exit 1
 	fi
 	$0 bod-client --testmkdir "$1" --extra "$2"
+elif [ "$1" = "test-rmdir" ] ; then # T: Remove one directory (letter dir )
+	shift
+	if [ "$2" = "" ] ; then
+		echo test-rmdir letter dirpath
+		exit 1
+	fi
+	$0 bod-client --testrmdir "$1" --extra "$2"
 elif [ "$1" = "test-addfile" ] ; then # T: Add one file (letter dir suffix)
 	shift
 	if [ "$1" = "" ] ; then
@@ -460,6 +476,13 @@ elif [ "$1" = "test-addfile" ] ; then # T: Add one file (letter dir suffix)
 		exit 1
 	fi
 	$0 bod-client --testaddfile "$1" --extra "$2" --extra2 "$3"
+elif [ "$1" = "test-delfile" ] ; then # T: Remove one file (letter dir suffix)
+	shift
+	if [ "$1" = "" ] ; then
+		echo test-delfile letter [ dir suffix ]
+		exit 1
+	fi
+	$0 bod-client --testdelfile "$1" --extra "$2" --extra2 "$3"
 elif [ "$1" = "createsqlusers" ] ; then # db: Generates SQL to create users
 	TRLISQL=/tmp/files.sql
 	USERSQL=/tmp/users.sql
@@ -764,6 +787,7 @@ elif [ "$1" = "lxc0-exim" ]; then # prod:
 	exim_save exim
 	exim_restore exim
 elif [ "$1" = "lxc0s" ] ; then # prod: generates lxc0 scripts for all components
+	export LXCSOCK=off
 	$0 checks
 	export SILENT=on
 	$0 lxc0-bod

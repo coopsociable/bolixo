@@ -16,6 +16,7 @@
 #include <tlmplib.h>
 #include <algorithm>
 #include <string>
+#include <map>
 #include <tlmpnet.h>
 #include <tlmpsql.h>
 #include <fdpass.h>
@@ -31,6 +32,18 @@ struct HANDLE_INFO: public ARRAY_OBJ{
 	HANDLE_INFO(){
 		no = -1;
 		type = TYPE_NONE;
+	}
+};
+
+struct DIRENTRY{
+	std::string modified;
+	char type;
+	DIRENTRY (const char *_modified, char _type){
+		modified = _modified;
+		type = _type;
+	}
+	DIRENTRY(){
+		type = '_';
 	}
 };
 
@@ -174,12 +187,14 @@ static int writed_mail_newaccount(
 static int bo_writed_locate_entry (int dirid, PARAM_STRING fname, char &type)
 {
 	glocal int ret = -1;
-	glocal char type=' ';
-	<call sql_query>("select itemid,type from dirs_content where dirid=%d and name='%s' order by modified",dirid,fname.ptr);
+	glocal char type='_';
+	<call sql_query>("select itemid,type from dirs_content where dirid=%d and name='%s' order by modified desc limit 1",dirid,fname.ptr);
 	<f onerow>
-		glocal.ret = atoi(row[0]);
-		glocal.type = row[1][0];
-		if (glocal.type == ' ') glocal.ret = -1;	// This means the entry was deleted
+		char type = row[1][0];
+		if (type != '_'){
+			glocal.ret = atoi(row[0]);
+			glocal.type = type;
+		}
 	</f>
 	</call>
 	type = glocal.type;
@@ -232,6 +247,44 @@ static int bo_writed_parse_fname (const char *name, vector<string> &parentdirs, 
 				break;
 			}
 		}	 
+	}
+	return ret;
+}
+
+struct ENTRY {
+	unsigned userid;
+	string basename;
+	int dirid;
+	int entryid;
+	char type;
+	string msg;
+	ENTRY(){
+		userid = 0;
+		dirid = -1;
+		entryid = -1;
+		type = '_';
+	}
+};
+static int bo_writed_findentry (CONNECT_INFO &con, const char *sessionid, const char *name, ENTRY &entry)
+{
+	int ret = -1;
+	entry.userid = trli_getsessionuser(con,sessionid);
+	if (entry.userid == 0){
+		entry.msg = "Invalid session";
+	}else{
+		vector<string> parents;
+		if (bo_writed_parse_fname (name,parents,entry.basename) == -1){
+			entry.msg = "Invalid name";
+		}else{
+			entry.dirid = bo_writed_locate_dir (parents);
+			if (entry.dirid == -1){
+				entry.msg = "Unknown parent directory";
+			}else{
+				const char *fname = entry.basename.c_str();
+				entry.entryid = bo_writed_locate_entry (entry.dirid,fname,entry.type);
+				ret = 0;
+			}
+		}
 	}
 	return ret;
 }
@@ -674,75 +727,118 @@ int main (int argc, char *argv[])
 					</call>
 				</f>
 				<f mkdir>
-					unsigned userid = trli_getsessionuser(glocal.con,sessionid);
-					if (userid != 0){
-						vector<string> parents;
-						string basename;
-						if (bo_writed_parse_fname (name,parents,basename) == -1){
-							rep_mkdir (false,"","Invalid name");
+					ENTRY entry;
+					if (bo_writed_findentry (glocal.con,sessionid,name,entry)==-1){
+						rep_mkdir (false,"",entry.msg);
+					}else{
+						if (entry.entryid != -1){
+							rep_mkdir (false,"","Entry with that name exist");
 						}else{
-							int dirid = bo_writed_locate_dir (parents);
-							if (dirid == -1){
-								rep_mkdir (false,"","Unknown parent directory");
+							string id = trli_makeid(glocal.noproc);
+							if (sql_action("insert into ids (ownerid,uuid) values (%u,'%s')",entry.userid,id.c_str())==-1){
+								rep_mkdir (false,"","Internal error (ids table)");
 							}else{
-								const char *fname = basename.c_str();
-								char type;
-								int subdirid = bo_writed_locate_entry (dirid,fname,type);
-								if (subdirid != -1){
-									rep_mkdir (false,"","Entry with that name exist");
+								int subdirid = sql_getlastid();
+								if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,now(),'D','%s')"
+									,entry.dirid,subdirid,entry.basename.c_str())==-1){
+									rep_mkdir (false,"","Internal error (dirs_subdirs table)");
 								}else{
-									string id = trli_makeid(glocal.noproc);
-									if (sql_action("insert into ids (ownerid,uuid) values (%u,'%s')",userid,id.c_str())==-1){
-										rep_mkdir (false,"","Internal error (ids table)");
-									}else{
-										subdirid = sql_getlastid();
-										if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,now(),'D','%s')"
-											,dirid,subdirid,fname)==-1){
-											rep_mkdir (false,"","Internal error (dirs_subdirs table)");
-										}else{
-											rep_mkdir (true,"","Ok");
-										} 
-									}
+									rep_mkdir (true,"","Ok");
 								}
+							}
+						}
+					}
+				</f>
+				<f rmdir>
+					ENTRY entry;
+					if (bo_writed_findentry (glocal.con,sessionid,name,entry)==-1){
+						rep_rmdir (false,entry.msg);
+					}else{
+						if (entry.entryid == -1){
+							rep_rmdir (false,"Entry with that name does not exist");
+						}else if (entry.type != 'D'){
+							rep_rmdir (false,"Not a directory, can't delete");
+						}else{
+							if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,now(),'_','%s')"
+								,entry.dirid,entry.entryid,entry.basename.c_str())==-1){
+								rep_rmdir (false,"Internal error (dirs_files table)");
+							}else{
+								rep_rmdir (true,"Ok");
 							}
 						}
 					}
 				</f>
 				<f addfile>
-					unsigned userid = trli_getsessionuser(glocal.con,sessionid);
-					if (userid != 0){
-						vector<string> parents;
-						string basename;
-						if (bo_writed_parse_fname (name,parents,basename) == -1){
-							rep_addfile (false,"","Invalid name");
+					ENTRY entry;
+					if (bo_writed_findentry (glocal.con,sessionid,name,entry)==-1){
+						rep_addfile (false,"",entry.msg);
+					}else{
+						if (entry.entryid != -1){
+							rep_addfile (false,"","Entry with that name exist");
 						}else{
-							int dirid = bo_writed_locate_dir (parents);
-							if (dirid == -1){
-								rep_addfile (false,"","Invalid parent directory");
+							string id = trli_makeid(glocal.noproc);
+							if (sql_action("insert into ids (ownerid,uuid) values (%u,'%s')",entry.userid,id.c_str())==-1){
+								rep_addfile (false,"","Internal error (ids table)");
 							}else{
-								const char *fname = basename.c_str();
-								char type;
-								int fileid = bo_writed_locate_entry (dirid,fname,type);
-								if (fileid != -1){
-									rep_mkdir (false,"","Entry with that name exist");
+								int fileid = sql_getlastid();
+								if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,now(),'F','%s')"
+									,entry.dirid,fileid,entry.basename.c_str())==-1){
+									rep_addfile (false,"","Internal error (dirs_files table)");
 								}else{
-									string id = trli_makeid(glocal.noproc);
-									if (sql_action("insert into ids (ownerid,uuid) values (%u,'%s')",userid,id.c_str())==-1){
-										rep_addfile (false,"","Internal error (ids table)");
-									}else{
-										fileid = sql_getlastid();
-										if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,now(),'F','%s')",dirid,fileid,fname)==-1){
-											rep_addfile (false,"","Internal error (dirs_files table)");
-										}else{
-											rep_addfile (true,"","Ok");
-										} 
-									}
+									rep_addfile (true,"","Ok");
 								}
 							}
 						}
 					}
 				</f>
+				<f delfile>
+					ENTRY entry;
+					if (bo_writed_findentry (glocal.con,sessionid,name,entry)==-1){
+						rep_delfile (false,entry.msg);
+					}else{
+						if (entry.entryid == -1){
+							rep_delfile (false,"Entry with that name does not exist");
+						}else if (entry.type != 'F'){
+							rep_delfile (false,"Not a file, can't delete");
+						}else{
+							if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,now(),'_','%s')"
+								,entry.dirid,entry.entryid,entry.basename.c_str())==-1){
+								rep_delfile (false,"Internal error (dirs_files table)");
+							}else{
+								rep_delfile (true,"Ok");
+							}
+						}
+					}
+				</f>
 				<f modifyfile>
+				</f>
+				<f listdir>
+					ENTRY entry;
+					vector<string> entries;
+					vector<unsigned> types;
+					vector<string> modified;
+					glocal map<string,DIRENTRY> mp;
+					if (bo_writed_findentry (glocal.con,sessionid,name,entry)==-1){
+						rep_listdir (false,entry.msg,entries,types,modified);
+					}else if (entry.entryid == -1){
+						rep_listdir (false,"Directory does not exist",entries,types,modified);
+					}else if (entry.type != 'D'){
+						rep_listdir (false,"Is not a directory",entries,types,modified);
+					}else{
+						<call sql_query>("select name,modified,type from dirs_content where dirid=%d order by modified",entry.entryid);
+						<f onerow>
+							glocal.mp[row[0]] = DIRENTRY(row[1],row[2][0]);
+						</f>
+						</call>
+						for (auto &x:glocal.mp){
+							if (x.second.type != '_'){
+								entries.push_back(x.first);
+								types.push_back(x.second.type);
+								modified.push_back(x.second.modified);
+							}
+						}
+						rep_listdir (true,"",entries,types,modified);
+					}
 				</f>
 				<f test>
 					glocal bool bdtrli=false;

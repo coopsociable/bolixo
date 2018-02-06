@@ -112,8 +112,11 @@ int main (int argc, char *argv[])
 	glocal const char *testaddincomplete = NULL;
 	glocal const char *testlogin = NULL;
 	glocal const char *testdeleteuser = NULL;
+	glocal const char *testlistdir = NULL;
 	glocal const char *testmkdir = NULL;
+	glocal const char *testrmdir = NULL;
 	glocal const char *testaddfile = NULL;
+	glocal const char *testdelfile = NULL;
 	glocal const char *testmodifyfile = NULL;
 	glocal bool testsystem = false;
 	glocal bool testcreatesessions = false;
@@ -161,8 +164,11 @@ int main (int argc, char *argv[])
 		setarg (' ',"testdeleteuser","Sequence login deleteuser",glocal.testdeleteuser,false);
 		setarg (' ',"testsystem","Test components",glocal.testsystem,false);
 		setarg (' ',"testcreatesessions","Create many sessions",glocal.testcreatesessions,false);
+		setarg (' ',"testlistdir","List the content of a directory",glocal.testlistdir,false);
 		setarg (' ',"testmkdir","Create a new directory",glocal.testmkdir,false);
+		setarg (' ',"testrmdir","Remove a directory",glocal.testrmdir,false);
 		setarg (' ',"testaddfile","Create a new file",glocal.testaddfile,false);
+		setarg (' ',"testdelfile","Remove a file",glocal.testdelfile,false);
 		setarg (' ',"testmodifyfile","Modify a file",glocal.testmodifyfile,false);
 		setgrouparg ("Test parameters");
 		setarg (' ',"workers","Test concurent access",glocal.workers,false);
@@ -354,6 +360,19 @@ int main (int argc, char *argv[])
 				</call>
 				bod_logout (glocal.con_cli,sessionid);
 			}
+		}else if (glocal.testdelfile){
+			printf ("delfile %s extra=%s extra2=%s\n",glocal.testdelfile,glocal.extra,glocal.extra2);
+			string sessionid = bod_login (glocal.con_cli,glocal.testdelfile);
+			if (sessionid.size() > 0){
+				string name = string_f ("%s/file-%s",glocal.extra,glocal.extra2);
+				printf ("\tname=%s\n",name.c_str());
+				<call bod_client_delfile> (glocal.con_cli,sessionid,name);
+				<f ok>
+					printf ("\tsuccess=%d msg=%s\n",success,msg);
+				</f>
+				</call>
+				bod_logout (glocal.con_cli,sessionid);
+			}
 		}else if (glocal.testmodifyfile){
 			printf ("modifyfile %s extra=%s\n",glocal.testmodifyfile,glocal.extra);
 			string sessionid = bod_login (glocal.con_cli,glocal.testmodifyfile);
@@ -367,6 +386,21 @@ int main (int argc, char *argv[])
 				</call>
 				bod_logout (glocal.con_cli,sessionid);
 			}
+		}else if (glocal.testlistdir){
+			printf ("listdir %s extra=%s extra2=%s\n",glocal.testlistdir,glocal.extra,glocal.extra2);
+			string sessionid = bod_login (glocal.con_cli,glocal.testlistdir);
+			if (sessionid.size() > 0){
+				printf ("\tname=%s\n",glocal.extra);
+				<call bod_client_listdir> (glocal.con_cli,sessionid,glocal.extra);
+				<f ok>
+					printf ("\tsuccess=%d msg=%s\n",success,msg);
+					for (unsigned i=0; i<entries.size(); i++){
+						printf ("\t%c %s %s\n",types[i],modified[i],entries[i]);
+					}
+				</f>
+				</call>
+				bod_logout (glocal.con_cli,sessionid);
+			}
 		}else if (glocal.testmkdir){
 			printf ("mkdir %s extra=%s extra2=%s\n",glocal.testaddfile,glocal.extra,glocal.extra2);
 			string sessionid = bod_login (glocal.con_cli,glocal.testmkdir);
@@ -375,6 +409,18 @@ int main (int argc, char *argv[])
 				<call bod_client_mkdir> (glocal.con_cli,sessionid,glocal.extra);
 				<f ok>
 					printf ("\tsuccess=%d dirid=%s msg=%s\n",success,dirid,msg);
+				</f>
+				</call>
+				bod_logout (glocal.con_cli,sessionid);
+			}
+		}else if (glocal.testrmdir){
+			printf ("rmdir %s extra=%s extra2=%s\n",glocal.testaddfile,glocal.extra,glocal.extra2);
+			string sessionid = bod_login (glocal.con_cli,glocal.testrmdir);
+			if (sessionid.size() > 0){
+				printf ("\tname=%s\n",glocal.extra);
+				<call bod_client_rmdir> (glocal.con_cli,sessionid,glocal.extra);
+				<f ok>
+					printf ("\tsuccess=%d msg=%s\n",success,msg);
 				</f>
 				</call>
 				bod_logout (glocal.con_cli,sessionid);
