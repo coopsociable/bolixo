@@ -268,6 +268,7 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 		create table ids (
 			id int primary key auto_increment,
 			ownerid int default null,
+			group_list_id int default null,
 			uuid char(40)
 		);
 		create index ids_uuid on ids (uuid);
@@ -287,6 +288,25 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 			name varchar(100)
 		);
 		create index dirs_content on dirs_content (dirid);
+		create table groups (
+			id int primary key auto_increment,
+			name varchar(100)
+		);
+		create table group_members(
+			groupid int,
+			userid int
+		);
+		create index group_members_id on group_members (groupid);
+		create table group_lists(
+			id int primary key auto_increment,
+			name varchar(100)
+		);
+		create table group_list_members(
+			group_list_id int,
+			groupid int
+		);
+		create index group_list_members_id on group_list_members(group_list_id);
+			
 	EOF
 elif [ "$1" = "dropdb" ] ; then # db: Drop databases
 	mysqladmin -uroot -S $SOCKN -f drop $DBNAME

@@ -13,6 +13,7 @@
 #include <string>
 #include <fdpass.h>
 #include <tlmpsql.h>
+#include "filesystem.h"
 
 
 static DEBUG_KEY D_PROTO ("proto","Protocol information");
@@ -30,6 +31,17 @@ struct HANDLE_INFO: public ARRAY_OBJ{
 		type = TYPE_NONE;
 	}
 };
+struct DIRENTRY{
+	std::string modified;
+	char type;
+	DIRENTRY (const char *_modified, char _type){
+		modified = _modified;
+		type = _type;
+	}
+	DIRENTRY(){
+		type = '_';
+	}
+};
 
 #include "proto/bod_control.protoh"
 #include "proto/bod_client.protoh"
@@ -39,11 +51,41 @@ using namespace std;
 
 
 #include "proto/bo-writed_client.protoch"
-#define bo_sessiond_client_getsessioninfo_NOTNEED
 #define bo_sessiond_client_getsessioninfovars_NOTNEED
 #define bo_sessiond_client_setvar_NOTNEED
 #include "proto/bo-sessiond_client.protoch"
 
+/*
+	Get the userid associated with the sessionid
+*/
+<mod>
+static unsigned trli_getsessionuser (CONNECT_INFO &con, const char *sessionid)
+{
+	glocal unsigned userid = 0;
+	//long long start = fdpass_getnow();
+	//for (int i=0; i<10000; i++){
+	<call bo_sessiond_client_getsessioninfo>(con,sessionid);
+	<f ok>
+		glocal.userid = userid;
+	</f>
+	</call>
+	//}
+	//long long end = fdpass_getnow();
+	//printf ("exec time = %lf\n",(end-start)/1000000.0);
+	return glocal.userid;
+}
+</mod>
+static int bod_findentry (CONNECT_INFO &con, const char *sessionid, const char *name, ENTRY &entry)
+{
+	int ret = -1;
+	entry.userid = trli_getsessionuser(con,sessionid);
+	if (entry.userid == 0){
+		entry.msg = "Invalid session";
+	}else{
+		ret = fs_findentry(name,entry);
+	}
+	return ret;
+}
 <mod>
 static int trlid_main (
 	const char *bind,
@@ -227,18 +269,57 @@ static int trlid_main (
 				</call>
 			</f>
 			<f readfile> // sessionid name = success:b msg content
-				<call bo_writed_client_readfile>(glocal.con,sessionid,name);
-				<f ok>
-					glocal.bod_client.rep_readfile(success,msg,content);
-				</f>
-				</call>
+				ENTRY entry;
+				if (bod_findentry (glocal.con_sess,sessionid,name,entry)==-1){
+					rep_readfile (false,entry.msg,"");
+				}else{
+					if (entry.entryid == -1){
+						rep_readfile (false,"Entry with that name does not exist","");
+					}else if (entry.type != 'F'){
+						rep_readfile (false,"Entry is not a file","");
+					}else if (entry.ownerid != entry.userid){
+						string tmp = string_f ("Not allowed %u %u",entry.ownerid,entry.userid);
+						rep_readfile (false,tmp,"");
+					}else{
+						<call sql_query>("select content from files where id=%d and modified='%s'"
+							,entry.entryid,entry.modified.c_str());
+						<f onerow>
+							glocal.bod_client.rep_readfile (true,"",row[0]);
+						</f>
+						<f empty>
+							glocal.bod_client.rep_readfile (false,"Internal error, reading table files","");
+						</f>
+						</call>
+					}
+				}
 			</f>
 			<f listdir>
-				<call bo_writed_client_listdir>(glocal.con,sessionid,name);
-				<f ok>
-					glocal.bod_client.rep_listdir (success,msg,entries,types,modified);
-				</f>
-				</call>
+				ENTRY entry;
+				vector<string> entries;
+				vector<unsigned> types;
+				vector<string> modified;
+				glocal map<string,DIRENTRY> mp;
+				if (bod_findentry (glocal.con_sess,sessionid,name,entry)==-1){
+					rep_listdir (false,entry.msg,entries,types,modified);
+				}else if (entry.entryid == -1){
+					rep_listdir (false,"Directory does not exist",entries,types,modified);
+				}else if (entry.type != 'D'){
+					rep_listdir (false,"Is not a directory",entries,types,modified);
+				}else{
+					<call sql_query>("select name,modified,type from dirs_content where dirid=%d order by modified",entry.entryid);
+					<f onerow>
+						glocal.mp[row[0]] = DIRENTRY(row[1],row[2][0]);
+					</f>
+					</call>
+					for (auto &x:glocal.mp){
+						if (x.second.type != '_'){
+							entries.push_back(x.first);
+							types.push_back(x.second.type);
+							modified.push_back(x.second.modified);
+						}
+					}
+					rep_listdir (true,"",entries,types,modified);
+				}
 			</f>
 			<f invalid>
 				tlmp_error ("CLIENT: Invalid command: %s\n",line);

@@ -20,6 +20,7 @@
 #include <tlmpnet.h>
 #include <tlmpsql.h>
 #include <fdpass.h>
+#include "filesystem.h"
 
 static DEBUG_KEY D_PROTO ("proto","Protocol information");
 enum CONNECT_TYPE { TYPE_NONE, TYPE_CONTROL, TYPE_CLIENT };
@@ -35,18 +36,6 @@ struct HANDLE_INFO: public ARRAY_OBJ{
 	}
 };
 
-struct DIRENTRY{
-	std::string modified;
-	char type;
-	DIRENTRY (const char *_modified, char _type){
-		modified = _modified;
-		type = _type;
-	}
-	DIRENTRY(){
-		type = '_';
-	}
-};
-
 #include "proto/bo-writed_control.protoh"
 #include "proto/bo-writed_client.protoh"
 
@@ -57,6 +46,33 @@ using namespace std;
 #include "proto/bo-log.protoch"
 //#include "proto/bo-log-admin.protoch"
 
+/*
+	Get the userid associated with the sessionid
+*/
+<mod>
+static unsigned trli_getsessionuser (CONNECT_INFO &con, const char *sessionid, string &userid_str)
+{
+	glocal unsigned userid = 0;
+	glocal string *userid_str = &userid_str;
+	//long long start = fdpass_getnow();
+	//for (int i=0; i<10000; i++){
+	<call bo_sessiond_admin_getsession>(con,sessionid);
+	<f ok>
+		glocal.userid = userid;
+		(*glocal.userid_str) = userid_str;
+	</f>
+	</call>
+	//}
+	//long long end = fdpass_getnow();
+	//printf ("exec time = %lf\n",(end-start)/1000000.0);
+	return glocal.userid;
+}
+</mod>
+static unsigned trli_getsessionuser (CONNECT_INFO &con, const char *sessionid)
+{
+	string tmp;
+	return trli_getsessionuser (con,sessionid,tmp);
+}
 static void bo_writed_set_now (char now[20])
 {
 	fdpass_asctime(time(NULL),now);
@@ -100,34 +116,6 @@ static string trli_makeid (int noproc)
 	}
 	return ret;
 }	
-
-/*
-	Get the userid associated with the sessionid
-*/
-<mod>
-static unsigned trli_getsessionuser (CONNECT_INFO &con, const char *sessionid, string &userid_str)
-{
-	glocal unsigned userid = 0;
-	glocal string *userid_str = &userid_str;
-	//long long start = fdpass_getnow();
-	//for (int i=0; i<10000; i++){
-	<call bo_sessiond_admin_getsession>(con,sessionid);
-	<f ok>
-		glocal.userid = userid;
-		(*glocal.userid_str) = userid_str;
-	</f>
-	</call>
-	//}
-	//long long end = fdpass_getnow();
-	//printf ("exec time = %lf\n",(end-start)/1000000.0);
-	return glocal.userid;
-}
-</mod>
-static unsigned trli_getsessionuser (CONNECT_INFO &con, const char *sessionid)
-{
-	string tmp;
-	return trli_getsessionuser (con,sessionid,tmp);
-}
 
 /*
 	Return the numerical id if a record exist
@@ -185,94 +173,6 @@ static int writed_mail_newaccount(
 		,"Account confirmation on truelies.news"
 		,tmp);
 };
-
-<mod>
-<mod>
-static int bo_writed_locate_entry (int dirid, PARAM_STRING fname, char &type, string &modified)
-{
-	glocal int ret = -1;
-	glocal char type='_';
-	glocal string *modified = &modified;
-	<call sql_query>("select itemid,type,modified from dirs_content where dirid=%d and name='%s' order by modified desc limit 1",dirid,fname.ptr);
-	<f onerow>
-		char type = row[1][0];
-		if (type != '_'){
-			glocal.ret = atoi(row[0]);
-			glocal.type = type;
-			(*glocal.modified)=row[2];
-		}
-	</f>
-	</call>
-	type = glocal.type;
-	return glocal.ret;
-}
-</mod>
-/*
-	Locate a directory and retuns its id
-*/
-static int bo_writed_locate_dir (vector<string> &tb)
-{
-	int ret = -1;
-	if (tb.size()==0){
-		// root dir
-		ret = 0;
-	}else{
-		int parentid = 0;
-		for (auto &d:tb){
-			char type;
-			string modified;
-			int dirid = bo_writed_locate_entry (parentid,d,type,modified);
-			if (dirid == -1 || type != 'D'){
-				ret = -1;
-				break;
-			}else{
-				ret = dirid;
-				parentid = dirid;
-			}
-		}
-	}
-	return ret;
-}
-
-static int bo_writed_parse_fname (const char *name, vector<string> &parentdirs, string &basename)
-{
-	int ret = -1;
-	parentdirs.clear();
-	basename.clear();
-	if (name[0] == '/'){
-		const char *start = name +1;
-		while (1){
-			const char *pt = start;
-			while (*pt != '\0' && *pt != '/') pt++;
-			if (pt == start) break;
-			if (*pt == '/'){
-				parentdirs.push_back(string(start,pt-start));
-				start = pt+1;
-			}else{
-				basename = start;
-				ret = 0;
-				break;
-			}
-		}	 
-	}
-	return ret;
-}
-
-struct ENTRY {
-	unsigned userid;
-	string basename;
-	int dirid;
-	int entryid;
-	char type;
-	string modified;
-	string msg;
-	ENTRY(){
-		userid = 0;
-		dirid = -1;
-		entryid = -1;
-		type = '_';
-	}
-};
 static int bo_writed_findentry (CONNECT_INFO &con, const char *sessionid, const char *name, ENTRY &entry)
 {
 	int ret = -1;
@@ -280,19 +180,7 @@ static int bo_writed_findentry (CONNECT_INFO &con, const char *sessionid, const 
 	if (entry.userid == 0){
 		entry.msg = "Invalid session";
 	}else{
-		vector<string> parents;
-		if (bo_writed_parse_fname (name,parents,entry.basename) == -1){
-			entry.msg = "Invalid name";
-		}else{
-			entry.dirid = bo_writed_locate_dir (parents);
-			if (entry.dirid == -1){
-				entry.msg = "Unknown parent directory";
-			}else{
-				const char *fname = entry.basename.c_str();
-				entry.entryid = bo_writed_locate_entry (entry.dirid,fname,entry.type,entry.modified);
-				ret = 0;
-			}
-		}
+		ret = fs_findentry(name,entry);
 	}
 	return ret;
 }
@@ -843,56 +731,6 @@ int main (int argc, char *argv[])
 								rep_modifyfile (true,"Ok");
 							}
 						}
-					}
-				</f>
-				<f readfile>
-					ENTRY entry;
-					if (bo_writed_findentry (glocal.con,sessionid,name,entry)==-1){
-						rep_readfile (false,entry.msg,"");
-					}else{
-						if (entry.entryid == -1){
-							rep_readfile (false,"Entry with that name does not exist","");
-						}else if (entry.type != 'F'){
-							rep_readfile (false,"Entry is not a file","");
-						}else{
-							<call sql_query>("select content from files where id=%d and modified='%s'"
-								,entry.entryid,entry.modified.c_str());
-							<f onerow>
-								glocal.bo_writed_client.rep_readfile (true,"",row[0]);
-							</f>
-							<f empty>
-								glocal.bo_writed_client.rep_readfile (false,"Internal error, reading table files","");
-							</f>
-							</call>
-						}
-					}
-				</f>
-				<f listdir>
-					ENTRY entry;
-					vector<string> entries;
-					vector<unsigned> types;
-					vector<string> modified;
-					glocal map<string,DIRENTRY> mp;
-					if (bo_writed_findentry (glocal.con,sessionid,name,entry)==-1){
-						rep_listdir (false,entry.msg,entries,types,modified);
-					}else if (entry.entryid == -1){
-						rep_listdir (false,"Directory does not exist",entries,types,modified);
-					}else if (entry.type != 'D'){
-						rep_listdir (false,"Is not a directory",entries,types,modified);
-					}else{
-						<call sql_query>("select name,modified,type from dirs_content where dirid=%d order by modified",entry.entryid);
-						<f onerow>
-							glocal.mp[row[0]] = DIRENTRY(row[1],row[2][0]);
-						</f>
-						</call>
-						for (auto &x:glocal.mp){
-							if (x.second.type != '_'){
-								entries.push_back(x.first);
-								types.push_back(x.second.type);
-								modified.push_back(x.second.modified);
-							}
-						}
-						rep_listdir (true,"",entries,types,modified);
 					}
 				</f>
 				<f test>

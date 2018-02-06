@@ -15,9 +15,9 @@ all: $(PROGS)
 compile: $(PROGS)
 	#make -Cweb 
 
-bod: bod.tlcc proto/bod_control.protoh proto/bod_client.protoh proto/bod_admin.protoh \
+bod: bod.tlcc filesystem.o proto/bod_control.protoh proto/bod_client.protoh proto/bod_admin.protoh \
 	proto/bo-writed_client.protoh proto/bo-sessiond_client.protoh
-	cctlcc -Wall $(OPTIONS) bod.tlcc -o bod $(LIBS) -ltlmpsql -L/usr/lib64/mysql -lmysqlclient
+	cctlcc -Wall $(OPTIONS) bod.tlcc filesystem.o -o bod $(LIBS) -ltlmpsql -L/usr/lib64/mysql -lmysqlclient
 
 bod-client: bod-client.tlcc proto/bod_client.protoh proto/bod_admin.protoh \
 	proto/bo-sessiond_admin.protoh
@@ -26,9 +26,9 @@ bod-client: bod-client.tlcc proto/bod_client.protoh proto/bod_admin.protoh \
 bod-control: bod-control.tlcc proto/bod_control.protoh
 	cctlcc -Wall $(OPTIONS) bod-control.tlcc -o bod-control $(LIBS)
 
-bo-writed: bo-writed.tlcc proto/bo-writed_control.protoh proto/bo-writed_client.protoh \
+bo-writed: bo-writed.tlcc filesystem.o proto/bo-writed_control.protoh proto/bo-writed_client.protoh \
 	proto/bo-sessiond_admin.protoh proto/bo-log.protoh
-	cctlcc -Wall $(OPTIONS) bo-writed.tlcc -o bo-writed $(LIBS) -ltlmpsql -L/usr/lib64/mysql -lmysqlclient
+	cctlcc -Wall $(OPTIONS) bo-writed.tlcc filesystem.o -o bo-writed $(LIBS) -ltlmpsql -L/usr/lib64/mysql -lmysqlclient
 
 bo-writed-control: bo-writed-control.tlcc
 	cctlcc -Wall $(OPTIONS) bo-writed-control.tlcc -o bo-writed-control $(LIBS)
@@ -109,11 +109,8 @@ proto/bo-sessiond_admin.protoh: proto/bo-sessiond_admin.proto
 	build-protocol --secretmode --arg "int no" --arg "HANDLE_INFO *c" --arg "const char *host" --name bo_sessiond_admin \
 		--protoch proto/bo-sessiond_admin.protoch proto/bo-sessiond_admin.proto >proto/bo-sessiond_admin.protoh
 
-fdpass.o: fdpass.tlcc
-	cctlcc -Wall $(OPTIONS) -c fdpass.tlcc -o fdpass.o
-
-fdpass.os: fdpass.tlcc
-	cctlcc -fPIC -Wall $(OPTIONS) -c fdpass.tlcc -o fdpass.os
+filesystem.o: filesystem.tlcc
+	cctlcc -Wall $(OPTIONS) -c filesystem.tlcc -o filesystem.o
 
 clean:
 	rm -f $(PROGS) *.o *.os proto/*.protoh proto/*.protoch web/*.hc web/*.os

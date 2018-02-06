@@ -1,0 +1,112 @@
+#include <tlmpsql.h>
+#include <string>
+#include <vector>
+#include <fdpass.h>
+#include "filesystem.h"
+
+using namespace std;
+
+#if 0
+#define bo_sessiond_admin_getsessioninfo_NOTNEED
+#define bo_sessiond_admin_setsession_NOTNEED
+#define bo_sessiond_admin_deletesession_NOTNEED
+#define bo_sessiond_admin_deletesessions_NOTNEED
+#define bo_sessiond_admin_createsession_NOTNEED
+#define bo_sessiond_admin_test_NOTNEED
+#include "proto/bo-sessiond_admin.protoch"
+#endif
+
+<mod>
+static int fs_locate_entry (int dirid, PARAM_STRING fname, char &type, string &modified, unsigned &ownerid)
+{
+	glocal int ret = -1;
+	glocal char type='_';
+	glocal unsigned ownerid=(unsigned)-1;
+	glocal string *modified = &modified;
+	<call sql_query>("select itemid,type,modified,ownerid from dirs_content join ids on dirs_content.itemid=ids.id where dirid=%d and name='%s' order by modified desc limit 1",dirid,fname.ptr);
+	<f onerow>
+		char type = row[1][0];
+		if (type != '_'){
+			glocal.ret = atoi(row[0]);
+			glocal.type = type;
+			(*glocal.modified)=row[2];
+			glocal.ownerid = atoi(row[3]);
+		}
+	</f>
+	</call>
+	type = glocal.type;
+	ownerid = glocal.ownerid;
+	return glocal.ret;
+}
+</mod>
+/*
+	Locate a directory and retuns its id
+*/
+static int fs_locate_dir (vector<string> &tb)
+{
+	int ret = -1;
+	if (tb.size()==0){
+		// root dir
+		ret = 0;
+	}else{
+		int parentid = 0;
+		for (auto &d:tb){
+			char type;
+			string modified;
+			unsigned ownerid;
+			int dirid = fs_locate_entry (parentid,d,type,modified,ownerid);
+			if (dirid == -1 || type != 'D'){
+				ret = -1;
+				break;
+			}else{
+				ret = dirid;
+				parentid = dirid;
+			}
+		}
+	}
+	return ret;
+}
+
+static int fs_parse_fname (const char *name, vector<string> &parentdirs, string &basename)
+{
+	int ret = -1;
+	parentdirs.clear();
+	basename.clear();
+	if (name[0] == '/'){
+		const char *start = name +1;
+		while (1){
+			const char *pt = start;
+			while (*pt != '\0' && *pt != '/') pt++;
+			if (pt == start) break;
+			if (*pt == '/'){
+				parentdirs.push_back(string(start,pt-start));
+				start = pt+1;
+			}else{
+				basename = start;
+				ret = 0;
+				break;
+			}
+		}	 
+	}
+	return ret;
+}
+
+int fs_findentry (const char *name, ENTRY &entry)
+{
+	int ret = -1;
+	vector<string> parents;
+	if (fs_parse_fname (name,parents,entry.basename) == -1){
+		entry.msg = "Invalid name";
+	}else{
+		entry.dirid = fs_locate_dir (parents);
+		if (entry.dirid == -1){
+			entry.msg = "Unknown parent directory";
+		}else{
+			const char *fname = entry.basename.c_str();
+			entry.entryid = fs_locate_entry (entry.dirid,fname,entry.type,entry.modified,entry.ownerid);
+			ret = 0;
+		}
+	}
+	return ret;
+}
+
