@@ -118,6 +118,7 @@ int main (int argc, char *argv[])
 	glocal const char *testaddfile = NULL;
 	glocal const char *testdelfile = NULL;
 	glocal const char *testmodifyfile = NULL;
+	glocal const char *testreadfile = NULL;
 	glocal bool testsystem = false;
 	glocal bool testcreatesessions = false;
 	glocal const char *exec1 = NULL;
@@ -170,6 +171,7 @@ int main (int argc, char *argv[])
 		setarg (' ',"testaddfile","Create a new file",glocal.testaddfile,false);
 		setarg (' ',"testdelfile","Remove a file",glocal.testdelfile,false);
 		setarg (' ',"testmodifyfile","Modify a file",glocal.testmodifyfile,false);
+		setarg (' ',"testreadfile","Read a file",glocal.testreadfile,false);
 		setgrouparg ("Test parameters");
 		setarg (' ',"workers","Test concurent access",glocal.workers,false);
 		setarg (' ',"nbrep","Number of repetition per worker",glocal.nbrep,false);
@@ -377,11 +379,23 @@ int main (int argc, char *argv[])
 			printf ("modifyfile %s extra=%s\n",glocal.testmodifyfile,glocal.extra);
 			string sessionid = bod_login (glocal.con_cli,glocal.testmodifyfile);
 			if (sessionid.size() > 0){
-				string name = string_f ("file-%s-%s",glocal.testmodifyfile,glocal.extra);
-				string text = string_f("new text-%s %s",glocal.testmodifyfile,glocal.extra2);
+				string name = string_f ("%s/file-%s",glocal.extra,glocal.extra2);
+				string text = string_f("mod text-%s %s",glocal.testmodifyfile,glocal.extra2);
 				<call bod_client_modifyfile> (glocal.con_cli,sessionid,name,text);
 				<f ok>
 					printf ("\tsuccess=%d msg=%s\n",success,msg);
+				</f>
+				</call>
+				bod_logout (glocal.con_cli,sessionid);
+			}
+		}else if (glocal.testreadfile){
+			printf ("readfile %s extra=%s\n",glocal.testreadfile,glocal.extra);
+			string sessionid = bod_login (glocal.con_cli,glocal.testreadfile);
+			if (sessionid.size() > 0){
+				string name = string_f ("%s/file-%s",glocal.extra,glocal.extra2);
+				<call bod_client_readfile> (glocal.con_cli,sessionid,name);
+				<f ok>
+					printf ("\tsuccess=%d msg=%s content=%s\n",success,msg,content);
 				</f>
 				</call>
 				bod_logout (glocal.con_cli,sessionid);

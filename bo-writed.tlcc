@@ -57,6 +57,10 @@ using namespace std;
 #include "proto/bo-log.protoch"
 //#include "proto/bo-log-admin.protoch"
 
+static void bo_writed_set_now (char now[20])
+{
+	fdpass_asctime(time(NULL),now);
+}
 
 /*
 	Create a uniq ID combining the process number of this instance, a random value and the time in micro-seconds
@@ -184,16 +188,18 @@ static int writed_mail_newaccount(
 
 <mod>
 <mod>
-static int bo_writed_locate_entry (int dirid, PARAM_STRING fname, char &type)
+static int bo_writed_locate_entry (int dirid, PARAM_STRING fname, char &type, string &modified)
 {
 	glocal int ret = -1;
 	glocal char type='_';
-	<call sql_query>("select itemid,type from dirs_content where dirid=%d and name='%s' order by modified desc limit 1",dirid,fname.ptr);
+	glocal string *modified = &modified;
+	<call sql_query>("select itemid,type,modified from dirs_content where dirid=%d and name='%s' order by modified desc limit 1",dirid,fname.ptr);
 	<f onerow>
 		char type = row[1][0];
 		if (type != '_'){
 			glocal.ret = atoi(row[0]);
 			glocal.type = type;
+			(*glocal.modified)=row[2];
 		}
 	</f>
 	</call>
@@ -214,7 +220,8 @@ static int bo_writed_locate_dir (vector<string> &tb)
 		int parentid = 0;
 		for (auto &d:tb){
 			char type;
-			int dirid = bo_writed_locate_entry (parentid,d,type);
+			string modified;
+			int dirid = bo_writed_locate_entry (parentid,d,type,modified);
 			if (dirid == -1 || type != 'D'){
 				ret = -1;
 				break;
@@ -257,6 +264,7 @@ struct ENTRY {
 	int dirid;
 	int entryid;
 	char type;
+	string modified;
 	string msg;
 	ENTRY(){
 		userid = 0;
@@ -281,7 +289,7 @@ static int bo_writed_findentry (CONNECT_INFO &con, const char *sessionid, const 
 				entry.msg = "Unknown parent directory";
 			}else{
 				const char *fname = entry.basename.c_str();
-				entry.entryid = bo_writed_locate_entry (entry.dirid,fname,entry.type);
+				entry.entryid = bo_writed_locate_entry (entry.dirid,fname,entry.type,entry.modified);
 				ret = 0;
 			}
 		}
@@ -780,10 +788,15 @@ int main (int argc, char *argv[])
 							if (sql_action("insert into ids (ownerid,uuid) values (%u,'%s')",entry.userid,id.c_str())==-1){
 								rep_addfile (false,"","Internal error (ids table)");
 							}else{
+								char now[20];
+								bo_writed_set_now(now);
 								int fileid = sql_getlastid();
-								if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,now(),'F','%s')"
-									,entry.dirid,fileid,entry.basename.c_str())==-1){
+								if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,'%s','F','%s')"
+									,entry.dirid,fileid,now,entry.basename.c_str())==-1){
 									rep_addfile (false,"","Internal error (dirs_files table)");
+								}else if (sql_action("insert into files (id,modified,content) values (%d,'%s','%s')"
+									,fileid,now,content)==-1){
+									rep_addfile (false,"","Internal error (files table)");
 								}else{
 									rep_addfile (true,"","Ok");
 								}
@@ -811,6 +824,48 @@ int main (int argc, char *argv[])
 					}
 				</f>
 				<f modifyfile>
+					ENTRY entry;
+					if (bo_writed_findentry (glocal.con,sessionid,name,entry)==-1){
+						rep_modifyfile (false,entry.msg);
+					}else{
+						if (entry.entryid == -1){
+							rep_modifyfile (false,"Entry with that name does not exist");
+						}else{
+							char now[20];
+							bo_writed_set_now(now);
+							if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,'%s','F','%s')"
+								,entry.dirid,entry.entryid,now,entry.basename.c_str())==-1){
+								rep_modifyfile (false,"Internal error (dirs_files table)");
+							}else if (sql_action("insert into files (id,modified,content) values (%d,'%s','%s')"
+								,entry.entryid,now,content)==-1){
+								rep_addfile (false,"","Internal error (files table)");
+							}else{
+								rep_modifyfile (true,"Ok");
+							}
+						}
+					}
+				</f>
+				<f readfile>
+					ENTRY entry;
+					if (bo_writed_findentry (glocal.con,sessionid,name,entry)==-1){
+						rep_readfile (false,entry.msg,"");
+					}else{
+						if (entry.entryid == -1){
+							rep_readfile (false,"Entry with that name does not exist","");
+						}else if (entry.type != 'F'){
+							rep_readfile (false,"Entry is not a file","");
+						}else{
+							<call sql_query>("select content from files where id=%d and modified='%s'"
+								,entry.entryid,entry.modified.c_str());
+							<f onerow>
+								glocal.bo_writed_client.rep_readfile (true,"",row[0]);
+							</f>
+							<f empty>
+								glocal.bo_writed_client.rep_readfile (false,"Internal error, reading table files","");
+							</f>
+							</call>
+						}
+					}
 				</f>
 				<f listdir>
 					ENTRY entry;

@@ -274,9 +274,8 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 
 		create table files (
 			id int,
-			ownerid int default null,
 			modified datetime default current_timestamp,
-			sign char(40)
+			content text
 		);
 		create index files_id on files (id);
 
@@ -476,6 +475,20 @@ elif [ "$1" = "test-addfile" ] ; then # T: Add one file (letter dir suffix)
 		exit 1
 	fi
 	$0 bod-client --testaddfile "$1" --extra "$2" --extra2 "$3"
+elif [ "$1" = "test-modifyfile" ] ; then # T: Modify one file (letter dir suffix)
+	shift
+	if [ "$1" = "" ] ; then
+		echo test-modifyfile letter [ dir suffix ]
+		exit 1
+	fi
+	$0 bod-client --testmodifyfile "$1" --extra "$2" --extra2 "$3"
+elif [ "$1" = "test-readfile" ] ; then # T: Modify one file (letter dir suffix)
+	shift
+	if [ "$1" = "" ] ; then
+		echo test-readfile letter [ dir suffix ]
+		exit 1
+	fi
+	$0 bod-client --testreadfile "$1" --extra "$2" --extra2 "$3"
 elif [ "$1" = "test-delfile" ] ; then # T: Remove one file (letter dir suffix)
 	shift
 	if [ "$1" = "" ] ; then
