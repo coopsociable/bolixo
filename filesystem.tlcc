@@ -42,7 +42,7 @@ static int fs_locate_entry (int dirid, PARAM_STRING fname, char &type, string &m
 /*
 	Locate a directory and retuns its id
 */
-static int fs_locate_dir (vector<string> &tb)
+static int fs_locate_dir (vector<string> &tb, unsigned userid, string &msg)
 {
 	int ret = -1;
 	if (tb.size()==0){
@@ -50,12 +50,23 @@ static int fs_locate_dir (vector<string> &tb)
 		ret = 0;
 	}else{
 		int parentid = 0;
+		string tmp;
 		for (auto &d:tb){
+			tmp += string("/") + d;
 			char type;
 			string modified;
 			unsigned ownerid;
 			int dirid = fs_locate_entry (parentid,d,type,modified,ownerid);
-			if (dirid == -1 || type != 'D'){
+			if (dirid == -1){
+				msg = string_f ("%s does not exist",tmp.c_str());
+				ret = -1;
+				break;
+			}else if (type != 'D'){
+				msg = string_f ("%s is not a directory",tmp.c_str());
+				ret = -1;
+				break;
+			}else if (ownerid != userid){
+				msg = string_f ("Access denied to directory %s",tmp.c_str());
 				ret = -1;
 				break;
 			}else{
@@ -98,10 +109,8 @@ int fs_findentry (const char *name, ENTRY &entry, bool expect_exist)
 	if (fs_parse_fname (name,parents,entry.basename) == -1){
 		entry.msg = "Invalid name";
 	}else{
-		entry.dirid = fs_locate_dir (parents);
-		if (entry.dirid == -1){
-			entry.msg = "Unknown parent directory";
-		}else{
+		entry.dirid = fs_locate_dir (parents,entry.userid,entry.msg);
+		if (entry.dirid != -1){
 			const char *fname = entry.basename.c_str();
 			entry.entryid = fs_locate_entry (entry.dirid,fname,entry.type,entry.modified,entry.ownerid);
 			if (entry.entryid == -1){
