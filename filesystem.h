@@ -16,4 +16,4 @@ struct ENTRY {
 	}
 };
 
-int fs_findentry (const char *name, ENTRY &entry);
+int fs_findentry (const char *name, ENTRY &entry, bool expect_exist);

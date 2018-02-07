@@ -173,14 +173,14 @@ static int writed_mail_newaccount(
 		,"Account confirmation on truelies.news"
 		,tmp);
 };
-static int bo_writed_findentry (CONNECT_INFO &con, const char *sessionid, const char *name, ENTRY &entry)
+static int bo_writed_findentry (CONNECT_INFO &con, const char *sessionid, const char *name, ENTRY &entry, bool expect_exist)
 {
 	int ret = -1;
 	entry.userid = trli_getsessionuser(con,sessionid);
 	if (entry.userid == 0){
 		entry.msg = "Invalid session";
 	}else{
-		ret = fs_findentry(name,entry);
+		ret = fs_findentry(name,entry,expect_exist);
 	}
 	return ret;
 }
@@ -624,35 +624,29 @@ int main (int argc, char *argv[])
 				</f>
 				<f mkdir>
 					ENTRY entry;
-					if (bo_writed_findentry (glocal.con,sessionid,name,entry)==-1){
+					if (bo_writed_findentry (glocal.con,sessionid,name,entry,false)==-1){
 						rep_mkdir (false,"",entry.msg);
 					}else{
-						if (entry.entryid != -1){
-							rep_mkdir (false,"","Entry with that name exist");
+						string id = trli_makeid(glocal.noproc);
+						if (sql_action("insert into ids (ownerid,uuid) values (%u,'%s')",entry.userid,id.c_str())==-1){
+							rep_mkdir (false,"","Internal error (ids table)");
 						}else{
-							string id = trli_makeid(glocal.noproc);
-							if (sql_action("insert into ids (ownerid,uuid) values (%u,'%s')",entry.userid,id.c_str())==-1){
-								rep_mkdir (false,"","Internal error (ids table)");
+							int subdirid = sql_getlastid();
+							if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,now(),'D','%s')"
+								,entry.dirid,subdirid,entry.basename.c_str())==-1){
+								rep_mkdir (false,"","Internal error (dirs_subdirs table)");
 							}else{
-								int subdirid = sql_getlastid();
-								if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,now(),'D','%s')"
-									,entry.dirid,subdirid,entry.basename.c_str())==-1){
-									rep_mkdir (false,"","Internal error (dirs_subdirs table)");
-								}else{
-									rep_mkdir (true,"","Ok");
-								}
+								rep_mkdir (true,"","Ok");
 							}
 						}
 					}
 				</f>
 				<f rmdir>
 					ENTRY entry;
-					if (bo_writed_findentry (glocal.con,sessionid,name,entry)==-1){
+					if (bo_writed_findentry (glocal.con,sessionid,name,entry,true)==-1){
 						rep_rmdir (false,entry.msg);
 					}else{
-						if (entry.entryid == -1){
-							rep_rmdir (false,"Entry with that name does not exist");
-						}else if (entry.type != 'D'){
+						if (entry.type != 'D'){
 							rep_rmdir (false,"Not a directory, can't delete");
 						}else{
 							if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,now(),'_','%s')"
@@ -666,40 +660,34 @@ int main (int argc, char *argv[])
 				</f>
 				<f addfile>
 					ENTRY entry;
-					if (bo_writed_findentry (glocal.con,sessionid,name,entry)==-1){
+					if (bo_writed_findentry (glocal.con,sessionid,name,entry,false)==-1){
 						rep_addfile (false,"",entry.msg);
 					}else{
-						if (entry.entryid != -1){
-							rep_addfile (false,"","Entry with that name exist");
+						string id = trli_makeid(glocal.noproc);
+						if (sql_action("insert into ids (ownerid,uuid) values (%u,'%s')",entry.userid,id.c_str())==-1){
+							rep_addfile (false,"","Internal error (ids table)");
 						}else{
-							string id = trli_makeid(glocal.noproc);
-							if (sql_action("insert into ids (ownerid,uuid) values (%u,'%s')",entry.userid,id.c_str())==-1){
-								rep_addfile (false,"","Internal error (ids table)");
+							char now[20];
+							bo_writed_set_now(now);
+							int fileid = sql_getlastid();
+							if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,'%s','F','%s')"
+								,entry.dirid,fileid,now,entry.basename.c_str())==-1){
+								rep_addfile (false,"","Internal error (dirs_files table)");
+							}else if (sql_action("insert into files (id,modified,content) values (%d,'%s','%s')"
+								,fileid,now,content)==-1){
+								rep_addfile (false,"","Internal error (files table)");
 							}else{
-								char now[20];
-								bo_writed_set_now(now);
-								int fileid = sql_getlastid();
-								if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,'%s','F','%s')"
-									,entry.dirid,fileid,now,entry.basename.c_str())==-1){
-									rep_addfile (false,"","Internal error (dirs_files table)");
-								}else if (sql_action("insert into files (id,modified,content) values (%d,'%s','%s')"
-									,fileid,now,content)==-1){
-									rep_addfile (false,"","Internal error (files table)");
-								}else{
-									rep_addfile (true,"","Ok");
-								}
+								rep_addfile (true,"","Ok");
 							}
 						}
 					}
 				</f>
 				<f delfile>
 					ENTRY entry;
-					if (bo_writed_findentry (glocal.con,sessionid,name,entry)==-1){
+					if (bo_writed_findentry (glocal.con,sessionid,name,entry,true)==-1){
 						rep_delfile (false,entry.msg);
 					}else{
-						if (entry.entryid == -1){
-							rep_delfile (false,"Entry with that name does not exist");
-						}else if (entry.type != 'F'){
+						if (entry.type != 'F'){
 							rep_delfile (false,"Not a file, can't delete");
 						}else{
 							if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,now(),'_','%s')"
@@ -713,15 +701,11 @@ int main (int argc, char *argv[])
 				</f>
 				<f modifyfile>
 					ENTRY entry;
-					if (bo_writed_findentry (glocal.con,sessionid,name,entry)==-1){
+					if (bo_writed_findentry (glocal.con,sessionid,name,entry,true)==-1){
 						rep_modifyfile (false,entry.msg);
 					}else{
-						if (entry.entryid == -1){
-							rep_modifyfile (false,"Entry with that name does not exist");
-						}else if (entry.type != 'F'){
+						if (entry.type != 'F'){
 							rep_modifyfile (false,"Not a file, can't modify");
-						}else if (entry.userid != entry.ownerid){
-							rep_modifyfile (false,"Not allowed, can't modify");
 						}else{
 							char now[20];
 							bo_writed_set_now(now);

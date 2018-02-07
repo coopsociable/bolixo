@@ -91,7 +91,7 @@ static int fs_parse_fname (const char *name, vector<string> &parentdirs, string 
 	return ret;
 }
 
-int fs_findentry (const char *name, ENTRY &entry)
+int fs_findentry (const char *name, ENTRY &entry, bool expect_exist)
 {
 	int ret = -1;
 	vector<string> parents;
@@ -104,7 +104,19 @@ int fs_findentry (const char *name, ENTRY &entry)
 		}else{
 			const char *fname = entry.basename.c_str();
 			entry.entryid = fs_locate_entry (entry.dirid,fname,entry.type,entry.modified,entry.ownerid);
-			ret = 0;
+			if (entry.entryid == -1){
+				if (expect_exist){
+					entry.msg = "Entry with that name does exist";
+				}else{
+					ret = 0;
+				}
+			}else if (!expect_exist){
+				entry.msg = "Entry with that name exist";
+			}else if (entry.userid != entry.ownerid){
+				entry.msg = "Not allowed";
+			}else{
+				ret = 0;
+			}
 		}
 	}
 	return ret;
