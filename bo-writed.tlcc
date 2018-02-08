@@ -16,6 +16,7 @@
 #include <tlmplib.h>
 #include <algorithm>
 #include <string>
+#include <vector>
 #include <map>
 #include <tlmpnet.h>
 #include <tlmpsql.h>
@@ -117,6 +118,18 @@ static string trli_makeid (int noproc)
 	return ret;
 }	
 
+static int bo_writed_newid (unsigned userid, int noproc, string &msg)
+{
+	int ret = -1;
+	string id = trli_makeid(noproc);
+	if (sql_action("insert into ids (ownerid,uuid) values (%u,'%s')",userid,id.c_str())==-1){
+		msg = "Internal error (ids table)";
+	}else{
+		ret = sql_getlastid();
+	}
+	return ret;
+}
+
 /*
 	Return the numerical id if a record exist
 */
@@ -184,7 +197,49 @@ static int bo_writed_findentry (CONNECT_INFO &con, const char *sessionid, const 
 	}
 	return ret;
 }
-
+struct DIRENTRY{
+	int itemid;
+	std::string modified;
+	char type;
+	DIRENTRY (int _itemid, const char *_modified, char _type){
+		itemid = _itemid;
+		modified = _modified;
+		type = _type;
+	}
+	DIRENTRY(){
+		itemid = -1;
+		type = '_';
+	}
+};
+<mod>
+static int bo_writed_copydir (int dirid, int new_dirid, string &msg)
+{
+	int ret = 0;
+	vector<DIRENTRY> todo;		// Sub-directories to copy
+	while (1){
+		glocal map<string,DIRENTRY> res;
+		<call sql_query>("select name,itemid,modified,type from dirs_content where dirid=%d order by modified",dirid);
+		<f onerow>
+			glocal.res[row[0]] = DIRENTRY(atoi(row[1]),row[2],row[3][0]);
+		</f>
+		</call>
+		for (auto &r:glocal.res){
+			if (r.second.type == 'D'){
+			}else if (r.second.type == 'F'){
+				if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,'%s','%c','%s')"
+					,new_dirid,r.second.itemid,r.second.modified.c_str(),r.second.type,r.first.c_str())==-1){
+					msg = "Internal error (dirs_content table)";
+					ret = -1;
+					todo.clear();
+					break;
+				}	
+			}
+		}
+		if (todo.size()==0) break;
+	}
+	return ret;
+}
+</mod>
 <mod>
 int main (int argc, char *argv[])
 {
@@ -627,11 +682,11 @@ int main (int argc, char *argv[])
 					if (bo_writed_findentry (glocal.con,sessionid,name,entry,false)==-1){
 						rep_mkdir (false,"",entry.msg);
 					}else{
-						string id = trli_makeid(glocal.noproc);
-						if (sql_action("insert into ids (ownerid,uuid) values (%u,'%s')",entry.userid,id.c_str())==-1){
-							rep_mkdir (false,"","Internal error (ids table)");
+						string msg;
+						int subdirid = bo_writed_newid (entry.userid,glocal.noproc,msg);
+						if (subdirid == -1){
+							rep_mkdir (false,"",msg);
 						}else{
-							int subdirid = sql_getlastid();
 							if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,now(),'D','%s')"
 								,entry.dirid,subdirid,entry.basename.c_str())==-1){
 								rep_mkdir (false,"","Internal error (dirs_subdirs table)");
@@ -663,13 +718,13 @@ int main (int argc, char *argv[])
 					if (bo_writed_findentry (glocal.con,sessionid,name,entry,false)==-1){
 						rep_addfile (false,"",entry.msg);
 					}else{
-						string id = trli_makeid(glocal.noproc);
-						if (sql_action("insert into ids (ownerid,uuid) values (%u,'%s')",entry.userid,id.c_str())==-1){
-							rep_addfile (false,"","Internal error (ids table)");
+						string msg;
+						int fileid = bo_writed_newid (entry.userid,glocal.noproc,msg);
+						if (fileid == -1){
+							rep_addfile (false,"",msg);
 						}else{
 							char now[20];
 							bo_writed_set_now(now);
-							int fileid = sql_getlastid();
 							if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,'%s','F','%s')"
 								,entry.dirid,fileid,now,entry.basename.c_str())==-1){
 								rep_addfile (false,"","Internal error (dirs_files table)");
@@ -750,6 +805,23 @@ int main (int argc, char *argv[])
 						rep_copy (false,srcentry.msg);
 					}else if (bo_writed_findentry (glocal.con,sessionid,dstname,dstentry,false)==-1){
 						rep_copy (false,dstentry.msg);
+					}else if (srcentry.type == 'D'){
+						string msg;
+						int newdirid = bo_writed_newid (srcentry.userid,glocal.noproc,msg);
+						if (newdirid == -1){
+							rep_copy (false,msg);
+						}else if (bo_writed_copydir (srcentry.entryid,newdirid,msg)==-1){
+							rep_copy (false,msg);
+						}else{
+							char now[20];
+							bo_writed_set_now(now);
+							if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,'%s','D','%s')"
+								,dstentry.dirid,newdirid,now,dstentry.basename.c_str())==-1){
+								rep_copy (false,"Internal error (dirs_content table)");
+							}else{
+								rep_copy (true,"Ok");
+							}
+						}
 					}else if (srcentry.type != 'F'){
 						rep_copy (false,"Copy only works on files for now");
 					}else{
