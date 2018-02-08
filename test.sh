@@ -488,20 +488,27 @@ elif [ "$1" = "test-rmdir" ] ; then # T: Remove one directory (letter dir )
 		exit 1
 	fi
 	$0 bod-client --testrmdir "$1" --extra "$2"
-elif [ "$1" = "test-addfile" ] ; then # T: Add one file (letter dir suffix)
+elif [ "$1" = "test-addfile" ] ; then # T: Add one file (letter file-path content)
 	shift
-	if [ "$1" = "" ] ; then
-		echo test-addfile letter [ dir suffix ]
+	if [ "$3" = "" ] ; then
+		echo test-addfile letter file-path content
 		exit 1
 	fi
 	$0 bod-client --testaddfile "$1" --extra "$2" --extra2 "$3"
 elif [ "$1" = "test-modifyfile" ] ; then # T: Modify one file (letter dir suffix)
 	shift
-	if [ "$1" = "" ] ; then
-		echo test-modifyfile letter [ dir suffix ]
+	if [ "$3" = "" ] ; then
+		echo test-modifyfile letter file-path content
 		exit 1
 	fi
 	$0 bod-client --testmodifyfile "$1" --extra "$2" --extra2 "$3"
+elif [ "$1" = "test-rename" ] ; then # T: Rename a file or directory (letter oldpath newname)
+	shift
+	if [ "$3" = "" ] ; then
+		echo test-rename letter oldpath newname
+		exit 1
+	fi
+	$0 bod-client --testrename "$1" --extra "$2" --extra2 "$3"
 elif [ "$1" = "test-readfile" ] ; then # T: Modify one file (letter dir suffix)
 	shift
 	if [ "$1" = "" ] ; then

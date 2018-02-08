@@ -118,6 +118,7 @@ int main (int argc, char *argv[])
 	glocal const char *testaddfile = NULL;
 	glocal const char *testdelfile = NULL;
 	glocal const char *testmodifyfile = NULL;
+	glocal const char *testrename = NULL;
 	glocal const char *testreadfile = NULL;
 	glocal bool testsystem = false;
 	glocal bool testcreatesessions = false;
@@ -172,6 +173,7 @@ int main (int argc, char *argv[])
 		setarg (' ',"testdelfile","Remove a file",glocal.testdelfile,false);
 		setarg (' ',"testmodifyfile","Modify a file",glocal.testmodifyfile,false);
 		setarg (' ',"testreadfile","Read a file",glocal.testreadfile,false);
+		setarg (' ',"testrename","Rename a file or directory",glocal.testrename,false);
 		setgrouparg ("Test parameters");
 		setarg (' ',"workers","Test concurent access",glocal.workers,false);
 		setarg (' ',"nbrep","Number of repetition per worker",glocal.nbrep,false);
@@ -369,6 +371,20 @@ int main (int argc, char *argv[])
 				string name = glocal.extra;
 				printf ("\tname=%s\n",name.c_str());
 				<call bod_client_delfile> (glocal.con_cli,sessionid,name);
+				<f ok>
+					printf ("\tsuccess=%d msg=%s\n",success,msg);
+				</f>
+				</call>
+				bod_logout (glocal.con_cli,sessionid);
+			}
+		}else if (glocal.testrename){
+			printf ("rename %s extra=%s extra2=%s\n",glocal.testaddfile,glocal.extra,glocal.extra2);
+			string sessionid = bod_login (glocal.con_cli,glocal.testrename);
+			if (sessionid.size() > 0){
+				const char *oldname = glocal.extra;
+				const char *newname = glocal.extra2;
+				printf ("\toldname=%s newname=%s\n",oldname,newname);
+				<call bod_client_rename> (glocal.con_cli,sessionid,oldname,newname);
 				<f ok>
 					printf ("\tsuccess=%d msg=%s\n",success,msg);
 				</f>

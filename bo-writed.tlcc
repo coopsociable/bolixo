@@ -721,6 +721,26 @@ int main (int argc, char *argv[])
 						}
 					}
 				</f>
+				<f rename> // sessionid oldname newname
+					// oldname is a path, newname is just a name inside the same directory
+					ENTRY entry;
+					if (bo_writed_findentry (glocal.con,sessionid,oldname,entry,true)==-1){
+						rep_rename (false,entry.msg);
+					}else{
+						char now[20];
+						bo_writed_set_now(now);
+						// We insert a deletion of the oldname, followed by a creation of the newname with the same
+						// modified date (pointing to the same data)
+						if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,'%s','_','%s'), (%d,%d,'%s','%c','%s')"
+							,entry.dirid,entry.entryid,now,entry.basename.c_str()
+							,entry.dirid,entry.entryid,entry.modified.c_str(),entry.type,newname)==-1){
+							rep_rename (false,"Internal error (dirs_content table)");
+						}else{
+							rep_rename (true,"Ok");
+						}
+					}
+					
+				</f>
 				<f test>
 					glocal bool bdtrli=false;
 					glocal bool bdusers=false;
