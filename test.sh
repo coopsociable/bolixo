@@ -502,13 +502,20 @@ elif [ "$1" = "test-modifyfile" ] ; then # T: Modify one file (letter dir suffix
 		exit 1
 	fi
 	$0 bod-client --testmodifyfile "$1" --extra "$2" --extra2 "$3"
-elif [ "$1" = "test-rename" ] ; then # T: Rename a file or directory (letter oldpath newname)
+elif [ "$1" = "test-rename" ] ; then # T: Rename a file or directory (letter oldpath newpath)
 	shift
 	if [ "$3" = "" ] ; then
-		echo test-rename letter oldpath newname
+		echo test-rename letter oldpath newpath
 		exit 1
 	fi
 	$0 bod-client --testrename "$1" --extra "$2" --extra2 "$3"
+elif [ "$1" = "test-copy" ] ; then # T: Copy a file or directory (letter srcpath dstpath)
+	shift
+	if [ "$3" = "" ] ; then
+		echo test-copy letter srcpath dstpath
+		exit 1
+	fi
+	$0 bod-client --testcopy "$1" --extra "$2" --extra2 "$3"
 elif [ "$1" = "test-readfile" ] ; then # T: Modify one file (letter dir suffix)
 	shift
 	if [ "$1" = "" ] ; then

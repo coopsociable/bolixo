@@ -723,20 +723,44 @@ int main (int argc, char *argv[])
 				</f>
 				<f rename> // sessionid oldname newname
 					// oldname is a path, newname is just a name inside the same directory
-					ENTRY entry;
-					if (bo_writed_findentry (glocal.con,sessionid,oldname,entry,true)==-1){
-						rep_rename (false,entry.msg);
+					ENTRY oldentry,newentry;
+					if (bo_writed_findentry (glocal.con,sessionid,oldname,oldentry,true)==-1){
+						rep_rename (false,oldentry.msg);
+					}else if (bo_writed_findentry (glocal.con,sessionid,newname,newentry,false)==-1){
+						rep_rename (false,newentry.msg);
 					}else{
 						char now[20];
 						bo_writed_set_now(now);
 						// We insert a deletion of the oldname, followed by a creation of the newname with the same
 						// modified date (pointing to the same data)
 						if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,'%s','_','%s'), (%d,%d,'%s','%c','%s')"
-							,entry.dirid,entry.entryid,now,entry.basename.c_str()
-							,entry.dirid,entry.entryid,entry.modified.c_str(),entry.type,newname)==-1){
+							,oldentry.dirid,oldentry.entryid,now,oldentry.basename.c_str()
+							,newentry.dirid,oldentry.entryid,oldentry.modified.c_str(),oldentry.type,newentry.basename.c_str())==-1){
 							rep_rename (false,"Internal error (dirs_content table)");
 						}else{
 							rep_rename (true,"Ok");
+						}
+					}
+					
+				</f>
+				<f copy> // sessionid srcname dstname
+					// oldname is a path, newname is just a name inside the same directory
+					ENTRY srcentry,dstentry;
+					if (bo_writed_findentry (glocal.con,sessionid,srcname,srcentry,true)==-1){
+						rep_copy (false,srcentry.msg);
+					}else if (bo_writed_findentry (glocal.con,sessionid,dstname,dstentry,false)==-1){
+						rep_copy (false,dstentry.msg);
+					}else if (srcentry.type != 'F'){
+						rep_copy (false,"Copy only works on files for now");
+					}else{
+						// We insert a row so the new name still points to the same entryid and same date.
+						// It means that the new file will always be associated with the same entryid.
+						// The solution would be to allocate a new id and copy the data.
+						if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,'%s','%c','%s')"
+							,dstentry.dirid,srcentry.entryid,srcentry.modified.c_str(),srcentry.type,dstentry.basename.c_str())==-1){
+							rep_copy (false,"Internal error (dirs_content table)");
+						}else{
+							rep_copy (true,"Ok");
 						}
 					}
 					
