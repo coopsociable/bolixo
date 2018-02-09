@@ -211,31 +211,63 @@ struct DIRENTRY{
 		type = '_';
 	}
 };
+struct DIR_2_CREATE{
+	string name;
+	int parent_dirid;
+	int dirid_2_copy;
+	DIR_2_CREATE(PARAM_STRING _name, int _parent_dirid, int _dirid_2_copy){
+		name = _name.ptr;
+		parent_dirid = _parent_dirid;
+		dirid_2_copy = _dirid_2_copy;
+	}
+};
 <mod>
-static int bo_writed_copydir (int dirid, int new_dirid, string &msg)
+static int bo_writed_copydir (
+	int dirid,		// Directory to copy
+	int target_dirid,	// parent directory which will receive the new directory
+	const string &dirname,	// Name of the directory to create in the target_dirid
+	unsigned userid,
+	int noproc,
+	string &msg)
 {
 	int ret = 0;
-	vector<DIRENTRY> todo;		// Sub-directories to copy
-	while (1){
+	vector<DIR_2_CREATE> todo;		// Sub-directories to copy
+	todo.push_back(DIR_2_CREATE(dirname,target_dirid,dirid));
+	while (todo.size() > 0){
+		DIR_2_CREATE &d = todo[0];
 		glocal map<string,DIRENTRY> res;
-		<call sql_query>("select name,itemid,modified,type from dirs_content where dirid=%d order by modified",dirid);
+		<call sql_query>("select name,itemid,modified,type from dirs_content where dirid=%d order by modified",d.dirid_2_copy);
 		<f onerow>
 			glocal.res[row[0]] = DIRENTRY(atoi(row[1]),row[2],row[3][0]);
 		</f>
 		</call>
-		for (auto &r:glocal.res){
-			if (r.second.type == 'D'){
-			}else if (r.second.type == 'F'){
-				if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,'%s','%c','%s')"
-					,new_dirid,r.second.itemid,r.second.modified.c_str(),r.second.type,r.first.c_str())==-1){
-					msg = "Internal error (dirs_content table)";
-					ret = -1;
-					todo.clear();
-					break;
+		int newdirid = bo_writed_newid (userid,noproc,msg);
+		if (newdirid == -1){
+			ret = -1;
+			break;
+		}else{
+			char now[20];
+			bo_writed_set_now(now);
+			if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,'%s','D','%s')"
+				,d.parent_dirid,newdirid,now,d.name.c_str())==-1){
+				msg = "Internal error (dirs_content table)";
+			}else{
+				for (auto &r:glocal.res){
+					if (r.second.type == 'D'){
+						todo.push_back(DIR_2_CREATE(r.first,newdirid,r.second.itemid));
+					}else if (r.second.type == 'F'){
+						if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,'%s','%c','%s')"
+							,newdirid,r.second.itemid,r.second.modified.c_str(),r.second.type,r.first.c_str())==-1){
+							msg = "Internal error (dirs_content table)";
+							ret = -1;
+							todo.clear();
+							break;
+						}
+					}
 				}	
 			}
 		}
-		if (todo.size()==0) break;
+		if (todo.size() > 0) todo.erase (todo.begin());
 	}
 	return ret;
 }
@@ -807,20 +839,10 @@ int main (int argc, char *argv[])
 						rep_copy (false,dstentry.msg);
 					}else if (srcentry.type == 'D'){
 						string msg;
-						int newdirid = bo_writed_newid (srcentry.userid,glocal.noproc,msg);
-						if (newdirid == -1){
-							rep_copy (false,msg);
-						}else if (bo_writed_copydir (srcentry.entryid,newdirid,msg)==-1){
+						if (bo_writed_copydir (srcentry.entryid,dstentry.dirid,dstentry.basename,srcentry.userid,glocal.noproc,msg)==-1){
 							rep_copy (false,msg);
 						}else{
-							char now[20];
-							bo_writed_set_now(now);
-							if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,'%s','D','%s')"
-								,dstentry.dirid,newdirid,now,dstentry.basename.c_str())==-1){
-								rep_copy (false,"Internal error (dirs_content table)");
-							}else{
-								rep_copy (true,"Ok");
-							}
+							rep_copy (true,"Ok");
 						}
 					}else if (srcentry.type != 'F'){
 						rep_copy (false,"Copy only works on files for now");

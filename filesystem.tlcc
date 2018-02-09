@@ -106,7 +106,16 @@ int fs_findentry (const char *name, ENTRY &entry, bool expect_exist)
 {
 	int ret = -1;
 	vector<string> parents;
-	if (fs_parse_fname (name,parents,entry.basename) == -1){
+	if (name[0] == '/' && name[1] == '\0'){
+		entry.dirid = 0;
+		entry.entryid = 0;
+		entry.type = 'D';
+		if (!expect_exist){
+			entry.msg = "Entry with that name exist";
+		}else{
+			ret = 0;
+		}
+	}else if (fs_parse_fname (name,parents,entry.basename) == -1){
 		entry.msg = "Invalid name";
 	}else{
 		entry.dirid = fs_locate_dir (parents,entry.userid,entry.msg);
