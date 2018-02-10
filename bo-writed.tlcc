@@ -272,6 +272,23 @@ static int bo_writed_copydir (
 	return ret;
 }
 </mod>
+static string bo_writed_createpath (int fileid, PARAM_STRING modified)
+{
+	const char *src = modified.ptr;
+	char tmp[strlen(src)+1];
+	char *dst = tmp;
+	while (*src != '\0'){
+		char car = *src++;
+		if (car == '/'){
+			*dst = '_';
+		}else{
+			*dst = car;
+		}
+		dst++;
+	}
+	*dst = '\0';
+	return string_f ("/var/lib/bolixo/%d-%s",fileid,tmp);
+}
 <mod>
 int main (int argc, char *argv[])
 {
@@ -303,6 +320,7 @@ int main (int argc, char *argv[])
 	glocal bool writeonce_proof = false;
 	glocal bool writeonce_comment = false;
 	glocal const char *force_addr = NULL;
+	glocal const char *bob_dir = "/var/lib/bolixo";
 
 	glocal.ret = <call tlmpprogram>(argc,argv,"tlmpsql");
 	<f init>
@@ -325,6 +343,7 @@ int main (int argc, char *argv[])
 		setarg (' ',"daemon","Run in background",glocal.daemon,false);
 		setarg (' ',"pidfile","FIle holding the PID of the process",glocal.pidfile,false);
 		setarg (' ',"noproc","Identity of this process (UUID)",glocal.noproc,false);
+		setarg (' ',"bob_dir","Binary file directory",glocal.bob_dir,false);
 		setgrouparg ("Mail");
 		setarg (' ',"mailserver","Mail relay to use",glocal.mailserver,false);
 		setarg (' ',"mailport","TCP port of the relay (or unix socket)",glocal.mailport,false);
@@ -422,7 +441,7 @@ int main (int argc, char *argv[])
 			HANDLE_INFO *c = (HANDLE_INFO*)info.data;
 			debug_printf (D_PROTO,"receive line: %s\n",line);
 			if (c->type == TYPE_CONTROL){
-				<call bo_writed_control>(this,c->req,line, endserver, endclient, no,c,c->host.c_str());
+				<call bo_writed_control>(this,c->req,line, info.linelen,endserver, endclient, no,c,c->host.c_str());
 				<f status>
 					vector<string> tb;
 					tb.push_back(string_f("version %s",VERSION));	
@@ -551,7 +570,7 @@ int main (int argc, char *argv[])
 
 			}else if (c->type == TYPE_CLIENT){
 				glocal.nbrequest_client++;
-				<call bo_writed_client>(this,c->req,line, endserver, endclient, no,c,c->host.c_str());
+				<call bo_writed_client>(this,c->req,line, info.linelen,endserver, endclient, no,c,c->host.c_str());
 				<f adduser>
 					glocal const char *name = name;
 					glocal const char *email = email;
@@ -748,24 +767,76 @@ int main (int argc, char *argv[])
 				<f addfile>
 					ENTRY entry;
 					if (bo_writed_findentry (glocal.con,sessionid,name,entry,false)==-1){
-						rep_addfile (false,"",entry.msg);
+						rep_addfile (false,entry.msg);
 					}else{
 						string msg;
 						int fileid = bo_writed_newid (entry.userid,glocal.noproc,msg);
 						if (fileid == -1){
-							rep_addfile (false,"",msg);
+							rep_addfile (false,msg);
 						}else{
 							char now[20];
 							bo_writed_set_now(now);
 							if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,'%s','F','%s')"
 								,entry.dirid,fileid,now,entry.basename.c_str())==-1){
-								rep_addfile (false,"","Internal error (dirs_files table)");
+								rep_addfile (false,"Internal error (dirs_files table)");
 							}else if (sql_action("insert into files (id,modified,content) values (%d,'%s','%s')"
 								,fileid,now,content)==-1){
-								rep_addfile (false,"","Internal error (files table)");
+								rep_addfile (false,"Internal error (files table)");
 							}else{
-								rep_addfile (true,"","Ok");
+								rep_addfile (true,"Ok");
 							}
+						}
+					}
+				</f>
+				<f addfile_bob>
+					ENTRY entry;
+					if (bo_writed_findentry (glocal.con,sessionid,name,entry,false)==-1){
+						rep_addfile_bob (false,"",entry.msg);
+					}else{
+						string msg;
+						int fileid = bo_writed_newid (entry.userid,glocal.noproc,msg);
+						if (fileid == -1){
+							rep_addfile_bob (false,"",msg);
+						}else{
+							char now[20];
+							bo_writed_set_now(now);
+							if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,'%s','F','%s')"
+								,entry.dirid,fileid,now,entry.basename.c_str())==-1){
+								rep_addfile_bob (false,"","Internal error (dirs_files table)");
+							}else if (sql_action("insert into files (id,modified,content) values (%d,'%s',NULL)"
+								,fileid,now)==-1){
+								rep_addfile_bob (false,"","Internal error (files table)");
+							}else{
+								string tmp = bo_writed_createpath (fileid,now);
+								FILE *fout = fopen (tmp.c_str(),"w");
+								if (fout == NULL){
+									tlmp_error ("Can't open file %s (%s)\n",tmp.c_str(),strerror(errno));
+									rep_addfile_bob (false,"","Internal error (1-writing data)");
+								}else{
+									size_t size = content.getsize();
+									if (fwrite (content.getbuffer(),1,size,fout)!=size){
+										rep_addfile_bob (false,"","Internal error (2-writing data)");
+									}else{
+										fclose (fout);
+										rep_addfile_bob (true,tmp,"Ok");
+									}
+								}
+							}
+						}
+					}
+				</f>
+				<f appendfile>
+					FILE *fout = fopen (fileid,"a");
+					if (fout == NULL){
+						tlmp_error ("Can't open file %s (%s)\n",fileid,strerror(errno));
+						rep_appendfile (false,"Internal error (3-writing data)");
+					}else{
+						size_t size = content.getsize();
+						if (fwrite (content.getbuffer(),1,size,fout)!=size){
+							rep_appendfile (false,"Internal error (4-writing data)");
+						}else{
+							fclose (fout);
+							rep_appendfile (true,"Ok");
 						}
 					}
 				</f>
@@ -801,7 +872,7 @@ int main (int argc, char *argv[])
 								rep_modifyfile (false,"Internal error (dirs_files table)");
 							}else if (sql_action("insert into files (id,modified,content) values (%d,'%s','%s')"
 								,entry.entryid,now,content)==-1){
-								rep_addfile (false,"","Internal error (files table)");
+								rep_modifyfile (false,"Internal error (files table)");
 							}else{
 								rep_modifyfile (true,"Ok");
 							}
@@ -845,7 +916,7 @@ int main (int argc, char *argv[])
 							rep_copy (true,"Ok");
 						}
 					}else if (srcentry.type != 'F'){
-						rep_copy (false,"Copy only works on files for now");
+						rep_copy (false,"Copy only works on files and directories for now");
 					}else{
 						// We insert a row so the new name still points to the same entryid and same date.
 						// It means that the new file will always be associated with the same entryid.

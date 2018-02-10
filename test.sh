@@ -86,6 +86,29 @@ exim_restore(){
 	echo "mv $DATA/main.log $ROOTFS/var/log/exim/main.log" >>$REST
 	chmod +x $REST
 }
+writed_save(){
+	ROOTFS=/var/lib/lxc/$1/rootfs
+	SAVE=/var/lib/lxc/$1/$1.save
+	DATA=/var/lib/lxc/$1/data
+	echo "#!/bin/sh" > $SAVE
+	echo "mkdir -p $DATA" >>$SAVE
+	echo "test -d $DATA/bo-writed.log && echo \"$DATA/bo-writed.log already exists, can't save\" && exit 1" >>$SAVE
+	echo "mv $ROOTFS/var/log/bolixo/bo-writed.log $DATA/bo-writed.log" >>$SAVE
+	echo "mv $ROOTFS/var/lib/bolixo $DATA/bolixo" >>$SAVE
+	chmod +x $SAVE
+}
+writed_restore(){
+	ROOTFS=/var/lib/lxc/$1/rootfs
+	REST=/var/lib/lxc/$1/$1.restore
+	DATA=/var/lib/lxc/$1/data
+	echo "#!/bin/sh" > $REST
+	echo "test ! -f $DATA/bo-writed.log &&  echo \"$DATA/bo-writed.log does not exists, can't restore\" && exit 1" >>$REST
+	echo "test ! -d $DATA/bolixo &&  echo \"$DATA/bolixo does not exists, can't restore\" && exit 1" >>$REST
+	echo "mv $DATA/bo-writed.log $ROOTFS/var/log/bolixo" >>$REST
+	echo "mkdir -p $ROOTFS/var/lib" >>$REST
+	echo "mv $DATA/bolixo $ROOTFS/var/lib/bolixo" >>$REST
+	chmod +x $REST
+}
 if [ "$1" = "" ] ; then
 	if [ -x /usr/sbin/menutest ] ; then
 		/usr/sbin/menutest -s $0
@@ -495,6 +518,13 @@ elif [ "$1" = "test-addfile" ] ; then # T: Add one file (letter file-path conten
 		exit 1
 	fi
 	$0 bod-client --testaddfile "$1" --extra "$2" --extra2 "$3"
+elif [ "$1" = "test-addfile-bob" ] ; then # T: Add one file (letter file-path content)
+	shift
+	if [ "$3" = "" ] ; then
+		echo test-addfile-bob letter file-path content
+		exit 1
+	fi
+	$0 bod-client --testaddfile_bob "$1" --extra "$2" --extra2 "$3"
 elif [ "$1" = "test-modifyfile" ] ; then # T: Modify one file (letter dir suffix)
 	shift
 	if [ "$3" = "" ] ; then
@@ -666,6 +696,8 @@ elif [ "$1" = "lxc0-writed" ]; then # prod:
 		$EXTRALXCPROG \
 		-i /usr/sbin/trli-init -l /tmp/log -n writed -p $BOLIXOPATH/bo-writed >/var/lib/lxc/writed/writed-lxc0.sh
 	chmod +x /var/lib/lxc/writed/writed-lxc0.sh
+	writed_save writed
+	writed_restore writed
 elif [ "$1" = "lxc0-sessiond" ]; then # prod:
 	export LANG=eng
 	rm -f /tmp/sessions.log
