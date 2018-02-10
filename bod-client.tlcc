@@ -98,6 +98,24 @@ static void test_execute (const char *cmd)
 }
 
 <mod>
+static void bod_client_copyrest (CONNECT_INFO &con, const char *sessionid, const char *handle, FILE *fin)
+{
+	glocal bool stop = false;
+	int len;
+	char buf[50000];
+	while (!glocal.stop && (len=fread(buf,1,50000,fin))>0){
+		BOB_TYPE bob (buf,len,false);
+		<call bod_client_appendfile>(con,sessionid,handle,bob,len==50000);
+		<f ok>
+			printf ("\tAppendfile tsuccess=%d msg=%s\n",success,msg);
+			if (!success) glocal.stop = true;
+		</f>
+		</call>
+	}
+}
+</mod>
+
+<mod>
 int main (int argc, char *argv[])
 {
 	glocal int ret = -1;
@@ -119,6 +137,7 @@ int main (int argc, char *argv[])
 	glocal const char *testaddfile_bob = NULL;
 	glocal const char *testdelfile = NULL;
 	glocal const char *testmodifyfile = NULL;
+	glocal const char *testmodifyfile_bob = NULL;
 	glocal const char *testrename = NULL;
 	glocal const char *testcopy = NULL;
 	glocal const char *testreadfile = NULL;
@@ -175,6 +194,7 @@ int main (int argc, char *argv[])
 		setarg (' ',"testaddfile_bob","Create a new binary file",glocal.testaddfile_bob,false);
 		setarg (' ',"testdelfile","Remove a file",glocal.testdelfile,false);
 		setarg (' ',"testmodifyfile","Modify a file",glocal.testmodifyfile,false);
+		setarg (' ',"testmodifyfile_bob","Modify a file",glocal.testmodifyfile_bob,false);
 		setarg (' ',"testreadfile","Read a file",glocal.testreadfile,false);
 		setarg (' ',"testrename","Rename a file or directory",glocal.testrename,false);
 		setarg (' ',"testcopy","Copy a file or directory",glocal.testcopy,false);
@@ -379,21 +399,15 @@ int main (int argc, char *argv[])
 					if (glocal.fin == NULL){
 						tlmp_error ("Can't read file %s (%s)\n",glocal.extra2,strerror(errno));
 					}else{
-						glocal char buf[50000];
+						char buf[50000];
 						int len;
-						len=fread (glocal.buf,1,50000,glocal.fin);
-						BOB_TYPE bob (glocal.buf,len,false);
-						<call bod_client_addfile_bob> (glocal.con_cli,glocal.sessionid,name,bob,false);
+						len=fread (buf,1,50000,glocal.fin);
+						BOB_TYPE bob (buf,len,false);
+						<call bod_client_addfile_bob> (glocal.con_cli,glocal.sessionid,name,bob,len==50000);
 						<f ok>
-							printf ("\tsuccess=%d fileid=%s msg=%s\n",success,fileid,msg);
-							int len;
-							while ((len=fread(glocal.buf,1,50000,glocal.fin))>0){
-								BOB_TYPE bob (glocal.buf,len,false);
-								<call bod_client_appendfile>(glocal.con_cli,glocal.sessionid,fileid,bob,false);
-								<f ok>
-									printf ("\tsuccess=%d msg=%s\n",success,msg);
-								</f>
-								</call>
+							printf ("\tsuccess=%d handle=%s msg=%s\n",success,handle,msg);
+							if (success){
+								bod_client_copyrest (glocal.con_cli,glocal.sessionid.c_str(),handle,glocal.fin);
 							}
 						</f>
 						</call>
@@ -407,9 +421,55 @@ int main (int argc, char *argv[])
 					printf ("\tname=%s\n",name.c_str());
 					<call bod_client_addfile_bob> (glocal.con_cli,glocal.sessionid,name,glocal.bob,false);
 					<f ok>
-						printf ("\tsuccess=%d fileid=%s msg=%s\n",success,fileid,msg);
+						printf ("\tsuccess=%d handle=%s msg=%s\n",success,handle,msg);
 						for (int i=0; i<100; i++){
-							<call bod_client_appendfile>(glocal.con_cli,glocal.sessionid,fileid,glocal.bob,false);
+							<call bod_client_appendfile>(glocal.con_cli,glocal.sessionid,handle,glocal.bob,false);
+							<f ok>
+								printf ("\tsuccess=%d msg=%s\n",success,msg);
+							</f>
+							</call>
+						}
+					</f>
+					</call>
+				}
+				bod_logout (glocal.con_cli,glocal.sessionid);
+			}
+		}else if (glocal.testmodifyfile_bob){
+			printf ("modifyfile_bob %s extra=%s extra2=%s\n",glocal.testmodifyfile_bob,glocal.extra,glocal.extra2);
+			glocal string sessionid = bod_login (glocal.con_cli,glocal.testmodifyfile_bob);
+			if (glocal.sessionid.size() > 0){
+				string name = glocal.extra;
+				if (glocal.extra2[0] == '/'){
+					// We are sending a file
+					glocal FILE *fin = fopen (glocal.extra2,"r");
+					if (glocal.fin == NULL){
+						tlmp_error ("Can't read file %s (%s)\n",glocal.extra2,strerror(errno));
+					}else{
+						char buf[50000];
+						int len;
+						len=fread (buf,1,50000,glocal.fin);
+						BOB_TYPE bob (buf,len,false);
+						<call bod_client_modifyfile_bob> (glocal.con_cli,glocal.sessionid,name,bob,len==50000);
+						<f ok>
+							printf ("\tsuccess=%d handle=%s msg=%s\n",success,handle,msg);
+							if (success){
+								bod_client_copyrest (glocal.con_cli,glocal.sessionid.c_str(),handle,glocal.fin);
+							}
+						</f>
+						</call>
+						fclose (glocal.fin);
+					}
+				}else{
+					string text;
+					for (int i=0; i<20; i++) text += string_f("text-%s %s\n",glocal.testaddfile_bob,glocal.extra2);
+					glocal BOB_TYPE bob;
+					glocal.bob.setbuffer (text.c_str(),text.size(),false);
+					printf ("\tname=%s\n",name.c_str());
+					<call bod_client_modifyfile_bob> (glocal.con_cli,glocal.sessionid,name,glocal.bob,false);
+					<f ok>
+						printf ("\tsuccess=%d handle=%s msg=%s\n",success,handle,msg);
+						for (int i=0; i<100; i++){
+							<call bod_client_appendfile>(glocal.con_cli,glocal.sessionid,handle,glocal.bob,false);
 							<f ok>
 								printf ("\tsuccess=%d msg=%s\n",success,msg);
 							</f>

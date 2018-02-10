@@ -518,10 +518,10 @@ elif [ "$1" = "test-addfile" ] ; then # T: Add one file (letter file-path conten
 		exit 1
 	fi
 	$0 bod-client --testaddfile "$1" --extra "$2" --extra2 "$3"
-elif [ "$1" = "test-addfile-bob" ] ; then # T: Add one file (letter file-path content)
+elif [ "$1" = "test-addfile-bob" ] ; then # T: Add one file (letter file-path content-or-abspath)
 	shift
 	if [ "$3" = "" ] ; then
-		echo test-addfile-bob letter file-path content
+		echo test-addfile-bob letter file-path content-or-abspath
 		exit 1
 	fi
 	$0 bod-client --testaddfile_bob "$1" --extra "$2" --extra2 "$3"
@@ -532,6 +532,13 @@ elif [ "$1" = "test-modifyfile" ] ; then # T: Modify one file (letter dir suffix
 		exit 1
 	fi
 	$0 bod-client --testmodifyfile "$1" --extra "$2" --extra2 "$3"
+elif [ "$1" = "test-modifyfile-bob" ] ; then # T: Modify one file (letter file-path content-or-abspath)
+	shift
+	if [ "$3" = "" ] ; then
+		echo test-modifyfile-bob letter file-path content-or-abspath
+		exit 1
+	fi
+	$0 bod-client --testmodifyfile_bob "$1" --extra "$2" --extra2 "$3"
 elif [ "$1" = "test-rename" ] ; then # T: Rename a file or directory (letter oldpath newpath)
 	shift
 	if [ "$3" = "" ] ; then

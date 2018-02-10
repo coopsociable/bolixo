@@ -1,6 +1,13 @@
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/time.h>
+#include <tlmplib.h>
 #include <tlmpsql.h>
 #include <string>
 #include <vector>
+#include <map>
 #include <fdpass.h>
 #include "filesystem.h"
 
@@ -16,6 +23,44 @@ using namespace std;
 #include "proto/bo-sessiond_admin.protoch"
 #endif
 
+/*
+	Create a uniq ID combining the process number of this instance, a random value and the time in micro-seconds
+*/
+string fs_makeid (int noproc)
+{
+	string ret;
+	char tmp[100];
+	struct timeval t;
+	if (gettimeofday(&t,NULL)!=-1){
+		static int fd = -1;
+		static bool error_shown = false;
+		if (fd == -1){
+			fd = open ("/dev/urandom",O_RDONLY,0);
+		}
+		if (fd == -1){
+			if (!error_shown){
+				tlmp_error ("Can't open /dev/urandom (%s)\n",strerror(errno));
+				error_shown = true;
+			}
+		}else{
+			char buf[8];
+			if (read(fd,buf,8)!=8){
+				close (fd);
+				fd = -1;
+				if (!error_shown){
+					tlmp_error ("Can't read 8 bytes from /dev/urandom (%s)\n",strerror(errno));
+					error_shown = true;
+				}
+			}else{
+				for (int i=0; i<8; i++) snprintf (tmp+i*2,3,"%02x",buf[i]);
+				int n = snprintf (tmp+16,sizeof(tmp)-16-1,"%08lx%08lx",t.tv_sec,t.tv_usec);
+				snprintf (tmp+16+n,sizeof(tmp)-16-n-1,"-%d",noproc);
+				ret = tmp;
+			}
+		}
+	}
+	return ret;
+}	
 <mod>
 static int fs_locate_entry (int dirid, PARAM_STRING fname, char &type, string &modified, unsigned &ownerid)
 {
@@ -140,3 +185,64 @@ int fs_findentry (const char *name, ENTRY &entry, bool expect_exist)
 	return ret;
 }
 
+struct HANDLE{
+	int fileid;
+	string modified;
+	HANDLE (int _fileid, PARAM_STRING _modified){
+		fileid = _fileid;
+		modified = _modified.ptr;
+	}
+	HANDLE(){
+		fileid = -1;
+	}
+};
+static map<string,HANDLE> handles;
+unsigned fs_getnbhandle()
+{
+	return handles.size();
+}
+
+/*
+	Assign a file handle for one instance of a file
+*/
+string fs_alloc_file_handle (int fileid, PARAM_STRING modified)
+{
+	string handle = fs_makeid (0);
+	handles[handle] = HANDLE(fileid,modified);
+	return handle;
+}
+static string fs_createpath (int fileid, PARAM_STRING modified)
+{
+	const char *src = modified.ptr;
+	char tmp[strlen(src)+1];
+	char *dst = tmp;
+	while (*src != '\0'){
+		char car = *src++;
+		if (car == '/'){
+			*dst = '_';
+		}else{
+			*dst = car;
+		}
+		dst++;
+	}
+	*dst = '\0';
+	return string_f ("/var/lib/bolixo/%d-%s",fileid,tmp);
+}
+
+FILE *fs_open_handle (PARAM_STRING handle, const char *mode)
+{
+	FILE *ret = NULL;
+	auto x = handles.find(handle.ptr);
+	if (x != handles.end()){
+		string tmp = fs_createpath (x->second.fileid,x->second.modified);
+		ret = fopen (tmp.c_str(),mode);
+	}
+	return ret;
+}
+void fs_delete_handle (PARAM_STRING handle)
+{
+	auto x = handles.find(handle.ptr);
+	if (x != handles.end()){
+		handles.erase (x);
+	}
+}

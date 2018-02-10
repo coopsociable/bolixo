@@ -79,49 +79,11 @@ static void bo_writed_set_now (char now[20])
 	fdpass_asctime(time(NULL),now);
 }
 
-/*
-	Create a uniq ID combining the process number of this instance, a random value and the time in micro-seconds
-*/
-static string trli_makeid (int noproc)
-{
-	string ret;
-	char tmp[100];
-	struct timeval t;
-	if (gettimeofday(&t,NULL)!=-1){
-		static int fd = -1;
-		static bool error_shown = false;
-		if (fd == -1){
-			fd = open ("/dev/urandom",O_RDONLY,0);
-		}
-		if (fd == -1){
-			if (!error_shown){
-				tlmp_error ("Can't open /dev/urandom (%s)\n",strerror(errno));
-				error_shown = true;
-			}
-		}else{
-			char buf[8];
-			if (read(fd,buf,8)!=8){
-				close (fd);
-				fd = -1;
-				if (!error_shown){
-					tlmp_error ("Can't read 8 bytes from /dev/urandom (%s)\n",strerror(errno));
-					error_shown = true;
-				}
-			}else{
-				for (int i=0; i<8; i++) snprintf (tmp+i*2,3,"%02x",buf[i]);
-				int n = snprintf (tmp+16,sizeof(tmp)-16-1,"%08lx%08lx",t.tv_sec,t.tv_usec);
-				snprintf (tmp+16+n,sizeof(tmp)-16-n-1,"-%d",noproc);
-				ret = tmp;
-			}
-		}
-	}
-	return ret;
-}	
 
 static int bo_writed_newid (unsigned userid, int noproc, string &msg)
 {
 	int ret = -1;
-	string id = trli_makeid(noproc);
+	string id = fs_makeid(noproc);
 	if (sql_action("insert into ids (ownerid,uuid) values (%u,'%s')",userid,id.c_str())==-1){
 		msg = "Internal error (ids table)";
 	}else{
@@ -272,23 +234,6 @@ static int bo_writed_copydir (
 	return ret;
 }
 </mod>
-static string bo_writed_createpath (int fileid, PARAM_STRING modified)
-{
-	const char *src = modified.ptr;
-	char tmp[strlen(src)+1];
-	char *dst = tmp;
-	while (*src != '\0'){
-		char car = *src++;
-		if (car == '/'){
-			*dst = '_';
-		}else{
-			*dst = car;
-		}
-		dst++;
-	}
-	*dst = '\0';
-	return string_f ("/var/lib/bolixo/%d-%s",fileid,tmp);
-}
 <mod>
 int main (int argc, char *argv[])
 {
@@ -447,6 +392,7 @@ int main (int argc, char *argv[])
 					tb.push_back(string_f("version %s",VERSION));	
 					tb.push_back(string_f("nbrequest %lu",glocal.nbrequest_client));
 					tb.push_back(string_f("mailctrl %d \"%s\"",glocal.mailon,fdpass_get_force_addr()));
+					tb.push_back(string_f("filehandle %u\n",fs_getnbhandle()));
 					rep_status (tb);
 				</f>
 				<f quit>
@@ -586,7 +532,7 @@ int main (int argc, char *argv[])
 							glocal.bo_writed_client.rep_adduser ("","An account is already using this nickname");
 						</f>
 						<f empty>
-							glocal string id_str = trli_makeid (glocal.noproc);
+							glocal string id_str = fs_makeid (glocal.noproc);
 							if (sql_action(*glocal.usq,"insert into users (name,email,password,userid_str) values ('%s','%s',password('%s'),'%s')"
 								,glocal.name,glocal.email,glocal.password,glocal.id_str.c_str())==-1){
 								glocal.bo_writed_client.rep_adduser ("","can't create");
@@ -633,7 +579,7 @@ int main (int argc, char *argv[])
 					glocal string userid_str;
 					glocal unsigned userid = trli_getsessionuser(glocal.con,sessionid,glocal.userid_str);
 					if (glocal.userid != 0){
-						glocal string deleteid = trli_makeid(glocal.noproc);
+						glocal string deleteid = fs_makeid(glocal.noproc);
 						if (sql_action(*glocal.usq,"update users set deleteid='%s' where userid=%u",glocal.deleteid.c_str()
 							,glocal.userid)!=-1){
 							<call sql_query>(*glocal.usq,"select email from users where userid=%u",glocal.userid);
@@ -716,7 +662,7 @@ int main (int argc, char *argv[])
 				</f>
 				<f createsession>
 					// Create a web session, not associated with any user
-					glocal string sessionid = trli_makeid (glocal.noproc);
+					glocal string sessionid = fs_makeid (glocal.noproc);
 					<call bo_sessiond_admin_createsession>(glocal.con,glocal.sessionid.c_str());
 					<f ok>
 						if (internal_error){
@@ -794,51 +740,60 @@ int main (int argc, char *argv[])
 						rep_addfile_bob (false,"",entry.msg);
 					}else{
 						string msg;
+						string handle;
 						int fileid = bo_writed_newid (entry.userid,glocal.noproc,msg);
-						if (fileid == -1){
-							rep_addfile_bob (false,"",msg);
-						}else{
+						if (fileid != -1){
 							char now[20];
 							bo_writed_set_now(now);
 							if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,'%s','F','%s')"
 								,entry.dirid,fileid,now,entry.basename.c_str())==-1){
-								rep_addfile_bob (false,"","Internal error (dirs_files table)");
+								msg = "Internal error (dirs_files table)";
 							}else if (sql_action("insert into files (id,modified,content) values (%d,'%s',NULL)"
 								,fileid,now)==-1){
-								rep_addfile_bob (false,"","Internal error (files table)");
+								msg = "Internal error (files table)";
 							}else{
-								string tmp = bo_writed_createpath (fileid,now);
-								FILE *fout = fopen (tmp.c_str(),"w");
+								handle = fs_alloc_file_handle (fileid,now);
+								FILE *fout = fs_open_handle (handle,"w");
 								if (fout == NULL){
-									tlmp_error ("Can't open file %s (%s)\n",tmp.c_str(),strerror(errno));
-									rep_addfile_bob (false,"","Internal error (1-writing data)");
+									tlmp_error ("Can't open file (%s)\n",strerror(errno));
+									msg = "Internal error (1-writing data)";
 								}else{
 									size_t size = content.getsize();
 									if (fwrite (content.getbuffer(),1,size,fout)!=size){
-										rep_addfile_bob (false,"","Internal error (2-writing data)");
-									}else{
-										fclose (fout);
-										rep_addfile_bob (true,tmp,"Ok");
+										msg = "Internal error (2-writing data)";
 									}
+									fclose (fout);
 								}
 							}
 						}
+						if (msg.size() > 0){
+							rep_addfile_bob (false,"",msg);
+							fs_delete_handle(handle);
+						}else{
+							if (!more){
+								fs_delete_handle(handle);
+								handle.clear();
+							}
+							rep_addfile_bob (true,handle,"Ok");
+						}
+						
 					}
 				</f>
 				<f appendfile>
-					FILE *fout = fopen (fileid,"a");
+					FILE *fout = fs_open_handle (handle,"a");
 					if (fout == NULL){
-						tlmp_error ("Can't open file %s (%s)\n",fileid,strerror(errno));
+						tlmp_error ("Can't open file (%s)\n",strerror(errno));
 						rep_appendfile (false,"Internal error (3-writing data)");
 					}else{
 						size_t size = content.getsize();
 						if (fwrite (content.getbuffer(),1,size,fout)!=size){
 							rep_appendfile (false,"Internal error (4-writing data)");
 						}else{
-							fclose (fout);
 							rep_appendfile (true,"Ok");
 						}
+						fclose (fout);
 					}
+					if (!more) fs_delete_handle(handle);
 				</f>
 				<f delfile>
 					ENTRY entry;
@@ -876,6 +831,51 @@ int main (int argc, char *argv[])
 							}else{
 								rep_modifyfile (true,"Ok");
 							}
+						}
+					}
+				</f>
+				<f modifyfile_bob> // sessionid name content:o more:b = success:b handle msg
+					ENTRY entry;
+					if (bo_writed_findentry (glocal.con,sessionid,name,entry,true)==-1){
+						rep_modifyfile_bob (false,"",entry.msg);
+					}else{
+						string msg;
+						string handle;
+						if (entry.type != 'F'){
+							msg = "Not a file, can't modify";
+						}else{
+							char now[20];
+							bo_writed_set_now(now);
+							if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,'%s','F','%s')"
+								,entry.dirid,entry.entryid,now,entry.basename.c_str())==-1){
+								msg = "Internal error (dirs_files table)";
+							}else if (sql_action("insert into files (id,modified,content) values (%d,'%s',NULL)"
+								,entry.entryid,now)==-1){
+								msg = "Internal error (files table)";
+							}else{
+								handle = fs_alloc_file_handle (entry.entryid,now);
+								FILE *fout = fs_open_handle (handle,"w");
+								if (fout == NULL){
+									tlmp_error ("Can't open file (%s)\n",strerror(errno));
+									msg = "Internal error (1-writing data)";
+								}else{
+									size_t size = content.getsize();
+									if (fwrite (content.getbuffer(),1,size,fout)!=size){
+										msg = "Internal error (2-writing data)";
+									}
+									fclose (fout);
+								}
+							}
+						}
+						if (msg.size() > 0){
+							rep_modifyfile_bob (false,"",msg);
+							fs_delete_handle(handle);
+						}else{
+							if (!more){
+								fs_delete_handle(handle);
+								handle.clear();
+							}
+							rep_modifyfile_bob (true,handle,"Ok");
 						}
 					}
 				</f>
