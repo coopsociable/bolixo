@@ -141,6 +141,7 @@ int main (int argc, char *argv[])
 	glocal const char *testrename = NULL;
 	glocal const char *testcopy = NULL;
 	glocal const char *testreadfile = NULL;
+	glocal const char *testreadfile_bob = NULL;
 	glocal bool testsystem = false;
 	glocal bool testcreatesessions = false;
 	glocal const char *exec1 = NULL;
@@ -196,6 +197,7 @@ int main (int argc, char *argv[])
 		setarg (' ',"testmodifyfile","Modify a file",glocal.testmodifyfile,false);
 		setarg (' ',"testmodifyfile_bob","Modify a file",glocal.testmodifyfile_bob,false);
 		setarg (' ',"testreadfile","Read a file",glocal.testreadfile,false);
+		setarg (' ',"testreadfile_bob","Read a file",glocal.testreadfile_bob,false);
 		setarg (' ',"testrename","Rename a file or directory",glocal.testrename,false);
 		setarg (' ',"testcopy","Copy a file or directory",glocal.testcopy,false);
 		setgrouparg ("Test parameters");
@@ -545,6 +547,40 @@ int main (int argc, char *argv[])
 				</f>
 				</call>
 				bod_logout (glocal.con_cli,sessionid);
+			}
+		}else if (glocal.testreadfile_bob){
+			printf ("readfile %s extra=%s\n",glocal.testreadfile_bob,glocal.extra);
+			glocal string sessionid = bod_login (glocal.con_cli,glocal.testreadfile_bob);
+			if (glocal.sessionid.size() > 0){
+				string name = glocal.extra;
+				<call bod_client_readfile_bob> (glocal.con_cli,glocal.sessionid,name);
+				<f ok>
+					printf ("\tsuccess=%d msg=%s more=%d handle=%s size=%lu\n"
+						,success,msg,more,handle,content.getsize());
+					if (success){
+						glocal BOB_TYPE *content = &content;
+						glocal bool more = more;
+						glocal string handle = handle;
+						<call savefile>("/tmp/readfile_bob.data",false);
+						<f dowrite>
+							glocal FILE *fout = fout;
+							fwrite (glocal.content->getbuffer(),1,glocal.content->getsize(),fout);
+							while (glocal.more){
+								<call bod_client_readmore>(glocal.con_cli,glocal.sessionid,glocal.handle);
+								<f ok>
+									printf ("\tsuccess=%d more=%d size=%lu msg=%s\n",success,more,content.getsize(),msg);
+									glocal.more = more;
+									if (success) fwrite (content.getbuffer(),1,content.getsize(),glocal.fout);
+								</f>
+								</call>
+							}
+							return 0;
+						</f>
+						</call>
+					}
+				</f>
+				</call>
+				bod_logout (glocal.con_cli,glocal.sessionid);
 			}
 		}else if (glocal.testlistdir){
 			printf ("listdir %s extra=%s extra2=%s\n",glocal.testlistdir,glocal.extra,glocal.extra2);

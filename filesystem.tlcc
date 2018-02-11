@@ -188,12 +188,18 @@ int fs_findentry (const char *name, ENTRY &entry, bool expect_exist)
 struct HANDLE{
 	int fileid;
 	string modified;
-	HANDLE (int _fileid, PARAM_STRING _modified){
+	FILE *f;
+	HANDLE (int _fileid, PARAM_STRING _modified, FILE *_f){
 		fileid = _fileid;
 		modified = _modified.ptr;
+		f = _f;
 	}
 	HANDLE(){
 		fileid = -1;
+		f = NULL;
+	}
+	void close(){
+		if (f != NULL) fclose (f);
 	}
 };
 static map<string,HANDLE> handles;
@@ -202,15 +208,6 @@ unsigned fs_getnbhandle()
 	return handles.size();
 }
 
-/*
-	Assign a file handle for one instance of a file
-*/
-string fs_alloc_file_handle (int fileid, PARAM_STRING modified)
-{
-	string handle = fs_makeid (0);
-	handles[handle] = HANDLE(fileid,modified);
-	return handle;
-}
 static string fs_createpath (int fileid, PARAM_STRING modified)
 {
 	const char *src = modified.ptr;
@@ -218,8 +215,10 @@ static string fs_createpath (int fileid, PARAM_STRING modified)
 	char *dst = tmp;
 	while (*src != '\0'){
 		char car = *src++;
-		if (car == '/'){
-			*dst = '_';
+		if (car == '/' || car == '-'){
+			*dst = '-';
+		}else if (car == ' ' || car == '_'){
+			*dst = '-';
 		}else{
 			*dst = car;
 		}
@@ -228,14 +227,28 @@ static string fs_createpath (int fileid, PARAM_STRING modified)
 	*dst = '\0';
 	return string_f ("/var/lib/bolixo/%d-%s",fileid,tmp);
 }
-
-FILE *fs_open_handle (PARAM_STRING handle, const char *mode)
+/*
+	Assign a file handle for one instance of a file
+*/
+FILE *fs_alloc_file_handle (int fileid, PARAM_STRING modified, const char *mode, string &handle)
+{
+	handle = fs_makeid (0);
+	string path = fs_createpath (fileid,modified);
+	FILE *ret = fopen (path.c_str(),mode);
+	tlmp_error ("alloc_file_handle ret=%p path=%s (%s)\n",ret,path.c_str(),strerror(errno));
+	if (ret != NULL){
+		handles[handle] = HANDLE(fileid,modified,ret);
+	}else{
+		handle.clear();
+	}
+	return ret;
+}
+FILE *fs_get_file (const std::string &handle)
 {
 	FILE *ret = NULL;
-	auto x = handles.find(handle.ptr);
+	auto x = handles.find(handle);
 	if (x != handles.end()){
-		string tmp = fs_createpath (x->second.fileid,x->second.modified);
-		ret = fopen (tmp.c_str(),mode);
+		ret = x->second.f;
 	}
 	return ret;
 }
@@ -243,6 +256,7 @@ void fs_delete_handle (PARAM_STRING handle)
 {
 	auto x = handles.find(handle.ptr);
 	if (x != handles.end()){
+		x->second.close();
 		handles.erase (x);
 	}
 }

@@ -94,7 +94,7 @@ writed_save(){
 	echo "mkdir -p $DATA" >>$SAVE
 	echo "test -d $DATA/bo-writed.log && echo \"$DATA/bo-writed.log already exists, can't save\" && exit 1" >>$SAVE
 	echo "mv $ROOTFS/var/log/bolixo/bo-writed.log $DATA/bo-writed.log" >>$SAVE
-	echo "mv $ROOTFS/var/lib/bolixo $DATA/bolixo" >>$SAVE
+	echo "umount $ROOTFS/var/lib/bolixo" >>$SAVE
 	chmod +x $SAVE
 }
 writed_restore(){
@@ -103,10 +103,27 @@ writed_restore(){
 	DATA=/var/lib/lxc/$1/data
 	echo "#!/bin/sh" > $REST
 	echo "test ! -f $DATA/bo-writed.log &&  echo \"$DATA/bo-writed.log does not exists, can't restore\" && exit 1" >>$REST
-	echo "test ! -d $DATA/bolixo &&  echo \"$DATA/bolixo does not exists, can't restore\" && exit 1" >>$REST
 	echo "mv $DATA/bo-writed.log $ROOTFS/var/log/bolixo" >>$REST
-	echo "mkdir -p $ROOTFS/var/lib" >>$REST
-	echo "mv $DATA/bolixo $ROOTFS/var/lib/bolixo" >>$REST
+	echo "mkdir -p $ROOTFS/var/lib/bolixo" >>$REST
+	echo "mount --bind /var/lib/bolixo $ROOTFS/var/lib/bolixo" >>$REST
+	chmod +x $REST
+}
+bod_save(){
+	ROOTFS=/var/lib/lxc/$1/rootfs
+	SAVE=/var/lib/lxc/$1/$1.save
+	DATA=/var/lib/lxc/$1/data
+	echo "#!/bin/sh" > $SAVE
+	echo "mkdir -p $DATA" >>$SAVE
+	echo "umount $ROOTFS/var/lib/bolixo" >>$SAVE
+	chmod +x $SAVE
+}
+bod_restore(){
+	ROOTFS=/var/lib/lxc/$1/rootfs
+	REST=/var/lib/lxc/$1/$1.restore
+	DATA=/var/lib/lxc/$1/data
+	echo "#!/bin/sh" > $REST
+	echo "mkdir -p $ROOTFS/var/lib/bolixo" >>$REST
+	echo "mount -oro --bind /var/lib/bolixo $ROOTFS/var/lib/bolixo" >>$REST
 	chmod +x $REST
 }
 if [ "$1" = "" ] ; then
@@ -553,13 +570,20 @@ elif [ "$1" = "test-copy" ] ; then # T: Copy a file or directory (letter srcpath
 		exit 1
 	fi
 	$0 bod-client --testcopy "$1" --extra "$2" --extra2 "$3"
-elif [ "$1" = "test-readfile" ] ; then # T: Modify one file (letter dir suffix)
+elif [ "$1" = "test-readfile" ] ; then # T: Read one file (letter path)
 	shift
-	if [ "$1" = "" ] ; then
-		echo test-readfile letter [ dir suffix ]
+	if [ "$2" = "" ] ; then
+		echo test-readfile letter path
 		exit 1
 	fi
 	$0 bod-client --testreadfile "$1" --extra "$2" --extra2 "$3"
+elif [ "$1" = "test-readfile_bob" ] ; then # T: Modify one file (letter path)
+	shift
+	if [ "$2" = "" ] ; then
+		echo test-readfile_bob letter path
+		exit 1
+	fi
+	$0 bod-client --testreadfile_bob "$1" --extra "$2" --extra2 "$3"
 elif [ "$1" = "test-delfile" ] ; then # T: Remove one file (letter dir suffix)
 	shift
 	if [ "$1" = "" ] ; then
@@ -690,6 +714,8 @@ elif [ "$1" = "lxc0-bod" ]; then # prod:
 		$EXTRALXCPROG \
 		-i /usr/sbin/trli-init -l /tmp/log -n bod -p $BOLIXOPATH/bod >/var/lib/lxc/bod/bod-lxc0.sh
 	chmod +x /var/lib/lxc/bod/bod-lxc0.sh
+	bod_save bod
+	bod_restore bod
 elif [ "$1" = "lxc0-writed" ]; then # prod:
 	export LANG=eng
 	$0 bo-writed lxc0 &
