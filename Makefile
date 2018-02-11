@@ -2,7 +2,7 @@ CURDIR=trli
 MANPAGES=/usr/share/man
 PACKAGE_REV:=$(shell ./makeversion $(BUILD_SVNVER))
 PROGS=bod bod-client bod-control bo-writed bo-writed-control bo-sessiond bo-sessiond-control \
-      bo-manager 
+      bo-manager bofs
 #bo-log bo-log-control \
 #      bo-mon bo-mon-control
 DOCS=
@@ -14,6 +14,9 @@ all: $(PROGS)
 
 compile: $(PROGS)
 	#make -Cweb 
+
+bofs: bofs.tlcc proto/bod_client.protoh
+	cctlcc -Wall $(OPTIONS) bofs.tlcc -o bofs $(LIBS)
 
 bod: bod.tlcc filesystem.o proto/bod_control.protoh proto/bod_client.protoh proto/bod_admin.protoh \
 	proto/bo-writed_client.protoh proto/bo-sessiond_client.protoh
