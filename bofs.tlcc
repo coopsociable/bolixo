@@ -26,17 +26,15 @@ using namespace std;
 #define bod_client_confirmuser_NOTNEED
 #define bod_client_deleteuser_NOTNEED
 #define bod_client_confirmdelete_NOTNEED
+
 #define bod_client_addfile_NOTNEED
 #define bod_client_addfile_bob_NOTNEED
 #define bod_client_appendfile_NOTNEED
-#define bod_client_delfile_NOTNEED
 #define bod_client_modifyfile_NOTNEED
 #define bod_client_modifyfile_bob_NOTNEED
 #define bod_client_rename_NOTNEED
 #define bod_client_copy_NOTNEED
 #define bod_client_readfile_NOTNEED
-#define bod_client_mkdir_NOTNEED
-#define bod_client_rmdir_NOTNEED
 
 #include "proto/bod_client.protoch"
 
@@ -86,6 +84,48 @@ struct CONTEXT{
 	CONNECT_INFO con_sess;
 };
 
+#define _TLMP_bofs_split
+struct _F_bofs_split {
+	#define _F_bofs_split_bo_file(x) int x bo_file(const char *path)
+	virtual _F_bofs_split_bo_file( );
+	#define _F_bofs_split_https_file(x) int x https_file(const char *path)
+	virtual _F_bofs_split_https_file( );
+	#define _F_bofs_split_local_file(x) int x local_file(const char *path)
+	virtual _F_bofs_split_local_file( );
+};
+
+int _F_bofs_split::bo_file(const char *path)
+{
+	tlmp_error ("Bolixo file %s not processed\n",path);
+	return -1;
+}
+int _F_bofs_split::https_file(const char *path)
+{
+	tlmp_error ("Https file %s not processed\n",path);
+	return -1;
+}
+int _F_bofs_split::local_file(const char *path)
+{
+	tlmp_error ("Local file %s not processed\n",path);
+	return -1;
+}
+
+static int bofs_split (_F_bofs_split &c, int argc, char *argv[])
+{
+	int ret = 0;
+	for (int i=0; ret == 0 && i<argc; i++){
+		const char *arg = argv[i];
+		if (strncmp(arg,"bo://",5)==0){
+			ret = c.bo_file (arg+4);
+		}else if (strncmp(arg,"https://",8)==0){
+			ret = c.https_file (arg+7);
+		}else{
+			ret = c.local_file (arg);
+		}
+	}
+	return ret;
+}
+
 <mod>
 int bofs_ls (CONTEXT &ctx, int argc, char *argv[])
 {
@@ -102,28 +142,32 @@ int bofs_ls (CONTEXT &ctx, int argc, char *argv[])
 		setarg ('l',"long","Long listing",glocal.opt_long,false);
 	</f>
 	<f main>
-		glocal int ret = 0;
-		for (int i=0; glocal.ret == 0 && i<argc; i++){
-			const char *arg = argv[i];
-			if (strncmp(arg,"bo://",5)==0){
-				<call bod_client_listdir> (glocal.ctx->con,glocal.ctx->sessionid,arg+4);
-				<f ok>
-					if (!success){
-						tlmp_error ("ls: %s\n",msg);
-						glocal.ret = -1;
-					}else{
-						for (unsigned i=0; i<entries.size(); i++){
-							printf ("\t%c %s %s\n",types[i],modified[i],entries[i]);
-						}
+		int ret = 0;
+		ret = <call bofs_split>(argc,argv);
+		<f bo_file>
+			glocal int ret = 0;
+			<call bod_client_listdir> (glocal.ctx->con,glocal.ctx->sessionid,path);
+			<f ok>
+				if (!success){
+					tlmp_error ("ls: %s\n",msg);
+					glocal.ret = -1;
+				}else{
+					for (unsigned i=0; i<entries.size(); i++){
+						printf ("\t%c %s %s\n",types[i],modified[i],entries[i]);
 					}
-				</f>
-				</call>
-			}else if (strncmp(arg,"https://",8)==0){
-			}else{
-				glocal.ret = system (string_f("ls %s %s",glocal.opt_long ? "-l" : "",arg).c_str());
-			}
-		}
-		return glocal.ret;
+				}
+			</f>
+			</call>
+			return glocal.ret;
+		</f>
+		<f https_file>
+			return -1;
+		</f>
+		<f local_file>
+			return system (string_f("ls %s %s",glocal.opt_long ? "-l" : "",path).c_str());
+		</f>
+		</call>
+		return ret;
 	</f>
 	</call>
 	return glocal.ret;
@@ -143,35 +187,39 @@ int bofs_cat (CONTEXT &ctx, int argc, char *argv[])
 			);
 	</f>
 	<f main>
-		glocal int ret = 0;
-		for (int i=0; glocal.ret == 0 && i<argc; i++){
-			const char *arg = argv[i];
-			if (strncmp(arg,"bo://",5)==0){
-				<call bod_client_readfile_bob> (glocal.ctx->con,glocal.ctx->sessionid,arg+4);
-				<f ok>
-					if (!success){
-						tlmp_error ("cat: %s\n",msg);
-						glocal.ret = -1;
-					}else{
-						fwrite (content.getbuffer(),1,content.getsize(),stdout);
-						glocal bool more = more;
-						while (glocal.more){
-							<call bod_client_readmore>(glocal.ctx->con,glocal.ctx->sessionid,handle);
-							<f ok>
-								fwrite (content.getbuffer(),1,content.getsize(),stdout);
-								glocal.more = more;
-							</f>
-							</call>
-						}
+		int ret = 0;
+		ret = <call bofs_split>(argc,argv);
+		<f bo_file>
+			glocal int ret = 0;
+			<call bod_client_readfile_bob> (glocal.ctx->con,glocal.ctx->sessionid,path);
+			<f ok>
+				if (!success){
+					tlmp_error ("cat: %s\n",msg);
+					glocal.ret = -1;
+				}else{
+					fwrite (content.getbuffer(),1,content.getsize(),stdout);
+					glocal bool more = more;
+					while (glocal.more){
+						<call bod_client_readmore>(glocal.ctx->con,glocal.ctx->sessionid,handle);
+						<f ok>
+							fwrite (content.getbuffer(),1,content.getsize(),stdout);
+							glocal.more = more;
+						</f>
+						</call>
 					}
-				</f>
-				</call>
-			}else if (strncmp(arg,"https://",8)==0){
-			}else{
-				glocal.ret = system (string_f("cat %s",arg).c_str());
-			}
-		}
-		return glocal.ret;
+				}
+			</f>
+			</call>
+			return glocal.ret;
+		</f>
+		<f https_file>
+			return -1;
+		</f>
+		<f local_file>
+			return system (string_f("cat %s",path).c_str());
+		</f>
+		</call>
+		return ret;
 	</f>
 	</call>
 	return glocal.ret;
@@ -191,6 +239,11 @@ int bofs_cp (CONTEXT &ctx, int argc, char *argv[])
 	</f>
 	<f main>
 		int ret = -1;
+		ret = <call bofs_split>(argc,argv);
+		<f bo_file>
+			return -1;
+		</f>
+		</call>
 		return ret;
 	</f>
 	</call>
@@ -201,6 +254,7 @@ int bofs_cp (CONTEXT &ctx, int argc, char *argv[])
 int bofs_rm (CONTEXT &ctx, int argc, char *argv[])
 {
 	glocal int ret = -1;
+	glocal CONTEXT *ctx = &ctx;
 	glocal.ret = <call tlmpprogram>(argc,argv);
 	<f init>
 		setproginfo ("borm",VERSION
@@ -211,6 +265,25 @@ int bofs_rm (CONTEXT &ctx, int argc, char *argv[])
 	</f>
 	<f main>
 		int ret = -1;
+		ret = <call bofs_split>(argc,argv);
+		<f bo_file>
+			glocal int ret = -1;
+			glocal const char *path = path;
+			<call bod_client_delfile> (glocal.ctx->con,glocal.ctx->sessionid,path);
+			<f ok>
+				if (success){
+					glocal.ret = 0;
+				}else{
+					tlmp_error ("Can't delete bolixo file %s: %s\n",glocal.path,msg);
+				}
+			</f>
+			</call>
+			return glocal.ret;
+		</f>
+		<f local_file>
+			return system (string_f("rm %s",path).c_str());
+		</f>
+		</call>
 		return ret;
 	</f>
 	</call>
@@ -221,6 +294,7 @@ int bofs_rm (CONTEXT &ctx, int argc, char *argv[])
 int bofs_mkdir (CONTEXT &ctx, int argc, char *argv[])
 {
 	glocal int ret = -1;
+	glocal CONTEXT *ctx = &ctx;
 	glocal.ret = <call tlmpprogram>(argc,argv);
 	<f init>
 		setproginfo ("bomkdir",VERSION
@@ -231,6 +305,25 @@ int bofs_mkdir (CONTEXT &ctx, int argc, char *argv[])
 	</f>
 	<f main>
 		int ret = -1;
+		ret = <call bofs_split>(argc,argv);
+		<f bo_file>
+			glocal int ret = -1;
+			glocal const char *path = path;
+			<call bod_client_mkdir> (glocal.ctx->con,glocal.ctx->sessionid,path);
+			<f ok>
+				if (success){
+					glocal.ret = 0;
+				}else{
+					tlmp_error ("Can't create directory %s: %s\n",glocal.path,msg);
+				}
+			</f>
+			</call>
+			return glocal.ret;
+		</f>
+		<f local_file>
+			return system (string_f("mkdir %s",path).c_str());
+		</f>
+		</call>
 		return ret;
 	</f>
 	</call>
@@ -241,6 +334,7 @@ int bofs_mkdir (CONTEXT &ctx, int argc, char *argv[])
 int bofs_rmdir (CONTEXT &ctx, int argc, char *argv[])
 {
 	glocal int ret = -1;
+	glocal CONTEXT *ctx = &ctx;
 	glocal.ret = <call tlmpprogram>(argc,argv);
 	<f init>
 		setproginfo ("bormdir",VERSION
@@ -251,6 +345,25 @@ int bofs_rmdir (CONTEXT &ctx, int argc, char *argv[])
 	</f>
 	<f main>
 		int ret = -1;
+		ret = <call bofs_split>(argc,argv);
+		<f bo_file>
+			glocal int ret = -1;
+			glocal const char *path = path;
+			<call bod_client_rmdir> (glocal.ctx->con,glocal.ctx->sessionid,path);
+			<f ok>
+				if (success){
+					glocal.ret = 0;
+				}else{
+					tlmp_error ("Can't remove directory %s: %s\n",glocal.path,msg);
+				}
+			</f>
+			</call>
+			return glocal.ret;
+		</f>
+		<f local_file>
+			return system (string_f("rmdir %s",path).c_str());
+		</f>
+		</call>
 		return ret;
 	</f>
 	</call>
