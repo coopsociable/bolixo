@@ -189,10 +189,12 @@ struct HANDLE{
 	int fileid;
 	string modified;
 	FILE *f;
-	HANDLE (int _fileid, PARAM_STRING _modified, FILE *_f){
+	string sessionid;	// A handle may only be used by the same sessionid
+	HANDLE (int _fileid, PARAM_STRING _modified, FILE *_f, PARAM_STRING _sessionid){
 		fileid = _fileid;
 		modified = _modified.ptr;
 		f = _f;
+		sessionid = _sessionid.ptr;
 	}
 	HANDLE(){
 		fileid = -1;
@@ -230,24 +232,24 @@ static string fs_createpath (int fileid, PARAM_STRING modified)
 /*
 	Assign a file handle for one instance of a file
 */
-FILE *fs_alloc_file_handle (int fileid, PARAM_STRING modified, const char *mode, string &handle)
+FILE *fs_alloc_file_handle (int fileid, PARAM_STRING modified, const char *mode, string &handle, const char *sessionid)
 {
 	handle = fs_makeid (0);
 	string path = fs_createpath (fileid,modified);
 	FILE *ret = fopen (path.c_str(),mode);
 	tlmp_error ("alloc_file_handle ret=%p path=%s (%s)\n",ret,path.c_str(),strerror(errno));
 	if (ret != NULL){
-		handles[handle] = HANDLE(fileid,modified,ret);
+		handles[handle] = HANDLE(fileid,modified,ret,sessionid);
 	}else{
 		handle.clear();
 	}
 	return ret;
 }
-FILE *fs_get_file (const std::string &handle)
+FILE *fs_get_file (const std::string &handle, const char *sessionid)
 {
 	FILE *ret = NULL;
 	auto x = handles.find(handle);
-	if (x != handles.end()){
+	if (x != handles.end() && strcmp(x->second.sessionid.c_str(),sessionid)==0){
 		ret = x->second.f;
 	}
 	return ret;

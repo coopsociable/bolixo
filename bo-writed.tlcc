@@ -752,7 +752,7 @@ int main (int argc, char *argv[])
 								,fileid,now)==-1){
 								msg = "Internal error (files table)";
 							}else{
-								FILE *fout = fs_alloc_file_handle (fileid,now,"w",handle);
+								FILE *fout = fs_alloc_file_handle (fileid,now,"w",handle,sessionid);
 								if (fout == NULL){
 									tlmp_error ("Can't open file (%s)\n",strerror(errno));
 									msg = "Internal error (1-writing data)";
@@ -778,19 +778,23 @@ int main (int argc, char *argv[])
 					}
 				</f>
 				<f appendfile>
-					FILE *fout = fs_get_file (handle);
-					if (fout == NULL){
-						tlmp_error ("Can't open file (%s)\n",strerror(errno));
-						rep_appendfile (false,"Internal error (3-writing data)");
+					if (trli_getsessionuser(glocal.con,sessionid)==0){
+						rep_appendfile (false,"Invalid session");
 					}else{
-						size_t size = content.getsize();
-						if (fwrite (content.getbuffer(),1,size,fout)!=size){
-							rep_appendfile (false,"Internal error (4-writing data)");
+						FILE *fout = fs_get_file (handle,sessionid);
+						if (fout == NULL){
+							tlmp_error ("Can't open file (%s)\n",strerror(errno));
+							rep_appendfile (false,"Internal error (3-writing data)");
 						}else{
-							rep_appendfile (true,"Ok");
+							size_t size = content.getsize();
+							if (fwrite (content.getbuffer(),1,size,fout)!=size){
+								rep_appendfile (false,"Internal error (4-writing data)");
+							}else{
+								rep_appendfile (true,"Ok");
+							}
+							if (!more) fs_delete_handle(handle);
 						}
 					}
-					if (!more) fs_delete_handle(handle);
 				</f>
 				<f delfile>
 					ENTRY entry;
@@ -850,7 +854,7 @@ int main (int argc, char *argv[])
 								,entry.entryid,now)==-1){
 								msg = "Internal error (files table)";
 							}else{
-								FILE *fout = fs_alloc_file_handle (entry.entryid,now,"w",handle);
+								FILE *fout = fs_alloc_file_handle (entry.entryid,now,"w",handle,sessionid);
 								if (fout == NULL){
 									tlmp_error ("Can't open file (%s)\n",strerror(errno));
 									msg = "Internal error (1-writing data)";

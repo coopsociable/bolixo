@@ -328,6 +328,7 @@ static int trlid_main (
 			</f>
 			<f readfile_bob> // sessionid name = success:b msg content:o handle more:b
 				glocal ENTRY entry;
+				glocal const char *sessionid = sessionid;
 				BOB_TYPE empty;
 				if (bod_findentry (glocal.con_sess,sessionid,name,glocal.entry)==-1){
 					rep_readfile_bob (false,glocal.entry.msg,empty,"",false);
@@ -343,7 +344,7 @@ static int trlid_main (
 								glocal.bod_client.rep_readfile_bob (true,"",bob,"",false);
 							}else{
 								string handle;
-								FILE *fin = fs_alloc_file_handle (glocal.entry.entryid,glocal.entry.modified,"r",handle);
+								FILE *fin = fs_alloc_file_handle (glocal.entry.entryid,glocal.entry.modified,"r",handle,glocal.sessionid);
 								if (fin == NULL){
 									glocal.bod_client.rep_readfile_bob (false,"Internal error, reading content file"
 										,BOB_TYPE(),"",false);
@@ -371,18 +372,22 @@ static int trlid_main (
 				}
 			</f>
 			<f readmore>	// sessionid handle = success:b msg content:o more:b
-				FILE *fin = fs_get_file (handle);
-				if (fin == NULL){
-					rep_readmore (false,"Internal error, reading content file",BOB_TYPE(),false);
-					fs_delete_handle (handle);
+				if (trli_getsessionuser(glocal.con_sess,sessionid)==0){
+					rep_readmore (false,"Invalid session",BOB_TYPE(),false);
 				}else{
-					char buf[50000];
-					int len = fread (buf,1,50000,fin);
-					BOB_TYPE bob (buf,len,false);
-					bool more = len == 50000;
-					rep_readmore (true,"Ok",bob,more);
-					if (!more){
-						fs_delete_handle(handle);
+					FILE *fin = fs_get_file (handle,sessionid);
+					if (fin == NULL){
+						rep_readmore (false,"Internal error, reading content file",BOB_TYPE(),false);
+						fs_delete_handle (handle);
+					}else{
+						char buf[50000];
+						int len = fread (buf,1,50000,fin);
+						BOB_TYPE bob (buf,len,false);
+						bool more = len == 50000;
+						rep_readmore (true,"Ok",bob,more);
+						if (!more){
+							fs_delete_handle(handle);
+						}
 					}
 				}
 			</f>

@@ -17,8 +17,8 @@ struct ENTRY {
 };
 
 int fs_findentry (const char *name, ENTRY &entry, bool expect_exist);
-FILE *fs_alloc_file_handle (int fileid, PARAM_STRING modified, const char *mode, std::string &handle);
-FILE *fs_get_file (const std::string &handle);
+FILE *fs_alloc_file_handle (int fileid, PARAM_STRING modified, const char *mode, std::string &handle, const char *sessionid);
+FILE *fs_get_file (const std::string &handle, const char *sessionid);
 void fs_delete_handle (PARAM_STRING handle);
 std::string fs_makeid (int noproc);
 unsigned fs_getnbhandle();
