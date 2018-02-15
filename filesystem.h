@@ -16,7 +16,7 @@ struct ENTRY {
 	}
 };
 
-int fs_findentry (const char *name, ENTRY &entry, bool expect_exist);
+int fs_findentry (const char *name, ENTRY &entry, bool expect_exist, const char *threshold);
 FILE *fs_alloc_file_handle (int fileid, PARAM_STRING modified, const char *mode, std::string &handle, const char *sessionid);
 FILE *fs_get_file (const std::string &handle, const char *sessionid);
 void fs_delete_handle (PARAM_STRING handle);

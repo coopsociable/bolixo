@@ -76,6 +76,7 @@ struct CONTEXT{
 	string email;
 	string password;
 	string sessionid;
+	string threshold;	// Date to filter in the history of a directory or files
 	CONNECT_INFO con;
 	CONNECT_INFO con_sess;
 };
@@ -126,7 +127,6 @@ static int bofs_split (_F_bofs_split &c, int argc, char *argv[])
 static int bofs_stat (CONTEXT &ctx, PARAM_STRING _path, char &type, string &parent, string &file, string &modified)
 {
 	glocal int ret = 0;
-	glocal CONTEXT *ctx = &ctx;
 	glocal char *type = &type;
 	const char *path = _path.ptr;
 	glocal string *modified = &modified;
@@ -153,7 +153,7 @@ static int bofs_stat (CONTEXT &ctx, PARAM_STRING _path, char &type, string &pare
 		parent = glocal.dir;
 		file = glocal.file;
 		//tlmp_error ("bofs_stat: dir=%s file=%s\n",glocal.dir.c_str(),glocal.file.c_str());
-		<call bod_client_listdir> (glocal.ctx->con,glocal.ctx->sessionid,glocal.dir);
+		<call bod_client_listdir> (ctx.con,ctx.sessionid,glocal.dir,ctx.threshold,false);
 		<f ok>
 			glocal.ret = -1;
 			if (success){
@@ -178,7 +178,9 @@ static int bofs_ls (CONTEXT &ctx, int argc, char *argv[])
 {
 	glocal int ret = -1;
 	glocal bool opt_long = false;
+	glocal bool opt_history = false;
 	glocal CONTEXT *ctx = &ctx;
+	glocal const char *threshold = NULL;
 	glocal.ret = <call tlmpprogram>(argc,argv);
 	<f init>
 		setproginfo ("bols",VERSION
@@ -186,15 +188,18 @@ static int bofs_ls (CONTEXT &ctx, int argc, char *argv[])
 			 "\n"
 			 "bofs ls ...\n"
 			);
+		setarg ('h',"long","Show all versions of files and sub-directories",glocal.opt_history,false);
 		setarg ('l',"long","Long listing",glocal.opt_long,false);
+		setarg ('t',"threshold","Date threshold, only older-or-equal entries are shown/used (aaaa/mm/jj-hh:mm:ss)",glocal.threshold,false);
 	</f>
 	<f main>
 		int ret = 0;
+		if (glocal.threshold != NULL) glocal.ctx->threshold = glocal.threshold;
 		ret = <call bofs_split>(argc,argv);
 		<f bo_file>
 			glocal int ret = 0;
 			glocal const char *path = path;
-			<call bod_client_listdir> (glocal.ctx->con,glocal.ctx->sessionid,path);
+			<call bod_client_listdir> (glocal.ctx->con,glocal.ctx->sessionid,path,glocal.ctx->threshold,glocal.opt_history);
 			<f ok>
 				if (!success){
 					char type;
@@ -264,7 +269,7 @@ static int bofs_cat_bofile (CONTEXT &ctx, const char *path, FILE *fout)
 	glocal int ret = 0;
 	glocal FILE *fout = fout;
 	glocal CONTEXT *ctx = &ctx;
-	<call bod_client_readfile_bob> (ctx.con,ctx.sessionid,path);
+	<call bod_client_readfile_bob> (ctx.con,ctx.sessionid,path,ctx.threshold);
 	<f ok>
 		if (!success){
 			tlmp_error ("bofs cp: %s\n",msg);
@@ -332,6 +337,7 @@ static int bofs_cat (CONTEXT &ctx, int argc, char *argv[])
 	glocal int ret = -1;
 	glocal CONTEXT *ctx = &ctx;
 	glocal const char *pipeto = NULL;
+	glocal const char *threshold = NULL;
 	glocal.ret = <call tlmpprogram>(argc,argv);
 	<f init>
 		setproginfo ("bocat",VERSION
@@ -340,6 +346,7 @@ static int bofs_cat (CONTEXT &ctx, int argc, char *argv[])
 			 "bofs cat  ...\n"
 			);
 		setarg ('p',"pipeto","Pipe input to this file",glocal.pipeto,false);
+		setarg ('t',"threshold","Date threshold, only older-or-equal entries are shown/used (aaaa/mm/jj-hh:mm:ss)",glocal.threshold,false);
 	</f>
 	<f main_noarg>
 		int ret = -1;
@@ -363,6 +370,7 @@ static int bofs_cat (CONTEXT &ctx, int argc, char *argv[])
 	</f>
 	<f main>
 		int ret = 0;
+		if (glocal.threshold != NULL) glocal.ctx->threshold = glocal.threshold;
 		ret = <call bofs_split>(argc,argv);
 		<f bo_file>
 			return bofs_cat_bofile (*glocal.ctx,path,stdout);
@@ -733,20 +741,19 @@ static int bofs_rmdir (CONTEXT &ctx, int argc, char *argv[])
 int main (int argc, char *argv[])
 {
 	glocal int ret = -1;
-	glocal const char *control = "/var/run/bod_client.sock";
 	glocal.ret = <call tlmpprogram>(argc,argv);
 	<f init>
 		setproginfo ("bofs",VERSION
-			,"Command line tool to control bolixo filesystem\n"
+			,"Command line tool to perform filesystem operations on bolixo\n"
 			 "\n"
-			 "bofs cat ...\n"
-			 "bofs cp ...\n"
-			 "bofs rm ...\n"
-			 "bofs ls ...\n"
-			 "bofs mkdir ...\n"
-			 "bofs rmdir ...\n"
+			 "\tbofs cat ...\n"
+			 "\tbofs cp ...\n"
+			 "\tbofs ls ...\n"
+			 "\tbofs mkdir ...\n"
+			 "\tbofs mv ...\n"
+			 "\tbofs rm ...\n"
+			 "\tbofs rmdir ...\n"
 			);
-		setarg ('p',"control","Unix socket to reach bod",glocal.control,false);
 	</f>
 	<f main>
 		int ret = -1;

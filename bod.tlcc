@@ -75,14 +75,14 @@ static unsigned trli_getsessionuser (CONNECT_INFO &con, const char *sessionid)
 	return glocal.userid;
 }
 </mod>
-static int bod_findentry (CONNECT_INFO &con, const char *sessionid, const char *name, ENTRY &entry)
+static int bod_findentry (CONNECT_INFO &con, const char *sessionid, const char *name, ENTRY &entry, const char *threshold)
 {
 	int ret = -1;
 	entry.userid = trli_getsessionuser(con,sessionid);
 	if (entry.userid == 0){
 		entry.msg = "Invalid session";
 	}else{
-		ret = fs_findentry(name,entry,true);
+		ret = fs_findentry(name,entry,true,threshold);
 	}
 	return ret;
 }
@@ -308,7 +308,7 @@ static int trlid_main (
 			</f>
 			<f readfile> // sessionid name = success:b msg content
 				ENTRY entry;
-				if (bod_findentry (glocal.con_sess,sessionid,name,entry)==-1){
+				if (bod_findentry (glocal.con_sess,sessionid,name,entry,threshold)==-1){
 					rep_readfile (false,entry.msg,"");
 				}else{
 					if (entry.type != 'F'){
@@ -330,7 +330,7 @@ static int trlid_main (
 				glocal ENTRY entry;
 				glocal const char *sessionid = sessionid;
 				BOB_TYPE empty;
-				if (bod_findentry (glocal.con_sess,sessionid,name,glocal.entry)==-1){
+				if (bod_findentry (glocal.con_sess,sessionid,name,glocal.entry,threshold)==-1){
 					rep_readfile_bob (false,glocal.entry.msg,empty,"",false);
 				}else{
 					if (glocal.entry.type != 'F'){
@@ -393,28 +393,39 @@ static int trlid_main (
 			</f>
 			<f listdir>
 				ENTRY entry;
-				vector<string> entries;
-				vector<unsigned> types;
-				vector<string> modified;
+				glocal vector<string> entries;
+				glocal vector<unsigned> types;
+				glocal vector<string> modified;
 				glocal map<string,DIRENTRY> mp;
-				if (bod_findentry (glocal.con_sess,sessionid,name,entry)==-1){
-					rep_listdir (false,entry.msg,entries,types,modified);
+				glocal bool history = history;
+				if (bod_findentry (glocal.con_sess,sessionid,name,entry,threshold)==-1){
+					rep_listdir (false,entry.msg,glocal.entries,glocal.types,glocal.modified);
 				}else if (entry.type != 'D'){
-					rep_listdir (false,"Is not a directory",entries,types,modified);
+					rep_listdir (false,"Is not a directory",glocal.entries,glocal.types,glocal.modified);
 				}else{
-					<call sql_query>("select name,modified,type from dirs_content where dirid=%d order by modified",entry.entryid);
+					if (threshold[0] == '\0') threshold = "3000/01/01 00:00:00";
+					<call sql_query>("select name,modified,type from dirs_content where dirid=%d and modified <= '%s' order by modified"
+						,entry.entryid,threshold);
 					<f onerow>
-						glocal.mp[row[0]] = DIRENTRY(row[1],row[2][0]);
+						if (glocal.history){
+							glocal.entries.push_back (row[0]);
+							glocal.modified.push_back (row[1]);
+							glocal.types.push_back(row[2][0]);
+						}else{
+							glocal.mp[row[0]] = DIRENTRY(row[1],row[2][0]);
+						}
 					</f>
 					</call>
-					for (auto &x:glocal.mp){
-						if (x.second.type != '_'){
-							entries.push_back(x.first);
-							types.push_back(x.second.type);
-							modified.push_back(x.second.modified);
+					if (!glocal.history){
+						for (auto &x:glocal.mp){
+							if (x.second.type != '_'){
+								glocal.entries.push_back(x.first);
+								glocal.types.push_back(x.second.type);
+								glocal.modified.push_back(x.second.modified);
+							}
 						}
 					}
-					rep_listdir (true,"",entries,types,modified);
+					rep_listdir (true,"",glocal.entries,glocal.types,glocal.modified);
 				}
 			</f>
 			<f invalid>
