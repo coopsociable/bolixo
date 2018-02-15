@@ -351,6 +351,7 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 elif [ "$1" = "dropdb" ] ; then # db: Drop databases
 	mysqladmin -uroot -S $SOCKN -f drop $DBNAME
 	mysqladmin -uroot -S $SOCKU -f drop $DBNAMEU
+	rm -fr /var/lib/bolixo/*
 elif [ "$1" = "filldb" ] ; then # db: Fill database (old)
 	# Put test data
 	NEWSCNT1=5

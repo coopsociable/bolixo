@@ -14,6 +14,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <tlmplib.h>
 #include <tlmpnet.h>
 #include <string>
@@ -28,13 +29,10 @@ using namespace std;
 #define bod_client_confirmdelete_NOTNEED
 
 #define bod_client_addfile_NOTNEED
-#define bod_client_addfile_bob_NOTNEED
-#define bod_client_appendfile_NOTNEED
 #define bod_client_modifyfile_NOTNEED
-#define bod_client_modifyfile_bob_NOTNEED
-#define bod_client_rename_NOTNEED
-#define bod_client_copy_NOTNEED
 #define bod_client_readfile_NOTNEED
+
+#define bod_client_rename_NOTNEED
 
 #include "proto/bod_client.protoch"
 
@@ -127,7 +125,58 @@ static int bofs_split (_F_bofs_split &c, int argc, char *argv[])
 }
 
 <mod>
-int bofs_ls (CONTEXT &ctx, int argc, char *argv[])
+static int bofs_stat (CONTEXT &ctx, PARAM_STRING _path, char &type, string &parent, string &file, string &modified)
+{
+	glocal int ret = 0;
+	glocal CONTEXT *ctx = &ctx;
+	glocal char *type = &type;
+	const char *path = _path.ptr;
+	glocal string *modified = &modified;
+	type = ' ';
+	parent.clear();
+	file.clear();
+	modified.clear();
+	if (path[0] != '/'){
+		tlmp_error ("bofs_stat: Invalid path %s\n",path);
+		glocal.ret = -1;
+	}else if (strcmp(path,"/")==0){
+		type = 'D';
+	}else{
+		glocal string dir;
+		glocal string file;
+		const char *pt = strrchr(path,'/');
+		if (pt == path){
+			glocal.dir = "/";
+			glocal.file = path+1;
+		}else{
+			glocal.dir = string (path,pt-path);
+			glocal.file = pt+1;
+		}
+		parent = glocal.dir;
+		file = glocal.file;
+		//tlmp_error ("bofs_stat: dir=%s file=%s\n",glocal.dir.c_str(),glocal.file.c_str());
+		<call bod_client_listdir> (glocal.ctx->con,glocal.ctx->sessionid,glocal.dir);
+		<f ok>
+			glocal.ret = -1;
+			if (success){
+				for (unsigned i=0; i<entries.size(); i++){
+					if (strcmp(entries[i],glocal.file.c_str())==0){
+						glocal.ret = 0;
+						(*glocal.type) = types[i];
+						(*glocal.modified) = modified[i];
+						break;
+					}
+				}
+			}
+		</f>
+		</call>
+	}
+	return glocal.ret;
+}
+</mod>
+
+<mod>
+static int bofs_ls (CONTEXT &ctx, int argc, char *argv[])
 {
 	glocal int ret = -1;
 	glocal bool opt_long = false;
@@ -146,14 +195,29 @@ int bofs_ls (CONTEXT &ctx, int argc, char *argv[])
 		ret = <call bofs_split>(argc,argv);
 		<f bo_file>
 			glocal int ret = 0;
+			glocal const char *path = path;
 			<call bod_client_listdir> (glocal.ctx->con,glocal.ctx->sessionid,path);
 			<f ok>
 				if (!success){
-					tlmp_error ("ls: %s\n",msg);
-					glocal.ret = -1;
+					char type;
+					string parent, file, modified;
+					if (bofs_stat(*glocal.ctx,glocal.path,type,parent,file,modified)==-1){
+						tlmp_error ("ls: %s\n",msg);
+						glocal.ret = -1;
+					}else{
+						if (glocal.opt_long){
+							printf ("\t%c %s %s\n",type,modified.c_str(),file.c_str());
+						}else{
+							printf ("%s\n",file.c_str());
+						}
+					}
 				}else{
-					for (unsigned i=0; i<entries.size(); i++){
-						printf ("\t%c %s %s\n",types[i],modified[i],entries[i]);
+					if (glocal.opt_long){
+						for (unsigned i=0; i<entries.size(); i++){
+							printf ("\t%c %s %s\n",types[i],modified[i],entries[i]);
+						}
+					}else{
+						for (auto e:entries) printf ("%s\n",e);
 					}
 				}
 			</f>
@@ -173,11 +237,103 @@ int bofs_ls (CONTEXT &ctx, int argc, char *argv[])
 	return glocal.ret;
 }
 </mod>
+
 <mod>
-int bofs_cat (CONTEXT &ctx, int argc, char *argv[])
+static int bofs_cat_rest (CONTEXT &ctx, const char *handle, FILE *fin)
+{
+	glocal int ret = 0;
+	bool more = true;
+	while (more && glocal.ret == 0){
+		char buf[50000];
+		int len = fread (buf,1,50000,fin);
+		more = len == 50000;
+		<call bod_client_appendfile>(ctx.con,ctx.sessionid,handle,BOB_TYPE(buf,len,false),more);
+		<f ok>
+			if (!success){
+				tlmp_error ("cat_rest: %s\n",msg);
+				glocal.ret = -1;
+			}
+		</f>
+		</call>
+	}
+	return glocal.ret;
+}
+</mod>
+
+<mod>
+static int bofs_cat_bofile (CONTEXT &ctx, const char *path, FILE *fout)
+{
+	glocal int ret = 0;
+	glocal FILE *fout = fout;
+	glocal CONTEXT *ctx = &ctx;
+	<call bod_client_readfile_bob> (ctx.con,ctx.sessionid,path);
+	<f ok>
+		if (!success){
+			tlmp_error ("bofs cp: %s\n",msg);
+			glocal.ret = -1;
+		}else{
+			fwrite (content.getbuffer(),1,content.getsize(),glocal.fout);
+			glocal bool more = more;
+			while (glocal.more){
+				<call bod_client_readmore>(glocal.ctx->con,glocal.ctx->sessionid,handle);
+				<f ok>
+					fwrite (content.getbuffer(),1,content.getsize(),glocal.fout);
+					glocal.more = more;
+				</f>
+				</call>
+			}
+		}
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+<mod>
+static int bofs_write_bofile(CONTEXT &ctx, const char *path, FILE *fin)
+{
+	glocal int ret = 0;
+	glocal CONTEXT *ctx = &ctx;
+	glocal FILE *fin = fin;
+	string parent,file,modified;
+	char type;
+	char buf[50000];
+	int len = fread (buf,1,50000,fin);
+	glocal bool more = len == 50000;
+	if (bofs_stat(ctx,path,type,parent,file,modified)==-1){
+		<call bod_client_addfile_bob> (ctx.con,ctx.sessionid,path,BOB_TYPE(buf,len,false),glocal.more);
+		<f ok>
+			if (!success){
+				tlmp_error ("cat: %s\n",msg);
+				glocal.ret = -1;
+			}else if (glocal.more){
+				glocal.ret = bofs_cat_rest (*glocal.ctx,handle,glocal.fin);
+			}
+		</f>
+		</call>
+	}else if (type != 'F'){
+		tlmp_error ("Can't modify %s, not a file\n",path);
+	}else{ 
+		<call bod_client_modifyfile_bob> (ctx.con,ctx.sessionid,path,BOB_TYPE(buf,len,false),glocal.more);
+		<f ok>
+			if (!success){
+				tlmp_error ("cat: %s\n",msg);
+				glocal.ret = -1;
+			}else if (glocal.more){
+				glocal.ret = bofs_cat_rest (*glocal.ctx,handle,glocal.fin);
+			}
+		</f>
+		</call>
+	}
+	return glocal.ret;
+}
+</mod>
+
+<mod>
+static int bofs_cat (CONTEXT &ctx, int argc, char *argv[])
 {
 	glocal int ret = -1;
 	glocal CONTEXT *ctx = &ctx;
+	glocal const char *pipeto = NULL;
 	glocal.ret = <call tlmpprogram>(argc,argv);
 	<f init>
 		setproginfo ("bocat",VERSION
@@ -185,32 +341,33 @@ int bofs_cat (CONTEXT &ctx, int argc, char *argv[])
 			 "\n"
 			 "bofs cat  ...\n"
 			);
+		setarg ('p',"pipeto","Pipe input to this file",glocal.pipeto,false);
+	</f>
+	<f main_noarg>
+		int ret = -1;
+		if (glocal.pipeto == NULL){
+			usage();
+		}else{
+			char *argv[1] = {(char*)glocal.pipeto};
+			ret = <call bofs_split>(1,argv);
+			<f bo_file>
+				return bofs_write_bofile (*glocal.ctx,path,stdin);
+			</f>
+			<f https_file>
+				return -1;
+			</f>
+			<f local_file>
+				return system (string_f("cat >%s",path).c_str());
+			</f>
+			</call>
+		}
+		return ret;
 	</f>
 	<f main>
 		int ret = 0;
 		ret = <call bofs_split>(argc,argv);
 		<f bo_file>
-			glocal int ret = 0;
-			<call bod_client_readfile_bob> (glocal.ctx->con,glocal.ctx->sessionid,path);
-			<f ok>
-				if (!success){
-					tlmp_error ("cat: %s\n",msg);
-					glocal.ret = -1;
-				}else{
-					fwrite (content.getbuffer(),1,content.getsize(),stdout);
-					glocal bool more = more;
-					while (glocal.more){
-						<call bod_client_readmore>(glocal.ctx->con,glocal.ctx->sessionid,handle);
-						<f ok>
-							fwrite (content.getbuffer(),1,content.getsize(),stdout);
-							glocal.more = more;
-						</f>
-						</call>
-					}
-				}
-			</f>
-			</call>
-			return glocal.ret;
+			return bofs_cat_bofile (*glocal.ctx,path,stdout);
 		</f>
 		<f https_file>
 			return -1;
@@ -225,10 +382,23 @@ int bofs_cat (CONTEXT &ctx, int argc, char *argv[])
 	return glocal.ret;
 }
 </mod>
+enum BO_SOURCE { BO_ENTRY, HTTPS_ENTRY, LOCAL_ENTRY};
+
+struct BO_ARGTYPE{
+	string path;
+	BO_SOURCE source;
+	char type;
+	BO_ARGTYPE(PARAM_STRING _path, BO_SOURCE _source, char _type){
+		path = _path.ptr;
+		source = _source;
+		type = _type;
+	} 
+};
 <mod>
-int bofs_cp (CONTEXT &ctx, int argc, char *argv[])
+static int bofs_cp (CONTEXT &ctx, int argc, char *argv[])
 {
 	glocal int ret = -1;
+	glocal CONTEXT *ctx = &ctx;
 	glocal.ret = <call tlmpprogram>(argc,argv);
 	<f init>
 		setproginfo ("bocp",VERSION
@@ -238,20 +408,107 @@ int bofs_cp (CONTEXT &ctx, int argc, char *argv[])
 			);
 	</f>
 	<f main>
-		int ret = -1;
-		ret = <call bofs_split>(argc,argv);
+		glocal int ret = 0;
+		glocal vector<BO_ARGTYPE> args;
+		glocal.ret = <call bofs_split>(argc,argv);
 		<f bo_file>
-			return -1;
+			char type;
+			string parent,file,modified;
+			bofs_stat (*glocal.ctx,path,type,parent,file,modified);
+			glocal.args.push_back(BO_ARGTYPE(path,BO_ENTRY,type));
+			return 0;
+		</f>
+		<f local_file>
+			struct stat64 st;
+			char type = ' ';
+			if (stat64(path,&st)!=-1){
+				if (S_ISDIR(st.st_mode)){
+					type = 'D';
+				}else if (S_ISREG(st.st_mode)){
+					type = 'F';
+				}else{
+					tlmp_error ("bofs cp: Unsupported file type %s\n",path);
+					exit (-1);
+				}
+			}
+			glocal.args.push_back(BO_ARGTYPE(path,LOCAL_ENTRY,type));
+			return 0;
 		</f>
 		</call>
-		return ret;
+		size_t args_size = glocal.args.size();
+		// Check if all the entries prior to the last one exist in the file systems
+		bool missing_one = false;
+		for (unsigned i=0; i<args_size-1; i++){
+			if (glocal.args[i].type == ' '){
+				// Entry does not exist
+				missing_one = true;
+				tlmp_error ("bofs cp: Source file/directory %s is missing, can't continue\n"
+					,glocal.args[i].path.c_str());
+			}
+		}
+		if (missing_one){
+			glocal.ret = -1;
+		}else if (args_size < 2){
+			tlmp_error ("bofs cp: minimum 2 arguments\n");
+			glocal.ret = -1;
+		}else if (glocal.args[args_size-1].type == 'D'){
+			// Last argument is a directory
+		}else if (args_size != 2){
+			// Last argument is a file, problem
+			tlmp_error ("bofs cp: Can't copy multiple inputs onto a file\n");
+			glocal.ret = -1;
+		}else if (glocal.args[0].type != 'F'){
+			tlmp_error ("bofs cp: Can't copy a directory over a file\n");
+			glocal.ret = -1;
+		}else{
+			// Ok, we copy a file onto a file
+			// If the two files come from the same source{
+			BO_SOURCE src0 = glocal.args[0].source;
+			BO_SOURCE src1 = glocal.args[1].source;
+			const char *path0 = glocal.args[0].path.c_str();
+			const char *path1 = glocal.args[1].path.c_str();
+			if (src0 == src1){
+				if (src0 == LOCAL_ENTRY){
+					// Copying two local files
+					glocal.ret = system (string_f ("cp %s %s",path0,path1).c_str());
+				}else if (src0 == BO_ENTRY){
+					<call bod_client_copy>(glocal.ctx->con,glocal.ctx->sessionid,path0,path1);
+					<f ok>
+						if (!success){
+							glocal.ret = -1;
+							tlmp_error ("bofs cp: %s\n",msg);
+						}
+					</f>
+					</call>
+				}else if (src0 == HTTPS_ENTRY){
+					glocal.ret = -1;
+				}
+			}else if (src0 == LOCAL_ENTRY && src1 == BO_ENTRY){
+				FILE *fin = fopen (path0,"r");
+				if (fin == NULL){
+					tlmp_error ("bofs cp: Can't open file %s (%s)\n",path0,strerror(errno));
+					glocal.ret = -1;
+				}else{
+					glocal.ret = bofs_write_bofile (*glocal.ctx,path1,fin);
+				}
+			}else if (src0 == BO_ENTRY && src1 == LOCAL_ENTRY){
+				glocal const char *path0 = path0;
+				<call savefile>(path1,false);
+				<f dowrite>
+					return bofs_cat_bofile (*glocal.ctx,glocal.path0,fout);
+					return 0;
+				</f>
+				</call>
+			}
+		}
+		return glocal.ret;
 	</f>
 	</call>
 	return glocal.ret;
 }
 </mod>
 <mod>
-int bofs_rm (CONTEXT &ctx, int argc, char *argv[])
+static int bofs_rm (CONTEXT &ctx, int argc, char *argv[])
 {
 	glocal int ret = -1;
 	glocal CONTEXT *ctx = &ctx;
@@ -291,7 +548,37 @@ int bofs_rm (CONTEXT &ctx, int argc, char *argv[])
 }
 </mod>
 <mod>
-int bofs_mkdir (CONTEXT &ctx, int argc, char *argv[])
+static int bofs_mv (CONTEXT &ctx, int argc, char *argv[])
+{
+	glocal int ret = -1;
+	glocal CONTEXT *ctx = &ctx;
+	glocal.ret = <call tlmpprogram>(argc,argv);
+	<f init>
+		setproginfo ("bomv",VERSION
+			,"Command line tool to move/rename bolixo content\n"
+			 "\n"
+			 "bofs mv ...\n"
+			);
+	</f>
+	<f main>
+		int ret = -1;
+		ret = <call bofs_split>(argc,argv);
+		<f bo_file>
+			glocal int ret = -1;
+			return glocal.ret;
+		</f>
+		<f local_file>
+			return system (string_f("mv %s",path).c_str());
+		</f>
+		</call>
+		return ret;
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+<mod>
+static int bofs_mkdir (CONTEXT &ctx, int argc, char *argv[])
 {
 	glocal int ret = -1;
 	glocal CONTEXT *ctx = &ctx;
@@ -331,7 +618,7 @@ int bofs_mkdir (CONTEXT &ctx, int argc, char *argv[])
 }
 </mod>
 <mod>
-int bofs_rmdir (CONTEXT &ctx, int argc, char *argv[])
+static int bofs_rmdir (CONTEXT &ctx, int argc, char *argv[])
 {
 	glocal int ret = -1;
 	glocal CONTEXT *ctx = &ctx;
@@ -419,6 +706,17 @@ int main (int argc, char *argv[])
 			}
 			return 0;
 		</f>
+		<f missing>
+			tlmp_error ("File %s/.bofs.conf missing.\n",getenv("HOME"));
+			tlmp_error ("Create this file with the following fields:\n"
+				"\temail:\n"
+				"\tpassword:\n"
+				"\tbod_socket:\n"
+				"\tsess_socket:\n"
+				"\tbod_secret:\n"
+				"\tsess_secret:\n");
+				exit (-1);
+		</f>
 		</call>
 		glocal.ctx.sessionid = bod_login (glocal.ctx.con,glocal.ctx.email,glocal.ctx.password);
 		if (glocal.ctx.sessionid.size() > 0){
@@ -430,6 +728,8 @@ int main (int argc, char *argv[])
 				ret = bofs_cp (glocal.ctx,argc,argv);
 			}else if (strcmp(argv[0],"rm")==0){
 				ret = bofs_rm (glocal.ctx,argc,argv);
+			}else if (strcmp(argv[0],"mv")==0){
+				ret = bofs_mv (glocal.ctx,argc,argv);
 			}else if (strcmp(argv[0],"mkdir")==0){
 				ret = bofs_mkdir (glocal.ctx,argc,argv);
 			}else if (strcmp(argv[0],"rmdir")==0){
