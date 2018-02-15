@@ -32,8 +32,6 @@ using namespace std;
 #define bod_client_modifyfile_NOTNEED
 #define bod_client_readfile_NOTNEED
 
-#define bod_client_rename_NOTNEED
-
 #include "proto/bod_client.protoch"
 
 <mod>
@@ -289,7 +287,7 @@ static int bofs_cat_bofile (CONTEXT &ctx, const char *path, FILE *fout)
 }
 </mod>
 <mod>
-static int bofs_write_bofile(CONTEXT &ctx, const char *path, FILE *fin)
+static int bofs_write_bofile(CONTEXT &ctx, PARAM_STRING path, FILE *fin)
 {
 	glocal int ret = 0;
 	glocal CONTEXT *ctx = &ctx;
@@ -394,6 +392,82 @@ struct BO_ARGTYPE{
 		type = _type;
 	} 
 };
+
+<mod>
+static int bofs_copy_file(CONTEXT &ctx, PARAM_STRING path0, BO_SOURCE src0, PARAM_STRING path1, BO_SOURCE src1)
+{
+	glocal CONTEXT *ctx = &ctx;
+	glocal int ret = 0;
+	if (src0 == src1){
+		if (src0 == LOCAL_ENTRY){
+			// Copying two local files
+			glocal.ret = system (string_f ("cp %s %s",path0,path1).c_str());
+		}else if (src0 == BO_ENTRY){
+			<call bod_client_copy>(ctx.con,ctx.sessionid,path0,path1);
+			<f ok>
+				if (!success){
+					glocal.ret = -1;
+					tlmp_error ("bofs cp: %s\n",msg);
+				}
+			</f>
+			</call>
+		}else if (src0 == HTTPS_ENTRY){
+			glocal.ret = -1;
+		}
+	}else if (src0 == LOCAL_ENTRY && src1 == BO_ENTRY){
+		FILE *fin = fopen (path0.ptr,"r");
+		if (fin == NULL){
+			tlmp_error ("bofs cp: Can't open file %s (%s)\n",path0,strerror(errno));
+			glocal.ret = -1;
+		}else{
+			glocal.ret = bofs_write_bofile (*glocal.ctx,path1,fin);
+			fclose (fin);
+		}
+	}else if (src0 == BO_ENTRY && src1 == LOCAL_ENTRY){
+		glocal const char *path0 = path0.ptr;
+		<call savefile>(path1,false);
+		<f dowrite>
+			glocal.ret = bofs_cat_bofile (*glocal.ctx,glocal.path0,fout);
+			return 0;
+		</f>
+		</call>
+	}
+	return glocal.ret;
+}
+</mod>
+<mod>
+static int bofs_checkargs (CONTEXT &ctx, int argc, char *argv[], vector<BO_ARGTYPE> &args)
+{
+	glocal CONTEXT *ctx = &ctx;
+	glocal vector<BO_ARGTYPE> *args = &args;
+	int ret = <call bofs_split>(argc,argv);
+	<f bo_file>
+		char type;
+		string parent,file,modified;
+		bofs_stat (*glocal.ctx,path,type,parent,file,modified);
+		glocal.args->push_back(BO_ARGTYPE(path,BO_ENTRY,type));
+		return 0;
+	</f>
+	<f local_file>
+		struct stat64 st;
+		char type = ' ';
+		if (stat64(path,&st)!=-1){
+			if (S_ISDIR(st.st_mode)){
+				type = 'D';
+			}else if (S_ISREG(st.st_mode)){
+				type = 'F';
+			}else{
+				tlmp_error ("bofs cp: Unsupported file type %s\n",path);
+				exit (-1);
+			}
+		}
+		glocal.args->push_back(BO_ARGTYPE(path,LOCAL_ENTRY,type));
+		return 0;
+	</f>
+	</call>
+	return ret;
+}
+</mod>
 <mod>
 static int bofs_cp (CONTEXT &ctx, int argc, char *argv[])
 {
@@ -408,100 +482,72 @@ static int bofs_cp (CONTEXT &ctx, int argc, char *argv[])
 			);
 	</f>
 	<f main>
-		glocal int ret = 0;
-		glocal vector<BO_ARGTYPE> args;
-		glocal.ret = <call bofs_split>(argc,argv);
-		<f bo_file>
-			char type;
-			string parent,file,modified;
-			bofs_stat (*glocal.ctx,path,type,parent,file,modified);
-			glocal.args.push_back(BO_ARGTYPE(path,BO_ENTRY,type));
-			return 0;
-		</f>
-		<f local_file>
-			struct stat64 st;
-			char type = ' ';
-			if (stat64(path,&st)!=-1){
-				if (S_ISDIR(st.st_mode)){
-					type = 'D';
-				}else if (S_ISREG(st.st_mode)){
-					type = 'F';
-				}else{
-					tlmp_error ("bofs cp: Unsupported file type %s\n",path);
-					exit (-1);
-				}
-			}
-			glocal.args.push_back(BO_ARGTYPE(path,LOCAL_ENTRY,type));
-			return 0;
-		</f>
-		</call>
-		size_t args_size = glocal.args.size();
-		// Check if all the entries prior to the last one exist in the file systems
-		bool missing_one = false;
-		for (unsigned i=0; i<args_size-1; i++){
-			if (glocal.args[i].type == ' '){
-				// Entry does not exist
-				missing_one = true;
-				tlmp_error ("bofs cp: Source file/directory %s is missing, can't continue\n"
-					,glocal.args[i].path.c_str());
-			}
-		}
-		if (missing_one){
-			glocal.ret = -1;
-		}else if (args_size < 2){
-			tlmp_error ("bofs cp: minimum 2 arguments\n");
-			glocal.ret = -1;
-		}else if (glocal.args[args_size-1].type == 'D'){
-			// Last argument is a directory
-		}else if (args_size != 2){
-			// Last argument is a file, problem
-			tlmp_error ("bofs cp: Can't copy multiple inputs onto a file\n");
-			glocal.ret = -1;
-		}else if (glocal.args[0].type != 'F'){
-			tlmp_error ("bofs cp: Can't copy a directory over a file\n");
-			glocal.ret = -1;
+		int ret = 0;
+		vector<BO_ARGTYPE> args;
+		if (bofs_checkargs (*glocal.ctx, argc, argv, args)==-1){
+			ret = -1;
 		}else{
-			// Ok, we copy a file onto a file
-			// If the two files come from the same source{
-			BO_SOURCE src0 = glocal.args[0].source;
-			BO_SOURCE src1 = glocal.args[1].source;
-			const char *path0 = glocal.args[0].path.c_str();
-			const char *path1 = glocal.args[1].path.c_str();
-			if (src0 == src1){
-				if (src0 == LOCAL_ENTRY){
-					// Copying two local files
-					glocal.ret = system (string_f ("cp %s %s",path0,path1).c_str());
-				}else if (src0 == BO_ENTRY){
-					<call bod_client_copy>(glocal.ctx->con,glocal.ctx->sessionid,path0,path1);
-					<f ok>
-						if (!success){
-							glocal.ret = -1;
-							tlmp_error ("bofs cp: %s\n",msg);
+			size_t args_size = args.size();
+			// Check if all the entries prior to the last one exist in the file systems
+			bool missing_one = false;
+			for (unsigned i=0; i<args_size-1; i++){
+				if (args[i].type == ' '){
+					// Entry does not exist
+					missing_one = true;
+					tlmp_error ("bofs cp: Source file/directory %s is missing, can't continue\n"
+						,args[i].path.c_str());
+				}
+			}
+			if (missing_one){
+				ret = -1;
+			}else if (args_size < 2){
+				tlmp_error ("bofs cp: minimum 2 arguments\n");
+				ret = -1;
+			}else if (args[args_size-1].type == 'D'){
+				// Last argument is a directory
+				size_t last = args_size-1;
+				const BO_SOURCE dest_source = args[last].source;
+				const char *dir = args[last].path.c_str();
+				for (unsigned i=0; ret != -1 && i<last; i++){
+					const char *name = args[i].path.c_str();
+					const char *pt = strrchr(name,'/');
+					if (pt != NULL) name = pt+1;
+					string dest = string_f("%s/%s",dir,name);
+					if (args[i].type == 'D'){
+						if (dest_source == BO_ENTRY && args[i].source == BO_ENTRY){
+							glocal int ret = 0;
+							<call bod_client_copy>(glocal.ctx->con,glocal.ctx->sessionid,args[i].path,dest);
+							<f ok>
+								if (!success){
+									glocal.ret = -1;
+									tlmp_error ("bofs cp: %s\n",msg);
+								}
+							</f>
+							</call>
+							ret = glocal.ret;
+						}else{
+							tlmp_error ("bofs cp: Can't copy directory yet\n");
+							ret = -1;
 						}
-					</f>
-					</call>
-				}else if (src0 == HTTPS_ENTRY){
-					glocal.ret = -1;
+					}else{
+						ret = bofs_copy_file (*glocal.ctx,args[i].path,args[i].source,dest,dest_source);
+					}
 				}
-			}else if (src0 == LOCAL_ENTRY && src1 == BO_ENTRY){
-				FILE *fin = fopen (path0,"r");
-				if (fin == NULL){
-					tlmp_error ("bofs cp: Can't open file %s (%s)\n",path0,strerror(errno));
-					glocal.ret = -1;
-				}else{
-					glocal.ret = bofs_write_bofile (*glocal.ctx,path1,fin);
-				}
-			}else if (src0 == BO_ENTRY && src1 == LOCAL_ENTRY){
-				glocal const char *path0 = path0;
-				<call savefile>(path1,false);
-				<f dowrite>
-					return bofs_cat_bofile (*glocal.ctx,glocal.path0,fout);
-					return 0;
-				</f>
-				</call>
+			}else if (args_size != 2){
+				// Last argument is a file, problem
+				tlmp_error ("bofs cp: Can't copy multiple inputs onto a file\n");
+				ret = -1;
+			}else if (args[0].type != 'F'){
+				tlmp_error ("bofs cp: Can't copy a directory over a file\n");
+				ret = -1;
+			}else{
+				// Ok, we copy a file onto a file
+				ret = bofs_copy_file (*glocal.ctx
+					,args[0].path,args[0].source
+					,args[1].path,args[1].source);
 			}
 		}
-		return glocal.ret;
+		return ret;
 	</f>
 	</call>
 	return glocal.ret;
@@ -517,7 +563,7 @@ static int bofs_rm (CONTEXT &ctx, int argc, char *argv[])
 		setproginfo ("borm",VERSION
 			,"Command line tool to copy bolixo content\n"
 			 "\n"
-			 "bofs ls ...\n"
+			 "bofs rm ...\n"
 			);
 	</f>
 	<f main>
@@ -561,17 +607,40 @@ static int bofs_mv (CONTEXT &ctx, int argc, char *argv[])
 			);
 	</f>
 	<f main>
-		int ret = -1;
-		ret = <call bofs_split>(argc,argv);
-		<f bo_file>
-			glocal int ret = -1;
-			return glocal.ret;
-		</f>
-		<f local_file>
-			return system (string_f("mv %s",path).c_str());
-		</f>
-		</call>
-		return ret;
+		glocal int ret = 0;
+		vector<BO_ARGTYPE> args;
+		if (bofs_checkargs (*glocal.ctx, argc, argv, args)==-1){
+			glocal.ret = -1;
+		}else{
+			if (args.size() != 2){
+				tlmp_error ("bofs mv: Accepts only two arguments\n");
+				glocal.ret = -1;
+			}else{
+				BO_SOURCE src0 = args[0].source;
+				if (src0 != args[1].source){
+					tlmp_error ("bofs mv: Can't mv file across different filesystems\n");
+					glocal.ret = -1;
+				}else{
+					const char *path0 = args[0].path.c_str();
+					const char *path1 = args[1].path.c_str();
+					if (src0 == LOCAL_ENTRY){
+						glocal.ret = system (string_f ("mv %s %s",path0,path1).c_str());
+					}else if (src0 == BO_ENTRY){
+						<call bod_client_rename> (glocal.ctx->con,glocal.ctx->sessionid,path0,path1);
+						<f ok>
+							if (!success){
+								glocal.ret = -1;
+								tlmp_error ("bofs mv: %s\n",msg);
+							}
+						</f>
+						</call>
+					}else{
+						glocal.ret = -1;
+					}
+				}
+			}
+		}
+		return glocal.ret;
 	</f>
 	</call>
 	return glocal.ret;
