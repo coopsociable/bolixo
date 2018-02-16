@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/time.h>
+#include <sys/stat.h>
 #include <tlmplib.h>
 #include <tlmpsql.h>
 #include <string>
@@ -249,6 +250,15 @@ FILE *fs_alloc_file_handle (int fileid, PARAM_STRING modified, const char *mode,
 	}
 	return ret;
 }
+long fs_get_filesize (int fileid, PARAM_STRING modified)
+{
+	long ret = -1;
+	string path = fs_createpath (fileid,modified);
+	struct stat64 st;
+	if (stat64(path.c_str(),&st)!=-1) ret = st.st_size;
+	return ret;
+}
+
 FILE *fs_get_file (const std::string &handle, const char *sessionid)
 {
 	FILE *ret = NULL;

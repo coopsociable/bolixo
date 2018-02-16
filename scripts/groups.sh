@@ -40,6 +40,17 @@ elif [ "$1" = "access" ] ; then
 			select * from group_list_members join group_members on group_list_members.groupid = group_members.groupid where group_list_members.group_list_id=$2 and userid=$3; 
 		EOF
 	fi
+elif [ "$1" = "member" ] ; then
+	if [ "$2" = "" ] ; then
+		echo groups.sh member userid
+		exit 1
+	else
+		./test.sh files <<-EOF
+			select * from group_members join group_list_members on group_list_members.groupid = group_members.groupid
+				join group_lists on group_list_members.group_list_id=group_lists.id
+				where group_members.userid = $2; 
+		EOF
+	fi
 else
 	echo reset print or config
 fi

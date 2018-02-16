@@ -34,12 +34,17 @@ struct HANDLE_INFO: public ARRAY_OBJ{
 struct DIRENTRY{
 	std::string modified;
 	char type;
-	DIRENTRY (const char *_modified, char _type){
+	std::string owner;
+	unsigned size;
+	DIRENTRY (const char *_modified, char _type, const char *_owner, unsigned _size){
 		modified = _modified;
 		type = _type;
+		owner = _owner;
+		size = _size;
 	}
 	DIRENTRY(){
 		type = '_';
+		size = 0;
 	}
 };
 
@@ -396,23 +401,43 @@ static int trlid_main (
 				glocal vector<string> entries;
 				glocal vector<unsigned> types;
 				glocal vector<string> modified;
+				glocal vector<string> owners;
+				glocal vector<unsigned> sizes;
 				glocal map<string,DIRENTRY> mp;
 				glocal bool history = history;
 				if (bod_findentry (glocal.con_sess,sessionid,name,entry,threshold)==-1){
-					rep_listdir (false,entry.msg,glocal.entries,glocal.types,glocal.modified);
+					rep_listdir (false,entry.msg,glocal.entries,glocal.types,glocal.modified,glocal.owners,glocal.sizes);
 				}else if (entry.type != 'D'){
-					rep_listdir (false,"Is not a directory",glocal.entries,glocal.types,glocal.modified);
+					rep_listdir (false,"Is not a directory",glocal.entries,glocal.types,glocal.modified,glocal.owners,glocal.sizes);
 				}else{
 					if (threshold[0] == '\0') threshold = "3000/01/01 00:00:00";
-					<call sql_query>("select name,modified,type from dirs_content where dirid=%d and modified <= '%s' order by modified"
+					<call sql_query>("select dirs_content.name,dirs_content.modified,type,id2name.name,length(files.content),dirs_content.itemid"
+						" from dirs_content"
+						" join ids on dirs_content.itemid=ids.id"
+						" join id2name on ids.ownerid=id2name.userid"
+						" left join files on dirs_content.itemid=files.id and dirs_content.modified=files.modified"
+						" where dirid=%d and dirs_content.modified <= '%s' order by modified"
 						,entry.entryid,threshold);
 					<f onerow>
+						const char *name = row[0];
+						const char *modified = row[1];
+						char type = row[2][0];
+						const char *owner = row[3];
+						unsigned size=0;
+						if (row[4] != NULL){
+							size = atoi(row[4]);
+						}else if (type == 'F'){
+							// Content stored as a file
+							size = fs_get_filesize(atoi(row[5]),modified);
+						}
 						if (glocal.history){
-							glocal.entries.push_back (row[0]);
-							glocal.modified.push_back (row[1]);
-							glocal.types.push_back(row[2][0]);
+							glocal.entries.push_back (name);
+							glocal.modified.push_back (modified);
+							glocal.types.push_back(type);
+							glocal.owners.push_back(owner);
+							glocal.sizes.push_back(size);
 						}else{
-							glocal.mp[row[0]] = DIRENTRY(row[1],row[2][0]);
+							glocal.mp[name] = DIRENTRY(modified,type,owner,size);
 						}
 					</f>
 					</call>
@@ -422,10 +447,12 @@ static int trlid_main (
 								glocal.entries.push_back(x.first);
 								glocal.types.push_back(x.second.type);
 								glocal.modified.push_back(x.second.modified);
+								glocal.owners.push_back(x.second.owner);
+								glocal.sizes.push_back(x.second.size);
 							}
 						}
 					}
-					rep_listdir (true,"",glocal.entries,glocal.types,glocal.modified);
+					rep_listdir (true,"",glocal.entries,glocal.types,glocal.modified,glocal.owners,glocal.sizes);
 				}
 			</f>
 			<f invalid>
