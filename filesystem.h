@@ -1,9 +1,11 @@
 struct ENTRY {
 	unsigned userid;
+	bool is_admin;
 	std::string basename;
 	int dirid;
 	int entryid;
 	unsigned ownerid;
+	unsigned group_list_id;
 	char type;
 	std::string modified;
 	std::string msg;

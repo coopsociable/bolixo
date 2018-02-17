@@ -487,7 +487,7 @@ elif [ "$1" = "test-sequence" ] ; then # S: Reloads database (big,medium,real,no
 		$0 test-adduser $user
 	done
 	echo "Make user admin administrator"
-	$0 bo-writed-control makeadmin admin@truelies.news 1
+	$0 bo-writed-control makeadmin admin@bolixo.org 1
 	echo ==== admin
 	$0 test-deleteuser D
 	$0 test-deleteuser E

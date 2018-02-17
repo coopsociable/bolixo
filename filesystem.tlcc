@@ -63,13 +63,14 @@ string fs_makeid (int noproc)
 	return ret;
 }	
 <mod>
-static int fs_locate_entry (int dirid, PARAM_STRING fname, char &type, string &modified, unsigned &ownerid, const char *threshold)
+static int fs_locate_entry (int dirid, PARAM_STRING fname, char &type, string &modified, unsigned &ownerid, unsigned &group_list_id, const char *threshold)
 {
 	glocal int ret = -1;
 	glocal char type='_';
 	glocal unsigned ownerid=(unsigned)-1;
+	glocal unsigned group_list_id=(unsigned)-1;
 	glocal string *modified = &modified;
-	<call sql_query>("select itemid,type,modified,ownerid from dirs_content"
+	<call sql_query>("select itemid,type,modified,ownerid,group_list_id from dirs_content"
 		" join ids on dirs_content.itemid=ids.id"
 		" where dirid=%d and name='%s' and modified <= '%s' order by modified desc limit 1"
 		,dirid,fname.ptr,threshold);
@@ -80,18 +81,42 @@ static int fs_locate_entry (int dirid, PARAM_STRING fname, char &type, string &m
 			glocal.type = type;
 			(*glocal.modified)=row[2];
 			glocal.ownerid = atoi(row[3]);
+			glocal.group_list_id = row[4] != NULL ? atoi(row[4]) : (unsigned)-1;
 		}
 	</f>
 	</call>
 	type = glocal.type;
 	ownerid = glocal.ownerid;
+	group_list_id = glocal.group_list_id;
+	return glocal.ret;
+}
+</mod>
+
+<mod>
+static bool fs_check_access(unsigned userid, unsigned ownerid, unsigned group_list_id, bool is_admin)
+{
+	glocal bool ret = false;
+	if (is_admin){
+		glocal.ret = true;
+	}else if (userid == ownerid){
+		glocal.ret = true;
+	}else if (group_list_id != (unsigned)-1){
+		<call sql_query>("select 1 from group_list_members"
+			" join group_members on group_list_members.groupid = group_members.groupid"
+			" where group_list_members.group_list_id=%u and userid=%u limit 1"
+			,group_list_id,userid);
+		<f onerow>
+			glocal.ret = true;
+		</f>
+		</call>
+	}
 	return glocal.ret;
 }
 </mod>
 /*
 	Locate a directory and retuns its id
 */
-static int fs_locate_dir (vector<string> &tb, unsigned userid, string &msg, const char *threshold)
+static int fs_locate_dir (vector<string> &tb, unsigned userid, bool is_admin, string &msg, const char *threshold)
 {
 	int ret = -1;
 	if (tb.size()==0){
@@ -104,8 +129,8 @@ static int fs_locate_dir (vector<string> &tb, unsigned userid, string &msg, cons
 			tmp += string("/") + d;
 			char type;
 			string modified;
-			unsigned ownerid;
-			int dirid = fs_locate_entry (parentid,d,type,modified,ownerid,threshold);
+			unsigned ownerid,group_list_id;
+			int dirid = fs_locate_entry (parentid,d,type,modified,ownerid,group_list_id,threshold);
 			if (dirid == -1){
 				msg = string_f ("%s does not exist",tmp.c_str());
 				ret = -1;
@@ -114,7 +139,7 @@ static int fs_locate_dir (vector<string> &tb, unsigned userid, string &msg, cons
 				msg = string_f ("%s is not a directory",tmp.c_str());
 				ret = -1;
 				break;
-			}else if (ownerid != userid){
+			}else if (!fs_check_access(userid,ownerid,group_list_id,is_admin)){
 				msg = string_f ("Access denied to directory %s",tmp.c_str());
 				ret = -1;
 				break;
@@ -168,10 +193,10 @@ int fs_findentry (const char *name, ENTRY &entry, bool expect_exist, const char 
 	}else if (fs_parse_fname (name,parents,entry.basename) == -1){
 		entry.msg = "Invalid name";
 	}else{
-		entry.dirid = fs_locate_dir (parents,entry.userid,entry.msg,threshold);
+		entry.dirid = fs_locate_dir (parents,entry.userid,entry.is_admin,entry.msg,threshold);
 		if (entry.dirid != -1){
 			const char *fname = entry.basename.c_str();
-			entry.entryid = fs_locate_entry (entry.dirid,fname,entry.type,entry.modified,entry.ownerid,threshold);
+			entry.entryid = fs_locate_entry (entry.dirid,fname,entry.type,entry.modified,entry.ownerid,entry.group_list_id,threshold);
 			if (entry.entryid == -1){
 				if (expect_exist){
 					entry.msg = "Entry with that name does exist";
@@ -180,7 +205,7 @@ int fs_findentry (const char *name, ENTRY &entry, bool expect_exist, const char 
 				}
 			}else if (!expect_exist){
 				entry.msg = "Entry with that name exist";
-			}else if (entry.userid != entry.ownerid){
+			}else if (!fs_check_access(entry.userid,entry.ownerid,entry.group_list_id,entry.is_admin)){
 				entry.msg = "Not allowed";
 			}else{
 				ret = 0;

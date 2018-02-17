@@ -64,26 +64,29 @@ using namespace std;
 	Get the userid associated with the sessionid
 */
 <mod>
-static unsigned trli_getsessionuser (CONNECT_INFO &con, const char *sessionid)
+static unsigned trli_getsessionuser (CONNECT_INFO &con, const char *sessionid, bool &is_admin)
 {
 	glocal unsigned userid = 0;
+	glocal bool is_admin = false;
 	//long long start = fdpass_getnow();
 	//for (int i=0; i<10000; i++){
 	<call bo_sessiond_client_getsessioninfo>(con,sessionid);
 	<f ok>
 		glocal.userid = userid;
+		glocal.is_admin = admin;
 	</f>
 	</call>
 	//}
 	//long long end = fdpass_getnow();
 	//printf ("exec time = %lf\n",(end-start)/1000000.0);
+	is_admin = glocal.is_admin;
 	return glocal.userid;
 }
 </mod>
 static int bod_findentry (CONNECT_INFO &con, const char *sessionid, const char *name, ENTRY &entry, const char *threshold)
 {
 	int ret = -1;
-	entry.userid = trli_getsessionuser(con,sessionid);
+	entry.userid = trli_getsessionuser(con,sessionid,entry.is_admin);
 	if (entry.userid == 0){
 		entry.msg = "Invalid session";
 	}else{
@@ -377,7 +380,8 @@ static int trlid_main (
 				}
 			</f>
 			<f readmore>	// sessionid handle = success:b msg content:o more:b
-				if (trli_getsessionuser(glocal.con_sess,sessionid)==0){
+				bool is_admin;
+				if (trli_getsessionuser(glocal.con_sess,sessionid,is_admin)==0){
 					rep_readmore (false,"Invalid session",BOB_TYPE(),false);
 				}else{
 					FILE *fin = fs_get_file (handle,sessionid);
