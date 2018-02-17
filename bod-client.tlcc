@@ -142,6 +142,14 @@ int main (int argc, char *argv[])
 	glocal const char *testcopy = NULL;
 	glocal const char *testreadfile = NULL;
 	glocal const char *testreadfile_bob = NULL;
+	glocal const char *testcreate_group_list = NULL;
+	glocal const char *testdelete_group_list = NULL;
+	glocal const char *testprint_group_lists = NULL;
+	glocal const char *testcreate_group = NULL;
+	glocal const char *testdelete_group = NULL;
+	glocal const char *testprint_groups = NULL;
+	glocal const char *testset_group = NULL;
+	glocal const char *testset_member = NULL;
 	glocal bool testsystem = false;
 	glocal bool testcreatesessions = false;
 	glocal const char *exec1 = NULL;
@@ -153,6 +161,8 @@ int main (int argc, char *argv[])
 	glocal int nbrows = 10;
 	glocal const char *extra = "";
 	glocal const char *extra2 = "";
+	glocal const char *extra3 = "";
+	glocal const char *extra4 = "";
 	glocal bool idonly = false;
 	glocal const char *loaduserfile = NULL;
 	glocal.ret = <call tlmpprogram>(argc,argv);
@@ -200,12 +210,22 @@ int main (int argc, char *argv[])
 		setarg (' ',"testreadfile_bob","Read a file",glocal.testreadfile_bob,false);
 		setarg (' ',"testrename","Rename a file or directory",glocal.testrename,false);
 		setarg (' ',"testcopy","Copy a file or directory",glocal.testcopy,false);
+		setarg (' ',"testcreate_group_list","Create a list of groups",glocal.testcreate_group_list,false);
+		setarg (' ',"testcreate_group","Create a group",glocal.testcreate_group,false);
+		setarg (' ',"testdelete_group_list","Create a list of groups",glocal.testdelete_group_list,false);
+		setarg (' ',"testdelete_group","Create a group",glocal.testdelete_group,false);
+		setarg (' ',"testprint_group_lists","Print list of groups",glocal.testprint_group_lists,false);
+		setarg (' ',"testprint_groups","Print groups",glocal.testprint_groups,false);
+		setarg (' ',"testset_group","Add or configure a group in a list",glocal.testset_group,false);
+		setarg (' ',"testset_member","Add or configure a member of a group",glocal.testset_member,false);
 		setgrouparg ("Test parameters");
 		setarg (' ',"workers","Test concurent access",glocal.workers,false);
 		setarg (' ',"nbrep","Number of repetition per worker",glocal.nbrep,false);
 		setarg (' ',"nbrows","Number of rows requested",glocal.nbrows,false);
 		setarg (' ',"extra","Extra string when adding something",glocal.extra,false);
 		setarg (' ',"extra2","Extra second string when adding something",glocal.extra2,false);
+		setarg (' ',"extra3","Extra second string when adding something",glocal.extra3,false);
+		setarg (' ',"extra4","Extra second string when adding something",glocal.extra4,false);
 		setarg (' ',"idonly","Shows only ID when listing records",glocal.idonly,false);
 	</f>
 	<f main_noarg>
@@ -615,6 +635,104 @@ int main (int argc, char *argv[])
 			if (sessionid.size() > 0){
 				printf ("\tname=%s\n",glocal.extra);
 				<call bod_client_rmdir> (glocal.con_cli,sessionid,glocal.extra);
+				<f ok>
+					printf ("\tsuccess=%d msg=%s\n",success,msg);
+				</f>
+				</call>
+				bod_logout (glocal.con_cli,sessionid);
+			}
+		}else if (glocal.testcreate_group_list != NULL){
+			printf ("create_group_list %s extra=%s extra2=%s\n",glocal.testcreate_group_list,glocal.extra,glocal.extra2);
+			string sessionid = bod_login (glocal.con_cli,glocal.testcreate_group_list);
+			if (sessionid.size() > 0){
+				printf ("\tlistname=%s owner=%s\n",glocal.extra,glocal.extra2);
+				<call bod_client_create_group_list> (glocal.con_cli,sessionid,glocal.extra,glocal.extra2);
+				<f ok>
+					printf ("\tsuccess=%d msg=%s\n",success,msg);
+				</f>
+				</call>
+				bod_logout (glocal.con_cli,sessionid);
+			}
+		}else if (glocal.testdelete_group_list != NULL){
+			printf ("delete_group_list %s extra=%s extra2=%s\n",glocal.testcreate_group_list,glocal.extra,glocal.extra2);
+			string sessionid = bod_login (glocal.con_cli,glocal.testdelete_group_list);
+			if (sessionid.size() > 0){
+				printf ("\tlistname=%s owner=%s\n",glocal.extra,glocal.extra2);
+				<call bod_client_delete_list> (glocal.con_cli,sessionid,glocal.extra,glocal.extra2);
+				<f ok>
+					printf ("\tsuccess=%d msg=%s\n",success,msg);
+				</f>
+				</call>
+				bod_logout (glocal.con_cli,sessionid);
+			}
+		}else if (glocal.testprint_group_lists != NULL){
+			printf ("print_group_lists %s extra=%s\n",glocal.testprint_group_lists,glocal.extra);
+			string sessionid = bod_login (glocal.con_cli,glocal.testprint_group_lists);
+			if (sessionid.size() > 0){
+				printf ("\towner=%s\n",glocal.extra);
+				<call bod_client_list_lists> (glocal.con_cli,sessionid,glocal.extra);
+				<f ok>
+					printf ("\tsuccess=%d msg=%s\n",success,msg);
+				</f>
+				</call>
+				bod_logout (glocal.con_cli,sessionid);
+			}
+		}else if (glocal.testcreate_group != NULL){
+			printf ("create_group %s extra=%s extra2=%s\n",glocal.testcreate_group,glocal.extra,glocal.extra2);
+			string sessionid = bod_login (glocal.con_cli,glocal.testcreate_group);
+			if (sessionid.size() > 0){
+				printf ("\tgroupname=%s owner=%s\n",glocal.extra,glocal.extra2);
+				<call bod_client_create_group> (glocal.con_cli,sessionid,glocal.extra,glocal.extra2);
+				<f ok>
+					printf ("\tsuccess=%d msg=%s\n",success,msg);
+				</f>
+				</call>
+				bod_logout (glocal.con_cli,sessionid);
+			}
+		}else if (glocal.testdelete_group != NULL){
+			printf ("delete_group %s extra=%s extra2=%s\n",glocal.testdelete_group,glocal.extra,glocal.extra2);
+			string sessionid = bod_login (glocal.con_cli,glocal.testcreate_group);
+			if (sessionid.size() > 0){
+				printf ("\tgroupname=%s owner=%s\n",glocal.extra,glocal.extra2);
+				<call bod_client_delete_group> (glocal.con_cli,sessionid,glocal.extra,glocal.extra2);
+				<f ok>
+					printf ("\tsuccess=%d msg=%s\n",success,msg);
+				</f>
+				</call>
+				bod_logout (glocal.con_cli,sessionid);
+			}
+		}else if (glocal.testprint_groups != NULL){
+			printf ("list_groups %s extra=%s\n",glocal.testprint_groups,glocal.extra);
+			string sessionid = bod_login (glocal.con_cli,glocal.testprint_groups);
+			if (sessionid.size() > 0){
+				printf ("\towner=%s\n",glocal.extra);
+				<call bod_client_list_groups> (glocal.con_cli,sessionid,glocal.extra);
+				<f ok>
+					printf ("\tsuccess=%d msg=%s\n",success,msg);
+				</f>
+				</call>
+				bod_logout (glocal.con_cli,sessionid);
+			}
+		}else if (glocal.testset_group != NULL){
+			printf ("set_group %s extra=%s extra2=%s extra3=%s extra4=%s\n",glocal.testset_group
+				,glocal.extra,glocal.extra2,glocal.extra3,glocal.extra4);
+			string sessionid = bod_login (glocal.con_cli,glocal.testset_group);
+			if (sessionid.size() > 0){
+				printf ("\tlistname=%s groupname=%s defaultaccess=%s owner=%s\n",glocal.extra,glocal.extra2,glocal.extra3,glocal.extra4);
+				<call bod_client_set_group> (glocal.con_cli,sessionid,glocal.extra,glocal.extra2,glocal.extra3,glocal.extra4);
+				<f ok>
+					printf ("\tsuccess=%d msg=%s\n",success,msg);
+				</f>
+				</call>
+				bod_logout (glocal.con_cli,sessionid);
+			}
+		}else if (glocal.testset_member != NULL){
+			printf ("set_member %s extra=%s extra2=%s extra3=%s extra4=%s\n",glocal.testset_member
+				,glocal.extra,glocal.extra2,glocal.extra3,glocal.extra4);
+			string sessionid = bod_login (glocal.con_cli,glocal.testset_member);
+			if (sessionid.size() > 0){
+				printf ("\tgroupname=%s user=%s defaultaccess=%s owner=%s\n",glocal.extra,glocal.extra2,glocal.extra3,glocal.extra4);
+				<call bod_client_set_member> (glocal.con_cli,sessionid,glocal.extra,glocal.extra2,glocal.extra3,glocal.extra4);
 				<f ok>
 					printf ("\tsuccess=%d msg=%s\n",success,msg);
 				</f>

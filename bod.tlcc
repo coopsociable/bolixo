@@ -94,6 +94,33 @@ static int bod_findentry (CONNECT_INFO &con, const char *sessionid, const char *
 	}
 	return ret;
 }
+/*
+	Identify the userid who will perform some group administration.
+	Normally, user are only allowed to work on list they own.
+	But administrator can work on behalf of another user. The parameter "owner" is the other user.
+	For normal user, this parameter is ignored.
+
+	Return 0 if not a valid userid (sessionid is invalid)
+*/
+<mod>
+static unsigned bo_writed_get_group_owner (CONNECT_INFO &con, const char *sessionid, const char *owner, string &msg)
+{
+	bool is_admin;
+	glocal unsigned userid = trli_getsessionuser (con,sessionid,is_admin);
+	if (is_admin && owner[0] != '\0'){
+		<call sql_query>("select userid from id2name where name='%s'",owner);
+		<f onerow>
+			glocal.userid = atoi(row[0]);
+		</f>
+		<f empty>
+			glocal.userid = 0;
+		</f>
+		</call>
+		if (glocal.userid == 0) msg = "Unknown owner";
+	}
+	return glocal.userid;
+}
+</mod>
 <mod>
 static int trlid_main (
 	const char *bind,
@@ -458,6 +485,130 @@ static int trlid_main (
 					}
 					rep_listdir (true,"",glocal.entries,glocal.types,glocal.modified,glocal.owners,glocal.sizes);
 				}
+			</f>
+			<f create_group_list> // sessionid listname owner = success:b msg
+				<call bo_writed_client_create_group_list>(glocal.con,sessionid,listname,owner);
+				<f ok>
+					glocal.bod_client.rep_create_group_list(success,msg);
+				</f>
+				</call>
+			</f>
+			<f create_group> // sessionid groupname owner = success:b msg
+				<call bo_writed_client_create_group>(glocal.con,sessionid,groupname,owner);
+				<f ok>
+					glocal.bod_client.rep_create_group(success,msg);
+				</f>
+				</call>
+			</f>
+			<f set_group>	// sessionid listname groupname defaultaccess owner = success:b msg
+				<call bo_writed_client_set_group>(glocal.con,sessionid,listname,groupname,defaultaccess,owner);
+				<f ok>
+					glocal.bod_client.rep_set_group(success,msg);
+				</f>
+				</call>
+			</f>
+			<f set_member>	// sessionid groupname user defaultaccess owner = success:b msg
+				<call bo_writed_client_set_member>(glocal.con,sessionid,groupname,user,access,owner);
+				<f ok>
+					glocal.bod_client.rep_set_member(success,msg);
+				</f>
+				</call>
+			</f>
+			<f delete_list>	// sessionid listname owner = success:b msg
+				<call bo_writed_client_delete_list>(glocal.con,sessionid,listname,owner);
+				<f ok>
+					glocal.bod_client.rep_delete_list(success,msg);
+				</f>
+				</call>
+			</f>
+			<f delete_group> // sessionid groupname owner = success:b msg
+				<call bo_writed_client_delete_group>(glocal.con,sessionid,groupname,owner);
+				<f ok>
+					glocal.bod_client.rep_delete_group(success,msg);
+				</f>
+				</call>
+			</f>
+			<f list_lists>	//  sessionid owner = success:b msg lists:v groups:vv access:v
+				glocal string msg = "Invalid session";
+				glocal vector<string> lists;
+				glocal vector<vector<string>> groups;
+				glocal vector<vector<string>> access;
+				unsigned userid = bo_writed_get_group_owner (glocal.con_sess, sessionid, owner, glocal.msg);
+				if (userid != 0){
+					glocal string last_list;
+					<call sql_query>("select group_lists.name,groups.name,group_list_members.defaultaccess"
+						" from group_lists"
+						" left join group_list_members on group_lists.id=group_list_members.group_list_id"
+						" left join groups on group_list_members.groupid=groups.id"
+						" where group_lists.ownerid=%u",userid);
+					<f onerow>
+						if (strcmp(glocal.last_list.c_str(),row[0])!=0){
+							glocal.last_list = row[0];
+							glocal.lists.push_back(glocal.last_list);
+							glocal.groups.push_back(vector<string>());
+							glocal.access.push_back(vector<string>());
+						}
+						if (row[1] != NULL && row[2] != NULL){
+							unsigned last = glocal.groups.size()-1;
+							glocal.groups[last].push_back(row[1]);
+							glocal.access[last].push_back(row[2]);
+						}
+						glocal.msg = "";
+					</f>
+					<f empty>
+						glocal.msg = "No list";
+					</f>
+					</call>
+				}
+				bool ret = true;
+				if (glocal.msg.size() > 0){
+					ret = false;
+					glocal.lists.clear();
+					glocal.groups.clear();
+					glocal.access.clear();
+				}
+				rep_list_lists (ret,glocal.msg,glocal.lists,glocal.groups,glocal.access);
+			</f>
+			<f list_groups>	// sessionid owner = success:b msg groups:v users:vv access:vv
+				glocal string msg = "Invalid session";
+				glocal vector<string> groups;
+				glocal vector<vector<string>> users;
+				glocal vector<vector<string>> access;
+				unsigned userid = bo_writed_get_group_owner (glocal.con_sess, sessionid, owner, glocal.msg);
+				if (userid != 0){
+					glocal string last_group;
+					<call sql_query>("select groups.name,id2name.name,group_members.access"
+						" from groups"
+						" left join group_members on groups.id=group_members.groupid"
+						" left join id2name on group_members.userid=id2name.userid"
+						" where groups.ownerid=%u",userid);
+					<f onerow>
+						if (strcmp(glocal.last_group.c_str(),row[0])!=0){
+							glocal.last_group = row[0];
+							glocal.groups.push_back(glocal.last_group);
+							glocal.users.push_back(vector<string>());
+							glocal.access.push_back(vector<string>());
+						}
+						if (row[1] != NULL && row[2] != NULL){
+							unsigned last = glocal.groups.size()-1;
+							glocal.users[last].push_back(row[1]);
+							glocal.access[last].push_back(row[2]);
+						}
+						glocal.msg = "";
+					</f>
+					<f empty>
+						glocal.msg = "No list";
+					</f>
+					</call>
+				}
+				bool ret = true;
+				if (glocal.msg.size() > 0){
+					ret = false;
+					glocal.groups.clear();
+					glocal.users.clear();
+					glocal.access.clear();
+				}
+				rep_list_groups (ret,glocal.msg,glocal.groups,glocal.users,glocal.access);
 			</f>
 			<f invalid>
 				tlmp_error ("CLIENT: Invalid command: %s\n",line);

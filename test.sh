@@ -330,20 +330,26 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 		create index dirs_content on dirs_content (dirid);
 		create table groups (
 			id int primary key auto_increment,
+			ownerid int,
 			name varchar(100)
 		);
+		create unique index groups_owner on groups(ownerid,name);
 		create table group_members(
 			groupid int,
-			userid int
+			userid int,
+			access char
 		);
 		create index group_members_id on group_members (groupid);
 		create table group_lists(
 			id int primary key auto_increment,
+			ownerid int,
 			name varchar(100)
 		);
+		create unique index group_lists_owner on group_lists(ownerid,name);
 		create table group_list_members(
 			group_list_id int,
-			groupid int
+			groupid int,
+			defaultaccess char
 		);
 		create index group_list_members_id on group_list_members(group_list_id);
 			
@@ -592,6 +598,34 @@ elif [ "$1" = "test-delfile" ] ; then # T: Remove one file (letter dir suffix)
 		exit 1
 	fi
 	$0 bod-client --testdelfile "$1" --extra "$2" --extra2 "$3"
+elif [ "$1" = "test-create_group_list" ] ; then # T: Create a group list (letter listname [ owner ] )
+	shift
+	if [ "$2" == "" ]; then
+		echo test-create_group_list letter listname [ owner ]
+		exit 1
+	fi
+	$0 bod-client --testcreate_group_list "$1" --extra "$2" --extra2 "$3"
+elif [ "$1" = "test-create_group" ] ; then # T: Create a group (letter groupname [ owner ] )
+	shift
+	if [ "$2" == "" ]; then
+		echo test-create_group letter groupname [ owner ]
+		exit 1
+	fi
+	$0 bod-client --testcreate_group "$1" --extra "$2" --extra2 "$3"
+elif [ "$1" = "test-set_group" ] ; then # T: Put a group into a list (letter listname groupname defaultaccess [ owner ] )
+	shift
+	if [ "$4" == "" ]; then
+		echo test-set_group letter listname groupname defaultaccess [ owner ]
+		exit 1
+	fi
+	$0 bod-client --testset_group "$1" --extra "$2" --extra2 "$3" --extra3 "$4" --extra4 "$5"
+elif [ "$1" = "test-set_member" ] ; then # T: Put a user into a group (letter groupname user access [ owner ] )
+	shift
+	if [ "$4" == "" ]; then
+		echo test-set_member letter groupname user access [ owner ]
+		exit 1
+	fi
+	$0 bod-client --testset_member "$1" --extra "$2" --extra2 "$3" --extra3 "$4" --extra4 "$5"
 elif [ "$1" = "createsqlusers" ] ; then # db: Generates SQL to create users
 	TRLISQL=/tmp/files.sql
 	USERSQL=/tmp/users.sql

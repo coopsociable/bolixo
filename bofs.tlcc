@@ -766,6 +766,206 @@ static int bofs_rmdir (CONTEXT &ctx, int argc, char *argv[])
 </mod>
 
 
+<mod>
+static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
+{
+        glocal CONTEXT *ctx = &ctx;
+	glocal bool create_group_list = false;
+	glocal bool create_group = false;
+	glocal bool set_group = false;
+	glocal bool set_member = false;
+
+	glocal bool delete_list = false;
+	glocal bool delete_group = false;
+
+	glocal bool print_lists = false;
+	glocal bool print_groups = false;
+
+	glocal const char *listname = NULL;
+	glocal const char *groupname = NULL;
+	glocal const char *access = "R";
+	glocal const char *user = NULL;
+
+	glocal const char *owner = "";
+        int ret = <call tlmpprogram>(argc,argv);
+        <f init>
+		setproginfo ("bogroups",VERSION
+			,"Command line tool to configure bolixo groups and group lists\n"
+			 "\n"
+			 "bofs config ...\n"
+			);
+		setgrouparg ("Commands");
+		setarg ('g',"create-group","Create a group of users",glocal.create_group,false);
+		setarg ('l',"create-group-list","Create a list of groups",glocal.create_group_list,false);
+		setarg ('s',"set-group","Configure a group as a member of a list",glocal.set_group,false);
+		setarg ('m',"set-member","Configure a user a a member of a group",glocal.set_member,false);
+		setgrouparg ("Deletion");
+		setarg (' ',"delete-list","Delete one list",glocal.delete_list,false);
+		setarg (' ',"delete-group","Delete one group",glocal.delete_group,false);
+		setgrouparg ("Print");
+		setarg (' ',"print-lists","Print the content of a list",glocal.print_lists,false);
+		setarg (' ',"print-groups","Print the content of a group",glocal.print_groups,false);
+		setgrouparg ("Arguments");
+		setarg ('L',"listname","List name",glocal.listname,false);
+		setarg ('G',"groupname","Group name",glocal.groupname,false);
+		setarg ('U',"user","User/member of a group",glocal.user,false);
+		setarg ('A',"access","Access or default access",glocal.access,false);
+	</f>
+	<f main_noarg>
+		glocal int ret = -1;
+		if (glocal.create_group_list){
+			if (glocal.listname == NULL){
+				tlmp_error ("You must specify the list name\n");
+			}else{
+				<call bod_client_create_group_list> (glocal.ctx->con,glocal.ctx->sessionid,glocal.listname,glocal.owner);
+				<f ok>
+					if (success){
+						glocal.ret = 0;
+					}else{
+						tlmp_error ("Can't create group_list: %s\n",msg);
+					}
+				</f>
+				</call>
+			}
+		}else if (glocal.create_group){
+			if (glocal.groupname == NULL){
+				tlmp_error ("You must specify the group name\n");
+			}else{
+				<call bod_client_create_group> (glocal.ctx->con,glocal.ctx->sessionid,glocal.groupname,glocal.owner);
+				<f ok>
+					if (success){
+						glocal.ret = 0;
+					}else{
+						tlmp_error ("Can't create group: %s\n",msg);
+					}
+				</f>
+				</call>
+			}
+		}else if (glocal.set_group){
+			if (glocal.listname == NULL){
+				tlmp_error ("You must specify the list name\n");
+			}else if (glocal.groupname == NULL){
+				tlmp_error ("You must specify the group name\n");
+			}else{
+				<call bod_client_set_group> (glocal.ctx->con,glocal.ctx->sessionid,glocal.listname,glocal.groupname,glocal.access,glocal.owner);
+				<f ok>
+					if (success){
+						glocal.ret = 0;
+					}else{
+						tlmp_error ("Can't assign group to a list: %s\n",msg);
+					}
+				</f>
+				</call>
+			}
+		}else if (glocal.set_member){
+			if (glocal.groupname == NULL){
+				tlmp_error ("You must specify the group name\n");
+			}else{
+				<call bod_client_set_member> (glocal.ctx->con,glocal.ctx->sessionid,glocal.groupname,glocal.user,glocal.access,glocal.owner);
+				<f ok>
+					if (success){
+						glocal.ret = 0;
+					}else{
+						tlmp_error ("Can't assign user to a group: %s\n",msg);
+					}
+				</f>
+				</call>
+			}
+		}else if (glocal.delete_list){
+			if (glocal.listname == NULL){
+				tlmp_error ("You must specify the list name\n");
+			}else{
+				<call bod_client_delete_list> (glocal.ctx->con,glocal.ctx->sessionid,glocal.listname,glocal.owner);
+				<f ok>
+					if (success){
+						glocal.ret = 0;
+					}else{
+						tlmp_error ("Can't delete the list: %s\n",msg);
+					}
+				</f>
+				</call>
+			}
+		}else if (glocal.delete_group){
+			if (glocal.groupname == NULL){
+				tlmp_error ("You must specify the group name\n");
+			}else{
+				<call bod_client_delete_group> (glocal.ctx->con,glocal.ctx->sessionid,glocal.groupname,glocal.owner);
+				<f ok>
+					if (success){
+						glocal.ret = 0;
+					}else{
+						tlmp_error ("Can't delete the group: %s\n",msg);
+					}
+				</f>
+				</call>
+			}
+		}else if (glocal.print_lists){
+			<call bod_client_list_lists> (glocal.ctx->con,glocal.ctx->sessionid,glocal.owner);
+			<f ok>
+				if (success){
+					glocal.ret = 0;
+					for (unsigned i=0; i<lists.size(); i++){
+						const char *listname = lists[i];
+						const vector<const char *> &gs = groups[i];
+						if (gs.size() == 0){
+							printf ("%s\n",listname);
+						}else{
+							const vector<const char *> &as = access[i];
+							for (unsigned j=0; j<gs.size(); j++){
+								printf ("%s\t%s\t%s\n",listname,gs[j],as[j]);
+								listname = "     ";
+							}
+						}
+					}
+				}else{
+					tlmp_error ("Can't list lists: %s\n",msg);
+				}
+			</f>
+			</call>
+		}else if (glocal.print_groups){
+			<call bod_client_list_groups> (glocal.ctx->con,glocal.ctx->sessionid,glocal.owner);
+			<f ok>
+				if (success){
+					glocal.ret = 0;
+					for (unsigned i=0; i<groups.size(); i++){
+						const char *groupname = groups[i];
+						const vector<const char *> &us = users[i];
+						if (us.size() == 0){
+							printf ("%s\n",groupname);
+						}else{
+							const vector<const char *> &as = access[i];
+							for (unsigned j=0; j<us.size(); j++){
+								printf ("%s\t%s\t%s\n",groupname,us[j],as[j]);
+								groupname = "     ";
+							}
+						}
+					}
+				}else{
+					tlmp_error ("Can't list groups: %s\n",msg);
+				}
+			</f>
+			</call>
+		}else{
+			tlmp_error ("One of the following option must be used:\n"
+				"\t--create-group-list\n"
+				"\t--creat-group\n"
+				"\t--set_group\n"
+				"\t--set_member\n"
+				"\n"
+				"\t--delete-list\n"
+				"\t--delete-group\n"
+				"\n"
+				"\t--print-list\n"
+				"\t--print-group\n"
+				);
+			usage();
+		}
+		return glocal.ret;
+	</f>
+	</call>
+	return ret;
+}
+</mod>
 
 <mod>
 int main (int argc, char *argv[])
@@ -779,6 +979,7 @@ int main (int argc, char *argv[])
 			 "\n"
 			 "\tbofs cat ...\n"
 			 "\tbofs cp ...\n"
+			 "\tbofs groups ...\n"
 			 "\tbofs ls ...\n"
 			 "\tbofs mkdir ...\n"
 			 "\tbofs mv ...\n"
@@ -827,6 +1028,7 @@ int main (int argc, char *argv[])
 		<f missing>
 			tlmp_error ("File %s/.bofs.conf missing.\n",getenv("HOME"));
 			tlmp_error ("Create this file with the following fields:\n"
+				"\tuser:\n"
 				"\temail:\n"
 				"\tpassword:\n"
 				"\tbod_socket:\n"
@@ -852,6 +1054,8 @@ int main (int argc, char *argv[])
 				ret = bofs_mkdir (glocal.ctx,argc,argv);
 			}else if (strcmp(argv[0],"rmdir")==0){
 				ret = bofs_rmdir (glocal.ctx,argc,argv);
+			}else if (strcmp(argv[0],"groups")==0){
+				ret = bofs_groups (glocal.ctx,argc,argv);
 			}else{
 				tlmp_error ("Invalid command: %s\n",argv[0]);
 				usage();
