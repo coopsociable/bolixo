@@ -765,6 +765,11 @@ static int bofs_rmdir (CONTEXT &ctx, int argc, char *argv[])
 }
 </mod>
 
+static void bofs_maxlen (const char *s, unsigned &max_s)
+{
+	unsigned len = strlen(s);
+	if (len > max_s) max_s = len;
+}
 
 <mod>
 static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
@@ -785,6 +790,7 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 	glocal const char *groupname = NULL;
 	glocal const char *access = "R";
 	glocal const char *user = NULL;
+	glocal const char *role = "";
 
 	glocal const char *owner = "";
         int ret = <call tlmpprogram>(argc,argv);
@@ -810,6 +816,7 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 		setarg ('G',"groupname","Group name",glocal.groupname,false);
 		setarg ('U',"user","User/member of a group",glocal.user,false);
 		setarg ('A',"access","Access or default access",glocal.access,false);
+		setarg ('R',"role","(for set-member) Activity of this member",glocal.role,false);
 	</f>
 	<f main_noarg>
 		glocal int ret = -1;
@@ -861,7 +868,7 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 			if (glocal.groupname == NULL){
 				tlmp_error ("You must specify the group name\n");
 			}else{
-				<call bod_client_set_member> (glocal.ctx->con,glocal.ctx->sessionid,glocal.groupname,glocal.user,glocal.access,glocal.owner);
+				<call bod_client_set_member> (glocal.ctx->con,glocal.ctx->sessionid,glocal.groupname,glocal.user,glocal.access,glocal.role,glocal.owner);
 				<f ok>
 					if (success){
 						glocal.ret = 0;
@@ -927,16 +934,23 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 			<f ok>
 				if (success){
 					glocal.ret = 0;
-					for (unsigned i=0; i<groups.size(); i++){
-						const char *groupname = groups[i];
-						const vector<const char *> &us = users[i];
-						if (us.size() == 0){
-							printf ("%s\n",groupname);
-						}else{
-							const vector<const char *> &as = access[i];
-							for (unsigned j=0; j<us.size(); j++){
-								printf ("%s\t%s\t%s\n",groupname,us[j],as[j]);
-								groupname = "     ";
+					unsigned max_groupname = 0;
+					unsigned max_user = 0;
+					for (unsigned r=0; r<2; r++){
+						for (unsigned i=0; i<groups.size(); i++){
+							const char *groupname = groups[i];
+							bofs_maxlen (groupname,max_groupname);
+							const vector<const char *> &us = users[i];
+							if (us.size() == 0){
+								if (r > 0) printf ("%-*s\n",max_groupname,groupname);
+							}else{
+								const vector<const char *> &as = access[i];
+								const vector<const char *> &rs = roles[i];
+								for (unsigned j=0; j<us.size(); j++){
+									bofs_maxlen (us[j],max_user); 
+									if (r > 0) printf ("%-*s\t%*s\t%s\t%s\n",max_groupname,groupname,max_user,us[j],as[j],rs[j]);
+									groupname = "";
+								}
 							}
 						}
 					}

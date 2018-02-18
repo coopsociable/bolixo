@@ -508,7 +508,7 @@ static int trlid_main (
 				</call>
 			</f>
 			<f set_member>	// sessionid groupname user defaultaccess owner = success:b msg
-				<call bo_writed_client_set_member>(glocal.con,sessionid,groupname,user,access,owner);
+				<call bo_writed_client_set_member>(glocal.con,sessionid,groupname,user,access,role,owner);
 				<f ok>
 					glocal.bod_client.rep_set_member(success,msg);
 				</f>
@@ -574,10 +574,11 @@ static int trlid_main (
 				glocal vector<string> groups;
 				glocal vector<vector<string>> users;
 				glocal vector<vector<string>> access;
+				glocal vector<vector<string>> roles;
 				unsigned userid = bo_writed_get_group_owner (glocal.con_sess, sessionid, owner, glocal.msg);
 				if (userid != 0){
 					glocal string last_group;
-					<call sql_query>("select groups.name,id2name.name,group_members.access"
+					<call sql_query>("select groups.name,id2name.name,group_members.access,group_members.role"
 						" from groups"
 						" left join group_members on groups.id=group_members.groupid"
 						" left join id2name on group_members.userid=id2name.userid"
@@ -588,11 +589,15 @@ static int trlid_main (
 							glocal.groups.push_back(glocal.last_group);
 							glocal.users.push_back(vector<string>());
 							glocal.access.push_back(vector<string>());
+							glocal.roles.push_back(vector<string>());
 						}
 						if (row[1] != NULL && row[2] != NULL){
 							unsigned last = glocal.groups.size()-1;
 							glocal.users[last].push_back(row[1]);
 							glocal.access[last].push_back(row[2]);
+							const char *role = row[3];
+							if (role == NULL) role = "";
+							glocal.roles[last].push_back(role);
 						}
 						glocal.msg = "";
 					</f>
@@ -607,8 +612,9 @@ static int trlid_main (
 					glocal.groups.clear();
 					glocal.users.clear();
 					glocal.access.clear();
+					glocal.roles.clear();
 				}
-				rep_list_groups (ret,glocal.msg,glocal.groups,glocal.users,glocal.access);
+				rep_list_groups (ret,glocal.msg,glocal.groups,glocal.users,glocal.access,glocal.roles);
 			</f>
 			<f invalid>
 				tlmp_error ("CLIENT: Invalid command: %s\n",line);

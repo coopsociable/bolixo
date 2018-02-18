@@ -26,20 +26,21 @@ elif [ "$1" = "print" ] ; then
 	EOF
 elif [ "$1" = "sequence" ] ; then
 	./test.sh test-create_group_list A list1
-	./test.sh test-create_group_list admin list2 jacques-A
+	./test.sh test-create_group_list admin longlist2 jacques-A
 	./test.sh test-create_group_list B list1
 	./test.sh test-create_group_list C list1
 	./test.sh test-create_group A group1
+	./test.sh test-create_group A group-2
 	./test.sh test-create_group B group1
 	./test.sh test-create_group C group1
 
 	./test.sh test-set_group A list1 group1 R
-	./test.sh test-set_group admin list2 group1 W jacques-A
+	./test.sh test-set_group admin longlist2 group1 W jacques-A
 	./test.sh test-set_group B list1 group1 R
 	./test.sh test-set_group C list1 group1 R
 
-	./test.sh test-set_member A group1 jacques-A R
-	./test.sh test-set_member admin group1 jacques-B W jacques-A
+	./test.sh test-set_member A group1 jacques-A R dba
+	./test.sh test-set_member admin group1 jacques-B W "" jacques-A
 elif [ "$1" = "config" ] ; then
 	./test.sh files <<-EOF
 		insert into groups (id,name) values (100,'project1'), (101,'project2'), (102,'project3');

@@ -337,6 +337,7 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 		create table group_members(
 			groupid int,
 			userid int,
+			role varchar(20) default null,
 			access char
 		);
 		create index group_members_id on group_members (groupid);
@@ -619,13 +620,13 @@ elif [ "$1" = "test-set_group" ] ; then # T: Put a group into a list (letter lis
 		exit 1
 	fi
 	$0 bod-client --testset_group "$1" --extra "$2" --extra2 "$3" --extra3 "$4" --extra4 "$5"
-elif [ "$1" = "test-set_member" ] ; then # T: Put a user into a group (letter groupname user access [ owner ] )
+elif [ "$1" = "test-set_member" ] ; then # T: Put a user into a group (letter groupname user access role [ owner ] )
 	shift
 	if [ "$4" == "" ]; then
-		echo test-set_member letter groupname user access [ owner ]
+		echo test-set_member letter groupname user access [ role owner ]
 		exit 1
 	fi
-	$0 bod-client --testset_member "$1" --extra "$2" --extra2 "$3" --extra3 "$4" --extra4 "$5"
+	$0 bod-client --testset_member "$1" --extra "$2" --extra2 "$3" --extra3 "$4" --extra4 "$5" --extra5 "$6"
 elif [ "$1" = "createsqlusers" ] ; then # db: Generates SQL to create users
 	TRLISQL=/tmp/files.sql
 	USERSQL=/tmp/users.sql

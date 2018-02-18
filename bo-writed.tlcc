@@ -1087,10 +1087,12 @@ int main (int argc, char *argv[])
 						rep_create_group (false,glocal.msg);
 					}
 				</f>
-				<f set_member>		// sessionid groupname user defaultaccess owner = success:b msg
+				<f set_member>		// sessionid groupname user defaultaccess role owner = success:b msg
 					glocal string msg = "Invalid session";
 					glocal const char *groupname = groupname;
 					glocal const char *user = user;
+					//if (role[0] == '\0') role = NULL;
+					glocal const char *role = role;
 					glocal const char *access = access;
 					glocal unsigned userid = bo_writed_get_group_owner (glocal.con, sessionid, owner, glocal.msg);
 					if (strcmp(access," ")!=0
@@ -1124,9 +1126,9 @@ int main (int argc, char *argv[])
 										}else{
 											glocal.msg = "";
 										}
-									}else if (sql_action("update group_members set access='%s'"
+									}else if (sql_action("update group_members set access='%s',role='%s'"
 										" where groupid=%u and userid=%u"
-										,glocal.access,glocal.groupid,glocal.member_userid)==-1){
+										,glocal.access,glocal.role,glocal.groupid,glocal.member_userid)==-1){
 										glocal.msg = "Internal error (group_members table)";
 									}else{
 										glocal.msg = "";
@@ -1135,8 +1137,8 @@ int main (int argc, char *argv[])
 								<f empty>
 									if (glocal.access[0] == '-'){
 										glocal.msg = "User was not a member of that group";
-									}else if (sql_action("insert into group_members (groupid,userid,access) values (%u,%u,'%s')"
-										,glocal.groupid,glocal.member_userid,glocal.access)==-1){
+									}else if (sql_action("insert into group_members (groupid,userid,access,role) values (%u,%u,'%s','%s')"
+										,glocal.groupid,glocal.member_userid,glocal.access,glocal.role)==-1){
 										glocal.msg = "Internal error (group_members table)";
 									}else{
 										glocal.msg = "";
