@@ -25,22 +25,30 @@ elif [ "$1" = "print" ] ; then
 		select * from group_list_members;
 	EOF
 elif [ "$1" = "sequence" ] ; then
-	./test.sh test-create_group_list A list1
-	./test.sh test-create_group_list admin longlist2 jacques-A
-	./test.sh test-create_group_list B list1
-	./test.sh test-create_group_list C list1
-	./test.sh test-create_group A group1
-	./test.sh test-create_group A group-2
-	./test.sh test-create_group B group1
-	./test.sh test-create_group C group1
+	#./test.sh test-create_group_list A list1
+	$0 reset
+	./bofs -u jacques-A groups --create-group-list -L list1
+	./bofs -u admin     groups --create-group-list -L longlist2 --owner jacques-A
+	./bofs -u jacques-B groups --create-group-list -L list1
+	./bofs -u jacques-C groups --create-group-list -L list1
+	./bofs -u jacques-A groups --create-group -G group1
+	./bofs -u jacques-A groups --create-group -G group-2
+	./bofs -u jacques-B groups --create-group -G group1
+	./bofs -u jacques-C groups --create-group -G group1
 
-	./test.sh test-set_group A list1 group1 R
-	./test.sh test-set_group admin longlist2 group1 W jacques-A
-	./test.sh test-set_group B list1 group1 R
-	./test.sh test-set_group C list1 group1 R
+	./bofs -u jacques-A groups --set-group -L list1 -G group1 -A R
+	./bofs -u admin     groups --set-group -L longlist2 -G group1 -A W --owner jacques-A
+	./bofs -u jacques-B groups --set-group -L list1 -G group1 -A R
+	./bofs -u jacques-C groups --set-group -L list1 -G group1 -A R
 
-	./test.sh test-set_member A group1 jacques-A R dba
-	./test.sh test-set_member admin group1 jacques-B W "" jacques-A
+	./bofs -u jacques-A groups --set-member -G group1 -U jacques-A -AR -Rdba
+	./bofs -u admin     groups --set-member -G group1 -U jacques-B -AW -R "" --owner jacques-A
+	for user in jacques-A jacques-B jacques-C
+	do
+		echo "------- $user"
+		./bofs -u $user groups --print-lists
+		./bofs -u $user groups --print-groups
+	done
 elif [ "$1" = "config" ] ; then
 	./test.sh files <<-EOF
 		insert into groups (id,name) values (100,'project1'), (101,'project2'), (102,'project3');
