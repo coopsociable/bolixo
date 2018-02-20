@@ -116,7 +116,12 @@ static bool fs_check_access(unsigned userid, unsigned ownerid, unsigned group_li
 /*
 	Locate a directory and retuns its id
 */
-static int fs_locate_dir (vector<string> &tb, unsigned userid, bool is_admin, string &msg, const char *threshold)
+static int fs_locate_dir (
+	vector<string> &tb,
+	unsigned userid,	// Check access for this userid
+	bool is_admin,
+	string &msg,
+	const char *threshold)
 {
 	int ret = -1;
 	if (tb.size()==0){
@@ -179,7 +184,7 @@ static int fs_parse_fname (const char *name, vector<string> &parentdirs, string 
 int fs_findentry (const char *name, ENTRY &entry, bool expect_exist, const char *threshold)
 {
 	int ret = -1;
-	if (threshold[0] == '\0') threshold = "3000/01/01";
+	if (threshold[0] == '\0') threshold = END_OF_TIME;
 	vector<string> parents;
 	if (name[0] == '/' && name[1] == '\0'){
 		entry.dirid = 0;
@@ -301,3 +306,83 @@ void fs_delete_handle (PARAM_STRING handle)
 		handles.erase (x);
 	}
 }
+
+<mod>
+void fs_list_inboxes (unsigned userid, vector<string> &managers, vector<string> &projects, vector<string> &roles)
+{
+	glocal vector<string> *managers = &managers;
+	glocal vector<string> *projects = &projects;
+	glocal vector<string> *roles = &roles;
+	managers.push_back("");
+	projects.push_back("inbox");
+	roles.push_back("");
+	<call sql_query>("select id2name.name,group_lists.name,group_members.role"
+		" from group_members"
+		" join group_list_members on group_list_members.groupid = group_members.groupid"
+		" join group_lists on group_list_members.group_list_id=group_lists.id"
+		" join id2name on group_lists.ownerid=id2name.userid"
+		" where group_members.userid = %u",userid);
+	<f onerow>
+		glocal.managers->push_back(row[0]);
+		glocal.projects->push_back(row[1]);
+		glocal.roles->push_back(row[2]);
+	</f>
+	</call>
+}
+</mod>
+
+/*
+	Initialise now with the current date and time
+*/
+void fs_set_now (char now[20])
+{
+	fdpass_asctime(time(NULL),now);
+}
+
+/*
+	Allocate a new entry in table ids.
+*/
+int fs_newid (unsigned userid, int noproc, string &msg, string &uuid)
+{
+	int ret = -1;
+	uuid = fs_makeid(noproc);
+	if (sql_action("insert into ids (ownerid,uuid) values (%u,'%s')",userid,uuid.c_str())==-1){
+		msg = "Internal error (ids table)";
+	}else{
+		ret = sql_getlastid();
+	}
+	return ret;
+}
+int fs_newid (unsigned userid, int noproc, string &msg)
+{
+	string uuid;
+	return fs_newid (userid,noproc,msg,uuid);
+}
+/*
+	Find the directory ID of the inbox for this user.
+	The directory is created as needed.
+*/
+<mod>
+unsigned fs_find_inbox (unsigned ownerid, const char *name, int noproc, string &msg)
+{
+	vector<string> dirs = {"msgs",name};
+	int dirid = fs_locate_dir (dirs,ownerid,true,msg,END_OF_TIME);
+	if (dirid == -1){
+		// We have to create the inbox for this user
+		vector<string> dirs0 = {"msgs"};
+		int parentid = fs_locate_dir (dirs0,ownerid,true,msg,END_OF_TIME);
+		if (parentid != -1){
+			dirid = fs_newid (ownerid,noproc,msg);
+			if (dirid != -1){
+				char now[20];
+				fs_set_now(now);
+				if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,'%s','D','%s')"
+					,parentid,dirid,now,name)==-1){
+					msg = "Internal error (dirs_content table)";
+				}
+			}
+		}
+	}
+	return dirid;
+}
+</mod>

@@ -34,6 +34,11 @@ using namespace std;
 
 #include "proto/bod_client.protoch"
 
+static void bofs_maxlen (const char *s, unsigned &max_s)
+{
+	unsigned len = strlen(s);
+	if (len > max_s) max_s = len;
+}
 <mod>
 static string bod_createsession(CONNECT_INFO &con)
 {
@@ -242,8 +247,7 @@ static int bofs_ls (CONTEXT &ctx, int argc, char *argv[])
 						unsigned max_owner = 0;
 						unsigned max_size = 0;
 						for (auto o:owners){
-							unsigned len = strlen(o);
-							if (len > max_owner) max_owner = len;
+							bofs_maxlen (o,max_owner);
 						}
 						for (auto s:sizes){
 							string tmp = string_f ("%u",s);
@@ -768,11 +772,6 @@ static int bofs_rmdir (CONTEXT &ctx, int argc, char *argv[])
 }
 </mod>
 
-static void bofs_maxlen (const char *s, unsigned &max_s)
-{
-	unsigned len = strlen(s);
-	if (len > max_s) max_s = len;
-}
 
 <mod>
 static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
@@ -1009,8 +1008,14 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 				if (!success){
 					tlmp_error ("bofs msgs: %s\n",msg);
 				}else{
-					for (auto i:inboxes){
-						printf ("%s\n",i);
+					unsigned max_manager=0;
+					unsigned max_project=0;
+					for (int r=0; r<2; r++){
+						for (unsigned i=0; i<managers.size(); i++){
+							bofs_maxlen (managers[i],max_manager);
+							bofs_maxlen (projects[i],max_project);
+							if (r==1) printf ("%-*s  %-*s  %s\n",max_manager,managers[i],max_project,projects[i],roles[i]);
+						}
 					}
 					glocal.ret = 0;
 				}

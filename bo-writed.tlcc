@@ -83,28 +83,10 @@ static unsigned trli_getsessionuser (CONNECT_INFO &con, const char *sessionid)
 	bool is_admin;
 	return trli_getsessionuser (con,sessionid,tmp,is_admin);
 }
-static void bo_writed_set_now (char now[20])
-{
-	fdpass_asctime(time(NULL),now);
-}
-
-
-static int bo_writed_newid (unsigned userid, int noproc, string &msg)
-{
-	int ret = -1;
-	string id = fs_makeid(noproc);
-	if (sql_action("insert into ids (ownerid,uuid) values (%u,'%s')",userid,id.c_str())==-1){
-		msg = "Internal error (ids table)";
-	}else{
-		ret = sql_getlastid();
-	}
-	return ret;
-}
 
 /*
 	Return the numerical id if a record exist
 */
-#if 0
 <mod>
 static int trli_rec_getid(const char *query, ...)
 {
@@ -120,6 +102,7 @@ static int trli_rec_getid(const char *query, ...)
 	return glocal.ret;
 }
 </mod>
+#if 0
 <mod>
 static bool trli_isadmin (NSQL *sq, unsigned userid)
 {
@@ -214,13 +197,13 @@ static int bo_writed_copydir (
 			glocal.res[row[0]] = DIRENTRY(atoi(row[1]),row[2],row[3][0]);
 		</f>
 		</call>
-		int newdirid = bo_writed_newid (userid,noproc,msg);
+		int newdirid = fs_newid (userid,noproc,msg);
 		if (newdirid == -1){
 			ret = -1;
 			break;
 		}else{
 			char now[20];
-			bo_writed_set_now(now);
+			fs_set_now(now);
 			if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,'%s','D','%s')"
 				,d.parent_dirid,newdirid,now,d.name.c_str())==-1){
 				msg = "Internal error (dirs_content table)";
@@ -719,7 +702,7 @@ int main (int argc, char *argv[])
 						rep_mkdir (false,"",entry.msg);
 					}else{
 						string msg;
-						int subdirid = bo_writed_newid (entry.userid,glocal.noproc,msg);
+						int subdirid = fs_newid (entry.userid,glocal.noproc,msg);
 						if (subdirid == -1){
 							rep_mkdir (false,"",msg);
 						}else{
@@ -755,12 +738,12 @@ int main (int argc, char *argv[])
 						rep_addfile (false,entry.msg);
 					}else{
 						string msg;
-						int fileid = bo_writed_newid (entry.userid,glocal.noproc,msg);
+						int fileid = fs_newid (entry.userid,glocal.noproc,msg);
 						if (fileid == -1){
 							rep_addfile (false,msg);
 						}else{
 							char now[20];
-							bo_writed_set_now(now);
+							fs_set_now(now);
 							if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,'%s','F','%s')"
 								,entry.dirid,fileid,now,entry.basename.c_str())==-1){
 								rep_addfile (false,"Internal error (dirs_files table)");
@@ -780,10 +763,10 @@ int main (int argc, char *argv[])
 					}else{
 						string msg;
 						string handle;
-						int fileid = bo_writed_newid (entry.userid,glocal.noproc,msg);
+						int fileid = fs_newid (entry.userid,glocal.noproc,msg);
 						if (fileid != -1){
 							char now[20];
-							bo_writed_set_now(now);
+							fs_set_now(now);
 							if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,'%s','F','%s')"
 								,entry.dirid,fileid,now,entry.basename.c_str())==-1){
 								msg = "Internal error (dirs_files table)";
@@ -861,7 +844,7 @@ int main (int argc, char *argv[])
 							rep_modifyfile (false,"Not a file, can't modify");
 						}else{
 							char now[20];
-							bo_writed_set_now(now);
+							fs_set_now(now);
 							if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,'%s','F','%s')"
 								,entry.dirid,entry.entryid,now,entry.basename.c_str())==-1){
 								rep_modifyfile (false,"Internal error (dirs_files table)");
@@ -885,7 +868,7 @@ int main (int argc, char *argv[])
 							msg = "Not a file, can't modify";
 						}else{
 							char now[20];
-							bo_writed_set_now(now);
+							fs_set_now(now);
 							if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,'%s','F','%s')"
 								,entry.dirid,entry.entryid,now,entry.basename.c_str())==-1){
 								msg = "Internal error (dirs_files table)";
@@ -926,7 +909,7 @@ int main (int argc, char *argv[])
 						rep_rename (false,newentry.msg);
 					}else{
 						char now[20];
-						bo_writed_set_now(now);
+						fs_set_now(now);
 						// We insert a deletion of the oldname, followed by a creation of the newname with the same
 						// modified date (pointing to the same data)
 						if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,'%s','_','%s'), (%d,%d,'%s','%c','%s')"
@@ -1215,6 +1198,60 @@ int main (int argc, char *argv[])
 					}else{
 						rep_delete_list (false,glocal.msg);
 					}
+				</f>
+				<f sendmsg> // sessionid owner manager project role title content = success:b msg msgid
+					glocal string msg = "Invalid session";
+					glocal string msgid;
+					glocal unsigned userid = bo_writed_get_group_owner (glocal.con, sessionid, owner, glocal.msg);
+					if (glocal.userid != 0){
+						vector<string> managers,projects,roles;
+						fs_list_inboxes(glocal.userid,managers,projects,roles);
+						glocal.msg = "No inbox found";
+						if (strcmp(project,"inbox")==0){
+							// We are writing into the inbox of the manager
+							// The manager in that case is any user of the system
+							int ownerid = trli_rec_getid ("select userid from id2name where name='%s'",manager);
+							if (ownerid == -1){
+								glocal.msg = "Unkown user";
+							}else{
+								int dirid = fs_find_inbox (ownerid,manager,glocal.noproc,glocal.msg);
+								if (dirid != -1){
+									string uuid;
+									int fileid = fs_newid (ownerid,glocal.noproc,glocal.msg,uuid);
+									if (fileid != -1){
+										char now[20];
+										fs_set_now(now);
+										if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,'%s','F','%s')"
+											,dirid,fileid,now,uuid.c_str())==-1){
+											glocal.msg = "Internal error (dirs_content table)";
+										}else if (sql_action("insert into files (id,modified,content) values (%d,'%s','%s')"
+											,fileid,now,content)==-1){
+											glocal.msg = "Internal error (files table)";
+										}else{
+											glocal.msg = "";
+										}
+									}
+								}
+							}
+						}else{
+							// We are writing in the inbox of a project
+							for (unsigned i=0; i<managers.size(); i++){
+								if (strcmp(manager,managers[i].c_str())==0
+									&& strcmp(project,projects[i].c_str())==0
+									&& (role[0] == '\0' || strcmp(role,roles[i].c_str())==0)){
+									// Now we can write the message
+									break;
+								}
+							}
+						}
+					}
+					if (glocal.msg.size()==0){
+						rep_sendmsg (true,"",glocal.msgid);
+					}else{
+						rep_sendmsg (false,"","");
+					}
+				</f>
+				<f sendattach> // sessionid owner msgid content:o more:b = success:b msg handle
 				</f>
 				<f test>
 					glocal bool bdtrli=false;
