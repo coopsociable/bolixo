@@ -55,8 +55,11 @@ static string bod_login (CONNECT_INFO &con, PARAM_STRING email, PARAM_STRING pas
 	glocal string sessionid = bod_createsession(con);
 	<call bod_client_login>(con,glocal.sessionid,email,password);
 	<f ok>
-		if (!success) printf ("\tlogin %s success=%d sessionid=%s\n",glocal.email,success,glocal.sessionid.c_str());
-		if (success) glocal.ret = glocal.sessionid;
+		if (!success){
+			tlmp_error ("login failed for %s success=%d sessionid=%s\n",glocal.email,success,glocal.sessionid.c_str());
+		}else{
+			glocal.ret = glocal.sessionid;
+		}
 	</f>
 	</call>
 	return glocal.ret;
@@ -981,6 +984,47 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 	return ret;
 }
 </mod>
+<mod>
+static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
+{
+	glocal int ret = -1;
+	glocal CONTEXT *ctx = &ctx;
+	glocal const char *owner = "";
+	glocal bool list = false;
+	glocal.ret = <call tlmpprogram>(argc,argv);
+	<f init>
+		setproginfo ("bomsgs",VERSION
+			,"Command line tool to access messages\n"
+			 "\n"
+			 "bofs msgs ...\n"
+			);
+		setarg ('l',"list","List inboxes",glocal.list,false);
+		setarg ('O',"owner","Apply the comand on behalf of this owner, must be admin",glocal.owner,false);
+	</f>
+	<f main_noarg>
+		glocal int ret = -1;
+		if (glocal.list){
+			<call bod_client_list_inboxes>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner);
+			<f ok>
+				if (!success){
+					tlmp_error ("bofs msgs: %s\n",msg);
+				}else{
+					for (auto i:inboxes){
+						printf ("%s\n",i);
+					}
+					glocal.ret = 0;
+				}
+			</f>
+			</call>
+		}else{
+			usage();
+		}
+		return glocal.ret;
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
 
 <mod>
 int main (int argc, char *argv[])
@@ -997,6 +1041,7 @@ int main (int argc, char *argv[])
 			 "\tbofs groups ...\n"
 			 "\tbofs ls ...\n"
 			 "\tbofs mkdir ...\n"
+			 "\tbofs msgs ...\n"
 			 "\tbofs mv ...\n"
 			 "\tbofs rm ...\n"
 			 "\tbofs rmdir ...\n"
@@ -1053,6 +1098,10 @@ int main (int argc, char *argv[])
 				exit (-1);
 		</f>
 		</call>
+		if (!glocal.thisuser){
+			tlmp_error ("No user definition found in .bofs.conf for user %s\n",glocal.user);
+			exit (-1);
+		}
 		glocal.ctx.sessionid = bod_login (glocal.ctx.con,glocal.ctx.email,glocal.ctx.password);
 		if (glocal.ctx.sessionid.size() > 0){
 			if (strcmp(argv[0],"ls")==0){
@@ -1071,6 +1120,8 @@ int main (int argc, char *argv[])
 				ret = bofs_rmdir (glocal.ctx,argc,argv);
 			}else if (strcmp(argv[0],"groups")==0){
 				ret = bofs_groups (glocal.ctx,argc,argv);
+			}else if (strcmp(argv[0],"msgs")==0){
+				ret = bofs_msgs (glocal.ctx,argc,argv);
 			}else{
 				tlmp_error ("Invalid command: %s\n",argv[0]);
 				usage();
