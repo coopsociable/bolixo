@@ -128,7 +128,7 @@ static int writed_mail_newaccount(
 	string tmp = string_f(
 		"Hello!\r\n"
 		"\r\n"
-		"You just created an account using nickname %s on truelies.news\r\n"
+		"You just created an account using nickname %s on bolixo.org\r\n"
 		"Just click on the link below to confirm the account.\r\n"
 		"<a href=https://%s/index.hc?webstep=10&confirm=%s>confirm</a>\r\n"
 		"\r\n"
@@ -137,9 +137,9 @@ static int writed_mail_newaccount(
 		"\r\n"
 		"Thanks for joining!\r\n"
 		,nickname
-		,"truelies.news",id_str.ptr);
+		,"bolixo.org",id_str.ptr);
 	return fdpass_sendmail (mailserver,mailport,mailfrom,email
-		,"Account confirmation on truelies.news"
+		,"Account confirmation on bolixo.org"
 		,tmp);
 };
 static int bo_writed_findentry (CONNECT_INFO &con, const char *sessionid, const char *name, ENTRY &entry, bool expect_exist)
@@ -255,6 +255,7 @@ static unsigned bo_writed_get_group_owner (CONNECT_INFO &con, const char *sessio
 	return glocal.userid;
 }
 </mod>
+
 <mod>
 int main (int argc, char *argv[])
 {
@@ -265,7 +266,7 @@ int main (int argc, char *argv[])
 	glocal const char *port = "9100";
 	glocal const char *control = "/var/run/bo-writed.sock";
 	glocal const char *user = "bolixo";
-	glocal const char *logfile = "/var/log/bolixo/writed.log";
+	glocal const char *logfile = "/var/log/bolixo/bo-writed.log";
 	glocal const char *data_dbserv = "localhost";
 	glocal const char *data_dbname = "files";
 	glocal const char *data_dbuser = NULL;
@@ -857,6 +858,42 @@ int main (int argc, char *argv[])
 						}
 					}
 				</f>
+				<f set_access>	//  sessionid name listname = success:b msg
+					glocal ENTRY entry;
+					if (bo_writed_findentry (glocal.con,sessionid,name,glocal.entry,true)!=-1){
+						if (strcmp(listname,"-")==0){
+							if (sql_action("update ids set group_list_id=NULL where id=%u",glocal.entry.entryid)==-1){
+								glocal.entry.msg = "Internal error (ids table)";
+							}else{
+								glocal.entry.msg = "";
+							}
+						}else if (strcmp(listname,ALL_MAY_READ)==0){
+							if (sql_action("update ids set group_list_id=0 where id=%u",glocal.entry.entryid)==-1){
+								glocal.entry.msg = "Internal error (ids table)";
+							}else{
+								glocal.entry.msg = "";
+							}
+						}else{
+							<call sql_query>("select id from group_lists where ownerid=%u and name='%s'",glocal.entry.userid,listname);
+							<f empty>
+								glocal.entry.msg = "Invalid list name";
+							</f>
+							<f onerow>
+								if (sql_action("update ids set group_list_id=%s where id=%u",row[0],glocal.entry.entryid)==-1){
+									glocal.entry.msg = "Internal error (ids table)";
+								}else{
+									glocal.entry.msg = "";
+								}
+							</f>
+							</call>
+						}
+					}
+					if (glocal.entry.msg.size() > 0){
+						rep_set_access (false,glocal.entry.msg);
+					}else{
+						rep_set_access (true,"");
+					}
+				</f>
 				<f modifyfile_bob> // sessionid name content:o more:b = success:b handle msg
 					ENTRY entry;
 					if (bo_writed_findentry (glocal.con,sessionid,name,entry,true)==-1){
@@ -1204,43 +1241,48 @@ int main (int argc, char *argv[])
 					glocal string msgid;
 					glocal unsigned userid = bo_writed_get_group_owner (glocal.con, sessionid, owner, glocal.msg);
 					if (glocal.userid != 0){
-						vector<string> managers,projects,roles;
-						fs_list_inboxes(glocal.userid,managers,projects,roles);
-						glocal.msg = "No inbox found";
-						if (strcmp(project,"inbox")==0){
-							// We are writing into the inbox of the manager
-							// The manager in that case is any user of the system
-							int ownerid = trli_rec_getid ("select userid from id2name where name='%s'",manager);
-							if (ownerid == -1){
-								glocal.msg = "Unkown user";
+						int ownerid = trli_rec_getid ("select userid from id2name where name='%s'",manager);
+						if (ownerid == -1){
+							glocal.msg = "Unkown user";
+						}else{
+							vector<string> managers,projects,roles;
+							vector<unsigned> listids;
+							fs_list_inboxes(glocal.userid,managers,projects,roles,listids);
+							glocal.msg = "No inbox found";
+							int dirid = -1;
+							int listid = -1;
+							if (strcmp(project,"inbox")==0){
+								// We are writing into the inbox of the manager
+								// The manager in that case is any user of the system
+								dirid = fs_find_inbox (ownerid,manager,glocal.noproc,glocal.msg);
 							}else{
-								int dirid = fs_find_inbox (ownerid,manager,glocal.noproc,glocal.msg);
-								if (dirid != -1){
-									string uuid;
-									int fileid = fs_newid (ownerid,glocal.noproc,glocal.msg,uuid);
-									if (fileid != -1){
-										char now[20];
-										fs_set_now(now);
-										if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,'%s','F','%s')"
-											,dirid,fileid,now,uuid.c_str())==-1){
-											glocal.msg = "Internal error (dirs_content table)";
-										}else if (sql_action("insert into files (id,modified,content) values (%d,'%s','%s')"
-											,fileid,now,content)==-1){
-											glocal.msg = "Internal error (files table)";
-										}else{
-											glocal.msg = "";
-										}
+								// We are writing in the inbox of a project
+								glocal.msg = "Invalid destination/inbox";
+								for (unsigned i=0; i<managers.size(); i++){
+									if (strcmp(manager,managers[i].c_str())==0
+										&& strcmp(project,projects[i].c_str())==0
+										&& (role[0] == '\0' || strcmp(role,roles[i].c_str())==0)){
+										// Now we can write the message
+										listid = listids[i];
+										dirid = fs_find_project_inbox (ownerid, listid,manager, project, role, glocal.noproc, glocal.msg);
+										break;
 									}
 								}
 							}
-						}else{
-							// We are writing in the inbox of a project
-							for (unsigned i=0; i<managers.size(); i++){
-								if (strcmp(manager,managers[i].c_str())==0
-									&& strcmp(project,projects[i].c_str())==0
-									&& (role[0] == '\0' || strcmp(role,roles[i].c_str())==0)){
-									// Now we can write the message
-									break;
+							if (dirid != -1){
+								int fileid = fs_newid (ownerid,listid,glocal.noproc,glocal.msg,glocal.msgid);
+								if (fileid != -1){
+									char now[20];
+									fs_set_now(now);
+									if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,'%s','F','%s')"
+										,dirid,fileid,now,glocal.msgid.c_str())==-1){
+										glocal.msg = "Internal error (dirs_content table)";
+									}else if (sql_action("insert into files (id,modified,title,content) values (%d,'%s','%s','%s')"
+										,fileid,now,title,content)==-1){
+										glocal.msg = "Internal error (files table)";
+									}else{
+										glocal.msg = "";
+									}
 								}
 							}
 						}
@@ -1248,7 +1290,7 @@ int main (int argc, char *argv[])
 					if (glocal.msg.size()==0){
 						rep_sendmsg (true,"",glocal.msgid);
 					}else{
-						rep_sendmsg (false,"","");
+						rep_sendmsg (false,glocal.msg,"");
 					}
 				</f>
 				<f sendattach> // sessionid owner msgid content:o more:b = success:b msg handle

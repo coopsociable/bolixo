@@ -27,22 +27,23 @@ elif [ "$1" = "print" ] ; then
 elif [ "$1" = "sequence" ] ; then
 	#./test.sh test-create_group_list A list1
 	$0 reset
-	./bofs -u jacques-A groups --create-group-list -L list1
-	./bofs -u admin     groups --create-group-list -L longlist2 --owner jacques-A
-	./bofs -u jacques-B groups --create-group-list -L list1
-	./bofs -u jacques-C groups --create-group-list -L list1
-	./bofs -u jacques-A groups --create-group -G group1
-	./bofs -u jacques-A groups --create-group -G group-2
-	./bofs -u jacques-B groups --create-group -G group1
-	./bofs -u jacques-C groups --create-group -G group1
+	./bofs -u jacques-A groups --create-group-list -L Alist1
+	./bofs -u admin     groups --create-group-list -L Alonglist2 --owner jacques-A
+	./bofs -u jacques-B groups --create-group-list -L Blist1
+	./bofs -u jacques-C groups --create-group-list -L Clist1
+	./bofs -u jacques-A groups --create-group -G Agroup1
+	./bofs -u jacques-A groups --create-group -G Agroup-2
+	./bofs -u jacques-B groups --create-group -G Bgroup1
+	./bofs -u jacques-C groups --create-group -G Cgroup1
 
-	./bofs -u jacques-A groups --set-group -L list1 -G group1 -A R
-	./bofs -u admin     groups --set-group -L longlist2 -G group1 -A W --owner jacques-A
-	./bofs -u jacques-B groups --set-group -L list1 -G group1 -A R
-	./bofs -u jacques-C groups --set-group -L list1 -G group1 -A R
+	./bofs -u jacques-A groups --set-group -L Alist1 -G Agroup1 -A R
+	./bofs -u admin     groups --set-group -L Alonglist2 -G Agroup1 -A W --owner jacques-A
+	./bofs -u jacques-B groups --set-group -L Blist1 -G Bgroup1 -A R
+	./bofs -u jacques-C groups --set-group -L Clist1 -G Cgroup1 -A R
 
-	./bofs -u jacques-A groups --set-member -G group1 -U jacques-A -AR -Rdba
-	./bofs -u admin     groups --set-member -G group1 -U jacques-B -AW -R "" --owner jacques-A
+	./bofs -u jacques-A groups --set-member -G Agroup1 -U jacques-A -AR -Rdba
+	./bofs -u admin     groups --set-member -G Agroup1 -U jacques-B -AW -R "" --owner jacques-A
+	./bofs -u jacques-B groups --set-member -G Bgroup1 -U jacques-A -AR -Rdba
 	for user in jacques-A jacques-B jacques-C
 	do
 		echo "------- $user"

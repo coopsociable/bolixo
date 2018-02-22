@@ -153,6 +153,7 @@ int main (int argc, char *argv[])
 	glocal const char *testprint_groups = NULL;
 	glocal const char *testset_group = NULL;
 	glocal const char *testset_member = NULL;
+	glocal const char *testset_access = NULL;
 	glocal bool testsystem = false;
 	glocal bool testcreatesessions = false;
 	glocal const char *exec1 = NULL;
@@ -222,6 +223,7 @@ int main (int argc, char *argv[])
 		setarg (' ',"testprint_groups","Print groups",glocal.testprint_groups,false);
 		setarg (' ',"testset_group","Add or configure a group in a list",glocal.testset_group,false);
 		setarg (' ',"testset_member","Add or configure a member of a group",glocal.testset_member,false);
+		setarg (' ',"testset_access","Set access to a file or directory",glocal.testset_access,false);
 		setgrouparg ("Test parameters");
 		setarg (' ',"workers","Test concurent access",glocal.workers,false);
 		setarg (' ',"nbrep","Number of repetition per worker",glocal.nbrep,false);
@@ -738,6 +740,18 @@ int main (int argc, char *argv[])
 			if (sessionid.size() > 0){
 				printf ("\tgroupname=%s user=%s defaultaccess=%s role=%s owner=%s\n",glocal.extra,glocal.extra2,glocal.extra3,glocal.extra4,glocal.extra5);
 				<call bod_client_set_member> (glocal.con_cli,sessionid,glocal.extra,glocal.extra2,glocal.extra3,glocal.extra4,glocal.extra5);
+				<f ok>
+					printf ("\tsuccess=%d msg=%s\n",success,msg);
+				</f>
+				</call>
+				bod_logout (glocal.con_cli,sessionid);
+			}
+		}else if (glocal.testset_access != NULL){
+			printf ("set_access %s extra=%s extra2=%s\n",glocal.testset_access,glocal.extra,glocal.extra2);
+			string sessionid = bod_login (glocal.con_cli,glocal.testset_access);
+			if (sessionid.size() > 0){
+				printf ("\tfilename=%s listname=%s\n",glocal.extra,glocal.extra2);
+				<call bod_client_set_access> (glocal.con_cli,sessionid,glocal.extra,glocal.extra2);
 				<f ok>
 					printf ("\tsuccess=%d msg=%s\n",success,msg);
 				</f>

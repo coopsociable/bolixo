@@ -316,6 +316,7 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 		create table files (
 			id int,
 			modified datetime default current_timestamp,
+			title varchar(200),
 			content text
 		);
 		create index files_id on files (id);
@@ -360,54 +361,26 @@ elif [ "$1" = "dropdb" ] ; then # db: Drop databases
 	mysqladmin -uroot -S $SOCKU -f drop $DBNAMEU
 	rm -fr /var/lib/bolixo/*
 elif [ "$1" = "filldb" ] ; then # db: Fill database (old)
-	# Put test data
-	NEWSCNT1=5
-	NEWSCNT2=10
-	LONG=
-	shift
-	while [ "$1" != "" ]
+	$0 bo-writed-control mailctrl 0 keep
+	echo ==== Create some users
+	for user in admin A B C D E F
 	do
-		if [ "$1" = "big" ] ; then
-			NEWSCNT1=500
-			NEWSCNT2=1000
-		elif [ "$1" = "real" ] ; then
-			LONG="<br>This is the first ...... line<br>This is the second ............ line<br>This is the third ............line<br>This is the last line"
-		else
-			echo unknown keyword $1: filldb big,real
-			exit 1
-		fi
-		shift
+		$0 test-adduser $user
 	done
-	echo "truncate table news;"      >/tmp/filldb.sql
-	echo "truncate table $DBNAMEU.users;" >>/tmp/filldb.sql
-	echo "truncate table comments;" >>/tmp/filldb.sql
-	echo "truncate table proofs;"   >>/tmp/filldb.sql
-	echo "insert into news (newsid_str,authorid,url,title,content,approved,userid) values" >>/tmp/filldb.sql
-	for ((i=1; i<$NEWSCNT1; i++))
+	echo "Make user admin administrator"
+	$0 bo-writed-control makeadmin admin@bolixo.org 1
+	echo ==== Create filesystem
+	for dir in /msgs /msg-projects /projects /homes
 	do
-		printf	"  ('news%03d',1,'this is url%03d','this is title%03d','content number %03d%s',now(),1),\n" $i $i $i $i "$LONG" >>/tmp/filldb.sql
+		$0 test-mkdir admin $dir
+		$0 test-set_access admin $dir "#allread"
 	done
-	for ((i=$NEWSCNT1; i<$NEWSCNT2; i++))
-	do
-		printf	"  ('news%03d',1,'this is url%03d','this is title%03d','content number %03d%s',null,1),\n" $i $i $i $i "$LONG" >>/tmp/filldb.sql
-	done
-	printf	"  ('news%03d',1,'this is url%03d','this is title%03d','content number %03d',now(),1);\n" 100 100 100 100 >>/tmp/filldb.sql
-	echo "insert into proofs (proofid_str,newsid,title,content,userid) values" >>/tmp/filldb.sql
-	for ((i=1; i<10; i++))
-	do
-		printf	"  ('proof%03d',%d,'Proof title%03d','Proof content number %03d',1),\n" $i $i $i $i >>/tmp/filldb.sql
-	done
-	printf	"  ('proof%03d',%d,'Proof title%03d','Proof content number %03d',1);\n" 100 100 100 100 >>/tmp/filldb.sql
-
-	#echo "insert into $DBNAMEU.users (userid_str,name,email,admin,password,confirmed) values ('admin-id','admin','admin@foo.com',true,password('admin'),now());" >>/tmp/filldb.sql
-	#echo "insert into id2name (userid,name) values (1,'admin-id');" >>/tmp/filldb.sql
-
-	mysql -h$DBSERV $DBNAME </tmp/filldb.sql
 elif [ "$1" = "resetdb" ] ; then # db: drops and creates databases
 	echo Erase $DBNAME and $DBNAMEU database
 	$0 dropdb
 	echo Create new ones
 	$0 createdb
+	$0 filldb
 elif [ "$1" = "listsessions" ] ; then # prod: Lists sessions
 	export LXCSOCK=on
 	$0 bo-sessiond-control listsessions 0 100
@@ -488,13 +461,8 @@ elif [ "$1" = "test-sequence" ] ; then # S: Reloads database (big,medium,real,no
 		shift
 	done
 	$0 resetdb 
+	rm -f /var/lib/bolixo/*
 	$0 test-system
-	for user in admin A B C D E F
-	do
-		$0 test-adduser $user
-	done
-	echo "Make user admin administrator"
-	$0 bo-writed-control makeadmin admin@bolixo.org 1
 	echo ==== admin
 	$0 test-deleteuser D
 	$0 test-deleteuser E
@@ -627,6 +595,13 @@ elif [ "$1" = "test-set_member" ] ; then # T: Put a user into a group (letter gr
 		exit 1
 	fi
 	$0 bod-client --testset_member "$1" --extra "$2" --extra2 "$3" --extra3 "$4" --extra4 "$5" --extra5 "$6"
+elif [ "$1" = "test-set_access" ] ; then # T: Assign a group list to a file or directory (letter filename listname )
+	shift
+	if [ "$3" == "" ]; then
+		echo test-set_access letter filename listname
+		exit 1
+	fi
+	$0 bod-client --testset_access "$1" --extra "$2" --extra2 "$3"
 elif [ "$1" = "createsqlusers" ] ; then # db: Generates SQL to create users
 	TRLISQL=/tmp/files.sql
 	USERSQL=/tmp/users.sql
