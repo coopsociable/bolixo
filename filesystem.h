@@ -7,14 +7,20 @@ struct ENTRY {
 	unsigned ownerid;
 	unsigned group_list_id;
 	char type;
+	char listmode;
+	bool may_add;		// May add an entry in the directory
+	bool may_modify;	// May update the entry
 	std::string modified;
 	std::string msg;
 	ENTRY(){
+		may_add = false;
+		may_modify = false;
 		userid = 0;
 		dirid = -1;
 		entryid = -1;
 		ownerid = (unsigned)-1;
 		type = '_';
+		listmode = ' ';
 	}
 };
 
@@ -32,6 +38,6 @@ void fs_list_inboxes (unsigned userid, std::vector<std::string> &managers, std::
 unsigned fs_find_inbox (unsigned ownerid, const char *name, int noproc, std::string &msg);
 unsigned fs_find_project_inbox (unsigned ownerid, unsigned listid, const char *name, const char *project, const char *role, int noproc, std::string &msg);
 void fs_set_now (char now[20]);
-int fs_newid (unsigned userid, unsigned listid, int noproc, std::string &msg, std::string &uuid);
+int fs_newid (unsigned userid, unsigned listid, char listmode, int noproc, std::string &msg, std::string &uuid);
 int fs_newid (unsigned userid, int noproc, std::string &msg, std::string &uuid);
 int fs_newid (unsigned userid, int noproc, std::string &msg);

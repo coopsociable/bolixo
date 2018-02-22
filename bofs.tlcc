@@ -141,7 +141,9 @@ static int bofs_stat (
 	string &modified,
 	string &owner,
 	string &members,
-	unsigned &size)
+	string &listmode,
+	unsigned &size,
+	string &title)
 {
 	glocal int ret = 0;
 	glocal char *type = &type;
@@ -149,7 +151,9 @@ static int bofs_stat (
 	glocal string *modified = &modified;
 	glocal string *owner = &owner;
 	glocal string *members = &members;
+	glocal string *listmode = &listmode;
 	glocal unsigned *size = &size;
+	glocal string *title = &title;
 	size = 0;
 	type = ' ';
 	parent.clear();
@@ -185,7 +189,9 @@ static int bofs_stat (
 						(*glocal.modified) = modified[i];
 						(*glocal.owner) = owners[i];
 						(*glocal.members) = members[i];
+						(*glocal.listmode) = listmodes[i];
 						(*glocal.size) = sizes[i];
+						(*glocal.title) = titles[i];
 						break;
 					}
 				}
@@ -199,9 +205,9 @@ static int bofs_stat (
 
 static int bofs_stat (CONTEXT &ctx, PARAM_STRING _path, char &type)
 {
-	string parent,file,modified,owner,members;
+	string parent,file,modified,owner,members,listmode,title;
 	unsigned size;
-	return bofs_stat (ctx,_path,type,parent,file,modified,owner,members,size);
+	return bofs_stat (ctx,_path,type,parent,file,modified,owner,members,listmode,size,title);
 }
 <mod>
 static int bofs_ls (CONTEXT &ctx, int argc, char *argv[])
@@ -233,15 +239,15 @@ static int bofs_ls (CONTEXT &ctx, int argc, char *argv[])
 			<f ok>
 				if (!success){
 					char type;
-					string parent, file, modified, owner, members;
+					string parent, file, modified, owner, members,listmode,title;
 					unsigned size;
-					if (bofs_stat(*glocal.ctx,glocal.path,type,parent,file,modified,owner,members,size)==-1){
+					if (bofs_stat(*glocal.ctx,glocal.path,type,parent,file,modified,owner,members,listmode,size,title)==-1){
 						tlmp_error ("ls: %s\n",msg);
 						glocal.ret = -1;
 					}else{
 						if (glocal.opt_long){
-							printf ("\t%c   %s   %s/%s   %u   %s\n",type,modified.c_str()
-								,owner.c_str(),members.c_str(),size,file.c_str());
+							printf ("\t%c   %s   %s/%s:%s   %u   %s  %s\n",type,modified.c_str()
+								,owner.c_str(),members.c_str(),listmode.c_str(),size,file.c_str(),title.c_str());
 						}else{
 							printf ("%s\n",file.c_str());
 						}
@@ -251,15 +257,20 @@ static int bofs_ls (CONTEXT &ctx, int argc, char *argv[])
 						unsigned max_owner = 0;
 						unsigned max_members = 0;
 						unsigned max_size = 0;
+						unsigned max_name = 0;
 						for (int r=0; r<2; r++){
 							for (unsigned i=0; i<entries.size(); i++){
 								bofs_maxlen (owners[i],max_owner);
 								bofs_maxlen (members[i],max_members);
+								bofs_maxlen (entries[i],max_name);
 								string tmp = string_f ("%u",sizes[i]);
 								if (tmp.size() > max_size) max_size = tmp.size();
 								if (r==1){
-									printf ("\t%c   %s   %*s/%-*s   %*u   %s\n",types[i],modified[i]
-										,max_owner,owners[i],max_members,members[i],max_size,sizes[i],entries[i]);
+									const char *listmode = listmodes[i];
+									if (listmode[0] == '\0') listmode = " ";
+									printf ("\t%c   %s   %*s/%-*s:%s   %*u   %-*s  %s\n",types[i],modified[i]
+										,max_owner,owners[i],max_members,members[i],listmode,max_size,sizes[i]
+										,max_name,entries[i],titles[i]);
 								}
 							}
 						}
@@ -798,6 +809,7 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 
 	glocal const char *filename = NULL;
 	glocal const char *listname = NULL;
+	glocal const char *listmode = " ";
 	glocal const char *groupname = NULL;
 	glocal const char *access = "R";
 	glocal const char *user = NULL;
@@ -824,6 +836,7 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 		setarg (' ',"print-groups","Print the content of a group",glocal.print_groups,false);
 		setgrouparg ("Access");
 		setarg ('a',"set-access","Assign a list name to a file or directory",glocal.set_access,false);
+		setarg ('M',"listmode","list mode override (' ','p','r','w','a')",glocal.listmode,false);
 		setgrouparg ("Arguments");
 		setarg ('P',"filename","File or directory path",glocal.filename,false);
 		setarg ('L',"listname","List name",glocal.listname,false);
@@ -975,7 +988,7 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 			</f>
 			</call>
 		}else if (glocal.set_access){
-			<call bod_client_set_access>(glocal.ctx->con,glocal.ctx->sessionid,glocal.filename,glocal.listname);
+			<call bod_client_set_access>(glocal.ctx->con,glocal.ctx->sessionid,glocal.filename,glocal.listname,glocal.listmode);
 			<f ok>
 				if (!success){
 					tlmp_error ("bofs groups: %s\n",msg);

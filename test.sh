@@ -309,6 +309,7 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 			id int primary key auto_increment,
 			ownerid int default null,
 			group_list_id int default null,
+			listmode char default ' ',
 			uuid char(40)
 		);
 		create index ids_uuid on ids (uuid);
@@ -373,7 +374,7 @@ elif [ "$1" = "filldb" ] ; then # db: Fill database (old)
 	for dir in /msgs /msg-projects /projects /homes
 	do
 		$0 test-mkdir admin $dir
-		$0 test-set_access admin $dir "#allread"
+		$0 test-set_access admin $dir "#allread" p
 	done
 elif [ "$1" = "resetdb" ] ; then # db: drops and creates databases
 	echo Erase $DBNAME and $DBNAMEU database
@@ -595,13 +596,13 @@ elif [ "$1" = "test-set_member" ] ; then # T: Put a user into a group (letter gr
 		exit 1
 	fi
 	$0 bod-client --testset_member "$1" --extra "$2" --extra2 "$3" --extra3 "$4" --extra4 "$5" --extra5 "$6"
-elif [ "$1" = "test-set_access" ] ; then # T: Assign a group list to a file or directory (letter filename listname )
+elif [ "$1" = "test-set_access" ] ; then # T: Assign a group list to a file or directory (letter filename listname listmode )
 	shift
 	if [ "$3" == "" ]; then
-		echo test-set_access letter filename listname
+		echo test-set_access letter filename listname [ listmode ]
 		exit 1
 	fi
-	$0 bod-client --testset_access "$1" --extra "$2" --extra2 "$3"
+	$0 bod-client --testset_access "$1" --extra "$2" --extra2 "$3" --extra3 "$4"
 elif [ "$1" = "createsqlusers" ] ; then # db: Generates SQL to create users
 	TRLISQL=/tmp/files.sql
 	USERSQL=/tmp/users.sql

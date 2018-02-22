@@ -700,18 +700,20 @@ int main (int argc, char *argv[])
 				<f mkdir>
 					ENTRY entry;
 					if (bo_writed_findentry (glocal.con,sessionid,name,entry,false)==-1){
-						rep_mkdir (false,"",entry.msg);
+						rep_mkdir (false,entry.msg);
+					}else if (!entry.may_add){
+						rep_mkdir (false,"Not allowed");
 					}else{
 						string msg;
 						int subdirid = fs_newid (entry.userid,glocal.noproc,msg);
 						if (subdirid == -1){
-							rep_mkdir (false,"",msg);
+							rep_mkdir (false,msg);
 						}else{
 							if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,now(),'D','%s')"
 								,entry.dirid,subdirid,entry.basename.c_str())==-1){
-								rep_mkdir (false,"","Internal error (dirs_subdirs table)");
+								rep_mkdir (false,"Internal error (dirs_subdirs table)");
 							}else{
-								rep_mkdir (true,"","Ok");
+								rep_mkdir (true,"Ok");
 							}
 						}
 					}
@@ -858,17 +860,18 @@ int main (int argc, char *argv[])
 						}
 					}
 				</f>
-				<f set_access>	//  sessionid name listname = success:b msg
+				<f set_access>	//  sessionid name listname listmode = success:b msg
 					glocal ENTRY entry;
+					glocal const char *listmode = listmode;
 					if (bo_writed_findentry (glocal.con,sessionid,name,glocal.entry,true)!=-1){
 						if (strcmp(listname,"-")==0){
-							if (sql_action("update ids set group_list_id=NULL where id=%u",glocal.entry.entryid)==-1){
+							if (sql_action("update ids set group_list_id=NULL,listmode='%s' where id=%u",listmode,glocal.entry.entryid)==-1){
 								glocal.entry.msg = "Internal error (ids table)";
 							}else{
 								glocal.entry.msg = "";
 							}
 						}else if (strcmp(listname,ALL_MAY_READ)==0){
-							if (sql_action("update ids set group_list_id=0 where id=%u",glocal.entry.entryid)==-1){
+							if (sql_action("update ids set group_list_id=0,listmode='%s' where id=%u",listmode,glocal.entry.entryid)==-1){
 								glocal.entry.msg = "Internal error (ids table)";
 							}else{
 								glocal.entry.msg = "";
@@ -879,7 +882,7 @@ int main (int argc, char *argv[])
 								glocal.entry.msg = "Invalid list name";
 							</f>
 							<f onerow>
-								if (sql_action("update ids set group_list_id=%s where id=%u",row[0],glocal.entry.entryid)==-1){
+								if (sql_action("update ids set group_list_id=%s,listmode='%s' where id=%u",row[0],glocal.listmode,glocal.entry.entryid)==-1){
 									glocal.entry.msg = "Internal error (ids table)";
 								}else{
 									glocal.entry.msg = "";
@@ -1270,7 +1273,7 @@ int main (int argc, char *argv[])
 								}
 							}
 							if (dirid != -1){
-								int fileid = fs_newid (ownerid,listid,glocal.noproc,glocal.msg,glocal.msgid);
+								int fileid = fs_newid (ownerid,listid,'r',glocal.noproc,glocal.msg,glocal.msgid);
 								if (fileid != -1){
 									char now[20];
 									fs_set_now(now);
