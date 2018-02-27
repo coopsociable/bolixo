@@ -33,13 +33,13 @@ struct HANDLE_INFO: public ARRAY_OBJ{
 };
 struct DIRENTRY{
 	std::string modified;
-	char type;
+	ENTRY_TYPE type;
 	std::string owner;
 	std::string members;
 	std::string listmode;
 	std::string title;
 	unsigned size;
-	DIRENTRY (const char *_modified, char _type, const char *_owner, const char *_members, const char *_listmode, unsigned _size, const char *_title){
+	DIRENTRY (const char *_modified, ENTRY_TYPE _type, const char *_owner, const char *_members, const char *_listmode, unsigned _size, const char *_title){
 		modified = _modified;
 		type = _type;
 		owner = _owner;
@@ -49,7 +49,7 @@ struct DIRENTRY{
 		title = _title;
 	}
 	DIRENTRY(){
-		type = '_';
+		type = ENTRY_DELETED;
 		size = 0;
 	}
 };
@@ -352,7 +352,7 @@ static int trlid_main (
 				if (bod_findentry (glocal.con_sess,sessionid,name,entry,threshold)==-1){
 					rep_readfile (false,entry.msg,"");
 				}else{
-					if (entry.type != 'F'){
+					if (!bolixo_isfile(entry.type)){
 						rep_readfile (false,"Entry is not a file","");
 					}else{
 						<call sql_query>("select content from files where id=%d and modified='%s'"
@@ -374,7 +374,7 @@ static int trlid_main (
 				if (bod_findentry (glocal.con_sess,sessionid,name,glocal.entry,threshold)==-1){
 					rep_readfile_bob (false,glocal.entry.msg,empty,"",false);
 				}else{
-					if (glocal.entry.type != 'F'){
+					if (!bolixo_isfile(glocal.entry.type)){
 						rep_readfile_bob (false,"Entry is not a file",empty,"",false);
 					}else{
 						<call sql_query>("select content from files where id=%d and modified='%s'"
@@ -443,7 +443,7 @@ static int trlid_main (
 			<f listdir>
 				ENTRY entry;
 				glocal vector<string> entries;
-				glocal vector<unsigned> types;
+				glocal vector<ENTRY_TYPE> types;
 				glocal vector<string> modified;
 				glocal vector<string> owners;
 				glocal vector<string> members;
@@ -453,7 +453,7 @@ static int trlid_main (
 				glocal map<string,DIRENTRY> mp;
 				glocal bool history = history;
 				if (bod_findentry (glocal.con_sess,sessionid,name,entry,threshold)!=-1){
-					if (entry.type != 'D'){
+					if (!bolixo_isdir(entry.type)){
 						entry.msg = "Is not a directory";
 					}else if (entry.ownerid != entry.userid && entry.listmode == 'p' && !entry.is_admin){
 						entry.msg = "Not allowed to list";
@@ -471,7 +471,7 @@ static int trlid_main (
 						<f onerow>
 							const char *name = row[0];
 							const char *modified = row[1];
-							char type = row[2][0];
+							ENTRY_TYPE type = (ENTRY_TYPE) atoi(row[2]);
 							const char *owner = row[3];
 							const char *listid = row[4];
 							const char *members = row[5];
@@ -487,7 +487,7 @@ static int trlid_main (
 							unsigned size=0;
 							if (row[7] != NULL){
 								size = atoi(row[7]);
-							}else if (type == 'F'){
+							}else if (bolixo_isfile(type)){
 								// Content stored as a file
 								size = fs_get_filesize(atoi(row[8]),modified);
 							}
@@ -508,7 +508,7 @@ static int trlid_main (
 						</call>
 						if (!glocal.history){
 							for (auto &x:glocal.mp){
-								if (x.second.type != '_'){
+								if (!bolixo_isdeleted(x.second.type)){
 									glocal.entries.push_back(x.first);
 									glocal.types.push_back(x.second.type);
 									glocal.modified.push_back(x.second.modified);
@@ -690,6 +690,13 @@ static int trlid_main (
 				<call bo_writed_client_sendmsg>(glocal.con,sessionid,owner,manager,project,role,title,content);
 				<f ok>
 					glocal.bod_client.rep_sendmsg(success,msg,msgid);
+				</f>
+				</call>
+			</f>
+			<f replymsg> // sessionid owner msgid title content = success:b msg replyid
+				<call bo_writed_client_replymsg>(glocal.con,sessionid,owner,msgid,title,content);
+				<f ok>
+					glocal.bod_client.rep_replymsg(success,msg,replyid);
 				</f>
 				</call>
 			</f>

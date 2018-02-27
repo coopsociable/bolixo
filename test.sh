@@ -326,7 +326,7 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 			dirid int,
 			itemid int,
 			modified datetime,
-			type char,
+			type tinyint unsigned,
 			name varchar(100)
 		);
 		create index dirs_content on dirs_content (dirid);

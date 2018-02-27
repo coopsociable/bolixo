@@ -1,3 +1,5 @@
+#include "bolixo.h"
+
 struct ENTRY {
 	unsigned userid;
 	bool is_admin;
@@ -6,7 +8,7 @@ struct ENTRY {
 	int entryid;
 	unsigned ownerid;
 	unsigned group_list_id;
-	char type;
+	ENTRY_TYPE type;
 	char listmode;
 	bool may_add;		// May add an entry in the directory
 	bool may_modify;	// May update the entry
@@ -19,7 +21,7 @@ struct ENTRY {
 		dirid = -1;
 		entryid = -1;
 		ownerid = (unsigned)-1;
-		type = '_';
+		type = ENTRY_NONE;
 		listmode = ' ';
 	}
 };
@@ -41,3 +43,9 @@ void fs_set_now (char now[20]);
 int fs_newid (unsigned userid, unsigned listid, char listmode, int noproc, std::string &msg, std::string &uuid);
 int fs_newid (unsigned userid, int noproc, std::string &msg, std::string &uuid);
 int fs_newid (unsigned userid, int noproc, std::string &msg);
+int fs_insert_dir (int parentid,int dirid,PARAM_STRING modified,PARAM_STRING name);
+int fs_insert_dir (int parentid,int dirid,PARAM_STRING name);
+int fs_insert_entry (int parentid,int id,PARAM_STRING modified,PARAM_STRING name, ENTRY_TYPE type);
+int fs_insert_file (int parentid,int fileid,PARAM_STRING modified,PARAM_STRING name);
+int fs_insert_file (int parentid,int fileid,PARAM_STRING name);
+int fs_insert_deleted (int parentid,int id,PARAM_STRING name);

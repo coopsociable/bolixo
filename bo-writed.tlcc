@@ -156,15 +156,15 @@ static int bo_writed_findentry (CONNECT_INFO &con, const char *sessionid, const 
 struct DIRENTRY{
 	int itemid;
 	std::string modified;
-	char type;
-	DIRENTRY (int _itemid, const char *_modified, char _type){
+	ENTRY_TYPE type;
+	DIRENTRY (int _itemid, const char *_modified, ENTRY_TYPE _type){
 		itemid = _itemid;
 		modified = _modified;
 		type = _type;
 	}
 	DIRENTRY(){
 		itemid = -1;
-		type = '_';
+		type = ENTRY_NONE;
 	}
 };
 struct DIR_2_CREATE{
@@ -194,7 +194,7 @@ static int bo_writed_copydir (
 		glocal map<string,DIRENTRY> res;
 		<call sql_query>("select name,itemid,modified,type from dirs_content where dirid=%d order by modified",d.dirid_2_copy);
 		<f onerow>
-			glocal.res[row[0]] = DIRENTRY(atoi(row[1]),row[2],row[3][0]);
+			glocal.res[row[0]] = DIRENTRY(atoi(row[1]),row[2],(ENTRY_TYPE)atoi(row[3]));
 		</f>
 		</call>
 		int newdirid = fs_newid (userid,noproc,msg);
@@ -202,18 +202,14 @@ static int bo_writed_copydir (
 			ret = -1;
 			break;
 		}else{
-			char now[20];
-			fs_set_now(now);
-			if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,'%s','D','%s')"
-				,d.parent_dirid,newdirid,now,d.name.c_str())==-1){
+			if (fs_insert_dir (d.parent_dirid,newdirid,d.name)==-1){
 				msg = "Internal error (dirs_content table)";
 			}else{
 				for (auto &r:glocal.res){
-					if (r.second.type == 'D'){
+					if (bolixo_isdir(r.second.type)){
 						todo.push_back(DIR_2_CREATE(r.first,newdirid,r.second.itemid));
-					}else if (r.second.type == 'F'){
-						if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,'%s','%c','%s')"
-							,newdirid,r.second.itemid,r.second.modified.c_str(),r.second.type,r.first.c_str())==-1){
+					}else if (bolixo_isfile(r.second.type)){
+						if (fs_insert_entry (newdirid,r.second.itemid,r.second.modified,r.first,r.second.type)==-1){
 							msg = "Internal error (dirs_content table)";
 							ret = -1;
 							todo.clear();
@@ -256,6 +252,51 @@ static unsigned bo_writed_get_group_owner (CONNECT_INFO &con, const char *sessio
 }
 </mod>
 
+/*
+	Locate the directory holding the messages for a project
+	Return the directory ID or -1.
+*/
+static int bo_writed_locate_inbox (
+	unsigned userid,	// Userid writing the message
+	const char *manager,	// Manager of the project
+	const char *project,	// Project name
+	const char *role,	// Role inside the project
+	int noproc,		// bo-writed instance
+	string &msg,		// Error message
+	int &ownerid,		// Message written will be owned by this id and the listid
+	int &listid)
+{
+	int dirid = -1;
+	listid = -1;
+	ownerid = trli_rec_getid ("select userid from id2name where name='%s'",manager);
+	if (ownerid == -1){
+		msg = "Unkown user";
+	}else{
+		vector<string> managers,projects,roles;
+		vector<unsigned> listids;
+		fs_list_inboxes(userid,managers,projects,roles,listids);
+		msg = "No inbox found";
+		if (strcmp(project,"inbox")==0){
+			// We are writing into the inbox of the manager
+			// The manager in that case is any user of the system
+			dirid = fs_find_inbox (ownerid,manager,noproc,msg);
+		}else{
+			// We are writing in the inbox of a project
+			msg = "Invalid destination/inbox";
+			for (unsigned i=0; i<managers.size(); i++){
+				if (strcmp(manager,managers[i].c_str())==0
+					&& strcmp(project,projects[i].c_str())==0
+					&& (role[0] == '\0' || strcmp(role,roles[i].c_str())==0)){
+					// Now we can write the message
+					listid = listids[i];
+					dirid = fs_find_project_inbox (ownerid, listid,manager, project, role, noproc, msg);
+					break;
+				}
+			}
+		}
+	}
+	return dirid;
+}
 <mod>
 int main (int argc, char *argv[])
 {
@@ -709,8 +750,7 @@ int main (int argc, char *argv[])
 						if (subdirid == -1){
 							rep_mkdir (false,msg);
 						}else{
-							if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,now(),'D','%s')"
-								,entry.dirid,subdirid,entry.basename.c_str())==-1){
+							if (fs_insert_dir (entry.dirid,subdirid,entry.basename)==-1){
 								rep_mkdir (false,"Internal error (dirs_subdirs table)");
 							}else{
 								rep_mkdir (true,"Ok");
@@ -723,11 +763,10 @@ int main (int argc, char *argv[])
 					if (bo_writed_findentry (glocal.con,sessionid,name,entry,true)==-1){
 						rep_rmdir (false,entry.msg);
 					}else{
-						if (entry.type != 'D'){
+						if (!bolixo_isdir(entry.type)){
 							rep_rmdir (false,"Not a directory, can't delete");
 						}else{
-							if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,now(),'_','%s')"
-								,entry.dirid,entry.entryid,entry.basename.c_str())==-1){
+							if (fs_insert_deleted(entry.dirid,entry.entryid,entry.basename)==-1){
 								rep_rmdir (false,"Internal error (dirs_files table)");
 							}else{
 								rep_rmdir (true,"Ok");
@@ -747,8 +786,7 @@ int main (int argc, char *argv[])
 						}else{
 							char now[20];
 							fs_set_now(now);
-							if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,'%s','F','%s')"
-								,entry.dirid,fileid,now,entry.basename.c_str())==-1){
+							if (fs_insert_file(entry.dirid,fileid,now,entry.basename)==-1){
 								rep_addfile (false,"Internal error (dirs_files table)");
 							}else if (sql_action("insert into files (id,modified,content) values (%d,'%s','%s')"
 								,fileid,now,content)==-1){
@@ -770,8 +808,7 @@ int main (int argc, char *argv[])
 						if (fileid != -1){
 							char now[20];
 							fs_set_now(now);
-							if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,'%s','F','%s')"
-								,entry.dirid,fileid,now,entry.basename.c_str())==-1){
+							if (fs_insert_file(entry.dirid,fileid,now,entry.basename)==-1){
 								msg = "Internal error (dirs_files table)";
 							}else if (sql_action("insert into files (id,modified,content) values (%d,'%s',NULL)"
 								,fileid,now)==-1){
@@ -826,11 +863,10 @@ int main (int argc, char *argv[])
 					if (bo_writed_findentry (glocal.con,sessionid,name,entry,true)==-1){
 						rep_delfile (false,entry.msg);
 					}else{
-						if (entry.type != 'F'){
+						if (!bolixo_isfile(entry.type)){
 							rep_delfile (false,"Not a file, can't delete");
 						}else{
-							if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,now(),'_','%s')"
-								,entry.dirid,entry.entryid,entry.basename.c_str())==-1){
+							if (fs_insert_deleted(entry.dirid,entry.entryid,entry.basename)==-1){
 								rep_delfile (false,"Internal error (dirs_files table)");
 							}else{
 								rep_delfile (true,"Ok");
@@ -843,13 +879,12 @@ int main (int argc, char *argv[])
 					if (bo_writed_findentry (glocal.con,sessionid,name,entry,true)==-1){
 						rep_modifyfile (false,entry.msg);
 					}else{
-						if (entry.type != 'F'){
+						if (!bolixo_isfile(entry.type)){
 							rep_modifyfile (false,"Not a file, can't modify");
 						}else{
 							char now[20];
 							fs_set_now(now);
-							if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,'%s','F','%s')"
-								,entry.dirid,entry.entryid,now,entry.basename.c_str())==-1){
+							if (fs_insert_file (entry.dirid,entry.entryid,now,entry.basename)==-1){
 								rep_modifyfile (false,"Internal error (dirs_files table)");
 							}else if (sql_action("insert into files (id,modified,content) values (%d,'%s','%s')"
 								,entry.entryid,now,content)==-1){
@@ -904,13 +939,12 @@ int main (int argc, char *argv[])
 					}else{
 						string msg;
 						string handle;
-						if (entry.type != 'F'){
+						if (!bolixo_isfile(entry.type)){
 							msg = "Not a file, can't modify";
 						}else{
 							char now[20];
 							fs_set_now(now);
-							if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,'%s','F','%s')"
-								,entry.dirid,entry.entryid,now,entry.basename.c_str())==-1){
+							if (fs_insert_file (entry.dirid,entry.entryid,now,entry.basename)==-1){
 								msg = "Internal error (dirs_files table)";
 							}else if (sql_action("insert into files (id,modified,content) values (%d,'%s',NULL)"
 								,entry.entryid,now)==-1){
@@ -952,8 +986,8 @@ int main (int argc, char *argv[])
 						fs_set_now(now);
 						// We insert a deletion of the oldname, followed by a creation of the newname with the same
 						// modified date (pointing to the same data)
-						if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,'%s','_','%s'), (%d,%d,'%s','%c','%s')"
-							,oldentry.dirid,oldentry.entryid,now,oldentry.basename.c_str()
+						if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,'%s',%u,'%s'), (%d,%d,'%s',%u,'%s')"
+							,oldentry.dirid,oldentry.entryid,now,ENTRY_DELETED,oldentry.basename.c_str()
 							,newentry.dirid,oldentry.entryid,oldentry.modified.c_str(),oldentry.type,newentry.basename.c_str())==-1){
 							rep_rename (false,"Internal error (dirs_content table)");
 						}else{
@@ -969,21 +1003,20 @@ int main (int argc, char *argv[])
 						rep_copy (false,srcentry.msg);
 					}else if (bo_writed_findentry (glocal.con,sessionid,dstname,dstentry,false)==-1){
 						rep_copy (false,dstentry.msg);
-					}else if (srcentry.type == 'D'){
+					}else if (bolixo_isdir(srcentry.type)){
 						string msg;
 						if (bo_writed_copydir (srcentry.entryid,dstentry.dirid,dstentry.basename,srcentry.userid,glocal.noproc,msg)==-1){
 							rep_copy (false,msg);
 						}else{
 							rep_copy (true,"Ok");
 						}
-					}else if (srcentry.type != 'F'){
+					}else if (!bolixo_isfile(srcentry.type)){
 						rep_copy (false,"Copy only works on files and directories for now");
 					}else{
 						// We insert a row so the new name still points to the same entryid and same date.
 						// It means that the new file will always be associated with the same entryid.
 						// The solution would be to allocate a new id and copy the data.
-						if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,'%s','%c','%s')"
-							,dstentry.dirid,srcentry.entryid,srcentry.modified.c_str(),srcentry.type,dstentry.basename.c_str())==-1){
+						if (fs_insert_entry(dstentry.dirid,srcentry.entryid,srcentry.modified,dstentry.basename,srcentry.type)==-1){
 							rep_copy (false,"Internal error (dirs_content table)");
 						}else{
 							rep_copy (true,"Ok");
@@ -1277,8 +1310,7 @@ int main (int argc, char *argv[])
 								if (fileid != -1){
 									char now[20];
 									fs_set_now(now);
-									if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,'%s','F','%s')"
-										,dirid,fileid,now,glocal.msgid.c_str())==-1){
+									if (fs_insert_file(dirid,fileid,now,glocal.msgid)==-1){
 										glocal.msg = "Internal error (dirs_content table)";
 									}else if (sql_action("insert into files (id,modified,title,content) values (%d,'%s','%s','%s')"
 										,fileid,now,title,content)==-1){
@@ -1294,6 +1326,59 @@ int main (int argc, char *argv[])
 						rep_sendmsg (true,"",glocal.msgid);
 					}else{
 						rep_sendmsg (false,glocal.msg,"");
+					}
+				</f>
+				<f replymsg> // sessionid owner manager project role msgid title content = success:b msg replyid
+					glocal string msg = "Invalid session";
+					glocal string replyid;
+					glocal unsigned userid = bo_writed_get_group_owner (glocal.con, sessionid, owner, glocal.msg);
+					if (glocal.userid != 0){
+						// We have to validate that the user have access to this message
+						// and we have to find in which folder the message was posted.
+						// A message is a file, so one is allowed to copy/link it elsewhere.
+						// So several directories may hold it.
+						int ownerid;
+						int listid;
+						int dirid = trli_rec_getid ("select dirid from dirs_conrtent"
+							" join ids on ids.id=dirs_content.itemid and ids.uuid='%s'"
+							" where type=%u",msgid,ENTRY_MSG);
+						if (dirid != -1){
+							// Now we check if this message exists
+							// We look first for the msg.dir sub-directory.
+							string msgdir = string(msgid)+".dir";
+							int msgdir_id = trli_rec_getid ("select itemid from dirs_content where dirid=%d and name = '%s' order by modified desc limit 1"
+								,dirid,msgdir.c_str());
+							if (msgdir_id == -1){
+								// First reply, we have to create the directory
+								// But first, we need to prove the message exists
+								if (trli_rec_getid ("select itemid from dirs_content where dirid=%d and name = '%s' order by modified desc limit 1"
+                                                              		,dirid,msgid)==-1){
+									glocal.msg = "Unknown message";
+								}else{
+									// Message exist, we can create the .dir directory
+									string uuid;
+									int id = fs_newid (ownerid,listid,'r',glocal.noproc,glocal.msg,uuid);
+									if (id != -1){
+										char now[20];
+										fs_set_now(now);
+										if (fs_insert_dir (dirid,id,now,msgdir)==-1){
+											glocal.msg = "Internal error (dirs_content table)";
+										}else{
+											msgdir_id = id;
+										}
+									}
+								}
+
+							}
+							if (msgdir_id != -1){
+								// We can insert the message here immediate
+							}
+						}
+					}
+					if (glocal.msg.size()==0){
+						rep_replymsg(true,"",glocal.replyid);
+					}else{
+						rep_replymsg(true,glocal.msg,"");
 					}
 				</f>
 				<f sendattach> // sessionid owner msgid content:o more:b = success:b msg handle

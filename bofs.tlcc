@@ -20,6 +20,7 @@
 #include <string>
 #include <vector>
 #include <fdpass.h>
+#include "bolixo.h"
 
 using namespace std;
 
@@ -135,7 +136,7 @@ static int bofs_split (_F_bofs_split &c, int argc, char *argv[])
 static int bofs_stat (
 	CONTEXT &ctx,
 	PARAM_STRING _path,
-	char &type,
+	ENTRY_TYPE &type,
 	string &parent,
 	string &file,
 	string &modified,
@@ -146,7 +147,7 @@ static int bofs_stat (
 	string &title)
 {
 	glocal int ret = 0;
-	glocal char *type = &type;
+	glocal ENTRY_TYPE *type = &type;
 	const char *path = _path.ptr;
 	glocal string *modified = &modified;
 	glocal string *owner = &owner;
@@ -155,7 +156,7 @@ static int bofs_stat (
 	glocal unsigned *size = &size;
 	glocal string *title = &title;
 	size = 0;
-	type = ' ';
+	type = ENTRY_NONE;
 	parent.clear();
 	file.clear();
 	modified.clear();
@@ -163,7 +164,7 @@ static int bofs_stat (
 		tlmp_error ("bofs_stat: Invalid path %s\n",path);
 		glocal.ret = -1;
 	}else if (strcmp(path,"/")==0){
-		type = 'D';
+		type = ENTRY_DIR;
 	}else{
 		glocal string dir;
 		glocal string file;
@@ -180,7 +181,6 @@ static int bofs_stat (
 		//tlmp_error ("bofs_stat: dir=%s file=%s\n",glocal.dir.c_str(),glocal.file.c_str());
 		<call bod_client_listdir> (ctx.con,ctx.sessionid,glocal.dir,ctx.threshold,false);
 		<f ok>
-			glocal.ret = -1;
 			if (success){
 				for (unsigned i=0; i<entries.size(); i++){
 					if (strcmp(entries[i],glocal.file.c_str())==0){
@@ -195,6 +195,9 @@ static int bofs_stat (
 						break;
 					}
 				}
+			}else{
+				glocal.ret = -1;
+				tlmp_error ("Can't stat bolixo file %s: %s\n",glocal.file.c_str(),msg);
 			}
 		</f>
 		</call>
@@ -203,7 +206,7 @@ static int bofs_stat (
 }
 </mod>
 
-static int bofs_stat (CONTEXT &ctx, PARAM_STRING _path, char &type)
+static int bofs_stat (CONTEXT &ctx, PARAM_STRING _path, ENTRY_TYPE &type)
 {
 	string parent,file,modified,owner,members,listmode,title;
 	unsigned size;
@@ -237,8 +240,9 @@ static int bofs_ls (CONTEXT &ctx, int argc, char *argv[])
 			glocal const char *path = path;
 			<call bod_client_listdir> (glocal.ctx->con,glocal.ctx->sessionid,path,glocal.ctx->threshold,glocal.opt_history);
 			<f ok>
+				static char tbtype[]={' ','_','D','F','F','F'};
 				if (!success){
-					char type;
+					ENTRY_TYPE type;
 					string parent, file, modified, owner, members,listmode,title;
 					unsigned size;
 					if (bofs_stat(*glocal.ctx,glocal.path,type,parent,file,modified,owner,members,listmode,size,title)==-1){
@@ -246,7 +250,7 @@ static int bofs_ls (CONTEXT &ctx, int argc, char *argv[])
 						glocal.ret = -1;
 					}else{
 						if (glocal.opt_long){
-							printf ("\t%c   %s   %s/%s:%s   %u   %s  %s\n",type,modified.c_str()
+							printf ("\t%c   %s   %s/%s:%s   %u   %s  %s\n",tbtype[type],modified.c_str()
 								,owner.c_str(),members.c_str(),listmode.c_str(),size,file.c_str(),title.c_str());
 						}else{
 							printf ("%s\n",file.c_str());
@@ -268,7 +272,7 @@ static int bofs_ls (CONTEXT &ctx, int argc, char *argv[])
 								if (r==1){
 									const char *listmode = listmodes[i];
 									if (listmode[0] == '\0') listmode = " ";
-									printf ("\t%c   %s   %*s/%-*s:%s   %*u   %-*s  %s\n",types[i],modified[i]
+									printf ("\t%c   %s   %*s/%-*s:%s   %*u   %-*s  %s\n",tbtype[types[i]],modified[i]
 										,max_owner,owners[i],max_members,members[i],listmode,max_size,sizes[i]
 										,max_name,entries[i],titles[i]);
 								}
@@ -353,7 +357,7 @@ static int bofs_write_bofile(CONTEXT &ctx, PARAM_STRING path, FILE *fin)
 	glocal CONTEXT *ctx = &ctx;
 	glocal FILE *fin = fin;
 	string modified;
-	char type;
+	ENTRY_TYPE type;
 	char buf[50000];
 	int len = fread (buf,1,50000,fin);
 	glocal bool more = len == 50000;
@@ -448,8 +452,8 @@ enum BO_SOURCE { BO_ENTRY, HTTPS_ENTRY, LOCAL_ENTRY};
 struct BO_ARGTYPE{
 	string path;
 	BO_SOURCE source;
-	char type;
-	BO_ARGTYPE(PARAM_STRING _path, BO_SOURCE _source, char _type){
+	ENTRY_TYPE type;
+	BO_ARGTYPE(PARAM_STRING _path, BO_SOURCE _source, ENTRY_TYPE _type){
 		path = _path.ptr;
 		source = _source;
 		type = _type;
@@ -505,19 +509,22 @@ static int bofs_checkargs (CONTEXT &ctx, int argc, char *argv[], vector<BO_ARGTY
 	glocal vector<BO_ARGTYPE> *args = &args;
 	int ret = <call bofs_split>(argc,argv);
 	<f bo_file>
-		char type;
-		bofs_stat (*glocal.ctx,path,type);
-		glocal.args->push_back(BO_ARGTYPE(path,BO_ENTRY,type));
-		return 0;
+		int ret = -1;
+		ENTRY_TYPE type;
+		if (bofs_stat (*glocal.ctx,path,type)!=-1){
+			glocal.args->push_back(BO_ARGTYPE(path,BO_ENTRY,type));
+			ret = 0;
+		}
+		return ret;
 	</f>
 	<f local_file>
 		struct stat64 st;
-		char type = ' ';
+		ENTRY_TYPE type = ENTRY_NONE;
 		if (stat64(path,&st)!=-1){
 			if (S_ISDIR(st.st_mode)){
-				type = 'D';
+				type = ENTRY_DIR;
 			}else if (S_ISREG(st.st_mode)){
-				type = 'F';
+				type = ENTRY_FILE;
 			}else{
 				tlmp_error ("bofs cp: Unsupported file type %s\n",path);
 				exit (-1);
@@ -599,7 +606,7 @@ static int bofs_cp (CONTEXT &ctx, int argc, char *argv[])
 				// Last argument is a file, problem
 				tlmp_error ("bofs cp: Can't copy multiple inputs onto a file\n");
 				ret = -1;
-			}else if (args[0].type != 'F'){
+			}else if (!bolixo_isfile(args[0].type)){
 				tlmp_error ("bofs cp: Can't copy a directory over a file\n");
 				ret = -1;
 			}else{

@@ -63,10 +63,10 @@ string fs_makeid (int noproc)
 	return ret;
 }	
 <mod>
-static int fs_locate_entry (int dirid, PARAM_STRING fname, char &type, string &modified, unsigned &ownerid, unsigned &group_list_id, char &listmode, const char *threshold)
+static int fs_locate_entry (int dirid, PARAM_STRING fname, ENTRY_TYPE &type, string &modified, unsigned &ownerid, unsigned &group_list_id, char &listmode, const char *threshold)
 {
 	glocal int ret = -1;
-	glocal char type='_';
+	glocal ENTRY_TYPE type=ENTRY_NONE;
 	glocal unsigned ownerid=(unsigned)-1;
 	glocal unsigned group_list_id=(unsigned)-1;
 	glocal char listmode = ' ';
@@ -76,8 +76,8 @@ static int fs_locate_entry (int dirid, PARAM_STRING fname, char &type, string &m
 		" where dirid=%d and name='%s' and modified <= '%s' order by modified desc limit 1"
 		,dirid,fname.ptr,threshold);
 	<f onerow>
-		char type = row[1][0];
-		if (type != '_'){
+		ENTRY_TYPE type = (ENTRY_TYPE)atoi(row[1]);
+		if (type != ENTRY_DELETED){
 			glocal.ret = atoi(row[0]);
 			glocal.type = type;
 			(*glocal.modified)=row[2];
@@ -131,6 +131,36 @@ static bool fs_check_access(unsigned userid, unsigned ownerid, unsigned group_li
 	return glocal.ret;
 }
 </mod>
+int fs_insert_entry (int parentid,int id,PARAM_STRING modified,PARAM_STRING name, ENTRY_TYPE type)
+{
+	return sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,'%s',%u,'%s')"
+		,parentid,id,modified.ptr,type,name.ptr);
+}
+int fs_insert_file (int parentid,int fileid,PARAM_STRING modified,PARAM_STRING name)
+{
+	return sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,'%s',%u,'%s')"
+		,parentid,fileid,modified.ptr,ENTRY_FILE,name.ptr);
+}
+int fs_insert_file (int parentid,int fileid,PARAM_STRING name)
+{
+	return sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,now(),%u,'%s')"
+		,parentid,fileid,ENTRY_FILE,name.ptr);
+}
+int fs_insert_dir (int parentid,int dirid,PARAM_STRING modified,PARAM_STRING name)
+{
+	return sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,'%s',%u,'%s')"
+		,parentid,dirid,modified.ptr,ENTRY_DIR,name.ptr);
+}
+int fs_insert_dir (int parentid,int dirid,PARAM_STRING name)
+{
+	return sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,now(),%u,'%s')"
+		,parentid,dirid,ENTRY_DIR,name.ptr);
+}
+int fs_insert_deleted (int parentid,int id,PARAM_STRING name)
+{
+	return sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,now(),%u,'%s')"
+		,parentid,id,ENTRY_DELETED,name.ptr);
+}
 /*
 	Locate a directory and retuns its id
 */
@@ -150,13 +180,14 @@ static int fs_locate_dir (
 	if (tb.size()==0){
 		// root dir
 		ret = 0;
+		if (is_admin) may_add = true;
 	}else{
 		int parentid = 0;
 		string tmp;
 		for (unsigned i=0; i<tb.size(); i++){
 			auto &d = tb[i];
 			tmp += string("/") + d;
-			char type;
+			ENTRY_TYPE type;
 			string modified;
 			unsigned ownerid,group_list_id;
 			char listmode;
@@ -175,8 +206,7 @@ static int fs_locate_dir (
 					if (dirid != -1){
 						char now[20];
 						fs_set_now(now);
-						if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,'%s','D','%s')"
-							,parentid,dirid,now,d.c_str())==-1){
+						if (fs_insert_dir (parentid,dirid,now,d)==-1){
 							msg = "Internal error (dirs_content table)";
 							break;
 						}else{
@@ -188,7 +218,7 @@ static int fs_locate_dir (
 						break;
 					}
 				}
-			}else if (type != 'D'){
+			}else if (!bolixo_isdir(type)){
 				msg = string_f ("%s is not a directory",tmp.c_str());
 				ret = -1;
 				break;
@@ -247,7 +277,7 @@ int fs_findentry (const char *name, ENTRY &entry, bool expect_exist, const char 
 	if (name[0] == '/' && name[1] == '\0'){
 		entry.dirid = 0;
 		entry.entryid = 0;
-		entry.type = 'D';
+		entry.type = ENTRY_DIR;
 		entry.listmode = 'p';
 		entry.ownerid = 0;
 		entry.group_list_id = 0;
