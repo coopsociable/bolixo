@@ -272,7 +272,8 @@ static int bofs_ls (CONTEXT &ctx, int argc, char *argv[])
 								if (r==1){
 									const char *listmode = listmodes[i];
 									if (listmode[0] == '\0') listmode = " ";
-									printf ("\t%c   %s   %*s/%-*s:%s   %*u   %-*s  %s\n",tbtype[types[i]],modified[i]
+									printf ("\t%c   %s   %s   %*s/%-*s:%s   %*u   %-*s  %s\n",tbtype[types[i]]
+										,eventdates[i],modified[i]
 										,max_owner,owners[i],max_members,members[i],listmode,max_size,sizes[i]
 										,max_name,entries[i],titles[i]);
 								}
@@ -509,13 +510,10 @@ static int bofs_checkargs (CONTEXT &ctx, int argc, char *argv[], vector<BO_ARGTY
 	glocal vector<BO_ARGTYPE> *args = &args;
 	int ret = <call bofs_split>(argc,argv);
 	<f bo_file>
-		int ret = -1;
 		ENTRY_TYPE type;
-		if (bofs_stat (*glocal.ctx,path,type)!=-1){
-			glocal.args->push_back(BO_ARGTYPE(path,BO_ENTRY,type));
-			ret = 0;
-		}
-		return ret;
+		bofs_stat (*glocal.ctx,path,type);
+		glocal.args->push_back(BO_ARGTYPE(path,BO_ENTRY,type));
+		return 0;
 	</f>
 	<f local_file>
 		struct stat64 st;
@@ -553,14 +551,16 @@ static int bofs_cp (CONTEXT &ctx, int argc, char *argv[])
 	<f main>
 		int ret = 0;
 		vector<BO_ARGTYPE> args;
+printf ("checkargs1\n");
 		if (bofs_checkargs (*glocal.ctx, argc, argv, args)==-1){
 			ret = -1;
 		}else{
 			size_t args_size = args.size();
+printf ("checkargs2\n");
 			// Check if all the entries prior to the last one exist in the file systems
 			bool missing_one = false;
 			for (unsigned i=0; i<args_size-1; i++){
-				if (args[i].type == ' '){
+				if (args[i].type == ENTRY_NONE){
 					// Entry does not exist
 					missing_one = true;
 					tlmp_error ("bofs cp: Source file/directory %s is missing, can't continue\n"
