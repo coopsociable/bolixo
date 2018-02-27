@@ -325,6 +325,7 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 		create table dirs_content (
 			dirid int,
 			itemid int,
+			eventtime datetime default current_timestamp,
 			modified datetime,
 			type tinyint unsigned,
 			name varchar(100)

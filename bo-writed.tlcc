@@ -192,7 +192,7 @@ static int bo_writed_copydir (
 	while (todo.size() > 0){
 		DIR_2_CREATE &d = todo[0];
 		glocal map<string,DIRENTRY> res;
-		<call sql_query>("select name,itemid,modified,type from dirs_content where dirid=%d order by modified",d.dirid_2_copy);
+		<call sql_query>("select name,itemid,modified,type from dirs_content where dirid=%d order by eventtime",d.dirid_2_copy);
 		<f onerow>
 			glocal.res[row[0]] = DIRENTRY(atoi(row[1]),row[2],(ENTRY_TYPE)atoi(row[3]));
 		</f>
@@ -1401,64 +1401,12 @@ int main (int argc, char *argv[])
 					}		
 				</f>
 				<f sendmsg_project> // sessionid owner manager project role title content = success:b msg msgid
-					/*
-						We send a message this way
-						-We write the message in the outbox as en ENTRY_FILE
-						-We copy it to destination inbox as ENTRY_MSG
-						Any copy of the message elsewhere will do done as ENTRY_FILE.
-						So when replying to a message ID, we can locate the inbox using a single select
-					*/
-					glocal string msg = "Invalid session";
-					glocal string msgid;
-					string username;
-					glocal unsigned userid = bo_writed_get_group_owner (glocal.con, sessionid, owner, username,glocal.msg);
-					if (glocal.userid != 0){
-						int ownerid = trli_rec_getid ("select userid from id2name where name='%s'",manager);
-						if (ownerid == -1){
-							glocal.msg = "Unkown user";
-						}else{
-							vector<string> managers,projects,roles;
-							vector<unsigned> listids;
-							fs_list_inboxes(glocal.userid,managers,projects,roles,listids);
-							int dirid = -1;
-							int listid = -1;
-							glocal.msg = "Invalid destination/inbox";
-							for (unsigned i=0; i<managers.size(); i++){
-								if (strcmp(manager,managers[i].c_str())==0
-									&& strcmp(project,projects[i].c_str())==0
-									&& (role[0] == '\0' || strcmp(role,roles[i].c_str())==0)){
-									// Now we can write the message
-									listid = listids[i];
-									dirid = fs_find_project_inbox (ownerid, listid,manager, project, role, glocal.noproc, glocal.msg);
-									break;
-								}
-							}
-							if (dirid != -1){
-								int outbox_id = fs_find_outbox(glocal.userid,username,glocal.noproc,glocal.msg);
-								if (outbox_id != -1){
-									int fileid = fs_newid (glocal.userid,listid,'r',glocal.noproc,glocal.msg,glocal.msgid);
-									if (fileid != -1){
-										char now[20];
-										fs_set_now(now);
-										if (fs_insert_file(outbox_id,fileid,now,glocal.msgid)==-1){
-											glocal.msg = "Outbox internal error (dirs_content table)";
-										}else if (sql_action("insert into files (id,modified,title,content) values (%d,'%s','%s','%s')"
-											,fileid,now,title,content)==-1){
-											glocal.msg = "Internal error (files table)";
-										}else if (fs_insert_entry(dirid,fileid,now,glocal.msgid,ENTRY_MSG)==-1){
-											glocal.msg = "Project inbox internal error (dirs_content table)";
-										}else{
-											glocal.msg = "";
-										}
-									}
-								}
-							}
-						}
-					}
-					if (glocal.msg.size()==0){
-						rep_sendmsg_project (true,"",glocal.msgid);
+					string msg;
+					string rep_msgid;
+					if (bo_writed_project_msg(glocal.con,sessionid,owner,manager,project,role,NULL,title,content,glocal.noproc,msg,rep_msgid)!=-1){
+						rep_sendmsg_project (true,"",rep_msgid);
 					}else{
-						rep_sendmsg_project (false,glocal.msg,"");
+						rep_sendmsg_project (false,msg,"");
 					}
 				</f>
 				<f replymsg> // sessionid owner msgid recipients:v title content = success:b msg replyid

@@ -179,6 +179,7 @@ static int bofs_stat (
 		parent = glocal.dir;
 		file = glocal.file;
 		//tlmp_error ("bofs_stat: dir=%s file=%s\n",glocal.dir.c_str(),glocal.file.c_str());
+		glocal.ret = -1;
 		<call bod_client_listdir> (ctx.con,ctx.sessionid,glocal.dir,ctx.threshold,false);
 		<f ok>
 			if (success){
@@ -196,7 +197,6 @@ static int bofs_stat (
 					}
 				}
 			}else{
-				glocal.ret = -1;
 				tlmp_error ("Can't stat bolixo file %s: %s\n",glocal.file.c_str(),msg);
 			}
 		</f>
@@ -372,7 +372,7 @@ static int bofs_write_bofile(CONTEXT &ctx, PARAM_STRING path, FILE *fin)
 			}
 		</f>
 		</call>
-	}else if (type != 'F'){
+	}else if (!bolixo_isfile(type)){
 		tlmp_error ("Can't modify %s, not a file\n",path);
 	}else{ 
 		<call bod_client_modifyfile_bob> (ctx.con,ctx.sessionid,path,BOB_TYPE(buf,len,false),glocal.more);
