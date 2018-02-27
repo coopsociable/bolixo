@@ -240,7 +240,7 @@ static int bofs_ls (CONTEXT &ctx, int argc, char *argv[])
 			glocal const char *path = path;
 			<call bod_client_listdir> (glocal.ctx->con,glocal.ctx->sessionid,path,glocal.ctx->threshold,glocal.opt_history);
 			<f ok>
-				static char tbtype[]={' ','_','D','F','F','F'};
+				static char tbtype[]={' ','_','D','F','M','C'};
 				if (!success){
 					ENTRY_TYPE type;
 					string parent, file, modified, owner, members,listmode,title;
@@ -1034,12 +1034,15 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 	glocal bool list = false;
 	glocal bool attach = false;
 	glocal bool newmsg = false;
+	glocal bool reply = false;
 
-	glocal const char *manager = "";
+	glocal vector<string> recipients;
+	glocal const char *manager = NULL;
 	glocal const char *project = NULL;
 	glocal const char *role = "";
 	glocal const char *title = "";
 	glocal const char *content = NULL;
+	glocal const char *msgid = NULL;
 	glocal.ret = <call tlmpprogram>(argc,argv);
 	<f init>
 		setproginfo ("bomsgs",VERSION
@@ -1051,11 +1054,14 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 		setarg ('a',"attach","Add an attachment to previously sent message",glocal.attach,false);
 		setarg ('l',"list","List inboxes",glocal.list,false);
 		setarg ('n',"newmsg","Send a message",glocal.newmsg,false);
+		setarg ('r',"reply","Reply to a message",glocal.reply,false);
 		setgrouparg ("Options");
 		setarg ('M',"manager","Manager or owner of the inbox",glocal.manager,false);
 		setarg ('P',"project","Target inbox or project",glocal.project,false);
 		setarg ('R',"role","Target role",glocal.role,false);
+		setarg ('D',"recipient","Recipient of the message",glocal.recipients,false);
 
+		setarg ('I',"msgid","Message ID we are replying to",glocal.msgid,false);
 		setarg ('T',"title","Title of the message",glocal.title,false);
 		setarg ('C',"content","body of the message",glocal.content,false);
 
@@ -1083,12 +1089,22 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 			</f>
 			</call>
 		}else if (glocal.newmsg){
-			if (glocal.project == NULL){
-				tlmp_error ("When sending a message, you must specify the project\n");
-			}else if (glocal.content == NULL){
+			if (glocal.content == NULL){
 				tlmp_error ("Missing content\n");
-			}else{
+			}else if (glocal.recipients.size() > 0){
 				<call bod_client_sendmsg>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner
+					,glocal.recipients,glocal.title,glocal.content);
+				<f ok>
+					if (!success){
+						tlmp_error ("bofs msgs: %s\n",msg);
+					}else{
+						printf ("msgid: %s\n",msgid);
+						glocal.ret = 0;
+					}
+				</f>
+				</call>
+			}else if (glocal.project != NULL && glocal.manager != NULL){
+				<call bod_client_sendmsg_project>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner
 					,glocal.manager,glocal.project,glocal.role,glocal.title,glocal.content);
 				<f ok>
 					if (!success){
@@ -1099,7 +1115,42 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 					}
 				</f>
 				</call>
+			}else{
+				tlmp_error ("When sending a message, you must specify manager,project or recipients\n");
 			}
+		}else if (glocal.reply){
+			if (glocal.content == NULL){
+				tlmp_error ("Missing content\n");
+			}else if (glocal.msgid == NULL){
+				tlmp_error ("You must specify the message ID you are replying to\n");
+			}else if (glocal.recipients.size() > 0){
+				<call bod_client_replymsg>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner
+					,glocal.msgid,glocal.recipients,glocal.title,glocal.content);
+				<f ok>
+					if (!success){
+						tlmp_error ("bofs replymsg: %s\n",msg);
+					}else{
+						printf ("replyid: %s\n",replyid);
+						glocal.ret = 0;
+					}
+				</f>
+				</call>
+			}else if (glocal.project != NULL && glocal.manager != NULL){
+				<call bod_client_replymsg_project>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner
+					,glocal.manager,glocal.project,glocal.role,glocal.msgid,glocal.title,glocal.content);
+				<f ok>
+					if (!success){
+						tlmp_error ("bofs replymsg_project: %s\n",msg);
+					}else{
+						printf ("replyid: %s\n",replyid);
+						glocal.ret = 0;
+					}
+				</f>
+				</call>
+			}else{
+				tlmp_error ("When sending a message, you must specify manager,project or recipients\n");
+			}
+
 		}else if (glocal.attach){
 		}else{
 			usage();

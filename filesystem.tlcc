@@ -407,10 +407,6 @@ void fs_list_inboxes (unsigned userid, vector<string> &managers, vector<string> 
 	glocal vector<string> *projects = &projects;
 	glocal vector<string> *roles = &roles;
 	glocal vector<unsigned> *listids = &listids;
-	managers.push_back("");
-	projects.push_back("inbox");
-	roles.push_back("");
-	listids.push_back((unsigned)-1);
 	<call sql_query>("select id2name.name,group_lists.name,group_members.role,group_lists.id"
 		" from group_members"
 		" join group_list_members on group_list_members.groupid = group_members.groupid"
@@ -465,14 +461,26 @@ int fs_newid (unsigned userid, int noproc, string &msg)
 	return fs_newid (userid,(unsigned)-1,' ',noproc,msg,uuid);
 }
 /*
+	Find the directory ID of the outbox for this user.
+	The directory is created as needed.
+*/
+unsigned fs_find_outbox (unsigned ownerid, PARAM_STRING name, int noproc, string &msg)
+{
+	vector<string> dirs = {"msgs",name.ptr,"outbox"};
+	vector<unsigned> listids = {0,(unsigned)-1,(unsigned)-1};
+	vector<char> listmodes = {'p','p','p'};
+	bool may_add;
+	return fs_locate_dir (dirs,ownerid,true,msg,END_OF_TIME,may_add,true,noproc,&listids,&listmodes);
+}
+/*
 	Find the directory ID of the inbox for this user.
 	The directory is created as needed.
 */
-unsigned fs_find_inbox (unsigned ownerid, const char *name, int noproc, string &msg)
+unsigned fs_find_inbox (unsigned ownerid, PARAM_STRING name, int noproc, string &msg)
 {
-	vector<string> dirs = {"msgs",name};
-	vector<unsigned> listids = {0,(unsigned)-1};
-	vector<char> listmodes = {'p','p'};
+	vector<string> dirs = {"msgs",name.ptr,"inbox"};
+	vector<unsigned> listids = {0,(unsigned)-1,(unsigned)-1};
+	vector<char> listmodes = {'p','p','p'};
 	bool may_add;
 	return fs_locate_dir (dirs,ownerid,true,msg,END_OF_TIME,may_add,true,noproc,&listids,&listmodes);
 }
