@@ -30,7 +30,7 @@ struct ENTRY {
 #define ALL_MAY_READ	"#all"
 
 void fs_set_noproc (int noproc);
-int fs_findentry (const char *name, ENTRY &entry, bool expect_exist, const char *threshold);
+int fs_findentry (PARAM_STRING name, ENTRY &entry, bool expect_exist, const char *threshold);
 FILE *fs_alloc_file_handle (int fileid, PARAM_STRING modified, const char *mode, std::string &handle, const char *sessionid);
 long fs_get_filesize (int fileid, PARAM_STRING modified);
 FILE *fs_get_file (const std::string &handle, const char *sessionid);

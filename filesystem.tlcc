@@ -241,7 +241,8 @@ static int fs_locate_dir (
 				ret = -1;
 				break;
 			}else if (!fs_check_access(userid,ownerid,group_list_id,listmode,is_admin,may_add)){
-				msg = string_f ("Access denied to directory %s",tmp.c_str());
+				msg = string_f ("Access denied to directory %s (%u,%u,%u,'%c')",tmp.c_str()
+					,userid,ownerid,group_list_id,listmode);
 				ret = -1;
 				break;
 			}else{
@@ -287,11 +288,12 @@ static int fs_parse_fname (const char *name, vector<string> &parentdirs, string 
 	return ret;
 }
 
-int fs_findentry (const char *name, ENTRY &entry, bool expect_exist, const char *threshold)
+int fs_findentry (PARAM_STRING path, ENTRY &entry, bool expect_exist, const char *threshold)
 {
 	int ret = -1;
 	if (threshold[0] == '\0') threshold = END_OF_TIME;
 	vector<string> parents;
+	const char *name = path.ptr;
 	if (name[0] == '/' && name[1] == '\0'){
 		entry.dirid = 0;
 		entry.entryid = 0;

@@ -72,16 +72,18 @@ using namespace std;
 	Get the userid associated with the sessionid
 */
 <mod>
-static unsigned trli_getsessionuser (CONNECT_INFO &con, const char *sessionid, bool &is_admin)
+static unsigned trli_getsessionuser (CONNECT_INFO &con, const char *sessionid, bool &is_admin, string &name)
 {
 	glocal unsigned userid = 0;
 	glocal bool is_admin = false;
+	glocal string *name = &name;
 	//long long start = fdpass_getnow();
 	//for (int i=0; i<10000; i++){
 	<call bo_sessiond_client_getsessioninfo>(con,sessionid);
 	<f ok>
 		glocal.userid = userid;
 		glocal.is_admin = admin;
+		(*glocal.name) = name;
 	</f>
 	</call>
 	//}
@@ -91,6 +93,11 @@ static unsigned trli_getsessionuser (CONNECT_INFO &con, const char *sessionid, b
 	return glocal.userid;
 }
 </mod>
+static unsigned trli_getsessionuser (CONNECT_INFO &con, const char *sessionid, bool &is_admin)
+{
+	string username;
+	return trli_getsessionuser (con,sessionid,is_admin,username);
+}
 static int bod_findentry (CONNECT_INFO &con, const char *sessionid, const char *name, ENTRY &entry, const char *threshold)
 {
 	int ret = -1;
@@ -111,10 +118,10 @@ static int bod_findentry (CONNECT_INFO &con, const char *sessionid, const char *
 	Return 0 if not a valid userid (sessionid is invalid)
 */
 <mod>
-static unsigned bo_writed_get_group_owner (CONNECT_INFO &con, const char *sessionid, const char *owner, string &msg)
+static unsigned bo_writed_get_group_owner (CONNECT_INFO &con, const char *sessionid, const char *owner, string &username, string &msg)
 {
 	bool is_admin;
-	glocal unsigned userid = trli_getsessionuser (con,sessionid,is_admin);
+	glocal unsigned userid = trli_getsessionuser (con,sessionid,is_admin,username);
 	if (is_admin && owner[0] != '\0'){
 		<call sql_query>("select userid from id2name where name='%s'",owner);
 		<f onerow>
@@ -124,11 +131,17 @@ static unsigned bo_writed_get_group_owner (CONNECT_INFO &con, const char *sessio
 			glocal.userid = 0;
 		</f>
 		</call>
+		username = owner;
 		if (glocal.userid == 0) msg = "Unknown owner";
 	}
 	return glocal.userid;
 }
 </mod>
+static unsigned bo_writed_get_group_owner (CONNECT_INFO &con, const char *sessionid, const char *owner, string &msg)
+{
+	string username;
+	return bo_writed_get_group_owner (con,sessionid,owner,username,msg);
+}
 <mod>
 static int trlid_main (
 	const char *bind,
@@ -693,6 +706,54 @@ static int trlid_main (
 					glocal.roles.clear();
 				}
 				rep_list_inboxes (ret,glocal.msg,glocal.managers,glocal.projects,glocal.roles);
+			</f>
+			<f list_msgs> // sessionid owner deleted:b offset:u nb:u = success:b msg managers:v projects:v roles:v uuids:v titles:v submits:v 
+				glocal string msg = "Invalid session";
+				glocal vector<string> managers;
+				glocal vector<string> projects;
+				glocal vector<string> roles;
+				glocal vector<string> uuids;
+				glocal vector<string> titles;
+				glocal vector<string> submits;
+				string username;
+				unsigned userid = bo_writed_get_group_owner (glocal.con_sess, sessionid, owner, username, glocal.msg);
+				if (userid != 0){
+					glocal.msg = "";
+					ENTRY entry;	
+					entry.userid = userid;
+					string inbox = string_f("/msgs/%s/inbox",username.c_str());
+					if (fs_findentry(inbox,entry,true,END_OF_TIME)==-1){
+						glocal.msg = entry.msg;
+					}else{
+						<call sql_query>("select name,files.title,dirs_content.modified"
+							" from dirs_content"
+							" join files on files.id = dirs_content.itemid and files.modified = dirs_content.modified"
+							" where dirid=%u and type=%u",entry.entryid,ENTRY_FILE);
+						<f onerow>
+							glocal.managers.push_back("");
+							glocal.projects.push_back("");
+							glocal.roles.push_back("");
+							glocal.uuids.push_back(row[0]);
+							glocal.titles.push_back(row[1]);
+							glocal.submits.push_back(row[2]);
+						</f>
+						</call>
+					}
+					vector<unsigned> listids;
+					vector<string> managers,projects,roles;
+					fs_list_inboxes (userid,managers,projects,roles,listids);
+				}
+				bool ret = true;
+				if (glocal.msg.size() > 0){
+					ret = false;
+					glocal.managers.clear();
+					glocal.projects.clear();
+					glocal.roles.clear();
+					glocal.uuids.clear();
+					glocal.titles.clear();
+					glocal.submits.clear();
+				}
+				rep_list_msgs (ret,glocal.msg,glocal.managers,glocal.projects,glocal.roles,glocal.uuids,glocal.titles,glocal.submits);
 			</f>
 			<f sendmsg> // sessionid owner recipients:v title content = success:b msg msgid
 				<call bo_writed_client_sendmsg>(glocal.con,sessionid,owner,recipients,title,content);

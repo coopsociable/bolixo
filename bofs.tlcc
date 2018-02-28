@@ -1035,6 +1035,7 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 	glocal bool attach = false;
 	glocal bool newmsg = false;
 	glocal bool reply = false;
+	glocal bool listmsgs = false;
 
 	glocal vector<string> recipients;
 	glocal const char *manager = NULL;
@@ -1053,6 +1054,7 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 		setgrouparg ("Main commands");
 		setarg ('a',"attach","Add an attachment to previously sent message",glocal.attach,false);
 		setarg ('l',"list","List inboxes",glocal.list,false);
+		setarg ('i',"listmsgs","List messages in all inboxes",glocal.listmsgs,false);
 		setarg ('n',"newmsg","Send a message",glocal.newmsg,false);
 		setarg ('r',"reply","Reply to a message",glocal.reply,false);
 		setgrouparg ("Options");
@@ -1152,6 +1154,18 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 			}
 
 		}else if (glocal.attach){
+		}else if (glocal.listmsgs){
+			<call bod_client_list_msgs>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner,false,0,20);
+			<f ok>
+				if (!success){
+					tlmp_error ("bofs msgs: %s\n",msg);
+				}else{
+					for (unsigned i=0; i<managers.size(); i++){
+						printf ("%-10s %-10s %-10s %-30s %-20s %s\n",managers[i],projects[i],roles[i],uuids[i],submits[i],titles[i]);
+					}
+				}
+			</f>
+			</call>
 		}else{
 			usage();
 		}
@@ -1167,6 +1181,7 @@ int main (int argc, char *argv[])
 {
 	glocal int ret = -1;
 	glocal const char *user = NULL;
+	glocal int nbrep=1;
 	glocal.ret = <call tlmpprogram>(argc,argv);
 	<f init>
 		setproginfo ("bofs",VERSION
@@ -1183,6 +1198,7 @@ int main (int argc, char *argv[])
 			 "\tbofs rmdir ...\n"
 			);
 		setarg ('u',"user","Select one user from .bofs.conf",glocal.user,false);
+		setarg (' ',"repeat","Repeat the operation N time (speed test)",glocal.nbrep,false);
 	</f>
 	<f main>
 		int ret = -1;
@@ -1240,6 +1256,7 @@ int main (int argc, char *argv[])
 		}
 		glocal.ctx.sessionid = bod_login (glocal.ctx.con,glocal.ctx.email,glocal.ctx.password);
 		if (glocal.ctx.sessionid.size() > 0){
+			for (int i=0; i<glocal.nbrep; i++){
 			if (strcmp(argv[0],"ls")==0){
 				ret = bofs_ls (glocal.ctx,argc,argv);
 			}else if (strcmp(argv[0],"cat")==0){
@@ -1261,6 +1278,8 @@ int main (int argc, char *argv[])
 			}else{
 				tlmp_error ("Invalid command: %s\n",argv[0]);
 				usage();
+				exit (-1);
+			}
 			}
 			bod_logout (glocal.ctx.con,glocal.ctx.sessionid);
 		}
