@@ -334,7 +334,8 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 			type tinyint unsigned,
 			name varchar(100)
 		) engine=$ENGINE;
-		create index dirs_content on dirs_content (dirid);
+		create index dirs_content_dirid on dirs_content (dirid);
+		create index dirs_content_name on dirs_content (name);
 		create table groups (
 			id int primary key auto_increment,
 			ownerid int,

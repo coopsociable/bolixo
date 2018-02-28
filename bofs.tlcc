@@ -12,6 +12,7 @@
 	Further, if the program is renamed bocp (normally done using a symlink), it acts as "bofs cp"
 */
 #include <stdio.h>
+#include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -53,6 +54,20 @@ static string bod_createsession(CONNECT_INFO &con)
 }
 </mod>
 
+static void bofs_error (const char *cmd, bool internal_error, const char *msg, ...)
+{
+	va_list list;
+	va_start (list,msg);
+	char buf[1000];
+	vsnprintf (buf,sizeof(buf)-1,msg,list);
+	va_end (list);	
+	if (internal_error){
+		tlmp_error ("bofs %s: Internal/protocol error, %s\n",cmd,buf);
+	}else{
+		tlmp_error ("bofs %s: %s\n",cmd,buf);
+	}
+}
+
 <mod>
 static string bod_login (CONNECT_INFO &con, PARAM_STRING email, PARAM_STRING password)
 {
@@ -62,7 +77,7 @@ static string bod_login (CONNECT_INFO &con, PARAM_STRING email, PARAM_STRING pas
 	<call bod_client_login>(con,glocal.sessionid,email,password);
 	<f ok>
 		if (!success){
-			tlmp_error ("login failed for %s success=%d sessionid=%s\n",glocal.email,success,glocal.sessionid.c_str());
+			bofs_error ("login",internal_error,"login failed for %s success=%d sessionid=%s",glocal.email,success,glocal.sessionid.c_str());
 		}else{
 			glocal.ret = glocal.sessionid;
 		}
@@ -197,7 +212,7 @@ static int bofs_stat (
 					}
 				}
 			}else{
-				tlmp_error ("Can't stat bolixo file %s: %s\n",glocal.file.c_str(),msg);
+				bofs_error ("stat",internal_error,"Can't stat bolixo file %s: %s",glocal.file.c_str(),msg);
 			}
 		</f>
 		</call>
@@ -242,18 +257,22 @@ static int bofs_ls (CONTEXT &ctx, int argc, char *argv[])
 			<f ok>
 				static char tbtype[]={' ','_','D','F','M','C'};
 				if (!success){
-					ENTRY_TYPE type;
-					string parent, file, modified, owner, members,listmode,title;
-					unsigned size;
-					if (bofs_stat(*glocal.ctx,glocal.path,type,parent,file,modified,owner,members,listmode,size,title)==-1){
-						tlmp_error ("ls: %s\n",msg);
-						glocal.ret = -1;
+					if (internal_error){
+						bofs_error ("ls",true,"");
 					}else{
-						if (glocal.opt_long){
-							printf ("\t%c   %s   %s/%s:%s   %u   %s  %s\n",tbtype[type],modified.c_str()
-								,owner.c_str(),members.c_str(),listmode.c_str(),size,file.c_str(),title.c_str());
+						ENTRY_TYPE type;
+						string parent, file, modified, owner, members,listmode,title;
+						unsigned size;
+						if (bofs_stat(*glocal.ctx,glocal.path,type,parent,file,modified,owner,members,listmode,size,title)==-1){
+							bofs_error ("ls",false,msg);
+							glocal.ret = -1;
 						}else{
-							printf ("%s\n",file.c_str());
+							if (glocal.opt_long){
+								printf ("\t%c   %s   %s/%s:%s   %u   %s  %s\n",tbtype[type],modified.c_str()
+									,owner.c_str(),members.c_str(),listmode.c_str(),size,file.c_str(),title.c_str());
+							}else{
+								printf ("%s\n",file.c_str());
+							}
 						}
 					}
 				}else{
@@ -313,7 +332,7 @@ static int bofs_cat_rest (CONTEXT &ctx, const char *handle, FILE *fin)
 		<call bod_client_appendfile>(ctx.con,ctx.sessionid,handle,BOB_TYPE(buf,len,false),more);
 		<f ok>
 			if (!success){
-				tlmp_error ("cat_rest: %s\n",msg);
+				bofs_error ("cat_rest",internal_error,msg);
 				glocal.ret = -1;
 			}
 		</f>
@@ -332,7 +351,7 @@ static int bofs_cat_bofile (CONTEXT &ctx, const char *path, FILE *fout)
 	<call bod_client_readfile_bob> (ctx.con,ctx.sessionid,path,ctx.threshold);
 	<f ok>
 		if (!success){
-			tlmp_error ("bofs cat: %s\n",msg);
+			bofs_error ("cat",internal_error,msg);
 			glocal.ret = -1;
 		}else{
 			fwrite (content.getbuffer(),1,content.getsize(),glocal.fout);
@@ -366,7 +385,7 @@ static int bofs_write_bofile(CONTEXT &ctx, PARAM_STRING path, FILE *fin)
 		<call bod_client_addfile_bob> (ctx.con,ctx.sessionid,path,BOB_TYPE(buf,len,false),glocal.more);
 		<f ok>
 			if (!success){
-				tlmp_error ("cat: %s\n",msg);
+				bofs_error ("cat",internal_error,msg);
 				glocal.ret = -1;
 			}else if (glocal.more){
 				glocal.ret = bofs_cat_rest (*glocal.ctx,handle,glocal.fin);
@@ -379,7 +398,7 @@ static int bofs_write_bofile(CONTEXT &ctx, PARAM_STRING path, FILE *fin)
 		<call bod_client_modifyfile_bob> (ctx.con,ctx.sessionid,path,BOB_TYPE(buf,len,false),glocal.more);
 		<f ok>
 			if (!success){
-				tlmp_error ("bofs cat: %s\n",msg);
+				bofs_error ("cat",internal_error,msg);
 				glocal.ret = -1;
 			}else if (glocal.more){
 				glocal.ret = bofs_cat_rest (*glocal.ctx,handle,glocal.fin);
@@ -475,7 +494,7 @@ static int bofs_copy_file(CONTEXT &ctx, PARAM_STRING path0, BO_SOURCE src0, PARA
 			<f ok>
 				if (!success){
 					glocal.ret = -1;
-					tlmp_error ("bofs cp: %s\n",msg);
+					bofs_error ("cp",internal_error,msg);
 				}
 			</f>
 			</call>
@@ -485,7 +504,7 @@ static int bofs_copy_file(CONTEXT &ctx, PARAM_STRING path0, BO_SOURCE src0, PARA
 	}else if (src0 == LOCAL_ENTRY && src1 == BO_ENTRY){
 		FILE *fin = fopen (path0.ptr,"r");
 		if (fin == NULL){
-			tlmp_error ("bofs cp: Can't open file %s (%s)\n",path0,strerror(errno));
+			bofs_error ("cp",false,"Can't open file %s (%s)",path0,strerror(errno));
 			glocal.ret = -1;
 		}else{
 			glocal.ret = bofs_write_bofile (*glocal.ctx,path1,fin);
@@ -524,7 +543,7 @@ static int bofs_checkargs (CONTEXT &ctx, int argc, char *argv[], vector<BO_ARGTY
 			}else if (S_ISREG(st.st_mode)){
 				type = ENTRY_FILE;
 			}else{
-				tlmp_error ("bofs cp: Unsupported file type %s\n",path);
+				bofs_error ("cp",false,"Unsupported file type %s",path);
 				exit (-1);
 			}
 		}
@@ -551,26 +570,24 @@ static int bofs_cp (CONTEXT &ctx, int argc, char *argv[])
 	<f main>
 		int ret = 0;
 		vector<BO_ARGTYPE> args;
-printf ("checkargs1\n");
 		if (bofs_checkargs (*glocal.ctx, argc, argv, args)==-1){
 			ret = -1;
 		}else{
 			size_t args_size = args.size();
-printf ("checkargs2\n");
 			// Check if all the entries prior to the last one exist in the file systems
 			bool missing_one = false;
 			for (unsigned i=0; i<args_size-1; i++){
 				if (args[i].type == ENTRY_NONE){
 					// Entry does not exist
 					missing_one = true;
-					tlmp_error ("bofs cp: Source file/directory %s is missing, can't continue\n"
+					bofs_error ("cp",false,"Source file/directory %s is missing, can't continue"
 						,args[i].path.c_str());
 				}
 			}
 			if (missing_one){
 				ret = -1;
 			}else if (args_size < 2){
-				tlmp_error ("bofs cp: minimum 2 arguments\n");
+				bofs_error ("cp",false,"minimum 2 arguments");
 				ret = -1;
 			}else if (args[args_size-1].type == 'D'){
 				// Last argument is a directory
@@ -589,7 +606,7 @@ printf ("checkargs2\n");
 							<f ok>
 								if (!success){
 									glocal.ret = -1;
-									tlmp_error ("bofs cp: %s\n",msg);
+									bofs_error ("cp",internal_error,msg);
 								}
 							</f>
 							</call>
@@ -604,10 +621,10 @@ printf ("checkargs2\n");
 				}
 			}else if (args_size != 2){
 				// Last argument is a file, problem
-				tlmp_error ("bofs cp: Can't copy multiple inputs onto a file\n");
+				bofs_error ("cp",false,"Can't copy multiple inputs onto a file");
 				ret = -1;
 			}else if (!bolixo_isfile(args[0].type)){
-				tlmp_error ("bofs cp: Can't copy a directory over a file\n");
+				bofs_error ("cp",false,"Can't copy a directory over a file");
 				ret = -1;
 			}else{
 				// Ok, we copy a file onto a file
@@ -646,7 +663,7 @@ static int bofs_rm (CONTEXT &ctx, int argc, char *argv[])
 				if (success){
 					glocal.ret = 0;
 				}else{
-					tlmp_error ("Can't delete bolixo file %s: %s\n",glocal.path,msg);
+					bofs_error ("rm",internal_error,"Can't delete bolixo file %s: %s",glocal.path,msg);
 				}
 			</f>
 			</call>
@@ -682,12 +699,12 @@ static int bofs_mv (CONTEXT &ctx, int argc, char *argv[])
 			glocal.ret = -1;
 		}else{
 			if (args.size() != 2){
-				tlmp_error ("bofs mv: Accepts only two arguments\n");
+				bofs_error ("mv",false,"Accepts only two arguments");
 				glocal.ret = -1;
 			}else{
 				BO_SOURCE src0 = args[0].source;
 				if (src0 != args[1].source){
-					tlmp_error ("bofs mv: Can't mv file across different filesystems\n");
+					bofs_error ("mv",false,"Can't mv file across different filesystems");
 					glocal.ret = -1;
 				}else{
 					const char *path0 = args[0].path.c_str();
@@ -699,7 +716,7 @@ static int bofs_mv (CONTEXT &ctx, int argc, char *argv[])
 						<f ok>
 							if (!success){
 								glocal.ret = -1;
-								tlmp_error ("bofs mv: %s\n",msg);
+								bofs_error ("mv",internal_error,msg);
 							}
 						</f>
 						</call>
@@ -739,7 +756,7 @@ static int bofs_mkdir (CONTEXT &ctx, int argc, char *argv[])
 				if (success){
 					glocal.ret = 0;
 				}else{
-					tlmp_error ("Can't create directory %s: %s\n",glocal.path,msg);
+					bofs_error ("mkdir",internal_error,"Can't create directory %s: %s",glocal.path,msg);
 				}
 			</f>
 			</call>
@@ -779,7 +796,7 @@ static int bofs_rmdir (CONTEXT &ctx, int argc, char *argv[])
 				if (success){
 					glocal.ret = 0;
 				}else{
-					tlmp_error ("Can't remove directory %s: %s\n",glocal.path,msg);
+					bofs_error ("rmdir",internal_error,"Can't remove directory %s: %s",glocal.path,msg);
 				}
 			</f>
 			</call>
@@ -857,86 +874,86 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 		glocal int ret = -1;
 		if (glocal.create_group_list){
 			if (glocal.listname == NULL){
-				tlmp_error ("You must specify the list name\n");
+				bofs_error ("groups",false,"You must specify the list name");
 			}else{
 				<call bod_client_create_group_list> (glocal.ctx->con,glocal.ctx->sessionid,glocal.listname,glocal.owner);
 				<f ok>
 					if (success){
 						glocal.ret = 0;
 					}else{
-						tlmp_error ("Can't create group_list: %s\n",msg);
+						bofs_error ("groups",internal_error, "Can't create group_list: %s",msg);
 					}
 				</f>
 				</call>
 			}
 		}else if (glocal.create_group){
 			if (glocal.groupname == NULL){
-				tlmp_error ("You must specify the group name\n");
+				bofs_error ("groups",false,"You must specify the group name");
 			}else{
 				<call bod_client_create_group> (glocal.ctx->con,glocal.ctx->sessionid,glocal.groupname,glocal.owner);
 				<f ok>
 					if (success){
 						glocal.ret = 0;
 					}else{
-						tlmp_error ("Can't create group: %s\n",msg);
+						bofs_error ("groups",internal_error,"Can't create group: %s",msg);
 					}
 				</f>
 				</call>
 			}
 		}else if (glocal.set_group){
 			if (glocal.listname == NULL){
-				tlmp_error ("You must specify the list name\n");
+				bofs_error ("groups",false,"You must specify the list name");
 			}else if (glocal.groupname == NULL){
-				tlmp_error ("You must specify the group name\n");
+				bofs_error ("groups",false,"You must specify the group name");
 			}else{
 				<call bod_client_set_group> (glocal.ctx->con,glocal.ctx->sessionid,glocal.listname,glocal.groupname,glocal.access,glocal.owner);
 				<f ok>
 					if (success){
 						glocal.ret = 0;
 					}else{
-						tlmp_error ("Can't assign group to a list: %s\n",msg);
+						bofs_error ("groups",internal_error,"Can't assign group to a list: %s",msg);
 					}
 				</f>
 				</call>
 			}
 		}else if (glocal.set_member){
 			if (glocal.groupname == NULL){
-				tlmp_error ("You must specify the group name\n");
+				bofs_error ("groups",false,"You must specify the group name");
 			}else{
 				<call bod_client_set_member> (glocal.ctx->con,glocal.ctx->sessionid,glocal.groupname,glocal.user,glocal.access,glocal.role,glocal.owner);
 				<f ok>
 					if (success){
 						glocal.ret = 0;
 					}else{
-						tlmp_error ("Can't assign user to a group: %s\n",msg);
+						bofs_error ("groups",internal_error,"Can't assign user to a group: %s",msg);
 					}
 				</f>
 				</call>
 			}
 		}else if (glocal.delete_list){
 			if (glocal.listname == NULL){
-				tlmp_error ("You must specify the list name\n");
+				bofs_error ("groups",false,"You must specify the list name");
 			}else{
 				<call bod_client_delete_list> (glocal.ctx->con,glocal.ctx->sessionid,glocal.listname,glocal.owner);
 				<f ok>
 					if (success){
 						glocal.ret = 0;
 					}else{
-						tlmp_error ("Can't delete the list: %s\n",msg);
+						bofs_error ("groups",internal_error,"Can't delete the list: %s",msg);
 					}
 				</f>
 				</call>
 			}
 		}else if (glocal.delete_group){
 			if (glocal.groupname == NULL){
-				tlmp_error ("You must specify the group name\n");
+				bofs_error ("groups",false,"You must specify the group name");
 			}else{
 				<call bod_client_delete_group> (glocal.ctx->con,glocal.ctx->sessionid,glocal.groupname,glocal.owner);
 				<f ok>
 					if (success){
 						glocal.ret = 0;
 					}else{
-						tlmp_error ("Can't delete the group: %s\n",msg);
+						bofs_error ("groups",internal_error,"Can't delete the group: %s",msg);
 					}
 				</f>
 				</call>
@@ -960,7 +977,7 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 						}
 					}
 				}else{
-					tlmp_error ("Can't list lists: %s\n",msg);
+					bofs_error ("groups",internal_error,"Can't list lists: %s",msg);
 				}
 			</f>
 			</call>
@@ -990,7 +1007,7 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 						}
 					}
 				}else{
-					tlmp_error ("Can't list groups: %s\n",msg);
+					bofs_error ("groups",internal_error,"Can't list groups: %s",msg);
 				}
 			</f>
 			</call>
@@ -998,7 +1015,7 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 			<call bod_client_set_access>(glocal.ctx->con,glocal.ctx->sessionid,glocal.filename,glocal.listname,glocal.listmode);
 			<f ok>
 				if (!success){
-					tlmp_error ("bofs groups: %s\n",msg);
+					bofs_error ("groups",internal_error,"bofs groups: %s",msg);
 				}else{
 					glocal.ret = 0;
 				}
@@ -1075,7 +1092,7 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 			<call bod_client_list_inboxes>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner);
 			<f ok>
 				if (!success){
-					tlmp_error ("bofs msgs: %s\n",msg);
+					bofs_error ("msgs",internal_error,msg);
 				}else{
 					unsigned max_manager=0;
 					unsigned max_project=0;
@@ -1092,13 +1109,13 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 			</call>
 		}else if (glocal.newmsg){
 			if (glocal.content == NULL){
-				tlmp_error ("Missing content\n");
+				bofs_error ("msgs",false,"Missing content");
 			}else if (glocal.recipients.size() > 0){
 				<call bod_client_sendmsg>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner
 					,glocal.recipients,glocal.title,glocal.content);
 				<f ok>
 					if (!success){
-						tlmp_error ("bofs msgs: %s\n",msg);
+						bofs_error ("msgs",internal_error,msg);
 					}else{
 						printf ("msgid: %s\n",msgid);
 						glocal.ret = 0;
@@ -1110,7 +1127,7 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 					,glocal.manager,glocal.project,glocal.role,glocal.title,glocal.content);
 				<f ok>
 					if (!success){
-						tlmp_error ("bofs msgs: %s\n",msg);
+						bofs_error ("msgs",internal_error,msg);
 					}else{
 						printf ("msgid: %s\n",msgid);
 						glocal.ret = 0;
@@ -1118,19 +1135,19 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 				</f>
 				</call>
 			}else{
-				tlmp_error ("When sending a message, you must specify manager,project or recipients\n");
+				bofs_error ("msgs",false,"When sending a message, you must specify manager,project or recipients");
 			}
 		}else if (glocal.reply){
 			if (glocal.content == NULL){
-				tlmp_error ("Missing content\n");
+				bofs_error ("msgs",false,"Missing content");
 			}else if (glocal.msgid == NULL){
-				tlmp_error ("You must specify the message ID you are replying to\n");
+				bofs_error ("msgs",false,"You must specify the message ID you are replying to");
 			}else if (glocal.recipients.size() > 0){
 				<call bod_client_replymsg>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner
 					,glocal.msgid,glocal.recipients,glocal.title,glocal.content);
 				<f ok>
 					if (!success){
-						tlmp_error ("bofs replymsg: %s\n",msg);
+						bofs_error ("msgs",internal_error,msg);
 					}else{
 						printf ("replyid: %s\n",replyid);
 						glocal.ret = 0;
@@ -1142,7 +1159,7 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 					,glocal.manager,glocal.project,glocal.role,glocal.msgid,glocal.title,glocal.content);
 				<f ok>
 					if (!success){
-						tlmp_error ("bofs replymsg_project: %s\n",msg);
+						bofs_error ("msgs",internal_error,msg);
 					}else{
 						printf ("replyid: %s\n",replyid);
 						glocal.ret = 0;
@@ -1150,7 +1167,7 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 				</f>
 				</call>
 			}else{
-				tlmp_error ("When sending a message, you must specify manager,project or recipients\n");
+				bofs_error ("msgs",false,"When sending a message, you must specify manager,project or recipients");
 			}
 
 		}else if (glocal.attach){
@@ -1158,7 +1175,7 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 			<call bod_client_list_msgs>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner,false,0,20);
 			<f ok>
 				if (!success){
-					tlmp_error ("bofs msgs: %s\n",msg);
+					bofs_error ("msgs",internal_error,msg);
 				}else{
 					for (unsigned i=0; i<managers.size(); i++){
 						printf ("%-10s %-10s %-10s %-30s %-20s %s\n",managers[i],projects[i],roles[i],uuids[i],submits[i],titles[i]);

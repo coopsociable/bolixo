@@ -51,6 +51,15 @@ elif [ "$1" = "sequence" ] ; then
 		./bofs -u $user groups --print-lists
 		./bofs -u $user groups --print-groups
 	done
+	for ((i=0; i<100; i++))
+	do
+		CONTENT=
+		for ((j=0; j<20; j++))
+		do
+			CONTENT="$CONTENT\nThis is the body number $i,$j"
+		done
+		./bofs -u jacques-B msgs -n -D jacques-A -D jacques-C -T "This is title number $i" -C "$CONTENT"
+	done
 elif [ "$1" = "config" ] ; then
 	./test.sh files <<-EOF
 		insert into groups (id,name) values (100,'project1'), (101,'project2'), (102,'project3');
