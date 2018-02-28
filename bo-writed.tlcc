@@ -1353,22 +1353,39 @@ int main (int argc, char *argv[])
 					glocal string msgid;
 					string username;
 					glocal unsigned userid = bo_writed_get_group_owner (glocal.con, sessionid, owner, username, glocal.msg);
-					if (glocal.userid != 0){
+					if (recipients.size() == 0){
+						glocal.msg = "No recipient";
+					}else if (glocal.userid != 0){
 						// Check that all recipients do exist
-						vector<unsigned> r_userids;
+						glocal vector<pair<string,unsigned>> r_userids;
+						string req = "select name,userid from id2name";
+						const char *sep = "where";
+						NSQL_ENCODE enc;
 						for (auto r:recipients){
-							int rid = trli_rec_getid ("select userid from id2name where name='%s'",r);
-							if (rid == -1){
-								glocal.msg = string_f ("Unknown recipient %s",r);
-								break;
-							}else{
-								r_userids.push_back(rid);
-							}
+							req += string_f(" %s name='%s'",sep,enc.enc(r));
+							sep = "or";
 						}
-						if (recipients.size() > 0 && r_userids.size() == recipients.size()){
+						<call sql_query>(req.c_str());
+						<f onerow>
+							glocal.r_userids.push_back(pair<string,unsigned>(row[0],atoi(row[1])));
+						</f>
+						</call>
+						if (glocal.r_userids.size() != recipients.size()){
+							glocal.msg = "Some recipient(s) invalid:";
+							for (auto r:recipients){
+								bool found = false;
+								for (auto &i:glocal.r_userids){
+									if (strcmp(r,i.first.c_str())==0){
+										found = true;
+										break;
+									}
+								}
+								if (!found) glocal.msg += string(" ") + r;
+							}
+						}else{
 							int outbox_id = fs_find_outbox(glocal.userid,username,glocal.msg);
 							if (outbox_id != -1){
-								// All message are member of group #all, with listmode='r'
+								// All messages are member of group #all, with listmode='r'
 								// But access is controlled by the parent directory
 								int fileid = fs_newid (glocal.userid,0,'r',glocal.msg,glocal.msgid);
 								if (fileid != -1){
@@ -1381,9 +1398,10 @@ int main (int argc, char *argv[])
 										glocal.msg = "Internal error (files table)";
 									}else{
 										glocal.msg = "";
-										for (unsigned i=0; i<recipients.size(); i++){
-											const char *r = recipients[i];
-											int inbox_id = fs_find_inbox (r_userids[i],r,glocal.msg);
+										for (unsigned i=0; i<glocal.r_userids.size(); i++){
+											const char *r = glocal.r_userids[i].first.c_str();
+											unsigned r_id = glocal.r_userids[i].second;
+											int inbox_id = fs_find_inbox (r_id,r,glocal.msg);
 											if (inbox_id == -1) break;
 											if (fs_insert_file(inbox_id,fileid,now,glocal.msgid)==-1){
 												glocal.msg = string_f ("Can't write to user %s inbox",r);
@@ -1398,7 +1416,7 @@ int main (int argc, char *argv[])
 					if (glocal.msg.size()==0){
 						rep_sendmsg (true,"",glocal.msgid);
 					}else{
-						rep_sendmsg (true,glocal.msg,"");
+						rep_sendmsg (false,glocal.msg,"");
 					}		
 				</f>
 				<f sendmsg_project> // sessionid owner manager project role title content = success:b msg msgid

@@ -271,6 +271,7 @@ elif [ "$1" = "bo-sessiond-control" ] ; then # A: Talks to sessiond
 	shift
 	$BOLIXOPATH/bo-sessiond-control --control $SESSIOND_SOCK $*
 elif [ "$1" = "createdb" ] ; then # db: Create databases
+	ENGINE=myisam
 	mysqladmin -uroot -S $SOCKU create $DBNAMEU
 	mysql -uroot -S $SOCKU $DBNAMEU <<-EOF
 		create table users (
@@ -301,8 +302,9 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 		create table id2name(
 			userid int not null,
 			name char(50)
-		);
-		create unique index userid_idx on id2name (userid);
+		)engine=$ENGINE;
+		create unique index id2name_userid on id2name (userid);
+		create unique index id2name_name   on id2name (name);
 		insert into id2name (userid,name) values (-1,"Anonymous");
 
 		create table ids (
@@ -311,15 +313,17 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 			group_list_id int default null,
 			listmode char default ' ',
 			uuid char(40)
-		);
+		) engine=$ENGINE;
 		create index ids_uuid on ids (uuid);
+		--insert into ids (id,ownerid,uuid) values (0,0,"root");
+		--update ids set id=0 where uuid='root';
 
 		create table files (
 			id int,
 			modified datetime default current_timestamp,
 			title varchar(200),
 			content text
-		);
+		)engine=$ENGINE;
 		create index files_id on files (id);
 
 		create table dirs_content (
@@ -329,7 +333,7 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 			modified datetime,
 			type tinyint unsigned,
 			name varchar(100)
-		);
+		) engine=$ENGINE;
 		create index dirs_content on dirs_content (dirid);
 		create table groups (
 			id int primary key auto_increment,
