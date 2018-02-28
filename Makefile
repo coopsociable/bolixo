@@ -15,7 +15,7 @@ all: $(PROGS)
 compile: $(PROGS)
 	#make -Cweb 
 
-bofs: bofs.tlcc proto/bod_client.protoh
+bofs: bofs.tlcc proto/bod_client.protoh filesystem.h
 	cctlcc -Wall $(OPTIONS) bofs.tlcc -o bofs $(LIBS)
 
 bod: bod.tlcc filesystem.o proto/bod_control.protoh proto/bod_client.protoh proto/bod_admin.protoh \
@@ -112,7 +112,7 @@ proto/bo-sessiond_admin.protoh: proto/bo-sessiond_admin.proto
 	build-protocol --secretmode --arg "int no" --arg "HANDLE_INFO *c" --arg "const char *host" --name bo_sessiond_admin \
 		--protoch proto/bo-sessiond_admin.protoch proto/bo-sessiond_admin.proto >proto/bo-sessiond_admin.protoh
 
-filesystem.o: filesystem.tlcc
+filesystem.o: filesystem.tlcc filesystem.h
 	cctlcc -Wall $(OPTIONS) -c filesystem.tlcc -o filesystem.o
 
 clean:

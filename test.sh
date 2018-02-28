@@ -375,7 +375,7 @@ elif [ "$1" = "filldb" ] ; then # db: Fill database (old)
 	for dir in /msgs /msg-projects /projects /homes
 	do
 		$0 test-mkdir admin $dir
-		$0 test-set_access admin $dir "#allread" p
+		$0 test-set_access admin $dir "#all" p
 	done
 elif [ "$1" = "resetdb" ] ; then # db: drops and creates databases
 	echo Erase $DBNAME and $DBNAMEU database

@@ -4,6 +4,7 @@
 #include <fcntl.h>
 #include <sys/time.h>
 #include <sys/stat.h>
+#include <dialog.h>
 #include <tlmplib.h>
 #include <tlmpsql.h>
 #include <string>
@@ -24,13 +25,19 @@ using namespace std;
 #include "proto/bo-sessiond_admin.protoch"
 #endif
 
+static int noproc = 0;
+
+void fs_set_noproc (int _noproc)
+{
+	noproc = _noproc;
+}
 /*
 	Create a uniq ID combining the process number of this instance, a random value and the time in micro-seconds
 */
-string fs_makeid (int noproc)
+string fs_makeid ()
 {
 	string ret;
-	char tmp[100];
+	//char tmp[100];
 	struct timeval t;
 	if (gettimeofday(&t,NULL)!=-1){
 		static int fd = -1;
@@ -44,8 +51,16 @@ string fs_makeid (int noproc)
 				error_shown = true;
 			}
 		}else{
-			char buf[8];
-			if (read(fd,buf,8)!=8){
+			struct {
+				char buf[8];
+				unsigned tv_sec;
+				unsigned tv_usec;
+				char noproc;
+			} data;
+			data.tv_sec = t.tv_sec;
+			data.tv_usec = t.tv_usec;
+			data.noproc = noproc;
+			if (read(fd,data.buf,8)!=8){
 				close (fd);
 				fd = -1;
 				if (!error_shown){
@@ -53,10 +68,14 @@ string fs_makeid (int noproc)
 					error_shown = true;
 				}
 			}else{
-				for (int i=0; i<8; i++) snprintf (tmp+i*2,3,"%02x",buf[i]);
-				int n = snprintf (tmp+16,sizeof(tmp)-16-1,"%08lx%08lx",t.tv_sec,t.tv_usec);
-				snprintf (tmp+16+n,sizeof(tmp)-16-n-1,"-%d",noproc);
-				ret = tmp;
+				#if 0
+					for (int i=0; i<8; i++) snprintf (tmp+i*2,3,"%02x",buf[i]);
+					int n = snprintf (tmp+16,sizeof(tmp)-16-1,"%08lx%08lx",t.tv_sec,t.tv_usec);
+					snprintf (tmp+16+n,sizeof(tmp)-16-n-1,"-%d",noproc);
+				#endif
+				char *enc = base64_encode ((const char *)&data,17);	//sizeof(data));
+				ret = enc;
+				free (enc);
 			}
 		}
 	}
@@ -172,7 +191,6 @@ static int fs_locate_dir (
 	const char *threshold,
 	bool &may_add,
 	bool create_missing,
-	int noproc,
 	vector<unsigned> *listids,
 	vector<char> *listmodes)
 {
@@ -202,7 +220,7 @@ static int fs_locate_dir (
 					string uuid;
 					// All directories created "on the fly" are assigned listmode=p
 					// It means they can't be listed.
-					dirid = fs_newid (userid,(*listids)[i],(*listmodes)[i],noproc,msg,uuid);
+					dirid = fs_newid (userid,(*listids)[i],(*listmodes)[i],msg,uuid);
 					if (dirid != -1){
 						char now[20];
 						fs_set_now(now);
@@ -242,7 +260,7 @@ static int fs_locate_dir (
 	const char *threshold,
 	bool &may_add)
 {
-	return fs_locate_dir (tb,userid,is_admin,msg,threshold,may_add,false,0,NULL,NULL);
+	return fs_locate_dir (tb,userid,is_admin,msg,threshold,may_add,false,NULL,NULL);
 }
 
 static int fs_parse_fname (const char *name, vector<string> &parentdirs, string &basename)
@@ -362,7 +380,7 @@ static string fs_createpath (int fileid, PARAM_STRING modified)
 */
 FILE *fs_alloc_file_handle (int fileid, PARAM_STRING modified, const char *mode, string &handle, const char *sessionid)
 {
-	handle = fs_makeid (0);
+	handle = fs_makeid ();
 	string path = fs_createpath (fileid,modified);
 	FILE *ret = fopen (path.c_str(),mode);
 	tlmp_error ("alloc_file_handle ret=%p path=%s (%s)\n",ret,path.c_str(),strerror(errno));
@@ -434,10 +452,10 @@ void fs_set_now (char now[20])
 /*
 	Allocate a new entry in table ids.
 */
-int fs_newid (unsigned userid, unsigned listid, char listmode, int noproc, string &msg, string &uuid)
+int fs_newid (unsigned userid, unsigned listid, char listmode, string &msg, string &uuid)
 {
 	int ret = -1;
-	uuid = fs_makeid(noproc);
+	uuid = fs_makeid();
 	char listid_str[30];
 	if (listid == (unsigned)-1){
 		strcpy (listid_str,"NULL");
@@ -451,45 +469,45 @@ int fs_newid (unsigned userid, unsigned listid, char listmode, int noproc, strin
 	}
 	return ret;
 }
-int fs_newid (unsigned userid, int noproc, string &msg, string &uuid)
+int fs_newid (unsigned userid, string &msg, string &uuid)
 {
-	return fs_newid (userid,(unsigned)-1,' ',noproc,msg,uuid);
+	return fs_newid (userid,(unsigned)-1,' ',msg,uuid);
 }
-int fs_newid (unsigned userid, int noproc, string &msg)
+int fs_newid (unsigned userid, string &msg)
 {
 	string uuid;
-	return fs_newid (userid,(unsigned)-1,' ',noproc,msg,uuid);
+	return fs_newid (userid,(unsigned)-1,' ',msg,uuid);
 }
 /*
 	Find the directory ID of the outbox for this user.
 	The directory is created as needed.
 */
-unsigned fs_find_outbox (unsigned ownerid, PARAM_STRING name, int noproc, string &msg)
+unsigned fs_find_outbox (unsigned ownerid, PARAM_STRING name, string &msg)
 {
 	vector<string> dirs = {"msgs",name.ptr,"outbox"};
 	vector<unsigned> listids = {0,(unsigned)-1,(unsigned)-1};
 	vector<char> listmodes = {'p','p','p'};
 	bool may_add;
-	return fs_locate_dir (dirs,ownerid,true,msg,END_OF_TIME,may_add,true,noproc,&listids,&listmodes);
+	return fs_locate_dir (dirs,ownerid,true,msg,END_OF_TIME,may_add,true,&listids,&listmodes);
 }
 /*
 	Find the directory ID of the inbox for this user.
 	The directory is created as needed.
 */
-unsigned fs_find_inbox (unsigned ownerid, PARAM_STRING name, int noproc, string &msg)
+unsigned fs_find_inbox (unsigned ownerid, PARAM_STRING name, string &msg)
 {
 	vector<string> dirs = {"msgs",name.ptr,"inbox"};
 	vector<unsigned> listids = {0,(unsigned)-1,(unsigned)-1};
 	vector<char> listmodes = {'p','p','p'};
 	bool may_add;
-	return fs_locate_dir (dirs,ownerid,true,msg,END_OF_TIME,may_add,true,noproc,&listids,&listmodes);
+	return fs_locate_dir (dirs,ownerid,true,msg,END_OF_TIME,may_add,true,&listids,&listmodes);
 }
-unsigned fs_find_project_inbox (unsigned ownerid, unsigned listid, const char *name, const char *project, const char *role, int noproc, string &msg)
+unsigned fs_find_project_inbox (unsigned ownerid, unsigned listid, const char *name, const char *project, const char *role, string &msg)
 {
 	vector<string> dirs = {"msg-projects",name,project};
 	if (role[0] != '\0') dirs.push_back(role);
 	vector<unsigned> listids = {0,0,listid,listid};
 	vector<char> listmodes = {'p','p','r','r'};
 	bool may_add;
-	return fs_locate_dir (dirs,ownerid,true,msg,END_OF_TIME,may_add,true,noproc,&listids,&listmodes);
+	return fs_locate_dir (dirs,ownerid,true,msg,END_OF_TIME,may_add,true,&listids,&listmodes);
 }

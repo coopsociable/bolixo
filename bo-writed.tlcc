@@ -183,7 +183,6 @@ static int bo_writed_copydir (
 	int target_dirid,	// parent directory which will receive the new directory
 	const string &dirname,	// Name of the directory to create in the target_dirid
 	unsigned userid,
-	int noproc,
 	string &msg)
 {
 	int ret = 0;
@@ -197,7 +196,7 @@ static int bo_writed_copydir (
 			glocal.res[row[0]] = DIRENTRY(atoi(row[1]),row[2],(ENTRY_TYPE)atoi(row[3]));
 		</f>
 		</call>
-		int newdirid = fs_newid (userid,noproc,msg);
+		int newdirid = fs_newid (userid,msg);
 		if (newdirid == -1){
 			ret = -1;
 			break;
@@ -284,7 +283,6 @@ static int bo_writed_project_msg(
 	const char *replyto,		// Message ID or NULL
 	const char *title,
 	const char *content,
-	int noproc,
 	string &msg,
 	string &msgid)
 {
@@ -316,7 +314,7 @@ static int bo_writed_project_msg(
 					&& (role[0] == '\0' || strcmp(role,roles[i].c_str())==0)){
 					// Now we can write the message
 					listid = listids[i];
-					int project_dirid = fs_find_project_inbox (ownerid, listid,manager, project, role, noproc, msg);
+					int project_dirid = fs_find_project_inbox (ownerid, listid,manager, project, role, msg);
 					if (project_dirid != -1){
 						if (replyto == NULL){
 							dirid = project_dirid;
@@ -332,7 +330,7 @@ static int bo_writed_project_msg(
 									msg = "Message not found in project inbox";
 								}else{
 									string uuid;
-									subdir_id = fs_newid (glocal.userid,listid,'r',noproc,msg,uuid);
+									subdir_id = fs_newid (glocal.userid,listid,'r',msg,uuid);
 									if (subdir_id != -1){
 										string dirname = string_f ("%s.dir",replyto);
 										if (fs_insert_dir (project_dirid,subdir_id,dirname)==-1){
@@ -349,9 +347,9 @@ static int bo_writed_project_msg(
 				}
 			}
 			if (dirid != -1){
-				int outbox_id = fs_find_outbox(glocal.userid,username,noproc,msg);
+				int outbox_id = fs_find_outbox(glocal.userid,username,msg);
 				if (outbox_id != -1){
-					int fileid = fs_newid (glocal.userid,listid,'r',noproc,msg,msgid);
+					int fileid = fs_newid (glocal.userid,listid,'r',msg,msgid);
 					if (fileid != -1){
 						char now[20];
 						fs_set_now(now);
@@ -473,6 +471,7 @@ int main (int argc, char *argv[])
 		glocal CONNECT_INFO con_comp;	// Connection to the bo-log compute server
 		glocal map<string,string> secrets;
 		const char *passwd = getenv("BO_WRITED_PWD");
+		fs_set_noproc (glocal.noproc);
 		if (passwd == NULL){
 			tlmp_error ("Can't get database password from environment, aborting\n");
 			exit (-1);
@@ -672,7 +671,7 @@ int main (int argc, char *argv[])
 							glocal.bo_writed_client.rep_adduser ("","An account is already using this nickname");
 						</f>
 						<f empty>
-							glocal string id_str = fs_makeid (glocal.noproc);
+							glocal string id_str = fs_makeid ();
 							if (sql_action(*glocal.usq,"insert into users (name,email,password,userid_str) values ('%s','%s',password('%s'),'%s')"
 								,glocal.name,glocal.email,glocal.password,glocal.id_str.c_str())==-1){
 								glocal.bo_writed_client.rep_adduser ("","can't create");
@@ -720,7 +719,7 @@ int main (int argc, char *argv[])
 					glocal string userid_str;
 					glocal unsigned userid = trli_getsessionuser(glocal.con,sessionid,glocal.userid_str);
 					if (glocal.userid != 0){
-						glocal string deleteid = fs_makeid(glocal.noproc);
+						glocal string deleteid = fs_makeid();
 						if (sql_action(*glocal.usq,"update users set deleteid='%s' where userid=%u",glocal.deleteid.c_str()
 							,glocal.userid)!=-1){
 							<call sql_query>(*glocal.usq,"select email from users where userid=%u",glocal.userid);
@@ -803,7 +802,7 @@ int main (int argc, char *argv[])
 				</f>
 				<f createsession>
 					// Create a web session, not associated with any user
-					glocal string sessionid = fs_makeid (glocal.noproc);
+					glocal string sessionid = fs_makeid ();
 					<call bo_sessiond_admin_createsession>(glocal.con,glocal.sessionid.c_str());
 					<f ok>
 						if (internal_error){
@@ -823,7 +822,7 @@ int main (int argc, char *argv[])
 						rep_mkdir (false,"Not allowed");
 					}else{
 						string msg;
-						int subdirid = fs_newid (entry.userid,glocal.noproc,msg);
+						int subdirid = fs_newid (entry.userid,msg);
 						if (subdirid == -1){
 							rep_mkdir (false,msg);
 						}else{
@@ -857,7 +856,7 @@ int main (int argc, char *argv[])
 						rep_addfile (false,entry.msg);
 					}else{
 						string msg;
-						int fileid = fs_newid (entry.userid,glocal.noproc,msg);
+						int fileid = fs_newid (entry.userid,msg);
 						if (fileid == -1){
 							rep_addfile (false,msg);
 						}else{
@@ -881,7 +880,7 @@ int main (int argc, char *argv[])
 					}else{
 						string msg;
 						string handle;
-						int fileid = fs_newid (entry.userid,glocal.noproc,msg);
+						int fileid = fs_newid (entry.userid,msg);
 						if (fileid != -1){
 							char now[20];
 							fs_set_now(now);
@@ -1082,7 +1081,7 @@ int main (int argc, char *argv[])
 						rep_copy (false,dstentry.msg);
 					}else if (bolixo_isdir(srcentry.type)){
 						string msg;
-						if (bo_writed_copydir (srcentry.entryid,dstentry.dirid,dstentry.basename,srcentry.userid,glocal.noproc,msg)==-1){
+						if (bo_writed_copydir (srcentry.entryid,dstentry.dirid,dstentry.basename,srcentry.userid,msg)==-1){
 							rep_copy (false,msg);
 						}else{
 							rep_copy (true,"Ok");
@@ -1367,9 +1366,11 @@ int main (int argc, char *argv[])
 							}
 						}
 						if (recipients.size() > 0 && r_userids.size() == recipients.size()){
-							int outbox_id = fs_find_outbox(glocal.userid,username,glocal.noproc,glocal.msg);
+							int outbox_id = fs_find_outbox(glocal.userid,username,glocal.msg);
 							if (outbox_id != -1){
-								int fileid = fs_newid (glocal.userid,(unsigned)-1,' ',glocal.noproc,glocal.msg,glocal.msgid);
+								// All message are member of group #all, with listmode='r'
+								// But access is controlled by the parent directory
+								int fileid = fs_newid (glocal.userid,0,'r',glocal.msg,glocal.msgid);
 								if (fileid != -1){
 									char now[20];
 									fs_set_now(now);
@@ -1382,7 +1383,7 @@ int main (int argc, char *argv[])
 										glocal.msg = "";
 										for (unsigned i=0; i<recipients.size(); i++){
 											const char *r = recipients[i];
-											int inbox_id = fs_find_inbox (r_userids[i],r,glocal.noproc,glocal.msg);
+											int inbox_id = fs_find_inbox (r_userids[i],r,glocal.msg);
 											if (inbox_id == -1) break;
 											if (fs_insert_file(inbox_id,fileid,glocal.msgid)==-1){
 												glocal.msg = string_f ("Can't write to user %s inbox",r);
@@ -1403,7 +1404,7 @@ int main (int argc, char *argv[])
 				<f sendmsg_project> // sessionid owner manager project role title content = success:b msg msgid
 					string msg;
 					string rep_msgid;
-					if (bo_writed_project_msg(glocal.con,sessionid,owner,manager,project,role,NULL,title,content,glocal.noproc,msg,rep_msgid)!=-1){
+					if (bo_writed_project_msg(glocal.con,sessionid,owner,manager,project,role,NULL,title,content,msg,rep_msgid)!=-1){
 						rep_sendmsg_project (true,"",rep_msgid);
 					}else{
 						rep_sendmsg_project (false,msg,"");
@@ -1415,7 +1416,7 @@ int main (int argc, char *argv[])
 				<f replymsg_project> // sessionid owner manager project role msgid title content = success:b msg replyid
 					string msg;
 					string rep_msgid;
-					if (bo_writed_project_msg(glocal.con,sessionid,owner,manager,project,role,msgid,title,content,glocal.noproc,msg,rep_msgid)!=-1){
+					if (bo_writed_project_msg(glocal.con,sessionid,owner,manager,project,role,msgid,title,content,msg,rep_msgid)!=-1){
 						rep_replymsg_project (true,"",rep_msgid);
 					}else{
 						rep_replymsg_project (false,msg,"");
