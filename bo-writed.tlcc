@@ -971,11 +971,31 @@ int main (int argc, char *argv[])
 						}
 					}
 				</f>
+				<f markview>
+					ENTRY entry;
+					if (bo_writed_findentry (glocal.con,sessionid,name,entry,true)!=-1){
+						if (sql_action("insert into marks (userid,itemid,modified) values (%u,%u,now()) on duplicate key update modified=now()"
+							,entry.userid,entry.entryid)==-1){
+							entry.msg = "internal error (table marks)";
+						}else{
+							entry.msg = "";
+						}
+					}
+					if (entry.msg.size() == 0){
+						rep_markview (true,"");
+					}else{
+						rep_markview (false,entry.msg);
+					}
+				</f>
 				<f set_access>	//  sessionid name listname listmode = success:b msg
 					glocal ENTRY entry;
 					glocal const char *listmode = listmode;
 					if (bo_writed_findentry (glocal.con,sessionid,name,glocal.entry,true)!=-1){
-						if (strcmp(listname,"-")==0){
+						if (glocal.entry.userid != glocal.entry.ownerid && !glocal.entry.is_admin){
+							glocal.entry.msg = "Only owner may assign access";
+						}else if (username[0] != '\0' && !glocal.entry.is_admin){
+							glocal.entry.msg = "Only admin may assign ownership of a file/directory";
+						}else if (strcmp(listname,"-")==0){
 							if (sql_action("update ids set group_list_id=NULL,listmode='%s' where id=%u",listmode,glocal.entry.entryid)==-1){
 								glocal.entry.msg = "Internal error (ids table)";
 							}else{
@@ -988,7 +1008,7 @@ int main (int argc, char *argv[])
 								glocal.entry.msg = "";
 							}
 						}else{
-							<call sql_query>("select id from group_lists where ownerid=%u and name='%s'",glocal.entry.userid,listname);
+							<call sql_query> ("select id from group_lists where ownerid=%u and name='%s'",glocal.entry.userid,listname);
 							<f empty>
 								glocal.entry.msg = "Invalid list name";
 							</f>
