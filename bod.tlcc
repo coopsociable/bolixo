@@ -142,6 +142,24 @@ static unsigned bo_writed_get_group_owner (CONNECT_INFO &con, const char *sessio
 	string username;
 	return bo_writed_get_group_owner (con,sessionid,owner,username,msg);
 }
+/*
+	Keeps only a slice of the vector
+*/
+template<class T> static void bod_trim (vector<T> &tb, unsigned offset, unsigned nb)
+{
+	if (offset >= tb.size()){
+		tb.clear();
+	}else if (offset + nb >= tb.size()){
+		tb.erase (tb.begin(),tb.begin()+offset);
+	}else{
+		if (offset > 0){
+			tb.erase (tb.begin(),tb.begin()+offset);
+		}
+		if (nb < tb.size()){
+			tb.erase (tb.begin()+nb,tb.end());
+		}
+	}
+}
 <mod>
 static int trlid_main (
 	const char *bind,
@@ -484,7 +502,7 @@ static int trlid_main (
 							" left join group_lists on ids.group_list_id=group_lists.id"
 							" left join files on dirs_content.itemid=files.id and dirs_content.modified=files.modified"
 							" where dirid=%d and dirs_content.eventtime <= '%s' order by eventtime"
-							,entry.entryid,threshold);
+							,entry.entryid,threshold,offset,nb);
 						<f onerow>
 							const char *name = row[0];
 							const char *modified = row[1];
@@ -554,6 +572,15 @@ static int trlid_main (
 					glocal.titles.clear();
 					rep_listdir (false,entry.msg,glocal.entries,glocal.types,glocal.eventdates,glocal.modified,glocal.owners,glocal.members,glocal.listmodes,glocal.sizes,glocal.titles);
 				}else{
+					bod_trim (glocal.entries,offset,nb);
+					bod_trim (glocal.types,offset,nb);
+					bod_trim (glocal.modified,offset,nb);
+					bod_trim (glocal.eventdates,offset,nb);
+					bod_trim (glocal.owners,offset,nb);
+					bod_trim (glocal.members,offset,nb);
+					bod_trim (glocal.listmodes,offset,nb);
+					bod_trim (glocal.sizes,offset,nb);
+					bod_trim (glocal.titles,offset,nb);
 					rep_listdir (true,"",glocal.entries,glocal.types,glocal.eventdates,glocal.modified,glocal.owners,glocal.members,glocal.listmodes,glocal.sizes,glocal.titles);
 				}
 			</f>
@@ -728,7 +755,7 @@ static int trlid_main (
 						<call sql_query>("select name,files.title,dirs_content.modified"
 							" from dirs_content"
 							" join files on files.id = dirs_content.itemid and files.modified = dirs_content.modified"
-							" where dirid=%u and type=%u",entry.entryid,ENTRY_FILE);
+							" where dirid=%u and type=%u order by eventtime desc limit %u,%u",entry.entryid,ENTRY_FILE,offset,nb);
 						<f onerow>
 							glocal.managers.push_back("");
 							glocal.projects.push_back("");

@@ -195,7 +195,7 @@ static int bofs_stat (
 		file = glocal.file;
 		//tlmp_error ("bofs_stat: dir=%s file=%s\n",glocal.dir.c_str(),glocal.file.c_str());
 		glocal.ret = -1;
-		<call bod_client_listdir> (ctx.con,ctx.sessionid,glocal.dir,ctx.threshold,false);
+		<call bod_client_listdir> (ctx.con,ctx.sessionid,glocal.dir,ctx.threshold,false,0,100);
 		<f ok>
 			if (success){
 				for (unsigned i=0; i<entries.size(); i++){
@@ -253,57 +253,64 @@ static int bofs_ls (CONTEXT &ctx, int argc, char *argv[])
 		<f bo_file>
 			glocal int ret = 0;
 			glocal const char *path = path;
-			<call bod_client_listdir> (glocal.ctx->con,glocal.ctx->sessionid,path,glocal.ctx->threshold,glocal.opt_history);
-			<f ok>
-				static char tbtype[]={' ','_','D','F','M','C'};
-				if (!success){
-					if (internal_error){
-						bofs_error ("ls",true,"");
-					}else{
-						ENTRY_TYPE type;
-						string parent, file, modified, owner, members,listmode,title;
-						unsigned size;
-						if (bofs_stat(*glocal.ctx,glocal.path,type,parent,file,modified,owner,members,listmode,size,title)==-1){
-							bofs_error ("ls",false,msg);
-							glocal.ret = -1;
+			glocal bool stop = false;
+			unsigned offset = 0;
+			while (!glocal.stop){
+				<call bod_client_listdir> (glocal.ctx->con,glocal.ctx->sessionid,path,glocal.ctx->threshold,glocal.opt_history,offset,500);
+				<f ok>
+					static char tbtype[]={' ','_','D','F','M','C'};
+					if (!success){
+						if (internal_error){
+							bofs_error ("ls",true,"");
 						}else{
-							if (glocal.opt_long){
-								printf ("\t%c   %s   %s/%s:%s   %u   %s  %s\n",tbtype[type],modified.c_str()
-									,owner.c_str(),members.c_str(),listmode.c_str(),size,file.c_str(),title.c_str());
+							ENTRY_TYPE type;
+							string parent, file, modified, owner, members,listmode,title;
+							unsigned size;
+							if (bofs_stat(*glocal.ctx,glocal.path,type,parent,file,modified,owner,members,listmode,size,title)==-1){
+								bofs_error ("ls",false,msg);
+								glocal.ret = -1;
 							}else{
-								printf ("%s\n",file.c_str());
-							}
-						}
-					}
-				}else{
-					if (glocal.opt_long){
-						unsigned max_owner = 0;
-						unsigned max_members = 0;
-						unsigned max_size = 0;
-						unsigned max_name = 0;
-						for (int r=0; r<2; r++){
-							for (unsigned i=0; i<entries.size(); i++){
-								bofs_maxlen (owners[i],max_owner);
-								bofs_maxlen (members[i],max_members);
-								bofs_maxlen (entries[i],max_name);
-								string tmp = string_f ("%u",sizes[i]);
-								if (tmp.size() > max_size) max_size = tmp.size();
-								if (r==1){
-									const char *listmode = listmodes[i];
-									if (listmode[0] == '\0') listmode = " ";
-									printf ("\t%c   %s   %s   %*s/%-*s:%s   %*u   %-*s  %s\n",tbtype[types[i]]
-										,eventdates[i],modified[i]
-										,max_owner,owners[i],max_members,members[i],listmode,max_size,sizes[i]
-										,max_name,entries[i],titles[i]);
+								if (glocal.opt_long){
+									printf ("\t%c   %s   %s/%s:%s   %u   %s  %s\n",tbtype[type],modified.c_str()
+										,owner.c_str(),members.c_str(),listmode.c_str(),size,file.c_str(),title.c_str());
+								}else{
+									printf ("%s\n",file.c_str());
 								}
 							}
 						}
+						glocal.stop = true;
 					}else{
-						for (auto e:entries) printf ("%s\n",e);
+						if (glocal.opt_long){
+							unsigned max_owner = 0;
+							unsigned max_members = 0;
+							unsigned max_size = 0;
+							unsigned max_name = 0;
+							for (int r=0; r<2; r++){
+								for (unsigned i=0; i<entries.size(); i++){
+									bofs_maxlen (owners[i],max_owner);
+									bofs_maxlen (members[i],max_members);
+									bofs_maxlen (entries[i],max_name);
+									string tmp = string_f ("%u",sizes[i]);
+									if (tmp.size() > max_size) max_size = tmp.size();
+									if (r==1){
+										const char *listmode = listmodes[i];
+										if (listmode[0] == '\0') listmode = " ";
+										printf ("\t%c   %s   %s   %*s/%-*s:%s   %*u   %-*s  %s\n",tbtype[types[i]]
+											,eventdates[i],modified[i]
+											,max_owner,owners[i],max_members,members[i],listmode,max_size,sizes[i]
+											,max_name,entries[i],titles[i]);
+									}
+								}
+							}
+						}else{
+							for (auto e:entries) printf ("%s\n",e);
+						}
+						glocal.stop = entries.size() < 100;
 					}
-				}
-			</f>
-			</call>
+				</f>
+				</call>
+				offset += 500;
+			}
 			return glocal.ret;
 		</f>
 		<f https_file>
@@ -1172,17 +1179,24 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 
 		}else if (glocal.attach){
 		}else if (glocal.listmsgs){
-			<call bod_client_list_msgs>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner,false,0,20);
-			<f ok>
-				if (!success){
-					bofs_error ("msgs",internal_error,msg);
-				}else{
-					for (unsigned i=0; i<managers.size(); i++){
-						printf ("%-10s %-10s %-10s %-30s %-20s %s\n",managers[i],projects[i],roles[i],uuids[i],submits[i],titles[i]);
+			glocal bool stop = false;
+			glocal unsigned offset=0;
+			while (!glocal.stop){
+				<call bod_client_list_msgs>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner,false,glocal.offset,100);
+				<f ok>
+					if (!success){
+						bofs_error ("msgs",internal_error,msg);
+						glocal.stop = true;
+					}else{
+						for (unsigned i=0; i<managers.size(); i++){
+							printf ("%-10s %-10s %-10s %-30s %-20s %s\n",managers[i],projects[i],roles[i],uuids[i],submits[i],titles[i]);
+						}
+						glocal.stop = managers.size() < 100;
+						glocal.offset += 100;
 					}
-				}
-			</f>
-			</call>
+				</f>
+				</call>
+			}
 		}else{
 			usage();
 		}
