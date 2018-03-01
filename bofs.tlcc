@@ -866,7 +866,7 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 		setarg (' ',"print-lists","Print the content of a list",glocal.print_lists,false);
 		setarg (' ',"print-groups","Print the content of a group",glocal.print_groups,false);
 		setgrouparg ("Access");
-		setarg ('a',"set-access","Assign a list name to a file or directory",glocal.set_access,false);
+		setarg ('a',"set-access","Assign a user/list name to a file or directory",glocal.set_access,false);
 		setarg ('M',"listmode","list mode override (' ','p','r','w','a')",glocal.listmode,false);
 		setgrouparg ("Arguments");
 		setarg ('P',"filename","File or directory path",glocal.filename,false);
@@ -1018,17 +1018,6 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 				}
 			</f>
 			</call>
-		}else if (glocal.set_access){
-			const char *username = glocal.user == NULL ? "" : glocal.user;
-			<call bod_client_set_access>(glocal.ctx->con,glocal.ctx->sessionid,username,glocal.filename,glocal.listname,glocal.listmode);
-			<f ok>
-				if (!success){
-					bofs_error ("groups",internal_error,"bofs groups: %s",msg);
-				}else{
-					glocal.ret = 0;
-				}
-			</f>
-			</call>
 		}else{
 			tlmp_error ("One of the following option must be used:\n"
 				"\t--create-group-list\n"
@@ -1042,6 +1031,28 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 				"\t--print-list\n"
 				"\t--print-group\n"
 				);
+			usage();
+		}
+		return glocal.ret;
+	</f>
+	<f main>
+		glocal int ret = -1;
+		if (glocal.set_access){
+			const char *username = glocal.user == NULL ? "" : glocal.user;
+			const char *listname = glocal.listname == NULL ? "" : glocal.listname;
+			for (int i=0; i<argc; i++){
+				<call bod_client_set_access>(glocal.ctx->con,glocal.ctx->sessionid,argv[i],username,listname,glocal.listmode);
+				<f ok>
+					if (!success){
+						bofs_error ("groups",internal_error,"bofs groups: %s",msg);
+					}else{
+						glocal.ret = 0;
+					}
+				</f>
+				</call>
+				if (glocal.ret != 0) break;
+			}
+		}else{
 			usage();
 		}
 		return glocal.ret;
