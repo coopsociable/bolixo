@@ -1218,6 +1218,45 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 	return glocal.ret;
 }
 </mod>
+<mod>
+static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
+{
+	glocal int ret = -1;
+	glocal CONTEXT *ctx = &ctx;
+	glocal bool markview = false;
+	glocal.ret = <call tlmpprogram>(argc,argv);
+	<f init>
+		setproginfo ("bomisc",VERSION
+			,"Command line tool to do various things on bolixo files\n"
+			 "\n"
+			 "bofs misc ...\n"
+			);
+		setgrouparg ("Main commands");
+		setarg ('m',"markview","Mark a file as viewed",glocal.markview,false);
+		setgrouparg ("Options");
+	</f>
+	<f main>
+		glocal int ret = -1;
+		if (glocal.markview){
+			glocal.ret = 0;
+			for (int i=0; i<argc; i++){
+				<call bod_client_markview>(glocal.ctx->con,glocal.ctx->sessionid,argv[i]);
+				<f ok>
+					if (!success){
+						bofs_error ("markview",internal_error,msg);
+						glocal.ret = -1;
+					}
+				</f>
+				</call>
+				if (glocal.ret != 0) break;
+			}
+		}
+		return glocal.ret;
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
 
 <mod>
 int main (int argc, char *argv[])
@@ -1235,6 +1274,7 @@ int main (int argc, char *argv[])
 			 "\tbofs groups ...\n"
 			 "\tbofs ls ...\n"
 			 "\tbofs mkdir ...\n"
+			 "\tbofs misc ...\n"
 			 "\tbofs msgs ...\n"
 			 "\tbofs mv ...\n"
 			 "\tbofs rm ...\n"
@@ -1318,6 +1358,8 @@ int main (int argc, char *argv[])
 				ret = bofs_groups (glocal.ctx,argc,argv);
 			}else if (strcmp(argv[0],"msgs")==0){
 				ret = bofs_msgs (glocal.ctx,argc,argv);
+			}else if (strcmp(argv[0],"misc")==0){
+				ret = bofs_misc (glocal.ctx,argc,argv);
 			}else{
 				tlmp_error ("Invalid command: %s\n",argv[0]);
 				usage();
