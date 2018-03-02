@@ -312,7 +312,7 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 			ownerid int default null,
 			group_list_id int default null,
 			listmode char default ' ',
-			uuid char(40)
+			uuid char(21)
 		) engine=$ENGINE;
 		create index ids_uuid on ids (uuid);
 		--insert into ids (id,ownerid,uuid) values (0,0,"root");
