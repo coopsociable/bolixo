@@ -151,68 +151,41 @@ static int bofs_split (_F_bofs_split &c, int argc, char *argv[])
 static int bofs_stat (
 	CONTEXT &ctx,
 	PARAM_STRING _path,
-	ENTRY_TYPE &type,
 	string &parent,
-	string &file,
-	string &modified,
-	string &owner,
-	string &members,
-	string &listmode,
-	unsigned &size,
-	string &title)
+	FILEINFO &file)
 {
 	glocal int ret = 0;
-	glocal ENTRY_TYPE *type = &type;
+	glocal FILEINFO *file = &file;
 	const char *path = _path.ptr;
-	glocal string *modified = &modified;
-	glocal string *owner = &owner;
-	glocal string *members = &members;
-	glocal string *listmode = &listmode;
-	glocal unsigned *size = &size;
-	glocal string *title = &title;
-	size = 0;
-	type = ENTRY_NONE;
 	parent.clear();
 	file.clear();
-	modified.clear();
 	if (path[0] != '/'){
 		tlmp_error ("bofs_stat: Invalid path %s\n",path);
 		glocal.ret = -1;
 	}else if (strcmp(path,"/")==0){
-		type = ENTRY_DIR;
+		file.type = ENTRY_DIR;
 	}else{
-		glocal string dir;
-		glocal string file;
+		string dir;
+		string filename;
 		const char *pt = strrchr(path,'/');
 		if (pt == path){
-			glocal.dir = "/";
-			glocal.file = path+1;
+			dir = "/";
+			filename = path+1;
 		}else{
-			glocal.dir = string (path,pt-path);
-			glocal.file = pt+1;
+			dir = string (path,pt-path);
+			filename = pt+1;
 		}
-		parent = glocal.dir;
-		file = glocal.file;
+		parent = dir;
+		file.name = filename;
 		//tlmp_error ("bofs_stat: dir=%s file=%s\n",glocal.dir.c_str(),glocal.file.c_str());
 		glocal.ret = -1;
-		<call bod_client_listdir> (ctx.con,ctx.sessionid,glocal.dir,ctx.threshold,false,0,100);
+		<call bod_client_stat> (ctx.con,ctx.sessionid,path,ctx.threshold);
 		<f ok>
 			if (success){
-				for (unsigned i=0; i<entries.size(); i++){
-					if (strcmp(entries[i],glocal.file.c_str())==0){
-						glocal.ret = 0;
-						(*glocal.type) = types[i];
-						(*glocal.modified) = modified[i];
-						(*glocal.owner) = owners[i];
-						(*glocal.members) = members[i];
-						(*glocal.listmode) = listmodes[i];
-						(*glocal.size) = sizes[i];
-						(*glocal.title) = titles[i];
-						break;
-					}
-				}
+				glocal.ret = 0;
+				(*glocal.file) = file;
 			}else{
-				bofs_error ("stat",internal_error,"Can't stat bolixo file %s: %s",glocal.file.c_str(),msg);
+				bofs_error ("stat",internal_error,"Can't stat bolixo file %s: %s",glocal.file->name.c_str(),msg);
 			}
 		</f>
 		</call>
@@ -223,9 +196,11 @@ static int bofs_stat (
 
 static int bofs_stat (CONTEXT &ctx, PARAM_STRING _path, ENTRY_TYPE &type)
 {
-	string parent,file,modified,owner,members,listmode,title;
-	unsigned size;
-	return bofs_stat (ctx,_path,type,parent,file,modified,owner,members,listmode,size,title);
+	FILEINFO file;
+	string parent;
+	int ret = bofs_stat (ctx,_path,parent,file);
+	type = file.type;
+	return ret;
 }
 <mod>
 static int bofs_ls (CONTEXT &ctx, int argc, char *argv[])
@@ -263,18 +238,19 @@ static int bofs_ls (CONTEXT &ctx, int argc, char *argv[])
 						if (internal_error){
 							bofs_error ("ls",true,"");
 						}else{
-							ENTRY_TYPE type;
-							string parent, file, modified, owner, members,listmode,title;
-							unsigned size;
-							if (bofs_stat(*glocal.ctx,glocal.path,type,parent,file,modified,owner,members,listmode,size,title)==-1){
+							FILEINFO file;
+							string parent;
+							if (bofs_stat(*glocal.ctx,glocal.path,parent,file)==-1){
 								bofs_error ("ls",false,msg);
 								glocal.ret = -1;
 							}else{
 								if (glocal.opt_long){
-									printf ("\t%c   %s   %s/%s:%s   %u   %s  %s\n",tbtype[type],modified.c_str()
-										,owner.c_str(),members.c_str(),listmode.c_str(),size,file.c_str(),title.c_str());
+									printf ("\t%c   %s   %s   %s/%s:%s   %u   %s  %s\n",tbtype[file.type]
+										,file.eventdate.c_str(),file.modified.c_str()
+										,file.owner.c_str(),file.listname.c_str(),file.listmode.c_str()
+										,file.size,file.name.c_str(),file.title.c_str());
 								}else{
-									printf ("%s\n",file.c_str());
+									printf ("%s\n",file.name.c_str());
 								}
 							}
 						}
@@ -286,26 +262,26 @@ static int bofs_ls (CONTEXT &ctx, int argc, char *argv[])
 							unsigned max_size = 0;
 							unsigned max_name = 0;
 							for (int r=0; r<2; r++){
-								for (unsigned i=0; i<entries.size(); i++){
-									bofs_maxlen (owners[i],max_owner);
-									bofs_maxlen (members[i],max_members);
-									bofs_maxlen (entries[i],max_name);
-									string tmp = string_f ("%u",sizes[i]);
+								for (auto &f:files){
+									bofs_maxlen (f.owner,max_owner);
+									bofs_maxlen (f.listname,max_members);
+									bofs_maxlen (f.name,max_name);
+									string tmp = string_f ("%u",f.size);
 									if (tmp.size() > max_size) max_size = tmp.size();
 									if (r==1){
-										const char *listmode = listmodes[i];
+										const char *listmode = f.listmode;
 										if (listmode[0] == '\0') listmode = " ";
-										printf ("\t%c   %s   %s   %*s/%-*s:%s   %*u   %-*s  %s\n",tbtype[types[i]]
-											,eventdates[i],modified[i]
-											,max_owner,owners[i],max_members,members[i],listmode,max_size,sizes[i]
-											,max_name,entries[i],titles[i]);
+										printf ("\t%c   %s   %s   %*s/%-*s:%s   %*u   %-*s  %s\n",tbtype[f.type]
+											,f.eventdate,f.modified
+											,max_owner,f.owner,max_members,f.listname,listmode,max_size,f.size
+											,max_name,f.name,f.title);
 									}
 								}
 							}
 						}else{
-							for (auto e:entries) printf ("%s\n",e);
+							for (auto &e:files) printf ("%s\n",e.name);
 						}
-						glocal.stop = entries.size() < 100;
+						glocal.stop = files.size() < 100;
 					}
 				</f>
 				</call>

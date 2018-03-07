@@ -483,20 +483,72 @@ static int trlid_main (
 				</f>
 				</call>
 			</f>
-			<f stat>
+			<f stat> // sessionid name threshold = success:b msg file:U{FILEINFO}
+				glocal FILEINFO file;
+				glocal ENTRY entry;
+				if (bod_findentry (glocal.con_sess,sessionid,name,glocal.entry,threshold)!=-1){
+					if (threshold[0] == '\0') threshold = END_OF_TIME;
+					<call sql_query>("select dirs_content.name,dirs_content.modified,type,id2name.name"
+						",group_list_id,group_lists.name,ids.listmode"
+						",length(files.content),dirs_content.itemid,files.title,dirs_content.eventtime"
+						" from dirs_content"
+						" join ids on dirs_content.itemid=ids.id"
+						" join id2name on ids.ownerid=id2name.userid"
+						" left join group_lists on ids.group_list_id=group_lists.id"
+						" left join files on dirs_content.itemid=files.id and dirs_content.modified=files.modified"
+						" where dirid=%d and dirs_content.name='%s' and dirs_content.eventtime <= '%s' order by eventtime desc limit 1"
+						,glocal.entry.dirid,glocal.entry.basename.c_str(),threshold);
+					<f onerow>
+						const char *name = row[0];
+						const char *modified = row[1];
+						ENTRY_TYPE type = (ENTRY_TYPE) atoi(row[2]);
+						const char *owner = row[3];
+						const char *listid = row[4];
+						const char *listname = row[5];
+						const char *listmode = row[6] != NULL ? row[6] : "";
+						if (listname == NULL){
+							listname = "";
+							if (listid != NULL){
+								if (strcmp(listid,"0")==0){
+									listname = ALL_MAY_READ;
+								}
+							}
+						}
+						unsigned size=0;
+						if (row[7] != NULL){
+							size = atoi(row[7]);
+						}else if (bolixo_isfile(type)){
+							// Content stored as a file
+							size = fs_get_filesize(atoi(row[8]),modified);
+						}
+						const char *title = row[9] == NULL ? "" : row[9];
+						const char *eventdate = row[10];
+						if (!bolixo_isdeleted(type)){
+							glocal.file.name = name;
+							glocal.file.modified = modified;
+							glocal.file.type = type;
+							glocal.file.owner = owner;
+							glocal.file.listname = listname;
+							glocal.file.listmode = listmode;
+							glocal.file.size = size;
+							glocal.file.title = title;
+							glocal.file.eventdate = eventdate;
+							glocal.file.viewed = "not done";
+							glocal.entry.msg = "";
+						}
+					</f>
+					</call>
+				}
+				if (glocal.entry.msg.size() > 0){
+					glocal.file.clear();
+					rep_stat (false,glocal.entry.msg,glocal.file);
+				}else{
+					rep_stat (true,"",glocal.file);
+				}
 			</f>
 			<f listdir>
 				ENTRY entry;
-				glocal vector<string> entries;
-				glocal vector<ENTRY_TYPE> types;
-				glocal vector<string> modified;
-				glocal vector<string> viewed;
-				glocal vector<string> eventdates;
-				glocal vector<string> owners;
-				glocal vector<string> members;
-				glocal vector<string> listmodes;
-				glocal vector<string> titles;
-				glocal vector<unsigned> sizes;
+				glocal vector<FILEINFO> files;
 				glocal map<string,DIRENTRY> mp;
 				glocal bool history = history;
 				if (bod_findentry (glocal.con_sess,sessionid,name,entry,threshold)!=-1){
@@ -515,20 +567,20 @@ static int trlid_main (
 							" left join group_lists on ids.group_list_id=group_lists.id"
 							" left join files on dirs_content.itemid=files.id and dirs_content.modified=files.modified"
 							" where dirid=%d and dirs_content.eventtime <= '%s' order by eventtime"
-							,entry.entryid,threshold,offset,nb);
+							,entry.entryid,threshold);
 						<f onerow>
 							const char *name = row[0];
 							const char *modified = row[1];
 							ENTRY_TYPE type = (ENTRY_TYPE) atoi(row[2]);
 							const char *owner = row[3];
 							const char *listid = row[4];
-							const char *members = row[5];
+							const char *listname = row[5];
 							const char *listmode = row[6] != NULL ? row[6] : "";
-							if (members == NULL){
-								members = "";
+							if (listname == NULL){
+								listname = "";
 								if (listid != NULL){
 									if (strcmp(listid,"0")==0){
-										members = ALL_MAY_READ;
+										listname = ALL_MAY_READ;
 									}
 								}
 							}
@@ -542,65 +594,49 @@ static int trlid_main (
 							const char *title = row[9] == NULL ? "" : row[9];
 							const char *eventdate = row[10];
 							if (glocal.history){
-								glocal.entries.push_back (name);
-								glocal.eventdates.push_back (eventdate);
-								glocal.modified.push_back (modified);
-								glocal.types.push_back(type);
-								glocal.owners.push_back(owner);
-								glocal.members.push_back(members);
-								glocal.listmodes.push_back(listmode);
-								glocal.sizes.push_back(size);
-								glocal.titles.push_back(title);
-								glocal.viewed.push_back("not done");
+								FILEINFO info;
+								info.name = name;
+								info.eventdate = eventdate;
+								info.modified = modified;
+								info.type = type;
+								info.owner = owner;
+								info.listname = listname;
+								info.listmode = listmode;
+								info.size = size;
+								info.title = title;
+								info.viewed = "not done";
+								glocal.files.push_back(info);
 							}else{
-								glocal.mp[name] = DIRENTRY(eventdate,modified,type,owner,members,listmode,size,title,"not done");
+								glocal.mp[name] = DIRENTRY(eventdate,modified,type,owner,listname,listmode,size,title,"not done");
 							}
 						</f>
 						</call>
 						if (!glocal.history){
 							for (auto &x:glocal.mp){
 								if (!bolixo_isdeleted(x.second.type)){
-									glocal.entries.push_back(x.first);
-									glocal.types.push_back(x.second.type);
-									glocal.eventdates.push_back(x.second.eventdate);
-									glocal.modified.push_back(x.second.modified);
-									glocal.owners.push_back(x.second.owner);
-									glocal.members.push_back(x.second.members);
-									glocal.listmodes.push_back(x.second.listmode);
-									glocal.sizes.push_back(x.second.size);
-									glocal.titles.push_back(x.second.title);
-									glocal.viewed.push_back(x.second.viewed);
+									FILEINFO info;
+									info.name = x.first;
+									info.type = x.second.type;
+									info.eventdate = x.second.eventdate;
+									info.modified = x.second.modified;
+									info.owner = x.second.owner;
+									info.listname = x.second.members;
+									info.listmode = x.second.listmode;
+									info.size = x.second.size;
+									info.title = x.second.title;
+									info.viewed = x.second.viewed;
+									glocal.files.push_back(info);
 								}
 							}
 						}
 					}
 				}
 				if (entry.msg.size() > 0){
-					glocal.entries.clear();
-					glocal.types.clear();
-					glocal.modified.clear();
-					glocal.eventdates.clear();
-					glocal.owners.clear();
-					glocal.members.clear();
-					glocal.listmodes.clear();
-					glocal.sizes.clear();
-					glocal.titles.clear();
-					glocal.viewed.clear();
-					rep_listdir (false,entry.msg,glocal.entries,glocal.types,glocal.eventdates,glocal.modified,glocal.owners
-						,glocal.members,glocal.listmodes,glocal.sizes,glocal.titles,glocal.viewed);
+					glocal.files.clear();
+					rep_listdir (false,entry.msg,glocal.files);
 				}else{
-					bod_trim (glocal.entries,offset,nb);
-					bod_trim (glocal.types,offset,nb);
-					bod_trim (glocal.modified,offset,nb);
-					bod_trim (glocal.eventdates,offset,nb);
-					bod_trim (glocal.owners,offset,nb);
-					bod_trim (glocal.members,offset,nb);
-					bod_trim (glocal.listmodes,offset,nb);
-					bod_trim (glocal.sizes,offset,nb);
-					bod_trim (glocal.titles,offset,nb);
-					bod_trim (glocal.viewed,offset,nb);
-					rep_listdir (true,"",glocal.entries,glocal.types,glocal.eventdates,glocal.modified,glocal.owners
-						,glocal.members,glocal.listmodes,glocal.sizes,glocal.titles,glocal.viewed);
+					bod_trim (glocal.files,offset,nb);
+					rep_listdir (true,"",glocal.files);
 				}
 			</f>
 			<f create_group_list> // sessionid listname owner = success:b msg
