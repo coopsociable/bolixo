@@ -10,7 +10,7 @@ OPTIONS=-funsigned-char -O2 -Wall -g -DVERSION=\"$(PACKAGE_REV)\" -I/usr/include
 LIBS=/usr/lib64/trlitool/fdpass.o -llinuxconf -lstdc++ -lcrypto
 .SUFFIXES: .o .tex .tlcc .cc .png .uml
 all: $(PROGS)
-	#make -Cweb install
+	make -Cweb install
 
 compile: $(PROGS)
 	#make -Cweb 

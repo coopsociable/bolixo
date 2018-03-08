@@ -1,0 +1,524 @@
+#include <stdarg.h>
+#include <stdlib.h>
+#include <ctype.h>
+#include <unistd.h>
+#include <string.h>
+#include <tlmpweb.h>
+#include <tlmpnet.h>
+#include <tlmplib.h>
+#include <fdpass.h>
+#include <string>
+#include "util.h"
+#include "../bolixo.h"
+
+using namespace std;
+
+#include "../proto/bod_client.protoch"
+#include "../proto/bo-sessiond_client.protoch"
+
+static const char *newscolor = "green";
+
+static string w_session;
+static W_UNSIGNED w_order ("order");
+static unsigned order = 0;
+static W_UNSIGNED w_test("test");
+static W_UNSIGNED w_robot("robot");
+static W_SSTRING w_email("email");
+static W_SSTRING w_password("password");
+static W_UNSIGNED w_tosubject("tosubject");
+static W_SSTRING w_explo ("explo");
+
+static W_SSTRING new_nickname("nickname");
+static W_SSTRING new_email ("new_email");
+static W_SSTRING new_password1 ("new_password1");
+static W_SSTRING new_password2 ("new_password2");
+
+static W_UNSIGNED w_valid("valid");
+static W_UNSIGNED w_type("type");
+static W_UNSIGNED w_vote("vote");
+static W_SSTRING w_title("title");
+static W_SSTRING w_content("content");
+static W_SSTRING w_url("url");
+static W_SSTRING w_confirm("confirm");
+static W_UNSIGNED w_preview("preview");
+static W_UNSIGNED w_validate("validate");
+
+static const int step_main=1;
+static const int step_login=2;
+static const int step_adduser=3;
+static const int step_logout=4;
+static const int step_viewnews=5;
+static const int step_viewproof=6;
+static const int step_postnews=7;
+static const int step_addproof=8;
+static const int step_addcomment=9;
+static const int step_confirmuser=10;
+static const int step_viewarguments=11;
+static const int step_addargument=12;
+static const int step_statistics=13;
+static const int step_viewextraurls=14;
+static const int step_addsource=15;
+
+static const int step_viewblog=2;
+
+static void show_buttons_right(_F_websteps *c)
+{
+	int step = c->getcurstep();
+	/- <table border=0 cellspacing=0>
+	/- <tr><td colspan=8>
+	/- <font size=4 color=lightgray>
+	if (userinfo.name.empty()){
+		htmlprintf ("Anonymous, for your eyes only");
+	}else{
+		htmlprintf ("Welcome %s",userinfo.name.c_str());
+		int nb = 40 - userinfo.name.size() - 8; 
+		for (int i=0; i<nb; i++){
+			htmlprintf ("&nbsp;");
+		}
+	}
+	/- </font>
+	/- </td></tr>
+	/- <tr>
+		
+	bool is_user = userinfo.name.size() > 0;
+	if (!is_user){
+		if (step != step_login && step != step_adduser){
+			/- <td>
+			print_aref ("Login",step_login);
+			/- <td>
+			/- <font size=4 color=black>or</font>
+			/- <td>
+			print_aref ("Create account",step_adduser);
+		}
+	}
+	if (userinfo.is_admin){
+		/- <td>
+		string tmp = string_f ("href=%s/admin.hc style=\"text-decoration:none\"",tlmpweb_curdir());
+		print_href("Admin menu",tmp);
+	}
+	if (is_user){
+		/- <td>
+		print_aref ("Logout",step_logout);
+	}
+	//printf ("session: %s",w_session.c_str());
+	/- </table><p>
+}
+
+
+static void show_buttons_context(_F_websteps *c)
+{
+	int step = c->getcurstep();
+	/- <table border=0 cellspacing=0 width=100%>
+	/- <tr>
+		
+	if (0 && step <= 1){
+		/- <td align=left>
+		unsigned old = w_order;
+		w_order = order ? 0 : 1;
+		print_aref (w_order ? "Switch order: submit date" : "Switch order: last activity",step_main,w_order);
+		w_order = old;
+		/- <td align=left>
+		print_aref ("Post a news",step_postnews);
+	}
+	/- <td align=right>
+	/- <table border=0>
+	/- <td align=right>
+	printhref ("/about.html","About bolixo.org",true);
+	/- </table>
+	/- </table><p>
+}
+static unsigned subject = 0;
+const unsigned max_subject=7;
+<mod>
+static void trli_title (const char *title, _F_websteps *c)
+{
+        //glocal int step = c->getcurstep();
+
+	string tmp = string_f ("Bolixo: %s",title);
+	tlmpweb_title (tmp.c_str());
+	util_google_code();
+	util_defstyles();
+	tlmpweb_body("white",NULL);
+	htmlprintf ("<table width=100%% bgcolor=%s cellspacing=0><tr><td align=left>\n",newscolor);
+		/- <table border=0><tr><td><a href=/7s.html style=\"text-decoration:none\"><img src=/favicon.ico></a></td><td align=left>
+		tmp = string_f ("<a href=/index.hc style=\"text-decoration:none\"><font size=15 color=\"white\">Bolixo.org</font></a>&nbsp;&nbsp;&nbsp; %s",title);
+		htmlprintf ("%s",tmp.c_str());
+		/- <td>
+		printhref ("/about.html","<font color=white>A peer to peer open social media</font>",true);
+		/- </td></tr></table>
+	/- </td><td align=right valign=top>
+	show_buttons_right (c);
+	/- </td></tr>
+	/- <tr><td align=left>
+	if (w_robot == 0){
+		//trli_subjects (step_statistics, subject, glocal.step == step_statistics,false,w_tosubject);
+	}else{
+	}
+	/- </tr></table><br>
+	show_buttons_context (c);
+}
+</mod>
+<mod>
+static bool valid_context (CONNECT_INFO &con, _F_websteps *c, const char *subject, bool check_news, bool check_proof)
+{
+	glocal bool ret = true;
+	if (userinfo.name.empty()){
+		trli_title ("",c);
+		/- <p>You must be logged to
+		printf ("%s<p>\n",subject);
+		/- You do not have an account, just create one (top right button).
+		/- <br>
+		/- It takes one minute.
+		/- <p>
+		/- See the 
+		printhref_raw ("/terms-of-use.html","terms of use",false);
+		/- for more details.
+		glocal.ret = false;
+	}
+	return glocal.ret;
+}
+</mod>
+
+
+<mod>
+static void trli_getsessioninfo(CONNECT_INFO &con, CONNECT_INFO &con_sess)
+{
+	glocal CONNECT_INFO *con = &con;
+	<call bo_sessiond_client_getsessioninfovars>(con_sess,w_session.c_str());
+	<f ok>
+		if (success){
+			userinfo.lang = lang;
+			userinfo.name = name;
+			userinfo.is_admin = admin;
+			for (unsigned i=0; i<vars.size(); i++){
+				if (strcmp(vars[i],"subject")==0) subject=atoi(vals[i]);
+				if (strcmp(vars[i],"order")==0) order=atoi(vals[i]);
+			}
+		}else{
+			userinfo.reset();
+			<call bod_client_createsession>(*glocal.con);
+			<f ok>
+				w_session = sessionid;
+				websession_setcookie("session",sessionid,time(NULL)+48*60*60);
+			</f>
+			</call>
+		}
+	</f>
+	</call>
+	if (w_tosubject.isset() && w_tosubject <= max_subject && subject != w_tosubject){
+		SSTRING s;
+		w_tosubject.getvalstr(s);
+		<call bo_sessiond_client_setvar>(con_sess,w_session.c_str(),"subject",s.c_str());
+		<f ok>
+		</f>
+		</call>
+		subject = w_tosubject;
+	}
+}
+</mod>
+
+static void button_validate(int step)
+{
+	htmlprintf ("<input type=\"submit\" value=\"Validate\" formaction=\"%s?webstep=%d&validate=1\">\n"
+		,tlmpweb_curpage(),step);
+}
+
+
+<mod>
+extern "C" void webmain_real()
+{
+	glocal bool account_confirmed = false;
+	glocal CONNECT_INFO con;
+	glocal CONNECT_INFO con_sess;
+	glocal.con.port = "/dev/bod.sock";
+	glocal.con.secret = "foo";
+	glocal.con_sess.port = "/dev/sessiond.sock";
+	glocal.con_sess.secret = "foo";
+	if (tlmpweb_isrobot()) w_robot = 1;
+	// debug
+	if (0){
+		<call savefile>("/tmp/environ.log",false);
+		<f dowrite>
+			extern char **environ;
+			char **ptenv = environ;
+			while (*ptenv != NULL){
+				fprintf (fout,"%s\n",*ptenv);
+				ptenv++;
+			}
+			return 0;
+		</f>
+		</call>
+	}
+	{
+		<call savefile>("/tmp/agent.log",true);
+		<f dowrite>
+			string ip = tlmpweb_getip();
+			const char *pt = getenv ("HTTP_USER_AGENT");
+			if (pt == NULL){
+				fprintf (fout,"%s: robot=%u HTTP_USER_AGENT null\n",ip.c_str(),w_robot.getval());
+			}else{
+				fprintf (fout,"%s: robot=%u HTTP_USER_AGENT %s\n",ip.c_str(),w_robot.getval(),pt);
+			}
+			return 0;
+		</f>
+		</call>
+	}
+	
+	const char *ptsession = tlmpweb_getcookie("session");
+	if (ptsession == NULL){
+		<call bod_client_createsession>(glocal.con);
+		<f ok>
+			w_session = sessionid;
+			websession_setcookie("session",sessionid,time(NULL)+48*60*60);
+		</f>
+		</call>
+	}else{
+		w_session=ptsession;
+		trli_getsessioninfo(glocal.con,glocal.con_sess);
+	}
+	if (w_session.empty()) return;
+	
+	/- <p>
+	<call websteps>();
+	<f setstep>
+		if (w_session.empty() && step > 2){
+			step = 1;
+		}
+	</f>
+	<f step1>
+		trli_title ("",this);
+		if (userinfo.name.size() == 0){
+			// Anonymous, present public news ?
+		}else{
+			glocal bool stop = false;
+			glocal unsigned offset=0;
+			/- <table><tr><th>Manager<th>Project<th>Role<th>Submit<th>Message ID<th>Title
+			while (!glocal.stop){
+				<call bod_client_list_msgs>(glocal.con,w_session.c_str(),"",false,glocal.offset,100);
+				<f ok>
+					if (!success){
+						htmlprintf ("Error: %d %s<br>",internal_error,msg);
+						glocal.stop = true;
+					}else{
+						for (unsigned i=0; i<managers.size(); i++){
+							htmlprintf ("<tr><td>%s<td>%s<td>%s<td>%s<td>%s<td>%s\n",managers[i],projects[i],roles[i],submits[i],uuids[i],titles[i]);
+						}
+						glocal.stop = managers.size() < 100;
+						glocal.offset += 100;
+					}
+				</f>
+				</call>
+			}
+			/- </table>
+		}
+	</f>
+	<f step2> // Login
+		<call form>();
+		<f top>
+			trli_title ("Login",&glocal.websteps);
+			if (glocal.account_confirmed){
+				/- Welcome
+				/- <p>
+				/- The account is now confirmed, you can log in
+			}else{
+				/- Already have an account, please login<p>
+			}
+		</f>
+		<f setup>
+			/- <table border=0 align=center>
+			/- <tr><td>Enter your email<td>
+			field_string (w_email,"size=60");
+			/- <tr><td>Password<td>
+			field_password (w_password,"");
+			/- <tr><td>
+			button_submit ("Login");
+			/- </table>
+		</f>
+		<f validate>
+			bool ret = false;
+			if (w_email.is_filled()){
+				if (w_password.is_empty()){
+					/- <font color=red>You must supply a password</font>
+				}else{
+					ret = true;
+				}
+			}else{
+				/- <font color=red>Please provide an email</font>
+			}
+			return ret;
+		</f>
+		<f process>
+			glocal bool fail = false;
+			<call bod_client_login>(glocal.con,w_session.c_str(),w_email.c_str(),w_password.c_str());
+			<f ok>
+				if (success){
+					trli_getsessioninfo(glocal.con,glocal.con_sess);
+					glocal.websteps.gotostep(1);
+				}else{
+					/- <font color=red>Login failed, invalid email or password</font>
+					glocal.fail = true;
+				}
+			</f>
+			</call>
+			fail = glocal.fail;
+		</f>
+		</call>
+	</f>
+	<f step3> // Account creation
+		glocal bool account_created = false;
+		<call form>();
+		<f top>
+			trli_title ("Account creation",&glocal.websteps);
+			/- No account ? Please create one.
+			/- <p>
+			/- Your email will only be used for the following reasons.
+			/- <br>
+			/- <ul>
+			/- <li>Login.
+			/- <li>Account confirmation.
+			/- <li>Account modification confirmation.
+			/- <li>When posting a news, an email will be sent to confirm it was accepted.
+			/- </ul>
+			/- The only information shown on the web site is the nickname. Your email won't appear on the site.
+			/- <p>
+			/- See the
+			printhref_raw ("/terms-of-use.html","terms of use",false);
+			/- for more details
+		</f>
+		<f setup>
+			/- <table border=0 align=center>
+			/- <tr><td>Enter your nickname<td>
+			field_string (new_nickname,"");
+			/- <tr><td>Enter your email<td>
+			field_string (new_email,"");
+			/- <tr><td>Password<td>
+			field_password (new_password1,"");
+			/- <tr><td>Confirm password<td>
+			field_password (new_password2,"");
+			/- <tr><td>
+			button_submit ("Add account");
+			/- </table>
+		</f>
+		<f validate>
+			bool ret = true;
+			if (new_nickname.is_empty()){
+				/- <font color=red>Please provide a nickname</font>
+				ret = false;
+ 			}else if (new_email.is_empty()){
+				/- <font color=red>Please provide an email</font>
+				ret = false;
+			}else if (new_password1.is_empty()){
+				/- <font color=red>Please enter a password</font>
+				ret = false;
+			}else if (strcmp(new_password1.c_str(),new_password2.c_str())!=0){
+				/- <font color=red>Passwords do not match</font>
+				ret = false;
+			}
+			return ret;
+		</f>
+		<f process>
+			glocal bool fail = false;
+			<call bod_client_adduser>(glocal.con,w_session.c_str(),new_nickname.c_str(),new_email.c_str(),new_password1.c_str());
+			<f ok>
+				if (confirmid[0] == '\0'){
+					glocal.fail = true;
+					/- <font color=red>Account creation failure
+					htmlout (msg);
+					/- </font>
+				}else{
+					glocal.account_created = true;
+				}
+			</f>
+			</call>
+			fail = glocal.fail;
+		</f>
+		</call>
+		if (glocal.account_created){
+			trli_title ("Account creation",&glocal.websteps);
+			/- The account has been created
+			/- <br>
+			/- A confirmation email has been sent.
+			/- <br>
+			/- Once you received the email click on the link.
+			/- This will complete the account creation process
+		}
+
+	</f>
+	<f step4> // Logout
+		<call bod_client_logout>(glocal.con,w_session.c_str());
+		<f ok>
+			userinfo.reset();	//trli_getsessioninfo(glocal.con,glocal.con_sess);
+			trli_title ("",&glocal.websteps);
+			/- <p><p><p><p><table witdth=100%><tr><td align=center>Hope to see you again</table>
+		</f>
+		</call>
+	</f>
+	<f step5> // View one news
+		trli_title ("",this);
+	</f>	
+	<f step6> // show a proof
+		trli_title ("",this);
+	</f>
+	<f step7> // Post a news
+	</f>
+	<f step8> // Add a proof
+	</f>
+	<f step9> // Add a comment
+	</f>
+	<f step10>
+		if (w_confirm.is_empty()){
+			/- You have reach this web page by mistake. Sorry!
+		}else{
+			<call bod_client_confirmuser>(glocal.con,w_confirm.c_str());
+			<f ok>
+				if (success){
+					glocal.account_confirmed = true;
+					glocal.websteps.gotostep(step_login);
+				}else{
+					trli_title ("",&glocal.websteps);
+					printf ("Account confirmation failed: %s\n",msg);
+				}
+			</f>
+			</call>
+		}
+			
+	</f>
+	<f step11>	// View arguments
+		trli_title ("",this);
+	</f>
+	<f step12>	// Add one argument
+	</f>
+	<f step13>	// Statistics, sitemap
+	</f>
+	<f step14>	// View extra urls
+		trli_title ("",this);
+	</f>
+	<f step15> // Add an extra URL
+	</f>
+	</call>
+}
+</mod>
+
+<mod>
+extern "C" void webmain()
+{
+	if (w_test == 1){
+		/-ok
+		return;
+	}
+	<call tcpconnect>("unix:","/tmp/stop.sock",1);
+	<f init>
+	</f>
+	<f oneline>
+		webmain_real();
+		end=true;
+	</f>
+	<f fail>
+		webmain_real();
+	</f>
+	<f end>
+	</f>
+	</call>
+}
+</mod>
+

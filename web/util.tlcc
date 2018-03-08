@@ -1,0 +1,526 @@
+#include <string.h>
+#include <time.h>
+#include <tlmpweb.h>
+#include <tlmplib.h>
+#include <fdpass.h>
+#include <string>
+#include "util.h"
+#include "../bolixo.h"
+
+using namespace std;
+
+#define bo_sessiond_client_test_NOTNEED
+#define bod_client_login_NOTNEED
+#define bod_client_logout_NOTNEED
+#define bod_client_adduser_NOTNEED
+#define bod_client_confirmuser_NOTNEED
+#define bod_client_deleteuser_NOTNEED
+#define bod_client_confirmdelete_NOTNEED
+#define bod_client_addfile_NOTNEED
+#define bod_client_addfile_bob_NOTNEED
+#define bod_client_appendfile_NOTNEED
+#define bod_client_delfile_NOTNEED
+#define bod_client_modifyfile_NOTNEED
+#define bod_client_modifyfile_bob_NOTNEED
+#define bod_client_rename_NOTNEED
+#define bod_client_copy_NOTNEED
+#define bod_client_readfile_NOTNEED
+#define bod_client_readfile_bob_NOTNEED
+#define bod_client_readmore_NOTNEED
+#define bod_client_mkdir_NOTNEED
+#define bod_client_rmdir_NOTNEED
+#define bod_client_listdir_NOTNEED
+#define bod_client_stat_NOTNEED
+#define bod_client_set_access_NOTNEED
+#define bod_client_markview_NOTNEED
+#define bod_client_create_group_list_NOTNEED
+#define bod_client_create_group_NOTNEED
+#define bod_client_set_group_NOTNEED
+#define bod_client_set_member_NOTNEED
+#define bod_client_delete_list_NOTNEED
+#define bod_client_delete_group_NOTNEED
+#define bod_client_list_lists_NOTNEED
+#define bod_client_list_groups_NOTNEED
+#define bod_client_list_inboxes_NOTNEED
+#define bod_client_list_msgs_NOTNEED
+#define bod_client_sendmsg_NOTNEED
+#define bod_client_sendmsg_project_NOTNEED
+#define bod_client_replymsg_NOTNEED
+#define bod_client_replymsg_project_NOTNEED
+#define bod_client_sendattach_NOTNEED
+
+#include "../proto/bod_client.protoch"
+
+#define bo_sessiond_client_getsessioninfo_NOTNEED
+#define bo_sessiond_client_setvar_NOTNEED
+#include "../proto/bo-sessiond_client.protoch"
+
+static string w_session;
+USERINFO userinfo;
+static W_UNSIGNED w_robot ("robot");
+static const char *newscolor = "green";
+
+<mod>
+static void trli_getsessioninfo(CONNECT_INFO &con, CONNECT_INFO &con_sess, const char *varname, unsigned &varval)
+{
+	glocal const char *varname = varname;
+	glocal unsigned *varval = &varval;
+	glocal CONNECT_INFO *con = &con;
+	<call bo_sessiond_client_getsessioninfovars>(con_sess,w_session.c_str());
+	<f ok>
+		if (success){
+			userinfo.lang = lang;
+			userinfo.name = name;
+			userinfo.is_admin = admin;
+			for (unsigned i=0; i<vars.size(); i++){
+				if (strcmp(vars[i],glocal.varname)==0) *glocal.varval = atoi(vals[i]);
+			}
+		}else{
+			userinfo.reset();
+			<call bod_client_createsession>(*glocal.con);
+			<f ok>
+				w_session = sessionid;
+				websession_setcookie("session",sessionid,time(NULL)+48*60*60);
+			</f>
+			</call>
+		}
+	</f>
+	</call>
+}
+</mod>
+
+<mod>
+int util_getsessioninfo (CONNECT_INFO &con, CONNECT_INFO &con_sess,string &session, const char *varname, unsigned &varval)
+{
+	if (tlmpweb_isrobot()) w_robot = 1;
+	// debug
+	{
+		<call savefile>("/tmp/agent.log",true);
+		<f dowrite>
+			const char *pt = getenv ("HTTP_USER_AGENT");
+			if (pt == NULL){
+				fprintf (fout,"HTTP_USER_AGENT null\n");
+			}else{
+				fprintf (fout,"robot=%u HTTP_USER_AGENT %s\n",w_robot.getval(),pt);
+			}
+			return 0;
+		</f>
+		</call>
+	}
+	const char *ptsession = tlmpweb_getcookie("session");
+	if (ptsession == NULL){
+		<call bod_client_createsession>(con);
+		<f ok>
+			w_session = sessionid;
+			websession_setcookie("session",sessionid,time(NULL)+48*60*60);
+		</f>
+		</call>
+	}else{
+		w_session=ptsession;
+		trli_getsessioninfo(con,con_sess,varname,varval);
+	}
+	session = w_session;
+	if (w_session.empty()) return -1;
+	return 0;
+}
+</mod>
+
+static void print_href_c (const char *title, const char *href, const char *color)
+{
+	htmlprintf ("<a %s><table bgcolor=\"%s\"><tr><td style=\"padding:5px\"><font size=4 color=white>&nbsp;%s&nbsp;</font></table></a>\n"
+		,href,color,title);
+}
+void print_href (const char *title, PARAM_STRING href)
+{
+	print_href_c(title, href.ptr,"#33cc33");
+}
+void print_aref (const char *page, const char *title, int step)
+{
+	string href = string_f ("href=%s?webstep=%d style=\"text-decoration:none\"",page,step);
+	print_href (title,href);
+}
+void print_aref (const char *title, int step)
+{
+	print_aref (tlmpweb_curpage(),title,step);
+}
+void print_aref_selected (const char *page, const char *title, int step)
+{
+	string href = string_f ("href=%s?webstep=%d style=\"text-decoration:none\"",page,step);
+	print_href_c (title,href.c_str(),"#220022");
+}
+void print_aref_selected (const char *title, int step)
+{
+	print_aref_selected (tlmpweb_curpage(),title,step);
+}
+void print_aref_selected (const char *page, const char *title, int step, W_VAR &var)
+{
+	SSTRING val;
+	var.getvalstr(val);
+	string href = string_f ("href=%s?webstep=%d&%s=%s style=\"text-decoration:none\"",page,step,var.getname(),val.c_str());
+	print_href_c (title,href.c_str(),"#220022");
+}
+void print_aref_selected (const char *title, int step, W_VAR &var)
+{
+	print_aref_selected (tlmpweb_curpage(),title,step,var);
+}
+void print_aref (const char *page, const char *title, int step, W_VAR &var)
+{
+	SSTRING val;
+	var.getvalstr(val);
+	string href = string_f ("href=%s?webstep=%d&%s=%s style=\"text-decoration:none\"",page,step,var.getname(),val.c_str());
+	print_href (title,href);
+}
+void print_aref (const char *title, int step, W_VAR &var)
+{
+	print_aref (tlmpweb_curpage(),title,step,var);
+}
+void print_aref (const char *title, int step, W_VAR &var1, W_VAR &var2)
+{
+	SSTRING val1,val2;
+	var1.getvalstr(val1);
+	var2.getvalstr(val2);
+	string href = string_f ("href=%s?webstep=%d&%s=%s&%s=%s style=\"text-decoration:none\"",tlmpweb_curpage(),step
+		,var1.getname(),val1.c_str()
+		,var2.getname(),val2.c_str());
+	print_href (title,href);
+}
+void print_aref (const char *title, int step, W_VAR &var1, const char *varname2, const char *val2)
+{
+	SSTRING val1;
+	var1.getvalstr(val1);
+	string href = string_f ("href=%s?webstep=%d&%s=%s&%s=%s style=\"text-decoration:none\"",tlmpweb_curpage(),step
+		,var1.getname(),val1.c_str()
+		,varname2,val2);
+	print_href (title,href);
+}
+void print_aref (const char *title, int step, W_VAR &var1, W_VAR &var2, W_VAR &var3)
+{
+	SSTRING val1,val2,val3;
+	var1.getvalstr(val1);
+	var2.getvalstr(val2);
+	var3.getvalstr(val3);
+	string href = string_f ("href=%s?webstep=%d&%s=%s&%s=%s&%s=%s style=\"text-decoration:none\"",tlmpweb_curpage(),step
+		,var1.getname(),val1.c_str()
+		,var2.getname(),val2.c_str()
+		,var3.getname(),val3.c_str());
+	print_href (title,href);
+}
+const char *format_line (const char *s)
+{
+	while (*s != '\0' && *s != '\n'){
+		char car = *s++;
+		if (car == '<'){
+			htmlout ("&lt;");
+		}else if (car == '>'){
+			htmlout ("&gt;");
+		}else{
+			htmlout (car);
+		}
+	}
+	return s;
+}
+const char *format_url (const char *s)
+{
+	if (strncmp(s,"http://",7)!=0 && strncasecmp(s,"https://",8)!=0) htmlout ("http://");
+	return format_line (s);
+}
+
+void format_href(const char *s)
+{
+	htmlout ("<a href=");
+	format_url(s);
+	htmlout (">");
+	if (strlen(s) > 50){
+		string tmp = string(s,80) + "...";
+		format_url(tmp.c_str());
+	}else{
+		format_url(s);
+	}
+	htmlout("</a>");
+}
+
+void format_content (const char *s, int nbline, bool &more)
+{
+	more = false;
+	bool ol_on = false;
+	bool ul_on = false;
+	bool quote_on = false;
+	int noline = 0;
+	while (*s != '\0' && noline < nbline){
+		if (*s == '\n'){
+			if (ul_on){
+				htmlout ("</ul>");
+				ul_on = false;
+			}else if (ol_on){
+				htmlout ("</ol>");
+				ol_on = false;
+			}else if (quote_on){
+				htmlout ("</blockquote>");
+				quote_on = false;
+			}
+			htmlout ("<p>\n");
+			s++;
+			noline++;
+		}else{
+			const char *closing = "";
+			if (*s == '*'){
+				if (ol_on){
+					ol_on = false;
+					htmlout ("</ol>");
+				}
+				if (!ul_on){
+					htmlout ("<ul>");
+					ul_on = true;
+				}
+				htmlout ("<li>");
+				s++;
+			}else if (*s == '#'){
+				if (ul_on){
+					htmlout ("</ul>");
+					ul_on = false;
+				}
+				if (!ol_on){
+					htmlout ("<ol>");
+					ol_on = true;
+				}
+				htmlout ("<li>");
+				s++;
+			}else if (*s == '?'){
+				s++;
+				while (*s == ' ') s++;
+				htmlout ("<a href=\"");
+				format_url (s);
+				htmlout ("\">");
+				s = format_url (s);
+				htmlout ("</a>");
+			}else if (*s == '!'){
+				s++;
+				if (*s == '!'){
+					s++;
+					htmlout ("<h2>");
+					closing = "</h2>";
+				}else{
+					htmlout ("<strong>");
+					closing = "</strong>";
+				}
+			}else if (*s == '>'){
+				quote_on=true;
+				s++;
+				htmlout ("<blockquote>");
+			}
+			s = format_line (s);
+			noline++;
+			htmlout (closing);
+			if (*s == '\n'){
+				s++;
+				htmlout ('\n');
+			}
+		}
+	}
+	if (ul_on){
+		htmlout ("</ul>");
+	}
+	if (ol_on){
+		htmlout ("</ol>");
+	}
+	if (*s != '\0') more = true;
+}
+void format_content (const char *s)
+{
+	bool more;
+	format_content(s,10000,more);
+}
+void formatting_tips()
+{
+	printhref ("/marker.html","Formatting tips",false);
+}
+
+void util_google_code()
+{
+	#if 0
+	htmlout ("<script async src=\"//pagead2.googlesyndication.com/pagead/js/adsbygoogle.js\"></script>\n");
+	htmlout ("<script>\n");
+	htmlout ("   (adsbygoogle = window.adsbygoogle || []).push({\n");
+	htmlout ("    google_ad_client: \"ca-pub-8720824140107899\",\n");
+	htmlout ("    enable_page_level_ads: true\n");
+	htmlout ("  });\n");
+	htmlout ("</script>\n");
+	#endif
+}
+void util_defstyles()
+{
+	htmlout ("<style>\n"
+		"table{\n"
+		"   border-radius: 5px;\n"
+		"   border-spacing : 0;\n"
+		"   border-collapse : collapse;\n"
+		" }\n"
+		"blockquote{\n"
+		"   font-style: italic;\n"
+		"   font-size: 18px;\n"
+		"   margin-left: 32px;\n"
+		"   font-family: Consolas, \"Times New Roman\", Verdana;\n"
+		"   border-left: 4px solid #CCC;\n"
+		"   padding-left: 8px;\n"
+		"}\n"
+		" </style>\n"
+		" <script>\n"
+		"function myFunction(url) {\n"
+		"   window.open(url,\"noname\",\"left=50,top=50,width=600,height=700,menubar=no,status=no\");\n"
+		"}\n"
+		"function myFunctionL(url) {\n"
+		"   window.open(url,\"noname\",\"left=50,top=50,width=700,height=800,menubar=no,status=no,scrollbars=yes\");\n"
+		"}\n"
+		"</script>\n");
+}
+
+void printhref(const char *url, const char *text)
+{
+	htmlprintf ("<a href=\"%s\" style=\"text-decoration:none\"><table bgcolor=\"#33cc33\"><tr><td style=\"padding:5px\"><font size=4 color=white>&nbsp;%s&nbsp;</font></table></a>",url,text);
+}
+void printhref_selected(const char *url, const char *text)
+{
+	htmlprintf ("<a href=\"%s\" style=\"text-decoration:none\"><table bgcolor=\"#220022\"><tr><td style=\"padding:5px\"><font size=4 color=white>&nbsp;%s&nbsp;</font></table></a>",url,text);
+}
+void printhref(const char *url, const char *text, bool largewindow)
+{
+	if (w_robot){
+		htmlprintf ("<a href=\"%s\">%s</a>",url,text);
+	}else{
+		const char *script = largewindow ? "myFunctionL" : "myFunction";
+		htmlprintf ("<a href=\"#\" style=\"text-decoration:none\" onclick=%s(\"%s\")><table bgcolor=\"#33cc33\"><tr><td style=\"padding:5px\"><font size=4 color=white>&nbsp;%s&nbsp;</font></table></a>",script,url,text);
+	}
+}
+void printhref_raw(const char *url, const char *text, bool largewindow)
+{
+	if (w_robot){
+		htmlprintf ("<a href=\"%s\">%s</a>",url,text);
+	}else{
+		const char *script = largewindow ? "myFunctionL" : "myFunction";
+		htmlprintf ("<a href=\"#\" onclick=%s(\"%s\")>%s</a>",script,url,text);
+	}
+}
+void print_date (PARAM_STRING pdate)
+{
+	const char *date = pdate.ptr;
+	if (strlen(date)==19){
+		int year = atoi(date);
+		int month = atoi(date+5);
+		int day = atoi(date+8);
+		int hour = atoi(date+11);
+		int minu = atoi(date+14);
+		const char *ampm = "AM";
+		if (hour > 12){
+			hour -= 12;
+			ampm="PM";
+		}
+		static const char *tbmonth[]={"January","February","March","April","May","June","July","August","September","October","November","December"};
+		htmlprintf (" %s %d %04d @%d:%02d%s ",tbmonth[month-1],day,year,hour,minu,ampm);
+	}
+}
+
+void util_formanchor()
+{
+	htmlprintf ("<a name=\"form\">\n");
+}
+void button_preview(int step)
+{
+	htmlprintf ("<input type=\"submit\" value=\"Preview\" formaction=\"%s?webstep=%d&preview=1#form\">\n"
+		,tlmpweb_curpage(),step);
+}
+void button_row(_F_button_row &c, int border, const char *bgcolor)
+{
+	htmlprintf ("<table border=%d bgcolor=%s cellspacing=0 width=100%%>\n",border,bgcolor);
+	htmlout ("<tr><td align=left>\n");
+	htmlprintf ("<table border=%d bgcolor=%s cellspacing=0><tr>\n",border,bgcolor);
+	c.draw();
+	htmlout ("</table>\n");
+	htmlout ("</table>\n");
+}
+void button_row(_F_button_row &c, int border)
+{
+	button_row (c,border,"white");
+}
+void button_row(_F_button_row &c)
+{
+	button_row(c,0,"white");
+}
+void _F_button_row::split()
+{
+	htmlout ("<td align=left>\n");
+}
+static unsigned subject=0;
+static W_UNSIGNED *w_tosubject;
+static const char *index_page = "/index.hc";
+static void trli_space()
+{
+	htmlprintf ("<td align=left>&nbsp;&nbsp;&nbsp;<td align=left>\n");
+}
+static void button_subject(const char *title, unsigned val)
+{
+	trli_space();
+	(*w_tosubject)=val;
+	if (subject != val){
+		print_aref (index_page,title,1,*w_tosubject);
+	}else{
+		print_aref_selected (index_page,title,1,*w_tosubject);
+	}
+}
+<mod>
+void trli_subjects (int step_statistics, int subject_selected, bool stat_selected, bool blog_selected, W_UNSIGNED &_w_tosubject)
+{
+	glocal bool blog_selected = blog_selected;
+	glocal bool stat_selected = stat_selected;
+	glocal int step_statistics = step_statistics;
+	w_tosubject = &_w_tosubject;
+	subject = 1000;
+	if (!stat_selected && !blog_selected) subject = subject_selected;
+	htmlprintf ("</td></tr>\n");
+	htmlprintf ("<tr><td align=left>\n");
+	if (w_robot == 0){
+		<call button_row>(0,newscolor);
+		<f draw>
+			unsigned cur = w_tosubject->getval();
+			split();
+			htmlprintf ("&nbsp;Topics\n");
+			split();
+			button_subject ("All",0);
+			split();
+			button_subject ("Peoples",1);
+			split();
+			button_subject ("Technology",2);
+			split();
+			button_subject ("Politic",3);
+			split();
+			button_subject ("Sports",4);
+			split();
+			button_subject ("Arts",5);
+			split();
+			button_subject ("Economy",6);
+			split();
+			button_subject ("Science",7);
+			split();
+			trli_space();
+			if (glocal.blog_selected){
+				printhref_selected ("/blog.hc","Blog/Making of");
+			}else{
+				printhref ("/blog.hc","Blog/Making of");
+			}
+			split();
+			trli_space();
+			const char *sitemap = "Sitemap/Stats";
+			if (glocal.stat_selected){
+				print_aref_selected (index_page,sitemap,glocal.step_statistics);
+			}else{
+				print_aref (index_page,sitemap,glocal.step_statistics);
+			}
+			// Check max_subject above
+			(*w_tosubject) = cur;
+		</f>
+		</call>
+	}
+	if (w_robot==0){
+		htmlprintf ("<td align=right><a href=https://twitter.com/bolixo_org><img src=twitter.png></a>\n");
+	}
+}
+</mod>
