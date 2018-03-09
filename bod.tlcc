@@ -793,31 +793,14 @@ static int trlid_main (
 				string username;
 				unsigned userid = bo_writed_get_group_owner (glocal.con_sess, sessionid, owner, username, glocal.msg);
 				if (userid != 0){
+					glocal map<int,INBOX> id2prj;
 					glocal.msg = "";
-					ENTRY entry;	
-					entry.userid = userid;
-					string inbox = string_f("/msgs/%s/inbox",username.c_str());
+					string dirids;
+					const char *sep = "";
 					int dirid = fs_find_inbox(userid,username.c_str(),false,glocal.msg);
 					if (dirid != -1){
-						<call sql_query>("select dirs_content.name,files.title,dirs_content.modified,id2name.name,marks.modified"
-							" from dirs_content"
-							" join files on files.id = dirs_content.itemid and files.modified = dirs_content.modified"
-							" join ids on dirs_content.itemid = ids.id"
-							" join id2name on ids.ownerid = id2name.userid"
-							" left join marks on marks.itemid=dirs_content.itemid and marks.userid=%u"
-							" where dirid=%u and type=%u order by eventtime desc limit %u,%u",userid,dirid,ENTRY_FILE,offset,nb);
-						<f onerow>
-							MESSAGE msg;
-							msg.uuid = row[0];
-							msg.title = row[1];
-							msg.submit = row[2];
-							msg.from = row[3];
-							msg.viewed = row[4] == NULL ? "" : row[4];
-							glocal.msgs.push_back(msg);
-						</f>
-						</call>
-					}else{
-						glocal.msg = "";
+						dirids = string_f("%d",dirid);
+						sep = ",";
 					}
 					vector<unsigned> listids;
 					vector<INBOX> inboxes;
@@ -825,43 +808,53 @@ static int trlid_main (
 					for (unsigned i=0; i<inboxes.size(); i++){
 						auto &inb = inboxes[i];
 						unsigned listid = listids[i];
-						glocal const char *manager = inb.manager.c_str();
-						glocal const char *project = inb.project.c_str();
+						const char *manager = inb.manager.c_str();
+						const char *project = inb.project.c_str();
 						vector<const char *> roles;
 						roles.push_back("");
 						if (inb.role.size() > 0) roles.push_back(inb.role.c_str());
-						int ownerid = fs_rec_getid ("select userid from id2name where name='%s'",glocal.manager);
+						int ownerid = fs_rec_getid ("select userid from id2name where name='%s'",manager);
 						if (ownerid == -1){
-							glocal.msg = string_f("manager %s unknown",glocal.manager);
+							glocal.msg = string_f("manager %s unknown",manager);
 							break;
 						}else{
-							for (auto r:roles){
-								glocal const char *role = r;
-								dirid = fs_find_project_inbox(ownerid, listid, glocal.manager,glocal.project,glocal.role,false,glocal.msg);
+							for (auto role:roles){
+								dirid = fs_find_project_inbox(ownerid, listid, manager,project,role,false,glocal.msg);
 								if (dirid != -1){
-									<call sql_query>("select dirs_content.name,files.title,dirs_content.modified,id2name.name,marks.modified"
-										" from dirs_content"
-										" join files on files.id = dirs_content.itemid and files.modified = dirs_content.modified"
-										" join ids on dirs_content.itemid = ids.id"
-										" join id2name on ids.ownerid = id2name.userid"
-										" left join marks on marks.itemid=dirs_content.itemid and marks.userid=%u"
-										" where dirid=%u and type=%u order by eventtime desc limit %u,%u",userid,dirid,ENTRY_MSG,offset,nb);
-									<f onerow>
-										MESSAGE msg;
-										msg.manager = glocal.manager;
-										msg.project = glocal.project;
-										msg.role = glocal.role;
-										msg.uuid = row[0];
-										msg.title = row[1];
-										msg.submit = row[2];
-										msg.from = row[3];
-										msg.viewed = row[4] == NULL ? "" : row[4];
-										glocal.msgs.push_back(msg);
-									</f>
-									</call>
+									glocal.id2prj[dirid] = inb;
+									dirids += string_f ("%s%d",sep,dirid);
+									sep = ",";
 								}
 							}
 						}
+					}
+					if (dirids.size() > 0){
+						glocal.msg = "";
+						<call sql_query>("select dirs_content.name,files.title,dirs_content.modified,id2name.name,marks.modified,dirs_content.dirid"
+							" from dirs_content"
+							" join files on files.id = dirs_content.itemid and files.modified = dirs_content.modified"
+							" join ids on dirs_content.itemid = ids.id"
+							" join id2name on ids.ownerid = id2name.userid"
+							" left join marks on marks.itemid=dirs_content.itemid and marks.userid=%u"
+							" where dirid in (%s) and type=%u order by eventtime desc limit %u,%u"
+							,userid,dirids.c_str(),ENTRY_MSG,offset,nb);
+						<f onerow>
+							MESSAGE msg;
+							msg.uuid = row[0];
+							msg.title = row[1];
+							msg.submit = row[2];
+							msg.from = row[3];
+							msg.viewed = row[4] == NULL ? "" : row[4];
+							int dirid = atoi(row[5]);
+							auto pt = glocal.id2prj.find(dirid);
+							if (pt != glocal.id2prj.end()){
+								msg.manager = pt->second.manager;
+								msg.project = pt->second.project;
+								msg.role = pt->second.role;
+							}
+							glocal.msgs.push_back(msg);
+						</f>
+						</call>
 					}
 				}
 				bool ret = true;
