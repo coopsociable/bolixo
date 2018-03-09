@@ -1092,10 +1092,10 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 					unsigned max_manager=0;
 					unsigned max_project=0;
 					for (int r=0; r<2; r++){
-						for (unsigned i=0; i<managers.size(); i++){
-							bofs_maxlen (managers[i],max_manager);
-							bofs_maxlen (projects[i],max_project);
-							if (r==1) printf ("%-*s  %-*s  %s\n",max_manager,managers[i],max_project,projects[i],roles[i]);
+						for (auto &inb:inboxes){
+							bofs_maxlen (inb.manager,max_manager);
+							bofs_maxlen (inb.project,max_project);
+							if (r==1) printf ("%-*s  %-*s  %s\n",max_manager,inb.manager,max_project,inb.project,inb.role);
 						}
 					}
 					glocal.ret = 0;
@@ -1169,18 +1169,20 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 		}else if (glocal.listmsgs){
 			glocal bool stop = false;
 			glocal unsigned offset=0;
+			glocal unsigned chunk=100;
 			while (!glocal.stop){
-				<call bod_client_list_msgs>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner,false,glocal.offset,100);
+				<call bod_client_list_msgs>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner,false,glocal.offset,glocal.chunk);
 				<f ok>
 					if (!success){
 						bofs_error ("msgs",internal_error,msg);
 						glocal.stop = true;
 					}else{
-						for (unsigned i=0; i<managers.size(); i++){
-							printf ("%-10s %-10s %-10s %-30s %-20s %s\n",managers[i],projects[i],roles[i],uuids[i],submits[i],titles[i]);
+						for (auto &m:messages){
+							const char *markread = strcmp(m.viewed,m.submit)==0 ? "viewed" : "      ";
+							printf ("%-10s %-10s %-10s %-10s %-30s %-20s %s %s\n",m.from,m.manager,m.project,m.role,m.uuid,m.submit,markread,m.title);
 						}
-						glocal.stop = managers.size() < 100;
-						glocal.offset += 100;
+						glocal.stop = messages.size() < glocal.chunk;
+						glocal.offset += glocal.chunk;
 					}
 				</f>
 				</call>

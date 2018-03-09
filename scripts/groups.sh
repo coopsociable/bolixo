@@ -25,7 +25,10 @@ elif [ "$1" = "print" ] ; then
 		select * from group_list_members;
 	EOF
 elif [ "$1" = "sequence" ] ; then
-	#./test.sh test-create_group_list A list1
+	NB=$2
+	if [ "$NB" = "" ] ; then
+		NB=5
+	fi
 	$0 reset
 	./bofs -u jacques-A groups --create-group-list -L Alist1
 	./bofs -u admin     groups --create-group-list -L Alonglist2 --owner jacques-A
@@ -51,7 +54,7 @@ elif [ "$1" = "sequence" ] ; then
 		./bofs -u $user groups --print-lists
 		./bofs -u $user groups --print-groups
 	done
-	for ((i=0; i<100; i++))
+	for ((i=0; i<$NB; i++))
 	do
 		CONTENT=
 		for ((j=0; j<20; j++))
@@ -59,6 +62,16 @@ elif [ "$1" = "sequence" ] ; then
 			CONTENT="$CONTENT\nThis is the body number $i,$j"
 		done
 		./bofs -u jacques-B msgs -n -D jacques-A -D jacques-C -T "This is title number $i" -C "$CONTENT"
+		./bofs -u jacques-A msgs -n -M jacques-A -P Alist1 -T "A A/1 This is title number $i" -C "$CONTENT"
+		./bofs -u jacques-A msgs -n -M jacques-A -P Alist1 -R dba -T "dba A A/1 This is title number $i" -C "$CONTENT"
+		./bofs -u jacques-A msgs -n -M jacques-A -P Alonglist2 -T "A A/2 This is title number $i" -C "$CONTENT"
+		./bofs -u jacques-A msgs -n -M jacques-A -P Alonglist2 -R dba -T "dba A A/2 This is title number $i" -C "$CONTENT"
+		./bofs -u jacques-B msgs -n -M jacques-A -P Alist1 -T "B A/1 This is title number $i" -C "$CONTENT"
+		./bofs -u jacques-B msgs -n -M jacques-A -P Alonglist2 -T "B A/2 This is title number $i" -C "$CONTENT"
+		./bofs -u jacques-C msgs -n -M jacques-A -P Alist1 -T "C A/1 This is title number $i" -C "$CONTENT"
+		./bofs -u jacques-C msgs -n -M jacques-A -P Alonglist2 -T "C A/2 This is title number $i" -C "$CONTENT"
+		./bofs -u jacques-A msgs -n -M jacques-B -P Blist1 -T "A B/1 This is title number $i" -C "$CONTENT"
+		./bofs -u jacques-A msgs -n -M jacques-B -P Blist1 -R dba -T "dba A B/1 This is title number $i" -C "$CONTENT"
 	done
 elif [ "$1" = "config" ] ; then
 	./test.sh files <<-EOF

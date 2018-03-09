@@ -84,24 +84,6 @@ static unsigned trli_getsessionuser (CONNECT_INFO &con, const char *sessionid)
 	return trli_getsessionuser (con,sessionid,tmp,is_admin);
 }
 
-/*
-	Return the numerical id if a record exist
-*/
-<mod>
-static int trli_rec_getid(const char *query, ...)
-{
-	va_list list;
-	va_start (list,query);
-	glocal int ret = -1;
-	<call sql_query>(query,list);
-	<f onerow>
-		glocal.ret = atoi(row[0]);
-	</f>
-	</call>
-	va_end (list);
-	return glocal.ret;
-}
-</mod>
 #if 0
 <mod>
 static bool trli_isadmin (NSQL *sq, unsigned userid)
@@ -298,34 +280,35 @@ static int bo_writed_project_msg(
 	string username;
 	glocal unsigned userid = bo_writed_get_group_owner (con, sessionid, owner, username,msg);
 	if (glocal.userid != 0){
-		int ownerid = trli_rec_getid ("select userid from id2name where name='%s'",manager);
+		int ownerid = fs_rec_getid ("select userid from id2name where name='%s'",manager);
 		if (ownerid == -1){
 			msg = "Unkown user";
 		}else{
-			vector<string> managers,projects,roles;
+			vector<INBOX> inboxes;
 			vector<unsigned> listids;
-			fs_list_inboxes(glocal.userid,managers,projects,roles,listids);
+			fs_list_inboxes(glocal.userid,inboxes,listids);
 			int dirid = -1;
 			int listid = -1;
 			msg = "Invalid destination/inbox";
-			for (unsigned i=0; i<managers.size(); i++){
-				if (strcmp(manager,managers[i].c_str())==0
-					&& strcmp(project,projects[i].c_str())==0
-					&& (role[0] == '\0' || strcmp(role,roles[i].c_str())==0)){
+			for (unsigned i=0; i<inboxes.size(); i++){
+				INBOX &inb = inboxes[i];
+				if (inb.manager.compare(manager)==0
+					&& inb.project.compare(project)==0
+					&& (role[0] == '\0' || inb.role.compare(role)==0)){
 					// Now we can write the message
 					listid = listids[i];
-					int project_dirid = fs_find_project_inbox (ownerid, listid,manager, project, role, msg);
+					int project_dirid = fs_find_project_inbox (ownerid, listid,manager, project, role, true,msg);
 					if (project_dirid != -1){
 						if (replyto == NULL){
 							dirid = project_dirid;
 						}else{
-							int subdir_id = trli_rec_getid ("select itemid from dirs_content where dirid=%d and name='%s.dir'",project_dirid,replyto);
+							int subdir_id = fs_rec_getid ("select itemid from dirs_content where dirid=%d and name='%s.dir'",project_dirid,replyto);
 							if (subdir_id != -1){
 								dirid = subdir_id;
 							}else{
 								// The msg.dir directory does not exist, we must create it.
 								// But first, check if the replyto message is there
-								int replyto_id = trli_rec_getid ("select itemid from dirs_content where dirid=%d and name='%s'",project_dirid,replyto);		
+								int replyto_id = fs_rec_getid ("select itemid from dirs_content where dirid=%d and name='%s'",project_dirid,replyto);		
 								if (replyto_id == -1){
 									msg = "Message not found in project inbox";
 								}else{
@@ -1009,7 +992,7 @@ int main (int argc, char *argv[])
 									glocal.entry.msg = "";
 								}
 							}else if (listname[0] != '\0'){
-								int group_list_id = trli_rec_getid ("select id from group_lists where ownerid=%u and name='%s'",glocal.entry.userid,listname);
+								int group_list_id = fs_rec_getid ("select id from group_lists where ownerid=%u and name='%s'",glocal.entry.userid,listname);
 								if (group_list_id == -1){
 									glocal.entry.msg = "Invalid list name";
 								}else if (sql_action("update ids set group_list_id=%d,listmode='%s' where id=%u",group_list_id,glocal.listmode,glocal.entry.entryid)==-1){
@@ -1019,7 +1002,7 @@ int main (int argc, char *argv[])
 								}
 							}
 							if (glocal.entry.msg.size() == 0 && username[0] != '\0'){
-								int username_id = trli_rec_getid ("select userid from id2name where name='%s'",username);
+								int username_id = fs_rec_getid ("select userid from id2name where name='%s'",username);
 								if (username_id == -1){
 									glocal.entry.msg = "Invalid user name";
 								}else if (sql_action("update ids set ownerid=%d where id=%u",username_id,glocal.entry.entryid)==-1){
@@ -1429,7 +1412,7 @@ int main (int argc, char *argv[])
 										for (unsigned i=0; i<glocal.r_userids.size(); i++){
 											const char *r = glocal.r_userids[i].first.c_str();
 											unsigned r_id = glocal.r_userids[i].second;
-											int inbox_id = fs_find_inbox (r_id,r,glocal.msg);
+											int inbox_id = fs_find_inbox (r_id,r,true,glocal.msg);
 											if (inbox_id == -1) break;
 											if (fs_insert_file(inbox_id,fileid,now,glocal.msgid)==-1){
 												glocal.msg = string_f ("Can't write to user %s inbox",r);

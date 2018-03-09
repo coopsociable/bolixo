@@ -77,7 +77,7 @@ proto/bod_control.protoh: proto/bod_control.proto
 
 proto/bod_client.protoh: proto/bod_client.proto
 	build-protocol --secretmode --arg "int no" --arg "HANDLE_INFO *c" --arg "const char *host" --name bod_client \
-	       --protoch proto/bod_client.protoch proto/bod_client.proto >proto/bod_client.protoh
+		--protodef proto/bod_client.protodef --protoch proto/bod_client.protoch proto/bod_client.proto >proto/bod_client.protoh
 		
 
 proto/bod_admin.protoh: proto/bod_admin.proto
@@ -112,11 +112,11 @@ proto/bo-sessiond_admin.protoh: proto/bo-sessiond_admin.proto
 	build-protocol --secretmode --arg "int no" --arg "HANDLE_INFO *c" --arg "const char *host" --name bo_sessiond_admin \
 		--protoch proto/bo-sessiond_admin.protoch proto/bo-sessiond_admin.proto >proto/bo-sessiond_admin.protoh
 
-filesystem.o: filesystem.tlcc filesystem.h
+filesystem.o: filesystem.tlcc filesystem.h proto/bod_client.protoh
 	cctlcc -Wall $(OPTIONS) -c filesystem.tlcc -o filesystem.o
 
 clean:
-	rm -f $(PROGS) *.o *.os proto/*.protoh proto/*.protoch web/*.hc web/*.os
+	rm -f $(PROGS) *.o *.os proto/*.protoh proto/*.protoch proto/*.protodef web/*.hc web/*.os
 
 
 install:

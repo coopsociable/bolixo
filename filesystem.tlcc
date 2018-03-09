@@ -14,16 +14,6 @@
 
 using namespace std;
 
-#if 0
-#define bo_sessiond_admin_getsessioninfo_NOTNEED
-#define bo_sessiond_admin_setsession_NOTNEED
-#define bo_sessiond_admin_deletesession_NOTNEED
-#define bo_sessiond_admin_deletesessions_NOTNEED
-#define bo_sessiond_admin_createsession_NOTNEED
-#define bo_sessiond_admin_test_NOTNEED
-#include "proto/bo-sessiond_admin.protoch"
-#endif
-
 static int noproc = 0;
 
 void fs_set_noproc (int _noproc)
@@ -502,11 +492,9 @@ void fs_delete_handle (PARAM_STRING handle)
 }
 
 <mod>
-void fs_list_inboxes (unsigned userid, vector<string> &managers, vector<string> &projects, vector<string> &roles, vector<unsigned> &listids)
+void fs_list_inboxes (unsigned userid, vector<INBOX> &inboxes, vector<unsigned> &listids)
 {
-	glocal vector<string> *managers = &managers;
-	glocal vector<string> *projects = &projects;
-	glocal vector<string> *roles = &roles;
+	glocal vector<INBOX> *inboxes = &inboxes;
 	glocal vector<unsigned> *listids = &listids;
 	<call sql_query>("select id2name.name,group_lists.name,group_members.role,group_lists.id"
 		" from group_members"
@@ -515,9 +503,11 @@ void fs_list_inboxes (unsigned userid, vector<string> &managers, vector<string> 
 		" join id2name on group_lists.ownerid=id2name.userid"
 		" where group_members.userid = %u",userid);
 	<f onerow>
-		glocal.managers->push_back(row[0]);
-		glocal.projects->push_back(row[1]);
-		glocal.roles->push_back(row[2]);
+		INBOX inb;
+		inb.manager = row[0];
+		inb.project = row[1];
+		inb.role = row[2];
+		glocal.inboxes->push_back(inb);
 		glocal.listids->push_back(atoi(row[3]));
 	</f>
 	</call>
@@ -577,20 +567,38 @@ unsigned fs_find_outbox (unsigned ownerid, PARAM_STRING name, string &msg)
 	Find the directory ID of the inbox for this user.
 	The directory is created as needed.
 */
-unsigned fs_find_inbox (unsigned ownerid, PARAM_STRING name, string &msg)
+unsigned fs_find_inbox (unsigned ownerid, PARAM_STRING name, bool create, string &msg)
 {
 	vector<string> dirs = {"msgs",name.ptr,"inbox"};
 	vector<unsigned> listids = {0,(unsigned)-1,(unsigned)-1};
 	vector<char> listmodes = {'p','p','p'};
 	bool may_add;
-	return fs_locate_dir (dirs,ownerid,true,msg,END_OF_TIME,may_add,true,&listids,&listmodes);
+	return fs_locate_dir (dirs,ownerid,true,msg,END_OF_TIME,may_add,create,&listids,&listmodes);
 }
-unsigned fs_find_project_inbox (unsigned ownerid, unsigned listid, const char *name, const char *project, const char *role, string &msg)
+unsigned fs_find_project_inbox (unsigned ownerid, unsigned listid, const char *name, const char *project, const char *role, bool create, string &msg)
 {
 	vector<string> dirs = {"msg-projects",name,project};
 	if (role[0] != '\0') dirs.push_back(role);
 	vector<unsigned> listids = {0,0,listid,listid};
 	vector<char> listmodes = {'p','p','r','r'};
 	bool may_add;
-	return fs_locate_dir (dirs,ownerid,true,msg,END_OF_TIME,may_add,true,&listids,&listmodes);
+	return fs_locate_dir (dirs,ownerid,true,msg,END_OF_TIME,may_add,create,&listids,&listmodes);
 }
+/*
+	Return the numerical id if a record exist
+*/
+<mod>
+int fs_rec_getid(const char *query, ...)
+{
+	va_list list;
+	va_start (list,query);
+	glocal int ret = -1;
+	<call sql_query>(query,list);
+	<f onerow>
+		glocal.ret = atoi(row[0]);
+	</f>
+	</call>
+	va_end (list);
+	return glocal.ret;
+}
+</mod>

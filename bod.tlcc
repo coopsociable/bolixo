@@ -769,35 +769,27 @@ static int trlid_main (
 				}
 				rep_list_groups (ret,glocal.msg,glocal.groups,glocal.users,glocal.access,glocal.roles);
 			</f>
-			<f list_inboxes> // sessionid owner = success:b msg inboxes:v
+			<f list_inboxes> // sessionid owner = success:b msg inboxes:U{INBOX}v
+					 // &INBOX manager project role
 				glocal string msg = "Invalid session";
-				glocal vector<string> managers;
-				glocal vector<string> projects;
-				glocal vector<string> roles;
+				glocal vector<INBOX> inboxes;
 				unsigned userid = bo_writed_get_group_owner (glocal.con_sess, sessionid, owner, glocal.msg);
 				if (userid != 0){
 					glocal.msg = "";
 					vector<unsigned> listids;
-					fs_list_inboxes (userid,glocal.managers,glocal.projects,glocal.roles,listids);
+					fs_list_inboxes (userid,glocal.inboxes,listids);
 				}
 				bool ret = true;
 				if (glocal.msg.size() > 0){
 					ret = false;
-					glocal.managers.clear();
-					glocal.projects.clear();
-					glocal.roles.clear();
+					glocal.inboxes.clear();
 				}
-				rep_list_inboxes (ret,glocal.msg,glocal.managers,glocal.projects,glocal.roles);
+				rep_list_inboxes (ret,glocal.msg,glocal.inboxes);
 			</f>
-			<f list_msgs> // sessionid owner deleted:b offset:u nb:u = success:b msg managers:v projects:v roles:v uuids:v titles:v submits:v 
+			<f list_msgs> // sessionid owner deleted:b offset:u nb:u = success:b msg messages:U{MESSAGE}v
+					// &MESSAGE manager project role uuid title submit viewed
 				glocal string msg = "Invalid session";
-				glocal vector<string> managers;
-				glocal vector<string> projects;
-				glocal vector<string> roles;
-				glocal vector<string> uuids;
-				glocal vector<string> titles;
-				glocal vector<string> submits;
-				glocal vector<string> viewed;
+				glocal vector<MESSAGE> msgs;
 				string username;
 				unsigned userid = bo_writed_get_group_owner (glocal.con_sess, sessionid, owner, username, glocal.msg);
 				if (userid != 0){
@@ -805,40 +797,79 @@ static int trlid_main (
 					ENTRY entry;	
 					entry.userid = userid;
 					string inbox = string_f("/msgs/%s/inbox",username.c_str());
-					if (fs_findentry(inbox,entry,true,END_OF_TIME)==-1){
-						glocal.msg = entry.msg;
-					}else{
-						<call sql_query>("select name,files.title,dirs_content.modified"
+					int dirid = fs_find_inbox(userid,username.c_str(),false,glocal.msg);
+					if (dirid != -1){
+						<call sql_query>("select dirs_content.name,files.title,dirs_content.modified,id2name.name,marks.modified"
 							" from dirs_content"
 							" join files on files.id = dirs_content.itemid and files.modified = dirs_content.modified"
-							" where dirid=%u and type=%u order by eventtime desc limit %u,%u",entry.entryid,ENTRY_FILE,offset,nb);
+							" join ids on dirs_content.itemid = ids.id"
+							" join id2name on ids.ownerid = id2name.userid"
+							" left join marks on marks.itemid=dirs_content.itemid and marks.userid=%u"
+							" where dirid=%u and type=%u order by eventtime desc limit %u,%u",userid,dirid,ENTRY_FILE,offset,nb);
 						<f onerow>
-							glocal.managers.push_back("");
-							glocal.projects.push_back("");
-							glocal.roles.push_back("");
-							glocal.uuids.push_back(row[0]);
-							glocal.titles.push_back(row[1]);
-							glocal.submits.push_back(row[2]);
-							glocal.viewed.push_back("not done");
+							MESSAGE msg;
+							msg.uuid = row[0];
+							msg.title = row[1];
+							msg.submit = row[2];
+							msg.from = row[3];
+							msg.viewed = row[4] == NULL ? "" : row[4];
+							glocal.msgs.push_back(msg);
 						</f>
 						</call>
+					}else{
+						glocal.msg = "";
 					}
 					vector<unsigned> listids;
-					vector<string> managers,projects,roles;
-					fs_list_inboxes (userid,managers,projects,roles,listids);
+					vector<INBOX> inboxes;
+					fs_list_inboxes (userid,inboxes,listids);
+					for (unsigned i=0; i<inboxes.size(); i++){
+						auto &inb = inboxes[i];
+						unsigned listid = listids[i];
+						glocal const char *manager = inb.manager.c_str();
+						glocal const char *project = inb.project.c_str();
+						vector<const char *> roles;
+						roles.push_back("");
+						if (inb.role.size() > 0) roles.push_back(inb.role.c_str());
+						int ownerid = fs_rec_getid ("select userid from id2name where name='%s'",glocal.manager);
+						if (ownerid == -1){
+							glocal.msg = string_f("manager %s unknown",glocal.manager);
+							break;
+						}else{
+							for (auto r:roles){
+								glocal const char *role = r;
+								dirid = fs_find_project_inbox(ownerid, listid, glocal.manager,glocal.project,glocal.role,false,glocal.msg);
+								if (dirid != -1){
+									<call sql_query>("select dirs_content.name,files.title,dirs_content.modified,id2name.name,marks.modified"
+										" from dirs_content"
+										" join files on files.id = dirs_content.itemid and files.modified = dirs_content.modified"
+										" join ids on dirs_content.itemid = ids.id"
+										" join id2name on ids.ownerid = id2name.userid"
+										" left join marks on marks.itemid=dirs_content.itemid and marks.userid=%u"
+										" where dirid=%u and type=%u order by eventtime desc limit %u,%u",userid,dirid,ENTRY_MSG,offset,nb);
+									<f onerow>
+										MESSAGE msg;
+										msg.manager = glocal.manager;
+										msg.project = glocal.project;
+										msg.role = glocal.role;
+										msg.uuid = row[0];
+										msg.title = row[1];
+										msg.submit = row[2];
+										msg.from = row[3];
+										msg.viewed = row[4] == NULL ? "" : row[4];
+										glocal.msgs.push_back(msg);
+									</f>
+									</call>
+								}
+							}
+						}
+					}
 				}
 				bool ret = true;
 				if (glocal.msg.size() > 0){
 					ret = false;
-					glocal.managers.clear();
-					glocal.projects.clear();
-					glocal.roles.clear();
-					glocal.uuids.clear();
-					glocal.titles.clear();
-					glocal.submits.clear();
-					glocal.viewed.clear();
+					glocal.msgs.clear();
 				}
-				rep_list_msgs (ret,glocal.msg,glocal.managers,glocal.projects,glocal.roles,glocal.uuids,glocal.titles,glocal.submits,glocal.viewed);
+				rep_list_msgs (ret,glocal.msg,glocal.msgs);
 			</f>
 			<f sendmsg> // sessionid owner recipients:v title content = success:b msg msgid
 				<call bo_writed_client_sendmsg>(glocal.con,sessionid,owner,recipients,title,content);

@@ -292,7 +292,7 @@ extern "C" void webmain_real()
 		}else{
 			glocal bool stop = false;
 			glocal unsigned offset=0;
-			/- <table><tr><th>Manager<th>Project<th>Role<th>Submit<th>Message ID<th>Title
+			/- <table border=1><tr><th>From<th>Manager<th>Project<th>Role<th>Submit<th>Message ID<th>Title
 			while (!glocal.stop){
 				<call bod_client_list_msgs>(glocal.con,w_session.c_str(),"",false,glocal.offset,100);
 				<f ok>
@@ -300,10 +300,22 @@ extern "C" void webmain_real()
 						htmlprintf ("Error: %d %s<br>",internal_error,msg);
 						glocal.stop = true;
 					}else{
-						for (unsigned i=0; i<managers.size(); i++){
-							htmlprintf ("<tr><td>%s<td>%s<td>%s<td>%s<td>%s<td>%s\n",managers[i],projects[i],roles[i],submits[i],uuids[i],titles[i]);
+						for (auto &m:messages){
+							const char *boldon = "", *boldoff = "";
+							if (strcmp(m.submit,m.viewed)!=0){
+								boldon = "<b>";
+								boldoff = "</b>";
+							}
+							htmlprintf ("<tr><td>%s%s%s<td>%s%s%s<td>%s%s%s<td>%s%s%s<td>%s%s%s<td>%s%s%s<td>%s%s%s\n"
+								,boldon,m.from,boldoff
+								,boldon,m.manager,boldoff
+								,boldon,m.project,boldoff
+								,boldon,m.role,boldoff
+								,boldon,m.submit,boldoff
+								,boldon,m.uuid,boldoff
+								,boldon,m.title,boldoff);
 						}
-						glocal.stop = managers.size() < 100;
+						glocal.stop = messages.size() < 100;
 						glocal.offset += 100;
 					}
 				</f>
