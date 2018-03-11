@@ -34,7 +34,6 @@ struct HANDLE_INFO: public ARRAY_OBJ{
 #include "proto/bo-sessiond_control.protoh"
 #include "proto/bo-sessiond_client.protoh"
 #include "proto/bo-sessiond_admin.protoh"
-#define session_log_session_NOTNEED
 #include "proto/session_log.protoch"
 #include "proto/session_log.protoh"
 
@@ -150,19 +149,9 @@ int main (int argc, char *argv[])
 		for (auto s:glocal.variables) glocal.vars.insert(s);
 		{
 			FILE *fin = fopen ("/tmp/sessions.log","r");
-tlmp_error ("file %p %s\n",fin,strerror(errno));
 			if (fin != NULL){
-tlmp_error ("not null\n");
 				<call session_log>(fin);
 				<f session>
-					SESSION_INFO sess(userid, userid_str, name, email, lang, admin);
-					sess.stats.lastvisit = lastvisit;
-					sess.stats.nbacc = nbacc;
-					glocal.sessions[session] = sess;
-					
-				</f>
-				<f session_v1>
-tlmp_error ("session_v1 %u %s %s %s %s %d\n",userid,userid_str,name,email,lang,admin);
 					SESSION_INFO sess(userid, userid_str, name, email, lang, admin);
 					sess.stats.lastvisit = lastvisit;
 					sess.stats.nbacc = nbacc;
@@ -171,7 +160,7 @@ tlmp_error ("session_v1 %u %s %s %s %s %d\n",userid,userid_str,name,email,lang,a
 					
 				</f>
 				<f invalid>
-tlmp_error ("Invalid\n");
+					tlmp_error ("Invalid entry, reading sessions.log\n");
 				</f>
 				</call>
 				fclose (fin);
@@ -242,7 +231,7 @@ tlmp_error ("Invalid\n");
 								vars.push_back(v.name);
 								vals.push_back(v.val);
 							}
-							session_log_session_v1(fout,s.first,s.second.userid,s.second.userid_str
+							session_log_session(fout,s.first,s.second.userid,s.second.userid_str
 								,s.second.name,s.second.email,s.second.lang,s.second.admin
 								,s.second.stats.lastvisit,s.second.stats.nbacc,vars,vals);
 						}
