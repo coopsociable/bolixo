@@ -19,6 +19,12 @@ using namespace std;
 static const char *newscolor = "green";
 
 static string w_session;
+static W_UNSIGNED w_inbox_offset ("inbox_offset");
+static unsigned inbox_offset = 0;
+static W_UNSIGNED w_talk_offset ("talk_offset");
+static unsigned talk_offset = 0;
+static W_UNSIGNED w_clickl ("clickl");
+static W_UNSIGNED w_clickc ("clickc");
 static W_UNSIGNED w_order ("order");
 static unsigned order = 0;
 static W_UNSIGNED w_test("test");
@@ -193,6 +199,8 @@ static void trli_getsessioninfo(CONNECT_INFO &con, CONNECT_INFO &con_sess)
 			for (unsigned i=0; i<vars.size(); i++){
 				if (strcmp(vars[i],"subject")==0) subject=atoi(vals[i]);
 				if (strcmp(vars[i],"order")==0) order=atoi(vals[i]);
+				if (strcmp(vars[i],"inbox_offset")==0) inbox_offset=atoi(vals[i]);
+				if (strcmp(vars[i],"talk_offset")==0) talk_offset=atoi(vals[i]);
 			}
 		}else{
 			userinfo.reset();
@@ -223,6 +231,21 @@ static void button_validate(int step)
 		,tlmpweb_curpage(),step);
 }
 
+<mod>
+static void web_updatevar(CONNECT_INFO &con_sess, W_UNSIGNED &w_var, unsigned &var, const char *name)
+{
+	glocal const char *name = name;
+	if (w_var.isset() && w_var != var){
+		string tmp = w_var.getvalstr();
+		<call bo_sessiond_client_setvar>(con_sess,w_session.c_str(),name,tmp);
+		<f ok>
+			if (!success) printf ("Can't set variable %s: %s\n",glocal.name,msg);
+		</f>
+		</call>
+		var = w_var;
+	}
+}
+</mod>
 
 <mod>
 extern "C" void webmain_real()
@@ -278,6 +301,8 @@ extern "C" void webmain_real()
 	}
 	if (w_session.empty()) return;
 	
+	web_updatevar (glocal.con_sess,w_inbox_offset,inbox_offset,"inbox_offset");
+	web_updatevar (glocal.con_sess,w_talk_offset,talk_offset,"talk_offset");
 	/- <p>
 	<call websteps>();
 	<f setstep>
@@ -289,39 +314,80 @@ extern "C" void webmain_real()
 		trli_title ("",this);
 		if (userinfo.name.size() == 0){
 			// Anonymous, present public news ?
+			/- So far no public content
 		}else{
-			glocal bool stop = false;
-			glocal unsigned offset=0;
-			/- <table border=1><tr><th>From<th>Manager<th>Project<th>Role<th>Submit<th>Message ID<th>Title
-			while (!glocal.stop){
-				<call bod_client_list_msgs>(glocal.con,w_session.c_str(),"",false,glocal.offset,100);
-				<f ok>
-					if (!success){
-						htmlprintf ("Error: %d %s<br>",internal_error,msg);
-						glocal.stop = true;
-					}else{
-						for (auto &m:messages){
-							const char *boldon = "", *boldoff = "";
-							if (strcmp(m.submit,m.viewed)!=0){
-								boldon = "<b>";
-								boldoff = "</b>";
+			<call vframe4>("title","","");
+			<f top_left>
+			</f>
+			<f top>
+			</f>
+			<f body>
+				<call webtable>("talk","aaaaaaa","lllllll",true,talk_offset,5);
+				<f load>
+					sethead ("From\tSubmit\tTitle");
+					<call bod_client_list_msgs>(glocal.con,w_session.c_str(),"",false,nbskip,nblines);
+					<f ok>
+						if (!success){
+							htmlprintf ("Error: %d %s<br>",internal_error,msg);
+						}else{
+							unsigned nol = 0;
+							for (auto &m:messages){
+								const char *boldon = "", *boldoff = "";
+								if (strcmp(m.submit,m.viewed)!=0){
+									boldon = "<b>";
+									boldoff = "</b>";
+								}
+								glocal.webtable.setrow ("%s%s%s\t%s%s%s\t%s%s%s"
+									,boldon,m.from,boldoff
+									,boldon,m.submit,boldoff
+									,boldon,m.title,boldoff);
+								if (0 && w_clickl.isset() && nol == w_clickl){
+									glocal.webtable.setextra ("This is the content");
+								}
+								nol++;
 							}
-							htmlprintf ("<tr><td>%s%s%s<td>%s%s%s<td>%s%s%s<td>%s%s%s<td>%s%s%s<td>%s%s%s<td>%s%s%s\n"
-								,boldon,m.from,boldoff
-								,boldon,m.manager,boldoff
-								,boldon,m.project,boldoff
-								,boldon,m.role,boldoff
-								,boldon,m.submit,boldoff
-								,boldon,m.uuid,boldoff
-								,boldon,m.title,boldoff);
 						}
-						glocal.stop = messages.size() < 100;
-						glocal.offset += 100;
-					}
+					</f>
+					</call>
 				</f>
 				</call>
-			}
-			/- </table>
+			</f>
+			<f left>
+				<call webtable>("inbox","aaaaaaa","lllllll",true,inbox_offset,10);
+				<f load>
+					sethead ("From\tManager\tProject\tRole\tSubmit\tMessage ID\tTitle");
+					<call bod_client_list_msgs>(glocal.con,w_session.c_str(),"",false,nbskip,nblines);
+					<f ok>
+						if (!success){
+							htmlprintf ("Error: %d %s<br>",internal_error,msg);
+						}else{
+							unsigned nol = 0;
+							for (auto &m:messages){
+								const char *boldon = "", *boldoff = "";
+								if (strcmp(m.submit,m.viewed)!=0){
+									boldon = "<b>";
+									boldoff = "</b>";
+								}
+								glocal.webtable.setrow ("%s%s%s\t%s%s%s\t%s%s%s\t%s%s%s\t%s%s%s\t%s%s%s\t%s%s%s"
+									,boldon,m.from,boldoff
+									,boldon,m.manager,boldoff
+									,boldon,m.project,boldoff
+									,boldon,m.role,boldoff
+									,boldon,m.submit,boldoff
+									,boldon,m.uuid,boldoff
+									,boldon,m.title,boldoff);
+								if (w_clickl.isset() && nol == w_clickl){
+									glocal.webtable.setextra ("This is the content");
+								}
+								nol++;
+							}
+						}
+					</f>
+					</call>
+				</f>
+				</call>
+			</f>
+			</call>
 		}
 	</f>
 	<f step2> // Login

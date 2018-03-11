@@ -812,6 +812,7 @@ elif [ "$1" = "lxc0-web" ]; then # prod:
 			$EXTRALXCPROG \
 			-i /usr/sbin/trli-init -l $LOG -l /tmp/log.web2 \
 			-e /var/www/html/index.hc \
+			-e /usr/lib/tlmp/templates/default/webtable.tpl \
 			-e /usr/sbin/trli-stop \
 			-n $w -p /usr/sbin/httpd >/var/lib/lxc/$w/$w-lxc0.sh
 			chmod +x /var/lib/lxc/$w/$w-lxc0.sh
