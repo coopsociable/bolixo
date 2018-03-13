@@ -36,16 +36,18 @@ struct DIRENTRY{
 	std::string modified;
 	std::string viewed;
 	ENTRY_TYPE type;
+	FILE_TYPE file_type;
 	std::string owner;
 	std::string members;
 	std::string listmode;
 	std::string title;
 	unsigned size;
-	DIRENTRY (const char *_eventdate, const char *_modified, ENTRY_TYPE _type, const char *_owner,
+	DIRENTRY (const char *_eventdate, const char *_modified, ENTRY_TYPE _type, FILE_TYPE _file_type, const char *_owner,
 		const char *_members, const char *_listmode, unsigned _size, const char *_title, const char *_viewed){
 		eventdate = _eventdate;
 		modified = _modified;
 		type = _type;
+		file_type = _file_type;
 		owner = _owner;
 		members = _members;
 		listmode = _listmode;
@@ -491,6 +493,7 @@ static int trlid_main (
 					<call sql_query>("select dirs_content.name,dirs_content.modified,type,id2name.name"
 						",group_list_id,group_lists.name,ids.listmode"
 						",length(files.content),dirs_content.itemid,files.title,dirs_content.eventtime"
+						",files.filetype"
 						" from dirs_content"
 						" join ids on dirs_content.itemid=ids.id"
 						" join id2name on ids.ownerid=id2name.userid"
@@ -523,6 +526,7 @@ static int trlid_main (
 						}
 						const char *title = row[9] == NULL ? "" : row[9];
 						const char *eventdate = row[10];
+						FILE_TYPE file_type = row[11] == NULL ? FILE_UNKNOWN : (FILE_TYPE)atoi(row[11]);
 						if (!bolixo_isdeleted(type)){
 							glocal.file.name = name;
 							glocal.file.modified = modified;
@@ -533,6 +537,7 @@ static int trlid_main (
 							glocal.file.size = size;
 							glocal.file.title = title;
 							glocal.file.eventdate = eventdate;
+							glocal.file.file_type = file_type;
 							glocal.file.viewed = "not done";
 							glocal.entry.msg = "";
 						}
@@ -561,6 +566,7 @@ static int trlid_main (
 						<call sql_query>("select dirs_content.name,dirs_content.modified,type,id2name.name"
 							",group_list_id,group_lists.name,ids.listmode"
 							",length(files.content),dirs_content.itemid,files.title,dirs_content.eventtime"
+							",files.filetype"
 							" from dirs_content"
 							" join ids on dirs_content.itemid=ids.id"
 							" join id2name on ids.ownerid=id2name.userid"
@@ -593,12 +599,14 @@ static int trlid_main (
 							}
 							const char *title = row[9] == NULL ? "" : row[9];
 							const char *eventdate = row[10];
+							FILE_TYPE file_type = row[11] == NULL ? FILE_UNKNOWN : (FILE_TYPE)atoi(row[11]);
 							if (glocal.history){
 								FILEINFO info;
 								info.name = name;
 								info.eventdate = eventdate;
 								info.modified = modified;
 								info.type = type;
+								info.file_type = file_type;
 								info.owner = owner;
 								info.listname = listname;
 								info.listmode = listmode;
@@ -607,7 +615,7 @@ static int trlid_main (
 								info.viewed = "not done";
 								glocal.files.push_back(info);
 							}else{
-								glocal.mp[name] = DIRENTRY(eventdate,modified,type,owner,listname,listmode,size,title,"not done");
+								glocal.mp[name] = DIRENTRY(eventdate,modified,type,file_type,owner,listname,listmode,size,title,"not done");
 							}
 						</f>
 						</call>
@@ -617,6 +625,7 @@ static int trlid_main (
 									FILEINFO info;
 									info.name = x.first;
 									info.type = x.second.type;
+									info.file_type = x.second.file_type;
 									info.eventdate = x.second.eventdate;
 									info.modified = x.second.modified;
 									info.owner = x.second.owner;

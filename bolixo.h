@@ -19,3 +19,10 @@ inline bool bolixo_isdeleted(ENTRY_TYPE type)
 	return type == ENTRY_DELETED;
 }
 
+enum FILE_TYPE {
+	FILE_UNKNOWN,
+	FILE_TEXT,
+	FILE_SOUND,
+	FILE_IMAGE,
+	FILE_VIDEO,
+};

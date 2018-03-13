@@ -185,7 +185,8 @@ static int bofs_stat (
 				glocal.ret = 0;
 				(*glocal.file) = file;
 			}else{
-				bofs_error ("stat",internal_error,"Can't stat bolixo file %s: %s",glocal.file->name.c_str(),msg);
+				// A missing file is not an error.
+				// bofs_error ("stat",internal_error,"Can't stat bolixo file %s: %s",glocal.file->name.c_str(),msg);
 			}
 		</f>
 		</call>
@@ -234,6 +235,7 @@ static int bofs_ls (CONTEXT &ctx, int argc, char *argv[])
 				<call bod_client_listdir> (glocal.ctx->con,glocal.ctx->sessionid,path,glocal.ctx->threshold,glocal.opt_history,offset,500);
 				<f ok>
 					static char tbtype[]={' ','_','D','F','M','C'};
+					static char tbftype[]={'?','T','S','I','V'};
 					if (!success){
 						if (internal_error){
 							bofs_error ("ls",true,"");
@@ -245,7 +247,8 @@ static int bofs_ls (CONTEXT &ctx, int argc, char *argv[])
 								glocal.ret = -1;
 							}else{
 								if (glocal.opt_long){
-									printf ("\t%c   %s   %s   %s/%s:%s   %u   %s  %s\n",tbtype[file.type]
+									printf ("\t%c%c   %s   %s   %s/%s:%s   %u   %s  %s\n"
+										,tbtype[file.type],tbftype[file.file_type]
 										,file.eventdate.c_str(),file.modified.c_str()
 										,file.owner.c_str(),file.listname.c_str(),file.listmode.c_str()
 										,file.size,file.name.c_str(),file.title.c_str());
@@ -271,7 +274,8 @@ static int bofs_ls (CONTEXT &ctx, int argc, char *argv[])
 									if (r==1){
 										const char *listmode = f.listmode;
 										if (listmode[0] == '\0') listmode = " ";
-										printf ("\t%c   %s   %s   %*s/%-*s:%s   %*u   %-*s  %s\n",tbtype[f.type]
+										printf ("\t%c%c   %s   %s   %*s/%-*s:%s   %*u   %-*s  %s\n"
+											,tbtype[f.type],tbftype[f.file_type]
 											,f.eventdate,f.modified
 											,max_owner,f.owner,max_members,f.listname,listmode,max_size,f.size
 											,max_name,f.name,f.title);

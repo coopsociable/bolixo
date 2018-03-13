@@ -321,6 +321,7 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 		create table files (
 			id int,
 			modified datetime default current_timestamp,
+			filetype tinyint unsigned default 0,
 			title varchar(200),
 			content text
 		)engine=$ENGINE;
