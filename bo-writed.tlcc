@@ -341,13 +341,15 @@ static int bo_writed_project_msg(
 					if (fileid != -1){
 						char now[20];
 						fs_set_now(now);
-						string name = replyto == NULL ? msgid : string_f("%s-%s",replyto,msgid.c_str());
-						if (fs_insert_file(outbox_id,fileid,now,name)==-1){
+						if (replyto != NULL){
+							msgid = string_f("%s:%s",replyto,msgid.c_str());
+						}
+						if (fs_insert_file(outbox_id,fileid,now,msgid)==-1){
 							msg = "Outbox internal error (dirs_content table)";
 						}else if (sql_action("insert into files (id,modified,title,content,filetype) values (%d,'%s','%s','%s',%u)"
 							,fileid,now,title,content,FILE_TEXT)==-1){
 							msg = "Internal error (files table)";
-						}else if (fs_insert_entry(dirid,fileid,now,name,ENTRY_MSG)==-1){
+						}else if (fs_insert_entry(dirid,fileid,now,msgid,ENTRY_MSG)==-1){
 							msg = "Project inbox internal error (dirs_content table)";
 						}else{
 							msg = "";
@@ -359,6 +361,87 @@ static int bo_writed_project_msg(
 		}
 	}
 	return ret;
+}
+</mod>
+
+<mod>
+static void bo_writed_sendmsg (
+	CONNECT_INFO &con,
+	const char *sessionid,
+	const char *owner,
+	const vector<const char*> &recipients,
+	const char *replyto,		// Message ID or NULL
+	const char *title,
+	const char *content,
+	string &msg,
+	string &msgid)
+{
+	msg = "Invalid session";
+	string username;
+	glocal unsigned userid = bo_writed_get_group_owner (con, sessionid, owner, username, msg);
+	if (recipients.size() == 0){
+		msg = "No recipient";
+	}else if (glocal.userid != 0){
+		// Check that all recipients do exist
+		glocal vector<pair<string,unsigned>> r_userids;
+		string req = "select name,userid from id2name";
+		const char *sep = "where";
+		NSQL_ENCODE enc;
+		for (auto r:recipients){
+			req += string_f(" %s name='%s'",sep,enc.enc(r));
+			sep = "or";
+		}
+		<call sql_query>(req.c_str());
+		<f onerow>
+			glocal.r_userids.push_back(pair<string,unsigned>(row[0],atoi(row[1])));
+		</f>
+		</call>
+		if (glocal.r_userids.size() != recipients.size()){
+			msg = "Some recipient(s) invalid:";
+			for (auto r:recipients){
+				bool found = false;
+				for (auto &i:glocal.r_userids){
+					if (strcmp(r,i.first.c_str())==0){
+						found = true;
+						break;
+					}
+				}
+				if (!found) msg += string(" ") + r;
+			}
+		}else{
+			int outbox_id = fs_find_outbox(glocal.userid,username,msg);
+			if (outbox_id != -1){
+				// All messages are member of group #all, with listmode='r'
+				// But access is controlled by the parent directory
+				int fileid = fs_newid (glocal.userid,0,'r',msg,msgid);
+				if (fileid != -1){
+					char now[20];
+					fs_set_now(now);
+					if (replyto != NULL){
+						msgid = string_f("%s:%s",replyto,msgid.c_str());
+					}
+					if (fs_insert_file(outbox_id,fileid,now,msgid)==-1){
+						msg = "Internal error (dirs_content table)";
+					}else if (sql_action("insert into files (id,modified,filetype,title,content) values (%d,'%s',%u,'%s','%s')"
+						,fileid,now,FILE_TEXT,title,content)==-1){
+						msg = "Internal error (files table)";
+					}else{
+						msg = "";
+						for (unsigned i=0; i<glocal.r_userids.size(); i++){
+							const char *r = glocal.r_userids[i].first.c_str();
+							unsigned r_id = glocal.r_userids[i].second;
+							int inbox_id = fs_find_inbox (r_id,r,true,msg);
+							if (inbox_id == -1) break;
+							if (fs_insert_entry(inbox_id,fileid,now,msgid,ENTRY_MSG)==-1){
+								msg = string_f ("Can't write to user %s inbox",r);
+								break;
+							}
+						} 
+					}
+				}
+			}
+		}
+	}
 }
 </mod>
 
@@ -1384,74 +1467,13 @@ int main (int argc, char *argv[])
 					}
 				</f>
 				<f sendmsg> // sessionid owner recipients:v title content = success:b msg msgid
-					glocal string msg = "Invalid session";
-					glocal string msgid;
-					string username;
-					glocal unsigned userid = bo_writed_get_group_owner (glocal.con, sessionid, owner, username, glocal.msg);
-					if (recipients.size() == 0){
-						glocal.msg = "No recipient";
-					}else if (glocal.userid != 0){
-						// Check that all recipients do exist
-						glocal vector<pair<string,unsigned>> r_userids;
-						string req = "select name,userid from id2name";
-						const char *sep = "where";
-						NSQL_ENCODE enc;
-						for (auto r:recipients){
-							req += string_f(" %s name='%s'",sep,enc.enc(r));
-							sep = "or";
-						}
-						<call sql_query>(req.c_str());
-						<f onerow>
-							glocal.r_userids.push_back(pair<string,unsigned>(row[0],atoi(row[1])));
-						</f>
-						</call>
-						if (glocal.r_userids.size() != recipients.size()){
-							glocal.msg = "Some recipient(s) invalid:";
-							for (auto r:recipients){
-								bool found = false;
-								for (auto &i:glocal.r_userids){
-									if (strcmp(r,i.first.c_str())==0){
-										found = true;
-										break;
-									}
-								}
-								if (!found) glocal.msg += string(" ") + r;
-							}
-						}else{
-							int outbox_id = fs_find_outbox(glocal.userid,username,glocal.msg);
-							if (outbox_id != -1){
-								// All messages are member of group #all, with listmode='r'
-								// But access is controlled by the parent directory
-								int fileid = fs_newid (glocal.userid,0,'r',glocal.msg,glocal.msgid);
-								if (fileid != -1){
-									char now[20];
-									fs_set_now(now);
-									if (fs_insert_file(outbox_id,fileid,now,glocal.msgid)==-1){
-										glocal.msg = "Internal error (dirs_content table)";
-									}else if (sql_action("insert into files (id,modified,filetype,title,content) values (%d,'%s',%u,'%s','%s')"
-										,fileid,now,FILE_TEXT,title,content)==-1){
-										glocal.msg = "Internal error (files table)";
-									}else{
-										glocal.msg = "";
-										for (unsigned i=0; i<glocal.r_userids.size(); i++){
-											const char *r = glocal.r_userids[i].first.c_str();
-											unsigned r_id = glocal.r_userids[i].second;
-											int inbox_id = fs_find_inbox (r_id,r,true,glocal.msg);
-											if (inbox_id == -1) break;
-											if (fs_insert_entry(inbox_id,fileid,now,glocal.msgid,ENTRY_MSG)==-1){
-												glocal.msg = string_f ("Can't write to user %s inbox",r);
-												break;
-											}
-										} 
-									}
-								}
-							}
-						}
-					}
-					if (glocal.msg.size()==0){
-						rep_sendmsg (true,"",glocal.msgid);
+					string msg;
+					string rep_msgid;
+					bo_writed_sendmsg (glocal.con,sessionid,owner,recipients,NULL,title,content,msg,rep_msgid);
+					if (msg.size()==0){
+						rep_sendmsg (true,"",rep_msgid);
 					}else{
-						rep_sendmsg (false,glocal.msg,"");
+						rep_sendmsg (false,msg,"");
 					}		
 				</f>
 				<f sendmsg_project> // sessionid owner manager project role title content = success:b msg msgid
@@ -1464,7 +1486,14 @@ int main (int argc, char *argv[])
 					}
 				</f>
 				<f replymsg> // sessionid owner msgid recipients:v title content = success:b msg replyid
-					rep_replymsg (false,"Not done","");
+					string msg;
+					string rep_msgid;
+					bo_writed_sendmsg (glocal.con,sessionid,owner,recipients,msgid,title,content,msg,rep_msgid);
+					if (msg.size()==0){
+						rep_replymsg (true,"",rep_msgid);
+					}else{
+						rep_replymsg (false,msg,"");
+					}		
 				</f>
 				<f replymsg_project> // sessionid owner manager project role msgid title content = success:b msg replyid
 					string msg;
