@@ -53,3 +53,13 @@ int fs_insert_file (int parentid,int fileid,PARAM_STRING modified,PARAM_STRING n
 int fs_insert_file (int parentid,int fileid,PARAM_STRING name);
 int fs_insert_deleted (int parentid,int id,PARAM_STRING name);
 int fs_rec_getid(const char *query, ...);
+int fs_locate_dir (
+	const std::vector<std::string> &tb,
+	unsigned userid,	// Check access for this userid
+	bool is_admin,
+	std::string &msg,
+	const char *threshold,
+	bool &may_add,
+	bool create_missing,
+	const std::vector<unsigned> *listids,
+	const std::vector<char> *listmodes);

@@ -1248,6 +1248,30 @@ int main (int argc, char *argv[])
 					}
 					
 				</f>
+				<f create_project_dir> // sessionid listname owner = success:b msg
+					string msg = "Invalid session";
+					string username;
+					unsigned userid = bo_writed_get_group_owner (glocal.con, sessionid, owner, username, msg);
+					if (userid != 0){
+						int listid = fs_rec_getid ("select id from group_lists where ownerid=%u and name='%s'"
+							,userid,listname);
+						if (listid == -1){
+							msg = "List does not exist";
+						}else{
+							vector<string> dirs = {"projects",username,listname};
+							vector<unsigned> listids = {0,0,(unsigned)listid};
+							vector<char> listmodes = {'p','p','w'};
+							bool may_add;
+							msg = "";
+							fs_locate_dir (dirs,userid,true,msg,END_OF_TIME,may_add,true,&listids,&listmodes);
+						}
+					}
+					if (msg.size()==0){
+						rep_create_project_dir(true,"");
+					}else{
+						rep_create_project_dir(false,msg);
+					}
+				</f>
 				<f create_group_list>	// sessionid listname owner = success:b msg
 					glocal string msg = "Invalid session";
 					glocal const char *listname = listname;

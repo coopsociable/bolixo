@@ -224,16 +224,16 @@ struct DIRINFO{
 	Locate a directory and retuns its id
 */
 <mod>
-static int fs_locate_dir (
-	vector<string> &tb,
+int fs_locate_dir (
+	const vector<string> &tb,
 	unsigned userid,	// Check access for this userid
 	bool is_admin,
 	string &msg,
 	const char *threshold,
 	bool &may_add,
 	bool create_missing,
-	vector<unsigned> *listids,
-	vector<char> *listmodes)
+	const vector<unsigned> *listids,
+	const vector<char> *listmodes)
 {
 	int ret = -1;
 	if (tb.size()==0){
@@ -245,7 +245,7 @@ static int fs_locate_dir (
 		int parentid = 0;
 		string tmp;
 		NSQL_ENCODE enc;
-		string owner_cmp = is_admin ? "" : string_f ("(ownerid=1 or ownerid=%u) and",userid);
+		string owner_cmp = is_admin || 1? "" : string_f ("(ownerid=1 or ownerid=%u) and",userid);
 		string sql = string_f ("select name,dirid,itemid,ids.ownerid,ids.group_list_id,ids.listmode"
 			" from dirs_content join ids on ids.id=itemid where eventtime <= '%s' and type=%u and %s"
 			,enc.enc(threshold),ENTRY_DIR,owner_cmp.c_str());
@@ -325,7 +325,7 @@ static int fs_locate_dir (
 }
 </mod>
 static int fs_locate_dir (
-	vector<string> &tb,
+	const vector<string> &tb,
 	unsigned userid,	// Check access for this userid
 	bool is_admin,
 	string &msg,
@@ -456,7 +456,7 @@ FILE *fs_alloc_file_handle (int fileid, PARAM_STRING modified, const char *mode,
 	handle = fs_makeid ();
 	string path = fs_createpath (fileid,modified);
 	FILE *ret = fopen (path.c_str(),mode);
-	tlmp_error ("alloc_file_handle ret=%p path=%s (%s)\n",ret,path.c_str(),strerror(errno));
+	//tlmp_error ("alloc_file_handle ret=%p path=%s (%s)\n",ret,path.c_str(),strerror(errno));
 	if (ret != NULL){
 		handles[handle] = HANDLE(fileid,modified,ret,sessionid);
 	}else{

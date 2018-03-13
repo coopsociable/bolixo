@@ -818,6 +818,8 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 
 	glocal bool set_access = false;
 
+	glocal bool create_project_dir = false;
+
 	glocal const char *filename = NULL;
 	glocal const char *listname = NULL;
 	glocal const char *listmode = " ";
@@ -839,6 +841,7 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 		setarg ('l',"create-group-list","Create a list of groups",glocal.create_group_list,false);
 		setarg ('s',"set-group","Configure a group as a member of a list",glocal.set_group,false);
 		setarg ('m',"set-member","Configure a user a a member of a group",glocal.set_member,false);
+		setarg ('d',"create-project-dir","Create the project directory for a list",glocal.create_project_dir,false);
 		setgrouparg ("Deletion");
 		setarg (' ',"delete-list","Delete one list",glocal.delete_list,false);
 		setarg (' ',"delete-group","Delete one group",glocal.delete_group,false);
@@ -913,6 +916,20 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 						glocal.ret = 0;
 					}else{
 						bofs_error ("groups",internal_error,"Can't assign user to a group: %s",msg);
+					}
+				</f>
+				</call>
+			}
+		}else if (glocal.create_project_dir){
+			if (glocal.listname == NULL){
+				bofs_error ("groups",false,"You must specify the list name");
+			}else{
+				<call bod_client_create_project_dir>(glocal.ctx->con,glocal.ctx->sessionid,glocal.listname,glocal.owner);
+				<f ok>
+					if (success){
+						glocal.ret = 0;
+					}else{
+						bofs_error ("groups",internal_error,"Can't create project directory: %s\n",msg);
 					}
 				</f>
 				</call>
