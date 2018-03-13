@@ -251,6 +251,21 @@ static unsigned bo_writed_get_group_owner (CONNECT_INFO &con, const char *sessio
 	return bo_writed_get_group_owner (con,sessionid,owner,username,msg);
 }
 
+static void bo_writed_set_msgid(string &msgid, const char *replyto)
+{
+	// replyto may be the original message, or a reply to the original messages
+	// So it may be xxxx or xxxx:yyyy
+	if (replyto != NULL){
+		const char *pt = strchr(replyto,':');
+		string tmp;
+		if (pt != NULL){
+			tmp = string(replyto,pt-replyto);
+			replyto = tmp.c_str();
+		}
+		msgid = string_f("%s:%s",replyto,msgid.c_str());
+	}
+}
+
 /*
 	Send a message to a project or reply to a message of a project
 */
@@ -299,12 +314,19 @@ static int bo_writed_project_msg(
 					listid = listids[i];
 					int project_dirid = fs_find_project_inbox (ownerid, listid,manager, project, role, true,msg);
 					if (project_dirid != -1){
+						if (replyto != NULL && fs_rec_getid ("select itemid from dirs_content where dirid=%d and name='%s'"
+                                                	,project_dirid,replyto)==-1){
+                                        		msg = "replyto: Unknown message";
+						}else{
+							dirid = project_dirid;
+						}
 						/*
 							We tought about puting replies into a sub-directories (msgid.dir)
 							and decided otherwise. Instead we put it in the same directory
 							but using the replyto as a prefix for the file name
 						*/
-						if (1 || replyto == NULL){
+						#if 0
+						if (replyto == NULL){
 							dirid = project_dirid;
 						}else{
 							int subdir_id = fs_rec_getid ("select itemid from dirs_content where dirid=%d and name='%s.dir'",project_dirid,replyto);
@@ -330,6 +352,7 @@ static int bo_writed_project_msg(
 								}
 							}
 						}
+						#endif
 					}
 					break;
 				}
@@ -341,9 +364,7 @@ static int bo_writed_project_msg(
 					if (fileid != -1){
 						char now[20];
 						fs_set_now(now);
-						if (replyto != NULL){
-							msgid = string_f("%s:%s",replyto,msgid.c_str());
-						}
+						bo_writed_set_msgid (msgid,replyto);
 						if (fs_insert_file(outbox_id,fileid,now,msgid)==-1){
 							msg = "Outbox internal error (dirs_content table)";
 						}else if (sql_action("insert into files (id,modified,title,content,filetype) values (%d,'%s','%s','%s',%u)"
@@ -409,32 +430,41 @@ static void bo_writed_sendmsg (
 				if (!found) msg += string(" ") + r;
 			}
 		}else{
-			int outbox_id = fs_find_outbox(glocal.userid,username,msg);
-			if (outbox_id != -1){
-				// All messages are member of group #all, with listmode='r'
-				// But access is controlled by the parent directory
-				int fileid = fs_newid (glocal.userid,0,'r',msg,msgid);
-				if (fileid != -1){
-					char now[20];
-					fs_set_now(now);
-					if (replyto != NULL){
-						msgid = string_f("%s:%s",replyto,msgid.c_str());
-					}
-					if (fs_insert_file(outbox_id,fileid,now,msgid)==-1){
-						msg = "Internal error (dirs_content table)";
-					}else if (sql_action("insert into files (id,modified,filetype,title,content) values (%d,'%s',%u,'%s','%s')"
-						,fileid,now,FILE_TEXT,title,content)==-1){
-						msg = "Internal error (files table)";
-					}else{
-						msg = "";
-						for (unsigned i=0; i<glocal.r_userids.size(); i++){
-							const char *r = glocal.r_userids[i].first.c_str();
-							unsigned r_id = glocal.r_userids[i].second;
-							int inbox_id = fs_find_inbox (r_id,r,true,msg);
-							if (inbox_id == -1) break;
-							if (fs_insert_entry(inbox_id,fileid,now,msgid,ENTRY_MSG)==-1){
-								msg = string_f ("Can't write to user %s inbox",r);
-								break;
+			msg = "";
+			if (replyto != NULL){
+				int inbox_id = fs_find_inbox(glocal.userid,username,false,msg);
+				if (inbox_id == -1
+					|| fs_rec_getid ("select itemid from dirs_content where dirid=%d and name='%s'"
+						,inbox_id,replyto)==-1){
+					msg = "replyto: Unknown message";
+				}
+					
+			}
+			if (msg.size() == 0){
+				int outbox_id = fs_find_outbox(glocal.userid,username,msg);
+				if (outbox_id != -1){
+					// All messages are member of group #all, with listmode='r'
+					// But access is controlled by the parent directory
+					int fileid = fs_newid (glocal.userid,0,'r',msg,msgid);
+					if (fileid != -1){
+						char now[20];
+						fs_set_now(now);
+						bo_writed_set_msgid (msgid,replyto);
+						if (fs_insert_file(outbox_id,fileid,now,msgid)==-1){
+							msg = "Internal error (dirs_content table)";
+						}else if (sql_action("insert into files (id,modified,filetype,title,content) values (%d,'%s',%u,'%s','%s')"
+							,fileid,now,FILE_TEXT,title,content)==-1){
+							msg = "Internal error (files table)";
+						}else{
+							for (unsigned i=0; i<glocal.r_userids.size(); i++){
+								const char *r = glocal.r_userids[i].first.c_str();
+								unsigned r_id = glocal.r_userids[i].second;
+								int inbox_id = fs_find_inbox (r_id,r,true,msg);
+								if (inbox_id == -1) break;
+								if (fs_insert_entry(inbox_id,fileid,now,msgid,ENTRY_MSG)==-1){
+									msg = string_f ("Can't write to user %s inbox",r);
+									break;
+								}
 							}
 						} 
 					}

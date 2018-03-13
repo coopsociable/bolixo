@@ -61,9 +61,12 @@ elif [ "$1" = "sequence" ] ; then
 		do
 			CONTENT="$CONTENT\nThis is the body number $i,$j"
 		done
-		./bofs -u jacques-B msgs -n -D jacques-A -D jacques-C -T "This is title number $i" -C "$CONTENT"
+		MSGID=`./bofs -u jacques-B msgs -n -D jacques-A -D jacques-C -T "This is title number $i" -C "$CONTENT" | (read a b; echo $b)`
+		echo msgid: $MSGID
+		./bofs -u jacques-A msgs -r -I $MSGID -D jacques-C -D jacques-B -T "re A: This is title number $i" -C "$CONTENT"
+		./bofs -u jacques-C msgs -r -I $MSGID -D jacques-A -D jacques-B -T "re C: This is title number $i" -C "$CONTENT"
 		MSGID=`./bofs -u jacques-A msgs -n -M jacques-A -P Alist1 -T "A A/1 This is title number $i" -C "$CONTENT" | (read a b; echo $b)`
-		echo MSGID=$MSGID
+		echo msgid: $MSGID
 		./bofs -u jacques-A msgs -r -I $MSGID -M jacques-A -P Alist1 -T "re: A A/1 This is title number $i" -C "$CONTENT"
 		./bofs -u jacques-B msgs -r -I $MSGID -M jacques-A -P Alist1 -T "re: A A/1 This is title number $i" -C "$CONTENT"
 		./bofs -u jacques-C msgs -r -I $MSGID -M jacques-A -P Alist1 -T "re: A A/1 This is title number $i" -C "$CONTENT"
