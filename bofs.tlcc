@@ -358,8 +358,9 @@ static int bofs_cat_bofile (CONTEXT &ctx, const char *path, FILE *fout)
 }
 </mod>
 <mod>
-static int bofs_write_bofile(CONTEXT &ctx, PARAM_STRING path, FILE *fin)
+static int bofs_write_bofile(CONTEXT &ctx, PARAM_STRING path, FILE *fin, const char *command)
 {
+	glocal const char *command = command;
 	glocal int ret = 0;
 	glocal CONTEXT *ctx = &ctx;
 	glocal FILE *fin = fin;
@@ -372,7 +373,7 @@ static int bofs_write_bofile(CONTEXT &ctx, PARAM_STRING path, FILE *fin)
 		<call bod_client_addfile_bob> (ctx.con,ctx.sessionid,path,BOB_TYPE(buf,len,false),glocal.more);
 		<f ok>
 			if (!success){
-				bofs_error ("cat",internal_error,msg);
+				bofs_error (glocal.command,internal_error,msg);
 				glocal.ret = -1;
 			}else if (glocal.more){
 				glocal.ret = bofs_cat_rest (*glocal.ctx,handle,glocal.fin);
@@ -385,7 +386,7 @@ static int bofs_write_bofile(CONTEXT &ctx, PARAM_STRING path, FILE *fin)
 		<call bod_client_modifyfile_bob> (ctx.con,ctx.sessionid,path,BOB_TYPE(buf,len,false),glocal.more);
 		<f ok>
 			if (!success){
-				bofs_error ("cat",internal_error,msg);
+				bofs_error (glocal.command,internal_error,msg);
 				glocal.ret = -1;
 			}else if (glocal.more){
 				glocal.ret = bofs_cat_rest (*glocal.ctx,handle,glocal.fin);
@@ -422,7 +423,7 @@ static int bofs_cat (CONTEXT &ctx, int argc, char *argv[])
 			char *argv[1] = {(char*)glocal.pipeto};
 			ret = <call bofs_split>(1,argv);
 			<f bo_file>
-				return bofs_write_bofile (*glocal.ctx,path,stdin);
+				return bofs_write_bofile (*glocal.ctx,path,stdin,"cat");
 			</f>
 			<f https_file>
 				return -1;
@@ -494,7 +495,7 @@ static int bofs_copy_file(CONTEXT &ctx, PARAM_STRING path0, BO_SOURCE src0, PARA
 			bofs_error ("cp",false,"Can't open file %s (%s)",path0,strerror(errno));
 			glocal.ret = -1;
 		}else{
-			glocal.ret = bofs_write_bofile (*glocal.ctx,path1,fin);
+			glocal.ret = bofs_write_bofile (*glocal.ctx,path1,fin,"cp");
 			fclose (fin);
 		}
 	}else if (src0 == BO_ENTRY && src1 == LOCAL_ENTRY){
@@ -800,6 +801,48 @@ static int bofs_rmdir (CONTEXT &ctx, int argc, char *argv[])
 }
 </mod>
 
+<mod>
+static int bofs_print_groups (CONTEXT *ctx, const char *owner, const char *onegroup, unsigned indent)
+{
+	glocal int ret = -1;
+	glocal unsigned indent = indent;
+	glocal const char *onegroup = onegroup;
+	<call bod_client_list_groups> (ctx->con,ctx->sessionid,owner);
+	<f ok>
+		if (success){
+			glocal.ret = 0;
+			unsigned max_groupname = 0;
+			unsigned max_user = 0;
+			for (unsigned r=0; r<2; r++){
+				for (unsigned i=0; i<groups.size(); i++){
+					const char *groupname = groups[i];
+					if (glocal.onegroup != NULL && strcmp(glocal.onegroup,groupname)!=0) continue;
+					bofs_maxlen (groupname,max_groupname);
+					const vector<const char *> &us = users[i];
+					if (us.size() == 0){
+						if (r > 0) printf ("%-*s\n",max_groupname,groupname);
+					}else{
+						const vector<const char *> &as = access[i];
+						const vector<const char *> &rs = roles[i];
+						for (unsigned j=0; j<us.size(); j++){
+							bofs_maxlen (us[j],max_user); 
+							if (r > 0){
+								if (glocal.onegroup != NULL) groupname = "";
+								printf ("%*s%-*s\t%*s\t%s\t%s\n",glocal.indent,"",max_groupname,groupname,max_user,us[j],as[j],rs[j]);
+							}
+							groupname = "";
+						}
+					}
+				}
+			}
+		}else{
+			bofs_error ("groups",internal_error,"Can't list groups: %s",msg);
+		}
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
 
 <mod>
 static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
@@ -967,54 +1010,38 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 			<f ok>
 				if (success){
 					glocal.ret = 0;
-					for (unsigned i=0; i<lists.size(); i++){
-						const char *listname = lists[i];
-						const vector<const char *> &gs = groups[i];
-						if (gs.size() == 0){
-							printf ("%s\n",listname);
-						}else{
-							const vector<const char *> &as = access[i];
-							for (unsigned j=0; j<gs.size(); j++){
-								printf ("%s\t%s\t%s\n",listname,gs[j],as[j]);
-								listname = "     ";
+					unsigned max_listname=0;
+					unsigned max_group=0;
+					for (int r=0; r<2; r++){
+						for (unsigned i=0; i<lists.size(); i++){
+							const char *listname = lists[i];
+							bofs_maxlen (listname,max_listname);
+							const vector<const char *> &gs = groups[i];
+							if (gs.size() == 0){
+								printf ("%s\n",listname);
+							}else{
+								const vector<const char *> &as = access[i];
+								for (unsigned j=0; j<gs.size(); j++){
+									const char *groupname = gs[j];
+									bofs_maxlen (groupname,max_group);
+									if (r==1){
+										printf ("%-*s   %-*s   %s\n"
+											,max_listname,listname,max_group,groupname,as[j]);
+										glocal.ret = bofs_print_groups (glocal.ctx,glocal.owner,groupname,max_listname+max_group);
+									}
+									listname = "";
+								}
 							}
 						}
 					}
+					glocal.ret = 0;
 				}else{
 					bofs_error ("groups",internal_error,"Can't list lists: %s",msg);
 				}
 			</f>
 			</call>
 		}else if (glocal.print_groups){
-			<call bod_client_list_groups> (glocal.ctx->con,glocal.ctx->sessionid,glocal.owner);
-			<f ok>
-				if (success){
-					glocal.ret = 0;
-					unsigned max_groupname = 0;
-					unsigned max_user = 0;
-					for (unsigned r=0; r<2; r++){
-						for (unsigned i=0; i<groups.size(); i++){
-							const char *groupname = groups[i];
-							bofs_maxlen (groupname,max_groupname);
-							const vector<const char *> &us = users[i];
-							if (us.size() == 0){
-								if (r > 0) printf ("%-*s\n",max_groupname,groupname);
-							}else{
-								const vector<const char *> &as = access[i];
-								const vector<const char *> &rs = roles[i];
-								for (unsigned j=0; j<us.size(); j++){
-									bofs_maxlen (us[j],max_user); 
-									if (r > 0) printf ("%-*s\t%*s\t%s\t%s\n",max_groupname,groupname,max_user,us[j],as[j],rs[j]);
-									groupname = "";
-								}
-							}
-						}
-					}
-				}else{
-					bofs_error ("groups",internal_error,"Can't list groups: %s",msg);
-				}
-			</f>
-			</call>
+			glocal.ret = bofs_print_groups (glocal.ctx,glocal.owner,NULL,0);
 		}else{
 			tlmp_error ("One of the following option must be used:\n"
 				"\t--create-group-list\n"
