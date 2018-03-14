@@ -6,7 +6,7 @@
 #include <tlmpweb.h>
 #include <tlmpnet.h>
 #include <tlmplib.h>
-#include <fdpass.h>
+#include <trlitool.h>
 #include <string>
 #include "util.h"
 #include "../bolixo.h"
@@ -32,7 +32,6 @@ static W_UNSIGNED w_robot("robot");
 static W_SSTRING w_email("email");
 static W_SSTRING w_password("password");
 static W_UNSIGNED w_tosubject("tosubject");
-static W_SSTRING w_explo ("explo");
 
 static W_SSTRING new_nickname("nickname");
 static W_SSTRING new_email ("new_email");
@@ -384,6 +383,38 @@ extern "C" void webmain_real()
 						}
 					</f>
 					</call>
+				</f>
+				</call>
+				// List projects
+				<call bod_client_list_inboxes>(glocal.con,w_session.c_str(),"");
+				<f ok>
+					if (!success){
+						htmlprintf ("internal_error=%d msg=%s<br>\n",internal_error,msg);
+					}else{
+						for (auto &inb:inboxes){
+							glocal string path = string_f ("/projects/%s/%s",inb.manager,inb.project);
+							htmlprintf ("Project %s<br>\n",glocal.path.c_str());
+							<call webtable>("inbox","aaaaaaa","lllllll",true,inbox_offset,10);
+							<f load>
+								sethead ("Type\tEventdate\tModified\tOwner\tName\tTitle");
+								<call bod_client_listdir>(glocal.con,w_session.c_str(),glocal.path,"",false,nbskip,nblines);
+								<f ok>
+									static char tbtype[]={' ','_','D','F','M','C'};
+									static char tbftype[]={'?','T','S','I','V'};
+									for (auto &f:files){
+										glocal.webtable.setrow ("%c%c\t%s\t%s\t%s/%s:%s\t%u\t%s\t%s\n"
+											,tbtype[f.type],tbftype[f.file_type]
+											,f.eventdate,f.modified
+											,f.owner,f.listname,f.listmode,f.size
+											,f.name,f.title);
+									}
+								</f>
+								</call>
+							</f>
+							</call>
+							/- <p>
+						}
+					}
 				</f>
 				</call>
 			</f>

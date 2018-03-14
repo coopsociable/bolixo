@@ -7,7 +7,7 @@ PROGS=bod bod-client bod-control bo-writed bo-writed-control bo-sessiond bo-sess
 #      bo-mon bo-mon-control
 DOCS=
 OPTIONS=-funsigned-char -O2 -Wall -g -DVERSION=\"$(PACKAGE_REV)\" -I/usr/include/tlmp -I/usr/include/trlitool
-LIBS=/usr/lib64/trlitool/fdpass.o -llinuxconf -lstdc++ -lcrypto
+LIBS=/usr/lib64/trlitool/trlitool.o -llinuxconf -lstdc++ -lcrypto
 .SUFFIXES: .o .tex .tlcc .cc .png .uml
 all: $(PROGS)
 	make -Cweb install
