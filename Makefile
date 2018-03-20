@@ -7,7 +7,7 @@ PROGS=bod bod-client bod-control bo-writed bo-writed-control bo-sessiond bo-sess
 #      bo-mon bo-mon-control
 DOCS=
 OPTIONS=-funsigned-char -O2 -Wall -g -DVERSION=\"$(PACKAGE_REV)\" -I/usr/include/tlmp -I/usr/include/trlitool
-LIBS=/usr/lib64/trlitool/trlitool.o -llinuxconf -lstdc++ -lcrypto
+LIBS=/usr/lib64/trlitool/trlitool.a -llinuxconf -lstdc++ -lcrypto
 .SUFFIXES: .o .tex .tlcc .cc .png .uml
 all: $(PROGS)
 	make -Cweb install
@@ -15,7 +15,7 @@ all: $(PROGS)
 compile: $(PROGS)
 	#make -Cweb 
 
-bofs: bofs.tlcc proto/bod_client.protoh filesystem.h
+bofs: bofs.tlcc proto/bod_client.protoh proto/webapi.protoh filesystem.h
 	cctlcc -Wall $(OPTIONS) bofs.tlcc -o bofs $(LIBS)
 
 bod: bod.tlcc filesystem.o proto/bod_control.protoh proto/bod_client.protoh proto/bod_admin.protoh \
@@ -111,6 +111,11 @@ proto/bo-sessiond_client.protoh: proto/bo-sessiond_client.proto
 proto/bo-sessiond_admin.protoh: proto/bo-sessiond_admin.proto
 	build-protocol --secretmode --arg "int no" --arg "HANDLE_INFO *c" --arg "const char *host" --name bo_sessiond_admin \
 		--protoch proto/bo-sessiond_admin.protoch proto/bo-sessiond_admin.proto >proto/bo-sessiond_admin.protoh
+
+proto/webapi.protoh: proto/webapi.proto
+	build-protocol --request_obj REQUEST_JSON --request_info_obj REQUEST_JSON_INFO \
+		--connect_info_obj CONNECT_HTTP_INFO --name webapi \
+		--protoch proto/webapi.protoch proto/webapi.proto >proto/webapi.protoh
 
 filesystem.o: filesystem.tlcc filesystem.h proto/bod_client.protoh
 	cctlcc -Wall $(OPTIONS) -c filesystem.tlcc -o filesystem.o

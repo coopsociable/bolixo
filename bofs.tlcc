@@ -36,6 +36,28 @@ using namespace std;
 
 #include "proto/bod_client.protoch"
 
+#define webapi_test_NOTNEED
+//#define webapi_login_NOTNEED
+//#define webapi_logout_NOTNEED
+#define webapi_addfile_NOTNEED
+#define webapi_addfile_bob_NOTNEED
+#define webapi_appendfile_NOTNEED
+#define webapi_delfile_NOTNEED
+#define webapi_modifyfile_NOTNEED
+#define webapi_modifyfile_bob_NOTNEED
+#define webapi_rename_NOTNEED
+#define webapi_copy_NOTNEED
+#define webapi_readfile_NOTNEED
+#define webapi_readfile_bob_NOTNEED
+#define webapi_readmore_NOTNEED
+#define webapi_mkdir_NOTNEED
+#define webapi_rmdir_NOTNEED
+#define webapi_listdir_NOTNEED
+#define webapi_stat_NOTNEED
+#define webapi_set_access_NOTNEED
+#define webapi_markview_NOTNEED
+#include "proto/webapi.protoch"
+
 static void bofs_maxlen (const char *s, unsigned &max_s)
 {
 	unsigned len = strlen(s);
@@ -69,30 +91,49 @@ static void bofs_error (const char *cmd, bool internal_error, const char *msg, .
 }
 
 <mod>
-static string bod_login (CONNECT_INFO &con, PARAM_STRING email, PARAM_STRING password)
+static string bod_login (CONNECT_INFO &con, CONNECT_HTTP_INFO &hcon, PARAM_STRING email, PARAM_STRING password)
 {
 	glocal string ret;
 	glocal const char *email = email.ptr;
-	glocal string sessionid = bod_createsession(con);
-	<call bod_client_login>(con,glocal.sessionid,email,password);
-	<f ok>
-		if (!success){
-			bofs_error ("login",internal_error,"login failed for %s success=%d sessionid=%s",glocal.email,success,glocal.sessionid.c_str());
-		}else{
-			glocal.ret = glocal.sessionid;
-		}
-	</f>
-	</call>
+	if (hcon.host.size() > 0){
+		<call webapi_login>(hcon,email,password);
+		<f ok>
+			if (success){
+				glocal.ret = sessionid;
+			}
+			printf ("success=%d sessionid=%s\n",success,sessionid);
+		</f>
+		</call>
+		exit (1);
+	}else{
+		glocal string sessionid = bod_createsession(con);
+		<call bod_client_login>(con,glocal.sessionid,email,password);
+		<f ok>
+			if (!success){
+				bofs_error ("login",internal_error,"login failed for %s success=%d sessionid=%s",glocal.email,success,glocal.sessionid.c_str());
+			}else{
+				glocal.ret = glocal.sessionid;
+			}
+		</f>
+		</call>
+	}
 	return glocal.ret;
 }
 </mod>
 <mod>
-static void bod_logout (CONNECT_INFO &con, const PARAM_STRING sessionid)
+static void bod_logout (CONNECT_INFO &con, CONNECT_HTTP_INFO &hcon, const PARAM_STRING sessionid)
 {
-	<call bod_client_logout>(con,sessionid);
-	<f ok>
-	</f>
-	</call>
+	if (hcon.host.size() > 0){
+		<call webapi_logout>(hcon,sessionid);
+		<f ok>
+		</f>
+		</call>
+	}else{
+		<call bod_client_logout>(con,sessionid);
+		<f ok>
+		</f>
+		</call>
+	}
 }
 </mod>
 
@@ -103,6 +144,7 @@ struct CONTEXT{
 	string threshold;	// Date to filter in the history of a directory or files
 	CONNECT_INFO con;
 	CONNECT_INFO con_sess;
+	CONNECT_HTTP_INFO hcon;
 };
 
 #define _TLMP_bofs_split
@@ -1331,6 +1373,10 @@ int main (int argc, char *argv[])
 						glocal.ctx.email = tb[1];
 					}else if (strcmp(subject,"password:")==0){
 						glocal.ctx.password = tb[1];
+					}else if (strcmp(subject,"http_server:")==0){
+						glocal.ctx.hcon.host = tb[1];
+					}else if (strcmp(subject,"http_port:")==0){
+						glocal.ctx.hcon.port = tb[1];
 					}else if (strcmp(subject,"bod_socket:")==0){
 						glocal.ctx.con.port = tb[1];
 					}else if (strcmp(subject,"sess_socket:")==0){
@@ -1355,7 +1401,9 @@ int main (int argc, char *argv[])
 				"\tbod_socket:\n"
 				"\tsess_socket:\n"
 				"\tbod_secret:\n"
-				"\tsess_secret:\n");
+				"\tsess_secret:\n"
+				"\thttp_server:\n"
+				"\thttp_port:\n");
 				exit (-1);
 		</f>
 		</call>
@@ -1363,7 +1411,7 @@ int main (int argc, char *argv[])
 			tlmp_error ("No user definition found in .bofs.conf for user %s\n",glocal.user);
 			exit (-1);
 		}
-		glocal.ctx.sessionid = bod_login (glocal.ctx.con,glocal.ctx.email,glocal.ctx.password);
+		glocal.ctx.sessionid = bod_login (glocal.ctx.con,glocal.ctx.hcon,glocal.ctx.email,glocal.ctx.password);
 		if (glocal.ctx.sessionid.size() > 0){
 			for (int i=0; i<glocal.nbrep; i++){
 			if (strcmp(argv[0],"ls")==0){
@@ -1392,7 +1440,7 @@ int main (int argc, char *argv[])
 				exit (-1);
 			}
 			}
-			bod_logout (glocal.ctx.con,glocal.ctx.sessionid);
+			bod_logout (glocal.ctx.con,glocal.ctx.hcon,glocal.ctx.sessionid);
 		}
 		return ret;
 	</f>
