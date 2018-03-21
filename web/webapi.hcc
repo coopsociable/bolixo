@@ -3,11 +3,18 @@
 #include <tlmpweb.h>
 #include "trlitool.h"
 #include "../bolixo.h"
+#include "../proto/bod_client.protoch"
 #include "../proto/webapi.protoh"
 
 <mod>
 extern "C" void webmain()
 {
+	glocal CONNECT_INFO con;
+	glocal CONNECT_INFO con_sess;
+	glocal.con.port = "/dev/bod.sock";
+	glocal.con.secret = "foo";
+	glocal.con_sess.port = "/dev/sessiond.sock";
+	glocal.con_sess.secret = "foo";
 	bool endserver,endclient;
 	REQUEST_JSON_INFO req;
 	const char *json = tlmpweb_getpost();
@@ -16,8 +23,28 @@ extern "C" void webmain()
 		rep_test (true,"ok");
 	</f>
 	<f login>	// email password = success:b sessionid
+		glocal bool success = false;
+		glocal string sessionid;
+		<call bod_client_createsession>(glocal.con);
+		<f ok>
+			glocal.sessionid = sessionid;
+		</f>
+		</call>
+		if (glocal.sessionid.size() > 0){
+			<call bod_client_login>(glocal.con,glocal.sessionid,email,password);
+			<f ok>
+				glocal.success = success;
+			</f>
+			</call>
+		}
+		if (!glocal.success) glocal.sessionid.clear();
+		rep_login (glocal.success,glocal.sessionid);
 	</f>
 	<f logout>	// sessionid
+		<call bod_client_logout>(glocal.con,sessionid);
+		<f ok>
+		</f>
+		</call>
 	</f>
 	<f addfile>	// sessionid name content = success:b msg
 	</f>
@@ -46,6 +73,19 @@ extern "C" void webmain()
 	<f rmdir>	// sessionid name = success:b  msg
 	</f>
 	<f listdir>	// sessionid name threshold history:b offset:u nb:u = success:b msg files:U{WEB_FILEINFO}v
+		glocal bool success=false;
+		glocal string msg;
+		glocal vector<FILEINFO> files;
+		<call bod_client_listdir>(glocal.con,sessionid,name,threshold,history,offset,nb);
+		<f ok>
+			for (auto &d:files){
+				//WEB_FILEINFO w;
+				//w.name = d.name;
+				glocal.files.push_back(d);
+			}
+		</f>
+		</call>
+		rep_listdir (glocal.success,glocal.msg,glocal.files);
 	</f>
 	<f stat>	// sessionid name threshold = success:b msg file:U{WEB_FILEINFO}
 	</f>
@@ -54,6 +94,7 @@ extern "C" void webmain()
 	<f markview>	// sessionid name = success:b msg
 	</f>
 	<f invalid>
+		htmlprintf ("Invalid request\n");
 	</f>
 	</call>
 }
