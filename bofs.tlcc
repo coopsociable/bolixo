@@ -50,8 +50,6 @@ using namespace std;
 #define webapi_readmore_NOTNEED
 #define webapi_mkdir_NOTNEED
 #define webapi_rmdir_NOTNEED
-//#define webapi_listdir_NOTNEED
-#define webapi_stat_NOTNEED
 #define webapi_set_access_NOTNEED
 #define webapi_markview_NOTNEED
 #include "proto/webapi.protoch"
@@ -89,28 +87,36 @@ static void bofs_error (const char *cmd, bool internal_error, const char *msg, .
 }
 
 <mod>
-static string bod_login (CONNECT_INFO &con, CONNECT_HTTP_INFO &hcon, PARAM_STRING email, PARAM_STRING password)
+static int bod_login (
+	CONNECT_INFO &con,
+	CONNECT_HTTP_INFO &hcon,
+	PARAM_STRING email,
+	PARAM_STRING password,
+	string &sessionid,	// Session ID for the internal protocol
+	string &hsessionid)	// For HTTPS protocol
 {
-	glocal string ret;
+	glocal string *hsessionid = &hsessionid;
+	glocal int ret = 0;
 	glocal const char *email = email.ptr;
 	if (hcon.host.size() > 0){
 		<call webapi_login>(hcon,email,password);
 		<f ok>
 			if (success){
-				glocal.ret = sessionid;
+				(*glocal.hsessionid) = sessionid;
 			}else{
 				bofs_error ("login",internal_error,"login failed for %s success=%d",glocal.email,success);
+				glocal.ret = -1;
 			}
 		</f>
 		</call>
-	}else{
-		glocal string sessionid = bod_createsession(con);
-		<call bod_client_login>(con,glocal.sessionid,email,password);
+	}
+	if (con.port.size() > 0){
+		sessionid = bod_createsession(con);
+		<call bod_client_login>(con,sessionid,email,password);
 		<f ok>
 			if (!success){
-				bofs_error ("login",internal_error,"login failed for %s success=%d sessionid=%s",glocal.email,success,glocal.sessionid.c_str());
-			}else{
-				glocal.ret = glocal.sessionid;
+				glocal.ret = -1;
+				bofs_error ("login",internal_error,"login failed for %s success=%d",glocal.email,success);
 			}
 		</f>
 		</call>
@@ -119,14 +125,15 @@ static string bod_login (CONNECT_INFO &con, CONNECT_HTTP_INFO &hcon, PARAM_STRIN
 }
 </mod>
 <mod>
-static void bod_logout (CONNECT_INFO &con, CONNECT_HTTP_INFO &hcon, const PARAM_STRING sessionid)
+static void bod_logout (CONNECT_INFO &con, CONNECT_HTTP_INFO &hcon, const PARAM_STRING sessionid, const PARAM_STRING hsessionid)
 {
 	if (hcon.host.size() > 0){
-		<call webapi_logout>(hcon,sessionid);
+		<call webapi_logout>(hcon,hsessionid);
 		<f ok>
 		</f>
 		</call>
-	}else{
+	}
+	if (con.port.size() > 0){
 		<call bod_client_logout>(con,sessionid);
 		<f ok>
 		</f>
@@ -138,7 +145,8 @@ static void bod_logout (CONNECT_INFO &con, CONNECT_HTTP_INFO &hcon, const PARAM_
 struct CONTEXT{
 	string email;
 	string password;
-	string sessionid;
+	string sessionid;	// Session ID for the internal protocol
+	string hsessionid;	// Session ID for the https protocol
 	string threshold;	// Date to filter in the history of a directory or files
 	CONNECT_INFO con;
 	CONNECT_INFO con_sess;
@@ -191,6 +199,7 @@ static int bofs_split (_F_bofs_split &c, int argc, char *argv[])
 static int bofs_stat (
 	CONTEXT &ctx,
 	PARAM_STRING _path,
+	bool is_https,
 	string &parent,
 	FILEINFO &file)
 {
@@ -219,33 +228,51 @@ static int bofs_stat (
 		file.name = filename;
 		//tlmp_error ("bofs_stat: dir=%s file=%s\n",glocal.dir.c_str(),glocal.file.c_str());
 		glocal.ret = -1;
-		<call bod_client_stat> (ctx.con,ctx.sessionid,path,ctx.threshold);
-		<f ok>
-			if (success){
-				glocal.ret = 0;
-				(*glocal.file) = file;
-			}else{
-				// A missing file is not an error.
-				// bofs_error ("stat",internal_error,"Can't stat bolixo file %s: %s",glocal.file->name.c_str(),msg);
-			}
-		</f>
-		</call>
+		if (is_https){
+			<call webapi_stat> (ctx.hcon,ctx.hsessionid,path,ctx.threshold);
+			<f ok>
+				if (success){
+					glocal.ret = 0;
+					(*glocal.file) = file;
+				}else{
+					// A missing file is not an error.
+					// bofs_error ("stat",internal_error,"Can't stat bolixo file %s: %s",glocal.file->name.c_str(),msg);
+				}
+			</f>
+			</call>
+		}else{
+			<call bod_client_stat> (ctx.con,ctx.sessionid,path,ctx.threshold);
+			<f ok>
+				if (success){
+					glocal.ret = 0;
+					(*glocal.file) = file;
+				}else{
+					// A missing file is not an error.
+					// bofs_error ("stat",internal_error,"Can't stat bolixo file %s: %s",glocal.file->name.c_str(),msg);
+				}
+			</f>
+			</call>
+		}
 	}
 	return glocal.ret;
 }
 </mod>
 
-static int bofs_stat (CONTEXT &ctx, PARAM_STRING _path, ENTRY_TYPE &type)
+static int bofs_stat (
+	CONTEXT &ctx,
+	PARAM_STRING _path,
+	bool is_https,
+	ENTRY_TYPE &type)
 {
 	FILEINFO file;
 	string parent;
-	int ret = bofs_stat (ctx,_path,parent,file);
+	int ret = bofs_stat (ctx,_path,is_https,parent,file);
 	type = file.type;
 	return ret;
 }
 static char tbtype[]={' ','_','D','F','M','C'};
 static char tbftype[]={'?','T','S','I','V'};
-template<typename T> static void bofs_printdir (bool opt_long, const vector<T> &files)
+static void bofs_printdir (bool opt_long, const vector<FILEINFO_receive> &files)
 {
 	if (opt_long){
 		unsigned max_owner = 0;
@@ -279,7 +306,7 @@ static int bofs_printonefile (CONTEXT &ctx, bool opt_long, bool https, const cha
 	int ret = 0;
 	FILEINFO file;
 	string parent;
-	if (bofs_stat(ctx,path,parent,file)==-1){
+	if (bofs_stat(ctx,path,https,parent,file)==-1){
 		bofs_error ("ls",false,"");
 		ret = -1;
 	}else{
@@ -355,7 +382,7 @@ static int bofs_ls (CONTEXT &ctx, int argc, char *argv[])
 						if (internal_error){
 							bofs_error ("ls",true,"");
 						}else{
-							glocal.ret = bofs_printonefile(*glocal.ctx,glocal.opt_long,false,glocal.path);
+							glocal.ret = bofs_printonefile(*glocal.ctx,glocal.opt_long,true,glocal.path);
 						}
 						glocal.stop = true;
 					}else{
@@ -442,7 +469,7 @@ static int bofs_write_bofile(CONTEXT &ctx, PARAM_STRING path, FILE *fin, const c
 	char buf[50000];
 	int len = fread (buf,1,50000,fin);
 	glocal bool more = len == 50000;
-	if (bofs_stat(ctx,path,type)==-1){
+	if (bofs_stat(ctx,path,false,type)==-1){
 		<call bod_client_addfile_bob> (ctx.con,ctx.sessionid,path,BOB_TYPE(buf,len,false),glocal.more);
 		<f ok>
 			if (!success){
@@ -589,9 +616,15 @@ static int bofs_checkargs (CONTEXT &ctx, int argc, char *argv[], vector<BO_ARGTY
 	glocal CONTEXT *ctx = &ctx;
 	glocal vector<BO_ARGTYPE> *args = &args;
 	int ret = <call bofs_split>(argc,argv);
+	<f https_file>
+		ENTRY_TYPE type;
+		bofs_stat (*glocal.ctx,path,true,type);
+		glocal.args->push_back(BO_ARGTYPE(path,HTTPS_ENTRY,type));
+		return 0;
+	</f>
 	<f bo_file>
 		ENTRY_TYPE type;
-		bofs_stat (*glocal.ctx,path,type);
+		bofs_stat (*glocal.ctx,path,false,type);
 		glocal.args->push_back(BO_ARGTYPE(path,BO_ENTRY,type));
 		return 0;
 	</f>
@@ -1442,8 +1475,7 @@ int main (int argc, char *argv[])
 			tlmp_error ("No user definition found in .bofs.conf for user %s\n",glocal.user);
 			exit (-1);
 		}
-		glocal.ctx.sessionid = bod_login (glocal.ctx.con,glocal.ctx.hcon,glocal.ctx.email,glocal.ctx.password);
-		if (glocal.ctx.sessionid.size() > 0){
+		if (bod_login (glocal.ctx.con,glocal.ctx.hcon,glocal.ctx.email,glocal.ctx.password,glocal.ctx.sessionid,glocal.ctx.hsessionid)!=-1){
 			for (int i=0; i<glocal.nbrep; i++){
 			if (strcmp(argv[0],"ls")==0){
 				ret = bofs_ls (glocal.ctx,argc,argv);
@@ -1471,7 +1503,7 @@ int main (int argc, char *argv[])
 				exit (-1);
 			}
 			}
-			bod_logout (glocal.ctx.con,glocal.ctx.hcon,glocal.ctx.sessionid);
+			bod_logout (glocal.ctx.con,glocal.ctx.hcon,glocal.ctx.sessionid,glocal.ctx.hsessionid);
 		}
 		return ret;
 	</f>
