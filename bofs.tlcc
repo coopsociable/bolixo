@@ -104,7 +104,7 @@ static int bod_login (
 			if (success){
 				(*glocal.hsessionid) = sessionid;
 			}else{
-				bofs_error ("login",internal_error,"login failed for %s success=%d",glocal.email,success);
+				bofs_error ("login",internal_error,"http login failed for %s success=%d",glocal.email,success);
 				glocal.ret = -1;
 			}
 		</f>
@@ -157,7 +157,7 @@ struct CONTEXT{
 struct _F_bofs_split {
 	#define _F_bofs_split_bo_file(x) int x bo_file(const char *path)
 	virtual _F_bofs_split_bo_file( );
-	#define _F_bofs_split_https_file(x) int x https_file(const char *path)
+	#define _F_bofs_split_https_file(x) int x https_file(const char *path, const char *host, const char *port, bool use_ssl)
 	virtual _F_bofs_split_https_file( );
 	#define _F_bofs_split_local_file(x) int x local_file(const char *path)
 	virtual _F_bofs_split_local_file( );
@@ -168,7 +168,7 @@ int _F_bofs_split::bo_file(const char *path)
 	tlmp_error ("Bolixo file %s not processed\n",path);
 	return -1;
 }
-int _F_bofs_split::https_file(const char *path)
+int _F_bofs_split::https_file(const char *path, const char *host, const char *port, bool use_ssl)
 {
 	tlmp_error ("Https file %s not processed\n",path);
 	return -1;
@@ -179,6 +179,25 @@ int _F_bofs_split::local_file(const char *path)
 	return -1;
 }
 
+static int bofs_splithttp (const char *line, string &host, string &port, string &path)
+{
+	int ret = -1;
+	// Line starts after the //
+	const char *pt = strchr(line,'/');
+	if (pt != NULL){
+		ret = 0;
+		path = pt;
+		host = string(line,pt-line);
+		size_t pos = host.find(':');
+		if (pos != string::npos){
+			port = host.substr(pos+1);
+			host = host.substr(0,pos);
+		}
+	}
+	return ret;
+}
+	
+	
 static int bofs_split (_F_bofs_split &c, int argc, char *argv[])
 {
 	int ret = 0;
@@ -187,7 +206,19 @@ static int bofs_split (_F_bofs_split &c, int argc, char *argv[])
 		if (strncmp(arg,"bo://",5)==0){
 			ret = c.bo_file (arg+4);
 		}else if (strncmp(arg,"https://",8)==0){
-			ret = c.https_file (arg+7);
+			string host,port,path;
+			if (bofs_splithttp(arg+8,host,port,path)==-1){
+				ret = -1;
+			}else{
+				ret = c.https_file (path.c_str(),host.c_str(),port.c_str(),true);
+			}
+		}else if (strncmp(arg,"http://",7)==0){
+			string host,port,path;
+			if (bofs_splithttp(arg+7,host,port,path)==-1){
+				ret = -1;
+			}else{
+				ret = c.https_file (path.c_str(),host.c_str(),port.c_str(),false);
+			}
 		}else{
 			ret = c.local_file (arg);
 		}
@@ -375,8 +406,12 @@ static int bofs_ls (CONTEXT &ctx, int argc, char *argv[])
 			glocal const char *path = path;
 			glocal bool stop = false;
 			unsigned offset = 0;
+			CONNECT_HTTP_INFO &hcon = glocal.ctx->hcon;
+			hcon.host = host;
+			hcon.port = port;
+			hcon.use_ssl = use_ssl;
 			while (!glocal.stop){
-				<call webapi_listdir> (glocal.ctx->hcon,glocal.ctx->sessionid,path,glocal.ctx->threshold,glocal.opt_history,offset,500);
+				<call webapi_listdir> (hcon,glocal.ctx->sessionid,path,glocal.ctx->threshold,glocal.opt_history,offset,500);
 				<f ok>
 					if (!success){
 						if (internal_error){

@@ -2,7 +2,7 @@ CURDIR=trli
 MANPAGES=/usr/share/man
 PACKAGE_REV:=$(shell ./makeversion $(BUILD_SVNVER))
 PROGS=bod bod-client bod-control bo-writed bo-writed-control bo-sessiond bo-sessiond-control \
-      bo-manager bofs
+      bo-manager bofs testsign
 #bo-log bo-log-control \
 #      bo-mon bo-mon-control
 DOCS=
@@ -16,7 +16,7 @@ compile: $(PROGS)
 	#make -Cweb 
 
 bofs: bofs.tlcc proto/bod_client.protoh proto/webapi.protoh filesystem.h
-	cctlcc -Wall $(OPTIONS) bofs.tlcc -o bofs $(LIBS)
+	cctlcc -Wall $(OPTIONS) bofs.tlcc -o bofs $(LIBS) -lssl
 
 bod: bod.tlcc filesystem.o proto/bod_control.protoh proto/bod_client.protoh proto/bod_admin.protoh \
 	proto/bo-writed_client.protoh proto/bo-sessiond_client.protoh
@@ -117,6 +117,9 @@ proto/webapi.protoh: proto/webapi.proto
 		--connect_info_obj CONNECT_HTTP_INFO --name webapi \
 		--protoch proto/webapi.protoch proto/webapi.proto >proto/webapi.protoh
 
+testsign: testsign.tlcc
+	cctlcc $(OPTIONS) testsign.tlcc -o testsign -lstdc++ -lcrypto
+	
 filesystem.o: filesystem.tlcc filesystem.h proto/bod_client.protoh
 	cctlcc -Wall $(OPTIONS) -c filesystem.tlcc -o filesystem.o
 
