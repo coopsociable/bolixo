@@ -522,6 +522,15 @@ static void generateconfig (
 			prefix = "a";
 		}
 	}
+	fprintf (fout,"# rules to connect writed to bo-keysd\n");
+	prefix = "";
+	for (auto w:config.writeds){
+		for (auto s:config.keysds){
+			fprintf (fout,"%s %srule %s writed unix /dev/keysd.sock %s keysd /var/run/blackhole/bo-keysd.sock\n"
+				,bk_control,prefix,w.server.c_str(),s.server.c_str());
+			prefix = "a";
+		}
+	}
 	fprintf (fout,"# rules to connect writed to news database\n");
 	prefix = "";
 	for (auto w:config.writeds){
@@ -1117,6 +1126,9 @@ static void print_configs (
 						fprintf (fout,"%s/horizon-control -p %s/horizon.sock --bind unix,/dev/smtp.sock:/var/lib/lxc/%s/rootfs/dev/smtp.sock,%s\n"
 							,blackhole_path,sock_dir,name,name);
 						fprintf (fout,"chown %s /var/lib/lxc/%s/rootfs/dev/smtp.sock\n",trli_user,name);
+						fprintf (fout,"%s/horizon-control -p %s/horizon.sock --bind unix,/dev/keysd.sock:/var/lib/lxc/%s/rootfs/dev/keysd.sock,%s\n"
+							,blackhole_path,sock_dir,name,name);
+						fprintf (fout,"chown %s /var/lib/lxc/%s/rootfs/dev/keysd.sock\n",trli_user,name);
 						// Sockets for both MySQL servers
 						fprintf (fout,"mkdir -p /var/lib/lxc/%s/rootfs/var/lib/mysql\n",name);
 						fprintf (fout,"%s/horizon-control -p %s/horizon.sock --bind unix,/var/lib/mysql/mysql.sock:/var/lib/lxc/%s/rootfs/var/lib/mysql/mysql.sock,%s\n"
@@ -1143,6 +1155,8 @@ static void print_configs (
 						fprintf (fout,"%s/horizon-control -p %s/horizon.sock unbindfd unix /var/lib/mysql/mysql.sock %s\n"
 							,blackhole_path,sock_dir,name);
 						fprintf (fout,"%s/horizon-control -p %s/horizon.sock unbindfd unix /var/lib/mysql/mysql-users.sock %s\n"
+							,blackhole_path,sock_dir,name);
+						fprintf (fout,"%s/horizon-control -p %s/horizon.sock unbindfd unix /dev/keysd.sock %s\n"
 							,blackhole_path,sock_dir,name);
 					</f>
 					<f insert>
