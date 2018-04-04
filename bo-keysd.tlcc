@@ -1,0 +1,287 @@
+/*
+	Manage public/private creation.
+	Since this is a slow process, this is done here by this program.
+*/
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <errno.h>
+#include <syslog.h>
+#include <unistd.h>
+#include <tlmpsql.h>
+#include <tlmplib.h>
+#include <tlmpnet.h>
+#include <trlitool.h>
+#include <deque>
+#include <memory>
+#include <string>
+#include <openssl/bn.h>
+#include <openssl/rsa.h>
+#include <openssl/pem.h>
+#include <openssl/bio.h>
+#include <openssl/x509.h>
+
+
+using BN_ptr = std::unique_ptr<BIGNUM, decltype(&::BN_free)>;
+using EVP_KEY_ptr = std::unique_ptr<EVP_PKEY, decltype(&::EVP_PKEY_free)>;
+
+using namespace std;
+static DEBUG_KEY D_PROTO ("proto","Protocol information");
+
+enum CONNECT_TYPE { TYPE_NONE, TYPE_CONTROL, TYPE_WORKER};
+
+struct HANDLE_INFO: public ARRAY_OBJ{
+	CONNECT_TYPE type;
+	REQUEST_INFO req;
+	HANDLE_INFO(){
+		type = TYPE_NONE;
+	}
+};
+#include "proto/bo-keysd_control.protoh"
+
+static int generate(string &private_key, string &public_key, PARAM_STRING passphrase)
+{
+	int ret = -1;
+	private_key.clear();
+	public_key.clear();
+
+	RSA *rsa = RSA_new();
+	if (rsa != NULL){
+		BN_ptr bn(BN_new(), ::BN_free);
+		if (BN_set_word(bn.get(), RSA_F4)==1){
+			if (RSA_generate_key_ex(rsa, 2048, bn.get(), NULL) == 1){
+
+				// Convert RSA to PKEY
+				EVP_KEY_ptr pkey(EVP_PKEY_new(), ::EVP_PKEY_free);
+				if (EVP_PKEY_set1_RSA(pkey.get(), rsa) == 1){
+					{
+						BIO *bio = BIO_new(BIO_s_mem());
+						PEM_write_bio_PrivateKey(bio, pkey.get(),EVP_aes_192_cbc(), (unsigned char*)passphrase.ptr,strlen(passphrase.ptr), 0, 0);
+						char line[1000];
+						while(BIO_gets(bio,line,sizeof(line))>0){
+							private_key += line;
+						}
+						BIO_free_all(bio);
+					}
+					{
+						BIO *bio = BIO_new(BIO_s_mem());
+						PEM_write_bio_PUBKEY(bio, pkey.get());
+						char line[1000];
+						while(BIO_gets(bio,line,sizeof(line))>0){
+							//printf ("line=%s\n",line);
+							public_key += line;
+						}
+						BIO_free_all(bio);
+					}
+					ret = 0;
+				}
+			}
+		}
+		RSA_free (rsa);
+	}
+	return ret;
+}
+<mod>
+static void bo_keysd_doone (
+	_F_TCPSERVER_V1 &c,
+	pid_t &pid,
+	deque<string> &accounts,
+	PARAM_STRING passphrase,
+	NSQL &usq)
+{
+	glocal const char *passphrase = passphrase.ptr;
+	glocal NSQL *usq = &usq;
+	if (accounts.size() > 0){
+		int tb[2];
+		if (pipe(tb)==-1){
+			tlmp_error ("Can't setup pipe (%s)\n",strerror(errno));
+		}else{
+			glocal string todo = accounts.front();
+			accounts.pop_front();
+			pid = fork();
+			if (pid == (pid_t)0){
+				// Do the job
+				close (tb[0]);
+				<call sql_query>(usq,"select userid,priv_key from users where userid_str='%s'",glocal.todo.c_str());
+				<f onerow>
+					if (row[1] != NULL){
+						tlmp_error ("Private key generation: Key already generated for user %s\n",glocal.todo.c_str());
+					}else{
+						unsigned userid=atoi(row[0]);
+						string privkey,pubkey;
+						if (generate (privkey,pubkey,glocal.passphrase) != -1){
+							if (sql_action(*glocal.usq,"update users set priv_key='%s',pub_key='%s' where userid=%u"
+								,privkey.c_str(),pubkey.c_str(),userid)==-1){
+								tlmp_error ("Update users failed\n");
+							}else if (sql_action("update id2name set pub_key='%s' where userid=%u",pubkey.c_str(),userid)==-1){
+								tlmp_error ("update id2name failed\n");
+							}
+						}
+					}
+				</f>
+				<f empty>
+					tlmp_error ("Private key generation: Can't find userid %s\n",glocal.todo.c_str());
+				</f>
+				</call>
+				_exit (0);
+			}else if (pid == (pid_t)-1){
+				tlmp_error ("Can't fork (%s)\n",strerror(errno));
+			}else{
+				HANDLE_INFO *n = new HANDLE_INFO;
+				n->type = TYPE_WORKER;
+				c.inject (tb[0],n);
+				close (tb[1]);
+			}
+		}
+	}
+}
+</mod>
+<mod>
+int main (int argc, char *argv[])
+{
+	glocal int ret = -1;
+	glocal const char *data_dbserv = "localhost";
+	glocal const char *data_dbname = "files";
+	glocal const char *data_dbuser = NULL;
+	glocal const char *users_dbserv = "localhost";
+	glocal const char *users_dbname = "users";
+	glocal const char *users_dbuser = NULL;
+	glocal const char *control = "/var/run/bo-keysd.sock";
+	glocal const char *user = "bolixo";
+	glocal bool daemon = false;
+	glocal const char *pidfile = "/var/run/bo-keysd.pid";
+	glocal.ret = <call tlmpprogram>(argc,argv,"tlmpsql");
+	<f init>
+		setproginfo ("bo-keysd",VERSION,"Generate public/private keys for user accounts");
+		setgrouparg ("Networking");
+		setarg ('c',"control","Unix socket for bo-keysd",glocal.control,false);
+		setgrouparg ("Database");
+		setarg (' ',"data_dbserv","Database server",glocal.data_dbserv,false);
+		setarg (' ',"data_dbname","Database name",glocal.data_dbname,false);
+		setarg (' ',"data_dbuser","Database user",glocal.data_dbuser,true);
+		setarg (' ',"users_dbserv","Database server for users",glocal.users_dbserv,false);
+		setarg (' ',"users_dbname","Database name for users",glocal.users_dbname,false);
+		setarg (' ',"users_dbuser","Database user for users",glocal.users_dbuser,true);
+		setgrouparg ("Misc.");
+		setarg (' ',"user","Run the program as this user",glocal.user,false);
+		setarg (' ',"daemon","Run in background",glocal.daemon,false);
+		setarg (' ',"pidfile","FIle holding the PID of the process",glocal.pidfile,false);
+	</f>
+	<f showerror>
+		if (glocal.daemon){
+			syslog (LOG_ERR,"%s",msg);
+		}else{
+			fprintf (stderr,"%s",msg);
+		}
+	</f>
+	<f showwarn>
+		if (glocal.daemon){
+			syslog (LOG_WARNING,"%s",msg);
+		}else{
+			fprintf (stderr,"%s",msg);
+		}
+	</f>
+	<f main_noarg>
+		int ret = -1;
+		glocal string controlport = string_f("unix:%s",glocal.control);
+		glocal string passphrase;
+		glocal deque<string> accounts;
+		glocal pid_t pid = (pid_t)-1;
+		glocal NSQL *usq;		// SQL handle for the users database
+		const char *passwd = getenv("BO_WRITED_PWD");
+		if (passwd == NULL){
+			tlmp_error ("Can't get database password from environment, aborting\n");
+			exit (-1);
+		} 
+		query_setdefaultdb (glocal.data_dbserv,glocal.data_dbname,glocal.data_dbuser,passwd);
+		query_getdefaultdb()->showerrormode(true);
+		NSQL nsql_sq (glocal.users_dbserv,glocal.users_dbname,glocal.users_dbuser,passwd);
+		nsql_sq.showerrormode (true);
+		nsql_sq.setunixpath ("/var/lib/mysql/mysql-users.sock");
+		glocal.usq = &nsql_sq;
+		<obj TCPSERVER s>();
+		<f newclient>
+			HANDLE_INFO *n = new HANDLE_INFO;
+			info.data = n;
+			if (string_cmp(info.port,glocal.controlport)==0){
+				n->type = TYPE_CONTROL;
+			}
+		</f>
+		<f endclient>
+			HANDLE_INFO *n = (HANDLE_INFO*)info.data;
+tlmp_error ("end %d\n",n->type);
+			if (n->type == TYPE_WORKER){
+				glocal.pid = (pid_t)-1;
+				bo_keysd_doone(*this,glocal.pid,glocal.accounts,glocal.passphrase,*glocal.usq);
+			}
+		</f>
+		<f receive>
+			debug_printf (D_PROTO,"receive line: %s\n",line);
+			HANDLE_INFO *c = (HANDLE_INFO*)info.data;
+			ERROR_PREFIX prefix ("c->type %d:",c->type);
+			if (c->type == TYPE_CONTROL){
+				<call bo_keysd_control>(this,c->req,line, info.linelen,endserver, endclient, no,c);
+				<f status>
+					vector<string> tb;
+					tb.push_back(string_f ("Version %s",VERSION));
+					tb.push_back(string_f("passphrase %s",glocal.passphrase.size()==0 ? "not set" : "set"));
+					tb.push_back(string_f("accounts size: %lu",glocal.accounts.size()));
+					tb.push_back(string_f("sub-process: %s",glocal.pid == (pid_t)-1 ? "not running" : "running"));
+					rep_status(tb);
+				</f>
+				<f quit>
+					endserver = true;
+				</f>
+				<f setpassphrase>
+					glocal.passphrase = passphrase;
+				</f>
+				<f genkey>
+					if (glocal.passphrase.size()==0){
+						rep_genkey(false,"Pass phrase not set");
+					}else{
+						glocal.accounts.push_back(account);
+						rep_genkey(true,"");
+						if (glocal.pid == (pid_t)-1){
+							bo_keysd_doone(glocal.TCPSERVER,glocal.pid,glocal.accounts,glocal.passphrase,*glocal.usq);
+						}
+					}
+				</f>
+				<f debug>
+					if (on){
+						debug_seton();
+					}else{
+						debug_setoff();
+					}
+				</f>
+				<f debugfile>
+					debug_setfdebug (filename);
+				</f>
+				<f invalid>
+					tlmp_error ("Control: Invalid command: %s\n",line);
+					endclient = true;
+				</f>
+				</call>
+			}
+		</f>
+		</obj>
+		bool some_errors = false;
+		if (fdpass_setcontrol(s,glocal.control,glocal.user)==-1){
+			some_errors = true;
+		}
+
+		if (!some_errors && s.is_ok()){
+			s.setrawmode(true);
+			if (glocal.daemon){
+				daemon_init(glocal.pidfile,glocal.user);
+			}
+			s.loop();
+			ret = 0;
+		}
+		return ret;
+		return ret;
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+

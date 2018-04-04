@@ -36,11 +36,13 @@ if [ "$LXCSOCK" == "on" ] ; then
 	BOD_SOCK=/var/lib/lxc/bod/rootfs/var/run/blackhole/bod-0.sock
 	WRITED_SOCK=/var/lib/lxc/writed/rootfs/var/run/blackhole/bo-writed-0.sock
 	SESSIOND_SOCK=/var/lib/lxc/sessiond/rootfs/var/run/blackhole/bo-sessiond.sock
+	KEYSD_SOCK=/var/lib/lxc/keysd/rootfs/var/run/blackhole/bo-keysd.sock
 	WRITEDLOG=/var/lib/lxc/writed/rootfs/var/log/bolixo/bo-writed.log
 elif [ "$BOD_SOCK" = "" ] ; then
 	BOD_SOCK=/tmp/bod.sock
 	WRITED_SOCK=/tmp/bo-writed.sock
 	SESSIOND_SOCK=/tmp/bo-sessiond.sock
+	KEYSD_SOCK=/tmp/bo-keysd.sock
 fi
 mysql_save(){
 	ROOTFS=/var/lib/lxc/$1/rootfs
@@ -237,6 +239,25 @@ elif [ "$1" = "bo-sessiond" ] ; then # A: Runs sessiond
 		echo $BOLIXOPATH/bo-sessiond $OPTIONS
 	fi
 	$STRACE $BOLIXOPATH/bo-sessiond $OPTIONS
+elif [ "$1" = "bo-keysd" ] ; then # A: Runs keysd
+	OPTIONS="--control /tmp/bo-keysd.sock --user $USER \
+		--data_dbserv $BO_WRITED_DBSERV --data_dbuser $BO_WRITED_DBUSER \
+		--users_dbserv $BO_WRITED_DBSERV --users_dbuser $BO_WRITED_DBUSER"
+	shift
+	while [ $# -gt 0 ] ; do
+		if [ "$1" = "debug" ] ; then
+			OPTIONS="--debug $OPTIONS"
+		elif [ "$1" = "lxc0" ] ; then
+			STRACE="strace -o /tmp/log -f"
+		fi
+		shift
+	done
+	if [ "$SILENT" = "on" ] ; then
+		echo keysd
+	else
+		echo $BOLIXOPATH/bo-keysd $OPTIONS
+	fi
+	$STRACE $BOLIXOPATH/bo-keysd $OPTIONS
 elif [ "$1" = "reload" ] ; then # S: Reloads the database using writed log
 	$0 resetdb
 	OPTIONS="--data_dbserv $DBSERV --data_dbuser $TRLI_WRITED_DBUSER --data_dbname $DBNAME \
@@ -270,6 +291,9 @@ elif [ "$1" = "bo-writed-control" ] ; then # A: Talks to writed
 elif [ "$1" = "bo-sessiond-control" ] ; then # A: Talks to sessiond
 	shift
 	$BOLIXOPATH/bo-sessiond-control --control $SESSIOND_SOCK $*
+elif [ "$1" = "bo-keysd-control" ] ; then # A: Talks to keysd
+	shift
+	$BOLIXOPATH/bo-keysd-control --control $KEYSD_SOCK $*
 elif [ "$1" = "createdb" ] ; then # db: Create databases
 	ENGINE=myisam
 	mysqladmin -uroot -S $SOCKU create $DBNAMEU
@@ -288,7 +312,9 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 			confirmed datetime default null,
 			lastaccess datetime default null,
 			deleted datetime default null,
-			disabled datetime default null
+			disabled datetime default null,
+			priv_key text default null,
+			pub_key text default null
 		);
 		create index users_email on users (email);
 		create index users_idstr on users (userid_str);
@@ -301,7 +327,8 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 	mysql -uroot -S $SOCKN $DBNAME <<-EOF
 		create table id2name(
 			userid int not null,
-			name char(50)
+			name char(50),
+			pub_key text default null
 		)engine=$ENGINE;
 		create unique index id2name_userid on id2name (userid);
 		create unique index id2name_name   on id2name (name);
@@ -770,6 +797,19 @@ elif [ "$1" = "lxc0-sessiond" ]; then # prod:
 		$EXTRALXCPROG \
 		-i /usr/sbin/trli-init -l /tmp/log -n sessiond -p $BOLIXOPATH/bo-sessiond >/var/lib/lxc/sessiond/sessiond-lxc0.sh
 	chmod +x /var/lib/lxc/sessiond/sessiond-lxc0.sh
+elif [ "$1" = "lxc0-keysd" ]; then # prod:
+	export LANG=eng
+	$0 bo-keysd lxc0 &
+	sleep 1
+	$0 bo-keysd-control quit
+	mkdir -p /var/lib/lxc/keysd
+	/usr/sbin/trli-lxc0 $LXC0USELINK \
+		--filelist /var/lib/lxc/keysd/keysd.files \
+		--savefile /var/lib/lxc/keysd/keysd.save \
+		--restorefile /var/lib/lxc/keysd/keysd.restore \
+		$EXTRALXCPROG \
+		-i /usr/sbin/trli-init -l /tmp/log -n keysd -p $BOLIXOPATH/bo-keysd >/var/lib/lxc/keysd/keysd-lxc0.sh
+	chmod +x /var/lib/lxc/keysd/keysd-lxc0.sh
 elif [ "$1" = "lxc0-proto" ]; then # prod:
 	export LANG=eng
 	echo proto
@@ -931,6 +971,7 @@ elif [ "$1" = "lxc0s" ] ; then # prod: generates lxc0 scripts for all components
 	export SILENT=on
 	$0 lxc0-bod
 	$0 lxc0-writed
+	$0 lxc0-keysd
 	$0 lxc0-sessiond
 	$0 lxc0-proto
 	$0 lxc0-web

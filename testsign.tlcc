@@ -72,7 +72,7 @@ static int sign(
 }
 
 static int verify( 
-	const char *msg,
+	PARAM_STRING msg,
 	EVP_PKEY *key,
 	unsigned char *sig,
 	size_t sig_len)
@@ -83,7 +83,7 @@ static int verify(
 	if (mdctx != NULL){
 		if(EVP_DigestVerifyInit(mdctx, NULL, EVP_sha256(), NULL, key) == 1){
 			// Initialize `key` with a public key
-			if(EVP_DigestVerifyUpdate(mdctx, msg, strlen(msg)) == 1){
+			if(EVP_DigestVerifyUpdate(mdctx, msg.ptr, strlen(msg.ptr)) == 1){
 				if(EVP_DigestVerifyFinal(mdctx, sig, sig_len) == 1){
 					// Success
 					ret = 0;
@@ -96,7 +96,7 @@ static int verify(
 	}
 	return ret;
 }
-static RSA *generate(string &private_key, string &public_key, bool write_files)
+static RSA *generate(string &private_key, string &public_key, PARAM_STRING passphrase, bool write_files)
 {
 	private_key.clear();
 	public_key.clear();
@@ -120,7 +120,7 @@ static RSA *generate(string &private_key, string &public_key, bool write_files)
 
 	{
 		BIO *bio = BIO_new(BIO_s_mem());
-		PEM_write_bio_PrivateKey(bio, pkey.get(),0,0,0, 0, 0);
+		PEM_write_bio_PrivateKey(bio, pkey.get(),EVP_aes_192_cbc(), (unsigned char*)passphrase.ptr,strlen(passphrase.ptr), 0, 0);
 		char line[1000];
 		while(BIO_gets(bio,line,sizeof(line))>0){
 			//printf ("line=%s\n",line);
@@ -179,18 +179,10 @@ static RSA *generate(string &private_key, string &public_key, bool write_files)
 	return rsa;
 }
 
-#if 0
-static RSA *load_from_string (PARAM_STRING p)
-{
-	BIO *bufio = BIO_new_mem_buf((void*)p.ptr, strlen(p.ptr));
-	RSA *rsa = PEM_read_bio_RSA_PUBKEY(bufio, 0, 0, 0);
-	return rsa;
-}
-#endif
-static EVP_PKEY *testsign_load_private (PARAM_STRING p)
+static EVP_PKEY *testsign_load_private (PARAM_STRING p, PARAM_STRING passphrase)
 {
 	BIO *bio = BIO_new_mem_buf((void*)p.ptr, strlen(p.ptr));
-	EVP_PKEY *pkey = PEM_read_bio_PrivateKey(bio, NULL,NULL,NULL);
+	EVP_PKEY *pkey = PEM_read_bio_PrivateKey(bio, NULL,NULL,(void*)passphrase.ptr);
 	BIO_free_all (bio);
 	return pkey;
 }
@@ -207,6 +199,21 @@ int main (int argc, char *argv[])
 	glocal int ret = -1;
 	glocal unsigned nbverify = 1;
 	glocal unsigned nbgen = 1;
+	glocal const char *message =
+		"This is a message that goes like this\n"
+		"This is a message that goes like this\n"
+		"This is a message that goes like this\n"
+		"This is a message that goes like this\n"
+		"This is a message that goes like this\n"
+		"This is a message that goes like this\n"
+		"This is a message that goes like this\n"
+		"This is a message that goes like this\n"
+		"This is a message that goes like this\n"
+		"This is a message that goes like this\n"
+		"This is a message that goes like this\n"
+		"This is a message that goes like this\n"
+		"This is a message that goes like this\n"
+		;
 	glocal.ret = <call tlmpprogram>(argc,argv);
 	<f init>
 		setproginfo ("testsign",VERSION,"...");
@@ -214,31 +221,33 @@ int main (int argc, char *argv[])
 		setarg (' ',"nbgen","Number of key generation",glocal.nbgen,false);
 	</f>
 	<f main_noarg>
+		string modified_message = string(glocal.message) + "something";
+		const char *passphrase = "this is secret";
 		int ret = -1;
 		RSA *rsa = NULL;
 		string private_key,public_key;
 		for (unsigned i=0; i<glocal.nbgen; i++){
-			rsa = generate(private_key,public_key,false);
+			rsa = generate(private_key,public_key,passphrase,false);
 			if (i <glocal.nbgen-1) RSA_free (rsa);
 		}
 		printf ("private=\n%s\npublic\n%s\n",private_key.c_str(),public_key.c_str());
 			
 		if (rsa != NULL){
 			{
-				EVP_PKEY *privkey = testsign_load_private(private_key); 
+				EVP_PKEY *privkey = testsign_load_private(private_key,passphrase); 
 				if (privkey != NULL){
 					EVP_PKEY *pubkey = testsign_load_public(public_key); 
 					if (pubkey != NULL){
 						unsigned char *sig;
 						size_t sig_len;
-						if (sign ("This is a test",privkey,sig,sig_len)!=-1){
+						if (sign (glocal.message,privkey,sig,sig_len)!=-1){
 							printf ("sign1 %p %lu\n",sig,sig_len);
-							if (verify ("This is a test",pubkey,sig,sig_len)!=-1){
+							if (verify (glocal.message,pubkey,sig,sig_len)!=-1){
 								printf ("Verify1 ok\n");
 							}else{
 								printf ("Verify1 pas ok\n");
 							}
-							if (verify ("This is a test 2",pubkey,sig,sig_len)!=-1){
+							if (verify (modified_message,pubkey,sig,sig_len)!=-1){
 								printf ("Verify2 ok\n");
 							}else{
 								printf ("Verify2 pas ok\n");
@@ -256,13 +265,13 @@ int main (int argc, char *argv[])
 				for (unsigned i=0; i<glocal.nbverify; i++){
 					unsigned char *sig;
 					size_t sig_len;
-					if (sign ("This is a test",pkey,sig,sig_len)!=-1){
-						if (verify ("This is a test",pkey,sig,sig_len)!=-1){
+					if (sign (glocal.message,pkey,sig,sig_len)!=-1){
+						if (verify (glocal.message,pkey,sig,sig_len)!=-1){
 							printf ("Verify3 ok\n");
 						}else{
 							printf ("Verify3 pas ok\n");
 						}
-						if (verify ("This is a test 2",pkey,sig,sig_len)!=-1){
+						if (verify (modified_message,pkey,sig,sig_len)!=-1){
 							printf ("Verify4 ok\n");
 						}else{
 							printf ("Verify4 pas ok\n");

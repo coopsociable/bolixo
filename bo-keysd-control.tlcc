@@ -1,0 +1,85 @@
+/*
+	Command line tool to control bo-keysd
+*/
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <tlmplib.h>
+#include <tlmpnet.h>
+#include <string>
+#include <trlitool.h>
+
+using namespace std;
+
+#include "proto/bo-keysd_control.protoch"
+
+<mod>
+int main (int argc, char *argv[])
+{
+	glocal int ret = -1;
+	glocal const char *control = "/var/run/bo-keysd.sock";
+	glocal.ret = <call tlmpprogram>(argc,argv);
+	<f init>
+		setproginfo ("bo-keysd-control",VERSION
+			,"Command line tool to control bo-keysd\n"
+			 "\n"
+			 "\tdebug 0/1\n"
+			 "\tdebugfile filename\n"
+			 "\tgenkey account\n"
+			 "\tquit\n"
+			 "\tstatus\n"
+			);
+		setarg ('p',"control","Unix socket to reach keysd",glocal.control,false);
+	</f>
+	<f main>
+		glocal int ret = -1;
+		CONNECT_INFO con;
+		con.port = glocal.control;
+		if (strcmp(argv[0],"status")==0 && argc==1){
+			<call bo_keysd_control_status>(con);
+			<f ok>
+				glocal.ret = internal_error ? -1 : 0;
+				for (auto x:lines) printf ("%s\n",x);
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"quit")==0 && argc==1){
+			<call bo_keysd_control_quit>(con);
+			<f ok>
+				glocal.ret = internal_error ? -1 : 0;
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"genkey")==0 && argc == 2){
+			<call bo_keysd_control_genkey>(con,argv[1]);
+			<f ok>
+				glocal.ret = success ? 0 : -1;
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"setpassphrase")==0 && argc == 2){
+			<call bo_keysd_control_setpassphrase>(con,argv[1]);
+			<f ok>
+				glocal.ret = internal_error ? -1 : 0;
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"debug")==0 && argc==2){
+			<call bo_keysd_control_debug>(con,atoi(argv[1]));
+			<f ok>
+				glocal.ret = internal_error ? -1 : 0;
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"debugfile")==0 && argc==2){
+			<call bo_keysd_control_debugfile>(con,argv[1]);
+			<f ok>
+				glocal.ret = internal_error ? -1 : 0;
+			</f>
+			</call>
+		}else{
+			tlmp_error ("Invalid command: %s\n",argv[0]);
+			usage();
+		}
+		return glocal.ret;
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+

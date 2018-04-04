@@ -2,7 +2,7 @@ CURDIR=trli
 MANPAGES=/usr/share/man
 PACKAGE_REV:=$(shell ./makeversion $(BUILD_SVNVER))
 PROGS=bod bod-client bod-control bo-writed bo-writed-control bo-sessiond bo-sessiond-control \
-      bo-manager bofs testsign
+      bo-manager bofs testsign bo-keysd bo-keysd-control
 #bo-log bo-log-control \
 #      bo-mon bo-mon-control
 DOCS=
@@ -59,6 +59,12 @@ bo-mon: bo-mon.tlcc proto/bod_client.protoh proto/bo_mon_control.protoh \
 bo-mon-control: bo-mon-control.tlcc proto/bo_mon_control.protoh
 	cctlcc -Wall $(OPTIONS) bo-mon-control.tlcc -o bo-mon-control $(LIBS)
 
+bo-keysd: bo-keysd.tlcc proto/bo-keysd_control.protoh
+	cctlcc -Wall $(OPTIONS) bo-keysd.tlcc -o bo-keysd $(LIBS) -lcrypto -ltlmpsql -L/usr/lib64/mysql -lmysqlclient
+
+bo-keysd-control: bo-keysd-control.tlcc proto/bo-keysd_control.protoh
+	cctlcc -Wall $(OPTIONS) bo-keysd-control.tlcc -o bo-keysd-control $(LIBS)
+
 proto/bo-log-control.protoh: proto/bo-log-control.proto
 	build-protocol --arg "int no" --arg "HANDLE_INFO *c" --name bo_log_control \
 	       --protoch proto/bo-log-control.protoch proto/bo-log-control.proto >proto/bo-log-control.protoh
@@ -111,6 +117,10 @@ proto/bo-sessiond_client.protoh: proto/bo-sessiond_client.proto
 proto/bo-sessiond_admin.protoh: proto/bo-sessiond_admin.proto
 	build-protocol --secretmode --arg "int no" --arg "HANDLE_INFO *c" --arg "const char *host" --name bo_sessiond_admin \
 		--protoch proto/bo-sessiond_admin.protoch proto/bo-sessiond_admin.proto >proto/bo-sessiond_admin.protoh
+
+proto/bo-keysd_control.protoh: proto/bo-keysd_control.proto
+	build-protocol --arg "int no" --arg "HANDLE_INFO *c" --name bo_keysd_control \
+		--protoch proto/bo-keysd_control.protoch proto/bo-keysd_control.proto >proto/bo-keysd_control.protoh
 
 proto/webapi.protoh: proto/webapi.proto
 	build-protocol --request_obj REQUEST_JSON --request_info_obj REQUEST_JSON_INFO \
