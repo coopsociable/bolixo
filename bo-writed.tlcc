@@ -272,12 +272,35 @@ static void bo_writed_set_msgid(string &msgid, const char *replyto)
 	}
 }
 
+<mod>
+static string bo_writed_sign (CONNECT_INFO &con_keys, unsigned userid, PARAM_STRING content)
+{
+	glocal string content = content.ptr;
+	if (glocal.content.size() > 0){
+		size_t last = glocal.content.size()-1;
+		if (glocal.content[last] != '\n') glocal.content += '\n';
+	}
+	// Sign the message
+	<call bo_keysd_control_sign>(con_keys,userid,glocal.content);
+	<f ok>
+		if (status == ERR_CODE_NONE){
+			glocal.content += string("------\n") + sign;
+		}else{
+			tlmp_error ("Can't sign message: status=%d %s\n",status,msg);
+		}
+	</f>
+	</call>
+	return glocal.content;
+}
+</mod>
+
 /*
 	Send a message to a project or reply to a message of a project
 */
 <mod>
 static int bo_writed_project_msg(
 	CONNECT_INFO &con,
+	CONNECT_INFO &con_keys,
 	const char *sessionid,
 	const char *owner,
 	const char *manager,
@@ -366,6 +389,7 @@ static int bo_writed_project_msg(
 			if (dirid != -1){
 				int outbox_id = fs_find_outbox(glocal.userid,username,msg);
 				if (outbox_id != -1){
+					glocal string content = bo_writed_sign (con_keys,glocal.userid,content);
 					int fileid = fs_newid (glocal.userid,listid,'r',msg,msgid);
 					if (fileid != -1){
 						char now[20];
@@ -374,7 +398,7 @@ static int bo_writed_project_msg(
 						if (fs_insert_file(outbox_id,fileid,now,msgid)==-1){
 							msg = "Outbox internal error (dirs_content table)";
 						}else if (sql_action("insert into files (id,modified,title,content,filetype) values (%d,'%s','%s','%s',%u)"
-							,fileid,now,title,content,FILE_TEXT)==-1){
+							,fileid,now,title,glocal.content.c_str(),FILE_TEXT)==-1){
 							msg = "Internal error (files table)";
 						}else if (fs_insert_entry(dirid,fileid,now,msgid,ENTRY_MSG)==-1){
 							msg = "Project inbox internal error (dirs_content table)";
@@ -391,9 +415,11 @@ static int bo_writed_project_msg(
 }
 </mod>
 
+
 <mod>
 static void bo_writed_sendmsg (
 	CONNECT_INFO &con,
+	CONNECT_INFO &con_keys,
 	const char *sessionid,
 	const char *owner,
 	const vector<const char*> &recipients,
@@ -449,6 +475,7 @@ static void bo_writed_sendmsg (
 			if (msg.size() == 0){
 				int outbox_id = fs_find_outbox(glocal.userid,username,msg);
 				if (outbox_id != -1){
+					glocal string content = bo_writed_sign (con_keys,glocal.userid,content);
 					// All messages are member of group #all, with listmode='r'
 					// But access is controlled by the parent directory
 					int fileid = fs_newid (glocal.userid,0,'r',msg,msgid);
@@ -459,7 +486,7 @@ static void bo_writed_sendmsg (
 						if (fs_insert_file(outbox_id,fileid,now,msgid)==-1){
 							msg = "Internal error (dirs_content table)";
 						}else if (sql_action("insert into files (id,modified,filetype,title,content) values (%d,'%s',%u,'%s','%s')"
-							,fileid,now,FILE_TEXT,title,content)==-1){
+							,fileid,now,FILE_TEXT,title,glocal.content.c_str())==-1){
 							msg = "Internal error (files table)";
 						}else{
 							for (unsigned i=0; i<glocal.r_userids.size(); i++){
@@ -1538,7 +1565,7 @@ int main (int argc, char *argv[])
 				<f sendmsg> // sessionid owner recipients:v title content = success:b msg msgid
 					string msg;
 					string rep_msgid;
-					bo_writed_sendmsg (glocal.con,sessionid,owner,recipients,NULL,title,content,msg,rep_msgid);
+					bo_writed_sendmsg (glocal.con,glocal.con_keys,sessionid,owner,recipients,NULL,title,content,msg,rep_msgid);
 					if (msg.size()==0){
 						rep_sendmsg (true,"",rep_msgid);
 					}else{
@@ -1548,7 +1575,7 @@ int main (int argc, char *argv[])
 				<f sendmsg_project> // sessionid owner manager project role title content = success:b msg msgid
 					string msg;
 					string rep_msgid;
-					if (bo_writed_project_msg(glocal.con,sessionid,owner,manager,project,role,NULL,title,content,msg,rep_msgid)!=-1){
+					if (bo_writed_project_msg(glocal.con,glocal.con_keys,sessionid,owner,manager,project,role,NULL,title,content,msg,rep_msgid)!=-1){
 						rep_sendmsg_project (true,"",rep_msgid);
 					}else{
 						rep_sendmsg_project (false,msg,"");
@@ -1557,7 +1584,7 @@ int main (int argc, char *argv[])
 				<f replymsg> // sessionid owner msgid recipients:v title content = success:b msg replyid
 					string msg;
 					string rep_msgid;
-					bo_writed_sendmsg (glocal.con,sessionid,owner,recipients,msgid,title,content,msg,rep_msgid);
+					bo_writed_sendmsg (glocal.con,glocal.con_keys,sessionid,owner,recipients,msgid,title,content,msg,rep_msgid);
 					if (msg.size()==0){
 						rep_replymsg (true,"",rep_msgid);
 					}else{
@@ -1567,7 +1594,7 @@ int main (int argc, char *argv[])
 				<f replymsg_project> // sessionid owner manager project role msgid title content = success:b msg replyid
 					string msg;
 					string rep_msgid;
-					if (bo_writed_project_msg(glocal.con,sessionid,owner,manager,project,role,msgid,title,content,msg,rep_msgid)!=-1){
+					if (bo_writed_project_msg(glocal.con,glocal.con_keys,sessionid,owner,manager,project,role,msgid,title,content,msg,rep_msgid)!=-1){
 						rep_replymsg_project (true,"",rep_msgid);
 					}else{
 						rep_replymsg_project (false,msg,"");

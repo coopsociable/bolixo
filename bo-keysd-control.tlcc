@@ -12,6 +12,7 @@
 #include <tlmpnet.h>
 #include <string>
 #include <trlitool.h>
+#include "bolixo.h"
 
 using namespace std;
 
@@ -55,7 +56,27 @@ int main (int argc, char *argv[])
 		}else if (strcmp(argv[0],"genkey")==0 && argc == 2){
 			<call bo_keysd_control_genkey>(con,argv[1]);
 			<f ok>
-				glocal.ret = success ? 0 : -1;
+				if (status == ERR_CODE_NONE){
+					glocal.ret = 0;
+				}else{
+					tlmp_error ("status %d: %s\n",status,msg);
+				}
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"sign")==0 && argc == 3){
+			glocal string content = argv[2];
+			if (glocal.content.size() > 0){
+				size_t last = glocal.content.size()-1;
+				if (glocal.content[last] != '\n') glocal.content += '\n';
+			}
+			<call bo_keysd_control_sign>(con,atoi(argv[1]),glocal.content);
+			<f ok>
+				if (status == ERR_CODE_NONE){
+					glocal.ret = 0;
+					printf ("%s------\n%s\n",glocal.content.c_str(),sign);
+				}else{
+					tlmp_error ("status %d: %s\n",status,msg);
+				}
 			</f>
 			</call>
 		}else if (strcmp(argv[0],"setpassphrase")==0 && (argc == 1 || argc == 2)){
@@ -81,7 +102,8 @@ int main (int argc, char *argv[])
 						tlmp_error ("No passphrase supplied, aborting\n");
 						exit (-1);
 					}else{
-						strip_end (line);
+						int last = len - 1;
+						if (line[last] == '\n') line[last] = '\0';
 						pass = line;
 					}
 					tio.c_lflag |= ECHO;
@@ -92,7 +114,11 @@ int main (int argc, char *argv[])
 			}
 			<call bo_keysd_control_setpassphrase>(con,pass);
 			<f ok>
-				glocal.ret = internal_error ? -1 : 0;
+				if (status == ERR_CODE_NONE){
+					glocal.ret = 0;
+				}else{
+					tlmp_error ("status %d: %s\n",status,msg);
+				}
 			</f>
 			</call>
 		}else if (strcmp(argv[0],"debug")==0 && argc==2){

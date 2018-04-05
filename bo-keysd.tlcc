@@ -20,7 +20,7 @@
 #include <openssl/pem.h>
 #include <openssl/bio.h>
 #include <openssl/x509.h>
-
+#include "bolixo.h"
 
 using BN_ptr = std::unique_ptr<BIGNUM, decltype(&::BN_free)>;
 using EVP_KEY_ptr = std::unique_ptr<EVP_PKEY, decltype(&::EVP_PKEY_free)>;
@@ -136,6 +136,79 @@ static void bo_keysd_doone (
 	}
 }
 </mod>
+static EVP_PKEY *bo_keysd_load_private (PARAM_STRING p, PARAM_STRING passphrase)
+{
+	BIO *bio = BIO_new_mem_buf((void*)p.ptr, strlen(p.ptr));
+	EVP_PKEY *pkey = PEM_read_bio_PrivateKey(bio, NULL,NULL,(void*)passphrase.ptr);
+	BIO_free_all (bio);
+	return pkey;
+}
+
+namespace {
+struct BIOFreeAll { void operator()(BIO* p) { BIO_free_all(p); } };
+}
+std::string Base64Encode(unsigned char *sig, size_t sig_len)
+{
+	std::unique_ptr<BIO,BIOFreeAll> b64(BIO_new(BIO_f_base64()));
+	BIO_set_flags(b64.get(), BIO_FLAGS_BASE64_NO_NL);
+	BIO* sink = BIO_new(BIO_s_mem());
+	BIO_push(b64.get(), sink);
+	BIO_write(b64.get(), sig,sig_len);
+	BIO_flush(b64.get());
+	const char* encoded;
+	const long len = BIO_get_mem_data(sink, &encoded);
+	return std::string(encoded, len);
+}
+
+
+static int bo_keysd_sign(
+	const char *msg,
+	EVP_PKEY *key,
+	string &result)	// Signature base64
+{
+	int ret = -1;
+	result.clear();
+	/* Create the Message Digest Context */
+	EVP_MD_CTX *mdctx = EVP_MD_CTX_create();
+	if (mdctx != NULL){
+		/* Initialise the DigestSign operation - SHA-256 has been selected as the message digest function in this example */
+		if(EVP_DigestSignInit(mdctx, NULL, EVP_sha256(), NULL, key) == 1){
+			/* Call update with the message */
+			if(EVP_DigestSignUpdate(mdctx, msg, strlen(msg)) == 1){
+				// Finalise the DigestSign operation
+				// First call EVP_DigestSignFinal with a NULL sig parameter to obtain the length of the
+				// signature. Length is returned in slen */
+				size_t sig_len;
+				if(EVP_DigestSignFinal(mdctx, NULL, &sig_len) == 1){
+					//printf ("sig_len=%lu\n",sig_len);
+					// Allocate memory for the signature based on size in slen
+					unsigned char sig[sig_len];
+					// Obtain the signature
+					if(EVP_DigestSignFinal(mdctx, sig, &sig_len) == 1){
+						/* Success */
+						#if 0
+							for (unsigned i=0; i<sig_len; i++){
+								result += string_f ("%02x",sig[i]);
+							}
+							printf ("\n");
+						#endif
+						string tmp = Base64Encode (sig,sig_len);
+						for (unsigned off=0; off<tmp.size(); off+=64){
+							int len = 64;
+							if (off+len > tmp.size()) len = tmp.size() - off;
+							result += tmp.substr(off,len) + "\n";
+						}
+						ret = 1;
+					}else{
+						// error
+					} 
+				}
+			}
+		}
+		EVP_MD_CTX_destroy(mdctx);
+	}
+	return ret;
+}
 <mod>
 int main (int argc, char *argv[])
 {
@@ -209,7 +282,6 @@ int main (int argc, char *argv[])
 		</f>
 		<f endclient>
 			HANDLE_INFO *n = (HANDLE_INFO*)info.data;
-tlmp_error ("end %d\n",n->type);
 			if (n->type == TYPE_WORKER){
 				glocal.pid = (pid_t)-1;
 				bo_keysd_doone(*this,glocal.pid,glocal.accounts,glocal.passphrase,*glocal.usq);
@@ -233,17 +305,79 @@ tlmp_error ("end %d\n",n->type);
 					endserver = true;
 				</f>
 				<f setpassphrase>
+					glocal ERR_CODE status = ERR_CODE_FAIL;
+					glocal string msg;
 					glocal.passphrase = passphrase;
+					// Check if we can decrypt one private key
+					<call sql_query>(*glocal.usq,"select priv_key from users where userid=1");
+					<f onerow>
+						if (row[0] == NULL){
+							glocal.status = ERR_CODE_CANTVERIFY;
+							glocal.msg = "Userid 1 has no private key, can't test passphrase";
+						}else{
+							EVP_PKEY *p = bo_keysd_load_private (row[0],glocal.passphrase);
+							if (p != NULL){
+								EVP_PKEY_free (p);
+								glocal.status = ERR_CODE_NONE;
+							}else{
+								glocal.status = ERR_CODE_INVALID;
+								glocal.msg = "Can't decipher private key of userid 1, invalid passphrase";
+							}
+						}
+					</f>
+					<f empty>
+						glocal.status = ERR_CODE_CANTVERIFY;
+						glocal.msg = "No userid 1 in database, can't test passphrase";
+					</f>
+					</call>
+					rep_setpassphrase (glocal.status,glocal.msg);
 				</f>
 				<f genkey>
 					if (glocal.passphrase.size()==0){
-						rep_genkey(false,"Pass phrase not set");
+						rep_genkey(ERR_CODE_NOPASSPHRASE,"Pass phrase not set");
 					}else{
 						glocal.accounts.push_back(account);
-						rep_genkey(true,"");
+						rep_genkey(ERR_CODE_NONE,"");
 						if (glocal.pid == (pid_t)-1){
 							bo_keysd_doone(glocal.TCPSERVER,glocal.pid,glocal.accounts,glocal.passphrase,*glocal.usq);
 						}
+					}
+				</f>
+				<f sign>
+					if (glocal.passphrase.size()==0){
+						rep_sign(ERR_CODE_NOPASSPHRASE,"Pass phrase not set","");
+					}else{
+						glocal const char *text = text;
+						glocal ERR_CODE status = ERR_CODE_FAIL;
+						glocal string msg;
+						glocal string result;
+						<call sql_query>(*glocal.usq,"select priv_key from users where userid=%u",userid);
+						<f onerow>
+							if (row[0] == NULL){
+								glocal.status = ERR_CODE_CANTSIGN;
+								glocal.msg = "No private key for this account, can't sign";
+							}else{
+								EVP_PKEY *p = bo_keysd_load_private (row[0],glocal.passphrase);
+								if (p != NULL){
+									if (bo_keysd_sign(glocal.text,p,glocal.result) != -1){
+										glocal.status = ERR_CODE_NONE;
+									}else{
+										glocal.status = ERR_CODE_FAIL;
+										glocal.msg = "Internal error, Can't sign";
+									}
+									EVP_PKEY_free (p);
+								}else{
+									glocal.status = ERR_CODE_INVALID;
+									glocal.msg = "Can't decipher private key of userid 1, invalid passphrase";
+								}
+							}
+						</f>
+						<f empty>
+							glocal.status = ERR_CODE_IVLDACCOUNT;
+							glocal.msg = "Account does not exist";
+						</f>
+						</call>
+						rep_sign(glocal.status,glocal.msg,glocal.result);
 					}
 				</f>
 				<f debug>

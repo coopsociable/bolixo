@@ -2,7 +2,7 @@ CURDIR=trli
 MANPAGES=/usr/share/man
 PACKAGE_REV:=$(shell ./makeversion $(BUILD_SVNVER))
 PROGS=bod bod-client bod-control bo-writed bo-writed-control bo-sessiond bo-sessiond-control \
-      bo-manager bofs testsign bo-keysd bo-keysd-control
+      bo-manager bofs ssltestsign bo-keysd bo-keysd-control
 #bo-log bo-log-control \
 #      bo-mon bo-mon-control
 DOCS=
@@ -30,7 +30,7 @@ bod-control: bod-control.tlcc proto/bod_control.protoh
 	cctlcc -Wall $(OPTIONS) bod-control.tlcc -o bod-control $(LIBS)
 
 bo-writed: bo-writed.tlcc filesystem.o proto/bo-writed_control.protoh proto/bo-writed_client.protoh \
-	proto/bo-sessiond_admin.protoh proto/bo-log.protoh
+	proto/bo-sessiond_admin.protoh proto/bo-log.protoh proto/bo-keysd_control.protoh
 	cctlcc -Wall $(OPTIONS) bo-writed.tlcc filesystem.o -o bo-writed $(LIBS) -ltlmpsql -L/usr/lib64/mysql -lmysqlclient
 
 bo-writed-control: bo-writed-control.tlcc
@@ -127,8 +127,8 @@ proto/webapi.protoh: proto/webapi.proto
 		--connect_info_obj CONNECT_HTTP_INFO --name webapi \
 		--protoch proto/webapi.protoch proto/webapi.proto >proto/webapi.protoh
 
-testsign: testsign.tlcc
-	cctlcc $(OPTIONS) testsign.tlcc -o testsign -lstdc++ -lcrypto
+ssltestsign: ssltestsign.tlcc
+	cctlcc $(OPTIONS) ssltestsign.tlcc -o ssltestsign -lstdc++ -lcrypto
 	
 filesystem.o: filesystem.tlcc filesystem.h proto/bod_client.protoh
 	cctlcc -Wall $(OPTIONS) -c filesystem.tlcc -o filesystem.o
