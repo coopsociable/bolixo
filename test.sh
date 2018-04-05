@@ -643,14 +643,26 @@ elif [ "$1" = "test-set_access" ] ; then # T: Assign ownership of a file or dire
 		exit 1
 	fi
 	$0 bod-client --testset_access "$1" --extra "$2" --extra2 "$3" --extra3 "$4" --extra4 "$5"
-elif [ "$1" = "test-verifysign" ] ; then # T: Verify the RSA signature of a message
+elif [ "$1" = "test-verifysign" ] ; then # T: Verify the RSA signature of a message [ nbrep http_nbrep ]
+	NBREP=1
+	HNBREP=1
+	if [ "$2" != "" ] ; then
+		NBREP=$2
+	fi
+	if [ "$3" != "" ] ; then
+		HNBREP=$3
+	fi
 	echo Sign a message for user admin/1
 	MSG=`./test.sh bo-keysd-control  sign 1 toto1alllllllllllllllllllllllllllllllllllllllllllll`
 	echo MSG=$MSG
 	echo Validate signature
 	./test.sh bod-client --testverifysign admin --extra "$MSG"
+	./bofs misc --nbrep $NBREP --verifysign --nickname admin --message "$MSG"
+	./bofs misc --nbrep $HNBREP --http_verifysign --nickname admin --message "$MSG"
 	echo Validate signature for modified message
 	./test.sh bod-client --testverifysign admin --extra "a $MSG"
+	./bofs misc --verifysign --nickname admin --message "a $MSG"
+	./bofs misc --http_verifysign --nickname admin --message "a $MSG"
 elif [ "$1" = "createsqlusers" ] ; then # db: Generates SQL to create users
 	TRLISQL=/tmp/files.sql
 	USERSQL=/tmp/users.sql

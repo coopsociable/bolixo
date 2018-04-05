@@ -33,7 +33,6 @@ using namespace std;
 #define bod_client_addfile_NOTNEED
 #define bod_client_modifyfile_NOTNEED
 #define bod_client_readfile_NOTNEED
-#define bod_client_verifysign_NOTNEED
 
 #include "proto/bod_client.protoch"
 
@@ -1392,6 +1391,11 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 	glocal int ret = -1;
 	glocal CONTEXT *ctx = &ctx;
 	glocal bool markview = false;
+	glocal bool verifysign = false;
+	glocal bool http_verifysign = false;
+	glocal const char *message = NULL;
+	glocal const char *nickname = NULL;
+	glocal unsigned nbrep=1;
 	glocal.ret = <call tlmpprogram>(argc,argv);
 	<f init>
 		setproginfo ("bomisc",VERSION
@@ -1401,6 +1405,12 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 			);
 		setgrouparg ("Main commands");
 		setarg ('m',"markview","Mark a file as viewed",glocal.markview,false);
+		setarg ('v',"verifysign","Verify a message signature",glocal.verifysign,false);
+		setarg ('h',"http_verifysign","Verify a message signature (webapi)",glocal.http_verifysign,false);
+		setgrouparg ("(http_)verifysign arguments");
+		setarg ('n',"nickname","User nickname who signed the message",glocal.nickname,false);
+		setarg ('M',"message","Message to verify",glocal.message,false);
+		setarg ('r',"nbrep","Number of repetition (performance test)",glocal.nbrep,false);
 		setgrouparg ("Options");
 	</f>
 	<f main>
@@ -1417,6 +1427,29 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 				</f>
 				</call>
 				if (glocal.ret != 0) break;
+			}
+		}
+		return glocal.ret;
+	</f>
+	<f main_noarg>
+		glocal int ret = -1;
+		if (glocal.verifysign){
+			for (unsigned i=0; i<glocal.nbrep; i++){
+				<call bod_client_verifysign>(glocal.ctx->con,glocal.nickname,glocal.message);
+				<f ok>
+					if (status == ERR_CODE_NONE) glocal.ret = 0;
+					printf ("\tverifysign: status=%d %s\n",status,msg);
+				</f>
+				</call>
+			}
+		}else if (glocal.http_verifysign){
+			for (unsigned i=0; i<glocal.nbrep; i++){
+				<call webapi_verifysign>(glocal.ctx->hcon,glocal.nickname,glocal.message);
+				<f ok>
+					if (status == ERR_CODE_NONE) glocal.ret = 0;
+					printf ("\thttp_verifysign: status=%d %s\n",status,msg);
+				</f>
+				</call>
 			}
 		}
 		return glocal.ret;
