@@ -368,32 +368,32 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 			id int primary key auto_increment,
 			ownerid int,
 			name varchar(100)
-		);
+		)engine=$ENGINE;
 		create unique index groups_owner on groups(ownerid,name);
 		create table group_members(
 			groupid int,
 			userid int,
 			role varchar(20) default null,
 			access char
-		);
+		)engine=$ENGINE;
 		create index group_members_id on group_members (groupid);
 		create table group_lists(
 			id int primary key auto_increment,
 			ownerid int,
 			name varchar(100)
-		);
+		)engine=$ENGINE;
 		create unique index group_lists_owner on group_lists(ownerid,name);
 		create table group_list_members(
 			group_list_id int,
 			groupid int,
 			defaultaccess char
-		);
+		)engine=$ENGINE;
 		create index group_list_members_id on group_list_members(group_list_id);
 		create table marks(
 			userid int,
 			itemid int,
 			modified datetime
-		);
+		)engine=$ENGINE;
 		create unique index marks_ids on marks(userid,itemid);
 			
 	EOF

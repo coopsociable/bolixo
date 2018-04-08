@@ -22,6 +22,7 @@ using namespace std;
 int main (int argc, char *argv[])
 {
 	glocal int ret = -1;
+	glocal unsigned nbrep=1;
 	glocal const char *control = "/var/run/bo-keysd.sock";
 	glocal.ret = <call tlmpprogram>(argc,argv);
 	<f init>
@@ -35,6 +36,8 @@ int main (int argc, char *argv[])
 			 "\tstatus\n"
 			);
 		setarg ('p',"control","Unix socket to reach keysd",glocal.control,false);
+		setgrouparg("tests");
+		setarg ('r',"nbrep","Number of repetition (performance test)",glocal.nbrep,false);
 	</f>
 	<f main>
 		glocal int ret = -1;
@@ -69,16 +72,18 @@ int main (int argc, char *argv[])
 				size_t last = glocal.content.size()-1;
 				if (glocal.content[last] != '\n') glocal.content += '\n';
 			}
-			<call bo_keysd_control_sign>(con,atoi(argv[1]),glocal.content);
-			<f ok>
-				if (status == ERR_CODE_NONE){
-					glocal.ret = 0;
-					printf ("%s------\n%s\n",glocal.content.c_str(),sign);
-				}else{
-					tlmp_error ("status %d: %s\n",status,msg);
-				}
-			</f>
-			</call>
+			for (unsigned i=0; i<glocal.nbrep; i++){
+				<call bo_keysd_control_sign>(con,atoi(argv[1]),glocal.content);
+				<f ok>
+					if (status == ERR_CODE_NONE){
+						glocal.ret = 0;
+						printf ("%s------\n%s\n",glocal.content.c_str(),sign);
+					}else{
+						tlmp_error ("status %d: %s\n",status,msg);
+					}
+				</f>
+				</call>
+			}
 		}else if (strcmp(argv[0],"setpassphrase")==0 && (argc == 1 || argc == 2)){
 			string pass;
 			if (argc == 2){

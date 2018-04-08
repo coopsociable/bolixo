@@ -57,6 +57,12 @@ elif [ "$1" = "sequence" ] ; then
 		./bofs -u $user groups --print-lists
 		./bofs -u $user groups --print-groups
 	done
+	$0 writemails $NB
+elif [ "$1" = "writemails" ] ; then
+	NB=$2
+	if [ "$NB" = "" ] ; then
+		NB=5
+	fi
 	for ((i=0; i<$NB; i++))
 	do
 		CONTENT=
