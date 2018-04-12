@@ -605,7 +605,11 @@ static int bofs_cat (CONTEXT &ctx, int argc, char *argv[])
 			char *argv[1] = {(char*)glocal.pipeto};
 			ret = <call bofs_split>(1,argv);
 			<f bo_file>
-				return bofs_write_bofile (*glocal.ctx,path,stdin,"cat");
+				int ret = -1;
+				if (glocal.ctx->login() != -1){
+					ret = bofs_write_bofile (*glocal.ctx,path,stdin,"cat");
+				}
+				return ret;
 			</f>
 			<f https_file>
 				return -1;
@@ -622,7 +626,11 @@ static int bofs_cat (CONTEXT &ctx, int argc, char *argv[])
 		if (glocal.threshold != NULL) glocal.ctx->threshold = glocal.threshold;
 		ret = <call bofs_split>(argc,argv);
 		<f bo_file>
-			return bofs_cat_bofile (*glocal.ctx,path,stdout);
+			int ret = -1;
+			if (glocal.ctx->login() != -1){
+				ret = bofs_cat_bofile (*glocal.ctx,path,stdout);
+			}
+			return ret;
 		</f>
 		<f https_file>
 			return -1;
@@ -1285,8 +1293,12 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 	glocal bool newmsg = false;
 	glocal bool reply = false;
 	glocal bool listmsgs = false;
+	glocal bool shortmsg = false;
+	glocal bool listshortmsgs = false;
 
 	glocal vector<string> recipients;
+	glocal const char *groupname = NULL;
+	glocal const char *filecontent = NULL;
 	glocal const char *manager = NULL;
 	glocal const char *project = NULL;
 	glocal const char *role = "";
@@ -1306,12 +1318,16 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 		setarg ('i',"listmsgs","List messages in all inboxes",glocal.listmsgs,false);
 		setarg ('n',"newmsg","Send a message",glocal.newmsg,false);
 		setarg ('r',"reply","Reply to a message",glocal.reply,false);
+		setarg ('t',"shortmsg","Send a short message to a group",glocal.shortmsg,false);
+		setarg ('s',"listshortmsgs","List short messages",glocal.listshortmsgs,false);
 		setgrouparg ("Options");
+		setarg ('G',"groupname","Group name for short message",glocal.groupname,false);
 		setarg ('M',"manager","Manager or owner of the inbox",glocal.manager,false);
 		setarg ('P',"project","Target inbox or project",glocal.project,false);
 		setarg ('R',"role","Target role",glocal.role,false);
 		setarg ('D',"recipient","Recipient of the message",glocal.recipients,false);
 
+		setarg ('F',"filecontent","File holding a message content",glocal.filecontent,false);
 		setarg ('I',"msgid","Message ID we are replying to",glocal.msgid,false);
 		setarg ('T',"title","Title of the message",glocal.title,false);
 		setarg ('C',"content","body of the message",glocal.content,false);
@@ -1404,6 +1420,45 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 				}else{
 					bofs_error ("msgs",false,"When sending a message, you must specify manager,project or recipients");
 				}
+			}else if (glocal.shortmsg){
+				if (glocal.groupname == NULL){
+					tlmp_error ("groupname required for talkmsg\n");
+				}else{
+					glocal FILE *fcontent = NULL;
+					bool more = false;
+					BOB_TYPE content;
+					char buf[50000];
+					if (glocal.content != NULL){
+						content.setbuffer (glocal.content,strlen(glocal.content),false);
+					}else if (glocal.filecontent != NULL){
+						glocal.fcontent = fopen (glocal.filecontent,"r");
+						if (glocal.fcontent == NULL){
+							tlmp_error ("msgs: Can't open filecontent %s (%s)\n",glocal.filecontent,strerror(errno));
+						}else{
+							size_t nb = fread (buf,1,sizeof(buf),glocal.fcontent);
+							content.setbuffer (buf,nb,true);
+							if (nb == sizeof(buf)) more = true;
+						}
+					}else{
+						tlmp_error ("msgs: You must specify either --content or --filecontent option\n");
+					}
+					if (content.getsize() > 0){
+						<call bod_client_sendtalk>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner,glocal.groupname,content,more);
+						<f ok>
+							if (!success){
+								bofs_error ("msgs",internal_error,msg);
+							}else{
+								if (handle[0] != '\0'){
+									glocal.ret = bofs_cat_rest (*glocal.ctx, handle, glocal.fcontent);
+								}else{
+									glocal.ret = 0;
+								}
+							}
+						</f>
+						</call>
+					}
+					if (glocal.fcontent != NULL) fclose (glocal.fcontent);
+				}
 			}else if (glocal.attach){
 			}else if (glocal.listmsgs){
 				glocal bool stop = false;
@@ -1419,6 +1474,26 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 							for (auto &m:messages){
 								const char *markread = strcmp(m.viewed,m.submit)==0 ? "viewed" : "      ";
 								printf ("%-10s %-10s %-10s %-10s %-30s %-20s %s %s\n",m.from,m.manager,m.project,m.role,m.uuid,m.submit,markread,m.title);
+							}
+							glocal.stop = messages.size() < glocal.chunk;
+							glocal.offset += glocal.chunk;
+						}
+					</f>
+					</call>
+				}
+			}else if (glocal.listshortmsgs){
+				glocal bool stop = false;
+				glocal unsigned offset=0;
+				glocal unsigned chunk=100;
+				while (!glocal.stop){
+					<call bod_client_list_talk>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner,glocal.offset,glocal.chunk);
+					<f ok>
+						if (!success){
+							bofs_error ("msgs",internal_error,msg);
+							glocal.stop = true;
+						}else{
+							for (auto &m:messages){
+								printf ("%c %-10s %-30s %-20s %7u\n",tbftype[m.file_type],m.from,m.uuid,m.submit,m.size);
 							}
 							glocal.stop = messages.size() < glocal.chunk;
 							glocal.offset += glocal.chunk;
@@ -1472,6 +1547,68 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 					</f>
 					</call>
 				}
+			}else if (glocal.newmsg){
+				if (glocal.content == NULL){
+					bofs_error ("msgs",false,"Missing content");
+				}else if (glocal.recipients.size() > 0){
+					<call webapi_sendmsg>(glocal.ctx->hcon,glocal.ctx->hsessionid,glocal.owner
+						,glocal.recipients,glocal.title,glocal.content);
+					<f ok>
+						if (!success){
+							bofs_error ("msgs",internal_error,msg);
+						}else{
+							printf ("msgid: %s\n",msgid);
+							glocal.ret = 0;
+						}
+					</f>
+					</call>
+				}else if (glocal.project != NULL && glocal.manager != NULL){
+					<call webapi_sendmsg_project>(glocal.ctx->hcon,glocal.ctx->hsessionid,glocal.owner
+						,glocal.manager,glocal.project,glocal.role,glocal.title,glocal.content);
+					<f ok>
+						if (!success){
+							bofs_error ("msgs",internal_error,msg);
+						}else{
+							printf ("msgid: %s\n",msgid);
+							glocal.ret = 0;
+						}
+					</f>
+					</call>
+				}else{
+					bofs_error ("msgs",false,"When sending a message, you must specify manager,project or recipients");
+				}
+			}else if (glocal.reply){
+				if (glocal.content == NULL){
+					bofs_error ("msgs",false,"Missing content");
+				}else if (glocal.msgid == NULL){
+					bofs_error ("msgs",false,"You must specify the message ID you are replying to");
+				}else if (glocal.recipients.size() > 0){
+					<call webapi_replymsg>(glocal.ctx->hcon,glocal.ctx->hsessionid,glocal.owner
+						,glocal.msgid,glocal.recipients,glocal.title,glocal.content);
+					<f ok>
+						if (!success){
+							bofs_error ("msgs",internal_error,msg);
+						}else{
+							printf ("replyid: %s\n",replyid);
+							glocal.ret = 0;
+						}
+					</f>
+					</call>
+				}else if (glocal.project != NULL && glocal.manager != NULL){
+					<call webapi_replymsg_project>(glocal.ctx->hcon,glocal.ctx->hsessionid,glocal.owner
+						,glocal.manager,glocal.project,glocal.role,glocal.msgid,glocal.title,glocal.content);
+					<f ok>
+						if (!success){
+							bofs_error ("msgs",internal_error,msg);
+						}else{
+							printf ("replyid: %s\n",replyid);
+							glocal.ret = 0;
+						}
+					</f>
+					</call>
+				}else{
+					bofs_error ("msgs",false,"When sending a message, you must specify manager,project or recipients");
+				}
 			}else{
 				usage();
 			}
@@ -1489,7 +1626,6 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 	glocal CONTEXT *ctx = &ctx;
 	glocal bool markview = false;
 	glocal bool verifysign = false;
-	glocal bool http_verifysign = false;
 	glocal const char *message = NULL;
 	glocal const char *nickname = NULL;
 	glocal unsigned nbrep=1;
@@ -1503,7 +1639,6 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 		setgrouparg ("Main commands");
 		setarg ('m',"markview","Mark a file as viewed",glocal.markview,false);
 		setarg ('v',"verifysign","Verify a message signature",glocal.verifysign,false);
-		setarg ('h',"http_verifysign","Verify a message signature (webapi)",glocal.http_verifysign,false);
 		setgrouparg ("(http_)verifysign arguments");
 		setarg ('n',"nickname","User nickname who signed the message",glocal.nickname,false);
 		setarg ('M',"message","Message to verify",glocal.message,false);
@@ -1532,21 +1667,21 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 		glocal int ret = -1;
 		if (glocal.verifysign){
 			for (unsigned i=0; i<glocal.nbrep; i++){
-				<call bod_client_verifysign>(glocal.ctx->con,glocal.nickname,glocal.message);
-				<f ok>
-					if (status == ERR_CODE_NONE) glocal.ret = 0;
-					printf ("\tverifysign: status=%d %s\n",status,msg);
-				</f>
-				</call>
-			}
-		}else if (glocal.http_verifysign){
-			for (unsigned i=0; i<glocal.nbrep; i++){
-				<call webapi_verifysign>(glocal.ctx->hcon,glocal.nickname,glocal.message);
-				<f ok>
-					if (status == ERR_CODE_NONE) glocal.ret = 0;
-					printf ("\thttp_verifysign: status=%d %s\n",status,msg);
-				</f>
-				</call>
+				if (glocal.ctx->is_internal()){
+					<call bod_client_verifysign>(glocal.ctx->con,glocal.nickname,glocal.message);
+					<f ok>
+						if (status == ERR_CODE_NONE) glocal.ret = 0;
+						printf ("\tverifysign: status=%d %s\n",status,msg);
+					</f>
+					</call>
+				}else{
+					<call webapi_verifysign>(glocal.ctx->hcon,glocal.nickname,glocal.message);
+					<f ok>
+						if (status == ERR_CODE_NONE) glocal.ret = 0;
+						printf ("\thttp_verifysign: status=%d %s\n",status,msg);
+					</f>
+					</call>
+				}
 			}
 		}
 		return glocal.ret;

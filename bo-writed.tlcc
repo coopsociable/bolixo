@@ -508,20 +508,70 @@ static void bo_writed_sendmsg (
 }
 </mod>
 
-static FILE_TYPE bo_writed_file_type (PARAM_STRING name)
+static FILE_TYPE bo_writed_file_type (PARAM_STRING name, const BOB_TYPE &content)
 {
 	FILE_TYPE file_type = FILE_UNKNOWN;
-	const char *ext = strrchr(name.ptr,'.');
-	if (ext != NULL){
-		if (strcasecmp(ext,".mp3")==0 || strcasecmp(ext,".wav")==0 || strcasecmp(ext,".ogg")==0){
+	if (content.getsize() >= 3){
+		const unsigned char *buf = (const unsigned char*) content.getbuffer();
+tlmp_error ("%02x %02x %02x\n",buf[0],buf[1],buf[2]);
+		if (buf[0] == 0x49 && buf[1] == 0x44 && buf[2] == 0x33){
 			file_type = FILE_SOUND;
-		}else if (strcasecmp(ext,".mp4")==0){
-			file_type = FILE_VIDEO;
-		}else if (strcasecmp(ext,".gif")==0 || strcasecmp(ext,".png")==0 || strcasecmp(ext,".jpeg")==0){
-			file_type = FILE_IMAGE;
+		}
+	}
+	if (file_type == FILE_UNKNOWN){
+		const char *ext = strrchr(name.ptr,'.');
+		if (ext != NULL){
+			if (strcasecmp(ext,".mp3")==0 || strcasecmp(ext,".wav")==0 || strcasecmp(ext,".ogg")==0){
+				file_type = FILE_SOUND;
+			}else if (strcasecmp(ext,".mp4")==0){
+				file_type = FILE_VIDEO;
+			}else if (strcasecmp(ext,".gif")==0 || strcasecmp(ext,".png")==0 || strcasecmp(ext,".jpeg")==0){
+				file_type = FILE_IMAGE;
+			}
 		}
 	}
 	return file_type;
+}
+
+static int bo_writed_addfile_bob (
+	const char *sessionid,
+	PARAM_STRING name,
+	ENTRY_TYPE type,
+	int dirid,
+	unsigned userid,
+	const BOB_TYPE &content,
+	string &fileuuid,
+	string &msg,
+	string &handle)
+{
+	int fileid = fs_newid (userid,0,'r',msg,fileuuid);
+	if (fileid != -1){
+		const char *basename = name.ptr;
+		if (basename == NULL) basename = fileuuid.c_str();
+		char now[20];
+		fs_set_now(now);
+		FILE_TYPE file_type = bo_writed_file_type (basename,content);
+		if (fs_insert_entry(dirid,fileid,now,basename,type)==-1){
+			msg = "Internal error (dirs_files table)";
+		}else if (sql_action("insert into files (id,modified,filetype,content) values (%d,'%s',%u,NULL)"
+			,fileid,now,file_type)==-1){
+			msg = "Internal error (files table)";
+		}else{
+			FILE *fout = fs_alloc_file_handle (fileid,now,"w",handle,sessionid);
+			if (fout == NULL){
+				tlmp_error ("Can't open file (%s)\n",strerror(errno));
+				msg = "Internal error (1-writing data)";
+			}else{
+				size_t size = content.getsize();
+				if (fwrite (content.getbuffer(),1,size,fout)!=size){
+					msg = "Internal error (2-writing data)";
+				}else{
+					msg.clear();
+				}
+			}
+		}
+	}
+	return fileid;
 }
 <mod>
 int main (int argc, char *argv[])
@@ -1040,29 +1090,9 @@ int main (int argc, char *argv[])
 					}else{
 						string msg;
 						string handle;
-						int fileid = fs_newid (entry.userid,msg);
-						if (fileid != -1){
-							char now[20];
-							fs_set_now(now);
-							FILE_TYPE file_type = bo_writed_file_type (entry.basename);
-							if (fs_insert_file(entry.dirid,fileid,now,entry.basename)==-1){
-								msg = "Internal error (dirs_files table)";
-							}else if (sql_action("insert into files (id,modified,filetype,content) values (%d,'%s',%u,NULL)"
-								,fileid,now,file_type)==-1){
-								msg = "Internal error (files table)";
-							}else{
-								FILE *fout = fs_alloc_file_handle (fileid,now,"w",handle,sessionid);
-								if (fout == NULL){
-									tlmp_error ("Can't open file (%s)\n",strerror(errno));
-									msg = "Internal error (1-writing data)";
-								}else{
-									size_t size = content.getsize();
-									if (fwrite (content.getbuffer(),1,size,fout)!=size){
-										msg = "Internal error (2-writing data)";
-									}
-								}
-							}
-						}
+						string msgid;
+						bo_writed_addfile_bob (sessionid,entry.basename,ENTRY_FILE,entry.dirid,entry.userid,content
+								,msgid,msg,handle);
 						if (msg.size() > 0){
 							rep_addfile_bob (false,"",msg);
 							fs_delete_handle(handle);
@@ -1209,7 +1239,7 @@ int main (int argc, char *argv[])
 						}else{
 							char now[20];
 							fs_set_now(now);
-							FILE_TYPE file_type = bo_writed_file_type (entry.basename);
+							FILE_TYPE file_type = bo_writed_file_type (entry.basename,content);
 							if (fs_insert_file (entry.dirid,entry.entryid,now,entry.basename)==-1){
 								msg = "Internal error (dirs_files table)";
 							}else if (sql_action("insert into files (id,modified,filetype,content) values (%d,'%s',%u,NULL)"
@@ -1601,6 +1631,58 @@ int main (int argc, char *argv[])
 					}
 				</f>
 				<f sendattach> // sessionid owner msgid content:o more:b = success:b msg handle
+				</f>
+				<f sendtalk>	// sessionid owner groupname content:o more:b = success:b msg handle
+					glocal const char *sessionid = sessionid;
+					glocal const BOB_TYPE *content = &content;
+					glocal string username;
+					glocal string handle;
+					glocal string msg;
+					glocal int fileid = -1;
+					glocal string msgid;
+					glocal char now[20];
+					fs_set_now(glocal.now);
+					glocal unsigned userid = bo_writed_get_group_owner (glocal.con, sessionid, owner, glocal.username, glocal.msg);
+					if (glocal.userid > 0){
+						<call sql_query>("select id2name.userid,id2name.name from groups"
+							" join group_members on groups.id=group_members.groupid"
+							" join id2name on id2name.userid=group_members.userid"
+							" where groups.ownerid=%u and groups.name='%s'",glocal.userid,groupname);
+						<f empty>
+							glocal.msg = "Unknown group name";
+						</f>
+						<f dostart>
+							int dirid = fs_find_short_inbox (glocal.userid,glocal.username,true,glocal.msg);
+							if (dirid != -1){
+								glocal.fileid  = bo_writed_addfile_bob (glocal.sessionid,NULL,ENTRY_MSG,dirid,glocal.userid,*glocal.content
+									,glocal.msgid,glocal.msg,glocal.handle);
+							}
+						</f>
+						<f onerow>
+							unsigned userid = atoi(row[0]);
+							if (userid != glocal.userid){
+								int dirid = fs_find_short_inbox (userid,row[1],true,glocal.msg);
+								if (dirid == -1){
+									glocal.msg = string_f("Can't access short inbox for user %s",row[1]);
+									end = true;
+								}else if (fs_insert_entry(dirid,glocal.fileid,glocal.now,glocal.msgid,ENTRY_MSG)==-1){
+									glocal.msg = "Internal error (dirs_files table)";
+									end = true;
+								}
+							}
+						</f>
+						</call>
+					}
+					if (glocal.msg.size() > 0){
+						rep_sendtalk (false,glocal.msg,"");
+						fs_delete_handle(glocal.handle);
+					}else{
+						if (!more){
+							fs_delete_handle(glocal.handle);
+							glocal.handle.clear();
+						}
+						rep_sendtalk (true,glocal.msg,glocal.handle);
+					}
 				</f>
 				<f test>
 					glocal bool bdtrli=false;
