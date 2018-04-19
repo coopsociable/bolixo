@@ -476,41 +476,49 @@ static int trlid_main (
 				glocal const char *sessionid = sessionid;
 				BOB_TYPE empty;
 				if (bod_findentry (glocal.con_sess,sessionid,name,glocal.entry,threshold)==-1){
-					rep_readfile_bob (false,glocal.entry.msg,empty,"",false);
+					rep_readfile_bob (false,glocal.entry.msg,empty,"",false,0);
 				}else{
 					if (!bolixo_isfile(glocal.entry.type)){
-						rep_readfile_bob (false,"Entry is not a file",empty,"",false);
+						rep_readfile_bob (false,"Entry is not a file",empty,"",false,0);
 					}else{
 						<call sql_query>("select content from files where id=%d and modified='%s'"
 							,glocal.entry.entryid,glocal.entry.modified.c_str());
 						<f onerow>
 							if (row[0] != NULL){
-								BOB_TYPE bob (row[0],strlen(row[0]),false);
-								glocal.bod_client.rep_readfile_bob (true,"",bob,"",false);
+								unsigned len = strlen(row[0]);
+								BOB_TYPE bob (row[0],len,false);
+								glocal.bod_client.rep_readfile_bob (true,"",bob,"",false,len);
 							}else{
 								string handle;
 								FILE *fin = fs_alloc_file_handle (glocal.entry.entryid,glocal.entry.modified,"r",handle,glocal.sessionid);
 								if (fin == NULL){
 									glocal.bod_client.rep_readfile_bob (false,"Internal error, reading content file"
-										,BOB_TYPE(),"",false);
+										,BOB_TYPE(),"",false,0);
 									fs_delete_handle (handle);
 								}else{
-									char buf[50000];
-									int len = fread (buf,1,50000,fin);
-									BOB_TYPE bob (buf,len,false);
-									bool more = len==50000;
-									if (!more){
-										fs_delete_handle(handle);
-										handle.clear();
+									struct stat64 st;
+									if (fstat64(fileno(fin),&st)==-1){
+										glocal.bod_client.rep_readfile_bob (false,"Internal error, getting file size"
+											,BOB_TYPE(),"",false,0);
+										fs_delete_handle (handle);
+									}else{
+										char buf[50000];
+										int len = fread (buf,1,50000,fin);
+										BOB_TYPE bob (buf,len,false);
+										bool more = len==50000;
+										if (!more){
+											fs_delete_handle(handle);
+											handle.clear();
+										}
+										glocal.bod_client.rep_readfile_bob (true,"Ok"
+											,bob,handle,more,st.st_size);
 									}
-									glocal.bod_client.rep_readfile_bob (true,"Ok"
-										,bob,handle,more);
 								}
 							}
 						</f>
 						<f empty>
 							glocal.bod_client.rep_readfile_bob (false,"Internal error, reading table files"
-								,BOB_TYPE(),"",false);
+								,BOB_TYPE(),"",false,0);
 						</f>
 						</call>
 					}
@@ -900,10 +908,12 @@ static int trlid_main (
 							glocal.msg = string_f("manager %s unknown",manager);
 							break;
 						}else{
+							INBOX tmp = inb;
 							for (auto role:roles){
 								dirid = fs_find_project_inbox(ownerid, listid, manager,project,role,false,glocal.msg);
 								if (dirid != -1){
-									glocal.id2prj[dirid] = inb;
+									tmp.role = role;
+									glocal.id2prj[dirid] = tmp;	//inb;
 									dirids += string_f ("%s%d",sep,dirid);
 									sep = ",";
 								}
@@ -1032,7 +1042,7 @@ static int trlid_main (
 					int dirid = fs_find_short_inbox (userid,username,false,glocal.msg);
 					glocal.msg.clear();
 					if (dirid != -1){
-						<call sql_query>("select dirs_content.name,dirs_content.modified,id2name.name,files.filetype,dirs_content.itemid"
+						<call sql_query>("select dirs_content.name,dirs_content.modified,id2name.name,files.filetype,dirs_content.itemid,files.content"
 							" from dirs_content"
 							" join files on files.id = dirs_content.itemid and files.modified = dirs_content.modified"
 							" join ids on dirs_content.itemid = ids.id"
@@ -1046,7 +1056,12 @@ static int trlid_main (
 							msg.submit = modified;
 							msg.from = row[2];
 							msg.file_type = row[3] == NULL ? FILE_UNKNOWN : (FILE_TYPE)atoi(row[3]);
-							msg.size = fs_get_filesize(atoi(row[4]),modified);
+							if (row[5] != NULL){
+								msg.content = row[5];
+								msg.size = msg.content.size();
+							}else{
+								msg.size = fs_get_filesize(atoi(row[4]),modified);
+							}
 							glocal.msgs.push_back(msg);
 						</f>
 						</call>

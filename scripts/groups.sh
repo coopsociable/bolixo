@@ -65,30 +65,37 @@ elif [ "$1" = "writemails" ] ; then
 	fi
 	for ((i=0; i<$NB; i++))
 	do
-		CONTENT=
+		>/tmp/mail.txt
 		for ((j=0; j<20; j++))
 		do
-			CONTENT="$CONTENT\nThis is the body number $i,$j"
+			echo "This is the body number $i,$j" >>/tmp/mail.txt
 		done
-		MSGID=`./bofs -u jacques-B msgs -n -D jacques-A -D jacques-C -T "This is title number $i" -C "$CONTENT" | (read a b; echo $b)`
+		MSGID=`./bofs -u jacques-B msgs -n -D jacques-A -D jacques-C -T "This is title number $i" -F /tmp/mail.txt | (read a b; echo $b)`
 		echo msgid: $MSGID
-		./bofs -u jacques-A msgs -r -I $MSGID -D jacques-C -D jacques-B -T "re A: This is title number $i" -C "$CONTENT"
-		./bofs -u jacques-C msgs -r -I $MSGID -D jacques-A -D jacques-B -T "re C: This is title number $i" -C "$CONTENT"
-		MSGID=`./bofs -u jacques-A msgs -n -M jacques-A -P Alist1 -T "A A/1 This is title number $i" -C "$CONTENT" | (read a b; echo $b)`
+		./bofs -u jacques-A msgs -r -I $MSGID -D jacques-C -D jacques-B -T "re A: This is title number $i" -F /tmp/mail.txt
+		./bofs -u jacques-C msgs -r -I $MSGID -D jacques-A -D jacques-B -T "re C: This is title number $i" -F /tmp/mail.txtx
+		MSGID=`./bofs -u jacques-A msgs -n -M jacques-A -P Alist1 -T "A A/1 This is title number $i" -F /tmp/mail.txt | (read a b; echo $b)`
 		echo msgid: $MSGID
-		./bofs -u jacques-A msgs -r -I $MSGID -M jacques-A -P Alist1 -T "re: A A/1 This is title number $i" -C "$CONTENT"
-		./bofs -u jacques-B msgs -r -I $MSGID -M jacques-A -P Alist1 -T "re: A A/1 This is title number $i" -C "$CONTENT"
-		./bofs -u jacques-C msgs -r -I $MSGID -M jacques-A -P Alist1 -T "re: A A/1 This is title number $i" -C "$CONTENT"
-		./bofs -u jacques-A msgs -n -M jacques-A -P Alist1 -R dba -T "dba A A/1 This is title number $i" -C "$CONTENT"
-		./bofs -u jacques-A msgs -n -M jacques-A -P Alonglist2 -T "A A/2 This is title number $i" -C "$CONTENT"
-		./bofs -u jacques-A msgs -n -M jacques-A -P Alonglist2 -R dba -T "dba A A/2 This is title number $i" -C "$CONTENT"
-		./bofs -u jacques-B msgs -n -M jacques-A -P Alist1 -T "B A/1 This is title number $i" -C "$CONTENT"
-		./bofs -u jacques-B msgs -n -M jacques-A -P Alonglist2 -T "B A/2 This is title number $i" -C "$CONTENT"
-		./bofs -u jacques-C msgs -n -M jacques-A -P Alist1 -T "C A/1 This is title number $i" -C "$CONTENT"
-		./bofs -u jacques-C msgs -n -M jacques-A -P Alonglist2 -T "C A/2 This is title number $i" -C "$CONTENT"
-		./bofs -u jacques-A msgs -n -M jacques-B -P Blist1 -T "A B/1 This is title number $i" -C "$CONTENT"
-		./bofs -u jacques-A msgs -n -M jacques-B -P Blist1 -R dba -T "dba A B/1 This is title number $i" -C "$CONTENT"
+		./bofs -u jacques-A msgs -r -I $MSGID -M jacques-A -P Alist1 -T "re: A A/1 This is title number $i" -F /tmp/mail.txt
+		./bofs -u jacques-B msgs -r -I $MSGID -M jacques-A -P Alist1 -T "re: A A/1 This is title number $i" -F /tmp/mail.txt
+		./bofs -u jacques-C msgs -r -I $MSGID -M jacques-A -P Alist1 -T "re: A A/1 This is title number $i" -F /tmp/mail.txt
+		./bofs -u jacques-A msgs -n -M jacques-A -P Alist1 -R dba -T "dba A A/1 This is title number $i" -F /tmp/mail.txt
+		./bofs -u jacques-A msgs -n -M jacques-A -P Alonglist2 -T "A A/2 This is title number $i" -F /tmp/mail.txt
+		./bofs -u jacques-A msgs -n -M jacques-A -P Alonglist2 -R dba -T "dba A A/2 This is title number $i" -F /tmp/mail.txt
+		./bofs -u jacques-B msgs -n -M jacques-A -P Alist1 -T "B A/1 This is title number $i" -F /tmp/mail.txt
+		./bofs -u jacques-B msgs -n -M jacques-A -P Alonglist2 -T "B A/2 This is title number $i" -F /tmp/mail.txt
+		./bofs -u jacques-C msgs -n -M jacques-A -P Alist1 -T "C A/1 This is title number $i" -F /tmp/mail.txt
+		./bofs -u jacques-C msgs -n -M jacques-A -P Alonglist2 -T "C A/2 This is title number $i" -F /tmp/mail.txt
+		./bofs -u jacques-A msgs -n -M jacques-B -P Blist1 -T "A B/1 This is title number $i" -F /tmp/mail.txt
+		./bofs -u jacques-A msgs -n -M jacques-B -P Blist1 -R dba -T "dba A B/1 This is title number $i" -F /tmp/mail.txt
 	done
+	./bofs msgs -t -G Agroup1 -C "Are you ready for lunch ?"
+	./bofs -u jacques-B msgs -t -G Bgroup1 -C "Not possible today"
+	./bofs msgs -t -G Agroup1 -F /tmp/file.mp3
+	./bofs msgs -t -G Agroup1 -F /tmp/file.jpg
+	./bofs msgs -t -G Agroup1 -F /tmp/file.gif
+	./bofs msgs -t -G Agroup1 -F /tmp/file.png
+	./bofs msgs -t -G Agroup1 -F /tmp/file.mp4
 elif [ "$1" = "config" ] ; then
 	./test.sh files <<-EOF
 		insert into groups (id,name) values (100,'project1'), (101,'project2'), (102,'project3');

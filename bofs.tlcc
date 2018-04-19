@@ -21,6 +21,7 @@
 #include <string>
 #include <vector>
 #include <trlitool.h>
+#define DEFINE_TBFTYPE
 #include "bolixo.h"
 
 using namespace std;
@@ -39,8 +40,6 @@ using namespace std;
 #define webapi_test_NOTNEED
 #define webapi_addfile_NOTNEED
 #define webapi_addfile_bob_NOTNEED
-#define webapi_appendfile_NOTNEED
-#define webapi_delfile_NOTNEED
 #define webapi_modifyfile_NOTNEED
 #define webapi_modifyfile_bob_NOTNEED
 #define webapi_rename_NOTNEED
@@ -48,8 +47,6 @@ using namespace std;
 #define webapi_readfile_NOTNEED
 #define webapi_readfile_bob_NOTNEED
 #define webapi_readmore_NOTNEED
-#define webapi_mkdir_NOTNEED
-#define webapi_rmdir_NOTNEED
 #define webapi_set_access_NOTNEED
 #define webapi_markview_NOTNEED
 #include "proto/webapi.protoch"
@@ -172,23 +169,19 @@ struct CONTEXT{
 	}
 	int login(){
 		int ret = -1;
-		if (sessionid.size()>0){
+		if (sessionid.size()>0 || hsessionid.size()>0){
 			ret = 0;
-		}else{
+		}else if (is_internal()){
 			ret = bofs_login (con,email,password,sessionid);
 			if (ret == -1) tlmp_error ("bod_login failed\n");
-		}
-		return ret;
-	}
-	int hlogin(){
-		int ret = -1;
-		if (hsessionid.size()>0){
-			ret = 0;
 		}else{
 			ret = bofs_login (hcon,email,password,hsessionid);
 			if (ret == -1) tlmp_error ("bod_login failed\n");
 		}
 		return ret;
+	}
+	int hlogin(){
+		return login();
 	}
 	bool is_internal(){
 		return con.port.size() > 0;
@@ -198,20 +191,20 @@ struct CONTEXT{
 
 #define _TLMP_bofs_split
 struct _F_bofs_split {
-	#define _F_bofs_split_bo_file(x) int x bo_file(const char *path)
+	#define _F_bofs_split_bo_file(x) int x bo_file(CONTEXT &ctx, const char *path)
 	virtual _F_bofs_split_bo_file( );
-	#define _F_bofs_split_https_file(x) int x https_file(const char *path, const char *host, const char *port, bool use_ssl)
+	#define _F_bofs_split_https_file(x) int x https_file(CONTEXT &ctx, const char *path, const char *host, const char *port, bool use_ssl)
 	virtual _F_bofs_split_https_file( );
 	#define _F_bofs_split_local_file(x) int x local_file(const char *path)
 	virtual _F_bofs_split_local_file( );
 };
 
-int _F_bofs_split::bo_file(const char *path)
+int _F_bofs_split::bo_file(CONTEXT &ctx, const char *path)
 {
 	tlmp_error ("Bolixo file %s not processed\n",path);
 	return -1;
 }
-int _F_bofs_split::https_file(const char *path, const char *host, const char *port, bool use_ssl)
+int _F_bofs_split::https_file(CONTEXT &ctx, const char *path, const char *host, const char *port, bool use_ssl)
 {
 	tlmp_error ("Https file %s not processed\n",path);
 	return -1;
@@ -241,26 +234,38 @@ static int bofs_splithttp (const char *line, string &host, string &port, string 
 }
 	
 	
-static int bofs_split (_F_bofs_split &c, int argc, char *argv[])
+static int bofs_split (_F_bofs_split &c, CONTEXT &ctx, int argc, char *argv[])
 {
 	int ret = 0;
 	for (int i=0; ret == 0 && i<argc; i++){
 		const char *arg = argv[i];
 		if (strncmp(arg,"bo://",5)==0){
-			ret = c.bo_file (arg+4);
+			if (ctx.login() != -1){
+				ret = c.bo_file (ctx,arg+4);
+			}
 		}else if (strncmp(arg,"https://",8)==0){
 			string host,port,path;
 			if (bofs_splithttp(arg+8,host,port,path)==-1){
 				ret = -1;
 			}else{
-				ret = c.https_file (path.c_str(),host.c_str(),port.c_str(),true);
+				ctx.hcon.host = host;
+				ctx.hcon.port = port;
+				ctx.hcon.use_ssl = true;
+				if (ctx.hlogin()!=-1){
+					ret = c.https_file (ctx,path.c_str(),host.c_str(),port.c_str(),true);
+				}
 			}
 		}else if (strncmp(arg,"http://",7)==0){
 			string host,port,path;
 			if (bofs_splithttp(arg+7,host,port,path)==-1){
 				ret = -1;
 			}else{
-				ret = c.https_file (path.c_str(),host.c_str(),port.c_str(),false);
+				ctx.hcon.host = host;
+				ctx.hcon.port = port;
+				ctx.hcon.use_ssl = false;
+				if (ctx.hlogin()!=-1){
+					ret = c.https_file (ctx,path.c_str(),host.c_str(),port.c_str(),false);
+				}
 			}
 		}else{
 			ret = c.local_file (arg);
@@ -344,8 +349,7 @@ static int bofs_stat (
 	type = file.type;
 	return ret;
 }
-static char tbtype[]={' ','_','D','F','M','C'};
-static char tbftype[]={'?','T','S','I','V'};
+
 static void bofs_printdir (bool opt_long, const vector<FILEINFO_receive> &files)
 {
 	if (opt_long){
@@ -363,7 +367,7 @@ static void bofs_printdir (bool opt_long, const vector<FILEINFO_receive> &files)
 				if (r==1){
 					const char *listmode = f.listmode;
 					if (listmode[0] == '\0') listmode = " ";
-					printf ("\t%c%c   %s   %s   %*s/%-*s:%s   %*u   %-*s  %s\n"
+					printf ("\t%c%s   %s   %s   %*s/%-*s:%s   %*u   %-*s  %s\n"
 						,tbtype[f.type],tbftype[f.file_type]
 						,f.eventdate,f.modified
 						,max_owner,f.owner,max_members,f.listname,listmode,max_size,f.size
@@ -385,7 +389,7 @@ static int bofs_printonefile (CONTEXT &ctx, bool opt_long, bool https, const cha
 		ret = -1;
 	}else{
 		if (opt_long){
-			printf ("\t%c%c   %s   %s   %s/%s:%s   %u   %s  %s\n"
+			printf ("\t%c%s   %s   %s   %s/%s:%s   %u   %s  %s\n"
 				,tbtype[file.type],tbftype[file.file_type]
 				,file.eventdate.c_str(),file.modified.c_str()
 				,file.owner.c_str(),file.listname.c_str(),file.listmode.c_str()
@@ -418,31 +422,29 @@ static int bofs_ls (CONTEXT &ctx, int argc, char *argv[])
 	<f main>
 		int ret = 0;
 		if (glocal.threshold != NULL) glocal.ctx->threshold = glocal.threshold;
-		ret = <call bofs_split>(argc,argv);
+		ret = <call bofs_split>(*glocal.ctx,argc,argv);
 		<f bo_file>
 			glocal int ret = 0;
 			glocal const char *path = path;
 			glocal bool stop = false;
 			unsigned offset = 0;
-			if (glocal.ctx->login()!=-1){
-				while (!glocal.stop){
-					<call bod_client_listdir> (glocal.ctx->con,glocal.ctx->sessionid,path,glocal.ctx->threshold,glocal.opt_history,offset,500);
-					<f ok>
-						if (!success){
-							if (internal_error){
-								bofs_error ("ls",true,"");
-							}else{
-								glocal.ret = bofs_printonefile(*glocal.ctx,glocal.opt_long,false,glocal.path);
-							}
-							glocal.stop = true;
+			while (!glocal.stop){
+				<call bod_client_listdir> (ctx.con,ctx.sessionid,path,ctx.threshold,glocal.opt_history,offset,500);
+				<f ok>
+					if (!success){
+						if (internal_error){
+							bofs_error ("ls",true,"");
 						}else{
-							bofs_printdir (glocal.opt_long,files);
-							glocal.stop = files.size() < 500;
+							glocal.ret = bofs_printonefile(*glocal.ctx,glocal.opt_long,false,glocal.path);
 						}
-					</f>
-					</call>
-					offset += 500;
-				}
+						glocal.stop = true;
+					}else{
+						bofs_printdir (glocal.opt_long,files);
+						glocal.stop = files.size() < 500;
+					}
+				</f>
+				</call>
+				offset += 500;
 			}
 			return glocal.ret;
 		</f>
@@ -452,29 +454,23 @@ static int bofs_ls (CONTEXT &ctx, int argc, char *argv[])
 			glocal bool stop = false;
 			glocal unsigned chunk = 200;
 			unsigned offset = 0;
-			CONNECT_HTTP_INFO &hcon = glocal.ctx->hcon;
-			hcon.host = host;
-			hcon.port = port;
-			hcon.use_ssl = use_ssl;
-			if (glocal.ctx->hlogin()!=-1){
-				while (!glocal.stop){
-					<call webapi_listdir> (hcon,glocal.ctx->hsessionid,path,glocal.ctx->threshold,glocal.opt_history,offset,glocal.chunk);
-					<f ok>
-						if (!success){
-							if (internal_error){
-								bofs_error ("ls",true,"");
-							}else{
-								glocal.ret = bofs_printonefile(*glocal.ctx,glocal.opt_long,true,glocal.path);
-							}
-							glocal.stop = true;
+			while (!glocal.stop){
+				<call webapi_listdir> (ctx.hcon,ctx.hsessionid,path,ctx.threshold,glocal.opt_history,offset,glocal.chunk);
+				<f ok>
+					if (!success){
+						if (internal_error){
+							bofs_error ("ls",true,"");
 						}else{
-							bofs_printdir (glocal.opt_long,files);
-							glocal.stop = files.size() < glocal.chunk;
+							glocal.ret = bofs_printonefile(*glocal.ctx,glocal.opt_long,true,glocal.path);
 						}
-					</f>
-					</call>
-					offset += glocal.chunk;
-				}
+						glocal.stop = true;
+					}else{
+						bofs_printdir (glocal.opt_long,files);
+						glocal.stop = files.size() < glocal.chunk;
+					}
+				</f>
+				</call>
+				offset += glocal.chunk;
 			}
 			return glocal.ret;
 		</f>
@@ -490,22 +486,33 @@ static int bofs_ls (CONTEXT &ctx, int argc, char *argv[])
 </mod>
 
 <mod>
-static int bofs_cat_rest (CONTEXT &ctx, const char *handle, FILE *fin)
+static int bofs_cat_rest (CONTEXT &ctx, const char *handle, FILE *fin, bool is_http)
 {
 	glocal int ret = 0;
 	bool more = true;
 	while (more && glocal.ret == 0){
-		char buf[50000];
-		int len = fread (buf,1,50000,fin);
-		more = len == 50000;
-		<call bod_client_appendfile>(ctx.con,ctx.sessionid,handle,BOB_TYPE(buf,len,false),more);
-		<f ok>
-			if (!success){
-				bofs_error ("cat_rest",internal_error,msg);
-				glocal.ret = -1;
-			}
-		</f>
-		</call>
+		char buf[40000];
+		size_t len = fread (buf,1,sizeof(buf),fin);
+		more = len == sizeof(buf);
+		if (is_http){
+			<call webapi_appendfile>(ctx.hcon,ctx.hsessionid,handle,BOB_TYPE(buf,len,false),more);
+			<f ok>
+				if (!success){
+					bofs_error ("cat_rest http",internal_error,msg);
+					glocal.ret = -1;
+				}
+			</f>
+			</call>
+		}else{
+			<call bod_client_appendfile>(ctx.con,ctx.sessionid,handle,BOB_TYPE(buf,len,false),more);
+			<f ok>
+				if (!success){
+					bofs_error ("cat_rest internal",internal_error,msg);
+					glocal.ret = -1;
+				}
+			</f>
+			</call>
+		}
 	}
 	return glocal.ret;
 }
@@ -558,7 +565,7 @@ static int bofs_write_bofile(CONTEXT &ctx, PARAM_STRING path, FILE *fin, const c
 				bofs_error (glocal.command,internal_error,msg);
 				glocal.ret = -1;
 			}else if (glocal.more){
-				glocal.ret = bofs_cat_rest (*glocal.ctx,handle,glocal.fin);
+				glocal.ret = bofs_cat_rest (*glocal.ctx,handle,glocal.fin,false);
 			}
 		</f>
 		</call>
@@ -571,7 +578,7 @@ static int bofs_write_bofile(CONTEXT &ctx, PARAM_STRING path, FILE *fin, const c
 				bofs_error (glocal.command,internal_error,msg);
 				glocal.ret = -1;
 			}else if (glocal.more){
-				glocal.ret = bofs_cat_rest (*glocal.ctx,handle,glocal.fin);
+				glocal.ret = bofs_cat_rest (*glocal.ctx,handle,glocal.fin,false);
 			}
 		</f>
 		</call>
@@ -603,13 +610,9 @@ static int bofs_cat (CONTEXT &ctx, int argc, char *argv[])
 			usage();
 		}else{
 			char *argv[1] = {(char*)glocal.pipeto};
-			ret = <call bofs_split>(1,argv);
+			ret = <call bofs_split>(*glocal.ctx,1,argv);
 			<f bo_file>
-				int ret = -1;
-				if (glocal.ctx->login() != -1){
-					ret = bofs_write_bofile (*glocal.ctx,path,stdin,"cat");
-				}
-				return ret;
+				return bofs_write_bofile (*glocal.ctx,path,stdin,"cat");
 			</f>
 			<f https_file>
 				return -1;
@@ -624,13 +627,9 @@ static int bofs_cat (CONTEXT &ctx, int argc, char *argv[])
 	<f main>
 		int ret = 0;
 		if (glocal.threshold != NULL) glocal.ctx->threshold = glocal.threshold;
-		ret = <call bofs_split>(argc,argv);
+		ret = <call bofs_split>(*glocal.ctx,argc,argv);
 		<f bo_file>
-			int ret = -1;
-			if (glocal.ctx->login() != -1){
-				ret = bofs_cat_bofile (*glocal.ctx,path,stdout);
-			}
-			return ret;
+			return bofs_cat_bofile (ctx,path,stdout);
 		</f>
 		<f https_file>
 			return -1;
@@ -705,7 +704,7 @@ static int bofs_checkargs (CONTEXT &ctx, int argc, char *argv[], vector<BO_ARGTY
 {
 	glocal CONTEXT *ctx = &ctx;
 	glocal vector<BO_ARGTYPE> *args = &args;
-	int ret = <call bofs_split>(argc,argv);
+	int ret = <call bofs_split>(ctx,argc,argv);
 	<f https_file>
 		ENTRY_TYPE type;
 		bofs_stat (*glocal.ctx,path,true,type);
@@ -838,11 +837,25 @@ static int bofs_rm (CONTEXT &ctx, int argc, char *argv[])
 	</f>
 	<f main>
 		int ret = -1;
-		ret = <call bofs_split>(argc,argv);
+		ret = <call bofs_split>(*glocal.ctx,argc,argv);
 		<f bo_file>
 			glocal int ret = -1;
 			glocal const char *path = path;
-			<call bod_client_delfile> (glocal.ctx->con,glocal.ctx->sessionid,path);
+			<call bod_client_delfile> (ctx.con,ctx.sessionid,path);
+			<f ok>
+				if (success){
+					glocal.ret = 0;
+				}else{
+					bofs_error ("rm",internal_error,"Can't delete bolixo file %s: %s",glocal.path,msg);
+				}
+			</f>
+			</call>
+			return glocal.ret;
+		</f>
+		<f https_file>
+			glocal int ret = -1;
+			glocal const char *path = path;
+			<call webapi_delfile> (ctx.hcon,ctx.hsessionid,path);
 			<f ok>
 				if (success){
 					glocal.ret = 0;
@@ -931,11 +944,25 @@ static int bofs_mkdir (CONTEXT &ctx, int argc, char *argv[])
 	</f>
 	<f main>
 		int ret = -1;
-		ret = <call bofs_split>(argc,argv);
+		ret = <call bofs_split>(*glocal.ctx,argc,argv);
 		<f bo_file>
 			glocal int ret = -1;
 			glocal const char *path = path;
-			<call bod_client_mkdir> (glocal.ctx->con,glocal.ctx->sessionid,path);
+			<call bod_client_mkdir> (ctx.con,ctx.sessionid,path);
+			<f ok>
+				if (success){
+					glocal.ret = 0;
+				}else{
+					bofs_error ("mkdir",internal_error,"Can't create directory %s: %s",glocal.path,msg);
+				}
+			</f>
+			</call>
+			return glocal.ret;
+		</f>
+		<f https_file>
+			glocal int ret = -1;
+			glocal const char *path = path;
+			<call webapi_mkdir> (ctx.hcon,ctx.hsessionid,path);
 			<f ok>
 				if (success){
 					glocal.ret = 0;
@@ -971,11 +998,25 @@ static int bofs_rmdir (CONTEXT &ctx, int argc, char *argv[])
 	</f>
 	<f main>
 		int ret = -1;
-		ret = <call bofs_split>(argc,argv);
+		ret = <call bofs_split>(*glocal.ctx,argc,argv);
 		<f bo_file>
 			glocal int ret = -1;
 			glocal const char *path = path;
-			<call bod_client_rmdir> (glocal.ctx->con,glocal.ctx->sessionid,path);
+			<call bod_client_rmdir> (ctx.con,ctx.sessionid,path);
+			<f ok>
+				if (success){
+					glocal.ret = 0;
+				}else{
+					bofs_error ("rmdir",internal_error,"Can't remove directory %s: %s",glocal.path,msg);
+				}
+			</f>
+			</call>
+			return glocal.ret;
+		</f>
+		<f https_file>
+			glocal int ret = -1;
+			glocal const char *path = path;
+			<call webapi_rmdir> (ctx.hcon,ctx.hsessionid,path);
 			<f ok>
 				if (success){
 					glocal.ret = 0;
@@ -1283,6 +1324,119 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 }
 </mod>
 <mod>
+static int bofs_send_talk (
+	CONTEXT &ctx,
+	const char *textcontent,
+	const char *filecontent,
+	const char *owner,
+	const char *groupname)
+{
+	glocal CONTEXT *ctx = &ctx;
+	glocal int ret = -1;
+	glocal FILE *fcontent = NULL;
+	bool more = false;
+	BOB_TYPE content;
+	char buf[40000];
+	if (groupname == NULL){
+		tlmp_error ("groupname required for talkmsg\n");
+	}else if (textcontent != NULL){
+		content.setbuffer (textcontent,strlen(textcontent),false);
+	}else if (filecontent != NULL){
+		glocal.fcontent = fopen (filecontent,"r");
+		if (glocal.fcontent == NULL){
+			tlmp_error ("msgs: Can't open filecontent %s (%s)\n",filecontent,strerror(errno));
+		}else{
+			size_t nb = fread (buf,1,sizeof(buf),glocal.fcontent);
+			content.setbuffer (buf,nb,false);
+			if (nb == sizeof(buf)) more = true;
+		}
+	}else{
+		tlmp_error ("msgs: You must specify either --content or --filecontent option\n");
+	}
+	if (content.getsize() > 0){
+		if (ctx.is_internal()){
+			<call bod_client_sendtalk>(ctx.con,ctx.sessionid,owner,groupname,content,more);
+			<f ok>
+				if (!success){
+					bofs_error ("msgs",internal_error,msg);
+				}else{
+					if (handle[0] != '\0'){
+						glocal.ret = bofs_cat_rest (*glocal.ctx, handle, glocal.fcontent,false);
+					}else{
+						glocal.ret = 0;
+					}
+				}
+			</f>
+			</call>
+		}else{
+			<call webapi_sendtalk>(ctx.hcon,ctx.hsessionid,owner,groupname,content,more);
+			<f ok>
+				if (!success){
+					bofs_error ("msgs",internal_error,msg);
+				}else{
+					if (handle[0] != '\0'){
+						glocal.ret = bofs_cat_rest (*glocal.ctx, handle, glocal.fcontent,true);
+					}else{
+						glocal.ret = 0;
+					}
+				}
+			</f>
+			</call>
+		}
+	}
+	if (glocal.fcontent != NULL) fclose (glocal.fcontent);
+	return glocal.ret;
+}
+</mod>
+#define _TLMP_bofs_list_msgs
+struct _F_bofs_list_msgs {
+	#define _F_bofs_list_msgs_ok(x) void x ok(bool internal_error, bool success, const char *msg, const vector<MESSAGE_receive> &messages)
+	virtual _F_bofs_list_msgs_ok( )=0;
+};
+<mod>
+static void bofs_list_msgs(_F_bofs_list_msgs &c, bool is_http, CONTEXT &ctx, const char *owner, bool deleted, unsigned offset, unsigned chunk)
+{
+	glocal _F_bofs_list_msgs *c = &c;
+	if (is_http){
+		<call webapi_list_msgs>(ctx.hcon,ctx.hsessionid,owner,deleted,offset,chunk);
+		<f ok>
+			glocal.c->ok(internal_error,success,msg,messages);
+		</f>
+		</call>
+	}else{
+		<call bod_client_list_msgs>(ctx.con,ctx.sessionid,owner,deleted,offset,chunk);
+		<f ok>
+			glocal.c->ok(internal_error,success,msg,messages);
+		</f>
+		</call>
+	}
+}
+</mod>
+#define _TLMP_bofs_list_talk
+struct _F_bofs_list_talk {
+	#define _F_bofs_list_talk_ok(x) void x ok(bool internal_error, bool success, const char *msg, const vector<SHORTMSG_receive> &messages)
+	virtual _F_bofs_list_talk_ok( )=0;
+};
+<mod>
+static void bofs_list_talk(_F_bofs_list_talk &c, bool is_http, CONTEXT &ctx, const char *owner, unsigned offset, unsigned chunk)
+{
+	glocal _F_bofs_list_talk *c = &c;
+	if (is_http){
+		<call webapi_list_talk>(ctx.hcon,ctx.hsessionid,owner,offset,chunk);
+		<f ok>
+			glocal.c->ok(internal_error,success,msg,messages);
+		</f>
+		</call>
+	}else{
+		<call bod_client_list_talk>(ctx.con,ctx.sessionid,owner,offset,chunk);
+		<f ok>
+			glocal.c->ok(internal_error,success,msg,messages);
+		</f>
+		</call>
+	}
+}
+</mod>
+<mod>
 static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 {
 	glocal int ret = -1;
@@ -1336,7 +1490,62 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 	</f>
 	<f main_noarg>
 		glocal int ret = -1;
-		if (glocal.ctx->is_internal()){
+		if (glocal.listmsgs){
+			glocal bool stop = false;
+			glocal unsigned offset=0;
+			glocal unsigned chunk=100;
+			if (glocal.ctx->login()!=-1){
+				bool is_http = !glocal.ctx->is_internal();
+				while (!glocal.stop){
+					<call bofs_list_msgs>(is_http,*glocal.ctx,glocal.owner,false,glocal.offset,glocal.chunk);
+					<f ok>
+						if (!success){
+							bofs_error ("msgs",internal_error,msg);
+							glocal.stop = true;
+						}else{
+							for (auto &m:messages){
+								const char *markread = strcmp(m.viewed,m.submit)==0 ? "viewed" : "      ";
+								printf ("%-10s %-10s %-10s %-10s %-30s %-20s %s %s\n",m.from,m.manager,m.project,m.role,m.uuid,m.submit,markread,m.title);
+							}
+							glocal.stop = messages.size() < glocal.chunk;
+							glocal.offset += glocal.chunk;
+						}
+					</f>
+					</call>
+				}
+			}
+		}else if (glocal.listshortmsgs){
+			glocal bool stop = false;
+			glocal unsigned offset=0;
+			glocal unsigned chunk=100;
+			if (glocal.ctx->login()!=-1){
+				bool is_http = !glocal.ctx->is_internal();
+				while (!glocal.stop){
+					<call bofs_list_talk>(is_http,*glocal.ctx,glocal.owner,glocal.offset,glocal.chunk);
+					<f ok>
+						if (!success){
+							bofs_error ("msgs",internal_error,msg);
+							glocal.stop = true;
+						}else{
+							for (auto &m:messages){
+								int linelen = 0;
+								if (m.content[0] != '\0'){
+									const char *eol = strchr(m.content,'\n');
+									if (eol != NULL){
+										linelen=(eol-m.content);
+									}
+								}
+								printf ("%s %-10s %-30s %-20s %7u %*.*s\n",tbftype[m.file_type],m.from,m.uuid,m.submit,m.size
+									,linelen,linelen,m.content);
+							}
+							glocal.stop = messages.size() < glocal.chunk;
+							glocal.offset += glocal.chunk;
+						}
+					</f>
+					</call>
+				}
+			}
+		}else if (glocal.ctx->is_internal()){
 			if (glocal.ctx->login()==-1){
 				tlmp_error ("login fail\n");	
 			}else if (glocal.list){
@@ -1359,34 +1568,46 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 				</f>
 				</call>
 			}else if (glocal.newmsg){
-				if (glocal.content == NULL){
+				if (glocal.content == NULL && glocal.filecontent == NULL){
 					bofs_error ("msgs",false,"Missing content");
-				}else if (glocal.recipients.size() > 0){
-					<call bod_client_sendmsg>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner
-						,glocal.recipients,glocal.title,glocal.content);
-					<f ok>
-						if (!success){
-							bofs_error ("msgs",internal_error,msg);
-						}else{
-							printf ("msgid: %s\n",msgid);
-							glocal.ret = 0;
-						}
-					</f>
-					</call>
-				}else if (glocal.project != NULL && glocal.manager != NULL){
-					<call bod_client_sendmsg_project>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner
-						,glocal.manager,glocal.project,glocal.role,glocal.title,glocal.content);
-					<f ok>
-						if (!success){
-							bofs_error ("msgs",internal_error,msg);
-						}else{
-							printf ("msgid: %s\n",msgid);
-							glocal.ret = 0;
-						}
-					</f>
-					</call>
 				}else{
-					bofs_error ("msgs",false,"When sending a message, you must specify manager,project or recipients");
+					glocal string buf;
+					if (glocal.filecontent != NULL){
+						<call loadfile>(glocal.filecontent,false);
+						<f oneline>
+							glocal.buf += line;
+							return 0;
+						</f>
+						</call>
+						glocal.content = glocal.buf.c_str();
+					}
+ 					if (glocal.recipients.size() > 0){
+						<call bod_client_sendmsg>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner
+							,glocal.recipients,glocal.title,glocal.content);
+						<f ok>
+							if (!success){
+								bofs_error ("msgs",internal_error,msg);
+							}else{
+								printf ("msgid: %s\n",msgid);
+								glocal.ret = 0;
+							}
+						</f>
+						</call>
+					}else if (glocal.project != NULL && glocal.manager != NULL){
+						<call bod_client_sendmsg_project>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner
+							,glocal.manager,glocal.project,glocal.role,glocal.title,glocal.content);
+						<f ok>
+							if (!success){
+								bofs_error ("msgs",internal_error,msg);
+							}else{
+								printf ("msgid: %s\n",msgid);
+								glocal.ret = 0;
+							}
+						</f>
+						</call>
+					}else{
+						bofs_error ("msgs",false,"When sending a message, you must specify manager,project or recipients");
+					}
 				}
 			}else if (glocal.reply){
 				if (glocal.content == NULL){
@@ -1421,86 +1642,8 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 					bofs_error ("msgs",false,"When sending a message, you must specify manager,project or recipients");
 				}
 			}else if (glocal.shortmsg){
-				if (glocal.groupname == NULL){
-					tlmp_error ("groupname required for talkmsg\n");
-				}else{
-					glocal FILE *fcontent = NULL;
-					bool more = false;
-					BOB_TYPE content;
-					char buf[50000];
-					if (glocal.content != NULL){
-						content.setbuffer (glocal.content,strlen(glocal.content),false);
-					}else if (glocal.filecontent != NULL){
-						glocal.fcontent = fopen (glocal.filecontent,"r");
-						if (glocal.fcontent == NULL){
-							tlmp_error ("msgs: Can't open filecontent %s (%s)\n",glocal.filecontent,strerror(errno));
-						}else{
-							size_t nb = fread (buf,1,sizeof(buf),glocal.fcontent);
-							content.setbuffer (buf,nb,true);
-							if (nb == sizeof(buf)) more = true;
-						}
-					}else{
-						tlmp_error ("msgs: You must specify either --content or --filecontent option\n");
-					}
-					if (content.getsize() > 0){
-						<call bod_client_sendtalk>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner,glocal.groupname,content,more);
-						<f ok>
-							if (!success){
-								bofs_error ("msgs",internal_error,msg);
-							}else{
-								if (handle[0] != '\0'){
-									glocal.ret = bofs_cat_rest (*glocal.ctx, handle, glocal.fcontent);
-								}else{
-									glocal.ret = 0;
-								}
-							}
-						</f>
-						</call>
-					}
-					if (glocal.fcontent != NULL) fclose (glocal.fcontent);
-				}
+				glocal.ret = bofs_send_talk(*glocal.ctx,glocal.content,glocal.filecontent,glocal.owner,glocal.groupname);
 			}else if (glocal.attach){
-			}else if (glocal.listmsgs){
-				glocal bool stop = false;
-				glocal unsigned offset=0;
-				glocal unsigned chunk=100;
-				while (!glocal.stop){
-					<call bod_client_list_msgs>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner,false,glocal.offset,glocal.chunk);
-					<f ok>
-						if (!success){
-							bofs_error ("msgs",internal_error,msg);
-							glocal.stop = true;
-						}else{
-							for (auto &m:messages){
-								const char *markread = strcmp(m.viewed,m.submit)==0 ? "viewed" : "      ";
-								printf ("%-10s %-10s %-10s %-10s %-30s %-20s %s %s\n",m.from,m.manager,m.project,m.role,m.uuid,m.submit,markread,m.title);
-							}
-							glocal.stop = messages.size() < glocal.chunk;
-							glocal.offset += glocal.chunk;
-						}
-					</f>
-					</call>
-				}
-			}else if (glocal.listshortmsgs){
-				glocal bool stop = false;
-				glocal unsigned offset=0;
-				glocal unsigned chunk=100;
-				while (!glocal.stop){
-					<call bod_client_list_talk>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner,glocal.offset,glocal.chunk);
-					<f ok>
-						if (!success){
-							bofs_error ("msgs",internal_error,msg);
-							glocal.stop = true;
-						}else{
-							for (auto &m:messages){
-								printf ("%c %-10s %-30s %-20s %7u\n",tbftype[m.file_type],m.from,m.uuid,m.submit,m.size);
-							}
-							glocal.stop = messages.size() < glocal.chunk;
-							glocal.offset += glocal.chunk;
-						}
-					</f>
-					</call>
-				}
 			}else{
 				usage();
 			}
@@ -1526,27 +1669,6 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 					}
 				</f>
 				</call>
-			}else if (glocal.listmsgs){
-				glocal bool stop = false;
-				glocal unsigned offset=0;
-				glocal unsigned chunk=100;
-				while (!glocal.stop){
-					<call webapi_list_msgs>(glocal.ctx->hcon,glocal.ctx->hsessionid,glocal.owner,false,glocal.offset,glocal.chunk);
-					<f ok>
-						if (!success){
-							bofs_error ("msgs",internal_error,msg);
-							glocal.stop = true;
-						}else{
-							for (auto &m:messages){
-								const char *markread = strcmp(m.viewed,m.submit)==0 ? "viewed" : "      ";
-								printf ("%-10s %-10s %-10s %-10s %-30s %-20s %s %s\n",m.from,m.manager,m.project,m.role,m.uuid,m.submit,markread,m.title);
-							}
-							glocal.stop = messages.size() < glocal.chunk;
-							glocal.offset += glocal.chunk;
-						}
-					</f>
-					</call>
-				}
 			}else if (glocal.newmsg){
 				if (glocal.content == NULL){
 					bofs_error ("msgs",false,"Missing content");
@@ -1609,6 +1731,8 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 				}else{
 					bofs_error ("msgs",false,"When sending a message, you must specify manager,project or recipients");
 				}
+			}else if (glocal.shortmsg){
+				glocal.ret = bofs_send_talk(*glocal.ctx,glocal.content,glocal.filecontent,glocal.owner,glocal.groupname);
 			}else{
 				usage();
 			}

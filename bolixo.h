@@ -25,10 +25,37 @@ inline bool bolixo_isdeleted(ENTRY_TYPE type)
 enum FILE_TYPE {
 	FILE_UNKNOWN,
 	FILE_TEXT,
-	FILE_SOUND,
-	FILE_IMAGE,
+	FILE_SOUND_MP3,
+	FILE_SOUND_OGG,
+	FILE_IMAGE_JPG,
+	FILE_IMAGE_PNG,
+	FILE_IMAGE_GIF,
 	FILE_VIDEO,
 };
+
+inline bool file_is_sound (FILE_TYPE type){
+	return type == FILE_SOUND_MP3 || type == FILE_SOUND_OGG;
+}
+inline bool file_is_image (FILE_TYPE type){
+	return type == FILE_IMAGE_JPG || type == FILE_IMAGE_GIF || type == FILE_IMAGE_PNG;
+}
+inline bool file_is_video (FILE_TYPE type){
+	return type == FILE_VIDEO;
+}
+#ifdef DEFINE_TBFTYPE
+static char tbtype[]={' ','_','D','F','M','C'};
+static const char *tbftype[]={
+	"?",	//FILE_UNKNOWN,
+	"txt",	//FILE_TEXT,
+	"mp3",	//FILE_SOUND_MP3,
+	"ogg",	//FILE_SOUND_OGG,
+	"jpg",	//FILE_IMAGE_JPG,
+	"png",	//FILE_IMAGE_PNG,
+	"gif",	//FILE_IMAGE_GIF,
+	"vid"	//FILE_VIDEO,
+};
+#endif
+
 
 enum ERR_CODE{
 	ERR_CODE_NONE,

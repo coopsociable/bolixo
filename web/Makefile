@@ -23,7 +23,7 @@ clean:
 util.os: util.tlcc util.h
 	cctlcc -fPIC -Wall $(OPTIONS) -c util.tlcc -o util.os
 
-../proto/webapi.protoh: ../proto/webapi.proto
+../proto/webapi.protoh: ../proto/webapi.proto ../proto/bod_client.proto
 	cd .. && \
 	build-protocol --request_obj REQUEST_JSON --request_info_obj REQUEST_JSON_INFO \
 		--connect_info_obj CONNECT_HTTP_INFO --name webapi \

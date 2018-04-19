@@ -9,6 +9,7 @@
 #include <trlitool.h>
 #include <string>
 #include "util.h"
+#define DEFINE_TBFTYPE
 #include "../bolixo.h"
 
 using namespace std;
@@ -19,6 +20,7 @@ using namespace std;
 static const char *newscolor = "green";
 
 static string w_session;
+static W_SSTRING w_image("image");
 static W_UNSIGNED w_inbox_offset ("inbox_offset");
 static unsigned inbox_offset = 0;
 static W_UNSIGNED w_talk_offset ("talk_offset");
@@ -52,7 +54,7 @@ static const int step_main=1;
 static const int step_login=2;
 static const int step_adduser=3;
 static const int step_logout=4;
-static const int step_viewnews=5;
+static const int step_image=5;
 static const int step_viewproof=6;
 static const int step_postnews=7;
 static const int step_addproof=8;
@@ -246,6 +248,15 @@ static void web_updatevar(CONNECT_INFO &con_sess, W_UNSIGNED &w_var, unsigned &v
 }
 </mod>
 
+static void index_setstyles (_F_webtable *c)
+{
+	c->settableparms ("border=1");
+	c->setthparms ("bgcolor=#ff9944","");
+	c->setrowstyle ("sep","bgcolor=lightblue\tbgcolor=white\tbgcolor=lightblue\tbgcolor=white\tbgcolor=gray");
+	c->setrowstyle ("white","bgcolor=white");
+	c->setrowstyle ("image","bgcolor=white align=center");
+}
+
 <mod>
 extern "C" void webmain_real()
 {
@@ -302,7 +313,7 @@ extern "C" void webmain_real()
 	
 	web_updatevar (glocal.con_sess,w_inbox_offset,inbox_offset,"inbox_offset");
 	web_updatevar (glocal.con_sess,w_talk_offset,talk_offset,"talk_offset");
-	/- <p>
+	webtable_ctrloutput();
 	<call websteps>();
 	<f setstep>
 		if (w_session.empty() && step > 2){
@@ -321,27 +332,83 @@ extern "C" void webmain_real()
 			<f top>
 			</f>
 			<f body>
-				<call webtable>("talk","aaaaaaa","lllllll",true,talk_offset,5);
+				/- Short messages
+				<call webtable>("talk",talk_offset,5);
+				<f init>
+					index_setstyles (this);
+				</f>
+				<f click>
+					tlmpweb_flushheader();
+					//htmlprintf ("click %d %d<p>\n",noline,nocol);
+					<call bod_client_list_talk>(glocal.con,w_session.c_str(),"",noline/2,1);
+					<f ok>
+						if (messages.size()!=1){
+							htmlprintf ("Internal error: %s\n",msg);
+						}else{
+							auto &m = messages[0];
+							//htmlprintf ("uuid=%s<p>\n",m.uuid);
+							if (m.content[0] != '\0'){
+								htmlout (m.content);
+							}else if (file_is_sound(m.file_type)){
+								htmlprintf ("<audio controls>\n"
+									"<source src=\"%s?webstep=%u&image=/msgs/%s/short-inbox/%s\" type=\"audio/%s\">\n"
+									"</audio>"
+									,tlmpweb_curpage(),step_image,userinfo.name.c_str(),m.uuid,tbftype[m.file_type]);
+							}else if (file_is_video(m.file_type)){
+								htmlprintf ("<video width=\"800\" height=\"600\" controls>\n"
+									"<source src=\"%s?webstep=%u&image=/msgs/%s/short-inbox/%s\" type=\"video/mp4\">\n"
+									"Your browser does not support the video tag.\n"
+									"</video>\n"
+									,tlmpweb_curpage(),step_image,userinfo.name.c_str(),m.uuid);
+							}else if (file_is_image(m.file_type)){
+								htmlprintf ("<img width=800 src=%s?webstep=%u&image=/msgs/%s/short-inbox/%s>"
+									,tlmpweb_curpage(),step_image,userinfo.name.c_str(),m.uuid);
+							}
+						}
+					</f>
+					</call>
+				</f>
 				<f load>
-					sethead ("From\tSubmit\tTitle");
-					<call bod_client_list_msgs>(glocal.con,w_session.c_str(),"",false,nbskip,nblines);
+					sethead ("Type\tFrom\tSubmit\tuuid\tSize");
+					<call bod_client_list_talk>(glocal.con,w_session.c_str(),"",nbskip,nblines);
 					<f ok>
 						if (!success){
 							htmlprintf ("Error: %d %s<br>",internal_error,msg);
 						}else{
 							unsigned nol = 0;
 							for (auto &m:messages){
-								const char *boldon = "", *boldoff = "";
-								if (strcmp(m.submit,m.viewed)!=0){
-									boldon = "<b>";
-									boldoff = "</b>";
+								const char *func = "Popup";
+								const char *funcopt = "400,100";
+								if (file_is_image(m.file_type) || file_is_video(m.file_type)){
+									funcopt = "800,800";
 								}
-								glocal.webtable.setrow ("%s%s%s\t%s%s%s\t%s%s%s"
-									,boldon,m.from,boldoff
-									,boldon,m.submit,boldoff
-									,boldon,m.title,boldoff);
+								glocal.webtable.setclickopt (true,func,funcopt);
+								glocal.webtable.setrow ("sep","%s\t%s\t%s\t%s\t%u"
+									,tbftype[m.file_type]
+									,m.from
+									,m.submit
+									,m.uuid
+									,m.size);
 								if (0 && w_clickl.isset() && nol == w_clickl){
 									glocal.webtable.setextra ("This is the content");
+								}
+								if (m.content[0] != '\0'){
+									glocal.webtable.setrow("white","\t%s\a\a\a",m.content);
+								}else if (file_is_sound(m.file_type)){
+									glocal.webtable.setrow("image","\t<audio controls>\n"
+										"<source src=\"%s?webstep=%u&image=/msgs/%s/short-inbox/%s\" type=\"audio/%s\">\n"
+										"</audio>\a\a\a"
+										,tlmpweb_curpage(),step_image,userinfo.name.c_str(),m.uuid,tbftype[m.file_type]);
+								}else if (file_is_image(m.file_type)){
+									glocal.webtable.setrow("image","\t<img width=100 src=%s?webstep=%u&image=/msgs/%s/short-inbox/%s>\a\a\a"
+										,tlmpweb_curpage(),step_image,userinfo.name.c_str(),m.uuid);
+								}else if (file_is_video(m.file_type)){
+									glocal.webtable.setrow("image",
+										"\t<video width=\"200\" height=\"200\" controls>\n"
+										"<source src=\"%s?webstep=%u&image=/msgs/%s/short-inbox/%s\" type=\"video/mp4\">\n"
+										"Your browser does not support the video tag.\n"
+										"</video>\a\a\a\n"
+										,tlmpweb_curpage(),step_image,userinfo.name.c_str(),m.uuid);
 								}
 								nol++;
 							}
@@ -352,7 +419,47 @@ extern "C" void webmain_real()
 				</call>
 			</f>
 			<f left>
-				<call webtable>("inbox","aaaaaaa","lllllll",true,inbox_offset,10);
+				/- General inbox
+				<call webtable>("inbox",inbox_offset,10);
+				<f init>
+					index_setstyles (this);
+				</f>	
+				<f click>
+					tlmpweb_flushheader();
+					//htmlprintf ("click %d %d<p>\n",noline,nocol);
+					<call bod_client_list_msgs>(glocal.con,w_session.c_str(),"",false,noline,1);
+					<f ok>
+						if (messages.size()!=1){
+							htmlprintf ("Internal error: %s\n",msg);
+						}else{
+							auto &m = messages[0];
+							//htmlprintf ("uuid=%s<p>\n",m.uuid);
+							htmlprintf ("title=%s<p>\n",m.title);
+							string path;
+							if (m.role[0] != '\0'){
+								path = string_f ("/msg-projects/%s/%s/%s/%s",m.manager,m.project,m.role,m.uuid);
+							}else if (m.manager[0] != '\0'){
+								path = string_f ("/msg-projects/%s/%s/%s",m.manager,m.project,m.uuid);
+							}else{
+								path = string_f ("/msgs/%s/inbox/%s",userinfo.name.c_str(),m.uuid);
+							}	
+							//htmlprintf ("path=%s<p>\n",path.c_str());
+							<call bod_client_readfile>(glocal.con,w_session.c_str(),path,"");
+							<f ok>
+								const char *pt = content;
+								while (*pt != '\0'){
+									const char *start = pt;
+									while (*pt != '\0' && *pt != '\n') pt++;
+									htmlwrite (start,pt-start);
+									htmlout ("<br>\n");
+									if (*pt == '\n') pt++;
+								}
+							</f>
+							</call>
+						}
+					</f>
+					</call>
+				</f>
 				<f load>
 					sethead ("From\tManager\tProject\tRole\tSubmit\tMessage ID\tTitle");
 					<call bod_client_list_msgs>(glocal.con,w_session.c_str(),"",false,nbskip,nblines);
@@ -360,6 +467,7 @@ extern "C" void webmain_real()
 						if (!success){
 							htmlprintf ("Error: %d %s<br>",internal_error,msg);
 						}else{
+							glocal.webtable.setclickopt (true,"Popup","800,200");
 							unsigned nol = 0;
 							for (auto &m:messages){
 								const char *boldon = "", *boldoff = "";
@@ -367,7 +475,7 @@ extern "C" void webmain_real()
 									boldon = "<b>";
 									boldoff = "</b>";
 								}
-								glocal.webtable.setrow ("%s%s%s\t%s%s%s\t%s%s%s\t%s%s%s\t%s%s%s\t%s%s%s\t%s%s%s"
+								glocal.webtable.setrow ("sep","%s%s%s\t%s%s%s\t%s%s%s\t%s%s%s\t%s%s%s\t%s%s%s\t%s%s%s"
 									,boldon,m.from,boldoff
 									,boldon,m.manager,boldoff
 									,boldon,m.project,boldoff
@@ -394,15 +502,16 @@ extern "C" void webmain_real()
 						for (auto &inb:inboxes){
 							glocal string path = string_f ("/projects/%s/%s",inb.manager,inb.project);
 							htmlprintf ("Project %s<br>\n",glocal.path.c_str());
-							<call webtable>("inbox","aaaaaaa","lllllll",true,inbox_offset,10);
+							<call webtable>(glocal.path,inbox_offset,10);
+							<f init>
+								index_setstyles (this);
+							</f>
 							<f load>
 								sethead ("Type\tEventdate\tModified\tOwner\tName\tTitle");
 								<call bod_client_listdir>(glocal.con,w_session.c_str(),glocal.path,"",false,nbskip,nblines);
 								<f ok>
-									static char tbtype[]={' ','_','D','F','M','C'};
-									static char tbftype[]={'?','T','S','I','V'};
 									for (auto &f:files){
-										glocal.webtable.setrow ("%c%c\t%s\t%s\t%s/%s:%s\t%u\t%s\t%s\n"
+										glocal.webtable.setrow ("sep","%c%s\t%s\t%s\t%s/%s:%s\t%u\t%s\t%s\n"
 											,tbtype[f.type],tbftype[f.file_type]
 											,f.eventdate,f.modified
 											,f.owner,f.listname,f.listmode,f.size
@@ -562,19 +671,39 @@ extern "C" void webmain_real()
 		</f>
 		</call>
 	</f>
-	<f step5> // View one news
-		trli_title ("",this);
+	<f step5> // View one image
+		<call bod_client_readfile_bob>(glocal.con,w_session.c_str(),w_image.c_str(),"");
+		<f ok>
+			if (!success){
+				htmlprintf ("Can't read image: %s\n",msg);
+			}else{
+				tlmpweb_doctype ("image/jpeg",size);
+				htmlwrite (content.getbuffer(),content.getsize());
+				glocal bool more = more;
+				while (glocal.more){
+					<call bod_client_readmore>(glocal.con,w_session.c_str(),handle);
+					<f ok>
+						htmlwrite (content.getbuffer(),content.getsize());
+						glocal.more = more;
+					</f>
+					</call>
+				}
+			}
+				
+		</f>
+		</call>
 	</f>	
-	<f step6> // show a proof
-		trli_title ("",this);
+	<f step6>
+		tlmpweb_doctype ("image",6);
+		htmlwrite ("allo\r\n",6);
 	</f>
-	<f step7> // Post a news
+	<f step7>
 	</f>
-	<f step8> // Add a proof
+	<f step8>
 	</f>
-	<f step9> // Add a comment
+	<f step9>
 	</f>
-	<f step10>
+	<f step10> // Confirm user
 		if (w_confirm.is_empty()){
 			/- You have reach this web page by mistake. Sorry!
 		}else{
@@ -592,17 +721,17 @@ extern "C" void webmain_real()
 		}
 			
 	</f>
-	<f step11>	// View arguments
+	<f step11>
 		trli_title ("",this);
 	</f>
-	<f step12>	// Add one argument
+	<f step12>
 	</f>
-	<f step13>	// Statistics, sitemap
+	<f step13>
 	</f>
-	<f step14>	// View extra urls
+	<f step14>
 		trli_title ("",this);
 	</f>
-	<f step15> // Add an extra URL
+	<f step15>
 	</f>
 	</call>
 }
