@@ -1394,17 +1394,17 @@ struct _F_bofs_list_msgs {
 	virtual _F_bofs_list_msgs_ok( )=0;
 };
 <mod>
-static void bofs_list_msgs(_F_bofs_list_msgs &c, bool is_http, CONTEXT &ctx, const char *owner, bool deleted, unsigned offset, unsigned chunk)
+static void bofs_list_msgs(_F_bofs_list_msgs &c, CONTEXT &ctx, const char *owner, bool deleted, unsigned offset, unsigned chunk)
 {
 	glocal _F_bofs_list_msgs *c = &c;
-	if (is_http){
-		<call webapi_list_msgs>(ctx.hcon,ctx.hsessionid,owner,deleted,offset,chunk);
+	if (ctx.is_internal()){
+		<call bod_client_list_msgs>(ctx.con,ctx.sessionid,owner,deleted,offset,chunk);
 		<f ok>
 			glocal.c->ok(internal_error,success,msg,messages);
 		</f>
 		</call>
 	}else{
-		<call bod_client_list_msgs>(ctx.con,ctx.sessionid,owner,deleted,offset,chunk);
+		<call webapi_list_msgs>(ctx.hcon,ctx.hsessionid,owner,deleted,offset,chunk);
 		<f ok>
 			glocal.c->ok(internal_error,success,msg,messages);
 		</f>
@@ -1418,17 +1418,17 @@ struct _F_bofs_list_talk {
 	virtual _F_bofs_list_talk_ok( )=0;
 };
 <mod>
-static void bofs_list_talk(_F_bofs_list_talk &c, bool is_http, CONTEXT &ctx, const char *owner, unsigned offset, unsigned chunk)
+static void bofs_list_talk(_F_bofs_list_talk &c, CONTEXT &ctx, const char *owner, unsigned offset, unsigned chunk)
 {
 	glocal _F_bofs_list_talk *c = &c;
-	if (is_http){
-		<call webapi_list_talk>(ctx.hcon,ctx.hsessionid,owner,offset,chunk);
+	if (ctx.is_internal()){
+		<call bod_client_list_talk>(ctx.con,ctx.sessionid,owner,offset,chunk);
 		<f ok>
 			glocal.c->ok(internal_error,success,msg,messages);
 		</f>
 		</call>
 	}else{
-		<call bod_client_list_talk>(ctx.con,ctx.sessionid,owner,offset,chunk);
+		<call webapi_list_talk>(ctx.hcon,ctx.hsessionid,owner,offset,chunk);
 		<f ok>
 			glocal.c->ok(internal_error,success,msg,messages);
 		</f>
@@ -1436,6 +1436,154 @@ static void bofs_list_talk(_F_bofs_list_talk &c, bool is_http, CONTEXT &ctx, con
 	}
 }
 </mod>
+#define _TLMP_bofs_list_inboxes
+struct _F_bofs_list_inboxes {
+	#define _F_bofs_list_inboxes_ok(x) void x ok(bool internal_error, bool success, const char *msg, const vector<INBOX_receive> &inboxes)
+	virtual _F_bofs_list_inboxes_ok( )=0;
+};
+<mod>
+static void bofs_list_inboxes (_F_bofs_list_inboxes &c, CONTEXT &ctx, const char *owner)
+{
+	glocal _F_bofs_list_inboxes *c = &c;
+	if (ctx.is_internal()){
+		<call bod_client_list_inboxes>(ctx.con,ctx.sessionid,owner);
+		<f ok>
+			glocal.c->ok(internal_error,success,msg,inboxes);
+		</f>
+		</call>
+	}else{
+		<call webapi_list_inboxes>(ctx.hcon,ctx.hsessionid,owner);
+		<f ok>
+			glocal.c->ok(internal_error,success,msg,inboxes);
+		</f>
+		</call>
+	}
+}
+</mod>
+#define _TLMP_bofs_sendmsg
+struct _F_bofs_sendmsg {
+	#define _F_bofs_sendmsg_ok(x) void x ok(bool internal_error, bool success, const char *msg, const char *msgid)
+	virtual _F_bofs_sendmsg_ok( )=0;
+};
+<mod>
+static void bofs_sendmsg (_F_bofs_sendmsg &c, CONTEXT &ctx, const char *owner, const vector<string> &recipients, const char *title, const char *content)
+{
+	glocal _F_bofs_sendmsg *c = &c;
+	if (ctx.is_internal()){
+		<call bod_client_sendmsg>(ctx.con,ctx.sessionid,owner,recipients,title,content);
+		<f ok>
+			glocal.c->ok(internal_error,success,msg,msgid);
+		</f>
+		</call>
+	}else{
+		<call webapi_sendmsg>(ctx.hcon,ctx.hsessionid,owner,recipients,title,content);
+		<f ok>
+			glocal.c->ok(internal_error,success,msg,msgid);
+		</f>
+		</call>
+	}
+}
+</mod>
+#define _TLMP_bofs_sendmsg_project
+struct _F_bofs_sendmsg_project {
+	#define _F_bofs_sendmsg_project_ok(x) void x ok(bool internal_error, bool success, const char *msg, const char *msgid)
+	virtual _F_bofs_sendmsg_project_ok( )=0;
+};
+<mod>
+static void bofs_sendmsg_project (
+	_F_bofs_sendmsg_project &c,
+	CONTEXT &ctx,
+	const char *owner,
+	const char *manager,
+	const char *project,
+	const char *role,
+	const char *title,
+	const char *content)
+{
+	glocal _F_bofs_sendmsg_project *c = &c;
+	if (ctx.is_internal()){
+		<call bod_client_sendmsg_project>(ctx.con,ctx.sessionid,owner
+			,manager,project,role,title,content);
+		<f ok>
+			glocal.c->ok (internal_error,success,msg,msgid);
+		</f>
+		</call>
+	}else{
+		<call webapi_sendmsg_project>(ctx.hcon,ctx.hsessionid,owner
+			,manager,project,role,title,content);
+		<f ok>
+			glocal.c->ok (internal_error,success,msg,msgid);
+		</f>
+		</call>
+	}
+}
+#define _TLMP_bofs_replymsg
+struct _F_bofs_replymsg {
+	#define _F_bofs_replymsg_ok(x) void x ok(bool internal_error, bool success, const char *msg, const char *replyid)
+	virtual _F_bofs_replymsg_ok( )=0;
+};
+<mod>
+static void bofs_replymsg (
+	_F_bofs_replymsg &c,
+	CONTEXT &ctx,
+	const char *owner,
+	const char *msgid,
+	const vector<string> &recipients,
+	const char *title,
+	const char *content)
+{
+	glocal _F_bofs_replymsg *c = &c;
+	if (ctx.is_internal()){
+		<call bod_client_replymsg>(ctx.con,ctx.sessionid,owner
+			,msgid,recipients,title,content);
+		<f ok>
+			glocal.c->ok (internal_error,success,msg,replyid);
+		</f>
+		</call>
+	}else{
+		<call webapi_replymsg>(ctx.hcon,ctx.hsessionid,owner
+			,msgid,recipients,title,content);
+		<f ok>
+			glocal.c->ok (internal_error,success,msg,replyid);
+		</f>
+		</call>
+	}
+}
+</mod>
+#define _TLMP_bofs_replymsg_project
+struct _F_bofs_replymsg_project {
+	#define _F_bofs_replymsg_project_ok(x) void x ok(bool internal_error, bool success, const char *msg, const char *replyid)
+	virtual _F_bofs_replymsg_project_ok( )=0;
+};
+<mod>
+static void bofs_replymsg_project (
+	_F_bofs_replymsg_project &c,
+	CONTEXT &ctx,
+	const char *owner,
+	const char *manager,
+	const char *project,
+	const char *role,
+	const char *msgid,
+	const char *title,
+	const char *content)
+{
+	glocal _F_bofs_replymsg_project *c = &c;
+	if (ctx.is_internal()){
+		<call bod_client_replymsg_project>(ctx.con,ctx.sessionid,owner
+			,manager,project,role,msgid,title,content);
+		<f ok>
+			glocal.c->ok (internal_error,success,msg,replyid);
+		</f>
+		</call>
+	}else{
+		<call webapi_replymsg_project>(ctx.hcon,ctx.hsessionid,owner
+			,manager,project,role,msgid,title,content);
+		<f ok>
+			glocal.c->ok (internal_error,success,msg,replyid);
+		</f>
+		</call>
+	}
+}
 <mod>
 static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 {
@@ -1495,9 +1643,8 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 			glocal unsigned offset=0;
 			glocal unsigned chunk=100;
 			if (glocal.ctx->login()!=-1){
-				bool is_http = !glocal.ctx->is_internal();
 				while (!glocal.stop){
-					<call bofs_list_msgs>(is_http,*glocal.ctx,glocal.owner,false,glocal.offset,glocal.chunk);
+					<call bofs_list_msgs>(*glocal.ctx,glocal.owner,false,glocal.offset,glocal.chunk);
 					<f ok>
 						if (!success){
 							bofs_error ("msgs",internal_error,msg);
@@ -1519,9 +1666,8 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 			glocal unsigned offset=0;
 			glocal unsigned chunk=100;
 			if (glocal.ctx->login()!=-1){
-				bool is_http = !glocal.ctx->is_internal();
 				while (!glocal.stop){
-					<call bofs_list_talk>(is_http,*glocal.ctx,glocal.owner,glocal.offset,glocal.chunk);
+					<call bofs_list_talk>(*glocal.ctx,glocal.owner,glocal.offset,glocal.chunk);
 					<f ok>
 						if (!success){
 							bofs_error ("msgs",internal_error,msg);
@@ -1545,11 +1691,9 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 					</call>
 				}
 			}
-		}else if (glocal.ctx->is_internal()){
-			if (glocal.ctx->login()==-1){
-				tlmp_error ("login fail\n");	
-			}else if (glocal.list){
-				<call bod_client_list_inboxes>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner);
+		}else if (glocal.list){
+			if (glocal.ctx->login()!=-1){
+				<call bofs_list_inboxes>(*glocal.ctx,glocal.owner);
 				<f ok>
 					if (!success){
 						bofs_error ("msgs",internal_error,msg);
@@ -1567,22 +1711,24 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 					}
 				</f>
 				</call>
-			}else if (glocal.newmsg){
-				if (glocal.content == NULL && glocal.filecontent == NULL){
-					bofs_error ("msgs",false,"Missing content");
-				}else{
-					glocal string buf;
-					if (glocal.filecontent != NULL){
-						<call loadfile>(glocal.filecontent,false);
-						<f oneline>
-							glocal.buf += line;
-							return 0;
-						</f>
-						</call>
-						glocal.content = glocal.buf.c_str();
-					}
+			}
+		}else if (glocal.newmsg){
+			if (glocal.content == NULL && glocal.filecontent == NULL){
+				bofs_error ("msgs",false,"Missing content");
+			}else{
+				glocal string buf;
+				if (glocal.filecontent != NULL){
+					<call loadfile>(glocal.filecontent,false);
+					<f oneline>
+						glocal.buf += line;
+						return 0;
+					</f>
+					</call>
+					glocal.content = glocal.buf.c_str();
+				}
+				if (glocal.ctx->login()!=-1){
  					if (glocal.recipients.size() > 0){
-						<call bod_client_sendmsg>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner
+						<call bofs_sendmsg>(*glocal.ctx,glocal.owner
 							,glocal.recipients,glocal.title,glocal.content);
 						<f ok>
 							if (!success){
@@ -1594,7 +1740,7 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 						</f>
 						</call>
 					}else if (glocal.project != NULL && glocal.manager != NULL){
-						<call bod_client_sendmsg_project>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner
+						<call bofs_sendmsg_project>(*glocal.ctx,glocal.owner
 							,glocal.manager,glocal.project,glocal.role,glocal.title,glocal.content);
 						<f ok>
 							if (!success){
@@ -1609,133 +1755,60 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 						bofs_error ("msgs",false,"When sending a message, you must specify manager,project or recipients");
 					}
 				}
-			}else if (glocal.reply){
-				if (glocal.content == NULL){
-					bofs_error ("msgs",false,"Missing content");
-				}else if (glocal.msgid == NULL){
-					bofs_error ("msgs",false,"You must specify the message ID you are replying to");
-				}else if (glocal.recipients.size() > 0){
-					<call bod_client_replymsg>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner
-						,glocal.msgid,glocal.recipients,glocal.title,glocal.content);
-					<f ok>
-						if (!success){
-							bofs_error ("msgs",internal_error,msg);
-						}else{
-							printf ("replyid: %s\n",replyid);
-							glocal.ret = 0;
-						}
-					</f>
-					</call>
-				}else if (glocal.project != NULL && glocal.manager != NULL){
-					<call bod_client_replymsg_project>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner
-						,glocal.manager,glocal.project,glocal.role,glocal.msgid,glocal.title,glocal.content);
-					<f ok>
-						if (!success){
-							bofs_error ("msgs",internal_error,msg);
-						}else{
-							printf ("replyid: %s\n",replyid);
-							glocal.ret = 0;
-						}
-					</f>
-					</call>
-				}else{
-					bofs_error ("msgs",false,"When sending a message, you must specify manager,project or recipients");
-				}
-			}else if (glocal.shortmsg){
-				glocal.ret = bofs_send_talk(*glocal.ctx,glocal.content,glocal.filecontent,glocal.owner,glocal.groupname);
-			}else if (glocal.attach){
-			}else{
-				usage();
 			}
-		}else{
-			if (glocal.ctx->hlogin()==-1){
-				tlmp_error ("http login fail\n");	
-			}else if (glocal.list){
-				<call webapi_list_inboxes>(glocal.ctx->hcon,glocal.ctx->hsessionid,glocal.owner);
-				<f ok>
-					if (!success){
-						bofs_error ("msgs",internal_error,msg);
-					}else{
-						unsigned max_manager=0;
-						unsigned max_project=0;
-						for (int r=0; r<2; r++){
-							for (auto &inb:inboxes){
-								bofs_maxlen (inb.manager,max_manager);
-								bofs_maxlen (inb.project,max_project);
-								if (r==1) printf ("%-*s  %-*s  %s\n",max_manager,inb.manager,max_project,inb.project,inb.role);
+		}else if (glocal.shortmsg){
+			if (glocal.ctx->login()!=-1){
+				glocal.ret = bofs_send_talk(*glocal.ctx,glocal.content,glocal.filecontent,glocal.owner,glocal.groupname);
+			}
+		}else if (glocal.reply){
+			if (glocal.content == NULL && glocal.filecontent == NULL){
+				bofs_error ("msgs",false,"Missing content");
+			}else if (glocal.msgid == NULL){
+				bofs_error ("msgs",false,"You must specify the message ID you are replying to");
+			}else{
+				glocal string buf;
+				if (glocal.filecontent != NULL){
+					<call loadfile>(glocal.filecontent,false);
+					<f oneline>
+						glocal.buf += line;
+						return 0;
+					</f>
+					</call>
+					glocal.content = glocal.buf.c_str();
+				}
+				if (glocal.ctx->login() != -1){
+					if (glocal.recipients.size() > 0){
+						<call bofs_replymsg>(*glocal.ctx,glocal.owner
+							,glocal.msgid,glocal.recipients,glocal.title,glocal.content);
+						<f ok>
+							if (!success){
+								bofs_error ("msgs",internal_error,msg);
+							}else{
+								printf ("replyid: %s\n",replyid);
+								glocal.ret = 0;
 							}
-						}
-						glocal.ret = 0;
+						</f>
+						</call>
+					}else if (glocal.project != NULL && glocal.manager != NULL){
+						<call bofs_replymsg_project>(*glocal.ctx,glocal.owner
+							,glocal.manager,glocal.project,glocal.role,glocal.msgid,glocal.title,glocal.content);
+						<f ok>
+							if (!success){
+								bofs_error ("msgs",internal_error,msg);
+							}else{
+								printf ("replyid: %s\n",replyid);
+								glocal.ret = 0;
+							}
+						</f>
+						</call>
+					}else{
+						bofs_error ("msgs",false,"When sending a message, you must specify manager,project or recipients");
 					}
-				</f>
-				</call>
-			}else if (glocal.newmsg){
-				if (glocal.content == NULL){
-					bofs_error ("msgs",false,"Missing content");
-				}else if (glocal.recipients.size() > 0){
-					<call webapi_sendmsg>(glocal.ctx->hcon,glocal.ctx->hsessionid,glocal.owner
-						,glocal.recipients,glocal.title,glocal.content);
-					<f ok>
-						if (!success){
-							bofs_error ("msgs",internal_error,msg);
-						}else{
-							printf ("msgid: %s\n",msgid);
-							glocal.ret = 0;
-						}
-					</f>
-					</call>
-				}else if (glocal.project != NULL && glocal.manager != NULL){
-					<call webapi_sendmsg_project>(glocal.ctx->hcon,glocal.ctx->hsessionid,glocal.owner
-						,glocal.manager,glocal.project,glocal.role,glocal.title,glocal.content);
-					<f ok>
-						if (!success){
-							bofs_error ("msgs",internal_error,msg);
-						}else{
-							printf ("msgid: %s\n",msgid);
-							glocal.ret = 0;
-						}
-					</f>
-					</call>
-				}else{
-					bofs_error ("msgs",false,"When sending a message, you must specify manager,project or recipients");
 				}
-			}else if (glocal.reply){
-				if (glocal.content == NULL){
-					bofs_error ("msgs",false,"Missing content");
-				}else if (glocal.msgid == NULL){
-					bofs_error ("msgs",false,"You must specify the message ID you are replying to");
-				}else if (glocal.recipients.size() > 0){
-					<call webapi_replymsg>(glocal.ctx->hcon,glocal.ctx->hsessionid,glocal.owner
-						,glocal.msgid,glocal.recipients,glocal.title,glocal.content);
-					<f ok>
-						if (!success){
-							bofs_error ("msgs",internal_error,msg);
-						}else{
-							printf ("replyid: %s\n",replyid);
-							glocal.ret = 0;
-						}
-					</f>
-					</call>
-				}else if (glocal.project != NULL && glocal.manager != NULL){
-					<call webapi_replymsg_project>(glocal.ctx->hcon,glocal.ctx->hsessionid,glocal.owner
-						,glocal.manager,glocal.project,glocal.role,glocal.msgid,glocal.title,glocal.content);
-					<f ok>
-						if (!success){
-							bofs_error ("msgs",internal_error,msg);
-						}else{
-							printf ("replyid: %s\n",replyid);
-							glocal.ret = 0;
-						}
-					</f>
-					</call>
-				}else{
-					bofs_error ("msgs",false,"When sending a message, you must specify manager,project or recipients");
-				}
-			}else if (glocal.shortmsg){
-				glocal.ret = bofs_send_talk(*glocal.ctx,glocal.content,glocal.filecontent,glocal.owner,glocal.groupname);
-			}else{
-				usage();
 			}
+		}else if (glocal.attach){
+		}else{
+			usage();
 		}
 		return glocal.ret;
 	</f>

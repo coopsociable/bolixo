@@ -340,7 +340,7 @@ extern "C" void webmain_real()
 				<f click>
 					tlmpweb_flushheader();
 					//htmlprintf ("click %d %d<p>\n",noline,nocol);
-					<call bod_client_list_talk>(glocal.con,w_session.c_str(),"",noline/2,1);
+					<call bod_client_list_talk>(glocal.con,w_session.c_str(),"",noline,1);
 					<f ok>
 						if (messages.size()!=1){
 							htmlprintf ("Internal error: %s\n",msg);
@@ -369,13 +369,13 @@ extern "C" void webmain_real()
 					</call>
 				</f>
 				<f load>
+					glocal unsigned rownum = nbskip;
 					sethead ("Type\tFrom\tSubmit\tuuid\tSize");
 					<call bod_client_list_talk>(glocal.con,w_session.c_str(),"",nbskip,nblines);
 					<f ok>
 						if (!success){
 							htmlprintf ("Error: %d %s<br>",internal_error,msg);
 						}else{
-							unsigned nol = 0;
 							for (auto &m:messages){
 								const char *func = "Popup";
 								const char *funcopt = "400,100";
@@ -383,34 +383,31 @@ extern "C" void webmain_real()
 									funcopt = "800,800";
 								}
 								glocal.webtable.setclickopt (true,func,funcopt);
-								glocal.webtable.setrow ("sep","%s\t%s\t%s\t%s\t%u"
+								glocal.webtable.setrow ("sep",glocal.rownum,"%s\t%s\t%s\t%s\t%u"
 									,tbftype[m.file_type]
 									,m.from
 									,m.submit
 									,m.uuid
 									,m.size);
-								if (0 && w_clickl.isset() && nol == w_clickl){
-									glocal.webtable.setextra ("This is the content");
-								}
 								if (m.content[0] != '\0'){
-									glocal.webtable.setrow("white","\t%s\a\a\a",m.content);
+									glocal.webtable.setrow("white",glocal.rownum,"\t%s\a\a\a",m.content);
 								}else if (file_is_sound(m.file_type)){
-									glocal.webtable.setrow("image","\t<audio controls>\n"
+									glocal.webtable.setrow("image",glocal.rownum,"\t<audio controls>\n"
 										"<source src=\"%s?webstep=%u&image=/msgs/%s/short-inbox/%s\" type=\"audio/%s\">\n"
 										"</audio>\a\a\a"
 										,tlmpweb_curpage(),step_image,userinfo.name.c_str(),m.uuid,tbftype[m.file_type]);
 								}else if (file_is_image(m.file_type)){
-									glocal.webtable.setrow("image","\t<img width=100 src=%s?webstep=%u&image=/msgs/%s/short-inbox/%s>\a\a\a"
+									glocal.webtable.setrow("image",glocal.rownum,"\t<img width=100 src=%s?webstep=%u&image=/msgs/%s/short-inbox/%s>\a\a\a"
 										,tlmpweb_curpage(),step_image,userinfo.name.c_str(),m.uuid);
 								}else if (file_is_video(m.file_type)){
-									glocal.webtable.setrow("image",
+									glocal.webtable.setrow("image",glocal.rownum,
 										"\t<video width=\"200\" height=\"200\" controls>\n"
 										"<source src=\"%s?webstep=%u&image=/msgs/%s/short-inbox/%s\" type=\"video/mp4\">\n"
 										"Your browser does not support the video tag.\n"
 										"</video>\a\a\a\n"
 										,tlmpweb_curpage(),step_image,userinfo.name.c_str(),m.uuid);
 								}
-								nol++;
+								glocal.rownum++;
 							}
 						}
 					</f>
@@ -461,6 +458,7 @@ extern "C" void webmain_real()
 					</call>
 				</f>
 				<f load>
+					glocal unsigned rownum = nbskip;
 					sethead ("From\tManager\tProject\tRole\tSubmit\tMessage ID\tTitle");
 					<call bod_client_list_msgs>(glocal.con,w_session.c_str(),"",false,nbskip,nblines);
 					<f ok>
@@ -468,14 +466,13 @@ extern "C" void webmain_real()
 							htmlprintf ("Error: %d %s<br>",internal_error,msg);
 						}else{
 							glocal.webtable.setclickopt (true,"Popup","800,200");
-							unsigned nol = 0;
 							for (auto &m:messages){
 								const char *boldon = "", *boldoff = "";
 								if (strcmp(m.submit,m.viewed)!=0){
 									boldon = "<b>";
 									boldoff = "</b>";
 								}
-								glocal.webtable.setrow ("sep","%s%s%s\t%s%s%s\t%s%s%s\t%s%s%s\t%s%s%s\t%s%s%s\t%s%s%s"
+								glocal.webtable.setrow ("sep",glocal.rownum,"%s%s%s\t%s%s%s\t%s%s%s\t%s%s%s\t%s%s%s\t%s%s%s\t%s%s%s"
 									,boldon,m.from,boldoff
 									,boldon,m.manager,boldoff
 									,boldon,m.project,boldoff
@@ -483,10 +480,7 @@ extern "C" void webmain_real()
 									,boldon,m.submit,boldoff
 									,boldon,m.uuid,boldoff
 									,boldon,m.title,boldoff);
-								if (w_clickl.isset() && nol == w_clickl){
-									glocal.webtable.setextra ("This is the content");
-								}
-								nol++;
+								glocal.rownum++;
 							}
 						}
 					</f>
@@ -507,15 +501,17 @@ extern "C" void webmain_real()
 								index_setstyles (this);
 							</f>
 							<f load>
+								glocal unsigned rownum = nbskip;
 								sethead ("Type\tEventdate\tModified\tOwner\tName\tTitle");
 								<call bod_client_listdir>(glocal.con,w_session.c_str(),glocal.path,"",false,nbskip,nblines);
 								<f ok>
 									for (auto &f:files){
-										glocal.webtable.setrow ("sep","%c%s\t%s\t%s\t%s/%s:%s\t%u\t%s\t%s\n"
+										glocal.webtable.setrow ("sep",glocal.rownum,"%c%s\t%s\t%s\t%s/%s:%s\t%u\t%s\t%s\n"
 											,tbtype[f.type],tbftype[f.file_type]
 											,f.eventdate,f.modified
 											,f.owner,f.listname,f.listmode,f.size
 											,f.name,f.title);
+										glocal.rownum++;
 									}
 								</f>
 								</call>

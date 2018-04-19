@@ -33,6 +33,7 @@ elif [ "$1" = "sequence" ] ; then
 	./bofs -u jacques-A groups --create-group-list -L Alist1
 	./bofs -u jacques-A groups --create-project-dir -L Alist1
 	./bofs -u admin     groups --create-group-list -L Alonglist2 --owner jacques-A
+	./bofs -u jacques-A groups --create-project-dir -L Alonglist2
 	./bofs -u jacques-B groups --create-group-list -L Blist1
 	./bofs -u jacques-B groups --create-project-dir -L Blist1
 	./bofs -u jacques-C groups --create-group-list -L Clist1
@@ -71,11 +72,11 @@ elif [ "$1" = "writemails" ] ; then
 			echo "This is the body number $i,$j" >>/tmp/mail.txt
 		done
 		MSGID=`./bofs -u jacques-B msgs -n -D jacques-A -D jacques-C -T "This is title number $i" -F /tmp/mail.txt | (read a b; echo $b)`
-		echo msgid: $MSGID
+		echo Msgid: $MSGID
 		./bofs -u jacques-A msgs -r -I $MSGID -D jacques-C -D jacques-B -T "re A: This is title number $i" -F /tmp/mail.txt
-		./bofs -u jacques-C msgs -r -I $MSGID -D jacques-A -D jacques-B -T "re C: This is title number $i" -F /tmp/mail.txtx
+		./bofs -u jacques-C msgs -r -I $MSGID -D jacques-A -D jacques-B -T "re C: This is title number $i" -F /tmp/mail.txt
 		MSGID=`./bofs -u jacques-A msgs -n -M jacques-A -P Alist1 -T "A A/1 This is title number $i" -F /tmp/mail.txt | (read a b; echo $b)`
-		echo msgid: $MSGID
+		echo Msgid: $MSGID
 		./bofs -u jacques-A msgs -r -I $MSGID -M jacques-A -P Alist1 -T "re: A A/1 This is title number $i" -F /tmp/mail.txt
 		./bofs -u jacques-B msgs -r -I $MSGID -M jacques-A -P Alist1 -T "re: A A/1 This is title number $i" -F /tmp/mail.txt
 		./bofs -u jacques-C msgs -r -I $MSGID -M jacques-A -P Alist1 -T "re: A A/1 This is title number $i" -F /tmp/mail.txt
@@ -89,6 +90,7 @@ elif [ "$1" = "writemails" ] ; then
 		./bofs -u jacques-A msgs -n -M jacques-B -P Blist1 -T "A B/1 This is title number $i" -F /tmp/mail.txt
 		./bofs -u jacques-A msgs -n -M jacques-B -P Blist1 -R dba -T "dba A B/1 This is title number $i" -F /tmp/mail.txt
 	done
+	# Create short messages
 	./bofs msgs -t -G Agroup1 -C "Are you ready for lunch ?"
 	./bofs -u jacques-B msgs -t -G Bgroup1 -C "Not possible today"
 	./bofs msgs -t -G Agroup1 -F /tmp/file.mp3
@@ -96,6 +98,16 @@ elif [ "$1" = "writemails" ] ; then
 	./bofs msgs -t -G Agroup1 -F /tmp/file.gif
 	./bofs msgs -t -G Agroup1 -F /tmp/file.png
 	./bofs msgs -t -G Agroup1 -F /tmp/file.mp4
+	# Populate projects
+	for project in jacques-A/Alist1 jacques-A/Alonglist2 jacques-B/Blist1
+	do
+		for file in /tmp/file.*
+		do
+			base=`basename $file`
+			echo "cp $file -> projects $project"
+			./bofs cp $file bo://projects/$project/$base
+		done
+	done
 elif [ "$1" = "config" ] ; then
 	./test.sh files <<-EOF
 		insert into groups (id,name) values (100,'project1'), (101,'project2'), (102,'project3');
