@@ -55,7 +55,7 @@ struct SESSION_INFO{
 	string email;
 	unsigned short lang;
 	bool admin;
-	vector<VARIABLE> vars;
+	vector<VAR> vars;
 	struct {
 		time_t lastvisit;
 		unsigned nbacc;
@@ -155,7 +155,7 @@ int main (int argc, char *argv[])
 					SESSION_INFO sess(userid, userid_str, name, email, lang, admin);
 					sess.stats.lastvisit = lastvisit;
 					sess.stats.nbacc = nbacc;
-					for (unsigned i=0; i<vars.size(); i++) sess.vars.push_back(VARIABLE(vars[i],vals[i]));
+					for (auto &v:vars) sess.vars.push_back(v);
 					glocal.sessions[session] = sess;
 					
 				</f>
@@ -225,15 +225,9 @@ int main (int argc, char *argv[])
 					<call savefile>("/tmp/sessions.log",false);
 					<f dowrite>
 						for (auto &s:glocal.sessions){
-							vector<string> vars;
-							vector<string> vals;
-							for (auto &v:s.second.vars){
-								vars.push_back(v.name);
-								vals.push_back(v.val);
-							}
 							session_log_session(fout,s.first,s.second.userid,s.second.userid_str
 								,s.second.name,s.second.email,s.second.lang,s.second.admin
-								,s.second.stats.lastvisit,s.second.stats.nbacc,vars,vals);
+								,s.second.stats.lastvisit,s.second.stats.nbacc,s.second.vars);
 						}
 						return 0;
 					</f>
@@ -262,7 +256,11 @@ int main (int argc, char *argv[])
 									,it.second.userid,it.second.admin);
 							}
 							for (auto &v:it.second.vars){
-								tmp += string_f (" %s=%s",v.name.c_str(),v.val.c_str());
+								tmp += string_f(" %s:[",v.name.c_str());
+								for (auto &vv:v.vals){
+									tmp += string_f (" %s=%s",vv.sname.c_str(),vv.sval.c_str());
+								}
+								tmp += "]";
 							}
 							tb.push_back(tmp);
 						}
@@ -340,32 +338,33 @@ int main (int argc, char *argv[])
 				</f>
 				<f getsessioninfovars>
 					auto it = glocal.sessions.find(sessionid);
-					vector<const char *> vars;
-					vector<const char *> vals;
 					if (it != glocal.sessions.end()){
 						it->second.stats.lastvisit = time(NULL);
 						it->second.stats.nbacc++;
-						for (auto &v:it->second.vars){
-							vars.push_back(v.name.c_str());
-							vals.push_back(v.val.c_str());
-						}
-						rep_getsessioninfovars(true,it->second.name,it->second.lang,it->second.admin,it->second.userid,vars,vals);
+						rep_getsessioninfovars(true,it->second.name,it->second.lang,it->second.admin,it->second.userid,it->second.vars);
 					}else{
-						rep_getsessioninfovars(false,"",0,false,0,vars,vals);
+						vector<VAR> vars;
+						rep_getsessioninfovars(false,"",0,false,0,vars);
 					}
 				</f>
 				<f setvar>
 					string msg;
 					bool success = false;
-					if (glocal.vars.count(var)==0){
+					if (glocal.vars.count(var.name)==0){
 						msg = "unknown variable";
 					}else{
 						auto it = glocal.sessions.find(sessionid);
 						if (it != glocal.sessions.end()){
 							bool found = false;
 							for (auto &v:it->second.vars){
-								if (v.name == var){
-									v.val = val;
+								if (v.name == var.name){
+									v.vals.clear();
+									for (auto &vv:var.vals){
+										SNAMEVAL vals;
+										vals.sname = vv.sname;
+										vals.sval = vv.sval;
+										v.vals.push_back(vals);
+									}
 									found = true;
 									success = true;
 									msg = "Variable updated";
@@ -373,7 +372,7 @@ int main (int argc, char *argv[])
 								}
 							}
 							if (!found){
-								it->second.vars.push_back(VARIABLE(var,val));
+								it->second.vars.push_back(var);
 								msg = "Variable added";
 								success = true;
 							}

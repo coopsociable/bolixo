@@ -21,10 +21,9 @@ static const char *newscolor = "green";
 
 static string w_session;
 static W_SSTRING w_image("image");
-static W_UNSIGNED w_inbox_offset ("inbox_offset");
-static unsigned inbox_offset = 0;
-static W_UNSIGNED w_talk_offset ("talk_offset");
-static unsigned talk_offset = 0;
+extern W_SSTRING w_webtable;
+static W_UNSIGNED w_offset ("offset");
+static map<string,unsigned> offsets;
 static W_UNSIGNED w_clickl ("clickl");
 static W_UNSIGNED w_clickc ("clickc");
 static W_UNSIGNED w_order ("order");
@@ -186,6 +185,13 @@ static bool valid_context (CONNECT_INFO &con, _F_websteps *c, const char *subjec
 }
 </mod>
 
+static void trli_initvar (VAR &var, PARAM_STRING name, PARAM_STRING val)
+{
+	var.name = name.ptr;
+	SNAMEVAL sval;
+	sval.sval = val.ptr;
+	var.vals.push_back(sval);
+}
 
 <mod>
 static void trli_getsessioninfo(CONNECT_INFO &con, CONNECT_INFO &con_sess)
@@ -197,11 +203,12 @@ static void trli_getsessioninfo(CONNECT_INFO &con, CONNECT_INFO &con_sess)
 			userinfo.lang = lang;
 			userinfo.name = name;
 			userinfo.is_admin = admin;
-			for (unsigned i=0; i<vars.size(); i++){
-				if (strcmp(vars[i],"subject")==0) subject=atoi(vals[i]);
-				if (strcmp(vars[i],"order")==0) order=atoi(vals[i]);
-				if (strcmp(vars[i],"inbox_offset")==0) inbox_offset=atoi(vals[i]);
-				if (strcmp(vars[i],"talk_offset")==0) talk_offset=atoi(vals[i]);
+			for (auto &var:vars){
+				if (strcmp(var.name,"subject")==0 && var.vals.size()==1) subject=atoi(var.vals[0].sval);
+				if (strcmp(var.name,"order")==0 && var.vals.size()==1) order=atoi(var.vals[0].sval);
+				if (strcmp(var.name,"offsets")==0){
+					for (auto &s:var.vals) offsets[s.sname] = atoi(s.sval);
+				}
 			}
 		}else{
 			userinfo.reset();
@@ -215,9 +222,9 @@ static void trli_getsessioninfo(CONNECT_INFO &con, CONNECT_INFO &con_sess)
 	</f>
 	</call>
 	if (w_tosubject.isset() && w_tosubject <= max_subject && subject != w_tosubject){
-		SSTRING s;
-		w_tosubject.getvalstr(s);
-		<call bo_sessiond_client_setvar>(con_sess,w_session.c_str(),"subject",s.c_str());
+		VAR var;
+		trli_initvar (var,"subject",w_tosubject.getvalstr());
+		<call bo_sessiond_client_setvar>(con_sess,w_session.c_str(),var);
 		<f ok>
 		</f>
 		</call>
@@ -233,17 +240,25 @@ static void button_validate(int step)
 }
 
 <mod>
-static void web_updatevar(CONNECT_INFO &con_sess, W_UNSIGNED &w_var, unsigned &var, const char *name)
+static void web_updateoffsets(CONNECT_INFO &con_sess)
 {
-	glocal const char *name = name;
-	if (w_var.isset() && w_var != var){
-		string tmp = w_var.getvalstr();
-		<call bo_sessiond_client_setvar>(con_sess,w_session.c_str(),name,tmp);
-		<f ok>
-			if (!success) printf ("Can't set variable %s: %s\n",glocal.name,msg);
-		</f>
-		</call>
-		var = w_var;
+	if (w_webtable.isset() && w_offset.isset()){
+		if (offsets[w_webtable.c_str()] != w_offset){
+			offsets[w_webtable.c_str()] = w_offset;
+			VAR var;
+			var.name = "offsets";
+			for (auto &v:offsets){
+				SNAMEVAL val;
+				val.sname = v.first;
+				val.sval = string_f ("%u",v.second);
+				var.vals.push_back(val);
+			}
+			<call bo_sessiond_client_setvar>(con_sess,w_session.c_str(),var);
+			<f ok>
+				if (!success) printf ("Can't set variable offset: %s\n",msg);
+			</f>
+			</call>
+		}
 	}
 }
 </mod>
@@ -311,8 +326,7 @@ extern "C" void webmain_real()
 	}
 	if (w_session.empty()) return;
 	
-	web_updatevar (glocal.con_sess,w_inbox_offset,inbox_offset,"inbox_offset");
-	web_updatevar (glocal.con_sess,w_talk_offset,talk_offset,"talk_offset");
+	web_updateoffsets (glocal.con_sess);
 	webtable_ctrloutput();
 	<call websteps>();
 	<f setstep>
@@ -333,7 +347,7 @@ extern "C" void webmain_real()
 			</f>
 			<f body>
 				/- Short messages
-				<call webtable>("talk",talk_offset,5);
+				<call webtable>("talk",offsets["talk"],5);
 				<f init>
 					index_setstyles (this);
 				</f>
@@ -417,7 +431,7 @@ extern "C" void webmain_real()
 			</f>
 			<f left>
 				/- General inbox
-				<call webtable>("inbox",inbox_offset,10);
+				<call webtable>("inbox",offsets["inbox"],10);
 				<f init>
 					index_setstyles (this);
 				</f>	
@@ -496,7 +510,7 @@ extern "C" void webmain_real()
 						for (auto &inb:inboxes){
 							glocal string path = string_f ("/projects/%s/%s",inb.manager,inb.project);
 							htmlprintf ("Project %s<br>\n",glocal.path.c_str());
-							<call webtable>(glocal.path,inbox_offset,10);
+							<call webtable>(glocal.path,offsets[glocal.path],5);
 							<f init>
 								index_setstyles (this);
 							</f>
