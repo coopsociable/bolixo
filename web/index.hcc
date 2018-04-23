@@ -24,8 +24,6 @@ static W_SSTRING w_image("image");
 extern W_SSTRING w_webtable;
 static W_UNSIGNED w_offset ("offset");
 static map<string,unsigned> offsets;
-static W_UNSIGNED w_clickl ("clickl");
-static W_UNSIGNED w_clickc ("clickc");
 static W_UNSIGNED w_order ("order");
 static unsigned order = 0;
 static W_UNSIGNED w_test("test");
@@ -49,23 +47,15 @@ static W_SSTRING w_confirm("confirm");
 static W_UNSIGNED w_preview("preview");
 static W_UNSIGNED w_validate("validate");
 
+static W_SSTRING w_public("public");
+
 static const int step_main=1;
 static const int step_login=2;
 static const int step_adduser=3;
 static const int step_logout=4;
 static const int step_image=5;
-static const int step_viewproof=6;
-static const int step_postnews=7;
-static const int step_addproof=8;
-static const int step_addcomment=9;
-static const int step_confirmuser=10;
-static const int step_viewarguments=11;
-static const int step_addargument=12;
-static const int step_statistics=13;
-static const int step_viewextraurls=14;
-static const int step_addsource=15;
+static const int step_public=6;
 
-static const int step_viewblog=2;
 
 static void show_buttons_right(_F_websteps *c)
 {
@@ -124,7 +114,6 @@ static void show_buttons_context(_F_websteps *c)
 		print_aref (w_order ? "Switch order: submit date" : "Switch order: last activity",step_main,w_order);
 		w_order = old;
 		/- <td align=left>
-		print_aref ("Post a news",step_postnews);
 	}
 	/- <td align=right>
 	/- <table border=0>
@@ -332,6 +321,8 @@ extern "C" void webmain_real()
 	<f setstep>
 		if (w_session.empty() && step > 2){
 			step = 1;
+		}else if (w_public.isset()){
+			step = step_public;
 		}
 	</f>
 	<f step1>
@@ -703,9 +694,29 @@ extern "C" void webmain_real()
 		</f>
 		</call>
 	</f>	
-	<f step6>
-		tlmpweb_doctype ("image",6);
-		htmlwrite ("allo\r\n",6);
+	<f step6> // public directory
+		glocal string path = string_f("/projects/%s/public",w_public.c_str());
+		<call webtable>(glocal.path,offsets[glocal.path],10);
+		<f init>
+			index_setstyles (this);
+		</f>
+		<f load>
+			glocal unsigned rownum = nbskip;
+			sethead ("Type\tEventdate\tModified\tOwner\tName\tTitle");
+			<call bod_client_listdir>(glocal.con,w_session.c_str(),glocal.path,"",false,nbskip,nblines);
+			<f ok>
+				for (auto &f:files){
+					glocal.webtable.setrow ("sep",glocal.rownum,"%c%s\t%s\t%s\t%s/%s:%s\t%u\t%s\t%s\n"
+						,tbtype[f.type],tbftype[f.file_type]
+						,f.eventdate,f.modified
+						,f.owner,f.listname,f.listmode,f.size
+						,f.name,f.title);
+					glocal.rownum++;
+				}
+			</f>
+			</call>
+		</f>
+		</call>
 	</f>
 	<f step7>
 	</f>

@@ -30,6 +30,10 @@ elif [ "$1" = "sequence" ] ; then
 		NB=5
 	fi
 	$0 reset
+	./bofs -u jacques-A groups --create-group-list -L public 
+	./bofs -u jacques-A groups --create-project-dir -L public
+	./bofs groups -a -L "#all" -M R /projects/jacques-A/public
+
 	./bofs -u jacques-A groups --create-group-list -L Alist1
 	./bofs -u jacques-A groups --create-project-dir -L Alist1
 	./bofs -u admin     groups --create-group-list -L Alonglist2 --owner jacques-A
@@ -99,7 +103,7 @@ elif [ "$1" = "writemails" ] ; then
 	./bofs msgs -t -G Agroup1 -F /tmp/file.png
 	./bofs msgs -t -G Agroup1 -F /tmp/file.mp4
 	# Populate projects
-	for project in jacques-A/Alist1 jacques-A/Alonglist2 jacques-B/Blist1
+	for project in jacques-A/Alist1 jacques-A/Alonglist2 jacques-B/Blist1 jacques-A/public
 	do
 		for file in /tmp/file.*
 		do

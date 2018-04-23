@@ -1300,19 +1300,21 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 	<f main>
 		glocal int ret = -1;
 		if (glocal.set_access){
-			const char *username = glocal.user == NULL ? "" : glocal.user;
-			const char *listname = glocal.listname == NULL ? "" : glocal.listname;
-			for (int i=0; i<argc; i++){
-				<call bod_client_set_access>(glocal.ctx->con,glocal.ctx->sessionid,argv[i],username,listname,glocal.listmode);
-				<f ok>
-					if (!success){
-						bofs_error ("groups",internal_error,"bofs groups: %s",msg);
-					}else{
-						glocal.ret = 0;
-					}
-				</f>
-				</call>
-				if (glocal.ret != 0) break;
+			if (glocal.ctx->login()!=-1){
+				const char *username = glocal.user == NULL ? "" : glocal.user;
+				const char *listname = glocal.listname == NULL ? "" : glocal.listname;
+				for (int i=0; i<argc; i++){
+					<call bod_client_set_access>(glocal.ctx->con,glocal.ctx->sessionid,argv[i],username,listname,glocal.listmode);
+					<f ok>
+						if (!success){
+							bofs_error ("groups",internal_error,"bofs groups: %s",msg);
+						}else{
+							glocal.ret = 0;
+						}
+					</f>
+					</call>
+					if (glocal.ret != 0) break;
+				}
 			}
 		}else{
 			usage();
