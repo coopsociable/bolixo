@@ -24,6 +24,16 @@ static W_SSTRING w_image("image");
 extern W_SSTRING w_webtable;
 static W_UNSIGNED w_offset ("offset");
 static map<string,unsigned> offsets;
+struct WEBTAB{
+	string name;
+	string args;
+	WEBTAB(){}
+	WEBTAB(PARAM_STRING _name, PARAM_STRING _args){
+		name = _name.ptr;
+		args = _args.ptr;
+	}
+};
+static vector<WEBTAB> tabs;
 static W_UNSIGNED w_order ("order");
 static unsigned order = 0;
 static W_UNSIGNED w_test("test");
@@ -37,12 +47,8 @@ static W_SSTRING new_email ("new_email");
 static W_SSTRING new_password1 ("new_password1");
 static W_SSTRING new_password2 ("new_password2");
 
-static W_UNSIGNED w_valid("valid");
-static W_UNSIGNED w_type("type");
-static W_UNSIGNED w_vote("vote");
 static W_SSTRING w_title("title");
 static W_SSTRING w_content("content");
-static W_SSTRING w_url("url");
 static W_SSTRING w_confirm("confirm");
 static W_UNSIGNED w_preview("preview");
 static W_UNSIGNED w_validate("validate");
@@ -55,7 +61,170 @@ static const int step_adduser=3;
 static const int step_logout=4;
 static const int step_image=5;
 static const int step_public=6;
+static const int step_projects=7;
+static const int step_mails=8;
+static const int step_talks=9;
 
+static W_UNSIGNED w_webtab("webtab");
+static W_SSTRING  w_webtab_add("webtab_add");
+
+#define _TLMP_webtabs
+struct _F_webtabs {
+	#define _F_webtabs_docstyle1(x) void x docstyle1(const char *id)
+	virtual _F_webtabs_docstyle1( )=0;
+	#define _F_webtabs_docstyle2(x) void x docstyle2(const char *id)
+	virtual _F_webtabs_docstyle2( );
+	#define _F_webtabs_docstyle3(x) void x docstyle3(const char *id)
+	virtual _F_webtabs_docstyle3( );
+	#define _F_webtabs_docstyle4(x) void x docstyle4(const char *id)
+	virtual _F_webtabs_docstyle4( );
+};
+static void webtab_href_c (const char *title, const char *href, const char *color)
+{
+	htmlprintf ("<a %s><table bgcolor=\"%s\"><tr><td style=\"padding:5px\"><font size=4 color=white>&nbsp;%s&nbsp;</font></table></a>\n"
+		,href,color,title);
+}
+static void webtab_aref_selected (const char *title, int tab)
+{
+	string hidden;
+	form_gethidden(hidden);
+	const char *sep = hidden.size() > 0 ? "&" : "";
+	string href = string_f ("href=%s?%s%swebtab=%d style=\"text-decoration:none\""
+		,tlmpweb_curpage(),hidden.c_str(),sep,tab);
+	webtab_href_c (title,href.c_str(),"#220022");
+}
+static void webtab_href (const char *title, PARAM_STRING href)
+{
+	webtab_href_c(title, href.ptr,"#33cc33");
+}
+static void webtab_aref (const char *title, int tab)
+{
+	string hidden;
+	form_gethidden(hidden);
+	const char *sep = hidden.size() > 0 ? "&" : "";
+	string href = string_f ("href=%s?%s%swebtab=%d style=\"text-decoration:none\""
+		,tlmpweb_curpage(),hidden.c_str(),sep,tab);
+	webtab_href (title,href);
+}
+void _F_webtabs::docstyle2(const char *id)
+{
+}
+void _F_webtabs::docstyle3(const char *id)
+{
+}
+void _F_webtabs::docstyle4(const char *id)
+{
+}
+struct TABSEL {
+	string id;
+	unsigned no;	// Position in tabs
+	TABSEL(){
+		no = 0;
+	}
+};
+<mod>
+void webtabs(_F_webtabs &c,
+	const char *name,
+	vector<WEBTAB> &tabs)
+{
+	if (w_webtab_add.isset()){
+		// We are either adding a new tab or selecting an existing one.
+		// While we look if the tab already exist, we de-select the others
+		string id = string_f ("%s:%s",name,w_webtab_add.c_str());
+		bool found = false;
+		unsigned len = strlen(name);
+		for (auto &t:tabs){
+			if (t.name == id){
+				found = true;
+				t.args = "sel";
+			}else if (strncmp(t.name.c_str(),name,len)==0 && t.name[len] == ':'){
+				t.args.clear();
+			}
+		}
+		if (!found) tabs.push_back(WEBTAB(id,"sel"));
+	}
+	// tabs contains the state of all webtabs on the site
+	// The name of this webtabs is used as a prefix to identify its definitions
+	glocal vector<WEBTAB> *tabs = &tabs;
+	glocal const char *name = name;
+	glocal TABSEL sel;
+	glocal TABSEL default_sel;
+	<call button_row>(1,"lightblue");
+	<f draw>
+		int len = strlen(glocal.name);
+		if (w_webtab > 0 && (w_webtab & 1)==0){
+			// A click on the X to delete one tab
+			unsigned delete_tab = (unsigned)-1;
+			unsigned no = 1;
+			unsigned tabno=0;
+			for (auto &t:*glocal.tabs){
+				if (strncmp(glocal.name,t.name.c_str(),len)==0
+					&& t.name[len] == ':'){
+					if (w_webtab == no+1){
+						delete_tab = tabno;
+						break;
+					}
+					no += 2;
+				}
+				tabno++;
+			}
+			if (delete_tab != (unsigned)-1){
+				glocal.tabs->erase (glocal.tabs->begin()+delete_tab);
+			}
+			w_webtab = 0;
+		}
+		unsigned no = 1;
+		unsigned tabno=0;
+		for (auto &t:*glocal.tabs){
+			if (strncmp(glocal.name,t.name.c_str(),len)==0
+				&& t.name[len] == ':'){
+				split();
+				const char *name = t.name.c_str()+len+1;
+				if (glocal.default_sel.id.size() == 0){
+					glocal.default_sel.id = name;
+					glocal.default_sel.no = no;
+				}
+				bool is_sel = t.args == "sel";
+				if (w_webtab > 0){
+					if (w_webtab == no){
+						glocal.sel.id = name;
+						glocal.sel.no = no;
+						t.args = "sel";
+						webtab_aref_selected (name,no);
+					}else{
+						t.args.clear();
+						webtab_aref (name,no);
+					}
+					split();
+					webtab_aref("x",no+1);
+				}else{
+					if (is_sel){
+						glocal.sel.id = name;
+						glocal.sel.no = no;
+						webtab_aref_selected (name,no);
+					}else{
+						webtab_aref (name,no);
+					}
+					split();
+					webtab_aref("x",no+1);
+				}
+				no+=2;
+			}
+			tabno++;
+		}
+	</f>
+	</call>
+	if (glocal.default_sel.id.size() > 0){
+		if (glocal.sel.id.size() == 0){
+			glocal.sel.id = glocal.default_sel.id;
+			glocal.sel.no = glocal.default_sel.no;
+		}
+		w_webtab = glocal.sel.no;
+		FORM_HIDDEN t(w_webtab);
+		c.docstyle1(glocal.sel.id.c_str());
+	}
+}
+</mod>
 
 static void show_buttons_right(_F_websteps *c)
 {
@@ -124,10 +293,19 @@ static void show_buttons_context(_F_websteps *c)
 }
 static unsigned subject = 0;
 const unsigned max_subject=7;
-<mod>
-static void trli_title (const char *title, _F_websteps *c)
+
+static void print_button (const char *title, int step, int curstep)
 {
-        //glocal int step = c->getcurstep();
+	if (step == curstep){
+		print_aref_selected (title,step);
+	}else{
+		print_aref (title,step);
+	}
+}
+<mod>
+static void bolixo_title (const char *title, _F_websteps *c)
+{
+	glocal int step = c->getcurstep();
 
 	string tmp = string_f ("Bolixo: %s",title);
 	tlmpweb_title (tmp.c_str());
@@ -146,7 +324,18 @@ static void trli_title (const char *title, _F_websteps *c)
 	/- </td></tr>
 	/- <tr><td align=left>
 	if (w_robot == 0){
-		//trli_subjects (step_statistics, subject, glocal.step == step_statistics,false,w_tosubject);
+		<call button_row>(0,"white");
+		<f draw>
+			split();
+			print_button ("Main",1,glocal.step);
+			split();
+			print_button ("Talk",step_talks,glocal.step);
+			split();
+			print_button ("Mail",step_mails,glocal.step);
+			split();
+			print_button ("Projects",step_projects,glocal.step);
+		</f>
+		</call>
 	}else{
 	}
 	/- </tr></table><br>
@@ -158,7 +347,7 @@ static bool valid_context (CONNECT_INFO &con, _F_websteps *c, const char *subjec
 {
 	glocal bool ret = true;
 	if (userinfo.name.empty()){
-		trli_title ("",c);
+		bolixo_title ("",c);
 		/- <p>You must be logged to
 		printf ("%s<p>\n",subject);
 		/- You do not have an account, just create one (top right button).
@@ -197,6 +386,9 @@ static void trli_getsessioninfo(CONNECT_INFO &con, CONNECT_INFO &con_sess)
 				if (strcmp(var.name,"order")==0 && var.vals.size()==1) order=atoi(var.vals[0].sval);
 				if (strcmp(var.name,"offsets")==0){
 					for (auto &s:var.vals) offsets[s.sname] = atoi(s.sval);
+				}
+				if (strcmp(var.name,"webtabs")==0){
+					for (auto &s:var.vals) tabs.push_back(WEBTAB(s.sname,s.sval));
 				}
 			}
 		}else{
@@ -326,7 +518,7 @@ extern "C" void webmain_real()
 		}
 	</f>
 	<f step1>
-		trli_title ("",this);
+		bolixo_title ("",this);
 		if (userinfo.name.size() == 0){
 			// Anonymous, present public news ?
 			/- So far no public content
@@ -337,8 +529,399 @@ extern "C" void webmain_real()
 			<f top>
 			</f>
 			<f body>
-				/- Short messages
-				<call webtable>("talk",offsets["talk"],5);
+			</f>
+			<f left>
+			</f>
+			</call>
+		}
+	</f>
+	<f step2> // Login
+		<call form>();
+		<f top>
+			bolixo_title ("Login",&glocal.websteps);
+			if (glocal.account_confirmed){
+				/- Welcome
+				/- <p>
+				/- The account is now confirmed, you can log in
+			}else{
+				/- Already have an account, please login<p>
+			}
+		</f>
+		<f setup>
+			/- <table border=0 align=center>
+			/- <tr><td>Enter your email<td>
+			field_string (w_email,"size=60");
+			/- <tr><td>Password<td>
+			field_password (w_password,"");
+			/- <tr><td>
+			button_submit ("Login");
+			/- </table>
+		</f>
+		<f validate>
+			bool ret = false;
+			if (w_email.is_filled()){
+				if (w_password.is_empty()){
+					/- <font color=red>You must supply a password</font>
+				}else{
+					ret = true;
+				}
+			}else{
+				/- <font color=red>Please provide an email</font>
+			}
+			return ret;
+		</f>
+		<f process>
+			glocal bool fail = false;
+			<call bod_client_login>(glocal.con,w_session.c_str(),w_email.c_str(),w_password.c_str());
+			<f ok>
+				if (success){
+					trli_getsessioninfo(glocal.con,glocal.con_sess);
+					glocal.websteps.gotostep(1);
+				}else{
+					/- <font color=red>Login failed, invalid email or password</font>
+					glocal.fail = true;
+				}
+			</f>
+			</call>
+			fail = glocal.fail;
+		</f>
+		</call>
+	</f>
+	<f step3> // Account creation
+		glocal bool account_created = false;
+		<call form>();
+		<f top>
+			bolixo_title ("Account creation",&glocal.websteps);
+			/- No account ? Please create one.
+			/- <p>
+			/- Your email will only be used for the following reasons.
+			/- <br>
+			/- <ul>
+			/- <li>Login.
+			/- <li>Account confirmation.
+			/- <li>Account modification confirmation.
+			/- <li>When posting a news, an email will be sent to confirm it was accepted.
+			/- </ul>
+			/- The only information shown on the web site is the nickname. Your email won't appear on the site.
+			/- <p>
+			/- See the
+			printhref_raw ("/terms-of-use.html","terms of use",false);
+			/- for more details
+		</f>
+		<f setup>
+			/- <table border=0 align=center>
+			/- <tr><td>Enter your nickname<td>
+			field_string (new_nickname,"");
+			/- <tr><td>Enter your email<td>
+			field_string (new_email,"");
+			/- <tr><td>Password<td>
+			field_password (new_password1,"");
+			/- <tr><td>Confirm password<td>
+			field_password (new_password2,"");
+			/- <tr><td>
+			button_submit ("Add account");
+			/- </table>
+		</f>
+		<f validate>
+			bool ret = true;
+			if (new_nickname.is_empty()){
+				/- <font color=red>Please provide a nickname</font>
+				ret = false;
+ 			}else if (new_email.is_empty()){
+				/- <font color=red>Please provide an email</font>
+				ret = false;
+			}else if (new_password1.is_empty()){
+				/- <font color=red>Please enter a password</font>
+				ret = false;
+			}else if (strcmp(new_password1.c_str(),new_password2.c_str())!=0){
+				/- <font color=red>Passwords do not match</font>
+				ret = false;
+			}
+			return ret;
+		</f>
+		<f process>
+			glocal bool fail = false;
+			<call bod_client_adduser>(glocal.con,w_session.c_str(),new_nickname.c_str(),new_email.c_str(),new_password1.c_str());
+			<f ok>
+				if (confirmid[0] == '\0'){
+					glocal.fail = true;
+					/- <font color=red>Account creation failure
+					htmlout (msg);
+					/- </font>
+				}else{
+					glocal.account_created = true;
+				}
+			</f>
+			</call>
+			fail = glocal.fail;
+		</f>
+		</call>
+		if (glocal.account_created){
+			bolixo_title ("Account creation",&glocal.websteps);
+			/- The account has been created
+			/- <br>
+			/- A confirmation email has been sent.
+			/- <br>
+			/- Once you received the email click on the link.
+			/- This will complete the account creation process
+		}
+
+	</f>
+	<f step4> // Logout
+		<call bod_client_logout>(glocal.con,w_session.c_str());
+		<f ok>
+			userinfo.reset();	//trli_getsessioninfo(glocal.con,glocal.con_sess);
+			bolixo_title ("",&glocal.websteps);
+			/- <p><p><p><p><table witdth=100%><tr><td align=center>Hope to see you again</table>
+		</f>
+		</call>
+	</f>
+	<f step5> // View one image
+		<call bod_client_readfile_bob>(glocal.con,w_session.c_str(),w_image.c_str(),"");
+		<f ok>
+			if (!success){
+				htmlprintf ("Can't read image: %s\n",msg);
+			}else{
+				tlmpweb_doctype ("image/jpeg",size);
+				htmlwrite (content.getbuffer(),content.getsize());
+				glocal bool more = more;
+				while (glocal.more){
+					<call bod_client_readmore>(glocal.con,w_session.c_str(),handle);
+					<f ok>
+						htmlwrite (content.getbuffer(),content.getsize());
+						glocal.more = more;
+					</f>
+					</call>
+				}
+			}
+				
+		</f>
+		</call>
+	</f>	
+	<f step6> // public directory
+		glocal string path = string_f("/projects/%s/public",w_public.c_str());
+		<call webtable>(glocal.path,offsets[glocal.path],10);
+		<f init>
+			index_setstyles (this);
+		</f>
+		<f load>
+			glocal unsigned rownum = nbskip;
+			sethead ("Type\tEventdate\tModified\tOwner\tName\tTitle");
+			<call bod_client_listdir>(glocal.con,w_session.c_str(),glocal.path,"",false,nbskip,nblines);
+			<f ok>
+				for (auto &f:files){
+					glocal.webtable.setrow ("sep",glocal.rownum,"%c%s\t%s\t%s\t%s/%s:%s\t%u\t%s\t%s\n"
+						,tbtype[f.type],tbftype[f.file_type]
+						,f.eventdate,f.modified
+						,f.owner,f.listname,f.listmode,f.size
+						,f.name,f.title);
+					glocal.rownum++;
+				}
+			</f>
+			</call>
+		</f>
+		</call>
+	</f>
+	<f step7> // Projects
+		bolixo_title ("",this);
+		<call vframe4>("projects","","");
+		<f top>
+		</f>
+		<f top_left>
+		</f>
+		<f left>
+			// List projects
+			<call bod_client_list_inboxes>(glocal.con,w_session.c_str(),"");
+			<f ok>
+				if (!success){
+					htmlprintf ("internal_error=%d msg=%s<br>\n",internal_error,msg);
+				}else{
+					for (auto &inb:inboxes){
+						string add = string_f("webtab_add=%s/%s",inb.manager,inb.project);
+						url_self (add.c_str(),"%s/%s",inb.manager,inb.project);
+						/- <br>
+					}
+				}
+			</f>
+			</call>
+		</f>
+		<f body>
+			<call webtabs>("projects",tabs);
+			<f docstyle1>
+				glocal string path = string_f ("/projects/%s",id);
+				//htmlprintf ("Project %s<br>\n",glocal.path.c_str());
+				<call webtable>(glocal.path,offsets[glocal.path],5);
+				<f init>
+					index_setstyles (this);
+				</f>
+				<f load>
+					glocal unsigned rownum = nbskip;
+					sethead ("Type\tEventdate\tModified\tOwner\tName\tTitle");
+					<call bod_client_listdir>(glocal.con,w_session.c_str(),glocal.path,"",false,nbskip,nblines);
+					<f ok>
+						for (auto &f:files){
+							glocal.webtable.setrow ("sep",glocal.rownum,"%c%s\t%s\t%s\t%s/%s:%s\t%u\t%s\t%s\n"
+								,tbtype[f.type],tbftype[f.file_type]
+								,f.eventdate,f.modified
+								,f.owner,f.listname,f.listmode,f.size
+								,f.name,f.title);
+							glocal.rownum++;
+						}
+					</f>
+					</call>
+				</f>
+				</call>
+			</f>
+			</call>
+		</f>
+		</call>
+	</f>
+	<f step8> // Mails
+		bolixo_title ("Mails",this);
+		<call vframe4>("","","");
+		<f top_left>
+		</f>
+		<f top>
+		</f>
+		<f left>
+			<call bod_client_list_lists>(glocal.con,w_session.c_str(),"");
+			<f ok>
+				for (auto s:lists){
+					string add = string_f("webtab_add=%s",s);
+					url_self (add.c_str(),"%s",s);
+					/- <br>
+				}
+			</f>
+			</call>
+		</f>
+		<f body>
+			<call webtabs>("mails",tabs);
+			<f docstyle1>
+				<call webtable>("inbox",offsets["inbox"],10);
+				<f init>
+					index_setstyles (this);
+				</f>	
+				<f click>
+					tlmpweb_flushheader();
+					//htmlprintf ("click %d %d<p>\n",noline,nocol);
+					<call bod_client_list_msgs>(glocal.con,w_session.c_str(),"",false,noline,1);
+					<f ok>
+						if (messages.size()!=1){
+							htmlprintf ("Internal error: %s\n",msg);
+						}else{
+							auto &m = messages[0];
+							//htmlprintf ("uuid=%s<p>\n",m.uuid);
+							htmlprintf ("title=%s<p>\n",m.title);
+							string path;
+							if (m.role[0] != '\0'){
+								path = string_f ("/msg-projects/%s/%s/%s/%s",m.manager,m.project,m.role,m.uuid);
+							}else if (m.manager[0] != '\0'){
+								path = string_f ("/msg-projects/%s/%s/%s",m.manager,m.project,m.uuid);
+							}else{
+								path = string_f ("/msgs/%s/inbox/%s",userinfo.name.c_str(),m.uuid);
+							}	
+							//htmlprintf ("path=%s<p>\n",path.c_str());
+							<call bod_client_readfile>(glocal.con,w_session.c_str(),path,"");
+							<f ok>
+								const char *pt = content;
+								while (*pt != '\0'){
+									const char *start = pt;
+									while (*pt != '\0' && *pt != '\n') pt++;
+									htmlwrite (start,pt-start);
+									htmlout ("<br>\n");
+									if (*pt == '\n') pt++;
+								}
+							</f>
+							</call>
+						}
+					</f>
+					</call>
+				</f>
+				<f load>
+					glocal unsigned rownum = nbskip;
+					sethead ("From\tManager\tProject\tRole\tSubmit\tMessage ID\tTitle");
+					<call bod_client_list_msgs>(glocal.con,w_session.c_str(),"",false,nbskip,nblines);
+					<f ok>
+						if (!success){
+							htmlprintf ("Error: %d %s<br>",internal_error,msg);
+						}else{
+							glocal.webtable.setclickopt (true,"Popup","800,200");
+							for (auto &m:messages){
+								const char *boldon = "", *boldoff = "";
+								if (strcmp(m.submit,m.viewed)!=0){
+									boldon = "<b>";
+									boldoff = "</b>";
+								}
+								glocal.webtable.setrow ("sep",glocal.rownum,"%s%s%s\t%s%s%s\t%s%s%s\t%s%s%s\t%s%s%s\t%s%s%s\t%s%s%s"
+									,boldon,m.from,boldoff
+									,boldon,m.manager,boldoff
+									,boldon,m.project,boldoff
+									,boldon,m.role,boldoff
+									,boldon,m.submit,boldoff
+									,boldon,m.uuid,boldoff
+									,boldon,m.title,boldoff);
+								glocal.rownum++;
+							}
+						}
+					</f>
+					</call>
+				</f>
+				</call>
+			</f>
+			</call>
+		</f>
+		</call>
+	</f>
+	<f step9>	// Talks
+		bolixo_title ("Talks",this);
+		<call vframe4>("","","");
+		<f top_left>
+		</f>
+		<f top>
+		</f>
+		<f left>
+			<call bod_client_list_groups>(glocal.con,w_session.c_str(),"");
+			<f ok>
+				for (auto s:groups){
+					string add = string_f("webtab_add=%s",s);
+					url_self (add.c_str(),"%s",s);
+					/- <br>
+				}
+			</f>
+			</call>
+		</f>
+		<f body>
+			<call webtabs>("talks",tabs);
+			<f docstyle1>
+				glocal string list = id;
+				<call form>();
+				<f setup>
+					/- <table border=0 align=center>
+					/- <tr><td>
+					field_textarea (w_content,5,60,"");
+					/- <td>
+					button_submit ("Send");
+					/- </table>
+				</f>
+				<f validate>
+					// We do not want the form to go away, so we send the message in this function.
+					if (w_content.size() > 0){
+						BOB_TYPE bob;
+						bob.setbuffer (w_content.c_str(),w_content.size(),false);
+						<call bod_client_sendtalk>(glocal.con,w_session.c_str(),"",glocal.list,bob,false);
+						<f ok>
+							if (!success) htmlprintf ("Can't send: %s<br>\n",msg);
+						</f>
+						</call>
+						w_content.setempty();
+					}
+					return false;
+				</f>
+				<f process>
+				</f>
+				</call>
+				string table = string("talk")+id;
+				<call webtable>(table,offsets[table],5);
 				<f init>
 					index_setstyles (this);
 				</f>
@@ -420,309 +1003,9 @@ extern "C" void webmain_real()
 				</f>
 				</call>
 			</f>
-			<f left>
-				/- General inbox
-				<call webtable>("inbox",offsets["inbox"],10);
-				<f init>
-					index_setstyles (this);
-				</f>	
-				<f click>
-					tlmpweb_flushheader();
-					//htmlprintf ("click %d %d<p>\n",noline,nocol);
-					<call bod_client_list_msgs>(glocal.con,w_session.c_str(),"",false,noline,1);
-					<f ok>
-						if (messages.size()!=1){
-							htmlprintf ("Internal error: %s\n",msg);
-						}else{
-							auto &m = messages[0];
-							//htmlprintf ("uuid=%s<p>\n",m.uuid);
-							htmlprintf ("title=%s<p>\n",m.title);
-							string path;
-							if (m.role[0] != '\0'){
-								path = string_f ("/msg-projects/%s/%s/%s/%s",m.manager,m.project,m.role,m.uuid);
-							}else if (m.manager[0] != '\0'){
-								path = string_f ("/msg-projects/%s/%s/%s",m.manager,m.project,m.uuid);
-							}else{
-								path = string_f ("/msgs/%s/inbox/%s",userinfo.name.c_str(),m.uuid);
-							}	
-							//htmlprintf ("path=%s<p>\n",path.c_str());
-							<call bod_client_readfile>(glocal.con,w_session.c_str(),path,"");
-							<f ok>
-								const char *pt = content;
-								while (*pt != '\0'){
-									const char *start = pt;
-									while (*pt != '\0' && *pt != '\n') pt++;
-									htmlwrite (start,pt-start);
-									htmlout ("<br>\n");
-									if (*pt == '\n') pt++;
-								}
-							</f>
-							</call>
-						}
-					</f>
-					</call>
-				</f>
-				<f load>
-					glocal unsigned rownum = nbskip;
-					sethead ("From\tManager\tProject\tRole\tSubmit\tMessage ID\tTitle");
-					<call bod_client_list_msgs>(glocal.con,w_session.c_str(),"",false,nbskip,nblines);
-					<f ok>
-						if (!success){
-							htmlprintf ("Error: %d %s<br>",internal_error,msg);
-						}else{
-							glocal.webtable.setclickopt (true,"Popup","800,200");
-							for (auto &m:messages){
-								const char *boldon = "", *boldoff = "";
-								if (strcmp(m.submit,m.viewed)!=0){
-									boldon = "<b>";
-									boldoff = "</b>";
-								}
-								glocal.webtable.setrow ("sep",glocal.rownum,"%s%s%s\t%s%s%s\t%s%s%s\t%s%s%s\t%s%s%s\t%s%s%s\t%s%s%s"
-									,boldon,m.from,boldoff
-									,boldon,m.manager,boldoff
-									,boldon,m.project,boldoff
-									,boldon,m.role,boldoff
-									,boldon,m.submit,boldoff
-									,boldon,m.uuid,boldoff
-									,boldon,m.title,boldoff);
-								glocal.rownum++;
-							}
-						}
-					</f>
-					</call>
-				</f>
-				</call>
-				// List projects
-				<call bod_client_list_inboxes>(glocal.con,w_session.c_str(),"");
-				<f ok>
-					if (!success){
-						htmlprintf ("internal_error=%d msg=%s<br>\n",internal_error,msg);
-					}else{
-						for (auto &inb:inboxes){
-							glocal string path = string_f ("/projects/%s/%s",inb.manager,inb.project);
-							htmlprintf ("Project %s<br>\n",glocal.path.c_str());
-							<call webtable>(glocal.path,offsets[glocal.path],5);
-							<f init>
-								index_setstyles (this);
-							</f>
-							<f load>
-								glocal unsigned rownum = nbskip;
-								sethead ("Type\tEventdate\tModified\tOwner\tName\tTitle");
-								<call bod_client_listdir>(glocal.con,w_session.c_str(),glocal.path,"",false,nbskip,nblines);
-								<f ok>
-									for (auto &f:files){
-										glocal.webtable.setrow ("sep",glocal.rownum,"%c%s\t%s\t%s\t%s/%s:%s\t%u\t%s\t%s\n"
-											,tbtype[f.type],tbftype[f.file_type]
-											,f.eventdate,f.modified
-											,f.owner,f.listname,f.listmode,f.size
-											,f.name,f.title);
-										glocal.rownum++;
-									}
-								</f>
-								</call>
-							</f>
-							</call>
-							/- <p>
-						}
-					}
-				</f>
-				</call>
-			</f>
-			</call>
-		}
-	</f>
-	<f step2> // Login
-		<call form>();
-		<f top>
-			trli_title ("Login",&glocal.websteps);
-			if (glocal.account_confirmed){
-				/- Welcome
-				/- <p>
-				/- The account is now confirmed, you can log in
-			}else{
-				/- Already have an account, please login<p>
-			}
-		</f>
-		<f setup>
-			/- <table border=0 align=center>
-			/- <tr><td>Enter your email<td>
-			field_string (w_email,"size=60");
-			/- <tr><td>Password<td>
-			field_password (w_password,"");
-			/- <tr><td>
-			button_submit ("Login");
-			/- </table>
-		</f>
-		<f validate>
-			bool ret = false;
-			if (w_email.is_filled()){
-				if (w_password.is_empty()){
-					/- <font color=red>You must supply a password</font>
-				}else{
-					ret = true;
-				}
-			}else{
-				/- <font color=red>Please provide an email</font>
-			}
-			return ret;
-		</f>
-		<f process>
-			glocal bool fail = false;
-			<call bod_client_login>(glocal.con,w_session.c_str(),w_email.c_str(),w_password.c_str());
-			<f ok>
-				if (success){
-					trli_getsessioninfo(glocal.con,glocal.con_sess);
-					glocal.websteps.gotostep(1);
-				}else{
-					/- <font color=red>Login failed, invalid email or password</font>
-					glocal.fail = true;
-				}
-			</f>
-			</call>
-			fail = glocal.fail;
-		</f>
-		</call>
-	</f>
-	<f step3> // Account creation
-		glocal bool account_created = false;
-		<call form>();
-		<f top>
-			trli_title ("Account creation",&glocal.websteps);
-			/- No account ? Please create one.
-			/- <p>
-			/- Your email will only be used for the following reasons.
-			/- <br>
-			/- <ul>
-			/- <li>Login.
-			/- <li>Account confirmation.
-			/- <li>Account modification confirmation.
-			/- <li>When posting a news, an email will be sent to confirm it was accepted.
-			/- </ul>
-			/- The only information shown on the web site is the nickname. Your email won't appear on the site.
-			/- <p>
-			/- See the
-			printhref_raw ("/terms-of-use.html","terms of use",false);
-			/- for more details
-		</f>
-		<f setup>
-			/- <table border=0 align=center>
-			/- <tr><td>Enter your nickname<td>
-			field_string (new_nickname,"");
-			/- <tr><td>Enter your email<td>
-			field_string (new_email,"");
-			/- <tr><td>Password<td>
-			field_password (new_password1,"");
-			/- <tr><td>Confirm password<td>
-			field_password (new_password2,"");
-			/- <tr><td>
-			button_submit ("Add account");
-			/- </table>
-		</f>
-		<f validate>
-			bool ret = true;
-			if (new_nickname.is_empty()){
-				/- <font color=red>Please provide a nickname</font>
-				ret = false;
- 			}else if (new_email.is_empty()){
-				/- <font color=red>Please provide an email</font>
-				ret = false;
-			}else if (new_password1.is_empty()){
-				/- <font color=red>Please enter a password</font>
-				ret = false;
-			}else if (strcmp(new_password1.c_str(),new_password2.c_str())!=0){
-				/- <font color=red>Passwords do not match</font>
-				ret = false;
-			}
-			return ret;
-		</f>
-		<f process>
-			glocal bool fail = false;
-			<call bod_client_adduser>(glocal.con,w_session.c_str(),new_nickname.c_str(),new_email.c_str(),new_password1.c_str());
-			<f ok>
-				if (confirmid[0] == '\0'){
-					glocal.fail = true;
-					/- <font color=red>Account creation failure
-					htmlout (msg);
-					/- </font>
-				}else{
-					glocal.account_created = true;
-				}
-			</f>
-			</call>
-			fail = glocal.fail;
-		</f>
-		</call>
-		if (glocal.account_created){
-			trli_title ("Account creation",&glocal.websteps);
-			/- The account has been created
-			/- <br>
-			/- A confirmation email has been sent.
-			/- <br>
-			/- Once you received the email click on the link.
-			/- This will complete the account creation process
-		}
-
-	</f>
-	<f step4> // Logout
-		<call bod_client_logout>(glocal.con,w_session.c_str());
-		<f ok>
-			userinfo.reset();	//trli_getsessioninfo(glocal.con,glocal.con_sess);
-			trli_title ("",&glocal.websteps);
-			/- <p><p><p><p><table witdth=100%><tr><td align=center>Hope to see you again</table>
-		</f>
-		</call>
-	</f>
-	<f step5> // View one image
-		<call bod_client_readfile_bob>(glocal.con,w_session.c_str(),w_image.c_str(),"");
-		<f ok>
-			if (!success){
-				htmlprintf ("Can't read image: %s\n",msg);
-			}else{
-				tlmpweb_doctype ("image/jpeg",size);
-				htmlwrite (content.getbuffer(),content.getsize());
-				glocal bool more = more;
-				while (glocal.more){
-					<call bod_client_readmore>(glocal.con,w_session.c_str(),handle);
-					<f ok>
-						htmlwrite (content.getbuffer(),content.getsize());
-						glocal.more = more;
-					</f>
-					</call>
-				}
-			}
-				
-		</f>
-		</call>
-	</f>	
-	<f step6> // public directory
-		glocal string path = string_f("/projects/%s/public",w_public.c_str());
-		<call webtable>(glocal.path,offsets[glocal.path],10);
-		<f init>
-			index_setstyles (this);
-		</f>
-		<f load>
-			glocal unsigned rownum = nbskip;
-			sethead ("Type\tEventdate\tModified\tOwner\tName\tTitle");
-			<call bod_client_listdir>(glocal.con,w_session.c_str(),glocal.path,"",false,nbskip,nblines);
-			<f ok>
-				for (auto &f:files){
-					glocal.webtable.setrow ("sep",glocal.rownum,"%c%s\t%s\t%s\t%s/%s:%s\t%u\t%s\t%s\n"
-						,tbtype[f.type],tbftype[f.file_type]
-						,f.eventdate,f.modified
-						,f.owner,f.listname,f.listmode,f.size
-						,f.name,f.title);
-					glocal.rownum++;
-				}
-			</f>
 			</call>
 		</f>
 		</call>
-	</f>
-	<f step7>
-	</f>
-	<f step8>
-	</f>
-	<f step9>
 	</f>
 	<f step10> // Confirm user
 		if (w_confirm.is_empty()){
@@ -734,7 +1017,7 @@ extern "C" void webmain_real()
 					glocal.account_confirmed = true;
 					glocal.websteps.gotostep(step_login);
 				}else{
-					trli_title ("",&glocal.websteps);
+					bolixo_title ("",&glocal.websteps);
 					printf ("Account confirmation failed: %s\n",msg);
 				}
 			</f>
@@ -743,18 +1026,34 @@ extern "C" void webmain_real()
 			
 	</f>
 	<f step11>
-		trli_title ("",this);
+		bolixo_title ("",this);
 	</f>
 	<f step12>
 	</f>
 	<f step13>
 	</f>
 	<f step14>
-		trli_title ("",this);
+		bolixo_title ("",this);
 	</f>
 	<f step15>
 	</f>
 	</call>
+	if (w_webtab_add.isset() || w_webtab.isset()){
+		// Save the webtabs state to the session manager
+		VAR var;
+		var.name = "webtabs";
+		for (auto &v:tabs){
+			SNAMEVAL val;
+			val.sname = v.name;
+			val.sval = v.args;
+			var.vals.push_back(val);
+		}
+		<call bo_sessiond_client_setvar>(glocal.con_sess,w_session.c_str(),var);
+		<f ok>
+			if (!success) printf ("Can't set variable webtabs: %s\n",msg);
+		</f>
+		</call>
+	}
 }
 </mod>
 
