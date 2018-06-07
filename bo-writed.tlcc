@@ -507,6 +507,9 @@ static void bo_writed_sendmsg (
 	}
 }
 </mod>
+/*
+	Tries to identify the file type from its early content or name
+*/
 
 static FILE_TYPE bo_writed_file_type (PARAM_STRING name, const BOB_TYPE &content, bool more)
 {
@@ -578,6 +581,7 @@ static FILE_TYPE bo_writed_file_type (PARAM_STRING name, const BOB_TYPE &content
 }
 
 static int bo_writed_addfile_bob (
+	CONNECT_INFO &con_keys,
 	const char *sessionid,
 	PARAM_STRING name,
 	ENTRY_TYPE type,
@@ -600,6 +604,7 @@ static int bo_writed_addfile_bob (
 		string tmp;
 		if (file_type == FILE_TEXT){
 			tmp = string((const char *) content.getbuffer(),content.getsize());
+			tmp = bo_writed_sign (con_keys,userid,tmp);
 			content_str = tmp.c_str();
 		}
 		if (fs_insert_entry(dirid,fileid,now,basename,type)==-1){
@@ -1142,7 +1147,7 @@ int main (int argc, char *argv[])
 						string msg;
 						string handle;
 						string msgid;
-						bo_writed_addfile_bob (sessionid,entry.basename,ENTRY_FILE,entry.dirid,entry.userid
+						bo_writed_addfile_bob (glocal.con_keys,sessionid,entry.basename,ENTRY_FILE,entry.dirid,entry.userid
 								,content,more
 								,msgid,msg,handle);
 						if (msg.size() > 0){
@@ -1697,6 +1702,8 @@ int main (int argc, char *argv[])
 					fs_set_now(glocal.now);
 					glocal unsigned userid = bo_writed_get_group_owner (glocal.con, sessionid, owner, glocal.username, glocal.msg);
 					if (glocal.userid > 0){
+						// We store the message in the short inbox of the sender
+						// and then a link in the short inbox of each recipient
 						<call sql_query>("select id2name.userid,id2name.name from groups"
 							" join group_members on groups.id=group_members.groupid"
 							" join id2name on id2name.userid=group_members.userid"
@@ -1707,7 +1714,7 @@ int main (int argc, char *argv[])
 						<f dostart>
 							int dirid = fs_find_short_inbox (glocal.userid,glocal.username,true,glocal.msg);
 							if (dirid != -1){
-								glocal.fileid  = bo_writed_addfile_bob (glocal.sessionid,NULL,ENTRY_MSG,dirid,glocal.userid
+								glocal.fileid  = bo_writed_addfile_bob (glocal.con_keys,glocal.sessionid,NULL,ENTRY_MSG,dirid,glocal.userid
 									,*glocal.content,glocal.more
 									,glocal.msgid,glocal.msg,glocal.handle);
 							}

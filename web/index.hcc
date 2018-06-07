@@ -488,6 +488,24 @@ static void index_setstyles (_F_webtable *c)
 	c->setrowstyle ("white","bgcolor=white");
 	c->setrowstyle ("image","bgcolor=white align=center");
 }
+/*
+	Format a short message, remove the signature
+*/
+static string index_format_shortmsg (const char *txt)
+{
+	string ret;
+	while (*txt != '\0'){
+		if (strncmp(txt,"------\n",7)==0){
+			break;
+		}else if (*txt == '\n'){
+			ret += "<br>\n";
+		}else{
+			ret += *txt;
+		}
+		txt++;
+	}
+	return ret;
+}
 
 <mod>
 extern "C" void webmain_real()
@@ -820,11 +838,13 @@ extern "C" void webmain_real()
 		<f top>
 		</f>
 		<f left>
-			<call bod_client_list_lists>(glocal.con,w_session.c_str(),"");
+			url_self ("webtab_add=INBOX","INBOX");
+			/- <br>
+			<call bod_client_list_inboxes>(glocal.con,w_session.c_str(),"");
 			<f ok>
-				for (auto s:lists){
-					string add = string_f("webtab_add=%s",s);
-					url_self (add.c_str(),"%s",s);
+				for (auto s:inboxes){
+					string add = string_f("webtab_add=%s",s.project);
+					url_self (add.c_str(),"%s",s.project);
 					/- <br>
 				}
 			</f>
@@ -833,14 +853,17 @@ extern "C" void webmain_real()
 		<f body>
 			<call webtabs>("mails",tabs);
 			<f docstyle1>
-				<call webtable>("inbox",offsets["inbox"],10);
+				glocal const char *project = id;
+				if (strcmp(id,"INBOX")==0) glocal.project = "";
+				string inbox = string("inbox") + id;
+				<call webtable>(inbox,offsets[inbox],10);
 				<f init>
 					index_setstyles (this);
 				</f>	
 				<f click>
 					tlmpweb_flushheader();
 					//htmlprintf ("click %d %d<p>\n",noline,nocol);
-					<call bod_client_list_msgs>(glocal.con,w_session.c_str(),"",false,noline,1);
+					<call bod_client_list_msgs>(glocal.con,w_session.c_str(),"",glocal.project,false,noline,1);
 					<f ok>
 						if (messages.size()!=1){
 							htmlprintf ("Internal error: %s\n",msg);
@@ -876,7 +899,7 @@ extern "C" void webmain_real()
 				<f load>
 					glocal unsigned rownum = nbskip;
 					sethead ("From\tManager\tProject\tRole\tSubmit\tMessage ID\tTitle");
-					<call bod_client_list_msgs>(glocal.con,w_session.c_str(),"",false,nbskip,nblines);
+					<call bod_client_list_msgs>(glocal.con,w_session.c_str(),"",glocal.project,false,nbskip,nblines);
 					<f ok>
 						if (!success){
 							htmlprintf ("Error: %d %s<br>",internal_error,msg);
@@ -972,7 +995,15 @@ extern "C" void webmain_real()
 							auto &m = messages[0];
 							//htmlprintf ("uuid=%s<p>\n",m.uuid);
 							if (m.content[0] != '\0'){
-								htmlout (m.content);
+								const char *pt = m.content;
+								while (*pt != '\0'){
+									if (*pt == '\n'){
+										htmlout ("<br>\n");
+									}else{
+										htmlout (*pt);
+									}
+									pt++;
+								}
 							}else if (file_is_sound(m.file_type)){
 								htmlprintf ("<audio controls>\n"
 									"<source src=\"%s?webstep=%u&image=/msgs/%s/short-inbox/%s\" type=\"audio/%s\">\n"
@@ -1014,7 +1045,8 @@ extern "C" void webmain_real()
 									,m.uuid
 									,m.size);
 								if (m.content[0] != '\0'){
-									glocal.webtable.setrow("white",glocal.rownum,"\t%s\a\a\a",m.content);
+									string tmp = index_format_shortmsg (m.content);
+									glocal.webtable.setrow("white",glocal.rownum,"\t%s\a\a\a",tmp.c_str());
 								}else if (file_is_sound(m.file_type)){
 									glocal.webtable.setrow("image",glocal.rownum,"\t<audio controls>\n"
 										"<source src=\"%s?webstep=%u&image=/msgs/%s/short-inbox/%s\" type=\"audio/%s\">\n"

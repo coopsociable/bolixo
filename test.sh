@@ -657,12 +657,12 @@ elif [ "$1" = "test-verifysign" ] ; then # T: Verify the RSA signature of a mess
 	echo MSG=$MSG
 	echo Validate signature
 	./test.sh bod-client --testverifysign admin --extra "$MSG"
-	./bofs misc --nbrep $NBREP --verifysign --nickname admin --message "$MSG"
-	./bofs misc --nbrep $HNBREP --http_verifysign --nickname admin --message "$MSG"
+	./bofs               misc --nbrep $NBREP --verifysign --nickname admin --message "$MSG"
+	./bofs -u hjacques-A misc --nbrep $HNBREP --verifysign --nickname admin --message "$MSG"
 	echo Validate signature for modified message
 	./test.sh bod-client --testverifysign admin --extra "a $MSG"
-	./bofs misc --verifysign --nickname admin --message "a $MSG"
-	./bofs misc --http_verifysign --nickname admin --message "a $MSG"
+	./bofs               misc --verifysign --nickname admin --message "a $MSG"
+	./bofs -u hjacques-A misc --verifysign --nickname admin --message "a $MSG"
 elif [ "$1" = "createsqlusers" ] ; then # db: Generates SQL to create users
 	TRLISQL=/tmp/files.sql
 	USERSQL=/tmp/users.sql

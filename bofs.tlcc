@@ -1400,13 +1400,13 @@ static void bofs_list_msgs(_F_bofs_list_msgs &c, CONTEXT &ctx, const char *owner
 {
 	glocal _F_bofs_list_msgs *c = &c;
 	if (ctx.is_internal()){
-		<call bod_client_list_msgs>(ctx.con,ctx.sessionid,owner,deleted,offset,chunk);
+		<call bod_client_list_msgs>(ctx.con,ctx.sessionid,owner,"",deleted,offset,chunk);
 		<f ok>
 			glocal.c->ok(internal_error,success,msg,messages);
 		</f>
 		</call>
 	}else{
-		<call webapi_list_msgs>(ctx.hcon,ctx.hsessionid,owner,deleted,offset,chunk);
+		<call webapi_list_msgs>(ctx.hcon,ctx.hsessionid,owner,"",deleted,offset,chunk);
 		<f ok>
 			glocal.c->ok(internal_error,success,msg,messages);
 		</f>
@@ -1865,6 +1865,10 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 	<f main_noarg>
 		glocal int ret = -1;
 		if (glocal.verifysign){
+			if (glocal.nickname == NULL){
+				tlmp_error ("You must provide the nickname\n");
+				exit (-1);
+			}
 			for (unsigned i=0; i<glocal.nbrep; i++){
 				if (glocal.ctx->is_internal()){
 					<call bod_client_verifysign>(glocal.ctx->con,glocal.nickname,glocal.message);
