@@ -47,6 +47,7 @@ elif [ "$1" = "sequence" ] ; then
 	./bofs -u jacques-B groups --create-group -G Bgroup1
 	./bofs -u jacques-C groups --create-group -G Cgroup1
 
+	./bofs -u jacques-A groups --set-group -L public -G Agroup1 -A W
 	./bofs -u jacques-A groups --set-group -L Alist1 -G Agroup1 -A R
 	./bofs -u admin     groups --set-group -L Alonglist2 -G Agroup1 -A W --owner jacques-A
 	./bofs -u jacques-B groups --set-group -L Blist1 -G Bgroup1 -A R
@@ -97,21 +98,25 @@ elif [ "$1" = "writemails" ] ; then
 	# Create short messages
 	./bofs msgs -t -G Agroup1 -C "Are you ready for lunch ?"
 	./bofs -u jacques-B msgs -t -G Bgroup1 -C "Not possible today"
-	./bofs msgs -t -G Agroup1 -F /tmp/file.mp3
-	./bofs msgs -t -G Agroup1 -F /tmp/file.jpg
-	./bofs msgs -t -G Agroup1 -F /tmp/file.gif
-	./bofs msgs -t -G Agroup1 -F /tmp/file.png
-	./bofs msgs -t -G Agroup1 -F /tmp/file.mp4
+	FILES=/b6/files
+	./bofs msgs -t -G Agroup1 -F $FILES/file.mp3
+	./bofs msgs -t -G Agroup1 -F $FILES/file.jpg
+	./bofs msgs -t -G Agroup1 -F $FILES/file.gif
+	./bofs msgs -t -G Agroup1 -F $FILES/file.png
+	./bofs msgs -t -G Agroup1 -F $FILES/file.mp4
 	# Populate projects
-	for project in jacques-A/Alist1 jacques-A/Alonglist2 jacques-B/Blist1 jacques-A/public
+	for project in jacques-A/Alist1 jacques-A/Alonglist2 jacques-B/Blist1
 	do
-		for file in /tmp/file.*
+		for file in $FILES/file.*
 		do
 			base=`basename $file`
 			echo "cp $file -> projects $project"
 			./bofs cp $file bo://projects/$project/$base
 		done
 	done
+	./bofs mkdir bo://projects/jacques-A/public/default
+	./bofs cp $FILES/file.jpg bo://projects/jacques-A/public/default/file.jpg
+	./bofs cp $FILES/intro.html bo://projects/jacques-A/public/default/intro.html
 elif [ "$1" = "config" ] ; then
 	./test.sh files <<-EOF
 		insert into groups (id,name) values (100,'project1'), (101,'project2'), (102,'project3');
