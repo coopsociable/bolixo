@@ -33,6 +33,9 @@ enum FILE_TYPE {
 	FILE_VIDEO,
 };
 
+inline bool file_is_text (FILE_TYPE type){
+	return type == FILE_TEXT;
+}
 inline bool file_is_sound (FILE_TYPE type){
 	return type == FILE_SOUND_MP3 || type == FILE_SOUND_OGG;
 }

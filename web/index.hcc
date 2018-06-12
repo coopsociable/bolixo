@@ -8,6 +8,7 @@
 #include <tlmplib.h>
 #include <trlitool.h>
 #include <string>
+#include <algorithm>
 #include "util.h"
 #define DEFINE_TBFTYPE
 #include "../bolixo.h"
@@ -31,6 +32,9 @@ struct WEBTAB{
 	WEBTAB(PARAM_STRING _name, PARAM_STRING _args){
 		name = _name.ptr;
 		args = _args.ptr;
+	}
+	bool operator < (const WEBTAB &n) const {
+		return name < n.name;
 	}
 };
 static vector<WEBTAB> tabs;
@@ -145,7 +149,11 @@ static void webtabs(_F_webtabs &c,
 				t.args.clear();
 			}
 		}
-		if (!found) tabs.push_back(WEBTAB(id,"sel"));
+		if (!found){
+			tabs.push_back(WEBTAB(id,"sel"));
+			sort (tabs.begin(),tabs.end());
+		}
+		w_webtab = 0;
 	}
 	// tabs contains the state of all webtabs on the site
 	// The name of this webtabs is used as a prefix to identify its definitions
@@ -159,6 +167,7 @@ static void webtabs(_F_webtabs &c,
 		if (glocal.may_delete && w_webtab > 0 && (w_webtab & 1)==0){
 			// A click on the X to delete one tab
 			unsigned delete_tab = (unsigned)-1;
+			unsigned previous_tab = (unsigned)-1;
 			unsigned no = 1;
 			unsigned tabno=0;
 			for (auto &t:*glocal.tabs){
@@ -167,12 +176,31 @@ static void webtabs(_F_webtabs &c,
 					if (w_webtab == no+1){
 						delete_tab = tabno;
 						break;
+					}else{
+						// When we delete a selected tab, the previous
+						// one becomes selected
+						previous_tab = tabno;
 					}
 					no += 2;
 				}
 				tabno++;
 			}
 			if (delete_tab != (unsigned)-1){
+				if ((*glocal.tabs)[delete_tab].args == "sel"){
+					// The tab being deleted was currently selected
+					// So we have to select the previous one (if exist) or the next one (if exist)
+					if (previous_tab != (unsigned)-1){
+						(*glocal.tabs)[previous_tab].args = "sel";
+					}else{
+						for (auto t=glocal.tabs->begin()+(delete_tab+1); t != glocal.tabs->end(); t++){
+							if (strncmp(glocal.name,t->name.c_str(),len)==0
+								&& t->name[len] == ':'){
+								t->args = "sel";
+								break;
+							}
+						}
+					}
+				}
 				glocal.tabs->erase (glocal.tabs->begin()+delete_tab);
 			}
 			w_webtab = 0;
@@ -943,6 +971,7 @@ extern "C" void webmain_real()
 		<f body>
 			<call webtabs>("projects",tabs);
 			<f docstyle1>
+				glocal const char *id = id;
 				glocal string path = string_f ("/projects/%s",id);
 				//htmlprintf ("Project %s<br>\n",glocal.path.c_str());
 				<call webtable>(glocal.path,offsets[glocal.path],5);
@@ -957,7 +986,17 @@ extern "C" void webmain_real()
 							htmlprintf ("Internal error: %s\n",msg);
 						}else{
 							auto &f = files[0];
-							index_popup ("",f.file_type,string_f("%s/%s",glocal.path.c_str(),f.name));
+							glocal FILE_TYPE file_type = f.file_type;
+							glocal string fname = string_f("%s/%s",glocal.path.c_str(),f.name);
+							if (file_is_text(f.file_type)){
+								<call bod_client_readfile>(glocal.con,w_session.c_str(),glocal.fname,"");
+								<f ok>
+									index_popup (content,glocal.file_type,glocal.fname);
+								</f>
+								</call>
+							}else{
+								index_popup ("",f.file_type,glocal.fname);
+							}
 						}
 					</f>
 					</call>
@@ -969,11 +1008,15 @@ extern "C" void webmain_real()
 					<f ok>
 						const char *func = "Popup";
 						for (auto &f:files){
-							const char *funcopt = "400,100";
-							if (file_is_image(f.file_type) || file_is_video(f.file_type)){
-								funcopt = "800,800";
+							if (bolixo_isdir(f.type)){
+								glocal.webtable.setclickopt (true,"",string_f("webtab_add=%s/%s",glocal.id,f.name));
+							}else{
+								const char *funcopt = "400,100";
+								if (file_is_image(f.file_type) || file_is_video(f.file_type)){
+									funcopt = "800,800";
+								}
+								glocal.webtable.setclickopt (true,func,funcopt);
 							}
-							glocal.webtable.setclickopt (true,func,funcopt);
 							glocal.webtable.setrow ("sep",glocal.rownum,"%c%s\t%s\t%s\t%s/%s:%s\t%u\t%s\t%s\n"
 								,tbtype[f.type],tbftype[f.file_type]
 								,f.eventdate,f.modified
