@@ -26,18 +26,29 @@ extern W_SSTRING w_webtable;
 static W_UNSIGNED w_offset ("offset");
 static map<string,unsigned> offsets;
 struct WEBTAB{
-	string name;
+	string tab;	// Name of this tab withing the webtab
 	string args;
 	WEBTAB(){}
-	WEBTAB(PARAM_STRING _name, PARAM_STRING _args){
-		name = _name.ptr;
+	WEBTAB(PARAM_STRING _tab, PARAM_STRING _args){
+		tab  = _tab.ptr;
 		args = _args.ptr;
 	}
 	bool operator < (const WEBTAB &n) const {
-		return name < n.name;
+		return tab < n.tab;
 	}
 };
-static vector<WEBTAB> tabs;
+static map<string,vector<WEBTAB>> tabs;
+void webtab_init (const vector<SNAMEVAL_receive> &vals)
+{
+	for (auto &s:vals){
+		// Split the name
+		const char *pt = strchr(s.sname,':');
+		if (pt != NULL){
+			tabs[string(s.sname,pt)].push_back(WEBTAB(pt+1,s.sval));
+		}
+	}
+}
+
 static W_UNSIGNED w_order ("order");
 static unsigned order = 0;
 static W_UNSIGNED w_test("test");
@@ -131,21 +142,21 @@ struct TABSEL {
 <mod>
 static void webtabs(_F_webtabs &c,
 	const char *name,
-	vector<WEBTAB> &tabs,
+	map<string,vector<WEBTAB>> &alltabs,
 	bool may_delete)
 {
+	vector<WEBTAB> &tabs = alltabs[name];
 	glocal bool may_delete = may_delete;
 	if (w_webtab_add.isset()){
 		// We are either adding a new tab or selecting an existing one.
 		// While we look if the tab already exist, we de-select the others
-		string id = string_f ("%s:%s",name,w_webtab_add.c_str());
+		string id = w_webtab_add.c_str();
 		bool found = false;
-		unsigned len = strlen(name);
 		for (auto &t:tabs){
-			if (t.name == id){
+			if (t.tab == id){
 				found = true;
 				t.args = "sel";
-			}else if (strncmp(t.name.c_str(),name,len)==0 && t.name[len] == ':'){
+			}else{
 				t.args.clear();
 			}
 		}
@@ -155,6 +166,25 @@ static void webtabs(_F_webtabs &c,
 		}
 		w_webtab = 0;
 	}
+	if (may_delete && w_webtab > 0 && (w_webtab & 1)==0){
+		// A click on the X to delete one tab
+		unsigned delete_tab = (w_webtab-1) / 2;
+		unsigned nbtab = tabs.size();
+		if (delete_tab < nbtab){
+			// If the deleted tab is currently selected (active)
+			// we must select another one.
+			if (tabs[delete_tab].args == "sel"){
+				for (auto &t:tabs) t.args.clear();
+				if (delete_tab > 0){
+					tabs[delete_tab-1].args = "sel";
+				}else if (delete_tab < nbtab-1){
+					tabs[delete_tab+1].args = "sel";
+				}
+			}
+			tabs.erase (tabs.begin()+delete_tab);
+			w_webtab = 0;
+		}
+	}
 	// tabs contains the state of all webtabs on the site
 	// The name of this webtabs is used as a prefix to identify its definitions
 	glocal vector<WEBTAB> *tabs = &tabs;
@@ -163,89 +193,44 @@ static void webtabs(_F_webtabs &c,
 	glocal TABSEL default_sel;
 	<call button_row>(1,"lightblue");
 	<f draw>
-		int len = strlen(glocal.name);
-		if (glocal.may_delete && w_webtab > 0 && (w_webtab & 1)==0){
-			// A click on the X to delete one tab
-			unsigned delete_tab = (unsigned)-1;
-			unsigned previous_tab = (unsigned)-1;
-			unsigned no = 1;
-			unsigned tabno=0;
-			for (auto &t:*glocal.tabs){
-				if (strncmp(glocal.name,t.name.c_str(),len)==0
-					&& t.name[len] == ':'){
-					if (w_webtab == no+1){
-						delete_tab = tabno;
-						break;
-					}else{
-						// When we delete a selected tab, the previous
-						// one becomes selected
-						previous_tab = tabno;
-					}
-					no += 2;
-				}
-				tabno++;
-			}
-			if (delete_tab != (unsigned)-1){
-				if ((*glocal.tabs)[delete_tab].args == "sel"){
-					// The tab being deleted was currently selected
-					// So we have to select the previous one (if exist) or the next one (if exist)
-					if (previous_tab != (unsigned)-1){
-						(*glocal.tabs)[previous_tab].args = "sel";
-					}else{
-						for (auto t=glocal.tabs->begin()+(delete_tab+1); t != glocal.tabs->end(); t++){
-							if (strncmp(glocal.name,t->name.c_str(),len)==0
-								&& t->name[len] == ':'){
-								t->args = "sel";
-								break;
-							}
-						}
-					}
-				}
-				glocal.tabs->erase (glocal.tabs->begin()+delete_tab);
-			}
-			w_webtab = 0;
-		}
 		unsigned no = 1;
 		unsigned tabno=0;
 		for (auto &t:*glocal.tabs){
-			if (strncmp(glocal.name,t.name.c_str(),len)==0
-				&& t.name[len] == ':'){
-				split();
-				const char *name = t.name.c_str()+len+1;
-				if (glocal.default_sel.id.size() == 0){
-					glocal.default_sel.id = name;
-					glocal.default_sel.no = no;
-				}
-				bool is_sel = t.args == "sel";
-				if (w_webtab > 0){
-					if (w_webtab == no){
-						glocal.sel.id = name;
-						glocal.sel.no = no;
-						t.args = "sel";
-						webtab_aref_selected (name,no);
-					}else{
-						t.args.clear();
-						webtab_aref (name,no);
-					}
-					if (glocal.may_delete){
-						split();
-						webtab_aref("x",no+1);
-					}
-				}else{
-					if (is_sel){
-						glocal.sel.id = name;
-						glocal.sel.no = no;
-						webtab_aref_selected (name,no);
-					}else{
-						webtab_aref (name,no);
-					}
-					if (glocal.may_delete){
-						split();
-						webtab_aref("x",no+1);
-					}
-				}
-				no+=2;
+			split();
+			const char *name = t.tab.c_str();
+			if (glocal.default_sel.id.size() == 0){
+				glocal.default_sel.id = name;
+				glocal.default_sel.no = no;
 			}
+			bool is_sel = t.args == "sel";
+			if (w_webtab > 0){
+				if (w_webtab == no){
+					glocal.sel.id = name;
+					glocal.sel.no = no;
+					t.args = "sel";
+					webtab_aref_selected (name,no);
+				}else{
+					t.args.clear();
+					webtab_aref (name,no);
+				}
+				if (glocal.may_delete){
+					split();
+					webtab_aref("x",no+1);
+				}
+			}else{
+				if (is_sel){
+					glocal.sel.id = name;
+					glocal.sel.no = no;
+					webtab_aref_selected (name,no);
+				}else{
+					webtab_aref (name,no);
+				}
+				if (glocal.may_delete){
+					split();
+					webtab_aref("x",no+1);
+				}
+			}
+			no+=2;
 			tabno++;
 		}
 	</f>
@@ -263,29 +248,29 @@ static void webtabs(_F_webtabs &c,
 </mod>
 void webtabs(_F_webtabs &c,
 	const char *name,
-	vector<WEBTAB> &tabs)
+	map<string,vector<WEBTAB>> &tabs)
 {
 	webtabs (c,name,tabs,true);
 }
 void webtabs(_F_webtabs &c,
 	const char *name,
 	const vector<string> &starttabs,
-	vector<WEBTAB> &tabs)
+	map<string,vector<WEBTAB>> &alltabs)
 {
+	vector<WEBTAB> &tabs = alltabs[name];
 	for (auto &s:starttabs){
 		bool found = false;
-		string tab = string_f("%s:%s",name,s.c_str());
 		for (auto &w:tabs){
-			if (tab == w.name){
+			if (s == w.tab){
 				found = true;
 				break;
 			}
 		}
 		if (!found){
-			tabs.push_back(WEBTAB(string_f("%s:%s",name,s.c_str()),""));
+			tabs.push_back(WEBTAB(s,""));
 		}
 	}
-	webtabs (c,name,tabs,false);
+	webtabs (c,name,alltabs,false);
 }
 
 static void show_buttons_right(_F_websteps *c)
@@ -452,7 +437,7 @@ static void trli_getsessioninfo(CONNECT_INFO &con, CONNECT_INFO &con_sess)
 					for (auto &s:var.vals) offsets[s.sname] = atoi(s.sval);
 				}
 				if (strcmp(var.name,"webtabs")==0){
-					for (auto &s:var.vals) tabs.push_back(WEBTAB(s.sname,s.sval));
+					webtab_init (var.vals);
 				}
 			}
 		}else{
@@ -1233,10 +1218,12 @@ extern "C" void webmain_real()
 		VAR var;
 		var.name = "webtabs";
 		for (auto &v:tabs){
-			SNAMEVAL val;
-			val.sname = v.name;
-			val.sval = v.args;
-			var.vals.push_back(val);
+			for (auto &t:v.second){
+				SNAMEVAL val;
+				val.sname = v.first + ':' + t.tab;
+				val.sval = t.args;
+				var.vals.push_back(val);
+			}
 		}
 		<call bo_sessiond_client_setvar>(glocal.con_sess,w_session.c_str(),var);
 		<f ok>
