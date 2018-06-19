@@ -24,7 +24,9 @@ static string w_session;
 static W_SSTRING w_image("image");
 extern W_SSTRING w_webtable;
 static W_UNSIGNED w_offset ("offset");
+static W_UNSIGNED w_current ("current");
 static map<string,unsigned> offsets;
+static map<string,unsigned> currents;
 struct WEBTAB{
 	string tab;	// Name of this tab withing the webtab
 	string args;
@@ -55,7 +57,6 @@ static W_UNSIGNED w_test("test");
 static W_UNSIGNED w_robot("robot");
 static W_SSTRING w_email("email");
 static W_SSTRING w_password("password");
-static W_UNSIGNED w_tosubject("tosubject");
 
 static W_SSTRING new_nickname("nickname");
 static W_SSTRING new_email ("new_email");
@@ -242,7 +243,19 @@ static void webtabs(_F_webtabs &c,
 		}
 		w_webtab = glocal.sel.no;
 		FORM_HIDDEN t(w_webtab);
-		c.docstyle1(glocal.sel.id.c_str());
+		const char *id = glocal.sel.id.c_str();
+		const char *id_2 = id+2;
+		if (strncmp(id,"1:",2)==0){
+			c.docstyle1(id_2);
+		}else if (strncmp(id,"2:",2)==0){
+			c.docstyle2(id_2);
+		}else if (strncmp(id,"3:",2)==0){
+			c.docstyle3(id_2);
+		}else if (strncmp(id,"4:",2)==0){
+			c.docstyle4(id_2);
+		}else{
+			c.docstyle1(id);
+		}
 	}
 }
 </mod>
@@ -436,10 +449,15 @@ static void trli_getsessioninfo(CONNECT_INFO &con, CONNECT_INFO &con_sess)
 				if (strcmp(var.name,"offsets")==0){
 					for (auto &s:var.vals) offsets[s.sname] = atoi(s.sval);
 				}
+				if (strcmp(var.name,"currents")==0){
+					for (auto &s:var.vals) currents[s.sname] = atoi(s.sval);
+				}
 				if (strcmp(var.name,"webtabs")==0){
 					webtab_init (var.vals);
 				}
 			}
+			// Refresh the cookie so it is valid for 2 more days
+			websession_setcookie("session",w_session.c_str(),time(NULL)+48*60*60);
 		}else{
 			userinfo.reset();
 			<call bod_client_createsession>(*glocal.con);
@@ -451,15 +469,6 @@ static void trli_getsessioninfo(CONNECT_INFO &con, CONNECT_INFO &con_sess)
 		}
 	</f>
 	</call>
-	if (w_tosubject.isset() && w_tosubject <= max_subject && subject != w_tosubject){
-		VAR var;
-		trli_initvar (var,"subject",w_tosubject.getvalstr());
-		<call bo_sessiond_client_setvar>(con_sess,w_session.c_str(),var);
-		<f ok>
-		</f>
-		</call>
-		subject = w_tosubject;
-	}
 }
 </mod>
 
@@ -492,12 +501,40 @@ static void web_updateoffsets(CONNECT_INFO &con_sess)
 	}
 }
 </mod>
+<mod>
+static void web_updatecurrents(CONNECT_INFO &con_sess, unsigned noline)
+{
+	currents[w_webtable.c_str()] = noline;
+	VAR var;
+	var.name = "currents";
+	for (auto &v:currents){
+		SNAMEVAL val;
+		val.sname = v.first;
+		val.sval = string_f ("%u",v.second);
+		var.vals.push_back(val);
+	}
+	<call bo_sessiond_client_setvar>(con_sess,w_session.c_str(),var);
+	<f ok>
+		if (!success) printf ("Can't set variable current: %s\n",msg);
+	</f>
+	</call>
+}
+</mod>
+static void web_updatecurrents(CONNECT_INFO &con_sess)
+{
+	if (w_webtable.isset() && w_current.isset()){
+		if (currents[w_webtable.c_str()] != w_current){
+			web_updatecurrents(con_sess,w_current);
+		}
+	}
+}
 
 static void index_setstyles (_F_webtable *c)
 {
 	c->settableparms ("border=1");
 	c->setthparms ("bgcolor=#ff9944","");
 	c->setrowstyle ("sep","bgcolor=lightblue\tbgcolor=white\tbgcolor=lightblue\tbgcolor=white\tbgcolor=gray");
+	c->setrowstyle ("sep+current","bgcolor=blue\tbgcolor=white\tbgcolor=lightblue\tbgcolor=white\tbgcolor=gray");
 	c->setrowstyle ("white","bgcolor=white");
 	c->setrowstyle ("image","bgcolor=white align=center");
 }
@@ -551,16 +588,18 @@ static void index_popup (const char *content, FILE_TYPE file_type, PARAM_STRING 
 }
 
 <mod>
-static void index_show_shortmsg(CONNECT_INFO &con, const string &table)
+static void index_show_shortmsg(CONNECT_INFO &con, CONNECT_INFO &con_sess, const string &table)
 {
 	glocal CONNECT_INFO *con = &con;
-	<call webtable>(table,offsets[table],5);
+	glocal CONNECT_INFO *con_sess = &con_sess;
+	<call webtable>(table,currents[table],offsets[table],5);
 	<f init>
 		index_setstyles (this);
 	</f>
 	<f click>
 		tlmpweb_flushheader();
 		//htmlprintf ("click %d %d<p>\n",noline,nocol);
+		web_updatecurrents (*glocal.con_sess,noline);
 		<call bod_client_list_talk>(*glocal.con,w_session.c_str(),"",noline,1);
 		<f ok>
 			if (messages.size()!=1){
@@ -738,7 +777,7 @@ extern "C" void webmain_real()
 			</f>
 			<f left>
 				string table = string("talk")+"public";
-				index_show_shortmsg (glocal.con,table);
+				index_show_shortmsg (glocal.con,glocal.con_sess,table);
 			</f>
 			</call>
 		}
@@ -908,7 +947,7 @@ extern "C" void webmain_real()
 	</f>	
 	<f step6> // public directory
 		glocal string path = string_f("/projects/%s/public",w_public.c_str());
-		<call webtable>(glocal.path,offsets[glocal.path],10);
+		<call webtable>(glocal.path,currents[glocal.path],offsets[glocal.path],10);
 		<f init>
 			index_setstyles (this);
 		</f>
@@ -945,7 +984,7 @@ extern "C" void webmain_real()
 					htmlprintf ("internal_error=%d msg=%s<br>\n",internal_error,msg);
 				}else{
 					for (auto &inb:inboxes){
-						string add = string_f("webtab_add=%s/%s",inb.manager,inb.project);
+						string add = string_f("webtab_add=1:%s/%s",inb.manager,inb.project);
 						url_self (add.c_str(),"%s/%s",inb.manager,inb.project);
 						/- <br>
 					}
@@ -959,12 +998,13 @@ extern "C" void webmain_real()
 				glocal const char *id = id;
 				glocal string path = string_f ("/projects/%s",id);
 				//htmlprintf ("Project %s<br>\n",glocal.path.c_str());
-				<call webtable>(glocal.path,offsets[glocal.path],5);
+				<call webtable>(glocal.path,currents[glocal.path],offsets[glocal.path],5);
 				<f init>
 					index_setstyles (this);
 				</f>
 				<f click>
 					tlmpweb_flushheader();
+					web_updatecurrents(glocal.con_sess,noline);
 					<call bod_client_listdir>(glocal.con,w_session.c_str(),glocal.path,"",false,noline,1);
 					<f ok>
 						if (files.size()!=1){
@@ -994,7 +1034,7 @@ extern "C" void webmain_real()
 						const char *func = "Popup";
 						for (auto &f:files){
 							if (bolixo_isdir(f.type)){
-								glocal.webtable.setclickopt (true,"",string_f("webtab_add=%s/%s",glocal.id,f.name));
+								glocal.webtable.setclickopt (true,"",string_f("webtab_add=1:%s/%s",glocal.id,f.name));
 							}else{
 								const char *funcopt = "400,100";
 								if (file_is_image(f.file_type) || file_is_video(f.file_type)){
@@ -1026,20 +1066,20 @@ extern "C" void webmain_real()
 		<f top>
 		</f>
 		<f left>
-			/- <table border=1 height=100%>
-			/- <tr><td valign=top>
-			url_self ("webtab_add=INBOX","INBOX");
+			// /- <table border=1 height=100%>
+			// /- <tr><td valign=top>
+			url_self ("webtab_add=1:INBOX","INBOX");
 			/- <br>
 			<call bod_client_list_inboxes>(glocal.con,w_session.c_str(),"");
 			<f ok>
 				for (auto s:inboxes){
-					string add = string_f("webtab_add=%s",s.project);
+					string add = string_f("webtab_add=1:%s",s.project);
 					url_self (add.c_str(),"%s",s.project);
 					/- <br>
 				}
 			</f>
 			</call>
-			/- </table>
+			// /- </table>
 		</f>
 		<f body>
 			<call webtabs>("mails",tabs);
@@ -1047,7 +1087,7 @@ extern "C" void webmain_real()
 				glocal const char *project = id;
 				if (strcmp(id,"INBOX")==0) glocal.project = "";
 				string inbox = string("inbox") + id;
-				<call webtable>(inbox,offsets[inbox],10);
+				<call webtable>(inbox,currents[inbox],offsets[inbox],10);
 				<f init>
 					index_setstyles (this);
 				</f>	
@@ -1095,8 +1135,17 @@ extern "C" void webmain_real()
 						if (!success){
 							htmlprintf ("Error: %d %s<br>",internal_error,msg);
 						}else{
-							glocal.webtable.setclickopt (true,"Popup","800,200");
 							for (auto &m:messages){
+								string path;
+								if (m.role[0] != '\0'){
+									path = string_f ("/msg-projects/%s/%s/%s/%s",m.manager,m.project,m.role,m.uuid);
+								}else if (m.manager[0] != '\0'){
+									path = string_f ("/msg-projects/%s/%s/%s",m.manager,m.project,m.uuid);
+								}else{
+									path = string_f ("/msgs/%s/inbox/%s",userinfo.name.c_str(),m.uuid);
+								}	
+								glocal.webtable.setclickopt (true,"",string_f("current=%u&webtab_add=2:%s"
+									,glocal.rownum,path.c_str()));
 								const char *boldon = "", *boldoff = "";
 								if (strcmp(m.submit,m.viewed)!=0){
 									boldon = "<b>";
@@ -1118,6 +1167,22 @@ extern "C" void webmain_real()
 				</f>
 				</call>
 			</f>
+			<f docstyle2>
+				htmlprintf ("webtable=%d,%s current=%d,%u<br>\n",w_webtable.isset(),w_webtable.c_str(),w_current.isset(),w_current.getval());
+				web_updatecurrents(glocal.con_sess);
+				<call bod_client_readfile>(glocal.con,w_session.c_str(),id,"");
+				<f ok>
+					const char *pt = content;
+					while (*pt != '\0'){
+						const char *start = pt;
+						while (*pt != '\0' && *pt != '\n') pt++;
+						htmlwrite (start,pt-start);
+						htmlout ("<br>\n");
+						if (*pt == '\n') pt++;
+					}
+				</f>
+				</call>
+			</f>
 			</call>
 		</f>
 		</call>
@@ -1133,7 +1198,7 @@ extern "C" void webmain_real()
 			<call bod_client_list_groups>(glocal.con,w_session.c_str(),"");
 			<f ok>
 				for (auto s:groups){
-					string add = string_f("webtab_add=%s",s);
+					string add = string_f("webtab_add=1:%s",s);
 					url_self (add.c_str(),"%s",s);
 					/- <br>
 				}
@@ -1171,7 +1236,7 @@ extern "C" void webmain_real()
 				</f>
 				</call>
 				string table = string("talk")+id;
-				index_show_shortmsg (glocal.con,table);
+				index_show_shortmsg (glocal.con,glocal.con_sess,table);
 			</f>
 			</call>
 		</f>
