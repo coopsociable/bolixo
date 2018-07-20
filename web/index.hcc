@@ -374,8 +374,7 @@ static void bolixo_title (const char *title, _F_websteps *c)
 	tlmpweb_body("white",NULL);
 	htmlprintf ("<table width=100%% bgcolor=%s cellspacing=0><tr><td align=left>\n",newscolor);
 		/- <table border=0><tr><td><a href=/7s.html style=\"text-decoration:none\"><img src=/favicon.ico></a></td><td align=left>
-		tmp = string_f ("<a href=/index.hc style=\"text-decoration:none\"><font size=15 color=\"white\">Bolixo.org</font></a>&nbsp;&nbsp;&nbsp; %s",title);
-		htmlprintf ("%s",tmp.c_str());
+		htmlout ("<a href=/index.hc style=\"text-decoration:none\"><font size=15 color=\"white\">Bolixo.org</font></a>&nbsp;&nbsp;&nbsp;");
 		/- <td>
 		printhref ("/about.html","<font color=white>A peer to peer open social media</font>",true);
 		/- </td></tr></table>
@@ -561,15 +560,15 @@ static void index_popup (const char *content, FILE_TYPE file_type, PARAM_STRING 
 {
 	const char *path = filepath.ptr;
 	if (content[0] != '\0'){
+		tlmpweb_doctype ("text/html",0);
 		const char *pt = content;
 		while (*pt != '\0'){
+			pt = format_line (pt);
 			if (*pt == '\n'){
-			htmlout ("<br>\n");
-		}else{
-			htmlout (*pt);
+				htmlout ("<br>\n");
+				pt++;
+			}
 		}
-		pt++;
-	}
 	}else if (file_is_sound(file_type)){
 		htmlprintf ("<audio controls>\n"
 			"<source src=\"%s?webstep=%u&image=%s\" type=\"audio/%s\">\n"
@@ -608,33 +607,6 @@ static void index_show_shortmsg(CONNECT_INFO &con, CONNECT_INFO &con_sess, const
 				auto &m = messages[0];
 				//htmlprintf ("uuid=%s<p>\n",m.uuid);
 				index_popup (m.content,m.file_type,string_f("/msgs/%s/short-inbox/%s",userinfo.name.c_str(),m.uuid));
-				#if 0
-				if (m.content[0] != '\0'){
-					const char *pt = m.content;
-					while (*pt != '\0'){
-						if (*pt == '\n'){
-							htmlout ("<br>\n");
-						}else{
-							htmlout (*pt);
-						}
-						pt++;
-					}
-				}else if (file_is_sound(m.file_type)){
-					htmlprintf ("<audio controls>\n"
-						"<source src=\"%s?webstep=%u&image=/msgs/%s/short-inbox/%s\" type=\"audio/%s\">\n"
-						"</audio>"
-						,tlmpweb_curpage(),step_image,userinfo.name.c_str(),m.uuid,tbftype[m.file_type]);
-				}else if (file_is_video(m.file_type)){
-					htmlprintf ("<video width=\"800\" height=\"600\" controls>\n"
-						"<source src=\"%s?webstep=%u&image=/msgs/%s/short-inbox/%s\" type=\"video/mp4\">\n"
-						"Your browser does not support the video tag.\n"
-						"</video>\n"
-						,tlmpweb_curpage(),step_image,userinfo.name.c_str(),m.uuid);
-				}else if (file_is_image(m.file_type)){
-					htmlprintf ("<img width=800 src=%s?webstep=%u&image=/msgs/%s/short-inbox/%s>"
-						,tlmpweb_curpage(),step_image,userinfo.name.c_str(),m.uuid);
-				}
-				#endif
 			}
 		</f>
 		</call>
@@ -684,6 +656,33 @@ static void index_show_shortmsg(CONNECT_INFO &con, CONNECT_INFO &con_sess, const
 			}
 		</f>
 		</call>
+	</f>
+	</call>
+}
+</mod>
+
+<mod>
+static void index_sendfile (CONNECT_INFO &con, PARAM_STRING filename, const char *filetype)
+{
+	glocal CONNECT_INFO *con = &con;
+	glocal const char *filetype = filetype;
+	<call bod_client_readfile_bob>(con,w_session.c_str(),filename,"");
+	<f ok>
+		if (!success){
+			htmlprintf ("Can't read file: %s\n",msg);
+		}else{
+			tlmpweb_doctype (glocal.filetype,size);
+			htmlwrite (content.getbuffer(),content.getsize());
+			glocal bool more = more;
+			while (glocal.more){
+				<call bod_client_readmore>(*glocal.con,w_session.c_str(),handle);
+				<f ok>
+					htmlwrite (content.getbuffer(),content.getsize());
+					glocal.more = more;
+				</f>
+				</call>
+			}	
+		}
 	</f>
 	</call>
 }
@@ -923,27 +922,8 @@ extern "C" void webmain_real()
 		</f>
 		</call>
 	</f>
-	<f step5> // View one image
-		<call bod_client_readfile_bob>(glocal.con,w_session.c_str(),w_image.c_str(),"");
-		<f ok>
-			if (!success){
-				htmlprintf ("Can't read image: %s\n",msg);
-			}else{
-				tlmpweb_doctype ("image/jpeg",size);
-				htmlwrite (content.getbuffer(),content.getsize());
-				glocal bool more = more;
-				while (glocal.more){
-					<call bod_client_readmore>(glocal.con,w_session.c_str(),handle);
-					<f ok>
-						htmlwrite (content.getbuffer(),content.getsize());
-						glocal.more = more;
-					</f>
-					</call>
-				}
-			}
-				
-		</f>
-		</call>
+	<f step5> // Send an image or video
+		index_sendfile (glocal.con,w_image.c_str(),"image/jpeg");
 	</f>	
 	<f step6> // public directory
 		glocal string path = string_f("/projects/%s/public",w_public.c_str());
@@ -970,7 +950,7 @@ extern "C" void webmain_real()
 		</call>
 	</f>
 	<f step7> // Projects
-		bolixo_title ("",this);
+		bolixo_title ("Projects",this);
 		<call vframe4>("projects","","");
 		<f top>
 		</f>
@@ -1014,11 +994,19 @@ extern "C" void webmain_real()
 							glocal FILE_TYPE file_type = f.file_type;
 							glocal string fname = string_f("%s/%s",glocal.path.c_str(),f.name);
 							if (file_is_text(f.file_type)){
-								<call bod_client_readfile>(glocal.con,w_session.c_str(),glocal.fname,"");
-								<f ok>
-									index_popup (content,glocal.file_type,glocal.fname);
-								</f>
-								</call>
+								if (f.islarge){
+									index_sendfile (glocal.con,glocal.fname,"text/html");
+								}else{
+									<call bod_client_readfile>(glocal.con,w_session.c_str(),glocal.fname,"");
+									<f ok>
+										if (!success){
+											index_popup (msg,glocal.file_type,glocal.fname);
+										}else{
+											index_popup (content,glocal.file_type,glocal.fname);
+										}
+									</f>
+									</call>
+								}
 							}else{
 								index_popup ("",f.file_type,glocal.fname);
 							}

@@ -49,11 +49,13 @@ struct DIRENTRY{
 	std::string listmode;
 	std::string title;
 	unsigned size;
-	DIRENTRY (const char *_eventdate, const char *_modified, ENTRY_TYPE _type, FILE_TYPE _file_type, const char *_owner,
+	bool islarge;
+	DIRENTRY (const char *_eventdate, const char *_modified, ENTRY_TYPE _type, FILE_TYPE _file_type, bool _islarge, const char *_owner,
 		const char *_members, const char *_listmode, unsigned _size, const char *_title, const char *_viewed){
 		eventdate = _eventdate;
 		modified = _modified;
 		type = _type;
+		islarge = _islarge;
 		file_type = _file_type;
 		owner = _owner;
 		members = _members;
@@ -462,7 +464,11 @@ static int trlid_main (
 						<call sql_query>("select content from files where id=%d and modified='%s'"
 							,entry.entryid,entry.modified.c_str());
 						<f onerow>
-							glocal.bod_client.rep_readfile (true,"",row[0]);
+							if (row[0] != NULL){
+								glocal.bod_client.rep_readfile (true,"",row[0]);
+							}else{
+								glocal.bod_client.rep_readfile (false,"Internal error, must use readfile_bob for large content","");
+							}
 						</f>
 						<f empty>
 							glocal.bod_client.rep_readfile (false,"Internal error, reading table files","");
@@ -640,7 +646,7 @@ static int trlid_main (
 						<call sql_query>("select dirs_content.name,dirs_content.modified,type,id2name.name"
 							",group_list_id,group_lists.name,ids.listmode"
 							",length(files.content),dirs_content.itemid,files.title,dirs_content.eventtime"
-							",files.filetype"
+							",files.filetype,files.content is null"
 							" from dirs_content"
 							" join ids on dirs_content.itemid=ids.id"
 							" join id2name on ids.ownerid=id2name.userid"
@@ -674,6 +680,7 @@ static int trlid_main (
 							const char *title = row[9] == NULL ? "" : row[9];
 							const char *eventdate = row[10];
 							FILE_TYPE file_type = row[11] == NULL ? FILE_UNKNOWN : (FILE_TYPE)atoi(row[11]);
+							bool islarge = atoi(row[12])!=0;
 							if (glocal.history){
 								FILEINFO info;
 								info.name = name;
@@ -687,9 +694,10 @@ static int trlid_main (
 								info.size = size;
 								info.title = title;
 								info.viewed = "not done";
+								info.islarge = islarge;
 								glocal.files.push_back(info);
 							}else{
-								glocal.mp[name] = DIRENTRY(eventdate,modified,type,file_type,owner,listname,listmode,size,title,"not done");
+								glocal.mp[name] = DIRENTRY(eventdate,modified,type,file_type,islarge,owner,listname,listmode,size,title,"not done");
 							}
 						</f>
 						</call>
@@ -708,6 +716,7 @@ static int trlid_main (
 									info.size = x.second.size;
 									info.title = x.second.title;
 									info.viewed = x.second.viewed;
+									info.islarge = x.second.islarge;
 									glocal.files.push_back(info);
 								}
 							}
