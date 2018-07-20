@@ -876,6 +876,11 @@ elif [ "$1" = "lxc0-web" ]; then # prod:
 			-e /var/www/html/webapi.hc \
 			-e /usr/lib/tlmp/templates/default/webtable.tpl \
 			-e /usr/sbin/trli-stop \
+			-e /usr/lib/tlmp/lib/tlmpdoc.so.1 \
+			-e /usr/lib/tlmp/lib/tlmpwebsql.so.1 \
+			-e /usr/lib/tlmp/lib/tlmpsql.so \
+			-e /usr/lib/tlmp/help.eng/tlmpsql.eng \
+			-e /var/www/html/.tlmplibs \
 			-n $w -p /usr/sbin/httpd >/var/lib/lxc/$w/$w-lxc0.sh
 			chmod +x /var/lib/lxc/$w/$w-lxc0.sh
 	done

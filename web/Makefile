@@ -11,11 +11,13 @@ FLAGS=-Wall -Wno-unused-function
 	@g++ -DEXPORT= -fPIC $(FLAGS) -I. -I/usr/include/tlmp -I/usr/include/linuxconf -I/usr/include/trlitool \
 		-c /tmp/$(basename $(notdir $@)).cc  -o /tmp/test.o
 	@g++ -g -shared -Wl,-soname,test.so.1 -o \
-		$@ /tmp/test.o /usr/lib64/trlitool/trlitool.pic.a util.os -lcrypto
+		$@ /tmp/test.o /usr/lib64/trlitool/trlitool.pic.a util.os \
+		/usr/lib/tlmp/lib/tlmpdoc.so /usr/lib/tlmp/lib/tlmpwebsql.so -lcrypto
 	@rm -f /tmp/test.o
 
 install: all
 	cp *.png *.hc *.html robots.txt favicon.ico $(RPM_BUILD_ROOT)/var/www/html/.
+	cp tlmplibs $(RPM_BUILD_ROOT)/var/www/html/.tlmplibs
 
 clean:
 	rm -f *.hc *.o
