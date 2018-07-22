@@ -438,9 +438,10 @@ static void trli_initvar (VAR &var, PARAM_STRING name, PARAM_STRING val)
 }
 
 <mod>
-static void trli_getsessioninfo(CONNECT_INFO &con, CONNECT_INFO &con_sess)
+static void trli_getsessioninfo(CONNECT_INFO &con, CONNECT_INFO &con_sess, DOCUMENT_POINTER &docpointer)
 {
 	glocal CONNECT_INFO *con = &con;
+	glocal DOCUMENT_POINTER *docpointer = &docpointer;
 	<call bo_sessiond_client_getsessioninfovars>(con_sess,w_session.c_str());
 	<f ok>
 		if (success){
@@ -452,12 +453,26 @@ static void trli_getsessioninfo(CONNECT_INFO &con, CONNECT_INFO &con_sess)
 				if (strcmp(var.name,"order")==0 && var.vals.size()==1) order=atoi(var.vals[0].sval);
 				if (strcmp(var.name,"offsets")==0){
 					for (auto &s:var.vals) offsets[s.sname] = atoi(s.sval);
-				}
-				if (strcmp(var.name,"currents")==0){
+				}else if (strcmp(var.name,"currents")==0){
 					for (auto &s:var.vals) currents[s.sname] = atoi(s.sval);
-				}
-				if (strcmp(var.name,"webtabs")==0){
+				}else if (strcmp(var.name,"webtabs")==0){
 					webtab_init (var.vals);
+				}else if (strcmp(var.name,"document")==0){
+					unsigned s1=0,s2=0,s3=0,s4=0;
+					for (auto &v:var.vals){
+						if (strcmp(v.sname,"s1")==0){
+							s1 = atoi(v.sval);
+						}else if (strcmp(v.sname,"s2")==0){
+							s2 = atoi(v.sval);
+						}else if (strcmp(v.sname,"s3")==0){
+							s3 = atoi(v.sval);
+						}else if (strcmp(v.sname,"s4")==0){
+							s4 = atoi(v.sval);
+						}
+					}
+					glocal.docpointer->set(s1,s2,s3,s4);
+					glocal.docpointer->resetchanged();
+						
 				}
 			}
 			// Refresh the cookie so it is valid for 2 more days
@@ -702,6 +717,7 @@ extern "C" void webmain_real()
 	glocal.con.secret = "foo";
 	glocal.con_sess.port = "/dev/sessiond.sock";
 	glocal.con_sess.secret = "foo";
+	glocal DOCUMENT_POINTER docpointer;
 	if (tlmpweb_isrobot()) w_robot = 1;
 	// debug
 	if (0){
@@ -742,7 +758,7 @@ extern "C" void webmain_real()
 		</call>
 	}else{
 		w_session=ptsession;
-		trli_getsessioninfo(glocal.con,glocal.con_sess);
+		trli_getsessioninfo(glocal.con,glocal.con_sess,glocal.docpointer);
 	}
 	if (w_session.empty()) return;
 	
@@ -826,7 +842,7 @@ extern "C" void webmain_real()
 			<call bod_client_login>(glocal.con,w_session.c_str(),w_email.c_str(),w_password.c_str());
 			<f ok>
 				if (success){
-					trli_getsessioninfo(glocal.con,glocal.con_sess);
+					trli_getsessioninfo(glocal.con,glocal.con_sess,glocal.docpointer);
 					glocal.websteps.gotostep(1);
 				}else{
 					/- <font color=red>Login failed, invalid email or password</font>
@@ -1251,7 +1267,7 @@ extern "C" void webmain_real()
 	</f>
 	<f step12> // Documentation
 		bolixo_title ("Documentation",this);
-		<call templatedocument>("bolixo");
+		<call templatedocument>("bolixo",glocal.docpointer);
 		<f ref>
 		</f>
 		<f abstract>
@@ -1260,24 +1276,40 @@ extern "C" void webmain_real()
 			?>
 		</f>
 		<f body>
-			<call templatesection>("Social media and social responsabilities");
+			<call templatesection>("What is Bolixo ?");
 			<f body>
-				<call section>("Separation of duties");
+				<call templatesection>("Social media and social responsabilities");
+				<f body>
+					<call templatesection>("Separation of duties");
+					<f body>
+					</f>
+					</call>
+				</f>
+				</call>
+				<call templatesection>("Distributed");
+				<f body>
+					<call templatesection>("APIs");
+					<f body>
+					</f>
+					</call>
+				</f>
+				</call>
+				<call templatesection>("Free software");
 				<f body>
 				</f>
 				</call>
 			</f>
 			</call>
-			<call templatesection>("Distributed");
+			<call templatesection>("Fonctionality overview");
 			<f body>
-				<call templatesection>("APIs");
+				<call templatesection>("Groups and friends");
 				<f body>
 				</f>
 				</call>
-			</f>
-			</call>
-			<call templatesection>("Fonctionalitiy overview");
-			<f body>
+				<call templatesection>("Short messages");
+				<f body>
+				</f>
+				</call>
 				<call templatesection>("Mail");
 				<f body>
 				</f>
@@ -1294,16 +1326,20 @@ extern "C" void webmain_real()
 				<f body>
 				</f>
 				</call>
-				<call templatesection>("Short messages");
+				<call templatesection>("Command line tool");
 				<f body>
 				</f>
 				</call>
 			</f>
 			</call>
-			<call section>("Operations");
+			<call templatesection>("Operations");
 			<f body>
-				<call section>("Groups");
+				<call templatesection>("Configuration");
 				<f body>
+					<call templatesection>("Groups");
+					<f body>
+					</f>
+					</call>
 				</f>
 				</call>
 			</f>
@@ -1332,7 +1368,24 @@ extern "C" void webmain_real()
 		}
 		<call bo_sessiond_client_setvar>(glocal.con_sess,w_session.c_str(),var);
 		<f ok>
-			if (!success) printf ("Can't set variable webtabs: %s\n",msg);
+			if (!success) htmlprintf ("Can't set variable webtabs: %s\n",msg);
+		</f>
+		</call>
+	}
+	if (glocal.docpointer.ischanged()){
+		// Save the position in the document
+		VAR var;
+		var.name = "document";
+		unsigned nos = 1;
+		for (auto s:glocal.docpointer.tb){
+			SNAMEVAL val;
+			val.sname = string_f("s%u",nos++);
+			val.sval = string_f("%u",s);
+			var.vals.push_back(val);
+		}
+		<call bo_sessiond_client_setvar>(glocal.con_sess,w_session.c_str(),var);
+		<f ok>
+			if (!success) htmlprintf ("Can't set variable document: %s\n",msg);
 		</f>
 		</call>
 	}
