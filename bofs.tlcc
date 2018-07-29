@@ -1039,12 +1039,12 @@ static int bofs_rmdir (CONTEXT &ctx, int argc, char *argv[])
 </mod>
 
 <mod>
-static int bofs_print_groups (CONTEXT *ctx, const char *owner, const char *onegroup, unsigned indent)
+static int bofs_print_groups (CONTEXT *ctx, const char *owner, const char *onegroup, unsigned indent, bool only_owner)
 {
 	glocal int ret = -1;
 	glocal unsigned indent = indent;
 	glocal const char *onegroup = onegroup;
-	<call bod_client_list_groups> (ctx->con,ctx->sessionid,owner);
+	<call bod_client_list_groups> (ctx->con,ctx->sessionid,owner,only_owner);
 	<f ok>
 		if (success){
 			glocal.ret = 0;
@@ -1107,6 +1107,7 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 	glocal const char *access = "R";
 	glocal const char *user = NULL;
 	glocal const char *role = "";
+	glocal bool only_owner = false;
 
 	glocal const char *owner = "";
         int ret = <call tlmpprogram>(argc,argv);
@@ -1139,6 +1140,7 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 		setarg ('A',"access","Access or default access",glocal.access,false);
 		setarg ('R',"role","(for set-member) Activity of this member",glocal.role,false);
 		setarg ('O',"owner","Apply the comand on behalf of this owner, must be admin",glocal.owner,false);
+		setarg (' ',"only_owner","Shows only groups own by this user (--print-groups)",glocal.only_owner,false);
 	</f>
 	<f main_noarg>
 		glocal int ret = -1;
@@ -1265,7 +1267,8 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 									if (r==1){
 										printf ("%-*s   %-*s   %s\n"
 											,max_listname,listname,max_group,groupname,as[j]);
-										glocal.ret = bofs_print_groups (glocal.ctx,glocal.owner,groupname,max_listname+max_group);
+										glocal.ret = bofs_print_groups (glocal.ctx,glocal.owner
+											,groupname,max_listname+max_group,true);
 									}
 									listname = "";
 								}
@@ -1279,7 +1282,7 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 			</f>
 			</call>
 		}else if (glocal.print_groups){
-			glocal.ret = bofs_print_groups (glocal.ctx,glocal.owner,NULL,0);
+			glocal.ret = bofs_print_groups (glocal.ctx,glocal.owner,NULL,0,glocal.only_owner);
 		}else{
 			tlmp_error ("One of the following option must be used:\n"
 				"\t--create-group-list\n"

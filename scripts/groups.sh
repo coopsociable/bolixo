@@ -56,6 +56,7 @@ elif [ "$1" = "sequence" ] ; then
 	./bofs -u jacques-A groups --set-member -G Agroup1 -U jacques-A -AR -Rdba
 	./bofs -u admin     groups --set-member -G Agroup1 -U jacques-B -AW -R "" --owner jacques-A
 	./bofs -u jacques-A groups --set-member -G Agroup1 -U jacques-C -A" " -R ""
+	./bofs -u jacques-A groups --set-member -G Agroup-2 -U jacques-A -AR -Rdba
 	./bofs -u jacques-B groups --set-member -G Bgroup1 -U jacques-A -AW -Rdba
 	for user in jacques-A jacques-B jacques-C
 	do
