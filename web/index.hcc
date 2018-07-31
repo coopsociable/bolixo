@@ -607,10 +607,16 @@ static void index_popup (const char *content, FILE_TYPE file_type, PARAM_STRING 
 }
 
 <mod>
-static void index_show_shortmsg(CONNECT_INFO &con, CONNECT_INFO &con_sess, const string &table)
+static void index_show_shortmsg(CONNECT_INFO &con,
+	CONNECT_INFO &con_sess,
+	const string &table,
+	PARAM_STRING groupname,
+	PARAM_STRING groupowner)
 {
 	glocal CONNECT_INFO *con = &con;
 	glocal CONNECT_INFO *con_sess = &con_sess;
+	glocal const char *groupname = groupname.ptr;
+	glocal const char *groupowner = groupowner.ptr;
 	<call webtable>(table,currents[table],offsets[table],5);
 	<f init>
 		index_setstyles (this);
@@ -619,7 +625,7 @@ static void index_show_shortmsg(CONNECT_INFO &con, CONNECT_INFO &con_sess, const
 		tlmpweb_flushheader();
 		//htmlprintf ("click %d %d<p>\n",noline,nocol);
 		web_updatecurrents (*glocal.con_sess,noline);
-		<call bod_client_list_talk>(*glocal.con,w_session.c_str(),"",noline,1);
+		<call bod_client_list_talk>(*glocal.con,w_session.c_str(),"",glocal.groupname,glocal.groupowner,noline,1);
 		<f ok>
 			if (messages.size()!=1){
 				htmlprintf ("Internal error: %s\n",msg);
@@ -634,7 +640,7 @@ static void index_show_shortmsg(CONNECT_INFO &con, CONNECT_INFO &con_sess, const
 	<f load>
 		glocal unsigned rownum = nbskip;
 		sethead ("Type\tFrom\tSubmit\tuuid\tSize");
-		<call bod_client_list_talk>(*glocal.con,w_session.c_str(),"",nbskip,nblines);
+		<call bod_client_list_talk>(*glocal.con,w_session.c_str(),"",glocal.groupname,glocal.groupowner,nbskip,nblines);
 		<f ok>
 			if (!success){
 				htmlprintf ("Error: %d %s<br>",internal_error,msg);
@@ -797,7 +803,7 @@ extern "C" void webmain_real()
 			</f>
 			<f left>
 				string table = string("talk")+"public";
-				index_show_shortmsg (glocal.con,glocal.con_sess,table);
+				index_show_shortmsg (glocal.con,glocal.con_sess,table,"public","");
 			</f>
 			</call>
 		}
@@ -1194,33 +1200,40 @@ extern "C" void webmain_real()
 		<f left>
 			<call bod_client_list_groups>(glocal.con,w_session.c_str(),"",false);
 			<f ok>
-				for (auto s:groups){
-					string add = string_f("webtab_add=1:%s",s);
-					url_self (add.c_str(),"%s",s);
-					/- <br>
+				/- <table border=0>
+				for (auto &g:groups){
+					string add = string_f("webtab_add=1:%s:%s",g.owner,g.name);
+					/- <tr><td>
+					url_self (add.c_str(),"%s",g.owner);
+					/- <td>
+					url_self (add.c_str(),"%s",g.name);
 				}
+				/- </table>
 			</f>
 			</call>
 		</f>
 		<f right>
 			<call webtabs>("talks",tabs);
 			<f docstyle1>
-				glocal string list = id;
+				vector<string> tb;
+				int n = str_splitline (id,':',tb);
+				if (n != 2) return;
+				glocal string groupowner = tb[0];
+				glocal string groupname = tb[1];
+				/- <table border=0 align=left>
+				/- <tr><td>
 				<call form>();
 				<f setup>
-					/- <table border=0 align=center>
-					/- <tr><td>
 					field_textarea (w_content,5,60,"");
 					/- <td>
 					button_submit ("Send");
-					/- </table>
 				</f>
 				<f validate>
 					// We do not want the form to go away, so we send the message in this function.
 					if (w_content.size() > 0){
 						BOB_TYPE bob;
 						bob.setbuffer (w_content.c_str(),w_content.size(),false);
-						<call bod_client_sendtalk>(glocal.con,w_session.c_str(),"",glocal.list,bob,false);
+						<call bod_client_sendtalk>(glocal.con,w_session.c_str(),"",glocal.groupname,glocal.groupowner,bob,false);
 						<f ok>
 							if (!success) htmlprintf ("Can't send: %s<br>\n",msg);
 						</f>
@@ -1232,8 +1245,10 @@ extern "C" void webmain_real()
 				<f process>
 				</f>
 				</call>
+				/- <tr><td colspan=2>
 				string table = string("talk")+id;
-				index_show_shortmsg (glocal.con,glocal.con_sess,table);
+				index_show_shortmsg (glocal.con,glocal.con_sess,table,glocal.groupname,glocal.groupowner);
+				/- </table>
 			</f>
 			</call>
 		</f>

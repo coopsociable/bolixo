@@ -1051,16 +1051,16 @@ static int bofs_print_groups (CONTEXT *ctx, const char *owner, const char *onegr
 			unsigned max_groupname = 0;
 			unsigned max_user = 0;
 			for (unsigned r=0; r<2; r++){
-				for (unsigned i=0; i<groups.size(); i++){
-					const char *groupname = groups[i];
+				for (auto &g:groups){
+					const char *groupname = g.name;
 					if (glocal.onegroup != NULL && strcmp(glocal.onegroup,groupname)!=0) continue;
 					bofs_maxlen (groupname,max_groupname);
-					const vector<const char *> &us = users[i];
+					const vector<const char *> &us = g.users;
 					if (us.size() == 0){
 						if (r > 0) printf ("%-*s\n",max_groupname,groupname);
 					}else{
-						const vector<const char *> &as = access[i];
-						const vector<const char *> &rs = roles[i];
+						const vector<const char *> &as = g.access;
+						const vector<const char *> &rs = g.roles;
 						for (unsigned j=0; j<us.size(); j++){
 							bofs_maxlen (us[j],max_user); 
 							if (r > 0){
@@ -1334,7 +1334,8 @@ static int bofs_send_talk (
 	const char *textcontent,
 	const char *filecontent,
 	const char *owner,
-	const char *groupname)
+	const char *groupname,
+	const char *groupowner)
 {
 	glocal CONTEXT *ctx = &ctx;
 	glocal int ret = -1;
@@ -1360,7 +1361,7 @@ static int bofs_send_talk (
 	}
 	if (content.getsize() > 0){
 		if (ctx.is_internal()){
-			<call bod_client_sendtalk>(ctx.con,ctx.sessionid,owner,groupname,content,more);
+			<call bod_client_sendtalk>(ctx.con,ctx.sessionid,owner,groupname,groupowner,content,more);
 			<f ok>
 				if (!success){
 					bofs_error ("msgs",internal_error,msg);
@@ -1374,7 +1375,7 @@ static int bofs_send_talk (
 			</f>
 			</call>
 		}else{
-			<call webapi_sendtalk>(ctx.hcon,ctx.hsessionid,owner,groupname,content,more);
+			<call webapi_sendtalk>(ctx.hcon,ctx.hsessionid,owner,groupname,groupowner,content,more);
 			<f ok>
 				if (!success){
 					bofs_error ("msgs",internal_error,msg);
@@ -1423,17 +1424,17 @@ struct _F_bofs_list_talk {
 	virtual _F_bofs_list_talk_ok( )=0;
 };
 <mod>
-static void bofs_list_talk(_F_bofs_list_talk &c, CONTEXT &ctx, const char *owner, unsigned offset, unsigned chunk)
+static void bofs_list_talk(_F_bofs_list_talk &c, CONTEXT &ctx, const char *owner, const char *groupname, const char *groupowner, unsigned offset, unsigned chunk)
 {
 	glocal _F_bofs_list_talk *c = &c;
 	if (ctx.is_internal()){
-		<call bod_client_list_talk>(ctx.con,ctx.sessionid,owner,offset,chunk);
+		<call bod_client_list_talk>(ctx.con,ctx.sessionid,owner,groupname,groupowner,offset,chunk);
 		<f ok>
 			glocal.c->ok(internal_error,success,msg,messages);
 		</f>
 		</call>
 	}else{
-		<call webapi_list_talk>(ctx.hcon,ctx.hsessionid,owner,offset,chunk);
+		<call webapi_list_talk>(ctx.hcon,ctx.hsessionid,owner,groupname,groupowner,offset,chunk);
 		<f ok>
 			glocal.c->ok(internal_error,success,msg,messages);
 		</f>
@@ -1605,6 +1606,7 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 
 	glocal vector<string> recipients;
 	glocal const char *groupname = NULL;
+	glocal const char *groupowner = NULL;
 	glocal const char *filecontent = NULL;
 	glocal const char *manager = NULL;
 	glocal const char *project = NULL;
@@ -1629,6 +1631,7 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 		setarg ('s',"listshortmsgs","List short messages",glocal.listshortmsgs,false);
 		setgrouparg ("Options");
 		setarg ('G',"groupname","Group name for short message",glocal.groupname,false);
+		setarg (' ',"groupowner","Group owner",glocal.groupowner,false);
 		setarg ('M',"manager","Manager or owner of the inbox",glocal.manager,false);
 		setarg ('P',"project","Target inbox or project",glocal.project,false);
 		setarg ('R',"role","Target role",glocal.role,false);
@@ -1672,7 +1675,8 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 			glocal unsigned chunk=100;
 			if (glocal.ctx->login()!=-1){
 				while (!glocal.stop){
-					<call bofs_list_talk>(*glocal.ctx,glocal.owner,glocal.offset,glocal.chunk);
+					<call bofs_list_talk>(*glocal.ctx,glocal.owner,glocal.groupname,glocal.groupowner
+						,glocal.offset,glocal.chunk);
 					<f ok>
 						if (!success){
 							bofs_error ("msgs",internal_error,msg);
@@ -1763,7 +1767,7 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 			}
 		}else if (glocal.shortmsg){
 			if (glocal.ctx->login()!=-1){
-				glocal.ret = bofs_send_talk(*glocal.ctx,glocal.content,glocal.filecontent,glocal.owner,glocal.groupname);
+				glocal.ret = bofs_send_talk(*glocal.ctx,glocal.content,glocal.filecontent,glocal.owner,glocal.groupname,glocal.groupowner);
 			}
 		}else if (glocal.reply){
 			if (glocal.content == NULL && glocal.filecontent == NULL){
