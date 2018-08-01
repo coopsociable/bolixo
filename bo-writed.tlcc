@@ -89,21 +89,30 @@ static unsigned trli_getsessionuser (CONNECT_INFO &con, const char *sessionid)
 	bool is_admin;
 	return trli_getsessionuser (con,sessionid,tmp,is_admin);
 }
-
-#if 0
-<mod>
-static bool trli_isadmin (NSQL *sq, unsigned userid)
+/*
+	Check if a name only use accepted characters
+*/
+static bool bo_writed_lex_check(const char *groupname, string &msg)
 {
-	glocal bool ret = false;
-	<call sql_query>(*sq,"select admin from users where userid=%u",userid);
-	<f onerow>
-		if (strcmp(row[0],"1")==0) glocal.ret = true;
-	</f>
-	</call>
-	return glocal.ret;
+	bool ret = true;
+	const char *pt = groupname;
+	while (*pt != '\0'){
+		if (*pt < ' '){
+			ret = false;
+			break;
+		}else if (*pt == '#' || *pt == ';' || *pt == '"' || *pt == '\''){
+			ret = false;
+			break;
+		}
+		pt++;
+	}
+	if (ret){
+		msg = "";
+	}else{
+		msg = "Invalid characters in name";
+	}
+	return ret;
 }
-</mod>
-#endif
 
 static int writed_mail_newaccount(
 	const char *mailserver,
@@ -1265,6 +1274,8 @@ int main (int argc, char *argv[])
 								}else{
 									glocal.entry.msg = "";
 								}
+							}else{
+								glocal.entry.msg = string_f("listname must be either a valid list name, - or %s",ALL_MAY_READ);
 							}
 							if (glocal.entry.msg.size() == 0 && username[0] != '\0'){
 								int username_id = fs_rec_getid ("select userid from id2name where name='%s'",username);
@@ -1406,20 +1417,22 @@ int main (int argc, char *argv[])
 					glocal const char *listname = listname;
 					glocal unsigned userid = bo_writed_get_group_owner (glocal.con, sessionid, owner, glocal.msg);
 					if (glocal.userid != 0){
-						<call sql_query>("select id from group_lists where ownerid=%u and name='%s'"
-							,glocal.userid,listname);
-						<f onerow>
-							glocal.msg = "Group list alreay exist";
-						</f>
-						<f empty>
-							if (sql_action("insert into group_lists (ownerid,name) values (%u,'%s')"
-								,glocal.userid,glocal.listname)==-1){
-								glocal.msg = "Internal error (group_lists table)";
-							}else{
-								glocal.msg = "";
-							}
-						</f>
-						</call> 
+						if (bo_writed_lex_check(listname,glocal.msg)){
+							<call sql_query>("select id from group_lists where ownerid=%u and name='%s'"
+								,glocal.userid,listname);
+							<f onerow>
+								glocal.msg = "Group list alreay exist";
+							</f>
+							<f empty>
+								if (sql_action("insert into group_lists (ownerid,name) values (%u,'%s')"
+									,glocal.userid,glocal.listname)==-1){
+									glocal.msg = "Internal error (group_lists table)";
+								}else{
+									glocal.msg = "";
+								}
+							</f>
+							</call>
+						} 
 					}
 					if (glocal.msg.size()==0){
 						rep_create_group_list (true,"");
@@ -1432,20 +1445,42 @@ int main (int argc, char *argv[])
 					glocal const char *groupname = groupname;
 					glocal unsigned userid = bo_writed_get_group_owner (glocal.con, sessionid, owner, glocal.msg);
 					if (glocal.userid != 0){
-						<call sql_query>("select id from groups where ownerid=%u and name='%s'"
-							,glocal.userid,groupname);
-						<f onerow>
-							glocal.msg = "Group alreay exist";
-						</f>
-						<f empty>
-							if (sql_action("insert into groups (ownerid,name) values (%u,'%s')"
-								,glocal.userid,glocal.groupname)==-1){
-								glocal.msg = "Internal error (group_lists table)";
-							}else{
-								glocal.msg = "";
-							}
-						</f>
-						</call> 
+						if (bo_writed_lex_check(groupname,glocal.msg)){
+							<call sql_query>("select id from groups where ownerid=%u and name='%s'"
+								,glocal.userid,groupname);
+							<f onerow>
+								glocal.msg = "Group alreay exist";
+							</f>
+							<f empty>
+								if (sql_action("insert into groups (ownerid,name) values (%u,'%s')"
+									,glocal.userid,glocal.groupname)==-1){
+									glocal.msg = "Internal error (group_lists table)";
+								}else if (sql_action("insert into group_lists (ownerid,name) values (%u,'#%s')"
+									,glocal.userid,glocal.groupname)==-1){
+									glocal.msg = "Internal error (group_lists table)";
+								}else{
+									<call sql_query>("select id from group_lists where ownerid=%u and name='#%s'"
+										,glocal.userid,glocal.groupname);
+									<f onerow>
+										glocal unsigned group_list_id = atoi(row[0]);
+										<call sql_query>("select id from groups where ownerid=%u and name='%s'"
+											,glocal.userid,glocal.groupname);
+										<f onerow>
+											glocal unsigned groupid = atoi(row[0]);
+											if (sql_action("insert into group_list_members (group_list_id,groupid,defaultaccess) values (%u,%u,'r')"
+												,glocal.group_list_id,glocal.groupid)==-1){
+												glocal.msg = "Internal error (group_list_members table)";
+											}else{
+												glocal.msg = "";
+											}
+										</f>
+										</call>
+									</f>
+									</call>
+								}
+							</f>
+							</call> 
+						}
 					}
 					if (glocal.msg.size()==0){
 						rep_create_group (true,"");

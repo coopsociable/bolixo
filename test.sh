@@ -505,7 +505,6 @@ elif [ "$1" = "test-sequence" ] ; then # S: Reloads database (big,medium,real,no
 	rm -f /var/lib/bolixo/*
 	$0 test-system
 	echo ==== admin
-	$0 test-deleteuser D
 	$0 test-deleteuser E
 	$0 test-deleteuser F
 	echo ==== sessions
