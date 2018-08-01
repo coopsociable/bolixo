@@ -1051,38 +1051,54 @@ static int trlid_main (
 				</call>
 			</f>
 			<f list_talk>	// sessionid owner groupname groupowner offset:u nb:u = success:b msg messages:U{MESSAGE}v
+				glocal const char *groupname = groupname;
+				glocal const char *groupowner = groupowner;
+				glocal unsigned offset = offset;
+				glocal unsigned nb = nb;
 				glocal string msg = "Invalid session";
 				glocal vector<SHORTMSG> msgs;
 				string username;
 				unsigned userid = bo_writed_get_group_owner (glocal.con_sess, sessionid, owner, username, glocal.msg);
 				if (userid != 0){
-					int dirid = fs_find_short_inbox (userid,username,false,glocal.msg);
-					glocal.msg.clear();
-					if (dirid != -1){
-						<call sql_query>("select dirs_content.name,dirs_content.modified,id2name.name,files.filetype,dirs_content.itemid,files.content"
-							" from dirs_content"
-							" join files on files.id = dirs_content.itemid and files.modified = dirs_content.modified"
-							" join ids on dirs_content.itemid = ids.id"
-							" join id2name on ids.ownerid = id2name.userid"
-							" where dirid = %d and type=%u order by eventtime desc limit %u,%u"
-							,dirid,ENTRY_MSG,offset,nb);
-						<f onerow>
-							SHORTMSG msg;
-							msg.uuid = row[0];
-							const char *modified = row[1];
-							msg.submit = modified;
-							msg.from = row[2];
-							msg.file_type = row[3] == NULL ? FILE_UNKNOWN : (FILE_TYPE)atoi(row[3]);
-							if (row[5] != NULL){
-								msg.content = row[5];
-								msg.size = msg.content.size();
-							}else{
-								msg.size = fs_get_filesize(atoi(row[4]),modified);
-							}
-							glocal.msgs.push_back(msg);
-						</f>
-						</call>
-					}
+					// Is the current user a member of the group
+					<call sql_query>("select groups.ownerid from groups"
+						" join id2name on id2name.userid=groups.ownerid"
+						" join group_members on group_members.groupid = groups.id"
+						" where id2name.name='%s' and groups.name='%s' and group_members.userid=%u"
+						,groupowner,groupname,userid);
+					<f empty>
+						glocal.msg = "Unknown group name, empty group, or user not a member";
+					</f>
+					<f onerow>
+						int dirid = fs_find_short_inbox (atoi(row[0]),glocal.groupowner,glocal.groupname,false,glocal.msg);
+						glocal.msg.clear();
+						if (dirid != -1){
+							<call sql_query>("select dirs_content.name,dirs_content.modified,id2name.name,files.filetype,dirs_content.itemid,files.content"
+								" from dirs_content"
+								" join files on files.id = dirs_content.itemid and files.modified = dirs_content.modified"
+								" join ids on dirs_content.itemid = ids.id"
+								" join id2name on ids.ownerid = id2name.userid"
+								" where dirid = %d and type=%u order by eventtime desc limit %u,%u"
+								,dirid,ENTRY_MSG,glocal.offset,glocal.nb);
+							<f onerow>
+								SHORTMSG msg;
+								msg.uuid = row[0];
+								const char *modified = row[1];
+								msg.submit = modified;
+								msg.from = row[2];
+								msg.file_type = row[3] == NULL ? FILE_UNKNOWN : (FILE_TYPE)atoi(row[3]);
+								if (row[5] != NULL){
+									msg.content = row[5];
+									msg.size = msg.content.size();
+								}else{
+									msg.size = fs_get_filesize(atoi(row[4]),modified);
+								}
+								glocal.msgs.push_back(msg);
+							</f>
+							</call>
+						}
+					</f>
+					</call>
 				}
 				if (glocal.msg.size()>0){
 					glocal.msgs.clear();

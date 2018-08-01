@@ -40,7 +40,7 @@ std::string fs_makeid ();
 unsigned fs_getnbhandle();
 void fs_list_inboxes (unsigned userid, std::vector<INBOX> &inboxes, std::vector<unsigned> &listids);
 unsigned fs_find_inbox (unsigned ownerid, PARAM_STRING name, bool create, std::string &msg);
-unsigned fs_find_short_inbox (unsigned ownerid, PARAM_STRING name, bool create, std::string &msg);
+unsigned fs_find_short_inbox (unsigned ownerid, PARAM_STRING username, PARAM_STRING groupname, bool create, std::string &msg);
 unsigned fs_find_outbox (unsigned ownerid, PARAM_STRING name, std::string &msg);
 unsigned fs_find_project_inbox (unsigned ownerid, unsigned listid, const char *name, const char *project, const char *role, bool create, std::string &msg);
 void fs_set_now (char now[20]);

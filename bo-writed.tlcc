@@ -1696,41 +1696,30 @@ int main (int argc, char *argv[])
 					glocal string username;
 					glocal string handle;
 					glocal string msg;
-					glocal int fileid = -1;
 					glocal string msgid;
-					glocal char now[20];
-					fs_set_now(glocal.now);
+					glocal const char *groupname = groupname;
+					glocal const char *groupowner = groupowner;
 					glocal unsigned userid = bo_writed_get_group_owner (glocal.con, sessionid, owner, glocal.username, glocal.msg);
 					if (glocal.userid > 0){
-						// We store the message in the short inbox of the sender
-						// and then a link in the short inbox of each recipient
-						<call sql_query>("select id2name.userid,id2name.name from groups"
-							" join group_members on groups.id=group_members.groupid"
-							" join id2name on id2name.userid=group_members.userid"
-							" where groups.ownerid=%u and groups.name='%s'",glocal.userid,groupname);
+						// We store the message in the short inbox of the group owner (like mail sent to the project) 
+						// The query is to check if the user posting the message is a member of the group
+						// and to validate the group exist
+						<call sql_query>("select groups.ownerid from groups"
+							" join id2name on id2name.userid=groups.ownerid"
+							" join group_members on group_members.groupid = groups.id"
+							" where id2name.name='%s' and groups.name='%s' and group_members.userid=%u"
+							,groupowner,groupname,glocal.userid);
 						<f empty>
-							glocal.msg = "Unknown group name or empty group";
+							glocal.msg = "Unknown group name, empty group, or user not a member";
 						</f>
-						<f dostart>
-							int dirid = fs_find_short_inbox (glocal.userid,glocal.username,true,glocal.msg);
+						<f onerow>
+							int dirid = fs_find_short_inbox (atoi(row[0]),glocal.groupowner,glocal.groupname,true,glocal.msg);
 							if (dirid != -1){
-								glocal.fileid  = bo_writed_addfile_bob (glocal.con_keys,glocal.sessionid,NULL,ENTRY_MSG,dirid,glocal.userid
+								bo_writed_addfile_bob (glocal.con_keys,glocal.sessionid,NULL,ENTRY_MSG,dirid,glocal.userid
 									,*glocal.content,glocal.more
 									,glocal.msgid,glocal.msg,glocal.handle);
 							}
-						</f>
-						<f onerow>
-							unsigned userid = atoi(row[0]);
-							if (userid != glocal.userid){
-								int dirid = fs_find_short_inbox (userid,row[1],true,glocal.msg);
-								if (dirid == -1){
-									glocal.msg = string_f("Can't access short inbox for user %s",row[1]);
-									end = true;
-								}else if (fs_insert_entry(dirid,glocal.fileid,glocal.now,glocal.msgid,ENTRY_MSG)==-1){
-									glocal.msg = "Internal error (dirs_files table)";
-									end = true;
-								}
-							}
+							end = true;
 						</f>
 						</call>
 					}

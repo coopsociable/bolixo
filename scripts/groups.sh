@@ -58,6 +58,7 @@ elif [ "$1" = "sequence" ] ; then
 	./bofs -u jacques-A groups --set-member -G Agroup1 -U jacques-C -A" " -R ""
 	./bofs -u jacques-A groups --set-member -G Agroup-2 -U jacques-A -AR -Rdba
 	./bofs -u jacques-B groups --set-member -G Bgroup1 -U jacques-A -AW -Rdba
+	./bofs -u jacques-B groups --set-member -G Bgroup1 -U jacques-B -AW -Rdba
 	for user in jacques-A jacques-B jacques-C
 	do
 		echo "------- $user"
@@ -97,14 +98,14 @@ elif [ "$1" = "writemails" ] ; then
 		./bofs -u jacques-A msgs -n -M jacques-B -P Blist1 -R dba -T "dba A B/1 This is title number $i" -F /tmp/mail.txt
 	done
 	# Create short messages
-	./bofs msgs -t -G Agroup1 -C "Are you ready for lunch ?"
-	./bofs -u jacques-B msgs -t -G Bgroup1 -C "Not possible today"
+	./bofs              msgs -t -G Bgroup1 --groupowner jacques-B -C "Are you ready for lunch ?"
+	./bofs -u jacques-B msgs -t -G Bgroup1 --groupowner jacques-B -C "Not possible today"
 	FILES=/b6/files
-	./bofs msgs -t -G Agroup1 -F $FILES/file.mp3
-	./bofs msgs -t -G Agroup1 -F $FILES/file.jpg
-	./bofs msgs -t -G Agroup1 -F $FILES/file.gif
-	./bofs msgs -t -G Agroup1 -F $FILES/file.png
-	./bofs msgs -t -G Agroup1 -F $FILES/file.mp4
+	./bofs msgs -t -G Agroup1 --groupowner jacques-A -F $FILES/file.mp3
+	./bofs msgs -t -G Agroup1 --groupowner jacques-A -F $FILES/file.jpg
+	./bofs msgs -t -G Agroup1 --groupowner jacques-A -F $FILES/file.gif
+	./bofs msgs -t -G Agroup1 --groupowner jacques-A -F $FILES/file.png
+	./bofs msgs -t -G Agroup1 --groupowner jacques-A -F $FILES/file.mp4
 	# Populate projects
 	for project in jacques-A/Alist1 jacques-A/Alonglist2 jacques-B/Blist1
 	do
