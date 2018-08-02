@@ -32,6 +32,9 @@ elif [ "$1" = "sequence" ] ; then
 	$0 reset
 	./bofs -u jacques-A groups --create-group-list -L public 
 	./bofs -u jacques-A groups --create-project-dir -L public
+	./bofs -u jacques-A groups --create-group -G public
+	./bofs -u jacques-A groups --set-group -L public -G public -A R
+	./bofs -u jacques-A groups --set-member -G public -U jacques-A -AW
 	./bofs groups -a -L "#all" -M R /projects/jacques-A/public
 
 	./bofs -u jacques-A groups --create-group-list -L Alist1
