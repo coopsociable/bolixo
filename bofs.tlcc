@@ -1048,16 +1048,19 @@ static int bofs_print_groups (CONTEXT *ctx, const char *owner, const char *onegr
 	<f ok>
 		if (success){
 			glocal.ret = 0;
+			unsigned max_owner = 0;
 			unsigned max_groupname = 0;
 			unsigned max_user = 0;
 			for (unsigned r=0; r<2; r++){
 				for (auto &g:groups){
 					const char *groupname = g.name;
+					const char *owner = g.owner;
 					if (glocal.onegroup != NULL && strcmp(glocal.onegroup,groupname)!=0) continue;
+					bofs_maxlen (owner,max_owner);
 					bofs_maxlen (groupname,max_groupname);
 					const vector<const char *> &us = g.users;
 					if (us.size() == 0){
-						if (r > 0) printf ("%-*s\n",max_groupname,groupname);
+						if (r > 0) printf ("%-*s %-*s\n",max_owner,owner,max_groupname,groupname);
 					}else{
 						const vector<const char *> &as = g.access;
 						const vector<const char *> &rs = g.roles;
@@ -1065,9 +1068,10 @@ static int bofs_print_groups (CONTEXT *ctx, const char *owner, const char *onegr
 							bofs_maxlen (us[j],max_user); 
 							if (r > 0){
 								if (glocal.onegroup != NULL) groupname = "";
-								printf ("%*s%-*s\t%*s\t%s\t%s\n",glocal.indent,"",max_groupname,groupname,max_user,us[j],as[j],rs[j]);
+								printf ("%*s%-*s %-*s\t%*s\t%s\t%s\n",glocal.indent,"",max_owner,owner,max_groupname,groupname,max_user,us[j],as[j],rs[j]);
 							}
 							groupname = "";
+							owner = "";
 						}
 					}
 				}

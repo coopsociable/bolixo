@@ -46,6 +46,8 @@ elif [ "$1" = "sequence" ] ; then
 	./bofs -u jacques-A groups --create-group -G Agroup-2
 	./bofs -u jacques-B groups --create-group -G Bgroup1
 	./bofs -u jacques-C groups --create-group -G Cgroup1
+	./bofs -u jacques-A groups --create-group -G common
+	./bofs -u jacques-B groups --create-group -G common
 
 	./bofs -u jacques-A groups --set-group -L public -G Agroup1 -A W
 	./bofs -u jacques-A groups --set-group -L Alist1 -G Agroup1 -A R
@@ -59,6 +61,11 @@ elif [ "$1" = "sequence" ] ; then
 	./bofs -u jacques-A groups --set-member -G Agroup-2 -U jacques-A -AR -Rdba
 	./bofs -u jacques-B groups --set-member -G Bgroup1 -U jacques-A -AW -Rdba
 	./bofs -u jacques-B groups --set-member -G Bgroup1 -U jacques-B -AW -Rdba
+
+	./bofs -u jacques-A groups --set-member -G common -U jacques-A -AW -Rdba
+	./bofs -u jacques-A groups --set-member -G common -U jacques-B -AW -Rdba
+	./bofs -u jacques-B groups --set-member -G common -U jacques-A -AW -Rdba
+	./bofs -u jacques-B groups --set-member -G common -U jacques-B -AW -Rdba
 	for user in jacques-A jacques-B jacques-C
 	do
 		echo "------- $user"
@@ -100,6 +107,11 @@ elif [ "$1" = "writemails" ] ; then
 	# Create short messages
 	./bofs              msgs -t -G Bgroup1 --groupowner jacques-B -C "Are you ready for lunch ?"
 	./bofs -u jacques-B msgs -t -G Bgroup1 --groupowner jacques-B -C "Not possible today"
+	# Test usage of the same group name
+	./bofs              msgs -t -G common --groupowner jacques-A -C "Jacques-A writes to jacques-A:common"
+	./bofs              msgs -t -G common --groupowner jacques-B -C "Jacques-A writes to jacques-B:common"
+	./bofs -u jacques-B msgs -t -G common --groupowner jacques-A -C "Jacques-B writes to jacques-A:common"
+	./bofs -u jacques-B msgs -t -G common --groupowner jacques-B -C "Jacques-B writes to jacques-B:common"
 	FILES=/b6/files
 	./bofs msgs -t -G Agroup1 --groupowner jacques-A -F $FILES/file.mp3
 	./bofs msgs -t -G Agroup1 --groupowner jacques-A -F $FILES/file.jpg

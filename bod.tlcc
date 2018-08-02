@@ -828,8 +828,8 @@ static int trlid_main (
 				glocal vector<GROUP> groups;
 				unsigned userid = bo_writed_get_group_owner (glocal.con_sess, sessionid, owner, glocal.msg);
 				if (userid != 0){
-					glocal string last_group;
-					string sql = "select groups.name,id2.name,id2name.name,group_members.access,group_members.role"
+					glocal unsigned last_group_id = (unsigned)-1;
+					string sql = "select groups.id,groups.name,id2.name,id2name.name,group_members.access,group_members.role"
 						" from groups"
 						" left join group_members on groups.id=group_members.groupid"
 						" left join id2name on group_members.userid=id2name.userid"
@@ -842,18 +842,19 @@ static int trlid_main (
 					}
 					<call sql_query>(sql.c_str(),userid);
 					<f onerow>
-						if (strcmp(glocal.last_group.c_str(),row[0])!=0){
-							glocal.last_group = row[0];
+						unsigned group_id = atoi(row[0]);
+						if (glocal.last_group_id != group_id){
+							glocal.last_group_id = group_id;
 							GROUP group;
-							group.name = row[0];
-							group.owner = row[1];
+							group.name = row[1];
+							group.owner = row[2];
 							glocal.groups.push_back(group);
 						}
-						if (row[1] != NULL && row[2] != NULL){
+						if (row[3] != NULL && row[4] != NULL){
 							GROUP &g = glocal.groups[glocal.groups.size()-1];
-							g.users.push_back(row[2]);
-							g.access.push_back(row[3]);
-							const char *role = row[4];
+							g.users.push_back(row[3]);
+							g.access.push_back(row[4]);
+							const char *role = row[5];
 							if (role == NULL) role = "";
 							g.roles.push_back(role);
 						}
