@@ -414,7 +414,7 @@ elif [ "$1" = "dropdb" ] ; then # db: Drop databases
 elif [ "$1" = "filldb" ] ; then # db: Fill database (old)
 	$0 bo-writed-control mailctrl 0 keep
 	echo ==== Create some users
-	for user in admin A B C D E F
+	for user in admin A B C D E F G H I J K L M N O P Q R S T U V W X Y Z
 	do
 		$0 test-adduser $user
 	done
@@ -485,28 +485,15 @@ elif [ "$1" = "test-rotatelog" ] ; then # prod: Rotate writed log
 elif [ "$1" = "test-sequence" ] ; then # S: Reloads database (big,medium,real,nomail)
 	rm -f $WRITEDLOG
 	$0 bo-writed-control truncatelog	
-	NEWSCNT1=5
-	NEWSCNT2=10
 	LONG="This is some text"
-	LONGTITLE=
 	shift
 	$0 bo-writed-control mailctrl 0 keep
 	while [ "$1" != "" ]
 	do
-		if [ "$1" = "big" ] ; then
-			NEWSCNT1=500
-			NEWSCNT2=1000
-		elif [ "$1" = "medium" ] ; then
-			NEWSCNT1=50
-			NEWSCNT2=100
-		elif [ "$1" = "real" ] ; then
-			LONGTITLE=" this is a long title, normally long title, as expected"
-			LONG="<br>This is the first ...... line<br>This is the second ............ line<br>This is the third ............line<br>This is the last line"
-			LONG="$LONG<br>This is the first ...... line<br>This is the second ............ line<br>This is the third ............line<br>This is the last line"
-		elif [ "$1" = "mail" ] ; then
+		if [ "$1" = "mail" ] ; then
 			$0 bo-writed-control mailctrl 1 keep
 		else
-			echo unknown keyword $1: filldb big,real
+			echo unknown keyword $1: mail
 			exit 1
 		fi
 		shift

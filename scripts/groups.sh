@@ -43,6 +43,10 @@ elif [ "$1" = "sequence" ] ; then
 			fi
 		done
 	done
+	for letter in D G H I J K L M N O P Q R S T U V W X Y Z
+	do
+		./bofs -u jacques-$letter misc -r -u jacques-A
+	done
 	# We create a public project for user jacques-A allowing both jacques-A and jacques-B to contribute
 	./bofs -u jacques-A groups --create-group-list -L public 
 	./bofs -u jacques-A groups --set-list-desc -D "public list for jacques-A" -L public 

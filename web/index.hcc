@@ -600,7 +600,7 @@ static void index_setstyles (_F_webtable *c)
 }
 static void profile_setstyle(_F_webtable *c)
 {
-	c->settableparms ("border=0 width=100%");
+	c->settableparms ("border=0");
 	c->setthparms ("bgcolor=lightgray","");
 	c->setrowstyle ("sep","bgcolor=lightblue\tbgcolor=lightblue");
 	c->setrowstyle ("white","bgcolor=white");
@@ -665,7 +665,7 @@ static void index_show_shortmsg(CONNECT_INFO &con,
 	glocal CONNECT_INFO *con_sess = &con_sess;
 	glocal const char *groupname = groupname.ptr;
 	glocal const char *groupowner = groupowner.ptr;
-	<call webtable>(table,currents[table],offsets[table],5);
+	<call webtable>(table,"100%",currents[table],offsets[table],5);
 	<f init>
 		index_setstyles (this);
 	</f>
@@ -687,7 +687,7 @@ static void index_show_shortmsg(CONNECT_INFO &con,
 	</f>
 	<f load>
 		glocal unsigned rownum = nbskip;
-		sethead ("Type\tFrom\tSubmit\tuuid\tSize");
+		sethead ("From\tSubmit\tSize");
 		<call bod_client_list_talk>(*glocal.con,w_session.c_str(),"",glocal.groupname,glocal.groupowner,nbskip,nblines);
 		<f ok>
 			if (!success){
@@ -700,19 +700,19 @@ static void index_show_shortmsg(CONNECT_INFO &con,
 						funcopt = "800,800";
 					}
 					glocal.webtable.setclickopt (true,func,funcopt);
-					glocal.webtable.setrow ("sep",glocal.rownum,"%s\t%s\t%s\t%s\t%u"
-						,tbftype[m.file_type]
+					glocal.webtable.setrow ("sep",glocal.rownum,"%s\t%s\t%u"
+						//,tbftype[m.file_type]
 						,m.from
 						,m.submit
-						,m.uuid
+						//,m.uuid
 						,m.size);
 					if (m.content[0] != '\0'){
 						string tmp = index_format_shortmsg (m.content);
-						glocal.webtable.setrow("white",glocal.rownum,"\t%s\a\a\a",tmp.c_str());
+						glocal.webtable.setrow("white",glocal.rownum,"\t%s\a",tmp.c_str());
 					}else if (file_is_sound(m.file_type)){
 						glocal.webtable.setrow("image",glocal.rownum,"\t<audio controls>\n"
 							"<source src=\"%s?webstep=%u&image=/msgs/%s/short-inbox/%s/%s\" type=\"audio/%s\">\n"
-							"</audio>\a\a\a"
+							"</audio>\a"
 							,tlmpweb_curpage(),step_image,glocal.groupowner,glocal.groupname,m.uuid,tbftype[m.file_type]);
 					}else if (file_is_image(m.file_type)){
 						glocal.webtable.setrow("image",glocal.rownum,"\t<img width=100 src=%s?webstep=%u&image=/msgs/%s/short-inbox/%s/%s>\a\a\a"
@@ -722,7 +722,7 @@ static void index_show_shortmsg(CONNECT_INFO &con,
 							"\t<video width=\"200\" height=\"200\" controls>\n"
 							"<source src=\"%s?webstep=%u&image=/msgs/%s/short-inbox/%s/%s\" type=\"video/mp4\">\n"
 							"Your browser does not support the video tag.\n"
-							"</video>\a\a\a\n"
+							"</video>\a"
 							,tlmpweb_curpage(),step_image,glocal.groupowner,glocal.groupname,m.uuid);
 					}
 					glocal.rownum++;
@@ -1062,7 +1062,7 @@ extern "C" void webmain_real()
 	</f>	
 	<f step6> // public directory
 		glocal string path = string_f("/projects/%s/public",w_public.c_str());
-		<call webtable>(glocal.path,currents[glocal.path],offsets[glocal.path],10);
+		<call webtable>(glocal.path,"60%",currents[glocal.path],offsets[glocal.path],10);
 		<f init>
 			index_setstyles (this);
 		</f>
@@ -1113,7 +1113,7 @@ extern "C" void webmain_real()
 				glocal const char *id = id;
 				glocal string path = string_f ("/projects/%s",id);
 				//htmlprintf ("Project %s<br>\n",glocal.path.c_str());
-				<call webtable>(glocal.path,currents[glocal.path],offsets[glocal.path],5);
+				<call webtable>(glocal.path,"60%",currents[glocal.path],offsets[glocal.path],5);
 				<f init>
 					index_setstyles (this);
 				</f>
@@ -1165,7 +1165,7 @@ extern "C" void webmain_real()
 								}
 								glocal.webtable.setclickopt (true,func,funcopt);
 							}
-							glocal.webtable.setrow ("white",glocal.rownum,"%c%s\t%s\t%s\t%s/%s:%s\t%u\t%s\t%s\n"
+							glocal.webtable.setrow ("white",glocal.rownum,"%c%s\t%s\t%s\t%s/%s:%s\t%u\t%s\t%s"
 								,tbtype[f.type],tbftype[f.file_type]
 								,f.eventdate,f.modified
 								,f.owner,f.listname,f.listmode,f.size
@@ -1210,7 +1210,7 @@ extern "C" void webmain_real()
 				glocal const char *project = id;
 				if (strcmp(id,"INBOX")==0) glocal.project = "";
 				string inbox = string("inbox") + id;
-				<call webtable>(inbox,currents[inbox],offsets[inbox],10);
+				<call webtable>(inbox,"60%",currents[inbox],offsets[inbox],10);
 				<f init>
 					index_setstyles (this);
 				</f>	
@@ -1252,7 +1252,7 @@ extern "C" void webmain_real()
 				</f>
 				<f load>
 					glocal unsigned rownum = nbskip;
-					sethead ("From\tManager\tProject\tRole\tSubmit\tMessage ID\tTitle");
+					sethead ("From\tManager\tProject\tRole\tSubmit\tTitle");
 					<call bod_client_list_msgs>(glocal.con,w_session.c_str(),"",glocal.project,false,nbskip,nblines);
 					<f ok>
 						if (!success){
@@ -1274,13 +1274,12 @@ extern "C" void webmain_real()
 									boldon = "<b>";
 									boldoff = "</b>";
 								}
-								glocal.webtable.setrow ("white",glocal.rownum,"%s%s%s\t%s%s%s\t%s%s%s\t%s%s%s\t%s%s%s\t%s%s%s\t%s%s%s"
+								glocal.webtable.setrow ("white",glocal.rownum,"%s%s%s\t%s%s%s\t%s%s%s\t%s%s%s\t%s%s%s\t%s%s%s"
 									,boldon,m.from,boldoff
 									,boldon,m.manager,boldoff
 									,boldon,m.project,boldoff
 									,boldon,m.role,boldoff
 									,boldon,m.submit,boldoff
-									,boldon,m.uuid,boldoff
 									,boldon,m.title,boldoff);
 								glocal.rownum++;
 							}
@@ -1337,7 +1336,7 @@ extern "C" void webmain_real()
 				if (n != 2) return;
 				glocal string groupowner = tb[0];
 				glocal string groupname = tb[1];
-				/- <table border=0 align=left>
+				/- <table border=0 align=left width=40%>
 				/- <tr><td>
 				<call form>();
 				<f setup>
@@ -1402,7 +1401,7 @@ extern "C" void webmain_real()
 				<f left>
 					url_self ("add=1","Create a new list");
 					/- <p>
-					<call webtable>("projects");
+					<call webtable>("projects","100%");
 					<f init>
 						profile_setstyle(this);
 					</f>
@@ -1574,7 +1573,7 @@ extern "C" void webmain_real()
 				<f left>
 					url_self ("add=1","Create a new group");
 					/- <p>
-					<call webtable>("groups");
+					<call webtable>("groups","100%");
 					<f init>
 						profile_setstyle(this);
 					</f>
@@ -1739,13 +1738,13 @@ extern "C" void webmain_real()
 				<f left>
 					url_self ("add=1","Create a new contact");
 					/- <p>
-					<call webtable>("contacts");
+					<call webtable>("contacts","100%",currents["contacts"],offsets["contacts"],20);
 					<f init>
 						profile_setstyle(this);
 					</f>
 					<f load>
 						sethead ("User\tDate\tStatus");
-						<call bod_client_contact_list>(glocal.con,w_session.c_str(),"",0,1000); //nbskip,nblines);
+						<call bod_client_contact_list>(glocal.con,w_session.c_str(),"",nbskip,nblines);
 						<f ok>
 							static const char *tbstatus[]={"waiting","accepted","rejected"};
 							for (auto &c:contacts){
@@ -1767,116 +1766,8 @@ extern "C" void webmain_real()
 	</f>
 	<f step12> // Documentation
 		bolixo_title ("Documentation",this);
-		<call templatedocument>("",glocal.docpointer);
-		<f ref>
-		</f>
-		<f abstract>
-			<?
-			Bolixo is an open and distributed social media.
-			?>
-		</f>
-		<f body>
-			<call templatesection>("What is Bolixo ?");
-			<f body>
-				<call templatesection>("Social media and social responsabilities");
-				<f body>
-					<call templatesection>("Separation of duties");
-					<f body>
-					</f>
-					</call>
-				</f>
-				</call>
-				<call templatesection>("Distributed");
-				<f body>
-					<call templatesection>("APIs");
-					<f body>
-					</f>
-					</call>
-				</f>
-				</call>
-				<call templatesection>("Free software");
-				<f body>
-				</f>
-				</call>
-			</f>
-			</call>
-			<call templatesection>("Getting started");
-			<f body>
-				<?
-				This section shows quickly what you can do with bolixo.
-				?>
-				<call templatesection>("Configuration and user profile");
-				<f body>
-				</f>
-				</call>
-			</f>
-			</call>
-			<call templatesection>("Fonctionality overview");
-			<f body>
-				<call templatesection>("Groups and friends");
-				<f body>
-				</f>
-				</call>
-				<call templatesection>("Short messages");
-				<f body>
-				</f>
-				</call>
-				<call templatesection>("Mail");
-				<f body>
-				</f>
-				</call>
-				<call templatesection>("File system");
-				<f body>
-				</f>
-				</call>
-				<call templatesection>("Projects");
-				<f body>
-				</f>
-				</call>
-				<call templatesection>("Public view");
-				<f body>
-				</f>
-				</call>
-				<call templatesection>("Command line tool");
-				<f body>
-				</f>
-				</call>
-			</f>
-			</call>
-			<call templatesection>("Operations");
-			<f body>
-				<call templatesection>("Configuration");
-				<f body>
-					<call templatesection>("Account");
-					<f body>
-						<?
-						You manage the account preferences here.
-						This includes the access control/privacy of your public page.
-						?>
-					</f>
-					</call>
-					<call templatesection>("Contacts");
-					<f body>
-						<?
-						This is where you manage your contacts (people you know).
-						In this page, you can see the contact requests.
-						?>
-					</f>
-					</call>
-					<call templatesection>("Projects");
-					<f body>
-					</f>
-					</call>
-					<call templatesection>("Groups");
-					<f body>
-					</f>
-					</call>
-				</f>
-				</call>
-			</f>
-			</call>
-		</f>
-		</call>
+		extern void bolixo_doc (DOCUMENT_POINTER &);
+		bolixo_doc(glocal.docpointer);
 	</f>
 	<f step13>
 	</f>
