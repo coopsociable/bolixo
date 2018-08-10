@@ -367,7 +367,8 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 		create table groups (
 			id int primary key auto_increment,
 			ownerid int,
-			name varchar(100)
+			name varchar(100),
+			description varchar(100) default ''
 		)engine=$ENGINE;
 		create unique index groups_owner on groups(ownerid,name);
 		create table group_members(
@@ -380,7 +381,8 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 		create table group_lists(
 			id int primary key auto_increment,
 			ownerid int,
-			name varchar(100)
+			name varchar(100),
+			description varchar(100) default ''
 		)engine=$ENGINE;
 		create unique index group_lists_owner on group_lists(ownerid,name);
 		create table group_list_members(
@@ -395,6 +397,14 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 			modified datetime
 		)engine=$ENGINE;
 		create unique index marks_ids on marks(userid,itemid);
+		create table contact_requests(
+			userid int,
+			reqid int,
+			message varchar(200) default ' ',
+			status tinyint unsigned default 0,
+			reqdate datetime default current_timestamp
+		)engine=$ENGINE;
+		create unique index contact_requests_ids on contact_requests(userid,reqid);
 			
 	EOF
 elif [ "$1" = "dropdb" ] ; then # db: Drop databases

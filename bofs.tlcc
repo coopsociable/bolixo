@@ -34,6 +34,7 @@ using namespace std;
 #define bod_client_addfile_NOTNEED
 #define bod_client_modifyfile_NOTNEED
 #define bod_client_readfile_NOTNEED
+#define bod_client_sendattach_NOTNEED
 
 #include "proto/bod_client.protoch"
 
@@ -49,6 +50,7 @@ using namespace std;
 #define webapi_readmore_NOTNEED
 #define webapi_set_access_NOTNEED
 #define webapi_markview_NOTNEED
+#define webapi_sendattach_NOTNEED
 #include "proto/webapi.protoch"
 
 static void bofs_maxlen (const char *s, unsigned &max_s)
@@ -1104,6 +1106,10 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 
 	glocal bool create_project_dir = false;
 
+	glocal bool set_group_desc = false;
+	glocal bool set_list_desc = false;
+
+	glocal const char *description = NULL;
 	glocal const char *filename = NULL;
 	glocal const char *listname = NULL;
 	glocal const char *listmode = " ";
@@ -1124,6 +1130,8 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 		setgrouparg ("Commands");
 		setarg ('g',"create-group","Create a group of users",glocal.create_group,false);
 		setarg ('l',"create-group-list","Create a list of groups",glocal.create_group_list,false);
+		setarg (' ',"set-list-desc","Set list description",glocal.set_list_desc,false);
+		setarg (' ',"set-group-desc","Set group description",glocal.set_group_desc,false);
 		setarg ('s',"set-group","Configure a group as a member of a list",glocal.set_group,false);
 		setarg ('m',"set-member","Configure a user a a member of a group",glocal.set_member,false);
 		setarg ('d',"create-project-dir","Create the project directory for a list",glocal.create_project_dir,false);
@@ -1137,6 +1145,7 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 		setarg ('a',"set-access","Assign a user/list name to a file or directory",glocal.set_access,false);
 		setarg ('M',"listmode","list mode override (' ','p','r','w','a')",glocal.listmode,false);
 		setgrouparg ("Arguments");
+		setarg ('D',"description","Description for set-group-desc and set-list-desc",glocal.description,false);
 		setarg ('P',"filename","File or directory path",glocal.filename,false);
 		setarg ('L',"listname","List name",glocal.listname,false);
 		setarg ('G',"groupname","Group name",glocal.groupname,false);
@@ -1173,6 +1182,38 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 						glocal.ret = 0;
 					}else{
 						bofs_error ("groups",internal_error,"Can't create group: %s",msg);
+					}
+				</f>
+				</call>
+			}
+		}else if (glocal.set_list_desc){
+			if (glocal.listname == NULL){
+				bofs_error ("groups",false,"You must specify the list name");
+			}else if (glocal.description == NULL){
+				bofs_error ("groups",false,"You must specify the description");
+			}else{
+				<call bod_client_set_list_desc> (glocal.ctx->con,glocal.ctx->sessionid,glocal.listname,glocal.description,glocal.owner);
+				<f ok>
+					if (success){
+						glocal.ret = 0;
+					}else{
+						bofs_error ("groups",internal_error,"Can't set list description: %s",msg);
+					}
+				</f>
+				</call>
+			}
+		}else if (glocal.set_group_desc){
+			if (glocal.groupname == NULL){
+				bofs_error ("groups",false,"You must specify the group name");
+			}else if (glocal.description == NULL){
+				bofs_error ("groups",false,"You must specify the description");
+			}else{
+				<call bod_client_set_group_desc> (glocal.ctx->con,glocal.ctx->sessionid,glocal.groupname,glocal.description,glocal.owner);
+				<f ok>
+					if (success){
+						glocal.ret = 0;
+					}else{
+						bofs_error ("groups",internal_error,"Can't set group description: %s",msg);
 					}
 				</f>
 				</call>
@@ -1258,13 +1299,14 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 					unsigned max_group=0;
 					for (int r=0; r<2; r++){
 						for (unsigned i=0; i<lists.size(); i++){
-							const char *listname = lists[i];
+							const LIST_receive &l = lists[i];
+							const char *listname = l.name;
 							bofs_maxlen (listname,max_listname);
-							const vector<const char *> &gs = groups[i];
+							const vector<const char *> &gs = l.groups;
 							if (gs.size() == 0){
 								printf ("%s\n",listname);
 							}else{
-								const vector<const char *> &as = access[i];
+								const vector<const char *> &as = l.access;
 								for (unsigned j=0; j<gs.size(); j++){
 									const char *groupname = gs[j];
 									bofs_maxlen (groupname,max_group);
@@ -1839,6 +1881,13 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 	glocal const char *message = NULL;
 	glocal const char *nickname = NULL;
 	glocal unsigned nbrep=1;
+	glocal bool contact_request = false;
+	glocal bool contact_manage = false;
+	glocal bool contact_list = false;
+	glocal const char *status = "A";
+	glocal const char *intro = "Hello I would like to chat with you";
+	glocal const char *user = NULL;
+	glocal const char *owner = "";
 	glocal.ret = <call tlmpprogram>(argc,argv);
 	<f init>
 		setproginfo ("bomisc",VERSION
@@ -1848,7 +1897,14 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 			);
 		setgrouparg ("Main commands");
 		setarg ('m',"markview","Mark a file as viewed",glocal.markview,false);
+		setarg ('r',"contact_request","Ask a user to be part of his contact list",glocal.contact_request,false);
+		setarg ('R',"contact_manage","Manage a contact request",glocal.contact_manage,false);
+		setarg ('l',"contact_list","List the contacts for this user",glocal.contact_list,false);
 		setarg ('v',"verifysign","Verify a message signature",glocal.verifysign,false);
+		setgrouparg ("contact management arguments");
+		setarg ('i',"intro","Introduction message for contact request",glocal.intro,false);
+		setarg ('s',"status","New status of the contact request",glocal.status,false);
+		setarg ('u',"user","User doing the contact request",glocal.user,false);
 		setgrouparg ("(http_)verifysign arguments");
 		setarg ('n',"nickname","User nickname who signed the message",glocal.nickname,false);
 		setarg ('M',"message","Message to verify",glocal.message,false);
@@ -1896,6 +1952,61 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 					</f>
 					</call>
 				}
+			}
+		}else if (glocal.contact_manage){
+			if (glocal.user == NULL){
+				tlmp_error ("You must specify the user you want to manage\n");
+				exit (-1);
+			}
+			if (glocal.ctx->login()!=-1){
+				CONTACT_STATUS status = CONTACT_WAITING;
+				if (strcmp(glocal.status,"A")==0){
+					status = CONTACT_ACCEPTED;
+				}else if (strcmp(glocal.status,"R")==0){
+					status = CONTACT_REJECTED;
+				}else{
+					tlmp_error ("Invalid status: expect A or R\n");
+					exit (-1);
+				}
+				<call bod_client_contact_manage>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner,glocal.user,status);
+				<f ok>
+					if (!success){
+						bofs_error ("contact_manage",internal_error,msg);
+						glocal.ret = -1;
+					}
+				</f>
+				</call>
+			}
+		}else if (glocal.contact_request){
+			if (glocal.user == NULL){
+				tlmp_error ("You must specify the user you want to contact\n");
+				exit (-1);
+			}
+			if (glocal.ctx->login()!=-1){
+				<call bod_client_contact_request>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner,glocal.user,glocal.intro);
+				<f ok>
+					if (!success){
+						bofs_error ("contact_request",internal_error,msg);
+						glocal.ret = -1;
+					}
+				</f>
+				</call>
+			}
+		}else if (glocal.contact_list){
+			if (glocal.ctx->login()!=-1){
+				<call bod_client_contact_list>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner,0,1000);
+				<f ok>
+					if (!success){
+						bofs_error ("contact_list",internal_error,msg);
+						glocal.ret = -1;
+					}else{
+						static const char *tbstatus[]={"waiting","accepted","rejected"};
+						for (auto &c:contacts){
+							printf ("%s\t%s\t%s\t%s\n",c.user,c.reqdate,tbstatus[c.status],c.message);
+						}
+					}
+				</f>
+				</call>
 			}
 		}
 		return glocal.ret;

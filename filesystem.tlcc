@@ -496,12 +496,13 @@ void fs_list_inboxes (unsigned userid, vector<INBOX> &inboxes, vector<unsigned> 
 {
 	glocal vector<INBOX> *inboxes = &inboxes;
 	glocal vector<unsigned> *listids = &listids;
-	<call sql_query>("select id2name.name,group_lists.name,group_members.role,group_lists.id"
+	<call sql_query>("select distinct id2name.name,group_lists.name,group_members.role,group_lists.id"
 		" from group_members"
 		" join group_list_members on group_list_members.groupid = group_members.groupid"
 		" join group_lists on group_list_members.group_list_id=group_lists.id"
 		" join id2name on group_lists.ownerid=id2name.userid"
-		" where group_members.userid = %u and group_lists.name not like '#%%'",userid);
+		" where group_members.userid = %u and group_lists.name not like '#%%'"
+		" order by id2name.name,group_lists.name,group_members.role",userid);
 	<f onerow>
 		INBOX inb;
 		inb.manager = row[0];

@@ -30,10 +30,25 @@ elif [ "$1" = "sequence" ] ; then
 		NB=5
 	fi
 	$0 reset
+	# Make sure user A B C are in contact list of each other
+	for user in jacques-A jacques-B jacques-C
+	do
+		for target in jacques-A jacques-B jacques-C
+		do
+			if [ "$user" != "$target" ] ; then
+				# Contact request form user to target
+				./bofs -u $user misc -r -u $target
+				# Target accepts contact request
+				./bofs -u $target misc -R -u $user -s A
+			fi
+		done
+	done
 	# We create a public project for user jacques-A allowing both jacques-A and jacques-B to contribute
 	./bofs -u jacques-A groups --create-group-list -L public 
+	./bofs -u jacques-A groups --set-list-desc -D "public list for jacques-A" -L public 
 	./bofs -u jacques-A groups --create-project-dir -L public
 	./bofs -u jacques-A groups --create-group -G public
+	./bofs -u jacques-A groups --set-group-desc -D "public group for jacques-A" -G public 
 	./bofs -u jacques-A groups --set-group -L public -G public -A R
 	./bofs -u jacques-A groups --set-member -G public -U jacques-A -AW
 	./bofs -u jacques-A groups --set-member -G public -U jacques-B -AW

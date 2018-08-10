@@ -22,6 +22,19 @@ using namespace std;
 static const char *newscolor = "green";
 
 static string w_session;
+static W_SSTRING w_list("list");
+static W_SSTRING w_group("group");
+static W_UNSIGNED w_add("add");
+static W_SSTRING w_desc("desc");
+static W_SSTRING w_group1("group1");
+static W_SSTRING w_group2("group2");
+static W_SSTRING w_group3("group3");
+static W_SSTRING w_group4("group4");
+static W_SSTRING w_access1("access1");
+static W_SSTRING w_access2("access2");
+static W_SSTRING w_access3("access3");
+static W_SSTRING w_access4("access4");
+
 static W_SSTRING w_image("image");
 extern W_SSTRING w_webtable;
 static W_UNSIGNED w_offset ("offset");
@@ -99,6 +112,15 @@ struct _F_webtabs {
 	#define _F_webtabs_docstyle4(x) void x docstyle4(const char *id)
 	virtual _F_webtabs_docstyle4( );
 };
+static string toupper (const char *s)
+{
+	string ret;
+	while (*s != '\0'){
+		ret += toupper(*s);
+		s++;
+	}
+	return ret;
+}
 static void webtab_href_c (const char *title, const char *href, const char *color)
 {
 	htmlprintf ("<a %s><table bgcolor=\"%s\"><tr><td style=\"padding:5px\"><font size=4 color=white>&nbsp;%s&nbsp;</font></table></a>\n"
@@ -194,6 +216,8 @@ static void webtabs(_F_webtabs &c,
 	glocal const char *name = name;
 	glocal TABSEL sel;
 	glocal TABSEL default_sel;
+	/- <table border=0 width=100% height=100%>
+	/- <tr><td height=1% valign=top>
 	<call button_row>(0,"white");
 	<f draw>
 		unsigned no = 1;
@@ -238,6 +262,7 @@ static void webtabs(_F_webtabs &c,
 		}
 	</f>
 	</call>
+	/- <tr><td valign=top>
 	if (glocal.default_sel.id.size() > 0){
 		if (glocal.sel.id.size() == 0){
 			glocal.sel.id = glocal.default_sel.id;
@@ -259,6 +284,7 @@ static void webtabs(_F_webtabs &c,
 			c.docstyle1(id);
 		}
 	}
+	/- </table>
 }
 </mod>
 void webtabs(_F_webtabs &c,
@@ -292,6 +318,7 @@ static void show_buttons_right(_F_websteps *c)
 {
 	int step = c->getcurstep();
 	/- <table border=0 cellspacing=0>
+	#if 0
 	/- <tr><td colspan=8>
 	/- <font size=4 color=lightgray>
 	if (userinfo.name.empty()){
@@ -305,15 +332,23 @@ static void show_buttons_right(_F_websteps *c)
 	}
 	/- </font>
 	/- </td></tr>
+	#endif
 	/- <tr>
 		
 	bool is_user = userinfo.name.size() > 0;
 	if (!is_user){
 		if (step != step_login && step != step_adduser){
 			/- <td>
-			print_aref ("Login",step_login);
+			/- <font size=4 color=lightgray>
+			htmlprintf ("Anonymous, for your eyes only");
+			/- </font>
+			/- <td>&nbsp;
 			/- <td>
+			print_aref ("Login",step_login);
+			/- <td>&nbsp;
+			/- <td align=center>
 			/- <font size=4 color=black>or</font>
+			/- <td>&nbsp;
 			/- <td>
 			print_aref ("Create account",step_adduser);
 		}
@@ -326,32 +361,34 @@ static void show_buttons_right(_F_websteps *c)
 	if (is_user){
 		/- <td>
 		print_aref ("Logout",step_logout);
+		/- <td>&nbsp;
+		/- <td>
+		/- <font size=4 color=lightgray>
+		htmlprintf ("Welcome %s",userinfo.name.c_str());
+		int nb = 40 - userinfo.name.size() - 8; 
+		for (int i=0; i<nb; i++){
+			htmlprintf ("&nbsp;");
+		}
+		/- </font>
 	}
-	//printf ("session: %s",w_session.c_str());
-	/- </table><p>
+	/- </table>
 }
 
 
 static void show_buttons_context(_F_websteps *c)
 {
+	#if 0
 	int step = c->getcurstep();
 	/- <table border=0 cellspacing=0 width=100%>
 	/- <tr>
 		
-	if (0 && step <= 1){
-		/- <td align=left>
-		unsigned old = w_order;
-		w_order = order ? 0 : 1;
-		print_aref (w_order ? "Switch order: submit date" : "Switch order: last activity",step_main,w_order);
-		w_order = old;
-		/- <td align=left>
-	}
 	/- <td align=right>
 	/- <table border=0>
 	/- <td align=right>
 	printhref ("/about.html","About bolixo.org",true);
 	/- </table>
-	/- </table><p>
+	/- </table>
+	#endif
 }
 static unsigned subject = 0;
 const unsigned max_subject=7;
@@ -553,11 +590,20 @@ static void web_updatecurrents(CONNECT_INFO &con_sess)
 static void index_setstyles (_F_webtable *c)
 {
 	c->settableparms ("border=1");
-	c->setthparms ("bgcolor=#ff9944","");
-	c->setrowstyle ("sep","bgcolor=lightblue\tbgcolor=white\tbgcolor=lightblue\tbgcolor=white\tbgcolor=gray");
-	c->setrowstyle ("sep+current","bgcolor=blue\tbgcolor=white\tbgcolor=lightblue\tbgcolor=white\tbgcolor=gray");
+	c->setthparms ("bgcolor=lightgray","");
+	c->setrowstyle ("sep","bgcolor=lightblue");
+	c->setrowstyle ("sep+current","bgcolor=SKYBLUE");
 	c->setrowstyle ("white","bgcolor=white");
+	c->setrowstyle ("white+current","bgcolor=lightblue");
 	c->setrowstyle ("image","bgcolor=white align=center");
+	c->setrowstyle ("image+current","bgcolor=white align=center");
+}
+static void profile_setstyle(_F_webtable *c)
+{
+	c->settableparms ("border=0 width=100%");
+	c->setthparms ("bgcolor=lightgray","");
+	c->setrowstyle ("sep","bgcolor=lightblue\tbgcolor=lightblue");
+	c->setrowstyle ("white","bgcolor=white");
 }
 /*
 	Format a short message, remove the signature
@@ -715,6 +761,63 @@ static void index_sendfile (CONNECT_INFO &con, PARAM_STRING filename, const char
 	</call>
 }
 </mod>
+/*
+	Define a form field to edit the access of a group within a list
+*/
+static void index_field_access (_F_form *c, W_VAR &var)
+{
+	c->field_list (var,"");
+	c->field_list_item ("","inherit");
+	c->field_list_item ("R","read-only");
+	c->field_list_item ("W","read-write");
+	c->field_list_end();
+}
+static void index_field_group (_F_form *c, W_VAR &var, const vector<string> &groups)
+{
+	c->field_list (var,"");
+	c->field_list_item("","");
+	for (auto &s:groups) c->field_list_item (s.c_str(),s.c_str());
+	c->field_list_end();
+}
+
+
+/*
+	Update a group definition in a list
+*/
+<mod>
+static void index_set_group (CONNECT_INFO &con, W_SSTRING &list, const char *group, const char *access, bool &fail)
+{
+	glocal bool fail = false;
+	glocal const char *groupname = group;
+	<call bod_client_set_group>(con,w_session.c_str(),list.c_str(),glocal.groupname,access,"");
+	<f ok>
+		if (!success){
+			htmlprintf ("Failure to update group %s: %s<br>\n",glocal.groupname,msg);
+			glocal.fail = true;
+		}
+	</f>
+	</call>
+	if (glocal.fail) fail = true;
+}
+</mod>
+static void index_set_group (CONNECT_INFO &con, W_SSTRING &list, W_SSTRING &group, W_SSTRING &access, vector<string> &groups, bool &fail)
+{
+	const char *groupname = group.c_str();
+	if (groupname[0] != '\0'){
+		groups.push_back(groupname);
+		index_set_group (con,list,groupname,access.c_str(),fail);
+	}
+}
+
+static void index_delete_new_from_old(const vector<string> &news, vector<string> &old)
+{
+	for (auto &n:news){
+		auto p = find(old.begin(),old.end(),n);
+		if (p != old.end()){
+			old.erase(p);
+		}
+	}
+}
 <mod>
 extern "C" void webmain_real()
 {
@@ -981,13 +1084,11 @@ extern "C" void webmain_real()
 		</f>
 		</call>
 	</f>
-	<f step7> // Projects
+	<f step7> // TAB Projects
 		bolixo_title ("Projects",this);
 		<call vframe2h>(10);
 		<f left>
 			// List projects
-			/- <table border=1 height=100% width=100%>
-			/- <tr><td valign=top>
 			/- <table border=0 width=100%>
 			<call bod_client_list_inboxes>(glocal.con,w_session.c_str(),"");
 			<f ok>
@@ -1004,7 +1105,6 @@ extern "C" void webmain_real()
 				}
 			</f>
 			</call>
-			/- </table>
 			/- </table>
 		</f>
 		<f right>
@@ -1065,7 +1165,7 @@ extern "C" void webmain_real()
 								}
 								glocal.webtable.setclickopt (true,func,funcopt);
 							}
-							glocal.webtable.setrow ("sep",glocal.rownum,"%c%s\t%s\t%s\t%s/%s:%s\t%u\t%s\t%s\n"
+							glocal.webtable.setrow ("white",glocal.rownum,"%c%s\t%s\t%s\t%s/%s:%s\t%u\t%s\t%s\n"
 								,tbtype[f.type],tbftype[f.file_type]
 								,f.eventdate,f.modified
 								,f.owner,f.listname,f.listmode,f.size
@@ -1082,12 +1182,10 @@ extern "C" void webmain_real()
 		</call>
 		/- </table>
 	</f>
-	<f step8> // Mails
+	<f step8> // TAB Mails
 		bolixo_title ("Mails",this);
 		<call vframe2h>(10);
 		<f left>
-			/- <table border=1 height=100% width=100%>
-			/- <tr><td valign=top>
 			/- <table border=0 width=100%>
 			/- <tr><td colspan=3 valign=top>
 			url_self ("webtab_add=1:INBOX","INBOX");
@@ -1099,12 +1197,11 @@ extern "C" void webmain_real()
 					url_self (add.c_str(),"%s",s.manager);
 					/- <td valign=top>
 					url_self (add.c_str(),"%s",s.project);
-					// /- <td>
-					// url_self (add.c_str(),"%s",s.role);
+					///- <td>
+					//url_self (add.c_str(),"%s",s.role);
 				}
 			</f>
 			</call>
-			/- </table>
 			/- </table>
 		</f>
 		<f right>
@@ -1177,7 +1274,7 @@ extern "C" void webmain_real()
 									boldon = "<b>";
 									boldoff = "</b>";
 								}
-								glocal.webtable.setrow ("sep",glocal.rownum,"%s%s%s\t%s%s%s\t%s%s%s\t%s%s%s\t%s%s%s\t%s%s%s\t%s%s%s"
+								glocal.webtable.setrow ("white",glocal.rownum,"%s%s%s\t%s%s%s\t%s%s%s\t%s%s%s\t%s%s%s\t%s%s%s\t%s%s%s"
 									,boldon,m.from,boldoff
 									,boldon,m.manager,boldoff
 									,boldon,m.project,boldoff
@@ -1202,7 +1299,7 @@ extern "C" void webmain_real()
 					while (*pt != '\0'){
 						const char *start = pt;
 						while (*pt != '\0' && *pt != '\n') pt++;
-						htmlwrite (start,pt-start);
+						htmlout (start,pt-start);
 						htmlout ("<br>\n");
 						if (*pt == '\n') pt++;
 					}
@@ -1214,12 +1311,10 @@ extern "C" void webmain_real()
 		</call>
 		/- </table>
 	</f>
-	<f step9>	// Talks
+	<f step9>	// TAB Talks
 		bolixo_title ("Talks",this);
 		<call vframe2h>(10);
 		<f left>
-			/- <table border=1 height=100% width=100%>
-			/- <tr><td valign=top>
 			<call bod_client_list_groups>(glocal.con,w_session.c_str(),"",false);
 			<f ok>
 				/- <table border=0 width=100%>
@@ -1233,7 +1328,6 @@ extern "C" void webmain_real()
 				/- </table>
 			</f>
 			</call>
-			/- </table>
 		</f>
 		<f right>
 			<call webtabs>("talks",tabs);
@@ -1296,15 +1390,379 @@ extern "C" void webmain_real()
 		}
 			
 	</f>
-	<f step11> // Profile
+	<f step11> // TAB Profile
 		bolixo_title ("Profile",this);
-		/- <table border=0 height=100% width=100%>
-		/- <tr><td valign=top>
-		vector<string> t={"Account","Projects"};
+		/- <table border=0 width=100% height=100%>
+		/- <tr><td>
+		vector<string> t={"Account","Contacts","Projects","Groups"};
 		<call webtabs>("profile",t,tabs);
 		<f docstyle1>
+			if (strcmp(id,"Projects")==0){
+				<call vframe2h>(20);
+				<f left>
+					url_self ("add=1","Create a new list");
+					/- <p>
+					<call webtable>("projects");
+					<f init>
+						profile_setstyle(this);
+					</f>
+					<f load>
+						sethead ("Project\tMembers\tAccess");
+						<call bod_client_list_lists>(glocal.con,w_session.c_str(),"");
+						<f ok>
+							for (auto &l:lists){
+								if (l.name[0] != '#'){
+									string add = string_f("list=%s",l.name);
+									glocal.webtable.setclickopt (true,"",add);
+									glocal.webtable.setrow ("sep",0,"%s\t%s\a",l.name,l.description);
+									glocal.webtable.setclickopt (false,"","");
+									for (unsigned i=0; i<l.groups.size(); i++){
+										glocal.webtable.setrow("white",0,"\t%s\t%s",l.groups[i],l.access[i]);
+									}
+								}
+							}
+							
+						</f>
+						</call>
+					</f>
+					</call>
+				</f>
+				<f right>
+					if (w_list.isset() || w_add.isset()){
+						<call form>();
+						<f top>
+							/- <table border=0>
+							if (w_add != 1) htmlprintf ("<tr><td>Project<td><font size=+2>%s</font><p>\n",w_list.c_str());
+						</f>
+						<f bottom>
+							/- </table>
+						</f>
+						<f load>
+							<call bod_client_list_lists>(glocal.con,w_session.c_str(),"");
+							<f ok>
+								for (auto &l:lists){
+									if (strcmp(l.name,w_list.c_str())==0){
+										w_desc = l.description;
+										for (unsigned i=0; i<l.groups.size(); i++){
+											const char *group = l.groups[i];
+											string access = toupper(l.access[i]);
+											if (i==0){
+												w_group1 = group;
+												w_access1 = access;
+											}else if (i==1){
+												w_group2 = group;
+												w_access2 = access;
+											}else if (i==2){
+												w_group3 = group;
+												w_access3 = access;
+											}else if (i==3){
+												w_group4 = group;
+												w_access4 = access;
+											}
+										}
+										break;
+									}
+								}
+							</f>
+							</call>
+						</f>
+						<f setup>
+							glocal vector<string> groups;
+							<call bod_client_list_groups>(glocal.con,w_session.c_str(),"",true);
+							<f ok>
+								for (auto &g:groups) glocal.groups.push_back(g.name);
+							</f>
+							</call>
+							if (w_add == 1){
+								/- <tr><td>Project&nbsp;<td>
+								field_string (w_list,"size=30");
+								field_hidden(w_add);
+							}else{
+								field_hidden(w_list);
+							}
+							/- <tr><td>Description&nbsp;<td>
+							field_string (w_desc,"size=60");
+							/- <tr><td>&nbsp;
+							/- <tr><td valign=top>Members<td><table border=0>
+							/- <tr><th>Group<th>Access
+							/- <tr><td>
+							index_field_group (this,w_group1,glocal.groups);
+							/- <td>
+							index_field_access (this,w_access1);
+							/- <tr><td>
+							index_field_group (this,w_group2,glocal.groups);
+							/- <td>
+							index_field_access (this,w_access2);
+							/- <tr><td>
+							index_field_group (this,w_group3,glocal.groups);
+							/- <td>
+							index_field_access (this,w_access3);
+							/- <tr><td>
+							index_field_group (this,w_group4,glocal.groups);
+							/- <td>
+							index_field_access (this,w_access4);
+							/- </table>
+							/- <tr><td>
+							button_submit();
+						</f>
+						<f validate>
+							bool ret = true;
+							if (strcmp(w_desc.c_str(),"a")==0){
+								ret = false;
+								/- <font color=red>a is not allowed</font>
+								/- <br>
+							}
+							return ret;
+						</f>
+						<f process>
+							glocal bool fail = false;
+							if (w_add == 1){
+								<call bod_client_create_group_list>(glocal.con,w_session.c_str(),w_list.c_str(),"");
+								<f ok>
+									if (!success){
+										glocal.fail = true;
+										htmlprintf ("Can't create list: %s\n",msg);
+									}
+								</f>
+								</call>
+							}
+							if (!glocal.fail){
+								glocal vector<string> oldgroups;
+								<call bod_client_list_lists>(glocal.con,w_session.c_str(),"");
+								<f ok>
+									for (auto &l:lists){
+										if (strcmp(l.name,w_list.c_str())==0){
+											for (auto g:l.groups) glocal.oldgroups.push_back(g);
+											break;
+										}
+									}
+								</f>
+								</call>
+								<call bod_client_set_list_desc>(glocal.con,w_session.c_str(),w_list.c_str(),w_desc.c_str(),"");
+								<f ok>
+									if (!success){
+										/- error
+										glocal.fail = true;
+									}
+								</f>
+								</call>
+								vector<string> newgroups;
+								index_set_group (glocal.con,w_list,w_group1,w_access1,newgroups,glocal.fail);
+								index_set_group (glocal.con,w_list,w_group2,w_access2,newgroups,glocal.fail);
+								index_set_group (glocal.con,w_list,w_group3,w_access3,newgroups,glocal.fail);
+								index_set_group (glocal.con,w_list,w_group4,w_access4,newgroups,glocal.fail);
+								if (!glocal.fail){
+									// We have to remove the groups that are gone
+									index_delete_new_from_old(newgroups,glocal.oldgroups);
+									// what remains in oldgroups have to be deleted (setting access to - does this)
+									for (auto &g:glocal.oldgroups) index_set_group (glocal.con,w_list,g.c_str(),"-",glocal.fail);
+								}
+							}
+							fail = glocal.fail;
+							keepediting = true;
+							if (!fail){
+								w_add = 0;
+								reload();
+							}
+						</f>
+						</call>
+					}
+				</f>
+				</call>
+			}else if (strcmp(id,"Groups")==0){
+				<call vframe2h>(20);
+				<f left>
+					url_self ("add=1","Create a new group");
+					/- <p>
+					<call webtable>("groups");
+					<f init>
+						profile_setstyle(this);
+					</f>
+					<f load>
+						sethead ("Group\tMembers\tAccess\tRole");
+						<call bod_client_list_groups>(glocal.con,w_session.c_str(),"",true);
+						<f ok>
+							for (auto &g:groups){
+								string add = string_f("group=%s",g.name);
+								glocal.webtable.setclickopt (true,"",add);
+								glocal.webtable.setrow ("sep",0,"%s\t%s\a\a",g.name,g.description);
+								glocal.webtable.setclickopt (false,"","");
+								for (unsigned i=0; i<g.users.size(); i++){
+									glocal.webtable.setrow("white",0,"\t%s\t%s\t%s",g.users[i],g.access[i],g.roles[i]);
+								}
+							}
+						</f>
+						</call>
+					</f>
+					</call>
+				</f>
+				<f right>
+					if (w_group.isset() || w_add.isset()){
+						<call form>();
+						<f top>
+							/- <table border=0>
+							if (w_add != 1) htmlprintf ("<tr><td>Group<td><font size=+2>%s</font><p>\n",w_group.c_str());
+						</f>
+						<f bottom>
+							/- </table>
+						</f>
+						<f load>
+							<call bod_client_list_groups>(glocal.con,w_session.c_str(),"",true);
+							<f ok>
+								for (auto &g:groups){
+									if (strcmp(g.name,w_group.c_str())==0){
+										w_desc = g.description;
+										w_content = "";
+										for (unsigned i=0; i<g.users.size(); i++){
+											w_content.appendf ("%s:%s:%s\n",g.users[i],g.access[i],g.roles[i]);
+										}
+										break;
+									}
+								}
+							</f>
+							</call>
+						</f>
+						<f setup>
+							if (w_add == 1){
+								/- <tr><td>Group&nbsp;<td>
+								field_string (w_group,"size=30");
+								field_hidden(w_add);
+							}else{
+								field_hidden(w_group);
+							}
+							/- <tr><td>Description&nbsp;<td>
+							field_string (w_desc,"size=60");
+							/- <tr><td>&nbsp;
+							/- <tr><td valign=top>Members<td>
+							field_textarea (w_content,20,60,"");
+							/- <tr><td>
+							button_submit();
+						</f>
+						<f validate>
+							bool ret = true;
+							if (strcmp(w_desc.c_str(),"a")==0){
+								ret = false;
+								/- <font color=red>a is not allowed</font>
+								/- <br>
+							}
+							return ret;
+						</f>
+						<f process>
+							glocal bool fail = false;
+							if (w_add == 1){
+								<call bod_client_create_group>(glocal.con,w_session.c_str(),w_group.c_str(),"");
+								<f ok>
+									if (!success){
+										glocal.fail = true;
+										htmlprintf ("Can't create group: %s<br>\n",msg);
+									}
+								</f>
+								</call>
+							}
+							if (!glocal.fail){
+								glocal vector<string> oldusers;
+								<call bod_client_list_groups>(glocal.con,w_session.c_str(),"",true);
+								<f ok>
+									for (auto &g:groups){
+										if (strcmp(g.name,w_group.c_str())==0){
+											for (auto u:g.users) glocal.oldusers.push_back(u);
+											break;
+										}
+									}
+								</f>
+								</call>
+								<call bod_client_set_group_desc>(glocal.con,w_session.c_str(),w_group.c_str(),w_desc.c_str(),"");
+								<f ok>
+									if (!success){
+										htmlprintf ("Can't set group description: %s<br>\n",msg);
+										glocal.fail = true;
+									}
+								</f>
+								</call>
+								vector<string> newusers,newaccesses,newroles;
+								const char *pt = w_content.c_str();
+								while (*pt != '\0'){
+									string word;
+									pt = str_copyword(word,pt);
+									vector<string> tb;
+									int n = str_splitline(word.c_str(),':',tb);
+									if (n > 0){
+										while (tb.size() < 3) tb.push_back("");
+										newusers.push_back (tb[0]);
+										newaccesses.push_back(tb[1]);
+										newroles.push_back(tb[2]);
+									}
+								}
+								for (unsigned i=0; !glocal.fail && i<newusers.size(); i++){
+									glocal const char *user = newusers[i].c_str();
+									<call bod_client_set_member>(glocal.con,w_session.c_str(),w_group.c_str()
+										,glocal.user,newaccesses[i].c_str(),newroles[i].c_str(),"");
+									<f ok>
+										if (!success){
+											glocal.fail = true;
+											htmlprintf ("Can't set member %s: %s\n",glocal.user,msg);
+										}
+									</f>
+									</call>
+								}
+								if (!glocal.fail){
+									// We have to remove the groups that are gone
+									index_delete_new_from_old(newusers,glocal.oldusers);
+									// what remains in oldusers have to be deleted (setting access to - does this)
+									for (auto &g:glocal.oldusers){
+										glocal const char *user = g.c_str();
+										<call bod_client_set_member>(glocal.con,w_session.c_str(),w_group.c_str()
+											,glocal.user,"-","","");
+										<f ok>
+											if (!success){
+												glocal.fail = true;
+												htmlprintf ("Can't delete member %s: %s\n",glocal.user,msg);
+											}
+										</f>
+										</call>
+									}
+								}
+							}
+							fail = glocal.fail;
+							keepediting = true;
+							if (!fail){
+								w_add = 0;
+								reload();
+							}
+						</f>
+						</call>
+					}
+				</f>
+				</call>
+			}else if (strcmp(id,"Contacts")==0){
+				<call vframe2h>(20);
+				<f left>
+					url_self ("add=1","Create a new contact");
+					/- <p>
+					<call webtable>("contacts");
+					<f init>
+						profile_setstyle(this);
+					</f>
+					<f load>
+						sethead ("User\tDate\tStatus");
+						<call bod_client_contact_list>(glocal.con,w_session.c_str(),"",0,1000); //nbskip,nblines);
+						<f ok>
+							static const char *tbstatus[]={"waiting","accepted","rejected"};
+							for (auto &c:contacts){
+								glocal.webtable.setrow("white",0,"%s\t%s\t%s",c.user,c.reqdate,tbstatus[c.status]);
+							}
+						</f>
+						</call>
+					</f>
+					</call>
+				</f>
+				<f right>
+				</f>
+				</call>
+			}
 		</f>
 		</call>
+		/- </table>
 		/- </table>
 	</f>
 	<f step12> // Documentation
@@ -1389,6 +1847,26 @@ extern "C" void webmain_real()
 			<f body>
 				<call templatesection>("Configuration");
 				<f body>
+					<call templatesection>("Account");
+					<f body>
+						<?
+						You manage the account preferences here.
+						This includes the access control/privacy of your public page.
+						?>
+					</f>
+					</call>
+					<call templatesection>("Contacts");
+					<f body>
+						<?
+						This is where you manage your contacts (people you know).
+						In this page, you can see the contact requests.
+						?>
+					</f>
+					</call>
+					<call templatesection>("Projects");
+					<f body>
+					</f>
+					</call>
 					<call templatesection>("Groups");
 					<f body>
 					</f>

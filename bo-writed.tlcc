@@ -256,6 +256,8 @@ static unsigned bo_writed_get_group_owner (CONNECT_INFO &con, const char *sessio
 			glocal.userid = 0;
 		</f>
 		</call>
+	}else{
+		msg = "Not logged";
 	}
 	return glocal.userid;
 }
@@ -671,6 +673,7 @@ int main (int argc, char *argv[])
 	glocal bool writeonce_comment = false;
 	glocal const char *force_addr = NULL;
 	glocal const char *bob_dir = "/var/lib/bolixo";
+	glocal bool private_site = false;
 
 	glocal.ret = <call tlmpprogram>(argc,argv,"tlmpsql");
 	<f init>
@@ -696,6 +699,7 @@ int main (int argc, char *argv[])
 		setarg (' ',"pidfile","FIle holding the PID of the process",glocal.pidfile,false);
 		setarg (' ',"noproc","Identity of this process (UUID)",glocal.noproc,false);
 		setarg (' ',"bob_dir","Binary file directory",glocal.bob_dir,false);
+		setarg (' ',"private_site","Local users may interact without doing contact request",glocal.private_site,false);
 		setgrouparg ("Mail");
 		setarg (' ',"mailserver","Mail relay to use",glocal.mailserver,false);
 		setarg (' ',"mailport","TCP port of the relay (or unix socket)",glocal.mailport,false);
@@ -1494,7 +1498,8 @@ int main (int argc, char *argv[])
 					glocal const char *groupname = groupname;
 					glocal const char *access = defaultaccess;
 					glocal unsigned userid = bo_writed_get_group_owner (glocal.con, sessionid, owner, glocal.msg);
-					if (strcmp(defaultaccess," ")!=0
+					if (defaultaccess[0] != '\0'
+						&& strcmp(defaultaccess," ")!=0
 						&& strcmp(defaultaccess,"R")!=0
 						&& strcmp(defaultaccess,"W")!=0
 						&& strcmp(defaultaccess,"A")!=0
@@ -1562,8 +1567,10 @@ int main (int argc, char *argv[])
 					//if (role[0] == '\0') role = NULL;
 					glocal const char *role = role;
 					glocal const char *access = access;
-					glocal unsigned userid = bo_writed_get_group_owner (glocal.con, sessionid, owner, glocal.msg);
-					if (strcmp(access," ")!=0
+					glocal string username;
+					glocal unsigned userid = bo_writed_get_group_owner (glocal.con, sessionid, owner, glocal.username,glocal.msg);
+					if (access[0] != '\0'
+						&& strcmp(access," ")!=0
 						&& strcmp(access,"R")!=0
 						&& strcmp(access,"W")!=0
 						&& strcmp(access,"A")!=0
@@ -1576,9 +1583,18 @@ int main (int argc, char *argv[])
 						</f>
 						<f onerow>
 							glocal unsigned groupid = atoi(row[0]);
-							<call sql_query>("select userid from id2name where name='%s'",glocal.user);
+							const char *sql = "select userid from id2name where name='%s'";
+							// A user is allways allowed to put himself in a group
+							// If this is not a private site, we have to check the user is in the contact list
+							if (strcmp(glocal.username.c_str(),glocal.user)!=0 && !glocal.private_site){
+								sql = "select id2name.userid from id2name"
+									" join contact_requests on contact_requests.reqid=id2name.userid"
+									" where name='%s'"
+									" and contact_requests.userid=%u and contact_requests.status='A'";
+							}
+							<call sql_query>(sql,glocal.user,glocal.userid);
 							<f empty>
-								glocal.msg = "User does not exist";
+								glocal.msg = "User does not exist or not in contacts";
 							</f>
 							<f onerow>
 								glocal unsigned member_userid = atoi(row[0]);
@@ -1622,6 +1638,58 @@ int main (int argc, char *argv[])
 						rep_create_group (true,"");
 					}else{
 						rep_create_group (false,glocal.msg);
+					}
+				</f>
+				<f set_list_desc>	// sessionid listname description owner = success:b msg
+					glocal string msg = "Invalid session";
+					glocal const char *listname = listname;
+					glocal const char *description = description;
+					glocal unsigned userid = bo_writed_get_group_owner (glocal.con, sessionid, owner, glocal.msg);
+					if (glocal.userid != 0)
+						<call sql_query>("select id from group_lists where ownerid=%u and name='%s'",glocal.userid,listname);
+						<f onerow>
+							if (sql_action("update group_lists set description='%s' where ownerid=%u and name='%s'"
+								,glocal.description,glocal.userid,glocal.listname)==-1){
+								glocal.msg = "Internal error (Table group_lists)";
+							}else{
+								glocal.msg = "";
+							}
+						</f>
+						<f empty>
+							glocal.msg = "No list with that name";
+						</f>
+						</call>{
+					}
+					if (glocal.msg.size()==0){
+						rep_set_list_desc (true,"");
+					}else{
+						rep_set_list_desc (false,glocal.msg);
+					}
+				</f>
+				<f set_group_desc>	// sessionid groupname description owner = success:b msg
+					glocal string msg = "Invalid session";
+					glocal const char *groupname = groupname;
+					glocal const char *description = description;
+					glocal unsigned userid = bo_writed_get_group_owner (glocal.con, sessionid, owner, glocal.msg);
+					if (glocal.userid != 0)
+						<call sql_query>("select id from groups where ownerid=%u and name='%s'",glocal.userid,groupname);
+						<f onerow>
+							if (sql_action("update groups set description='%s' where ownerid=%u and name='%s'"
+								,glocal.description,glocal.userid,glocal.groupname)==-1){
+								glocal.msg = "Internal error (Table groups)";
+							}else{
+								glocal.msg = "";
+							}
+						</f>
+						<f empty>
+							glocal.msg = "No group with that name";
+						</f>
+						</call>{
+					}
+					if (glocal.msg.size()==0){
+						rep_set_group_desc (true,"");
+					}else{
+						rep_set_group_desc (false,glocal.msg);
 					}
 				</f>
 				<f delete_list>		// sessionid listname owner = success:b msg
@@ -1767,6 +1835,61 @@ int main (int argc, char *argv[])
 							glocal.handle.clear();
 						}
 						rep_sendtalk (true,glocal.msg,glocal.handle);
+					}
+				</f>
+				<f contact_request>	// sessionid owner user intro = success:b msg
+					// The currently logged user (or owner) is setting a contact request with user
+					// so it is writing in the contact_requests of user
+					glocal string username;
+					glocal string msg;
+					glocal unsigned userid = bo_writed_get_group_owner (glocal.con, sessionid, owner, glocal.username, glocal.msg);
+					if (glocal.userid > 0){
+						int target_userid = fs_rec_getid ("select userid from id2name where name='%s'",user);
+						if (target_userid == -1){
+							glocal.msg = "Unknown user";
+						}else if (sql_action("insert into contact_requests (userid,reqid,message) values (%d,%u,'%s')"
+							,target_userid,glocal.userid,intro)==-1){
+							glocal.msg = "Can't insert in contact_request";
+						}
+					}
+					if (glocal.msg.size()!=0){
+						rep_contact_request (false,glocal.msg);
+					}else{
+						rep_contact_request (true,"");
+					}
+				</f>
+				<f contact_manage>	// sessionid owner user status:e{CONTACT_STATUS} = success:b msg
+					// The currently logged user (or owner) is managing (accept, reject) a contact request from user
+					glocal CONTACT_STATUS status = status;
+					glocal string username;
+					glocal string msg;
+					glocal unsigned userid = bo_writed_get_group_owner (glocal.con, sessionid, owner, glocal.username, glocal.msg);
+					if (glocal.userid > 0){
+						glocal int target_userid = fs_rec_getid ("select userid from id2name where name='%s'",user);
+						if (glocal.target_userid == -1){
+							glocal.msg = "Unknown user";
+						}else{
+							<call sql_query>("select status from contact_requests where userid=%u and reqid=%d"
+								,glocal.userid,glocal.target_userid);
+							<f empty>
+								glocal.msg = "No contact request from this user";
+							</f>
+							<f onerow>
+								CONTACT_STATUS s = (CONTACT_STATUS)atoi(row[0]);
+								if (s != CONTACT_WAITING){
+									glocal.msg = "Contact request for this user already managed";
+								}else  if (sql_action("update contact_requests set status=%d where userid=%u and reqid=%d"
+									,glocal.status,glocal.userid,glocal.target_userid)==-1){
+									glocal.msg = "Can't update contact_request";
+								}
+							</f>
+							</call>
+						}
+					}
+					if (glocal.msg.size()!=0){
+						rep_contact_manage (false,glocal.msg);
+					}else{
+						rep_contact_manage (true,"");
 					}
 				</f>
 				<f test>

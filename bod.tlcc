@@ -766,6 +766,20 @@ static int trlid_main (
 				</f>
 				</call>
 			</f>
+			<f set_list_desc>	// sessionid listname description owner = success:b msg
+				<call bo_writed_client_set_list_desc>(glocal.con,sessionid,listname,description,owner);
+				<f ok>
+					glocal.bod_client.rep_set_list_desc (success,msg);
+				</f>
+				</call>
+			</f>
+			<f set_group_desc>	// sessionid groupname description owner = success:b msg
+				<call bo_writed_client_set_group_desc>(glocal.con,sessionid,groupname,description,owner);
+				<f ok>
+					glocal.bod_client.rep_set_group_desc (success,msg);
+				</f>
+				</call>
+			</f>
 			<f delete_list>	// sessionid listname owner = success:b msg
 				<call bo_writed_client_delete_list>(glocal.con,sessionid,listname,owner);
 				<f ok>
@@ -782,28 +796,27 @@ static int trlid_main (
 			</f>
 			<f list_lists>	//  sessionid owner = success:b msg lists:v groups:vv access:v
 				glocal string msg = "Invalid session";
-				glocal vector<string> lists;
-				glocal vector<vector<string>> groups;
-				glocal vector<vector<string>> access;
+				glocal vector<LIST> lists;
 				unsigned userid = bo_writed_get_group_owner (glocal.con_sess, sessionid, owner, glocal.msg);
 				if (userid != 0){
 					glocal string last_list;
-					<call sql_query>("select group_lists.name,groups.name,group_list_members.defaultaccess"
+					<call sql_query>("select group_lists.name,group_lists.description,groups.name,group_list_members.defaultaccess"
 						" from group_lists"
 						" left join group_list_members on group_lists.id=group_list_members.group_list_id"
 						" left join groups on group_list_members.groupid=groups.id"
-						" where group_lists.ownerid=%u",userid);
+						" where group_lists.ownerid=%u order by group_lists.name,groups.name",userid);
 					<f onerow>
 						if (strcmp(glocal.last_list.c_str(),row[0])!=0){
 							glocal.last_list = row[0];
-							glocal.lists.push_back(glocal.last_list);
-							glocal.groups.push_back(vector<string>());
-							glocal.access.push_back(vector<string>());
+							LIST l;
+							l.name = row[0];
+							l.description = row[1];
+							glocal.lists.push_back(l);
 						}
 						if (row[1] != NULL && row[2] != NULL){
-							unsigned last = glocal.groups.size()-1;
-							glocal.groups[last].push_back(row[1]);
-							glocal.access[last].push_back(row[2]);
+							LIST &l = glocal.lists[glocal.lists.size()-1];
+							l.groups.push_back(row[2]);
+							l.access.push_back(row[3]);
 						}
 						glocal.msg = "";
 					</f>
@@ -816,10 +829,8 @@ static int trlid_main (
 				if (glocal.msg.size() > 0){
 					ret = false;
 					glocal.lists.clear();
-					glocal.groups.clear();
-					glocal.access.clear();
 				}
-				rep_list_lists (ret,glocal.msg,glocal.lists,glocal.groups,glocal.access);
+				rep_list_lists (ret,glocal.msg,glocal.lists);
 			</f>
 			<f list_groups>	// sessionid owner only_onwer:b = success:b msg groups:v users:vv access:vv
 				// List either all groups own by the logged user
@@ -829,7 +840,7 @@ static int trlid_main (
 				unsigned userid = bo_writed_get_group_owner (glocal.con_sess, sessionid, owner, glocal.msg);
 				if (userid != 0){
 					glocal unsigned last_group_id = (unsigned)-1;
-					string sql = "select groups.id,groups.name,id2.name,id2name.name,group_members.access,group_members.role"
+					string sql = "select groups.id,groups.name,id2.name,id2name.name,group_members.access,group_members.role,groups.description"
 						" from groups"
 						" left join group_members on groups.id=group_members.groupid"
 						" left join id2name on group_members.userid=id2name.userid"
@@ -840,7 +851,7 @@ static int trlid_main (
 					}else{
 						sql += "groups.id in (select groupid from group_members where userid=%u)";
 					}
-					sql += " order by id2.name,groups.name";
+					sql += " order by id2.name,groups.name,id2name.name";
 					<call sql_query>(sql.c_str(),userid);
 					<f onerow>
 						unsigned group_id = atoi(row[0]);
@@ -849,6 +860,7 @@ static int trlid_main (
 							GROUP group;
 							group.name = row[1];
 							group.owner = row[2];
+							group.description = row[6];
 							glocal.groups.push_back(group);
 						}
 						if (row[3] != NULL && row[4] != NULL){
@@ -1107,6 +1119,48 @@ static int trlid_main (
 					rep_list_talk(false,glocal.msg,glocal.msgs);
 				}else{
 					rep_list_talk(true,glocal.msg,glocal.msgs);
+				}
+			</f>
+			<f contact_request>	// sessionid owner user intro = success:b msg
+				<call bo_writed_client_contact_request>(glocal.con,sessionid,owner,user,intro);
+				<f ok>
+					glocal.bod_client.rep_contact_request (success,msg);
+				</f>
+				</call>
+			</f>
+			<f contact_manage>	// sessionid owner user status = success:b msg
+				<call bo_writed_client_contact_manage>(glocal.con,sessionid,owner,user,status);
+				<f ok>
+					glocal.bod_client.rep_contact_manage (success,msg);
+				</f>
+				</call>
+			</f>
+			<f contact_list>	// sessionid owner offset:u nb:u = success:b msg contacts:U{CONTACT}v
+				// CONTACT user reqdate message status
+				glocal vector<CONTACT> contacts;
+				glocal string msg;
+				string username;
+				unsigned userid = bo_writed_get_group_owner (glocal.con_sess, sessionid, owner, username, glocal.msg);
+				if (userid != 0){
+					<call sql_query>("select id2name.name,message,status,reqdate from contact_requests"
+						" join id2name on id2name.userid=contact_requests.reqid"
+						" where contact_requests.userid=%u order by id2name.name limit %u,%u"
+						,userid,offset,nb);
+					<f onerow>
+						CONTACT c;
+						c.user = row[0];
+						c.message = row[1];
+						c.status = (CONTACT_STATUS)atoi(row[2]);
+						c.reqdate = row[3];
+						glocal.contacts.push_back(c);
+					</f>
+					</call>
+				}
+				if (glocal.msg.size() != 0){
+					glocal.contacts.clear();
+					rep_contact_list (false,glocal.msg,glocal.contacts);
+				}else{
+					rep_contact_list (true,"",glocal.contacts);
 				}
 			</f>
 			<f invalid>
