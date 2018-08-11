@@ -31,18 +31,13 @@ elif [ "$1" = "sequence" ] ; then
 	fi
 	$0 reset
 	# Make sure user A B C are in contact list of each other
-	for user in jacques-A jacques-B jacques-C
-	do
-		for target in jacques-A jacques-B jacques-C
-		do
-			if [ "$user" != "$target" ] ; then
-				# Contact request form user to target
-				./bofs -u $user misc -r -u $target
-				# Target accepts contact request
-				./bofs -u $target misc -R -u $user -s A
-			fi
-		done
-	done
+	./bofs -u  jacques-A misc -r -u jacques-B
+	./bofs -u  jacques-A misc -r -u jacques-C
+	./bofs -u  jacques-B misc -r -u jacques-C
+	./bofs -u  jacques-B misc -R -u jacques-A -s A
+	./bofs -u  jacques-C misc -R -u jacques-A -s A
+	./bofs -u  jacques-C misc -R -u jacques-B -s A
+	# Then all the other users do a contact request to jacques-A
 	for letter in D G H I J K L M N O P Q R S T U V W X Y Z
 	do
 		./bofs -u jacques-$letter misc -r -u jacques-A

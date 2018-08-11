@@ -22,6 +22,8 @@ using namespace std;
 static const char *newscolor = "green";
 
 static string w_session;
+static W_SSTRING w_accept("accept");
+static W_SSTRING w_user("user");
 static W_SSTRING w_list("list");
 static W_SSTRING w_group("group");
 static W_UNSIGNED w_add("add");
@@ -1736,7 +1738,7 @@ extern "C" void webmain_real()
 			}else if (strcmp(id,"Contacts")==0){
 				<call vframe2h>(20);
 				<f left>
-					url_self ("add=1","Create a new contact");
+					url_self ("add=1","Send a new contact request");
 					/- <p>
 					<call webtable>("contacts","100%",currents["contacts"],offsets["contacts"],20);
 					<f init>
@@ -1748,6 +1750,7 @@ extern "C" void webmain_real()
 						<f ok>
 							static const char *tbstatus[]={"waiting","accepted","rejected"};
 							for (auto &c:contacts){
+								glocal.webtable.setclickopt (true,"",string_f("user=%s",c.user));
 								glocal.webtable.setrow("white",0,"%s\t%s\t%s",c.user,c.reqdate,tbstatus[c.status]);
 							}
 						</f>
@@ -1756,6 +1759,107 @@ extern "C" void webmain_real()
 					</call>
 				</f>
 				<f right>
+					if (w_add == 1){
+						glocal bool done = false;
+						<call form>();
+						<f top>
+							/- <table border=0>
+							/- <tr><td><td>
+							/- <h2>Send a contact request</h2>
+						</f>
+						<f bottom>
+							/- </table>
+						</f>
+						<f setup>
+							field_hidden (w_add);
+							/- <tr><td>Person to contact<td>
+							field_string (w_user,"size=30");
+							/- <tr><td valign=top>Message<td>
+							field_textarea (w_content,10,60,"");
+							/- <tr><td>
+							button_submit();
+						</f>
+						<f validate>
+							return true;
+						</f>
+						<f process>
+							glocal bool fail = false;
+							<call bod_client_contact_request>(glocal.con,w_session.c_str(),"",w_user.c_str(),w_content.c_str());
+							<f ok>
+								if (!success){
+									glocal.fail = true;
+									htmlprintf ("Contact request failed: %s<br>\n",msg);
+								}else{
+									glocal.done = true;
+								}
+							</f>
+							</call>
+							fail = glocal.fail;
+						</f>
+						</call>
+						if (glocal.done){
+							/- Contact request sent!
+						}
+					}else if (w_user.isset()){
+						glocal bool done = false;
+						glocal CONTACT_STATUS status = CONTACT_WAITING;
+						<call form>();
+						<f top>
+							/- <table border=0>
+							/- <tr><td><td>
+							/- <h2>Manage a contact</h2>
+						</f>
+						<f bottom>
+							/- </table>
+						</f>
+						<f setup>
+							field_hidden(w_user);
+							/- <tr><td>Request from<td>
+							htmlout (w_user.c_str());
+							/- <tr><td>Accept request<td>
+							field_radio(w_accept,"accept",true,"");
+							/- <tr><td>Refuse request<td>
+							field_radio(w_accept,"reject",false,"");
+							/- <tr><td>
+							button_submit();
+						</f>
+						<f validate>
+							return true;
+						</f>
+						<f process>
+							glocal bool fail = false;
+							if (strcmp(w_accept.c_str(),"accept")==0){
+								glocal.status = CONTACT_ACCEPTED;
+							}else if (strcmp(w_accept.c_str(),"reject")==0){
+								glocal.status = CONTACT_REJECTED;
+							}else{
+								glocal.fail = true;
+								/- Invalid input ???
+							}
+							if (!glocal.fail){
+								<call bod_client_contact_manage>(glocal.con,w_session.c_str(),"",w_user.c_str(),glocal.status);
+								<f ok>
+									if (!success){
+										glocal.fail = true;
+										htmlprintf ("operation failed: %s<br>\n",msg);
+									}else{
+										glocal.done = true;
+									}
+								</f>
+								</call>
+							}
+							fail = glocal.fail;
+						</f>
+						</call>
+						if (glocal.done){
+							/- Contact request processed!<p>
+							if (glocal.status == CONTACT_ACCEPTED){
+								htmlprintf ("From now on, you can communicate with user %s<br>\n",w_user.c_str());
+								htmlprintf ("You can make user %s member of your groups<br>\n",w_user.c_str());
+								/- and he can make you member of his groups.
+							}
+						}
+					}
 				</f>
 				</call>
 			}
