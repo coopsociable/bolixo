@@ -1,5 +1,6 @@
 #!/bin/sh
 # Script to populate groups
+FILES=/b6/files
 if [ "$1" = "reset" ] ; then
 	./test.sh files <<-EOF
 		delete from groups;
@@ -42,16 +43,22 @@ elif [ "$1" = "sequence" ] ; then
 	do
 		./bofs -u jacques-$letter misc -r -u jacques-A
 	done
+	# We create a public project for all users and put a small photo in each
+	# test-sequence removes user E and F
+	for letter in A B C D G H I J K L M N O P Q R S T U V W X Y Z
+	do
+		./bofs -u jacques-$letter groups --create-group-list -L public 
+		./bofs -u jacques-$letter groups --set-list-desc -D "public list for jacques-$letter" -L public 
+		./bofs -u jacques-$letter groups --create-project-dir -L public
+		./bofs -u jacques-$letter groups -a -L "#all" -M R /projects/jacques-$letter/public
+		./bofs -u jacques-$letter cp $FILES/mini-jacques-$letter.jpg bo://projects/jacques-$letter/public/mini-photo.jpg
+	done
 	# We create a public project for user jacques-A allowing both jacques-A and jacques-B to contribute
-	./bofs -u jacques-A groups --create-group-list -L public 
-	./bofs -u jacques-A groups --set-list-desc -D "public list for jacques-A" -L public 
-	./bofs -u jacques-A groups --create-project-dir -L public
 	./bofs -u jacques-A groups --create-group -G public
 	./bofs -u jacques-A groups --set-group-desc -D "public group for jacques-A" -G public 
 	./bofs -u jacques-A groups --set-group -L public -G public -A R
 	./bofs -u jacques-A groups --set-member -G public -U jacques-A -AW
 	./bofs -u jacques-A groups --set-member -G public -U jacques-B -AW
-	./bofs groups -a -L "#all" -M R /projects/jacques-A/public
 
 	./bofs -u jacques-A groups --create-group-list -L Alist1
 	./bofs -u jacques-A groups --create-project-dir -L Alist1
@@ -131,7 +138,6 @@ elif [ "$1" = "writemails" ] ; then
 	./bofs              msgs -t -G common --groupowner jacques-B -C "Jacques-A writes to jacques-B:common"
 	./bofs -u jacques-B msgs -t -G common --groupowner jacques-A -C "Jacques-B writes to jacques-A:common"
 	./bofs -u jacques-B msgs -t -G common --groupowner jacques-B -C "Jacques-B writes to jacques-B:common"
-	FILES=/b6/files
 	./bofs msgs -t -G Agroup1 --groupowner jacques-A -F $FILES/file.mp3
 	./bofs msgs -t -G Agroup1 --groupowner jacques-A -F $FILES/file.jpg
 	./bofs msgs -t -G Agroup1 --groupowner jacques-A -F $FILES/file.gif

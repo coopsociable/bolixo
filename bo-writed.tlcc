@@ -100,7 +100,7 @@ static bool bo_writed_lex_check(const char *groupname, string &msg)
 		if (*pt < ' '){
 			ret = false;
 			break;
-		}else if (*pt == '#' || *pt == ';' || *pt == '"' || *pt == '\''){
+		}else if (*pt == '/' || *pt == '@' || *pt == '#' || *pt == ';' || *pt == '"' || *pt == '\''){
 			ret = false;
 			break;
 		}
@@ -932,47 +932,51 @@ int main (int argc, char *argv[])
 				glocal.nbrequest_client++;
 				<call bo_writed_client>(this,c->req,line, info.linelen,endserver, endclient, no,c,c->host.c_str());
 				<f adduser>
+					glocal string msg;
+					glocal string id_str;
 					glocal const char *name = name;
 					glocal const char *email = email;
 					glocal const char *password = password;
-					<call sql_query>(*glocal.usq,"select email from users where email='%s'",email);
-					<f onerow>
-						// Email already exist
-						glocal.bo_writed_client.rep_adduser ("","An account using this email already exists");
-					</f>
-					<f empty>
-						<call sql_query>(*glocal.usq,"select name from users where name='%s'",glocal.name);
+					if (bo_writed_lex_check(name,glocal.msg)){
+						<call sql_query>(*glocal.usq,"select email from users where email='%s'",email);
 						<f onerow>
-							glocal.bo_writed_client.rep_adduser ("","An account is already using this nickname");
+							// Email already exist
+							glocal.msg = "An account using this email already exists";
 						</f>
 						<f empty>
-							glocal string id_str = fs_makeid ();
-							if (sql_action(*glocal.usq,"insert into users (name,email,password,userid_str) values ('%s','%s',password('%s'),'%s')"
-								,glocal.name,glocal.email,glocal.password,glocal.id_str.c_str())==-1){
-								glocal.bo_writed_client.rep_adduser ("","can't create");
-							}else if (sql_action("insert into id2name (userid,name) values (%d,'%s')",glocal.usq->getlastid(),glocal.name)==-1){
-								glocal.bo_writed_client.rep_adduser ("","can't create2");
-							}else{
-								<call bo_keysd_control_genkey>(glocal.con_keys,glocal.id_str);
-								<f ok>
-								</f>
-								</call>
-								glocal.bo_writed_client.rep_adduser (glocal.id_str,"");
-								// Retrieve the password hashed by MySQL
-								<call sql_query>(*glocal.usq,"select password from users where email='%s'",glocal.email);
-								<f onerow>
-									bo_log_adduser (glocal.flog,glocal.id_str,glocal.name,glocal.email,row[0],time(NULL));
-								</f>
-								</call>
-								if (glocal.mailon){
-									writed_mail_newaccount(glocal.mailserver,glocal.mailport,glocal.mailfrom
-										,glocal.name,glocal.email,glocal.id_str);
+							<call sql_query>(*glocal.usq,"select name from users where name='%s'",glocal.name);
+							<f onerow>
+								glocal.msg = "An account is already using this nickname";
+							</f>
+							<f empty>
+								glocal.id_str = fs_makeid ();
+								if (sql_action(*glocal.usq,"insert into users (name,email,password,userid_str) values ('%s','%s',password('%s'),'%s')"
+									,glocal.name,glocal.email,glocal.password,glocal.id_str.c_str())==-1){
+									glocal.msg = "can't create";
+								}else if (sql_action("insert into id2name (userid,name) values (%d,'%s')",glocal.usq->getlastid(),glocal.name)==-1){
+									glocal.msg = "can't create2";
+								}else{
+									<call bo_keysd_control_genkey>(glocal.con_keys,glocal.id_str);
+									<f ok>
+									</f>
+									</call>
+									// Retrieve the password hashed by MySQL
+									<call sql_query>(*glocal.usq,"select password from users where email='%s'",glocal.email);
+									<f onerow>
+										bo_log_adduser (glocal.flog,glocal.id_str,glocal.name,glocal.email,row[0],time(NULL));
+									</f>
+									</call>
+									if (glocal.mailon){
+										writed_mail_newaccount(glocal.mailserver,glocal.mailport,glocal.mailfrom
+											,glocal.name,glocal.email,glocal.id_str);
+									}
 								}
-							}
+							</f>
+							</call>
 						</f>
 						</call>
-					</f>
-					</call>
+					}
+					rep_adduser (glocal.id_str,glocal.msg);
 				</f>
 				<f confirmuser>
 					glocal const char *confirmid = confirmid;
