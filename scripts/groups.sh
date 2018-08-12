@@ -51,7 +51,12 @@ elif [ "$1" = "sequence" ] ; then
 		./bofs -u jacques-$letter groups --set-list-desc -D "public list for jacques-$letter" -L public 
 		./bofs -u jacques-$letter groups --create-project-dir -L public
 		./bofs -u jacques-$letter groups -a -L "#all" -M R /projects/jacques-$letter/public
-		./bofs -u jacques-$letter cp $FILES/mini-jacques-$letter.jpg bo://projects/jacques-$letter/public/mini-photo.jpg
+		if [ -x /usr/bin/convert ]; then
+			convert -font helvetica -size 40x40 xc:white -pointsize 37 -draw "text 5,32 '$letter'" /tmp/mini-photo.jpg
+			./bofs -u jacques-$letter cp /tmp/mini-photo.jpg bo://projects/jacques-$letter/public/mini-photo.jpg
+		else
+			echo no convert utility, install ImangeMagick
+		fi
 	done
 	# We create a public project for user jacques-A allowing both jacques-A and jacques-B to contribute
 	./bofs -u jacques-A groups --create-group -G public
@@ -92,12 +97,12 @@ elif [ "$1" = "sequence" ] ; then
 	./bofs -u jacques-A groups --set-member -G common -U jacques-B -AW -Rdba
 	./bofs -u jacques-B groups --set-member -G common -U jacques-A -AW -Rdba
 	./bofs -u jacques-B groups --set-member -G common -U jacques-B -AW -Rdba
-	for user in jacques-A jacques-B jacques-C
-	do
-		echo "------- $user"
-		./bofs -u $user groups --print-lists
-		./bofs -u $user groups --print-groups
-	done
+	#for user in jacques-A jacques-B jacques-C
+	#do
+	#	echo "------- $user"
+	#	./bofs -u $user groups --print-lists
+	#	./bofs -u $user groups --print-groups
+	#done
 	$0 writemails $NB
 elif [ "$1" = "writemails" ] ; then
 	NB=$2
@@ -138,15 +143,21 @@ elif [ "$1" = "writemails" ] ; then
 	./bofs              msgs -t -G common --groupowner jacques-B -C "Jacques-A writes to jacques-B:common"
 	./bofs -u jacques-B msgs -t -G common --groupowner jacques-A -C "Jacques-B writes to jacques-A:common"
 	./bofs -u jacques-B msgs -t -G common --groupowner jacques-B -C "Jacques-B writes to jacques-B:common"
+	echo Create an image from screen capture
+	if [ -x /usr/bin/import ] ; then
+		import -window root -resize 800x600 /tmp/image.jpg
+		convert /tmp/image.jpg /tmp/image.gif
+		convert /tmp/image.jpg /tmp/image.png
+		./bofs msgs -t -G Agroup1 --groupowner jacques-A -F /tmp/image.jpg
+		./bofs msgs -t -G Agroup1 --groupowner jacques-A -F /tmp/image.gif
+		./bofs msgs -t -G Agroup1 --groupowner jacques-A -F /tmp/image.png
+	fi
 	./bofs msgs -t -G Agroup1 --groupowner jacques-A -F $FILES/file.mp3
-	./bofs msgs -t -G Agroup1 --groupowner jacques-A -F $FILES/file.jpg
-	./bofs msgs -t -G Agroup1 --groupowner jacques-A -F $FILES/file.gif
-	./bofs msgs -t -G Agroup1 --groupowner jacques-A -F $FILES/file.png
 	./bofs msgs -t -G Agroup1 --groupowner jacques-A -F $FILES/file.mp4
 	# Populate projects
 	for project in jacques-A/Alist1 jacques-A/Alonglist2 jacques-B/Blist1
 	do
-		for file in $FILES/file.*
+		for file in $FILES/file.mp3 $FILES/file.mp4 /tmp/image.png /tmp/image.gif /tmp/image.jpg
 		do
 			base=`basename $file`
 			echo "cp $file -> projects $project"
@@ -154,7 +165,7 @@ elif [ "$1" = "writemails" ] ; then
 		done
 	done
 	./bofs mkdir bo://projects/jacques-A/public/default
-	./bofs cp $FILES/file.jpg bo://projects/jacques-A/public/default/file.jpg
+	./bofs cp /tmp/image.jpg bo://projects/jacques-A/public/default/image.jpg
 	./bofs cp $FILES/intro.html bo://projects/jacques-A/public/default/intro.html
 elif [ "$1" = "config" ] ; then
 	./test.sh files <<-EOF

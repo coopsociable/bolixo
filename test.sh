@@ -485,13 +485,15 @@ elif [ "$1" = "test-rotatelog" ] ; then # prod: Rotate writed log
 elif [ "$1" = "test-sequence" ] ; then # S: Reloads database (big,medium,real,nomail)
 	rm -f $WRITEDLOG
 	$0 bo-writed-control truncatelog	
-	LONG="This is some text"
+	ALL=
 	shift
 	$0 bo-writed-control mailctrl 0 keep
 	while [ "$1" != "" ]
 	do
 		if [ "$1" = "mail" ] ; then
 			$0 bo-writed-control mailctrl 1 keep
+		elif [ "$1" = "all" ]; then
+			ALL=1
 		else
 			echo unknown keyword $1: mail
 			exit 1
@@ -504,9 +506,12 @@ elif [ "$1" = "test-sequence" ] ; then # S: Reloads database (big,medium,real,no
 	echo ==== admin
 	$0 test-deleteuser E
 	$0 test-deleteuser F
-	echo ==== sessions
-	$0 bo-sessiond-control listsessions 0 1000
+	#echo ==== sessions
+	#$0 bo-sessiond-control listsessions 0 1000
 	$0 bo-writed-control mailctrl 1 keep
+	if [ "$ALL" = 1 ] ; then
+		./scripts/groups.sh sequence
+	fi
 elif [ "$1" = "test-sendmail" ] ;then # prod: ask writed to send one email
 	./bo-writed-control -p /var/lib/lxc/writed/rootfs/tmp/bo-writed-0.sock sendmail jack@dns.solucorp.qc.ca test body1
 elif [ "$1" = "eraseanon-lxc" ] ; then # prod:
