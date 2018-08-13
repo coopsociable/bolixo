@@ -953,22 +953,29 @@ int main (int argc, char *argv[])
 								if (sql_action(*glocal.usq,"insert into users (name,email,password,userid_str) values ('%s','%s',password('%s'),'%s')"
 									,glocal.name,glocal.email,glocal.password,glocal.id_str.c_str())==-1){
 									glocal.msg = "can't create";
-								}else if (sql_action("insert into id2name (userid,name) values (%d,'%s')",glocal.usq->getlastid(),glocal.name)==-1){
-									glocal.msg = "can't create2";
 								}else{
-									<call bo_keysd_control_genkey>(glocal.con_keys,glocal.id_str);
-									<f ok>
-									</f>
-									</call>
-									// Retrieve the password hashed by MySQL
-									<call sql_query>(*glocal.usq,"select password from users where email='%s'",glocal.email);
-									<f onerow>
-										bo_log_adduser (glocal.flog,glocal.id_str,glocal.name,glocal.email,row[0],time(NULL));
-									</f>
-									</call>
-									if (glocal.mailon){
-										writed_mail_newaccount(glocal.mailserver,glocal.mailport,glocal.mailfrom
-											,glocal.name,glocal.email,glocal.id_str);
+									int userid = glocal.usq->getlastid();
+									 if (sql_action("insert into id2name (userid,name) values (%d,'%s')",userid,glocal.name)==-1){
+										glocal.msg = "can't create2";
+									}else{
+										<call bo_keysd_control_genkey>(glocal.con_keys,glocal.id_str);
+										<f ok>
+										</f>
+										</call>
+										// Retrieve the password hashed by MySQL
+										<call sql_query>(*glocal.usq,"select password from users where email='%s'",glocal.email);
+										<f onerow>
+											bo_log_adduser (glocal.flog,glocal.id_str,glocal.name,glocal.email,row[0],time(NULL));
+										</f>
+										</call>
+										// Create a record in the config table
+										if (sql_action("insert into config (userid) value (%d)",userid)==-1){
+											glocal.msg = "Can't create3: table config";
+										}
+										if (glocal.mailon){
+											writed_mail_newaccount(glocal.mailserver,glocal.mailport,glocal.mailfrom
+												,glocal.name,glocal.email,glocal.id_str);
+										}
 									}
 								}
 							</f>
@@ -1959,6 +1966,33 @@ int main (int argc, char *argv[])
 						rep_contact_manage (false,glocal.msg);
 					}else{
 						rep_contact_manage (true,"");
+					}
+				</f>
+				<f config_write>// sessionid owner config:U{CONFIG} = success:b msg
+					glocal string msg;
+					string username;
+					glocal unsigned userid = bo_writed_get_group_owner (glocal.con, sessionid, owner, username,glocal.msg);
+					if (glocal.userid > 0){
+						if (config.public_view){
+							// We have to validate that the directory exist
+							string dirname = string_f("/projects/%s/public/%s",username.c_str(),config.public_dir);
+							ENTRY entry;
+							if (bo_writed_findentry (glocal.con,sessionid,dirname.c_str(),entry,true)==-1){
+								glocal.msg = "Unknown folder for public_dir";
+							}else if (!bolixo_isdir(entry.type)){
+								glocal.msg = "public_dir is not a directory";
+							}
+						}
+						if (glocal.msg.size() == 0){
+							if (sql_action("update config set lang='%s',public_view=%d,public_dir='%s'",config.lang,config.public_view,config.public_dir)==-1){
+								glocal.msg = "Internal error, config table";
+							}
+						}
+					}
+					if (glocal.msg.size() > 0){
+						rep_config_write (false,glocal.msg);
+					}else{
+						rep_config_write (true,glocal.msg);
 					}
 				</f>
 				<f test>

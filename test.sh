@@ -405,7 +405,13 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 			reqdate datetime default current_timestamp
 		)engine=$ENGINE;
 		create unique index contact_requests_ids on contact_requests(userid,reqid);
-			
+		create table config(
+			userid int,
+			lang char(10) default 'eng',
+			public_view tinyint default 0,
+			public_dir varchar(30) default ''
+		)engine=$ENGINE;
+		create unique index config_userid on config(userid);	
 	EOF
 elif [ "$1" = "dropdb" ] ; then # db: Drop databases
 	mysqladmin -uroot -S $SOCKN -f drop $DBNAME

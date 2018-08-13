@@ -1949,6 +1949,12 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 	glocal const char *intro = "Hello I would like to chat with you";
 	glocal const char *user = NULL;
 	glocal const char *owner = "";
+	glocal bool showconfig = false;
+	glocal bool writeconfig = false;
+	// All config options are const char *, so they stay NULL if the user has not entered a value
+	glocal const char *lang = NULL;
+	glocal const char *public_view = NULL;
+	glocal const char *public_dir = NULL;
 	glocal.ret = <call tlmpprogram>(argc,argv);
 	<f init>
 		setproginfo ("bomisc",VERSION
@@ -1957,6 +1963,8 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 			 "bofs misc ...\n"
 			);
 		setgrouparg ("Main commands");
+		setarg ('c',"showconfig","Show user configuration",glocal.showconfig,false);
+		setarg ('w',"writeconfig","Update user configuration",glocal.writeconfig,false);
 		setarg ('m',"markview","Mark a file as viewed",glocal.markview,false);
 		setarg ('r',"contact_request","Ask a user to be part of his contact list",glocal.contact_request,false);
 		setarg ('R',"contact_manage","Manage a contact request",glocal.contact_manage,false);
@@ -1970,7 +1978,10 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 		setarg ('n',"nickname","User nickname who signed the message",glocal.nickname,false);
 		setarg ('M',"message","Message to verify",glocal.message,false);
 		setarg ('r',"nbrep","Number of repetition (performance test)",glocal.nbrep,false);
-		setgrouparg ("Options");
+		setgrouparg ("writeconfig options");
+		setarg ('L',"lang","Language used in the UI",glocal.lang,false);
+		setarg ('V',"public_view","Enable public view (anonymous) 0 or 1",glocal.public_view,false);
+		setarg ('D',"public_dir","Select the sub-folder of the public project to display",glocal.public_dir,false);
 	</f>
 	<f main>
 		glocal int ret = -1;
@@ -2069,6 +2080,43 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 				</f>
 				</call>
 			}
+		}else if (glocal.showconfig){
+			if (glocal.ctx->login()!=-1){
+				<call bod_client_config_read>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner);
+				<f ok>
+					if (!success){
+						bofs_error ("config_read",internal_error,msg);
+					}else{
+						printf ("lang=%s public_view=%d public_dir=%s\n",config.lang,config.public_view,config.public_dir);
+					}
+				</f>
+				</call>
+			}
+		}else if (glocal.writeconfig){
+			if (glocal.ctx->login()!=-1){
+				<call bod_client_config_read>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner);
+				<f ok>
+					if (!success){
+						bofs_error ("config_read",internal_error,msg);
+					}else{
+						CONFIG config;
+						if (glocal.lang != NULL) config.lang = glocal.lang;
+						if (glocal.public_view != NULL) config.public_view = atoi(glocal.public_view);
+						if (glocal.public_dir != NULL) config.public_dir = glocal.public_dir;
+						<call bod_client_config_write>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner,config);
+						<f ok>
+							if (!success){
+								bofs_error ("config_write",internal_error,msg);
+							}
+						</f>
+						</call>
+					}
+				</f>
+				</call>
+			}
+		}else{
+			usage();
+			glocal.ret = -1;
 		}
 		return glocal.ret;
 	</f>
