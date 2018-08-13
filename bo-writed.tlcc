@@ -1852,6 +1852,43 @@ int main (int argc, char *argv[])
 						rep_sendtalk (true,glocal.msg,glocal.handle);
 					}
 				</f>
+				<f sendtalk_file>	// sessionid owner groupname groupowner filename = success:b msg
+					glocal string msg;
+					glocal const char *groupname = groupname;
+					glocal const char *groupowner = groupowner;
+					glocal ENTRY srcentry;
+					if (bo_writed_findentry (glocal.con,sessionid,filename,glocal.srcentry,true)==-1){
+						glocal.msg = glocal.srcentry.msg;
+					}else{
+						// We store the message in the short inbox of the group owner (like mail sent to the project) 
+						// The query is to check if the user posting the message is a member of the group
+						// and to validate the group exist
+						<call sql_query>("select groups.ownerid from groups"
+							" join id2name on id2name.userid=groups.ownerid"
+							" join group_members on group_members.groupid = groups.id"
+							" where id2name.name='%s' and groups.name='%s' and group_members.userid=%u"
+							,groupowner,groupname,glocal.srcentry.userid);
+						<f empty>
+							glocal.msg = "Unknown group name, empty group, or user not a member";
+						</f>
+						<f onerow>
+							int dirid = fs_find_short_inbox (atoi(row[0]),glocal.groupowner,glocal.groupname,true,glocal.msg);
+							if (dirid != -1){
+								if (fs_insert_entry(dirid,glocal.srcentry.entryid,glocal.srcentry.modified
+									,glocal.srcentry.basename,glocal.srcentry.type)==-1){
+									glocal.msg = "Internal error (dirs_content table)";
+								}
+							}
+							end = true;
+						</f>
+						</call>
+					}
+					if (glocal.msg.size() > 0){
+						rep_sendtalk_file (false,glocal.msg);
+					}else{
+						rep_sendtalk_file (true,glocal.msg);
+					}
+				</f>
 				<f contact_request>	// sessionid owner user intro = success:b msg
 					// The currently logged user (or owner) is setting a contact request with user
 					// so it is writing in the contact_requests of user

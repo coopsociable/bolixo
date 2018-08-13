@@ -1440,6 +1440,43 @@ static int bofs_send_talk (
 	return glocal.ret;
 }
 </mod>
+<mod>
+static int bofs_send_talk_file (
+	CONTEXT &ctx,
+	const char *filename,
+	const char *owner,
+	const char *groupname,
+	const char *groupowner)
+{
+	glocal int ret = -1;
+	if (groupname == NULL){
+		tlmp_error ("groupname required for talkmsg\n");
+	}else{
+		if (ctx.is_internal()){
+			<call bod_client_sendtalk_file>(ctx.con,ctx.sessionid,owner,groupname,groupowner,filename);
+			<f ok>
+				if (!success){
+					bofs_error ("msgs",internal_error,msg);
+				}else{
+					glocal.ret = 0;
+				}
+			</f>
+			</call>
+		}else{
+			<call webapi_sendtalk_file>(ctx.hcon,ctx.hsessionid,owner,groupname,groupowner,filename);
+			<f ok>
+				if (!success){
+					bofs_error ("msgs",internal_error,msg);
+				}else{
+					glocal.ret = 0;
+				}
+			</f>
+			</call>
+		}
+	}
+	return glocal.ret;
+}
+</mod>
 #define _TLMP_bofs_list_msgs
 struct _F_bofs_list_msgs {
 	#define _F_bofs_list_msgs_ok(x) void x ok(bool internal_error, bool success, const char *msg, const vector<MESSAGE_receive> &messages)
@@ -1636,6 +1673,17 @@ static void bofs_replymsg_project (
 		</call>
 	}
 }
+static void bofs_check_groupopt (const char *groupname, const char *groupowner)
+{
+	if (groupowner == NULL){
+		tlmp_error ("You must specified the group owner (option --groupowner)\n");
+		exit (-1);
+	}else if (groupname == NULL){
+		tlmp_error ("You must specify the group name (option -G)\n");
+		exit (-1);
+	}
+}
+
 <mod>
 static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 {
@@ -1648,12 +1696,14 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 	glocal bool reply = false;
 	glocal bool listmsgs = false;
 	glocal bool shortmsg = false;
+	glocal bool shortmsg_file = false;
 	glocal bool listshortmsgs = false;
 
 	glocal vector<string> recipients;
 	glocal const char *groupname = NULL;
 	glocal const char *groupowner = NULL;
 	glocal const char *filecontent = NULL;
+	glocal const char *filename = NULL;
 	glocal const char *manager = NULL;
 	glocal const char *project = NULL;
 	glocal const char *role = "";
@@ -1674,6 +1724,7 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 		setarg ('n',"newmsg","Send a message",glocal.newmsg,false);
 		setarg ('r',"reply","Reply to a message",glocal.reply,false);
 		setarg ('t',"shortmsg","Send a short message to a group",glocal.shortmsg,false);
+		setarg ('f',"shortmsg_file","Send a bolixo file to a group",glocal.shortmsg_file,false);
 		setarg ('s',"listshortmsgs","List short messages",glocal.listshortmsgs,false);
 		setgrouparg ("Options");
 		setarg ('G',"groupname","Group name for short message",glocal.groupname,false);
@@ -1687,6 +1738,7 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 		setarg ('I',"msgid","Message ID we are replying to",glocal.msgid,false);
 		setarg ('T',"title","Title of the message",glocal.title,false);
 		setarg ('C',"content","body of the message",glocal.content,false);
+		setarg ('L',"bolixofile","Bolixo file path",glocal.filename,false);
 
 		setarg ('O',"owner","Apply the comand on behalf of this owner, must be admin",glocal.owner,false);
 	</f>
@@ -1719,6 +1771,7 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 			glocal bool stop = false;
 			glocal unsigned offset=0;
 			glocal unsigned chunk=100;
+			bofs_check_groupopt (glocal.groupname,glocal.groupowner);
 			if (glocal.ctx->login()!=-1){
 				while (!glocal.stop){
 					<call bofs_list_talk>(*glocal.ctx,glocal.owner,glocal.groupname,glocal.groupowner
@@ -1812,8 +1865,16 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 				}
 			}
 		}else if (glocal.shortmsg){
+			bofs_check_groupopt (glocal.groupname,glocal.groupowner);
 			if (glocal.ctx->login()!=-1){
 				glocal.ret = bofs_send_talk(*glocal.ctx,glocal.content,glocal.filecontent,glocal.owner,glocal.groupname,glocal.groupowner);
+			}
+		}else if (glocal.shortmsg_file){
+			if (glocal.filename == NULL){
+				tlmp_error ("You must specify the filename\n");
+			}else if (glocal.ctx->login()!=-1){
+				bofs_check_groupopt (glocal.groupname,glocal.groupowner);
+				glocal.ret = bofs_send_talk_file(*glocal.ctx,glocal.filename,glocal.owner,glocal.groupname,glocal.groupowner);
 			}
 		}else if (glocal.reply){
 			if (glocal.content == NULL && glocal.filecontent == NULL){
