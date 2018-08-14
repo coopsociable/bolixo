@@ -165,6 +165,8 @@ elif [ "$1" = "writemails" ] ; then
 		done
 	done
 	./bofs mkdir bo://projects/jacques-A/public/default
+	./bofs mkdir bo://projects/jacques-A/public/version1
+	./bofs mkdir bo://projects/jacques-A/public/version2
 	./bofs cp /tmp/image.jpg bo://projects/jacques-A/public/default/image.jpg
 	./bofs cp $FILES/intro.html bo://projects/jacques-A/public/default/intro.html
 elif [ "$1" = "config" ] ; then

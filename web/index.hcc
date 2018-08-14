@@ -22,6 +22,10 @@ using namespace std;
 static const char *newscolor = "green";
 
 static string w_session;
+static W_SSTRING w_lang("lang");
+static W_SSTRING w_public_dir("public_dir");
+static W_UNSIGNED w_public_view("public_view");
+
 static W_SSTRING w_accept("accept");
 static W_SSTRING w_user("user");
 static W_SSTRING w_list("list");
@@ -1866,6 +1870,71 @@ extern "C" void webmain_real()
 							}
 						}
 					}
+				</f>
+				</call>
+			}else if (strcmp(id,"Account")==0){
+				glocal string status = "&nbsp;";
+				<call form>();
+				<f top>
+					/- <table border=0>
+					htmlprintf ("<tr><td colspan=2>%s",glocal.status.c_str());
+				</f>
+				<f bottom>
+					/- </table>
+				</f>
+				<f load>
+					<call bod_client_config_read>(glocal.con,w_session.c_str(),"");
+					<f ok>
+						w_lang = config.lang;
+						w_public_view = config.public_view;
+						w_public_dir = config.public_dir;
+					</f>
+					</call>
+				</f>
+				<f setup>
+					/- <tr><td>Language<td>
+					field_list (w_lang,"");
+					field_list_item ("eng","English");
+					field_list_item ("fr","French");
+					field_list_end();
+					/- <tr><td>Enable public view<td>
+					field_checkbox (w_public_view,"");
+					/- <tr><td>Public folder<td>
+					field_list (w_public_dir,"");
+					<call bod_client_listdir>(glocal.con,w_session.c_str(),string_f("/projects/%s/public",userinfo.name.c_str())
+						,"",false,0,100);
+					<f ok>
+						for (auto &f:files){
+							if (bolixo_isdir(f.type)){
+								glocal.form.field_list_item (f.name,f.name);
+							}
+						}
+					</f>
+					</call>
+					/- <tr><td>
+					button_submit();
+				</f>
+				<f validate>
+					return true;
+				</f>
+				<f process>
+					glocal bool fail = false;
+					CONFIG config;
+					config.lang = w_lang.c_str();
+					config.public_view = w_public_view;
+					config.public_dir = w_public_dir.c_str();
+					<call bod_client_config_write>(glocal.con,w_session.c_str(),"",config);
+					<f ok>
+						if (!success){
+							glocal.fail = true;
+							htmlprintf ("Can't save configuration: %s\n",msg);
+						}else{
+							glocal.status = "Configuration updated";
+						}
+					</f>
+					</call>
+					fail = glocal.fail;
+					keepediting = true;
 				</f>
 				</call>
 			}
