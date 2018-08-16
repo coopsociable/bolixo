@@ -1198,23 +1198,26 @@ extern "C" void webmain_real()
 		bolixo_title ("Mails",this);
 		<call vframe2h>(10);
 		<f left>
-			/- <table border=0 width=100%>
-			/- <tr><td colspan=3 valign=top>
-			url_self ("webtab_add=1:INBOX","INBOX");
-			<call bod_client_list_inboxes>(glocal.con,w_session.c_str(),"");
-			<f ok>
-				for (auto s:inboxes){
-					string add = string_f("webtab_add=1:%s",s.project);
-					/- <tr><td valign=top>
-					url_self (add.c_str(),"%s",s.manager);
-					/- <td valign=top>
-					url_self (add.c_str(),"%s",s.project);
-					///- <td>
-					//url_self (add.c_str(),"%s",s.role);
-				}
+			<call webtable>("mail","100%");
+			<f init>
+				profile_setstyle(this);
+			</f>
+			<f load>
+				sethead ("Owner\tProject");
+				setclickopt (true,"","webtab_add=1:INBOX");
+				setrow ("white",0,"\tINBOX");
+				<call bod_client_list_inboxes>(glocal.con,w_session.c_str(),"");
+				<f ok>
+					for (auto s:inboxes){
+						string add = string_f("webtab_add=1:%s",s.project);
+						//url_self (add.c_str(),"%s",s.role);
+						glocal.webtable.setclickopt (true,"",add);
+						glocal.webtable.setrow("white",0,"%s\t%s",s.manager,s.project);
+					}
+				</f>
+				</call>
 			</f>
 			</call>
-			/- </table>
 		</f>
 		<f right>
 			<call webtabs>("mails",tabs);
@@ -1222,7 +1225,7 @@ extern "C" void webmain_real()
 				glocal const char *project = id;
 				if (strcmp(id,"INBOX")==0) glocal.project = "";
 				string inbox = string("inbox") + id;
-				<call webtable>(inbox,"60%",currents[inbox],offsets[inbox],10);
+				<call webtable>(inbox,"60%",currents[inbox],offsets[inbox],20);
 				<f init>
 					index_setstyles (this);
 				</f>	
@@ -1326,17 +1329,21 @@ extern "C" void webmain_real()
 		bolixo_title ("Talks",this);
 		<call vframe2h>(10);
 		<f left>
-			<call bod_client_list_groups>(glocal.con,w_session.c_str(),"",false);
-			<f ok>
-				/- <table border=0 width=100%>
-				for (auto &g:groups){
-					string add = string_f("webtab_add=1:%s:%s",g.owner,g.name);
-					/- <tr><td>
-					url_self (add.c_str(),"%s",g.owner);
-					/- <td>
-					url_self (add.c_str(),"%s",g.name);
-				}
-				/- </table>
+			<call webtable>("talk","100%");
+			<f init>
+				profile_setstyle(this);
+			</f>
+			<f load>
+				sethead ("Owner\tGroup");
+				<call bod_client_list_groups>(glocal.con,w_session.c_str(),"",false);
+				<f ok>
+					for (auto &g:groups){
+						string add = string_f("webtab_add=1:%s:%s",g.owner,g.name);
+						glocal.webtable.setclickopt (true,"",add);
+						glocal.webtable.setrow ("white",0,"%s\t%s",g.owner,g.name);
+					}
+				</f>
+				</call>
 			</f>
 			</call>
 		</f>
@@ -1442,11 +1449,11 @@ extern "C" void webmain_real()
 					if (w_list.isset() || w_add.isset()){
 						<call form>();
 						<f top>
-							/- <table border=0>
+							/- <table border=0><tr><td>&nbsp;&nbsp;&nbsp;<td><table border=0>
 							if (w_add != 1) htmlprintf ("<tr><td>Project<td><font size=+2>%s</font><p>\n",w_list.c_str());
 						</f>
 						<f bottom>
-							/- </table>
+							/- </table></table>
 						</f>
 						<f load>
 							<call bod_client_list_lists>(glocal.con,w_session.c_str(),"");
@@ -1611,11 +1618,11 @@ extern "C" void webmain_real()
 					if (w_group.isset() || w_add.isset()){
 						<call form>();
 						<f top>
-							/- <table border=0>
+							/- <table border=0><tr><td>&nbsp;&nbsp;&nbsp;<td><table border=0>
 							if (w_add != 1) htmlprintf ("<tr><td>Group<td><font size=+2>%s</font><p>\n",w_group.c_str());
 						</f>
 						<f bottom>
-							/- </table>
+							/- </table></table>
 						</f>
 						<f load>
 							<call bod_client_list_groups>(glocal.con,w_session.c_str(),"",true);
@@ -1773,12 +1780,13 @@ extern "C" void webmain_real()
 						glocal bool done = false;
 						<call form>();
 						<f top>
+							/- <table border=0><tr><td>&nbsp;&nbsp;&nbsp;<td><table border=0>
 							/- <table border=0>
 							/- <tr><td><td>
 							/- <h2>Send a contact request</h2>
 						</f>
 						<f bottom>
-							/- </table>
+							/- </table></table>
 						</f>
 						<f setup>
 							field_hidden (w_add);
@@ -1815,12 +1823,12 @@ extern "C" void webmain_real()
 						glocal CONTACT_STATUS status = CONTACT_WAITING;
 						<call form>();
 						<f top>
-							/- <table border=0>
+							/- <table border=0><tr><td>&nbsp;&nbsp;&nbsp;<td><table border=0>
 							/- <tr><td><td>
 							/- <h2>Manage a contact</h2>
 						</f>
 						<f bottom>
-							/- </table>
+							/- </table></table>
 						</f>
 						<f setup>
 							field_hidden(w_user);
@@ -1862,12 +1870,14 @@ extern "C" void webmain_real()
 						</f>
 						</call>
 						if (glocal.done){
+							/- <table border=0><tr><td>&nbsp;&nbsp;&nbsp;<td><table border=0><tr><td>
 							/- Contact request processed!<p>
 							if (glocal.status == CONTACT_ACCEPTED){
 								htmlprintf ("From now on, you can communicate with user %s<br>\n",w_user.c_str());
 								htmlprintf ("You can make user %s member of your groups<br>\n",w_user.c_str());
 								/- and he can make you member of his groups.
 							}
+							/- </table></table>
 						}
 					}
 				</f>
