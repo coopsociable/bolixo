@@ -749,7 +749,7 @@ static int bofs_cp (CONTEXT &ctx, int argc, char *argv[])
 		setproginfo ("bocp",VERSION
 			,"Command line tool to copy bolixo content\n"
 			 "\n"
-			 "bofs ls ...\n"
+			 "bofs cp ...\n"
 			);
 	</f>
 	<f main>
@@ -2124,6 +2124,110 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 	return glocal.ret;
 }
 </mod>
+<mod>
+static int bofs_public (CONTEXT &ctx, int argc, char *argv[])
+{
+	glocal int ret = -1;
+	glocal CONTEXT *ctx = &ctx;
+	glocal const char *listdir = NULL;
+	glocal const char *readfile = NULL;
+	glocal const char *user = NULL;
+	glocal bool use_http = false;
+	glocal const char *output = NULL;
+	glocal.ret = <call tlmpprogram>(argc,argv);
+	<f init>
+		setproginfo ("bopublic",VERSION
+			,"Command line tool to test the public accesses\n"
+			 "\n"
+			 "bofs public ...\n"
+			);
+		setgrouparg ("Main commands");
+		setarg ('l',"listdir","List content of a directory",glocal.listdir,false);
+		setarg ('r',"readfile","Read one file",glocal.readfile,false);
+		setarg ('u',"user","Specify the owner of the public files",glocal.user,true);
+		setarg ('h',"http","Use HTTP",glocal.use_http,false);
+		setarg ('O',"output","Copy readfile into this file",glocal.output,false);
+	</f>
+	<f main_noarg>
+		glocal int ret = 0;
+		if (glocal.listdir != NULL){
+			glocal bool done = false;
+			unsigned offset = 0;
+			while (!glocal.done){
+				if (glocal.use_http){
+					<call webapi_public_listdir>(glocal.ctx->hcon,glocal.user,glocal.listdir,offset,20);
+					<f ok>
+						if (!success){
+							glocal.done = true;
+							bofs_error ("public_listdir",internal_error,msg);
+							glocal.ret = -1;
+						}else{
+							bofs_printdir (true,files);
+							if (files.size() < 20) glocal.done = true;
+						}
+					</f>
+					</call>
+				}else{
+					<call bod_client_public_listdir>(glocal.ctx->con,glocal.user,glocal.listdir,offset,20);
+					<f ok>
+						if (!success){
+							glocal.done = true;
+							bofs_error ("public_listdir",internal_error,msg);
+							glocal.ret = -1;
+						}else{
+							bofs_printdir (true,files);
+							if (files.size() < 20) glocal.done = true;
+						}
+					</f>
+					</call>
+				}
+				offset += 20;
+			}
+		}else if (glocal.readfile != NULL){
+			glocal FILE *fout = stdout;
+			glocal bool done = false;
+			glocal unsigned offset = 0;
+			while (!glocal.done){
+				if (glocal.use_http){
+					<call webapi_public_readfile>(glocal.ctx->hcon,glocal.user,glocal.readfile,glocal.offset);
+					<f ok>
+						if (!success){
+							glocal.done = true;
+							bofs_error ("public_readfile",internal_error,msg);
+							glocal.ret = -1;
+						}else{
+							if (!more) glocal.done = true;
+							glocal.offset += content.getsize();
+							fwrite (content.getbuffer(),1,content.getsize(),glocal.fout);
+						}
+					</f>
+					</call>
+				}else{
+					<call bod_client_public_readfile>(glocal.ctx->con,glocal.user,glocal.readfile,glocal.offset);
+					<f ok>
+						if (!success){
+							glocal.done = true;
+							bofs_error ("public_readfile",internal_error,msg);
+							glocal.ret = -1;
+						}else{
+							if (!more) glocal.done = true;
+							glocal.offset += content.getsize();
+							fwrite (content.getbuffer(),1,content.getsize(),glocal.fout);
+						}
+					</f>
+					</call>
+				}
+			}
+		}else{
+			glocal.ret = -1;
+			usage();
+		}
+		return glocal.ret;
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
 
 <mod>
 int main (int argc, char *argv[])
@@ -2140,10 +2244,11 @@ int main (int argc, char *argv[])
 			 "\tbofs cp ...\n"
 			 "\tbofs groups ...\n"
 			 "\tbofs ls ...\n"
-			 "\tbofs mkdir ...\n"
 			 "\tbofs misc ...\n"
+			 "\tbofs mkdir ...\n"
 			 "\tbofs msgs ...\n"
 			 "\tbofs mv ...\n"
+			 "\tbofs public ...\n"
 			 "\tbofs rm ...\n"
 			 "\tbofs rmdir ...\n"
 			);
@@ -2210,7 +2315,6 @@ int main (int argc, char *argv[])
 			tlmp_error ("No user definition found in .bofs.conf for user %s\n",glocal.user);
 			exit (-1);
 		}
-		// if (bod_login (glocal.ctx.con,glocal.ctx.hcon,glocal.ctx.email,glocal.ctx.password,glocal.ctx.sessionid,glocal.ctx.hsessionid)!=-1){
 		{
 			for (int i=0; i<glocal.nbrep; i++){
 				if (strcmp(argv[0],"ls")==0){
@@ -2233,13 +2337,14 @@ int main (int argc, char *argv[])
 					ret = bofs_msgs (glocal.ctx,argc,argv);
 				}else if (strcmp(argv[0],"misc")==0){
 					ret = bofs_misc (glocal.ctx,argc,argv);
+				}else if (strcmp(argv[0],"public")==0){
+					ret = bofs_public (glocal.ctx,argc,argv);
 				}else{
 					tlmp_error ("Invalid command: %s\n",argv[0]);
 					usage();
 					exit (-1);
 				}
 			}
-			//bod_logout (glocal.ctx.con,glocal.ctx.hcon,glocal.ctx.sessionid,glocal.ctx.hsessionid);
 		}
 		return ret;
 	</f>

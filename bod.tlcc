@@ -112,7 +112,7 @@ static unsigned trli_getsessionuser (CONNECT_INFO &con, const char *sessionid, b
 	string username;
 	return trli_getsessionuser (con,sessionid,is_admin,username);
 }
-static int bod_findentry (CONNECT_INFO &con, const char *sessionid, const char *name, ENTRY &entry, const char *threshold)
+static int bod_findentry (CONNECT_INFO &con, const char *sessionid, PARAM_STRING name, ENTRY &entry, const char *threshold)
 {
 	int ret = -1;
 	entry.userid = trli_getsessionuser(con,sessionid,entry.is_admin);
@@ -233,6 +233,47 @@ static EVP_PKEY *bod_load_public (PARAM_STRING p)
 	BIO_free_all (bio);
 	return pkey;
 }
+/*
+	Check that public access is enable for one account.
+	Translate the relative_path into absolute path by using the username and the public_dir
+	Return the user id.
+	Return -1 if any problem.
+*/
+<mod>
+static int bod_checkpublic(const char *username, const char *relative_path, string &msg, string &abspath)
+{
+	glocal string *msg = &msg;
+	glocal string public_dir;
+	glocal int ret = -1;
+	<call sql_query>("select public_view,public_dir,id2name.userid from id2name"
+		" join config on config.userid=id2name.userid"
+		" where id2name.name='%s'",username);
+	<f empty>
+		(*glocal.msg) = "no user";
+	</f>
+	<f onerow>
+		bool public_view = atoi(row[0]);
+		if (!public_view){
+			(*glocal.msg) = "no public data available";
+		}else{
+			glocal.public_dir = row[1];
+			glocal.ret = atoi(row[2]);
+		}
+	</f>
+	</call>
+	if (glocal.ret != -1){
+		abspath = string_f("/projects/%s/public/%s",username,glocal.public_dir.c_str());
+		if (strcmp(relative_path,"/") !=0){
+			if (relative_path[0] == '/'){
+				abspath += relative_path;
+			}else{
+				abspath += string_f ("/%s",relative_path);
+			}
+		}
+	}
+	return glocal.ret;
+}
+</mod>
 <mod>
 static int trlid_main (
 	const char *bind,
@@ -1199,6 +1240,146 @@ static int trlid_main (
 					glocal.bod_client.rep_config_write (success,msg);
 				</f>
 				</call>
+			</f>
+			<f public_listdir>	// username dirpath offset:u nb:u = success:b msg files:U{FILEINFO}v
+				//glocal const char *username = username;
+				//glocal const char *dirpath = dirpath;
+				glocal unsigned offset = offset;
+				glocal unsigned nb = nb;
+				glocal string msg;
+				glocal vector<FILEINFO> files;
+				glocal map<string,DIRENTRY> mp;
+				ENTRY entry;
+				string abspath;
+				entry.userid = bod_checkpublic(username,dirpath,glocal.msg,abspath);
+				if (entry.userid != (unsigned)-1){
+					if (fs_findentry(abspath,entry,true,"")==-1){
+						glocal.msg = entry.msg;
+					}else if (!bolixo_isdir(entry.type)){
+						glocal.msg = "Is not a directory";
+					}else{
+						<call sql_query>("select dirs_content.name,dirs_content.modified,type,id2name.name"
+							",group_list_id,group_lists.name,ids.listmode"
+							",length(files.content),dirs_content.itemid,files.title,dirs_content.eventtime"
+							",files.filetype,files.content is null"
+							" from dirs_content"
+							" join ids on dirs_content.itemid=ids.id"
+							" join id2name on ids.ownerid=id2name.userid"
+							" left join group_lists on ids.group_list_id=group_lists.id"
+							" left join files on dirs_content.itemid=files.id and dirs_content.modified=files.modified"
+							" where dirid=%d and dirs_content.eventtime <= '%s' order by eventtime"
+							,entry.entryid,END_OF_TIME);
+						<f onerow>
+							const char *name = row[0];
+							const char *modified = row[1];
+							ENTRY_TYPE type = (ENTRY_TYPE) atoi(row[2]);
+							const char *owner = row[3];
+							const char *listid = row[4];
+							const char *listname = row[5];
+							const char *listmode = row[6] != NULL ? row[6] : "";
+							if (listname == NULL){
+								listname = "";
+								if (listid != NULL){
+									if (strcmp(listid,"0")==0){
+										listname = ALL_MAY_READ;
+									}
+								}
+							}
+							unsigned size=0;
+							if (row[7] != NULL){
+								size = atoi(row[7]);
+							}else if (bolixo_isfile(type)){
+								// Content stored as a file
+								size = fs_get_filesize(atoi(row[8]),modified);
+							}
+							const char *title = row[9] == NULL ? "" : row[9];
+							const char *eventdate = row[10];
+							FILE_TYPE file_type = row[11] == NULL ? FILE_UNKNOWN : (FILE_TYPE)atoi(row[11]);
+							bool islarge = atoi(row[12])!=0;
+							glocal.mp[name] = DIRENTRY(eventdate,modified,type,file_type,islarge,owner,listname,listmode,size,title,"not done");
+						</f>
+						</call>
+						for (auto &x:glocal.mp){
+							if (!bolixo_isdeleted(x.second.type)){
+								FILEINFO info;
+								info.name = x.first;
+								info.type = x.second.type;
+								info.file_type = x.second.file_type;
+								info.eventdate = x.second.eventdate;
+								info.modified = x.second.modified;
+								info.owner = x.second.owner;
+								info.listname = x.second.members;
+								info.listmode = x.second.listmode;
+								info.size = x.second.size;
+								info.title = x.second.title;
+								info.viewed = x.second.viewed;
+								info.islarge = x.second.islarge;
+								glocal.files.push_back(info);
+							}
+						}
+					}
+				}
+				if (glocal.msg.size() > 0){
+					glocal.files.clear();
+					rep_public_listdir (false,glocal.msg,glocal.files);
+				}else{
+					rep_public_listdir (true,"",glocal.files);
+				}
+			</f>
+			<f public_readfile>	// username filepath offset:u = success:b msg content:o more:b size:u
+				glocal unsigned offset = offset;
+				glocal string msg;
+				glocal ENTRY entry;
+				string abspath;
+				glocal.entry.userid = bod_checkpublic(username,filepath,glocal.msg,abspath);
+				if (glocal.entry.userid != (unsigned)-1){
+					if (fs_findentry(abspath,glocal.entry,true,"")==-1){
+						glocal.msg = glocal.entry.msg;
+					}else if (!bolixo_isfile(glocal.entry.type)){
+						glocal.msg = "Is not a file";
+					}else{
+						<call sql_query>("select content from files where id=%d and modified='%s'"
+							,glocal.entry.entryid,glocal.entry.modified.c_str());
+						<f onerow>
+							if (row[0] != NULL){
+								unsigned len = strlen(row[0]);
+								BOB_TYPE bob (row[0],len,false);
+								glocal.bod_client.rep_public_readfile(true,"",bob,false,len);
+							}else{
+								string path = fs_createpath (glocal.entry.entryid,glocal.entry.modified);
+								FILE *fin = fopen (path.c_str(),"r");
+								if (fin == NULL){
+									glocal.msg = "Internal error, reading content file";
+								}else{
+									struct stat64 st;
+									if (fstat64(fileno(fin),&st)==-1){
+										glocal.msg = "Internal error, getting file size";
+									}else if (glocal.offset >= st.st_size){
+										glocal.msg = "offset too large, no seek";
+									}else if (fseek(fin,glocal.offset,SEEK_SET)==-1){
+										glocal.msg = "Seek failed";
+									}else{
+										char buf[50000];
+										int len = fread (buf,1,50000,fin);
+										BOB_TYPE bob (buf,len,false);
+										bool more = len==50000;
+										glocal.bod_client.rep_public_readfile (true,""
+											,bob,more,st.st_size);
+									}
+									fclose (fin);
+								}
+							}
+						</f>
+						<f empty>
+							glocal.msg = "Internal error, reading table files";
+						</f>
+						</call>
+					}
+				}
+				if (glocal.msg.size() > 0){
+					BOB_TYPE empty;
+					rep_public_readfile(false,glocal.msg,empty,false,0);
+				}
 			</f>
 			<f invalid>
 				tlmp_error ("CLIENT: Invalid command: %s\n",line);
