@@ -50,7 +50,7 @@ elif [ "$1" = "sequence" ] ; then
 		./bofs -u jacques-$letter groups --create-group-list -L public 
 		./bofs -u jacques-$letter groups --set-list-desc -D "public list for jacques-$letter" -L public 
 		./bofs -u jacques-$letter groups --create-project-dir -L public
-		./bofs -u jacques-$letter groups -a -L "#all" -M R /projects/jacques-$letter/public
+		#./bofs -u jacques-$letter groups -a -L "#all" -M R /projects/jacques-$letter/public
 		if [ -x /usr/bin/convert ]; then
 			convert -font helvetica -size 40x40 xc:white -pointsize 37 -draw "text 5,32 '$letter'" /tmp/mini-photo.jpg
 			./bofs -u jacques-$letter cp /tmp/mini-photo.jpg bo://projects/jacques-$letter/public/mini-photo.jpg

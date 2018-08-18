@@ -26,6 +26,7 @@ static W_SSTRING w_lang("lang");
 static W_SSTRING w_public_dir("public_dir");
 static W_UNSIGNED w_public_view("public_view");
 
+static W_SSTRING w_upload("upload");
 static W_SSTRING w_accept("accept");
 static W_SSTRING w_user("user");
 static W_SSTRING w_list("list");
@@ -617,13 +618,19 @@ static void profile_setstyle(_F_webtable *c)
 static string index_format_shortmsg (const char *txt)
 {
 	string ret;
+	unsigned pos=0;
 	while (*txt != '\0'){
 		if (strncmp(txt,"------\n",7)==0){
 			break;
 		}else if (*txt == '\n'){
 			ret += "<br>\n";
+			pos=0;
+		}else if (*txt == '\t'){
+			unsigned nb = 4 - (pos%4);
+			for (unsigned i=0; i<nb; i++) ret += "&nbsp;";
 		}else{
 			ret += *txt;
+			pos++;
 		}
 		txt++;
 	}
@@ -1352,15 +1359,19 @@ extern "C" void webmain_real()
 				glocal string groupowner = tb[0];
 				glocal string groupname = tb[1];
 				/- <table border=0 align=left width=40%>
-				/- <tr><td>
 				<call form>();
 				<f setup>
+					/- <tr><td colspan=2>
 					field_textarea (w_content,5,60,"");
+					/- <tr><td>
+					field_file (w_upload);
 					/- <td>
 					button_submit ("Send");
 				</f>
 				<f validate>
-					// We do not want the form to go away, so we send the message in this function.
+					return true;
+				</f>
+				<f process>
 					if (w_content.size() > 0){
 						BOB_TYPE bob;
 						bob.setbuffer (w_content.c_str(),w_content.size(),false);
@@ -1371,9 +1382,45 @@ extern "C" void webmain_real()
 						</call>
 						w_content.setempty();
 					}
-					return false;
-				</f>
-				<f process>
+					if (strcmp(w_upload.c_str(),"")!=0){
+						const char *tempname = t_varstr("filename:upload");
+						glocal FILE *fin = fopen (tempname,"r");
+						if (glocal.fin == NULL){
+							htmlprintf ("Internal error reading temp file: :%s:\n",tempname);
+							fail = true;
+						}else{
+							//const char *filename = w_upload.c_str();
+							glocal char buf[40000];
+							size_t nb = fread (glocal.buf,1,sizeof(glocal.buf),glocal.fin);
+							bool more = (nb == sizeof(glocal.buf));
+							<call bod_client_sendtalk>(glocal.con,w_session.c_str(),"",glocal.groupname,glocal.groupowner
+								,BOB_TYPE(glocal.buf,nb,false),more);
+							<f ok>
+								if (!success){
+									htmlprintf ("Can't send: %s<br>\n",msg);
+								}else{
+									glocal int ret = 0;
+									bool more = true;
+									while (more && glocal.ret == 0){
+										size_t len = fread (glocal.buf,1,sizeof(glocal.buf),glocal.fin);
+										more = len == sizeof(glocal.buf);
+										<call bod_client_appendfile>(glocal.con,w_session.c_str(),handle
+											,BOB_TYPE(glocal.buf,len,false),more);
+										<f ok>
+											if (!success){
+												htmlprintf ("cat_rest internal %s",msg);
+												glocal.ret = -1;
+											}
+										</f>
+										</call>
+									}
+								}
+							</f>
+							</call>
+							w_upload.setempty();
+						}
+					}
+					keepediting = true;
 				</f>
 				</call>
 				/- <tr><td colspan=2>
