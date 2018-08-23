@@ -615,16 +615,23 @@ static void profile_setstyle(_F_webtable *c)
 /*
 	Format a short message, remove the signature
 */
-static string index_format_shortmsg (const char *txt)
+static string index_format_shortmsg (const char *txt, unsigned nblines)
 {
 	string ret;
 	unsigned pos=0;
-	while (*txt != '\0'){
+	unsigned noline=0;
+	if (nblines == 0) nblines=(unsigned)-1;
+	while (*txt != '\0' && noline < nblines){
 		if (strncmp(txt,"------\n",7)==0){
 			break;
+		}else if (*txt == '<'){
+			ret += "&lt;";
+		}else if (*txt == '>'){
+			ret += "&gt;";
 		}else if (*txt == '\n'){
 			ret += "<br>\n";
 			pos=0;
+			noline++;
 		}else if (*txt == '\t'){
 			unsigned nb = 4 - (pos%4);
 			for (unsigned i=0; i<nb; i++) ret += "&nbsp;";
@@ -636,120 +643,10 @@ static string index_format_shortmsg (const char *txt)
 	}
 	return ret;
 }
-
-static void index_popup (const char *content, FILE_TYPE file_type, PARAM_STRING filepath)
+static string index_format_shortmsg (const char *txt)
 {
-	const char *path = filepath.ptr;
-	if (content[0] != '\0'){
-		tlmpweb_doctype ("text/html",0);
-		const char *pt = content;
-		while (*pt != '\0'){
-			pt = format_line (pt);
-			if (*pt == '\n'){
-				htmlout ("<br>\n");
-				pt++;
-			}
-		}
-	}else if (file_is_sound(file_type)){
-		htmlprintf ("<audio controls>\n"
-			"<source src=\"%s?webstep=%u&image=%s\" type=\"audio/%s\">\n"
-			"</audio>"
-			,tlmpweb_curpage(),step_image,path,tbftype[file_type]);
-	}else if (file_is_video(file_type)){
-		htmlprintf ("<video width=\"800\" height=\"600\" controls>\n"
-			"<source src=\"%s?webstep=%u&image=%s\" type=\"video/mp4\">\n"
-			"Your browser does not support the video tag.\n"
-			"</video>\n"
-			,tlmpweb_curpage(),step_image,path);
-	}else if (file_is_image(file_type)){
-		htmlprintf ("<img width=800 src=%s?webstep=%u&image=%s>"
-			,tlmpweb_curpage(),step_image,path);
-	}
+	return index_format_shortmsg (txt,0);
 }
-
-<mod>
-static void index_show_shortmsg(CONNECT_INFO &con,
-	CONNECT_INFO &con_sess,
-	const string &table,
-	PARAM_STRING groupname,
-	PARAM_STRING groupowner)
-{
-	glocal CONNECT_INFO *con = &con;
-	glocal CONNECT_INFO *con_sess = &con_sess;
-	glocal const char *groupname = groupname.ptr;
-	glocal const char *groupowner = groupowner.ptr;
-	<call webtable>(table,"100%",currents[table],offsets[table],5);
-	<f init>
-		index_setstyles (this);
-	</f>
-	<f click>
-		tlmpweb_flushheader();
-		//htmlprintf ("click %d %d<p>\n",noline,nocol);
-		web_updatecurrents (*glocal.con_sess,noline);
-		<call bod_client_list_talk>(*glocal.con,w_session.c_str(),"",glocal.groupname,glocal.groupowner,noline,1);
-		<f ok>
-			if (messages.size()!=1){
-				htmlprintf ("Internal error: %s\n",msg);
-			}else{
-				auto &m = messages[0];
-				//htmlprintf ("uuid=%s<p>\n",m.uuid);
-				index_popup (m.content,m.file_type,string_f("/msgs/%s/short-inbox/%s/%s",glocal.groupowner,glocal.groupname,m.uuid));
-			}
-		</f>
-		</call>
-	</f>
-	<f load>
-		glocal unsigned rownum = nbskip;
-		sethead ("From\tSubmit");
-		<call bod_client_list_talk>(*glocal.con,w_session.c_str(),"",glocal.groupname,glocal.groupowner,nbskip,nblines);
-		<f ok>
-			if (!success){
-				htmlprintf ("Error: %d %s<br>",internal_error,msg);
-			}else{
-				for (auto &m:messages){
-					const char *func = "Popup";
-					const char *funcopt = "400,100";
-					if (file_is_image(m.file_type) || file_is_video(m.file_type)){
-						funcopt = "800,800";
-					}
-					glocal.webtable.setclickopt (true,func,funcopt);
-					if (strcmp(m.from,userinfo.name.c_str())==0){
-						glocal.webtable.setrow ("sep",glocal.rownum,"\t%s"
-							,m.submit);
-					}else{
-						glocal.webtable.setrow ("sep",glocal.rownum,"<img width=30 src=%s?webstep=%u&image=/projects/%s/public/mini-photo.jpg>%s\t%s"
-							,tlmpweb_curpage(),step_image,m.from,m.from
-							,m.submit);
-					}
-					if (m.content[0] != '\0'){
-						string tmp = index_format_shortmsg (m.content);
-						glocal.webtable.setrow("white",glocal.rownum,"\t%s\a",tmp.c_str());
-					}else if (file_is_sound(m.file_type)){
-						glocal.webtable.setrow("image",glocal.rownum,"\t<audio controls>\n"
-							"<source src=\"%s?webstep=%u&image=/msgs/%s/short-inbox/%s/%s\" type=\"audio/%s\">\n"
-							"</audio>\a"
-							,tlmpweb_curpage(),step_image,glocal.groupowner,glocal.groupname,m.uuid,tbftype[m.file_type]);
-					}else if (file_is_image(m.file_type)){
-						glocal.webtable.setrow("image",glocal.rownum,"\t<img width=100 src=%s?webstep=%u&image=/msgs/%s/short-inbox/%s/%s>\a\a\a"
-							,tlmpweb_curpage(),step_image,glocal.groupowner,glocal.groupname,m.uuid);
-					}else if (file_is_video(m.file_type)){
-						glocal.webtable.setrow("image",glocal.rownum,
-							"\t<video width=\"200\" height=\"200\" controls>\n"
-							"<source src=\"%s?webstep=%u&image=/msgs/%s/short-inbox/%s/%s\" type=\"video/mp4\">\n"
-							"Your browser does not support the video tag.\n"
-							"</video>\a"
-							,tlmpweb_curpage(),step_image,glocal.groupowner,glocal.groupname,m.uuid);
-					}
-					glocal.rownum++;
-				}
-			}
-		</f>
-		</call>
-	</f>
-	</call>
-}
-</mod>
-
 <mod>
 static void index_sendfile (CONNECT_INFO &con, PARAM_STRING filename, const char *filetype)
 {
@@ -776,6 +673,162 @@ static void index_sendfile (CONNECT_INFO &con, PARAM_STRING filename, const char
 	</call>
 }
 </mod>
+static void index_format_large_text(const BOB_TYPE &content)
+{
+	string tmp = string((const char*)content.getbuffer(),content.getsize());
+	tmp = index_format_shortmsg (tmp.c_str());
+	htmlwrite (tmp.c_str(),tmp.size());
+}
+<mod>
+static void index_popup (CONNECT_INFO &con, const char *content, FILE_TYPE file_type, PARAM_STRING filepath)
+{
+	glocal CONNECT_INFO *con = &con;
+	const char *path = filepath.ptr;
+	if (content[0] != '\0'){
+		tlmpweb_doctype ("text/html",0);
+		const char *pt = content;
+		while (*pt != '\0'){
+			pt = format_line (pt);
+			if (*pt == '\n'){
+				htmlout ("<br>\n");
+				pt++;
+			}
+		}
+	}else if (file_is_sound(file_type)){
+		htmlprintf ("<audio controls>\n"
+			"<source src=\"%s?webstep=%u&image=%s\" type=\"audio/%s\">\n"
+			"</audio>"
+			,tlmpweb_curpage(),step_image,path,tbftype[file_type]);
+	}else if (file_is_video(file_type)){
+		htmlprintf ("<video width=\"800\" height=\"600\" controls>\n"
+			"<source src=\"%s?webstep=%u&image=%s\" type=\"video/mp4\">\n"
+			"Your browser does not support the video tag.\n"
+			"</video>\n"
+			,tlmpweb_curpage(),step_image,path);
+	}else if (file_is_image(file_type)){
+		htmlprintf ("<img width=800 src=%s?webstep=%u&image=%s>"
+			,tlmpweb_curpage(),step_image,path);
+	}else if (file_is_text(file_type)){
+		<call bod_client_readfile_bob>(con,w_session.c_str(),path,"");
+		<f ok>
+			if (!success){
+				htmlprintf ("Can't read file: %s\n",msg);
+			}else{
+				index_format_large_text (content);
+				glocal bool more = more;
+				while (glocal.more){
+					<call bod_client_readmore>(*glocal.con,w_session.c_str(),handle);
+					<f ok>
+						index_format_large_text (content);
+						glocal.more = more;
+					</f>
+					</call>
+				}	
+			}
+		</f>
+		</call>
+	}
+}
+</mod>
+
+<mod>
+static void index_show_shortmsg(
+	CONNECT_INFO &con,
+	CONNECT_INFO &con_sess,
+	const string &table,
+	PARAM_STRING groupname,
+	PARAM_STRING groupowner)
+{
+	glocal CONNECT_INFO *con = &con;
+	glocal CONNECT_INFO *con_sess = &con_sess;
+	glocal const char *groupname = groupname.ptr;
+	glocal const char *groupowner = groupowner.ptr;
+	<call webtable>(table,"100%",currents[table],offsets[table],5);
+	<f init>
+		index_setstyles (this);
+	</f>
+	<f click>
+		tlmpweb_flushheader();
+		//htmlprintf ("click %d %d<p>\n",noline,nocol);
+		web_updatecurrents (*glocal.con_sess,noline);
+		<call bod_client_list_talk>(*glocal.con,w_session.c_str(),"",glocal.groupname,glocal.groupowner,noline,1);
+		<f ok>
+			if (messages.size()!=1){
+				htmlprintf ("Internal error: %s\n",msg);
+			}else{
+				auto &m = messages[0];
+				//htmlprintf ("uuid=%s<p>\n",m.uuid);
+				index_popup (*glocal.con,m.content,m.file_type,string_f("/msgs/%s/short-inbox/%s/%s",glocal.groupowner,glocal.groupname,m.uuid));
+			}
+		</f>
+		</call>
+	</f>
+	<f load>
+		glocal unsigned rownum = nbskip;
+		sethead ("From\tSubmit");
+		<call bod_client_list_talk>(*glocal.con,w_session.c_str(),"",glocal.groupname,glocal.groupowner,nbskip,nblines);
+		<f ok>
+			if (!success){
+				htmlprintf ("Error: %s %s<br>",internal_error?"Internal error":"",msg);
+			}else{
+				for (auto &m:messages){
+					const char *func = "Popup";
+					const char *funcopt = "400,100";
+					if (file_is_image(m.file_type) || file_is_video(m.file_type)){
+						funcopt = "800,800";
+					}
+					glocal.webtable.setclickopt (true,func,funcopt);
+					if (strcmp(m.from,userinfo.name.c_str())==0){
+						glocal.webtable.setrow ("sep",glocal.rownum,"\t%s"
+							,m.submit);
+					}else{
+						glocal.webtable.setrow ("sep",glocal.rownum,"<img width=30 src=%s?webstep=%u&image=/projects/%s/public/mini-photo.jpg>%s\t%s"
+							,tlmpweb_curpage(),step_image,m.from,m.from
+							,m.submit);
+					}
+					string path = string_f("/msgs/%s/short-inbox/%s/%s",glocal.groupowner,glocal.groupname,m.uuid);
+					if (m.content[0] != '\0'){
+						string tmp = index_format_shortmsg (m.content,5);
+						glocal.webtable.setrow("white",glocal.rownum,"\t%s\a",tmp.c_str());
+					}else if (file_is_sound(m.file_type)){
+						glocal.webtable.setrow("image",glocal.rownum,"\t<audio controls>\n"
+							"<source src=\"%s?webstep=%u&image=%s\" type=\"audio/%s\">\n"
+							"</audio>\a"
+							,tlmpweb_curpage(),step_image,path.c_str(),tbftype[m.file_type]);
+					}else if (file_is_image(m.file_type)){
+						glocal.webtable.setrow("image",glocal.rownum,"\t<img width=100 src=%s?webstep=%u&image=%s>\a\a\a"
+							,tlmpweb_curpage(),step_image,path.c_str());
+					}else if (file_is_video(m.file_type)){
+						glocal.webtable.setrow("image",glocal.rownum,
+							"\t<video width=\"200\" height=\"200\" controls>\n"
+							"<source src=\"%s?webstep=%u&image=%s\" type=\"video/mp4\">\n"
+							"Your browser does not support the video tag.\n"
+							"</video>\a"
+							,tlmpweb_curpage(),step_image,path.c_str());
+					}else if (file_is_text(m.file_type)){
+						// Large text file
+						<call bod_client_readfile_bob>(*glocal.con,w_session.c_str(),path,"");
+						<f ok>
+							if (!success){
+								htmlprintf ("Can't read file: %s\n",msg);
+							}else{
+								string tmp = string((const char*)content.getbuffer(),content.getsize());
+								tmp = index_format_shortmsg (tmp.c_str(),5);
+								glocal.webtable.setrow("white",glocal.rownum,"\t%s\a",tmp.c_str());
+							}
+						</f>
+						</call>
+					}
+					glocal.rownum++;
+				}
+			}
+		</f>
+		</call>
+	</f>
+	</call>
+}
+</mod>
+
 /*
 	Define a form field to edit the access of a group within a list
 */
@@ -1150,15 +1203,15 @@ extern "C" void webmain_real()
 									<call bod_client_readfile>(glocal.con,w_session.c_str(),glocal.fname,"");
 									<f ok>
 										if (!success){
-											index_popup (msg,glocal.file_type,glocal.fname);
+											index_popup (glocal.con,msg,glocal.file_type,glocal.fname);
 										}else{
-											index_popup (content,glocal.file_type,glocal.fname);
+											index_popup (glocal.con,content,glocal.file_type,glocal.fname);
 										}
 									</f>
 									</call>
 								}
 							}else{
-								index_popup ("",f.file_type,glocal.fname);
+								index_popup (glocal.con,"",f.file_type,glocal.fname);
 							}
 						}
 					</f>

@@ -881,6 +881,7 @@ elif [ "$1" = "lxc0-web" ]; then # prod:
 			-i /usr/sbin/trli-init -l $LOG -l /tmp/log.web2 \
 			-e /var/www/html/index.hc \
 			-e /var/www/html/webapi.hc \
+			-e /var/www/html/public.hc \
 			-e /usr/lib/tlmp/templates/default/webtable.tpl \
 			-e /usr/sbin/trli-stop \
 			-e /usr/lib/tlmp/lib/tlmpdoc.so.1 \

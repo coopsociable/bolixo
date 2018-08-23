@@ -1,0 +1,51 @@
+/*
+	This is used to display public content. No authentication, no cookies. no security, beside using the public_* API.
+*/
+#include <stdio.h>
+#include <sys/stat.h>
+#include <tlmpweb.h>
+
+
+static W_SSTRING w_content("content");
+static W_SSTRING w_upload ("upload");
+
+<mod>
+extern "C" void webmain()
+{
+	tlmpweb_title ("Public");
+	/- Hello
+				<call form>();
+				<f setup>
+					///- <tr><td colspan=2>
+					//field_textarea (w_content,5,60,"");
+					/- <tr><td>
+					field_file (w_upload);
+					/- <td>
+					button_submit ("Send");
+				</f>
+				<f validate>
+					return true;
+				</f>
+				<f process>
+					const char *tempname = t_varstr("filename:upload");
+					FILE *fin = fopen (tempname,"r");
+					if (fin == NULL){
+						htmlprintf ("Internal error reading temp file: :%s:\n",tempname);
+						fail = true;
+					}else{
+						struct stat64 st;
+						if (fstat64(fileno(fin),&st)==-1){
+							htmlprintf ("Can't stat\n");
+							fail = true;
+						}else{
+							htmlprintf ("size=%lu\n",st.st_size);
+							fail = true;
+						}
+						fclose (fin);
+					}
+					keepediting = true;
+				</f>
+				</call>
+}
+</mod>
+

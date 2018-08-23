@@ -274,6 +274,25 @@ static int bod_checkpublic(const char *username, const char *relative_path, stri
 	return glocal.ret;
 }
 </mod>
+
+static string bod_first_lines (const char *txt, unsigned nblines)
+{
+	const char *pt = txt;
+	unsigned noline = 0;
+	while (*pt != '\0' && noline < nblines){
+		while (*pt != '\0' && *pt != '\n') pt++;
+		if (*pt == '\n'){
+			pt++;
+			noline++;
+		}
+	}
+	if (*pt == '\0'){
+		return txt;
+	}else{
+		return string(txt,pt-txt);
+	}
+}
+
 <mod>
 static int trlid_main (
 	const char *bind,
@@ -1150,7 +1169,12 @@ static int trlid_main (
 								msg.from = row[2];
 								msg.file_type = row[3] == NULL ? FILE_UNKNOWN : (FILE_TYPE)atoi(row[3]);
 								if (row[5] != NULL){
-									msg.content = row[5];
+									// Limit the number of lines if more than one message was requested
+									if (glocal.nb == 1){
+										msg.content = row[5];
+									}else{
+										msg.content = bod_first_lines(row[5],5);
+									}
 									msg.size = msg.content.size();
 								}else{
 									msg.size = fs_get_filesize(atoi(row[4]),modified);

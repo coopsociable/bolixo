@@ -613,7 +613,7 @@ static int bo_writed_addfile_bob (
 		FILE_TYPE file_type = bo_writed_file_type (basename,content,more);
 		const char *content_str = NULL;
 		string tmp;
-		if (file_type == FILE_TEXT){
+		if (!more && file_type == FILE_TEXT){
 			tmp = string((const char *) content.getbuffer(),content.getsize());
 			tmp = bo_writed_sign (con_keys,userid,tmp);
 			content_str = tmp.c_str();
@@ -623,7 +623,7 @@ static int bo_writed_addfile_bob (
 		}else if (sql_action("insert into files (id,modified,filetype,content) values (%d,'%s',%u,'%s')"
 			,fileid,now,file_type,content_str)==-1){
 			msg = "Internal error (files table)";
-		}else if (file_type != FILE_TEXT){
+		}else if (content_str == NULL){
 			FILE *fout = fs_alloc_file_handle (fileid,now,"w",handle,sessionid);
 			if (fout == NULL){
 				tlmp_error ("Can't open file (%s)\n",strerror(errno));
