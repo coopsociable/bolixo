@@ -370,6 +370,7 @@ static int trlid_main (
 				tb.push_back(string_f("Version %s",VERSION));
 				tb.push_back(string_f ("nbrequest_admin=%lu",glocal.nbrequest_admin));
 				tb.push_back(string_f ("nbrequest_client=%lu",glocal.nbrequest_client));
+				tb.push_back(string_f("filehandle %u\n",fs_getnbhandle()));
 				rep_status(tb);
 			</f>
 			<f quit>
@@ -537,7 +538,8 @@ static int trlid_main (
 					}
 				}
 			</f>
-			<f readfile_bob> // sessionid name = success:b msg content:o handle more:b
+			<f readfile_bob> // sessionid name threshold nomore:b = success:b msg content:o handle more:b
+				glocal bool nomore = nomore;
 				glocal ENTRY entry;
 				glocal const char *sessionid = sessionid;
 				BOB_TYPE empty;
@@ -572,7 +574,7 @@ static int trlid_main (
 										int len = fread (buf,1,50000,fin);
 										BOB_TYPE bob (buf,len,false);
 										bool more = len==50000;
-										if (!more){
+										if (!more || glocal.nomore){
 											fs_delete_handle(handle);
 											handle.clear();
 										}
