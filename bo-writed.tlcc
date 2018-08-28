@@ -92,7 +92,7 @@ static unsigned trli_getsessionuser (CONNECT_INFO &con, const char *sessionid)
 /*
 	Check if a name only use accepted characters
 */
-static bool bo_writed_lex_check(const char *groupname, string &msg)
+static bool bo_writed_lex_check(const char *groupname, string &msg, const char special)
 {
 	bool ret = true;
 	const char *pt = groupname;
@@ -100,7 +100,7 @@ static bool bo_writed_lex_check(const char *groupname, string &msg)
 		if (*pt < ' '){
 			ret = false;
 			break;
-		}else if (*pt == '/' || *pt == '@' || *pt == '#' || *pt == ';' || *pt == '"' || *pt == '\''){
+		}else if (*pt == special || *pt == '@' || *pt == '#' || *pt == ';' || *pt == '"' || *pt == '\''){
 			ret = false;
 			break;
 		}
@@ -112,6 +112,14 @@ static bool bo_writed_lex_check(const char *groupname, string &msg)
 		msg = "Invalid characters in name";
 	}
 	return ret;
+}
+static bool bo_writed_lex_check(const char *groupname, string &msg)
+{
+	return bo_writed_lex_check (groupname,msg,'/');
+}
+static bool bo_writed_fname_check(const char *name, string &msg)
+{
+	return bo_writed_lex_check(name,msg,'\0');
 }
 
 static int writed_mail_newaccount(
@@ -1106,22 +1114,22 @@ int main (int argc, char *argv[])
 				</f>
 				<f mkdir>
 					ENTRY entry;
-					if (bo_writed_findentry (glocal.con,sessionid,name,entry,false)==-1){
-						rep_mkdir (false,entry.msg);
-					}else if (!entry.may_add){
-						rep_mkdir (false,"Not allowed");
-					}else{
-						string msg;
-						int subdirid = fs_newid (entry.userid,msg);
-						if (subdirid == -1){
-							rep_mkdir (false,msg);
-						}else{
-							if (fs_insert_dir (entry.dirid,subdirid,entry.basename)==-1){
-								rep_mkdir (false,"Internal error (dirs_subdirs table)");
-							}else{
-								rep_mkdir (true,"Ok");
+					if (bo_writed_findentry (glocal.con,sessionid,name,entry,false)!=-1){
+						if (!entry.may_add){
+							entry.msg = "Not allowed";
+						}else if (bo_writed_fname_check(name,entry.msg)){
+							int subdirid = fs_newid (entry.userid,entry.msg);
+							if (subdirid != -1){
+								if (fs_insert_dir (entry.dirid,subdirid,entry.basename)==-1){
+									entry.msg = "Internal error (dirs_subdirs table)";
+								}
 							}
 						}
+					}
+					if (entry.msg.size() > 0){
+						rep_mkdir (false,entry.msg);
+					}else{
+						rep_mkdir (true,"");
 					}
 				</f>
 				<f rmdir>
@@ -1142,26 +1150,21 @@ int main (int argc, char *argv[])
 				</f>
 				<f addfile>
 					ENTRY entry;
-					if (bo_writed_findentry (glocal.con,sessionid,name,entry,false)==-1){
-						rep_addfile (false,entry.msg);
-					}else{
-						string msg;
-						int fileid = fs_newid (entry.userid,msg);
-						if (fileid == -1){
-							rep_addfile (false,msg);
-						}else{
+					if (bo_writed_findentry (glocal.con,sessionid,name,entry,false)!=-1
+						&& bo_writed_fname_check(name,entry.msg)){
+						int fileid = fs_newid (entry.userid,entry.msg);
+						if (fileid != -1){
 							char now[20];
 							fs_set_now(now);
 							if (fs_insert_file(entry.dirid,fileid,now,entry.basename)==-1){
-								rep_addfile (false,"Internal error (dirs_files table)");
+								entry.msg = "Internal error (dirs_files table)";
 							}else if (sql_action("insert into files (id,modified,filetype,content) values (%d,'%s',%u,'%s')"
 								,fileid,now,FILE_TEXT,content)==-1){
-								rep_addfile (false,"Internal error (files table)");
-							}else{
-								rep_addfile (true,"Ok");
+								entry.msg = "Internal error (files table)";
 							}
 						}
 					}
+					rep_addfile (entry.msg.size() == 0 ? false : true,entry.msg);
 				</f>
 				<f addfile_bob>
 					ENTRY entry;

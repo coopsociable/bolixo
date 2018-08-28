@@ -26,6 +26,7 @@ static W_SSTRING w_lang("lang");
 static W_SSTRING w_public_dir("public_dir");
 static W_UNSIGNED w_public_view("public_view");
 
+static W_SSTRING w_folder("folder");
 static W_SSTRING w_upload("upload");
 static W_SSTRING w_accept("accept");
 static W_SSTRING w_user("user");
@@ -320,6 +321,57 @@ void webtabs(_F_webtabs &c,
 	}
 	webtabs (c,name,alltabs,false);
 }
+
+#define _TLMP_sendfile
+struct _F_sendfile {
+	string handle;
+	bool success;
+	void sethandle (PARAM_STRING handle);
+	void setresult (bool success, PARAM_STRING msg);
+	#define _F_sendfile_start(x) void x start(const char *filepath, const BOB_TYPE &content, bool more)
+	virtual _F_sendfile_start( )=0;
+	#define _F_sendfile_rest(x) void x rest(const string &handle, const BOB_TYPE &content, bool more)
+	virtual _F_sendfile_rest( )=0;
+};
+void _F_sendfile::sethandle (PARAM_STRING _handle)
+{
+	handle = _handle.ptr;
+}
+void _F_sendfile::setresult (bool _success, PARAM_STRING msg)
+{
+	success = _success;
+	if (!success) htmlprintf ("sendfile failed: %s<br>\n",msg.ptr);
+}
+
+static void sendfile(_F_sendfile &c, PARAM_STRING filepath, PARAM_STRING localfile, bool &fail)
+{
+	c.success = true;
+	FILE *fin = fopen (localfile.ptr,"r");
+	if (fin == NULL){
+		htmlprintf ("Internal error reading temp file: :%s:<br>\n",localfile.ptr);
+		fail = true;
+	}else{
+		char buf[40000];
+		size_t nb = fread (buf,1,sizeof(buf),fin);
+		bool more = (nb == sizeof(buf));
+		c.start (filepath.ptr,BOB_TYPE(buf,nb,false),more);
+		if (more && c.success){
+			if (c.handle.empty()){
+				tlmp_error ("sendfile: handle is empty for file %s\n",filepath.ptr);
+				htmlprintf ("Internal error, sendfile has not handle<br>\n");
+			}else{
+				while (more && c.success){
+					nb = fread (buf,1,sizeof(buf),fin);
+					more = (nb == sizeof(buf));
+					c.rest (c.handle,BOB_TYPE(buf,nb,false),more);
+				}
+			}
+		}
+		fclose (fin);
+	}
+	if (!c.success) fail = true;
+}
+	
 
 static void show_buttons_right(_F_websteps *c)
 {
@@ -1181,6 +1233,64 @@ extern "C" void webmain_real()
 				glocal const char *id = id;
 				glocal string path = string_f ("/projects/%s",id);
 				//htmlprintf ("Project %s<br>\n",glocal.path.c_str());
+				<call form>();
+				<f top>
+					/- <table border=0>
+				</f>
+				<f bottom>
+					/- </table>
+				</f>
+				<f setup>
+					/- <tr><td>New folder
+					field_string (w_folder,"size=30");
+					/- <tr><td>Upload file
+					field_file (w_upload);
+					/- <tr><td>
+					button_submit();
+				</f>
+				<f validate>
+					return true;
+				</f>
+				<f process>
+					glocal bool fail = false;
+					if (strcmp(w_folder.c_str(),"")!=0){
+						string filepath = string_f("%s/%s",glocal.path.c_str(),w_folder.c_str());
+						<call bod_client_mkdir>(glocal.con,w_session.c_str(),filepath);
+						<f ok>
+							if (!success){
+								glocal.fail = true;
+								htmlprintf ("Can't create folder: %s<br>\n",msg);
+							}else{
+								w_folder.setempty();
+							}
+						</f>
+						</call>
+					}
+					if (strcmp(w_upload.c_str(),"")!=0){
+						const char *tempname = tlmpweb_getfilename(w_upload);
+						string filepath = string_f("%s/%s",glocal.path.c_str(),w_upload.c_str());
+						<call sendfile>(filepath,tempname,glocal.fail);
+						<f start>
+							<call bod_client_addfile_bob>(glocal.con,w_session.c_str(),filepath,content,more);
+							<f ok>
+								glocal.sendfile.sethandle(handle);
+								glocal.sendfile.setresult(success,msg);
+							</f>
+							</call>
+						</f>
+						<f rest>
+							<call bod_client_appendfile>(glocal.con,w_session.c_str(),handle,content,more);
+							<f ok>
+								glocal.sendfile.setresult(success,msg);
+							</f>
+							</call>
+						</f>
+						</call>
+					}
+					keepediting = true;
+					fail = glocal.fail;
+				</f>
+				</call>
 				<call webtable>(glocal.path,"60%",currents[glocal.path],offsets[glocal.path],20);
 				<f init>
 					index_setstyles (this);
@@ -1228,7 +1338,7 @@ extern "C" void webmain_real()
 								glocal.webtable.setclickopt (true,"",string_f("webtab_add=1:%s/%s",glocal.id,f.name));
 							}else{
 								const char *funcopt = "400,100";
-								if (file_is_image(f.file_type) || file_is_video(f.file_type)){
+								if (file_is_image(f.file_type) || file_is_video(f.file_type) || f.size > 500){
 									funcopt = "800,800";
 								}
 								glocal.webtable.setclickopt (true,func,funcopt);
@@ -1436,42 +1546,26 @@ extern "C" void webmain_real()
 						w_content.setempty();
 					}
 					if (strcmp(w_upload.c_str(),"")!=0){
-						const char *tempname = t_varstr("filename:upload");
-						glocal FILE *fin = fopen (tempname,"r");
-						if (glocal.fin == NULL){
-							htmlprintf ("Internal error reading temp file: :%s:\n",tempname);
-							fail = true;
-						}else{
-							//const char *filename = w_upload.c_str();
-							glocal char buf[40000];
-							size_t nb = fread (glocal.buf,1,sizeof(glocal.buf),glocal.fin);
-							bool more = (nb == sizeof(glocal.buf));
+						const char *tempname = tlmpweb_getfilename(w_upload);
+						<call sendfile>("",tempname,fail);
+						<f start>
 							<call bod_client_sendtalk>(glocal.con,w_session.c_str(),"",glocal.groupname,glocal.groupowner
-								,BOB_TYPE(glocal.buf,nb,false),more);
+								,content,more);
 							<f ok>
-								if (!success){
-									htmlprintf ("Can't send: %s<br>\n",msg);
-								}else{
-									glocal int ret = 0;
-									bool more = true;
-									while (more && glocal.ret == 0){
-										size_t len = fread (glocal.buf,1,sizeof(glocal.buf),glocal.fin);
-										more = len == sizeof(glocal.buf);
-										<call bod_client_appendfile>(glocal.con,w_session.c_str(),handle
-											,BOB_TYPE(glocal.buf,len,false),more);
-										<f ok>
-											if (!success){
-												htmlprintf ("cat_rest internal %s",msg);
-												glocal.ret = -1;
-											}
-										</f>
-										</call>
-									}
-								}
+								glocal.sendfile.sethandle (handle);
+								glocal.sendfile.setresult (success,msg);
 							</f>
 							</call>
-							w_upload.setempty();
-						}
+						</f>
+						<f rest>
+							<call bod_client_appendfile>(glocal.con,w_session.c_str(),handle,content,more);
+							<f ok>
+								glocal.sendfile.setresult (success,msg);
+							</f>
+							</call>
+						</f>
+						</call>
+						if (!fail) w_upload.setempty();
 					}
 					keepediting = true;
 				</f>
