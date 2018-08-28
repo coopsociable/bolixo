@@ -218,64 +218,65 @@ static void webtabs(_F_webtabs &c,
 			w_webtab = 0;
 		}
 	}
-	// tabs contains the state of all webtabs on the site
-	// The name of this webtabs is used as a prefix to identify its definitions
 	glocal vector<WEBTAB> *tabs = &tabs;
 	glocal const char *name = name;
 	glocal TABSEL sel;
-	glocal TABSEL default_sel;
+	// Assign the selected tab if none is selected
+	{
+		TABSEL default_sel;
+		unsigned no = 1;
+		for (auto &t:tabs){
+			const char *tabname = t.tab.c_str();
+			if (default_sel.id.size() == 0){
+				default_sel.id = tabname;
+				default_sel.no = no;
+			}
+			bool is_sel = t.args == "sel";
+			if (w_webtab > 0){
+				if (w_webtab == no){
+					glocal.sel.id = tabname;
+					glocal.sel.no = no;
+					t.args = "sel";
+				}else{
+					t.args.clear();
+				}
+			}else{
+				if (is_sel){
+					glocal.sel.id = tabname;
+					glocal.sel.no = no;
+				}
+			}
+			no+=2;
+		}
+		if (glocal.sel.id.size()==0){
+			glocal.sel.id = default_sel.id;
+			glocal.sel.no = default_sel.no;
+		}
+	}
 	/- <table border=0 width=100% height=100%>
 	/- <tr><td height=1% valign=top>
 	<call button_row>(0,"white");
 	<f draw>
 		unsigned no = 1;
-		unsigned tabno=0;
 		for (auto &t:*glocal.tabs){
 			split();
 			const char *name = t.tab.c_str();
-			if (glocal.default_sel.id.size() == 0){
-				glocal.default_sel.id = name;
-				glocal.default_sel.no = no;
-			}
-			bool is_sel = t.args == "sel";
-			if (w_webtab > 0){
-				if (w_webtab == no){
-					glocal.sel.id = name;
-					glocal.sel.no = no;
-					t.args = "sel";
-					webtab_aref_selected (name,no);
-				}else{
-					t.args.clear();
-					webtab_aref (name,no);
-				}
-				if (glocal.may_delete){
-					split();
-					webtab_aref("x",no+1);
-				}
+			bool is_sel = glocal.sel.no == no;
+			if (is_sel){
+				webtab_aref_selected (name,no);
 			}else{
-				if (is_sel){
-					glocal.sel.id = name;
-					glocal.sel.no = no;
-					webtab_aref_selected (name,no);
-				}else{
-					webtab_aref (name,no);
-				}
-				if (glocal.may_delete){
-					split();
-					webtab_aref("x",no+1);
-				}
+				webtab_aref (name,no);
 			}
-			no+=2;
-			tabno++;
+			if (glocal.may_delete){
+				split();
+				webtab_aref("x",no+1);
+			}
+			no += 2;
 		}
 	</f>
 	</call>
 	/- <tr><td valign=top>
-	if (glocal.default_sel.id.size() > 0){
-		if (glocal.sel.id.size() == 0){
-			glocal.sel.id = glocal.default_sel.id;
-			glocal.sel.no = glocal.default_sel.no;
-		}
+	if (glocal.sel.id.size() > 0){
 		w_webtab = glocal.sel.no;
 		FORM_HIDDEN t(w_webtab);
 		const char *id = glocal.sel.id.c_str();
