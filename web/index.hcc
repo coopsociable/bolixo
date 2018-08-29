@@ -372,6 +372,37 @@ static void sendfile(_F_sendfile &c, PARAM_STRING filepath, PARAM_STRING localfi
 	}
 	if (!c.success) fail = true;
 }
+static void sendfile(_F_sendfile &c, PARAM_STRING filepath, const char *content, bool &fail)
+{
+	c.success = true;
+	unsigned len = strlen(content);
+	unsigned nb = len;
+	bool more = false;
+	if (nb > 40000){
+		nb = 40000;
+		more = true;
+	}
+	c.start (filepath.ptr,BOB_TYPE(content,nb,false),more);
+	if (more && c.success){
+		if (c.handle.empty()){
+			tlmp_error ("sendfile: handle is empty for file %s\n",filepath.ptr);
+			htmlprintf ("Internal error, sendfile has not handle<br>\n");
+		}else{
+			unsigned offset = nb;
+			while (offset < len && c.success){
+				nb = len - offset;
+				more = false;
+				if (nb > 40000){
+					nb = 40000;
+					more = true;
+				}
+				c.rest (c.handle,BOB_TYPE(content+offset,nb,false),more);
+				offset += nb;
+			}
+		}
+	}
+	if (!c.success) fail = true;
+}
 	
 
 static void show_buttons_right(_F_websteps *c)
@@ -725,6 +756,49 @@ static void index_sendfile (CONNECT_INFO &con, PARAM_STRING filename, const char
 	</f>
 	</call>
 }
+<mod>
+static int index_loadfile(CONNECT_INFO &con, PARAM_STRING filename, string &text)
+{
+	glocal CONNECT_INFO *con = &con;
+	glocal string *text = &text;
+	glocal int ret = 0;
+	text.clear();
+	<call bod_client_readfile_bob>(con,w_session.c_str(),filename,"",false);
+	<f ok>
+		if (!success){
+			htmlprintf ("Can't read file: %s\n",msg);
+			glocal.ret = -1;
+		}else{
+			(*glocal.text) = string((const char*)content.getbuffer(),content.getsize());
+			glocal bool more = more;
+			while (glocal.more && glocal.ret != -1){
+				<call bod_client_readmore>(*glocal.con,w_session.c_str(),handle);
+				<f ok>
+					if (!success){
+						glocal.ret = -1;
+						htmlprintf ("Can't read file: %s\n",msg);
+					}else{
+						(*glocal.text) += string((const char*)content.getbuffer(),content.getsize());
+					}
+					glocal.more = more;
+				</f>
+				</call>
+			}	
+		}
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+
+static int index_loadfile(CONNECT_INFO &con, PARAM_STRING filename, W_SSTRING &text)
+{
+	string tmp;
+	int ret = index_loadfile(con,filename,tmp);
+	text = tmp;
+	return ret;
+}
+
 </mod>
 static void index_format_large_text(const BOB_TYPE &content)
 {
@@ -1335,14 +1409,13 @@ extern "C" void webmain_real()
 					<f ok>
 						const char *func = "Popup";
 						for (auto &f:files){
+							string path = string_f ("%s/%s",glocal.id,f.name);
 							if (bolixo_isdir(f.type)){
-								glocal.webtable.setclickopt (true,"",string_f("webtab_add=1:%s/%s",glocal.id,f.name));
-							}else{
-								const char *funcopt = "400,100";
-								if (file_is_image(f.file_type) || file_is_video(f.file_type) || f.size > 500){
-									funcopt = "800,800";
-								}
-								glocal.webtable.setclickopt (true,func,funcopt);
+								glocal.webtable.setclickopt (true,"",string_f("webtab_add=1:%",path.c_str()));
+							}else if (file_is_image(f.file_type) || file_is_video(f.file_type)){
+								glocal.webtable.setclickopt (true,func,"800,800");
+							}else if (file_is_text(f.file_type)){
+								glocal.webtable.setclickopt (true,"",string_f("webtab_add=2:%s",path.c_str()));
 							}
 							glocal.webtable.setrow ("white",glocal.rownum,"%c%s\t%s\t%s\t%s/%s:%s\t%u\t%s\t%s"
 								,tbtype[f.type],tbftype[f.file_type]
@@ -1353,6 +1426,52 @@ extern "C" void webmain_real()
 						}
 					</f>
 					</call>
+				</f>
+				</call>
+			</f>
+			<f docstyle2>
+				glocal const char *filename = id;
+				glocal string path = string_f("/projects/%s",glocal.filename);
+				<call form>();
+				<f top>
+					/- <table border=0>
+					/- <tr><td align=left>
+					htmlprintf ("<font size=+1>%s</font>",glocal.filename);
+					/- <td align=right>
+					button_submit("Save");
+				</f>
+				<f bottom>
+					/- </table>
+				</f>
+				<f load>
+					index_loadfile(glocal.con,glocal.path,w_content);
+				</f>
+				<f setup>
+					/- <tr><td colspan=2>
+					field_textarea(w_content,50,120,"");
+				</f>
+				<f validate>
+					return true;
+				</f>
+				<f process>
+					<call sendfile>(glocal.path,w_content.c_str(),fail);	
+					<f start>
+						<call bod_client_modifyfile_bob>(glocal.con,w_session.c_str(),filepath,content,more);
+						<f ok>
+							glocal.sendfile.setresult(success,msg);
+							glocal.sendfile.sethandle(handle);
+						</f>
+						</call>
+					</f>
+					<f rest>
+						<call bod_client_appendfile>(glocal.con,w_session.c_str(),handle,content,more);
+						<f ok>
+							glocal.sendfile.setresult(success,msg);
+						</f>
+						</call>
+					</f>
+					</call>
+					keepediting = true;
 				</f>
 				</call>
 			</f>

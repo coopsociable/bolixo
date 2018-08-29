@@ -3,7 +3,8 @@ all: util.os index.hc webapi.hc public.hc
 .suffixes: .hcc .hc
 FLAGS=-Wall -Wno-unused-function
 
-%.hc: %.hcc /usr/lib64/trlitool/trlitool.pic.a util.os document.os ../proto/webapi.protoh
+%.hc: %.hcc /usr/lib64/trlitool/trlitool.pic.a util.os document.os ../proto/webapi.protoh \
+	/usr/include/tlmp/tlmpweb.h /usr/include/tlmp/tlmpweb.p
 	@echo tlmpwebcc $< $@
 	@tlmpwebcc $< \
 		| tlcc \
