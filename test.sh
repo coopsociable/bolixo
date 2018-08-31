@@ -147,10 +147,12 @@ elif [ "$1" = "checks" ]; then # A: Sanity checks
 	else
 		echo "*** Horizon not connected"
 	fi
-elif [ "$1" = "files" ] ; then	# db: Access trli database
+elif [ "$1" = "files" ] ; then	# db: Access files database
 	mysql -uroot -S $SOCKN $DBNAME
-elif [ "$1" = "users" ] ; then # db: Access trliusers database
+elif [ "$1" = "users" ] ; then # db: Access users database
 	mysql -uroot -S $SOCKU  $DBNAMEU
+elif [ "$1" = "temp" ] ; then	# db: Access temp database
+	mysql -uroot -S $SOCKN $DBNAMET
 elif [ "$1" = "bod" ] ; then # A: Runs bod
 	OPTIONS="--mysecret foo --admin_secrets $BOLIXOCONF/secrets.admin --client_secrets $BOLIXOCONF/secrets.client --user $USER \
 		--dbserv $BOD_DBSERV --dbuser $BOD_DBUSER --dbname $BOD_DBNAME --bindaddr 0.0.0.0 \
@@ -413,9 +415,25 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 		)engine=$ENGINE;
 		create unique index config_userid on config(userid);	
 	EOF
+	mysqladmin -uroot -S $SOCKN create $DBNAMET
+	mysql -uroot -S $SOCKN $DBNAMET <<-EOF
+		create table formids(
+			id int primary key auto_increment,
+			formid varchar(100),
+			sessionid char(30)
+		)engine=$ENGINE;
+		create unique index formids_formid on formids(formid,sessionid);
+		create table formvars(
+			id int,
+			name char(30),
+			val text
+		)engine=$ENGINE;
+		create index formvars_id on formvars(id);
+	EOF
 elif [ "$1" = "dropdb" ] ; then # db: Drop databases
 	mysqladmin -uroot -S $SOCKN -f drop $DBNAME
 	mysqladmin -uroot -S $SOCKU -f drop $DBNAMEU
+	mysqladmin -uroot -S $SOCKN -f drop $DBNAMET
 	rm -fr /var/lib/bolixo/*
 elif [ "$1" = "filldb" ] ; then # db: Fill database (old)
 	$0 bo-writed-control mailctrl 0 keep
@@ -689,6 +707,7 @@ elif [ "$1" = "createsqlusers" ] ; then # db: Generates SQL to create users
 	echo "create user '$BO_WRITED_DBUSER'@'localhost' identified by '$BO_WRITED_PWD';"
 	echo "insert into db (host,db,user,select_priv) values ('localhost','$DBNAME','$BOD_DBUSER','y');"
 	echo "insert into db (host,db,user,select_priv,Insert_priv,Update_priv,Delete_priv) values ('localhost','$DBNAME','$BO_WRITED_DBUSER','y','y','y','y');"
+	echo "insert into db (host,db,user,select_priv,Insert_priv,Update_priv,Delete_priv) values ('localhost','$DBNAMET','$BOD_DBUSER','y','y','y','y');"
 	) >$TRLISQL
 	(
 	echo "delete from user;"

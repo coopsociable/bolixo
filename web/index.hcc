@@ -131,7 +131,8 @@ static string toupper (const char *s)
 }
 static void webtab_href_c (const char *title, const char *href, const char *color)
 {
-	htmlprintf ("<a %s><table bgcolor=\"%s\"><tr><td style=\"padding:5px\"><font size=4 color=white>&nbsp;%s&nbsp;</font></table></a>\n"
+	//htmlprintf ("href=%s<br>\n",href);
+	htmlprintf ("<a href=\"#\" style=\"text-decoration:none\" onclick=formsubmit(\"%s\")><table bgcolor=\"%s\"><tr><td style=\"padding:5px\"><font size=4 color=white>&nbsp;%s&nbsp;</font></table></a>\n"
 		,href,color,title);
 }
 static void webtab_aref_selected (const char *title, int tab)
@@ -139,8 +140,7 @@ static void webtab_aref_selected (const char *title, int tab)
 	string hidden;
 	form_gethidden(hidden);
 	const char *sep = hidden.size() > 0 ? "&" : "";
-	string href = string_f ("href=%s?%s%swebtab=%d style=\"text-decoration:none\""
-		,tlmpweb_curpage(),hidden.c_str(),sep,tab);
+	string href = string_f ("%s?%s%swebtab=%d",tlmpweb_curpage(),hidden.c_str(),sep,tab);
 	webtab_href_c (title,href.c_str(),"#220022");
 }
 static void webtab_href (const char *title, PARAM_STRING href)
@@ -152,8 +152,7 @@ static void webtab_aref (const char *title, int tab)
 	string hidden;
 	form_gethidden(hidden);
 	const char *sep = hidden.size() > 0 ? "&" : "";
-	string href = string_f ("href=%s?%s%swebtab=%d style=\"text-decoration:none\""
-		,tlmpweb_curpage(),hidden.c_str(),sep,tab);
+	string href = string_f ("%s?%s%swebtab=%d",tlmpweb_curpage(),hidden.c_str(),sep,tab);
 	webtab_href (title,href);
 }
 void _F_webtabs::docstyle2(const char *id)
@@ -372,8 +371,20 @@ static void sendfile(_F_sendfile &c, PARAM_STRING filepath, PARAM_STRING localfi
 	}
 	if (!c.success) fail = true;
 }
-static void sendfile(_F_sendfile &c, PARAM_STRING filepath, const char *content, bool &fail)
+#define _TLMP_sendfile_var
+struct _F_sendfile_var {
+	string handle;
+	bool success;
+	void sethandle (PARAM_STRING handle);
+	void setresult (bool success, PARAM_STRING msg);
+	#define _F_sendfile_var_start(x) void x start(const char *filepath, const BOB_TYPE &content, bool more)
+	virtual _F_sendfile_var_start( )=0;
+	#define _F_sendfile_var_rest(x) void x rest(const string &handle, const BOB_TYPE &content, bool more)
+	virtual _F_sendfile_var_rest( )=0;
+};
+static void sendfile_var(_F_sendfile_var &c, PARAM_STRING filepath, const W_SSTRING &var_content, bool &fail)
 {
+	const char *content = var_content.c_str();
 	c.success = true;
 	unsigned len = strlen(content);
 	unsigned nb = len;
@@ -409,21 +420,6 @@ static void show_buttons_right(_F_websteps *c)
 {
 	int step = c->getcurstep();
 	/- <table border=0 cellspacing=0>
-	#if 0
-	/- <tr><td colspan=8>
-	/- <font size=4 color=lightgray>
-	if (userinfo.name.empty()){
-		htmlprintf ("Anonymous, for your eyes only");
-	}else{
-		htmlprintf ("Welcome %s",userinfo.name.c_str());
-		int nb = 40 - userinfo.name.size() - 8; 
-		for (int i=0; i<nb; i++){
-			htmlprintf ("&nbsp;");
-		}
-	}
-	/- </font>
-	/- </td></tr>
-	#endif
 	/- <tr>
 		
 	bool is_user = userinfo.name.size() > 0;
@@ -492,6 +488,11 @@ static void print_button (const char *title, int step, int curstep)
 		print_aref (title,step);
 	}
 }
+struct CURRENTFORM{
+	string id;
+	vector<string> vars;
+};
+static CURRENTFORM currentform;
 <mod>
 static void bolixo_title (const char *title, _F_websteps *c)
 {
@@ -507,13 +508,14 @@ static void bolixo_title (const char *title, _F_websteps *c)
 		/- <table border=0><tr><td><a href=/7s.html style=\"text-decoration:none\"><img src=/favicon.ico></a></td><td align=left>
 		htmlout ("<a href=/index.hc style=\"text-decoration:none\"><font size=15 color=\"white\">Bolixo.org</font></a>&nbsp;&nbsp;&nbsp;");
 		/- <td>
-		printhref ("/about.html","<font color=white>A peer to peer open social media</font>",true);
+		htmlprintf ("currentform=%s",currentform.id.c_str());
+		if (userinfo.name.empty()) printhref ("/about.html","<font color=white>A peer to peer open social media</font>",true);
 		/- </td></tr></table>
 	/- </td><td align=right valign=top>
 	show_buttons_right (c);
 	/- </td></tr>
 	/- <tr><td align=left>
-	if (w_robot == 0){
+	if (w_robot == 0 && userinfo.name.size() > 0){
 		<call button_row>(0,"white");
 		<f draw>
 			split();
@@ -603,6 +605,14 @@ static void trli_getsessioninfo(CONNECT_INFO &con, CONNECT_INFO &con_sess, DOCUM
 					glocal.docpointer->set(s1,s2,s3,s4);
 					glocal.docpointer->resetchanged();
 						
+				}else if (strcmp(var.name,"currentform")==0){
+					for (auto &v:var.vals){
+						if (strcmp(v.sname,"id")==0){
+							currentform.id = v.sval;
+						}else if (strcmp(v.sname,"var")==0){
+							currentform.vars.push_back(v.sval);
+						}
+					}
 				}
 			}
 			// Refresh the cookie so it is valid for 2 more days
@@ -695,6 +705,7 @@ static void profile_setstyle(_F_webtable *c)
 	c->setthparms ("bgcolor=lightgray","");
 	c->setrowstyle ("sep","bgcolor=lightblue\tbgcolor=lightblue");
 	c->setrowstyle ("white","bgcolor=white");
+	c->setrowstyle ("white+current","bgcolor=lightblue");
 }
 /*
 	Format a short message, remove the signature
@@ -1070,12 +1081,79 @@ extern "C" void webmain_real()
 	
 	web_updateoffsets (glocal.con_sess);
 	webtable_ctrloutput();
+	<obj WEBCONTEXT wctx>();
+	<f recordform>
+		VAR var;
+		var.name = "currentform";
+		SNAMEVAL val;
+		val.sname = "id";
+		val.sval  = formid;
+		var.vals.push_back(val);
+		for (auto &v:variables){
+			val.sname = "var";
+			val.sval = v->getname();
+			var.vals.push_back(val);
+		}
+		<call bo_sessiond_client_setvar> (glocal.con_sess,w_session.c_str(),var);
+		<f ok>
+			if (!success) tlmp_error ("Can't save currentform: %s\n",msg);
+		</f>
+		</call>
+	</f>
+	<f restoreform>
+		glocal int ret = -1;
+		<call bod_client_form_readvar>(glocal.con,w_session.c_str(),formid);
+		<f ok>
+			if (!success){
+				tlmp_error ("restoreform currentform %s: %s\n",currentform.id.c_str(),msg);
+			}else{
+				if (vars.size() > 0){
+					glocal.ret = 0;
+					for (auto &v:vars){
+tlmp_error ("setvar :%s: :%s:\n",v.name,v.val);
+						tlmpweb_setvar (v.name,v.val);
+					}
+				}	
+			}
+		</f>
+		</call>
+tlmp_error ("restore %s %d\n",formid,glocal.ret);
+		return glocal.ret;
+	</f>
+	<f deleteform>
+		glocal const char *formid = formid;
+		<call bod_client_form_deletevar>(glocal.con,w_session.c_str(),formid);
+		<f ok>
+			if (!success) tlmp_error ("deleteform %s: %s\n",glocal.formid,msg);
+		</f>
+		</call>
+	</f>
+	<f saveform>
+		if (currentform.id.size() > 0){
+			FORMVARS f;
+			f.id = currentform.id;
+			for (auto &v:currentform.vars){
+				FORMVAR var;
+				var.name = v;
+				var.val = t_varstr(v.c_str());
+				f.vars.push_back(var);
+			}
+			<call bod_client_form_savevar>(glocal.con,w_session.c_str(),f);
+			<f ok>
+				if (!success) tlmp_error ("saveform currentform %s: %s\n",currentform.id.c_str(),msg);
+			</f>
+			</call>
+		}
+	</f>
+	</obj>
 	<call websteps>();
 	<f setstep>
 		if (w_session.empty() && step > 2){
 			step = 1;
 		}else if (w_public.isset()){
 			step = step_public;
+		}else if (userinfo.name.empty()){
+			step = 1;
 		}
 	</f>
 	<f step1>
@@ -1112,7 +1190,7 @@ extern "C" void webmain_real()
 		}
 	</f>
 	<f step2> // Login
-		<call form>();
+		<call form>("login");
 		<f top>
 			bolixo_title ("Login",&glocal.websteps);
 			if (glocal.account_confirmed){
@@ -1165,7 +1243,7 @@ extern "C" void webmain_real()
 	</f>
 	<f step3> // Account creation
 		glocal bool account_created = false;
-		<call form>();
+		<call form>("createaccount");
 		<f top>
 			bolixo_title ("Account creation",&glocal.websteps);
 			/- No account ? Please create one.
@@ -1280,6 +1358,7 @@ extern "C" void webmain_real()
 		</call>
 	</f>
 	<f step7> // TAB Projects
+		glocal string curtab;
 		bolixo_title ("Projects",this);
 		<call vframe2h>(10);
 		<f left>
@@ -1293,9 +1372,18 @@ extern "C" void webmain_real()
 				<call bod_client_list_inboxes>(glocal.con,w_session.c_str(),"");
 				<f ok>
 					for (auto &inb:inboxes){
+						string id = string_f("%s/%s",inb.manager,inb.project);
+						const char *style = "white";
+						if (id == glocal.curtab){
+							style = "white+current";
+						}else if (strncmp(id.c_str(),glocal.curtab.c_str(),id.size())==0
+							&& glocal.curtab[id.size()] == '/'){
+							// Edit a document inside a project
+							style = "white+current";
+						}
 						string add = string_f("webtab_add=1:%s/%s",inb.manager,inb.project);
 						glocal.webtable.setclickopt (true,"",add);
-						glocal.webtable.setrow ("white",0,"%s\t%s",inb.manager,inb.project);
+						glocal.webtable.setrow (style,0,"%s\t%s",inb.manager,inb.project);
 					}
 				</f>
 				</call>
@@ -1305,10 +1393,11 @@ extern "C" void webmain_real()
 		<f right>
 			<call webtabs>("projects",tabs);
 			<f docstyle1>
+				glocal.curtab = id;
 				glocal const char *id = id;
 				glocal string path = string_f ("/projects/%s",id);
 				//htmlprintf ("Project %s<br>\n",glocal.path.c_str());
-				<call form>();
+				<call form>(id);
 				<f top>
 					/- <table border=0>
 				</f>
@@ -1414,6 +1503,8 @@ extern "C" void webmain_real()
 								glocal.webtable.setclickopt (true,"",string_f("webtab_add=1:%",path.c_str()));
 							}else if (file_is_image(f.file_type) || file_is_video(f.file_type)){
 								glocal.webtable.setclickopt (true,func,"800,800");
+							}else if (file_is_sound(f.file_type)){
+								glocal.webtable.setclickopt (true,func,"350,50");
 							}else if (file_is_text(f.file_type)){
 								glocal.webtable.setclickopt (true,"",string_f("webtab_add=2:%s",path.c_str()));
 							}
@@ -1430,9 +1521,10 @@ extern "C" void webmain_real()
 				</call>
 			</f>
 			<f docstyle2>
+				glocal.curtab = id;
 				glocal const char *filename = id;
 				glocal string path = string_f("/projects/%s",glocal.filename);
-				<call form>();
+				<call form>(id);
 				<f top>
 					/- <table border=0>
 					/- <tr><td align=left>
@@ -1454,19 +1546,19 @@ extern "C" void webmain_real()
 					return true;
 				</f>
 				<f process>
-					<call sendfile>(glocal.path,w_content.c_str(),fail);	
+					<call sendfile_var>(glocal.path,w_content,fail);	
 					<f start>
 						<call bod_client_modifyfile_bob>(glocal.con,w_session.c_str(),filepath,content,more);
 						<f ok>
-							glocal.sendfile.setresult(success,msg);
-							glocal.sendfile.sethandle(handle);
+							glocal.sendfile_var.setresult(success,msg);
+							glocal.sendfile_var.sethandle(handle);
 						</f>
 						</call>
 					</f>
 					<f rest>
 						<call bod_client_appendfile>(glocal.con,w_session.c_str(),handle,content,more);
 						<f ok>
-							glocal.sendfile.setresult(success,msg);
+							glocal.sendfile_var.setresult(success,msg);
 						</f>
 						</call>
 					</f>
@@ -1612,6 +1704,7 @@ extern "C" void webmain_real()
 		/- </table>
 	</f>
 	<f step9>	// TAB Talks
+		glocal string curtab;
 		bolixo_title ("Talks",this);
 		<call vframe2h>(10);
 		<f left>
@@ -1624,9 +1717,11 @@ extern "C" void webmain_real()
 				<call bod_client_list_groups>(glocal.con,w_session.c_str(),"",false);
 				<f ok>
 					for (auto &g:groups){
+						string id = string_f("%s:%s",g.owner,g.name);
+						const char *style = id == glocal.curtab ? "white+current" : "white";
 						string add = string_f("webtab_add=1:%s:%s",g.owner,g.name);
 						glocal.webtable.setclickopt (true,"",add);
-						glocal.webtable.setrow ("white",0,"%s\t%s",g.owner,g.name);
+						glocal.webtable.setrow (style,0,"%s\t%s",g.owner,g.name);
 					}
 				</f>
 				</call>
@@ -1636,13 +1731,14 @@ extern "C" void webmain_real()
 		<f right>
 			<call webtabs>("talks",tabs);
 			<f docstyle1>
+				glocal.curtab = id;
 				vector<string> tb;
 				int n = str_splitline (id,':',tb);
 				if (n != 2) return;
 				glocal string groupowner = tb[0];
 				glocal string groupname = tb[1];
 				/- <table border=0 align=left width=40%>
-				<call form>();
+				<call form>(id);
 				<f setup>
 					/- <tr><td colspan=2>
 					field_textarea (w_content,5,60,"");
@@ -1757,7 +1853,7 @@ extern "C" void webmain_real()
 				</f>
 				<f right>
 					if (w_list.isset() || w_add.isset()){
-						<call form>();
+						<call form>("project");
 						<f top>
 							/- <table border=0><tr><td>&nbsp;&nbsp;&nbsp;<td><table border=0>
 							if (w_add != 1) htmlprintf ("<tr><td>Project<td><font size=+2>%s</font><p>\n",w_list.c_str());
@@ -1926,7 +2022,7 @@ extern "C" void webmain_real()
 				</f>
 				<f right>
 					if (w_group.isset() || w_add.isset()){
-						<call form>();
+						<call form>("group");
 						<f top>
 							/- <table border=0><tr><td>&nbsp;&nbsp;&nbsp;<td><table border=0>
 							if (w_add != 1) htmlprintf ("<tr><td>Group<td><font size=+2>%s</font><p>\n",w_group.c_str());
@@ -2088,7 +2184,7 @@ extern "C" void webmain_real()
 				<f right>
 					if (w_add == 1){
 						glocal bool done = false;
-						<call form>();
+						<call form>("contact");
 						<f top>
 							/- <table border=0><tr><td>&nbsp;&nbsp;&nbsp;<td><table border=0>
 							/- <table border=0>
@@ -2131,7 +2227,7 @@ extern "C" void webmain_real()
 					}else if (w_user.isset()){
 						glocal bool done = false;
 						glocal CONTACT_STATUS status = CONTACT_WAITING;
-						<call form>();
+						<call form>("managecontact");
 						<f top>
 							/- <table border=0><tr><td>&nbsp;&nbsp;&nbsp;<td><table border=0>
 							/- <tr><td><td>
@@ -2194,7 +2290,7 @@ extern "C" void webmain_real()
 				</call>
 			}else if (strcmp(id,"Account")==0){
 				glocal string status = "&nbsp;";
-				<call form>();
+				<call form>("configaccount");
 				<f top>
 					/- <table border=0>
 					htmlprintf ("<tr><td colspan=2>%s",glocal.status.c_str());
