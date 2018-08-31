@@ -131,7 +131,6 @@ static string toupper (const char *s)
 }
 static void webtab_href_c (const char *title, const char *href, const char *color)
 {
-	//htmlprintf ("href=%s<br>\n",href);
 	htmlprintf ("<a href=\"#\" style=\"text-decoration:none\" onclick=formsubmit(\"%s\")><table bgcolor=\"%s\"><tr><td style=\"padding:5px\"><font size=4 color=white>&nbsp;%s&nbsp;</font></table></a>\n"
 		,href,color,title);
 }
@@ -1128,6 +1127,13 @@ tlmp_error ("restore %s %d\n",formid,glocal.ret);
 		</f>
 		</call>
 	</f>
+	<f deleteallform>
+		<call bod_client_form_deleteall>(glocal.con,w_session.c_str());
+		<f ok>
+			if (!success) tlmp_error ("deleteallform: %s\n",msg);
+		</f>
+		</call>
+	</f>
 	<f saveform>
 		if (currentform.id.size() > 0){
 			FORMVARS f;
@@ -1152,7 +1158,7 @@ tlmp_error ("restore %s %d\n",formid,glocal.ret);
 			step = 1;
 		}else if (w_public.isset()){
 			step = step_public;
-		}else if (userinfo.name.empty()){
+		}else if (userinfo.name.empty() && step != 2){
 			step = 1;
 		}
 	</f>
@@ -1322,6 +1328,7 @@ tlmp_error ("restore %s %d\n",formid,glocal.ret);
 
 	</f>
 	<f step4> // Logout
+		tlmpweb_deleteallform();
 		<call bod_client_logout>(glocal.con,w_session.c_str());
 		<f ok>
 			userinfo.reset();	//trli_getsessioninfo(glocal.con,glocal.con_sess);
