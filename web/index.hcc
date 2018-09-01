@@ -46,7 +46,6 @@ static W_SSTRING w_access4("access4");
 static W_SSTRING w_image("image");
 extern W_SSTRING w_webtable;
 static W_UNSIGNED w_offset ("offset");
-static W_UNSIGNED w_current ("current");
 static map<string,unsigned> offsets;
 static map<string,unsigned> currents;
 struct WEBTAB{
@@ -212,6 +211,8 @@ static void webtabs(_F_webtabs &c,
 					tabs[delete_tab+1].args = "sel";
 				}
 			}
+			const char *id = tabs[delete_tab].tab.c_str();
+			tlmpweb_deleteform(id+2);
 			tabs.erase (tabs.begin()+delete_tab);
 			w_webtab = 0;
 		}
@@ -507,7 +508,6 @@ static void bolixo_title (const char *title, _F_websteps *c)
 		/- <table border=0><tr><td><a href=/7s.html style=\"text-decoration:none\"><img src=/favicon.ico></a></td><td align=left>
 		htmlout ("<a href=/index.hc style=\"text-decoration:none\"><font size=15 color=\"white\">Bolixo.org</font></a>&nbsp;&nbsp;&nbsp;");
 		/- <td>
-		htmlprintf ("currentform=%s",currentform.id.c_str());
 		if (userinfo.name.empty()) printhref ("/about.html","<font color=white>A peer to peer open social media</font>",true);
 		/- </td></tr></table>
 	/- </td><td align=right valign=top>
@@ -660,9 +660,8 @@ static void web_updateoffsets(CONNECT_INFO &con_sess)
 }
 </mod>
 <mod>
-static void web_updatecurrents(CONNECT_INFO &con_sess, unsigned noline)
+static void web_updatecurrents(CONNECT_INFO &con_sess)
 {
-	currents[w_webtable.c_str()] = noline;
 	VAR var;
 	var.name = "currents";
 	for (auto &v:currents){
@@ -678,14 +677,13 @@ static void web_updatecurrents(CONNECT_INFO &con_sess, unsigned noline)
 	</call>
 }
 </mod>
-static void web_updatecurrents(CONNECT_INFO &con_sess)
+#if 0
+static void web_updatecurrents(CONNECT_INFO &con_sess, int noline)
 {
-	if (w_webtable.isset() && w_current.isset()){
-		if (currents[w_webtable.c_str()] != w_current){
-			web_updatecurrents(con_sess,w_current);
-		}
-	}
+	currents[w_webtable.c_str()] = noline;
+	web_updatecurrents(con_sess);
 }
+#endif
 
 static void index_setstyles (_F_webtable *c)
 {
@@ -886,8 +884,6 @@ static void index_show_shortmsg(
 	</f>
 	<f click>
 		tlmpweb_flushheader();
-		//htmlprintf ("click %d %d<p>\n",noline,nocol);
-		web_updatecurrents (*glocal.con_sess,noline);
 		<call bod_client_list_talk>(*glocal.con,w_session.c_str(),"",glocal.groupname,glocal.groupowner,noline,1);
 		<f ok>
 			if (messages.size()!=1){
@@ -1081,6 +1077,14 @@ extern "C" void webmain_real()
 	web_updateoffsets (glocal.con_sess);
 	webtable_ctrloutput();
 	<obj WEBCONTEXT wctx>();
+	<f settablerow>
+tlmp_error ("settablerow %s %u\n",tableid,current_row);
+		unsigned &cur = currents[tableid];
+		if (cur != current_row){
+			cur = current_row;
+			web_updatecurrents(glocal.con_sess);
+		}
+	</f>
 	<f recordform>
 		VAR var;
 		var.name = "currentform";
@@ -1365,6 +1369,8 @@ tlmp_error ("restore %s %d\n",formid,glocal.ret);
 		</call>
 	</f>
 	<f step7> // TAB Projects
+		//HTMLDEBUG d1("t1");
+		//HTMLDEBUG d2("t2");
 		glocal string curtab;
 		bolixo_title ("Projects",this);
 		<call vframe2h>(10);
@@ -1462,13 +1468,13 @@ tlmp_error ("restore %s %d\n",formid,glocal.ret);
 					fail = glocal.fail;
 				</f>
 				</call>
+				//HTMLDEBUG ("table",true);
 				<call webtable>(glocal.path,"60%",currents[glocal.path],offsets[glocal.path],20);
 				<f init>
 					index_setstyles (this);
 				</f>
 				<f click>
 					tlmpweb_flushheader();
-					web_updatecurrents(glocal.con_sess,noline);
 					<call bod_client_listdir>(glocal.con,w_session.c_str(),glocal.path,"",false,noline,1);
 					<f ok>
 						if (files.size()!=1){
@@ -1500,14 +1506,14 @@ tlmp_error ("restore %s %d\n",formid,glocal.ret);
 				</f>
 				<f load>
 					glocal unsigned rownum = nbskip;
-					sethead ("Type\tEventdate\tModified\tOwner\tName\tTitle");
+					sethead ("Type\tEventdate\tModified\tOwner\tSize\tName");
 					<call bod_client_listdir>(glocal.con,w_session.c_str(),glocal.path,"",false,nbskip,nblines);
 					<f ok>
 						const char *func = "Popup";
 						for (auto &f:files){
 							string path = string_f ("%s/%s",glocal.id,f.name);
 							if (bolixo_isdir(f.type)){
-								glocal.webtable.setclickopt (true,"",string_f("webtab_add=1:%",path.c_str()));
+								glocal.webtable.setclickopt (true,"",string_f("webtab_add=1:%s",path.c_str()));
 							}else if (file_is_image(f.file_type) || file_is_video(f.file_type)){
 								glocal.webtable.setclickopt (true,func,"800,800");
 							}else if (file_is_sound(f.file_type)){
@@ -1515,11 +1521,11 @@ tlmp_error ("restore %s %d\n",formid,glocal.ret);
 							}else if (file_is_text(f.file_type)){
 								glocal.webtable.setclickopt (true,"",string_f("webtab_add=2:%s",path.c_str()));
 							}
-							glocal.webtable.setrow ("white",glocal.rownum,"%c%s\t%s\t%s\t%s/%s:%s\t%u\t%s\t%s"
+							glocal.webtable.setrow ("white",glocal.rownum,"%c%s\t%s\t%s\t%s/%s:%s\t%u\t%s"
 								,tbtype[f.type],tbftype[f.file_type]
 								,f.eventdate,f.modified
 								,f.owner,f.listname,f.listmode,f.size
-								,f.name,f.title);
+								,f.name);
 							glocal.rownum++;
 						}
 					</f>
@@ -1690,8 +1696,6 @@ tlmp_error ("restore %s %d\n",formid,glocal.ret);
 				</call>
 			</f>
 			<f docstyle2>
-				htmlprintf ("webtable=%d,%s current=%d,%u<br>\n",w_webtable.isset(),w_webtable.c_str(),w_current.isset(),w_current.getval());
-				web_updatecurrents(glocal.con_sess);
 				<call bod_client_readfile>(glocal.con,w_session.c_str(),id,"");
 				<f ok>
 					const char *pt = content;
