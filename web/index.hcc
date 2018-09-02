@@ -321,27 +321,29 @@ void webtabs(_F_webtabs &c,
 	}
 	webtabs (c,name,alltabs,false);
 }
-
-#define _TLMP_sendfile
-struct _F_sendfile {
+struct _F_sendfile_common {
 	string handle;
 	bool success;
 	void sethandle (PARAM_STRING handle);
 	void setresult (bool success, PARAM_STRING msg);
+};
+void _F_sendfile_common::sethandle (PARAM_STRING _handle)
+{
+	handle = _handle.ptr;
+}
+void _F_sendfile_common::setresult (bool _success, PARAM_STRING msg)
+{
+	success = _success;
+	if (!success) htmlprintf ("sendfile failed: %s<br>\n",msg.ptr);
+}
+
+#define _TLMP_sendfile
+struct _F_sendfile: public _F_sendfile_common {
 	#define _F_sendfile_start(x) void x start(const char *filepath, const BOB_TYPE &content, bool more)
 	virtual _F_sendfile_start( )=0;
 	#define _F_sendfile_rest(x) void x rest(const string &handle, const BOB_TYPE &content, bool more)
 	virtual _F_sendfile_rest( )=0;
 };
-void _F_sendfile::sethandle (PARAM_STRING _handle)
-{
-	handle = _handle.ptr;
-}
-void _F_sendfile::setresult (bool _success, PARAM_STRING msg)
-{
-	success = _success;
-	if (!success) htmlprintf ("sendfile failed: %s<br>\n",msg.ptr);
-}
 
 static void sendfile(_F_sendfile &c, PARAM_STRING filepath, PARAM_STRING localfile, bool &fail)
 {
@@ -372,11 +374,7 @@ static void sendfile(_F_sendfile &c, PARAM_STRING filepath, PARAM_STRING localfi
 	if (!c.success) fail = true;
 }
 #define _TLMP_sendfile_var
-struct _F_sendfile_var {
-	string handle;
-	bool success;
-	void sethandle (PARAM_STRING handle);
-	void setresult (bool success, PARAM_STRING msg);
+struct _F_sendfile_var: public _F_sendfile_common {
 	#define _F_sendfile_var_start(x) void x start(const char *filepath, const BOB_TYPE &content, bool more)
 	virtual _F_sendfile_var_start( )=0;
 	#define _F_sendfile_var_rest(x) void x rest(const string &handle, const BOB_TYPE &content, bool more)
