@@ -84,11 +84,9 @@ static W_SSTRING new_email ("new_email");
 static W_SSTRING new_password1 ("new_password1");
 static W_SSTRING new_password2 ("new_password2");
 
-static W_SSTRING w_title("title");
 static W_SSTRING w_content("content");
+static W_SSTRING w_filename("filename");
 static W_SSTRING w_confirm("confirm");
-static W_UNSIGNED w_preview("preview");
-static W_UNSIGNED w_validate("validate");
 
 static W_SSTRING w_public("public");
 
@@ -110,15 +108,30 @@ static W_SSTRING  w_webtab_add("webtab_add");
 
 #define _TLMP_webtabs
 struct _F_webtabs {
-	#define _F_webtabs_docstyle1(x) void x docstyle1(const char *id)
+	bool redo;
+	string curid;	// ID of the active tab
+	_F_webtabs(){
+		redo = false;
+	}
+	void setid (PARAM_STRING id);	// Change the ID of the active TAB
+	void redotab ();		// Ask webtabs to redraw the current TAB
+	#define _F_webtabs_docstyle1(x) void x docstyle1(const char *id, const char *formid)
 	virtual _F_webtabs_docstyle1( )=0;
-	#define _F_webtabs_docstyle2(x) void x docstyle2(const char *id)
+	#define _F_webtabs_docstyle2(x) void x docstyle2(const char *id, const char *formid)
 	virtual _F_webtabs_docstyle2( );
-	#define _F_webtabs_docstyle3(x) void x docstyle3(const char *id)
+	#define _F_webtabs_docstyle3(x) void x docstyle3(const char *id, const char *formid)
 	virtual _F_webtabs_docstyle3( );
-	#define _F_webtabs_docstyle4(x) void x docstyle4(const char *id)
+	#define _F_webtabs_docstyle4(x) void x docstyle4(const char *id, const char *formid)
 	virtual _F_webtabs_docstyle4( );
 };
+void _F_webtabs::setid (PARAM_STRING id)
+{
+	curid = id.ptr;
+}
+void _F_webtabs::redotab ()
+{
+	redo = true;
+}
 static string toupper (const char *s)
 {
 	string ret;
@@ -153,13 +166,13 @@ static void webtab_aref (const char *title, int tab)
 	string href = string_f ("%s?%s%swebtab=%d",tlmpweb_curpage(),hidden.c_str(),sep,tab);
 	webtab_href (title,href);
 }
-void _F_webtabs::docstyle2(const char *id)
+void _F_webtabs::docstyle2(const char *id, const char *formid)
 {
 }
-void _F_webtabs::docstyle3(const char *id)
+void _F_webtabs::docstyle3(const char *id, const char *formid)
 {
 }
-void _F_webtabs::docstyle4(const char *id)
+void _F_webtabs::docstyle4(const char *id, const char *formid)
 {
 }
 struct TABSEL {
@@ -169,6 +182,7 @@ struct TABSEL {
 		no = 0;
 	}
 };
+#define WEBTAB_MARK '*'
 <mod>
 static void webtabs(_F_webtabs &c,
 	const char *name,
@@ -212,7 +226,7 @@ static void webtabs(_F_webtabs &c,
 				}
 			}
 			const char *id = tabs[delete_tab].tab.c_str();
-			tlmpweb_deleteform(id+2);
+			tlmpweb_deleteform(id);
 			tabs.erase (tabs.begin()+delete_tab);
 			w_webtab = 0;
 		}
@@ -252,6 +266,50 @@ static void webtabs(_F_webtabs &c,
 			glocal.sel.no = default_sel.no;
 		}
 	}
+	// We draw the tab content before drawing the tabs because the tabs may change
+	vector<string> lines;
+	tlmpweb_pushgrab(lines);
+	if (glocal.sel.id.size() > 0){
+		while (1){
+			w_webtab = glocal.sel.no;
+			FORM_HIDDEN t(w_webtab);
+			const char *id = glocal.sel.id.c_str();
+			const char *id_2 = id+2;
+			const char *end = strchr(id_2,WEBTAB_MARK);
+			string tmp;
+			if (end != NULL){
+				tmp = string(id_2,end-id_2);
+				id_2 = tmp.c_str();
+			}
+			c.curid = id_2;
+			if (strncmp(id,"1:",2)==0){
+				c.docstyle1(id_2,id);
+			}else if (strncmp(id,"2:",2)==0){
+				c.docstyle2(id_2,id);
+			}else if (strncmp(id,"3:",2)==0){
+				c.docstyle3(id_2,id);
+			}else if (strncmp(id,"4:",2)==0){
+				c.docstyle4(id_2,id);
+			}else{
+				c.docstyle1(id,id);
+			}
+			if (strcmp(id_2,c.curid.c_str())!=0){
+				// setid was called;
+				for (auto &t:tabs){
+					if (t.tab == glocal.sel.id){
+						t.tab = string(id,2)+c.curid;
+						glocal.sel.id = t.tab;
+						break;
+					}
+				}
+			}
+			if (!c.redo) break;
+			c.redo = false;
+			lines.clear();
+		}
+				
+	}
+	tlmpweb_popgrab();
 	/- <table border=0 width=100% height=100%>
 	/- <tr><td height=1% valign=top>
 	<call button_row>(0,"white");
@@ -275,23 +333,7 @@ static void webtabs(_F_webtabs &c,
 	</f>
 	</call>
 	/- <tr><td valign=top>
-	if (glocal.sel.id.size() > 0){
-		w_webtab = glocal.sel.no;
-		FORM_HIDDEN t(w_webtab);
-		const char *id = glocal.sel.id.c_str();
-		const char *id_2 = id+2;
-		if (strncmp(id,"1:",2)==0){
-			c.docstyle1(id_2);
-		}else if (strncmp(id,"2:",2)==0){
-			c.docstyle2(id_2);
-		}else if (strncmp(id,"3:",2)==0){
-			c.docstyle3(id_2);
-		}else if (strncmp(id,"4:",2)==0){
-			c.docstyle4(id_2);
-		}else{
-			c.docstyle1(id);
-		}
-	}
+	htmlout (lines);
 	/- </table>
 }
 </mod>
@@ -1018,6 +1060,18 @@ static void index_delete_new_from_old(const vector<string> &news, vector<string>
 	}
 }
 <mod>
+static ENTRY_TYPE index_entrytype(CONNECT_INFO &con,PARAM_STRING path)
+{
+	glocal ENTRY_TYPE ret = ENTRY_NONE;
+	<call bod_client_stat>(con,w_session.c_str(),path,"");
+	<f ok>
+		glocal.ret = file.type;
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+<mod>
 extern "C" void webmain_real()
 {
 	glocal bool account_confirmed = false;
@@ -1408,7 +1462,7 @@ tlmp_error ("restore %s %d\n",formid,glocal.ret);
 				glocal const char *id = id;
 				glocal string path = string_f ("/projects/%s",id);
 				//htmlprintf ("Project %s<br>\n",glocal.path.c_str());
-				<call form>(id);
+				<call form>(formid);
 				<f top>
 					/- <table border=0>
 				</f>
@@ -1418,6 +1472,8 @@ tlmp_error ("restore %s %d\n",formid,glocal.ret);
 				<f setup>
 					/- <tr><td>New folder
 					field_string (w_folder,"size=30");
+					/- <tr><td>
+					url_self (string_f("webtab_add=2:%s%c%ld",glocal.id,WEBTAB_MARK,time(NULL)),"Create a new document");
 					/- <tr><td>Upload file
 					field_file (w_upload);
 					/- <tr><td>
@@ -1535,36 +1591,64 @@ tlmp_error ("restore %s %d\n",formid,glocal.ret);
 				glocal.curtab = id;
 				glocal const char *filename = id;
 				glocal string path = string_f("/projects/%s",glocal.filename);
-				<call form>(id);
+				glocal bool newdocument = false;
+				if (index_entrytype(glocal.con,glocal.path)==ENTRY_DIR) glocal.newdocument = true;
+				<call form>(formid);
 				<f top>
 					/- <table border=0>
-					/- <tr><td align=left>
-					htmlprintf ("<font size=+1>%s</font>",glocal.filename);
-					/- <td align=right>
-					button_submit("Save");
 				</f>
 				<f bottom>
 					/- </table>
 				</f>
 				<f load>
-					index_loadfile(glocal.con,glocal.path,w_content);
+					if (!glocal.newdocument){
+						index_loadfile(glocal.con,glocal.path,w_content);
+					}
 				</f>
 				<f setup>
+					/- <tr><td align=left>
+					if (glocal.newdocument){
+						/- New document name&nbsp;
+						field_string (w_filename,"size=30");	
+					}else{
+						htmlprintf ("Document name:&nbsp;<font size=+1>%s</font>",glocal.filename);
+					}
+					/- <td align=right>
+					button_submit("Save");
 					/- <tr><td colspan=2>
 					field_textarea(w_content,50,120,"");
 				</f>
 				<f validate>
-					return true;
+					bool ret = true;
+					if (glocal.newdocument){
+						if (strcmp(w_filename.c_str(),"")==0){
+							/- You must provide a file name
+							ret = false;
+						}else if (index_entrytype(glocal.con,string_f("%s/%s",glocal.path.c_str(),w_filename.c_str()))!=ENTRY_NONE){
+							/- Document already exist
+							ret = false;
+						}
+					}
+					return ret;
 				</f>
 				<f process>
 					<call sendfile_var>(glocal.path,w_content,fail);	
 					<f start>
-						<call bod_client_modifyfile_bob>(glocal.con,w_session.c_str(),filepath,content,more);
-						<f ok>
-							glocal.sendfile_var.setresult(success,msg);
-							glocal.sendfile_var.sethandle(handle);
-						</f>
-						</call>
+						if (glocal.newdocument){
+							<call bod_client_addfile_bob>(glocal.con,w_session.c_str(),string_f("%s/%s",glocal.path.c_str(),w_filename.c_str()),content,more);
+							<f ok>
+								glocal.sendfile_var.setresult(success,msg);
+								glocal.sendfile_var.sethandle(handle);
+							</f>
+							</call>
+						}else{
+							<call bod_client_modifyfile_bob>(glocal.con,w_session.c_str(),filepath,content,more);
+							<f ok>
+								glocal.sendfile_var.setresult(success,msg);
+								glocal.sendfile_var.sethandle(handle);
+							</f>
+							</call>
+						}
 					</f>
 					<f rest>
 						<call bod_client_appendfile>(glocal.con,w_session.c_str(),handle,content,more);
@@ -1574,7 +1658,16 @@ tlmp_error ("restore %s %d\n",formid,glocal.ret);
 						</call>
 					</f>
 					</call>
-					keepediting = true;
+					if (!fail){
+						if (glocal.newdocument){
+							glocal.webtabs.setid (string_f("%s/%s",glocal.filename,w_filename.c_str()));
+							glocal.webtabs.redotab();
+							resetstate();
+							//tlmpweb_resetvar("content");
+						}else{
+							keepediting = true;
+						}
+					}
 				</f>
 				</call>
 			</f>
@@ -1747,7 +1840,7 @@ tlmp_error ("restore %s %d\n",formid,glocal.ret);
 				glocal string groupowner = tb[0];
 				glocal string groupname = tb[1];
 				/- <table border=0 align=left width=40%>
-				<call form>(id);
+				<call form>(formid);
 				<f setup>
 					/- <tr><td colspan=2>
 					field_textarea (w_content,5,60,"");
