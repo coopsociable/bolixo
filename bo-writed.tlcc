@@ -294,22 +294,18 @@ static void bo_writed_set_msgid(string &msgid, const char *replyto)
 <mod>
 static string bo_writed_sign (CONNECT_INFO &con_keys, unsigned userid, PARAM_STRING content)
 {
-	glocal string content = content.ptr;
-	if (glocal.content.size() > 0){
-		size_t last = glocal.content.size()-1;
-		if (glocal.content[last] != '\n') glocal.content += '\n';
-	}
+	glocal string ret;
 	// Sign the message
-	<call bo_keysd_control_sign>(con_keys,userid,glocal.content);
+	<call bo_keysd_control_sign>(con_keys,userid,content);
 	<f ok>
 		if (status == ERR_CODE_NONE){
-			glocal.content += string("------\n") + sign;
+			glocal.ret = sign;
 		}else{
 			tlmp_error ("Can't sign message: status=%d %s\n",status,msg);
 		}
 	</f>
 	</call>
-	return glocal.content;
+	return glocal.ret;
 }
 </mod>
 
@@ -408,7 +404,7 @@ static int bo_writed_project_msg(
 			if (dirid != -1){
 				int outbox_id = fs_find_outbox(glocal.userid,username,msg);
 				if (outbox_id != -1){
-					glocal string content = bo_writed_sign (con_keys,glocal.userid,content);
+					string sign = bo_writed_sign (con_keys,glocal.userid,content);
 					int fileid = fs_newid (glocal.userid,listid,'r',msg,msgid);
 					if (fileid != -1){
 						char now[20];
@@ -416,8 +412,8 @@ static int bo_writed_project_msg(
 						bo_writed_set_msgid (msgid,replyto);
 						if (fs_insert_file(outbox_id,fileid,now,msgid)==-1){
 							msg = "Outbox internal error (dirs_content table)";
-						}else if (sql_action("insert into files (id,modified,title,content,filetype) values (%d,'%s','%s','%s',%u)"
-							,fileid,now,title,glocal.content.c_str(),FILE_TEXT)==-1){
+						}else if (sql_action("insert into files (id,modified,title,content,filetype,signature) values (%d,'%s','%s','%s',%u,'%s')"
+							,fileid,now,title,content,FILE_TEXT,sign.c_str())==-1){
 							msg = "Internal error (files table)";
 						}else if (fs_insert_entry(dirid,fileid,now,msgid,ENTRY_MSG)==-1){
 							msg = "Project inbox internal error (dirs_content table)";
@@ -494,7 +490,7 @@ static void bo_writed_sendmsg (
 			if (msg.size() == 0){
 				int outbox_id = fs_find_outbox(glocal.userid,username,msg);
 				if (outbox_id != -1){
-					glocal string content = bo_writed_sign (con_keys,glocal.userid,content);
+					string sign = bo_writed_sign (con_keys,glocal.userid,content);
 					// All messages are member of group #all, with listmode='r'
 					// But access is controlled by the parent directory
 					int fileid = fs_newid (glocal.userid,0,'r',msg,msgid);
@@ -504,8 +500,9 @@ static void bo_writed_sendmsg (
 						bo_writed_set_msgid (msgid,replyto);
 						if (fs_insert_file(outbox_id,fileid,now,msgid)==-1){
 							msg = "Internal error (dirs_content table)";
-						}else if (sql_action("insert into files (id,modified,filetype,title,content) values (%d,'%s',%u,'%s','%s')"
-							,fileid,now,FILE_TEXT,title,glocal.content.c_str())==-1){
+						}else if (sql_action("insert into files (id,modified,filetype,title,content,signature)"
+							" values (%d,'%s',%u,'%s','%s','%s')"
+							,fileid,now,FILE_TEXT,title,content,sign.c_str())==-1){
 							msg = "Internal error (files table)";
 						}else{
 							for (unsigned i=0; i<glocal.r_userids.size(); i++){
@@ -526,6 +523,18 @@ static void bo_writed_sendmsg (
 	}
 }
 </mod>
+static bool bo_writed_is_text (const BOB_TYPE &content)
+{
+	bool ret = true;
+	const unsigned char *pt = (const unsigned char*) content.getbuffer();
+	for (unsigned i=0; i<content.getsize(); i++,pt++){
+		if (*pt < ' ' && (*pt != '\n' && *pt != '\r' && *pt != '\t')){
+			ret = false;
+			break;
+		}
+	}
+	return ret;
+}
 /*
 	Tries to identify the file type from its early content or name
 */
@@ -570,15 +579,10 @@ static FILE_TYPE bo_writed_file_type (PARAM_STRING name, const BOB_TYPE &content
 			file_type = FILE_VIDEO;
 		}else{
 			// Check if this is a text
-			const unsigned char *pt = buf;
-			file_type = FILE_TEXT;
-			for (unsigned i=0; i<content.getsize(); i++,pt++){
-				if (*pt < ' ' && (*pt != '\n' && *pt != '\r' && *pt != '\t')){
-					file_type = FILE_UNKNOWN;
-					break;
-				}
-			}
+			if (bo_writed_is_text(content)) file_type = FILE_TEXT;
 		}
+	}else{
+		if (bo_writed_is_text(content)) file_type = FILE_TEXT;
 	}
 	if (file_type == FILE_UNKNOWN){
 		const char *ext = strrchr(name.ptr,'.');
@@ -621,15 +625,16 @@ static int bo_writed_addfile_bob (
 		FILE_TYPE file_type = bo_writed_file_type (basename,content,more);
 		const char *content_str = NULL;
 		string tmp;
+		string sign;
 		if (!more && file_type == FILE_TEXT){
 			tmp = string((const char *) content.getbuffer(),content.getsize());
-			tmp = bo_writed_sign (con_keys,userid,tmp);
+			sign = bo_writed_sign (con_keys,userid,tmp);
 			content_str = tmp.c_str();
 		}
 		if (fs_insert_entry(dirid,fileid,now,basename,type)==-1){
 			msg = "Internal error (dirs_files table)";
-		}else if (sql_action("insert into files (id,modified,filetype,content) values (%d,'%s',%u,'%s')"
-			,fileid,now,file_type,content_str)==-1){
+		}else if (sql_action("insert into files (id,modified,filetype,content,signature) values (%d,'%s',%u,'%s','%s')"
+			,fileid,now,file_type,content_str,sign.c_str())==-1){
 			msg = "Internal error (files table)";
 		}else if (content_str == NULL){
 			FILE *fout = fs_alloc_file_handle (fileid,now,"w",handle,sessionid);
@@ -1156,10 +1161,11 @@ int main (int argc, char *argv[])
 						if (fileid != -1){
 							char now[20];
 							fs_set_now(now);
+							string sign = bo_writed_sign (glocal.con_keys,entry.userid,content);
 							if (fs_insert_file(entry.dirid,fileid,now,entry.basename)==-1){
 								entry.msg = "Internal error (dirs_files table)";
-							}else if (sql_action("insert into files (id,modified,filetype,content) values (%d,'%s',%u,'%s')"
-								,fileid,now,FILE_TEXT,content)==-1){
+							}else if (sql_action("insert into files (id,modified,filetype,content,signature) values (%d,'%s',%u,'%s','%s')"
+								,fileid,now,FILE_TEXT,content,sign.c_str())==-1){
 								entry.msg = "Internal error (files table)";
 							}
 						}
@@ -1235,10 +1241,11 @@ int main (int argc, char *argv[])
 						}else{
 							char now[20];
 							fs_set_now(now);
+							string sign = bo_writed_sign (glocal.con_keys,entry.userid,content);
 							if (fs_insert_file (entry.dirid,entry.entryid,now,entry.basename)==-1){
 								rep_modifyfile (false,"Internal error (dirs_files table)");
-							}else if (sql_action("insert into files (id,modified,filetype,content) values (%d,'%s',%u,'%s')"
-								,entry.entryid,now,FILE_TEXT,content)==-1){
+							}else if (sql_action("insert into files (id,modified,filetype,content,signature) values (%d,'%s',%u,'%s','%s')"
+								,entry.entryid,now,FILE_TEXT,content,sign.c_str())==-1){
 								rep_modifyfile (false,"Internal error (files table)");
 							}else{
 								rep_modifyfile (true,"Ok");

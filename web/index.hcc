@@ -266,9 +266,17 @@ static void webtabs(_F_webtabs &c,
 			glocal.sel.no = default_sel.no;
 		}
 	}
+	bool draw_ok = true;
+	if (!tlmpweb_get_output_state()){
+		// PATCH
+		// This is a trick to allow the webtable::click system to work
+		// inside a vframe2h. We assume this is only used on the right side for now.
+		draw_ok = false;
+	}
+
 	// We draw the tab content before drawing the tabs because the tabs may change
 	vector<string> lines;
-	tlmpweb_pushgrab(lines);
+	if (draw_ok) tlmpweb_pushgrab(lines);
 	if (glocal.sel.id.size() > 0){
 		while (1){
 			w_webtab = glocal.sel.no;
@@ -293,6 +301,7 @@ static void webtabs(_F_webtabs &c,
 			}else{
 				c.docstyle1(id,id);
 			}
+			if (!draw_ok) break;
 			if (strcmp(id_2,c.curid.c_str())!=0){
 				// setid was called;
 				for (auto &t:tabs){
@@ -309,6 +318,7 @@ static void webtabs(_F_webtabs &c,
 		}
 				
 	}
+	if (draw_ok){
 	tlmpweb_popgrab();
 	/- <table border=0 width=100% height=100%>
 	/- <tr><td height=1% valign=top>
@@ -335,6 +345,7 @@ static void webtabs(_F_webtabs &c,
 	/- <tr><td valign=top>
 	htmlout (lines);
 	/- </table>
+	}
 }
 </mod>
 void webtabs(_F_webtabs &c,

@@ -352,7 +352,10 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 			modified datetime default current_timestamp,
 			filetype tinyint unsigned default 0,
 			title varchar(200),
-			content text
+			content text,
+			signature varchar(400),
+			copiedby int default 0,
+			modifiedby int default 0
 		)engine=$ENGINE;
 		create index files_id on files (id);
 
