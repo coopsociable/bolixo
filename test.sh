@@ -382,7 +382,7 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 			role varchar(20) default null,
 			access char
 		)engine=$ENGINE;
-		create index group_members_id on group_members (groupid);
+		create unique index group_members_id on group_members (groupid,userid);
 		create table group_lists(
 			id int primary key auto_increment,
 			ownerid int,

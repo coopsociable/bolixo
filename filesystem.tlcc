@@ -492,24 +492,28 @@ void fs_delete_handle (PARAM_STRING handle)
 }
 
 <mod>
-void fs_list_inboxes (unsigned userid, vector<INBOX> &inboxes, vector<unsigned> &listids)
+void fs_list_inboxes (unsigned userid, vector<INBOX> &inboxes, vector<unsigned> &listids, bool showroles)
 {
 	glocal vector<INBOX> *inboxes = &inboxes;
 	glocal vector<unsigned> *listids = &listids;
-	<call sql_query>("select distinct id2name.name,group_lists.name,group_members.role,group_lists.id"
+	glocal bool showroles = showroles;
+	const char *rolestr = showroles ? ",group_members.role" : "";
+	<call sql_query>("select distinct id2name.name,group_lists.name,group_lists.id%s"
 		" from group_members"
 		" join group_list_members on group_list_members.groupid = group_members.groupid"
 		" join group_lists on group_list_members.group_list_id=group_lists.id"
 		" join id2name on group_lists.ownerid=id2name.userid"
-		" where group_members.userid = %u and group_lists.name not like '#%%'"
-		" order by id2name.name,group_lists.name,group_members.role",userid);
+		" join groups on groups.id = group_members.groupid"
+		" where group_members.userid = %u and group_lists.name not like '#%%' and groups.name != 'contacts'"
+		" order by id2name.name,group_lists.name,group_members.role"
+		,rolestr,userid);
 	<f onerow>
 		INBOX inb;
 		inb.manager = row[0];
 		inb.project = row[1];
-		inb.role = row[2];
+		if (glocal.showroles && row[3] != NULL) inb.role = row[3];
 		glocal.inboxes->push_back(inb);
-		glocal.listids->push_back(atoi(row[3]));
+		glocal.listids->push_back(atoi(row[2]));
 	</f>
 	</call>
 }

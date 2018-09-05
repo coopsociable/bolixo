@@ -30,7 +30,7 @@ elif [ "$1" = "sequence" ] ; then
 	if [ "$NB" = "" ] ; then
 		NB=5
 	fi
-	$0 reset
+	#$0 reset
 	# Make sure user A B C are in contact list of each other
 	./bofs -u  jacques-A misc -r -u jacques-B
 	./bofs -u  jacques-A misc -r -u jacques-C
@@ -47,10 +47,7 @@ elif [ "$1" = "sequence" ] ; then
 	# test-sequence removes user E and F
 	for letter in A B C D G H I J K L M N O P Q R S T U V W X Y Z
 	do
-		./bofs -u jacques-$letter groups --create-group-list -L public 
-		./bofs -u jacques-$letter groups --set-list-desc -D "public list for jacques-$letter" -L public 
 		./bofs -u jacques-$letter groups --create-project-dir -L public
-		#./bofs -u jacques-$letter groups -a -L "#all" -M R /projects/jacques-$letter/public
 		if [ -x /usr/bin/convert ]; then
 			convert -font helvetica -size 40x40 xc:white -pointsize 37 -draw "text 5,32 '$letter'" /tmp/mini-photo.jpg
 			./bofs -u jacques-$letter cp /tmp/mini-photo.jpg bo://projects/jacques-$letter/public/mini-photo.jpg
@@ -79,13 +76,11 @@ elif [ "$1" = "sequence" ] ; then
 	./bofs -u jacques-C groups --create-group -G Cgroup1
 	./bofs -u jacques-A groups --create-group -G common
 	./bofs -u jacques-B groups --create-group -G common
-
 	./bofs -u jacques-A groups --set-group -L public -G Agroup1 -A W
 	./bofs -u jacques-A groups --set-group -L Alist1 -G Agroup1 -A R
 	./bofs -u admin     groups --set-group -L Alonglist2 -G Agroup1 -A W --owner jacques-A
 	./bofs -u jacques-B groups --set-group -L Blist1 -G Bgroup1 -A R
 	./bofs -u jacques-C groups --set-group -L Clist1 -G Cgroup1 -A R
-
 	./bofs -u jacques-A groups --set-member -G Agroup1 -U jacques-A -AR -Rdba
 	./bofs -u admin     groups --set-member -G Agroup1 -U jacques-B -AW -R "" --owner jacques-A
 	./bofs -u jacques-A groups --set-member -G Agroup1 -U jacques-C -A" " -R ""

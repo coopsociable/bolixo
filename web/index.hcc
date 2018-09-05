@@ -751,7 +751,8 @@ static void profile_setstyle(_F_webtable *c)
 {
 	c->settableparms ("border=0");
 	c->setthparms ("bgcolor=lightgray","");
-	c->setrowstyle ("sep","bgcolor=lightblue\tbgcolor=lightblue");
+	c->setrowstyle ("sep","bgcolor=ghostwhite");
+	c->setrowstyle ("sep+current","bgcolor=lightblue");
 	c->setrowstyle ("white","bgcolor=white");
 	c->setrowstyle ("white+current","bgcolor=lightblue");
 }
@@ -1445,7 +1446,7 @@ tlmp_error ("restore %s %d\n",formid,glocal.ret);
 			</f>
 			<f load>
 				sethead ("Owner\tProject");
-				<call bod_client_list_inboxes>(glocal.con,w_session.c_str(),"");
+				<call bod_client_list_inboxes>(glocal.con,w_session.c_str(),"",false);
 				<f ok>
 					for (auto &inb:inboxes){
 						string id = string_f("%s/%s",inb.manager,inb.project);
@@ -1699,7 +1700,7 @@ tlmp_error ("restore %s %d\n",formid,glocal.ret);
 				sethead ("Owner\tProject");
 				setclickopt (true,"","webtab_add=1:INBOX");
 				setrow ("white",0,"\tINBOX");
-				<call bod_client_list_inboxes>(glocal.con,w_session.c_str(),"");
+				<call bod_client_list_inboxes>(glocal.con,w_session.c_str(),"",true);
 				<f ok>
 					for (auto s:inboxes){
 						string add = string_f("webtab_add=1:%s",s.project);
@@ -1939,7 +1940,7 @@ tlmp_error ("restore %s %d\n",formid,glocal.ret);
 				<f left>
 					url_self ("add=1","Create a new list");
 					/- <p>
-					<call webtable>("projects","100%");
+					<call webtable>("projects","100%",currents["projects"]);
 					<f init>
 						profile_setstyle(this);
 					</f>
@@ -1947,16 +1948,18 @@ tlmp_error ("restore %s %d\n",formid,glocal.ret);
 						sethead ("Project\tMembers\tAccess");
 						<call bod_client_list_lists>(glocal.con,w_session.c_str(),"");
 						<f ok>
+							unsigned rownum=0;
 							for (auto &l:lists){
 								if (l.name[0] != '#'){
 									string add = string_f("list=%s",l.name);
 									glocal.webtable.setclickopt (true,"",add);
-									glocal.webtable.setrow ("sep",0,"%s\t%s\a",l.name,l.description);
+									glocal.webtable.setrow ("sep",rownum,"%s\t%s\a",l.name,l.description);
 									glocal.webtable.setclickopt (false,"","");
 									for (unsigned i=0; i<l.groups.size(); i++){
-										glocal.webtable.setrow("white",0,"\t%s\t%s",l.groups[i],l.access[i]);
+										glocal.webtable.setrow("white",-1,"\t%s\t%s",l.groups[i],l.access[i]);
 									}
 								}
+								rownum++;
 							}
 							
 						</f>
@@ -1966,7 +1969,7 @@ tlmp_error ("restore %s %d\n",formid,glocal.ret);
 				</f>
 				<f right>
 					if (w_list.isset() || w_add.isset()){
-						<call form>("project");
+						<call form>(string_f("project:%s",w_list.c_str()));
 						<f top>
 							/- <table border=0><tr><td>&nbsp;&nbsp;&nbsp;<td><table border=0>
 							if (w_add != 1) htmlprintf ("<tr><td>Project<td><font size=+2>%s</font><p>\n",w_list.c_str());
@@ -2111,7 +2114,7 @@ tlmp_error ("restore %s %d\n",formid,glocal.ret);
 				<f left>
 					url_self ("add=1","Create a new group");
 					/- <p>
-					<call webtable>("groups","100%");
+					<call webtable>("groups","100%",currents["groups"]);
 					<f init>
 						profile_setstyle(this);
 					</f>
@@ -2119,14 +2122,16 @@ tlmp_error ("restore %s %d\n",formid,glocal.ret);
 						sethead ("Group\tMembers\tAccess\tRole");
 						<call bod_client_list_groups>(glocal.con,w_session.c_str(),"",true);
 						<f ok>
+							unsigned rownum=0;
 							for (auto &g:groups){
 								string add = string_f("group=%s",g.name);
 								glocal.webtable.setclickopt (true,"",add);
-								glocal.webtable.setrow ("sep",0,"%s\t%s\a\a",g.name,g.description);
+								glocal.webtable.setrow ("sep",rownum,"%s\t%s\a\a",g.name,g.description);
 								glocal.webtable.setclickopt (false,"","");
 								for (unsigned i=0; i<g.users.size(); i++){
-									glocal.webtable.setrow("white",0,"\t%s\t%s\t%s",g.users[i],g.access[i],g.roles[i]);
+									glocal.webtable.setrow("white",-1,"\t%s\t%s\t%s",g.users[i],g.access[i],g.roles[i]);
 								}
+								rownum++;
 							}
 						</f>
 						</call>
@@ -2135,7 +2140,7 @@ tlmp_error ("restore %s %d\n",formid,glocal.ret);
 				</f>
 				<f right>
 					if (w_group.isset() || w_add.isset()){
-						<call form>("group");
+						<call form>(string_f("group:%s",w_group.c_str()));
 						<f top>
 							/- <table border=0><tr><td>&nbsp;&nbsp;&nbsp;<td><table border=0>
 							if (w_add != 1) htmlprintf ("<tr><td>Group<td><font size=+2>%s</font><p>\n",w_group.c_str());
@@ -2276,7 +2281,7 @@ tlmp_error ("restore %s %d\n",formid,glocal.ret);
 				<f left>
 					url_self ("add=1","Send a new contact request");
 					/- <p>
-					<call webtable>("contacts","100%",currents["contacts"],offsets["contacts"],20);
+					<call webtable>("contacts","100%",currents["contacts"],offsets["contacts"],30);
 					<f init>
 						profile_setstyle(this);
 					</f>
@@ -2285,9 +2290,11 @@ tlmp_error ("restore %s %d\n",formid,glocal.ret);
 						<call bod_client_contact_list>(glocal.con,w_session.c_str(),"",nbskip,nblines);
 						<f ok>
 							static const char *tbstatus[]={"waiting","accepted","rejected"};
+							unsigned rownum = 0;
 							for (auto &c:contacts){
-								glocal.webtable.setclickopt (true,"",string_f("user=%s",c.user));
-								glocal.webtable.setrow("white",0,"%s\t%s\t%s",c.user,c.reqdate,tbstatus[c.status]);
+								glocal.webtable.setclickopt (true,"",string_f("user=%u:%s",rownum,c.user));
+								glocal.webtable.setrow("white",rownum,"%s\t%s\t%s",c.user,c.reqdate,tbstatus[c.status]);
+								rownum++;
 							}
 						</f>
 						</call>
@@ -2340,7 +2347,10 @@ tlmp_error ("restore %s %d\n",formid,glocal.ret);
 					}else if (w_user.isset()){
 						glocal bool done = false;
 						glocal CONTACT_STATUS status = CONTACT_WAITING;
-						<call form>("managecontact");
+						glocal string user;
+						const char *pt = strchr(w_user.c_str(),':');
+						if (pt != NULL) glocal.user = pt+1;
+						<call form>(string_f("managecontact:%s",w_user.c_str()));
 						<f top>
 							/- <table border=0><tr><td>&nbsp;&nbsp;&nbsp;<td><table border=0>
 							/- <tr><td><td>
@@ -2349,10 +2359,23 @@ tlmp_error ("restore %s %d\n",formid,glocal.ret);
 						<f bottom>
 							/- </table></table>
 						</f>
+						<f load>
+							unsigned rownum = atoi(w_user.c_str());
+							<call bod_client_contact_list>(glocal.con,w_session.c_str(),"",rownum,1);
+							<f ok>
+								if (contacts.size() == 1){
+									auto &c = contacts[0];
+									w_content = c.message;
+								}
+							</f>
+							</call>
+						</f>
 						<f setup>
 							field_hidden(w_user);
 							/- <tr><td>Request from<td>
-							htmlout (w_user.c_str());
+							htmlout (glocal.user);
+							/- <tr><td valign=top>Message<td>
+							field_textarea(w_content,5,60,"readonly");
 							/- <tr><td>Accept request<td>
 							field_radio(w_accept,"accept",true,"");
 							/- <tr><td>Refuse request<td>
@@ -2374,7 +2397,7 @@ tlmp_error ("restore %s %d\n",formid,glocal.ret);
 								/- Invalid input ???
 							}
 							if (!glocal.fail){
-								<call bod_client_contact_manage>(glocal.con,w_session.c_str(),"",w_user.c_str(),glocal.status);
+								<call bod_client_contact_manage>(glocal.con,w_session.c_str(),"",glocal.user.c_str(),glocal.status);
 								<f ok>
 									if (!success){
 										glocal.fail = true;
