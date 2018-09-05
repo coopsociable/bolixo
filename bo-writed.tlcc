@@ -653,18 +653,18 @@ static int bo_writed_addfile_bob (
 	}
 	return fileid;
 }
-static int bo_writed_create_group_list(unsigned userid, const char *listname)
+static int bo_writed_create_group_list(unsigned userid, const char *listname, const char *description)
 {
-	return sql_action("insert into group_lists (ownerid,name) values (%u,'%s')",userid,listname);
+	return sql_action("insert into group_lists (ownerid,name,description) values (%u,'%s','%s')",userid,listname,description);
 }
 <mod>
-static int bo_writed_create_group (unsigned userid, const char *groupname, bool create_dash_list, string &msg)
+static int bo_writed_create_group (unsigned userid, const char *groupname, bool create_dash_list, const char *description, string &msg)
 {
 	glocal int ret = -1;
 	glocal const char *groupname = groupname;
 	glocal string *msg = &msg;
 	glocal unsigned userid = userid;
-	if (sql_action("insert into groups (ownerid,name) values (%u,'%s')",userid,groupname)==-1){
+	if (sql_action("insert into groups (ownerid,name,description) values (%u,'%s','%s')",userid,groupname,description)==-1){
 		msg = "Internal error (group_lists table)";
 	}else{
 		glocal.ret = 0;
@@ -1130,10 +1130,12 @@ int main (int argc, char *argv[])
 						if (sql_action(*glocal.usq,"update users set confirmed=now() where userid=%u",userid)!=-1){
 							glocal.bo_writed_client.rep_confirmuser(true,"New user confirmed");
 							bo_log_confirmuser (glocal.flog,glocal.confirmid,time(NULL));
-							bo_writed_create_group_list(userid,"public");
+							bo_writed_create_group_list(userid,"public","Public view");
 							string msg;
-							bo_writed_create_group (userid,"contacts",false,msg);
+							bo_writed_create_group (userid,"contacts",false,"",msg);
 							bo_writed_set_group(userid,"public","contacts","R",msg);
+							bo_writed_create_group (userid,"public",true,"Public view",msg);
+							bo_writed_set_group(userid,"public","public","R",msg);
 						}else{
 							glocal.bo_writed_client.rep_confirmuser(false,"Error, can't confirm new user");
 						}
@@ -1577,7 +1579,7 @@ int main (int argc, char *argv[])
 								glocal.msg = "Group list alreay exist";
 							</f>
 							<f empty>
-								if (bo_writed_create_group_list(glocal.userid,glocal.listname)==-1){
+								if (bo_writed_create_group_list(glocal.userid,glocal.listname,"")==-1){
 									glocal.msg = "Internal error (group_lists table)";
 								}else{
 									glocal.msg = "";
@@ -1604,7 +1606,7 @@ int main (int argc, char *argv[])
 								glocal.msg = "Group alreay exist";
 							</f>
 							<f empty>
-								bo_writed_create_group(glocal.userid,glocal.groupname,true,glocal.msg);
+								bo_writed_create_group(glocal.userid,glocal.groupname,true,"",glocal.msg);
 							</f>
 							</call> 
 						}

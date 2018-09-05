@@ -1865,19 +1865,23 @@ tlmp_error ("restore %s %d\n",formid,glocal.ret);
 					return true;
 				</f>
 				<f process>
+					glocal bool fail = false;
 					if (w_content.size() > 0){
 						BOB_TYPE bob;
 						bob.setbuffer (w_content.c_str(),w_content.size(),false);
 						<call bod_client_sendtalk>(glocal.con,w_session.c_str(),"",glocal.groupname,glocal.groupowner,bob,false);
 						<f ok>
-							if (!success) htmlprintf ("Can't send: %s<br>\n",msg);
+							if (!success){
+								htmlprintf ("Can't send: %s<br>\n",msg);
+								glocal.fail = true;
+							}
 						</f>
 						</call>
 						w_content.setempty();
 					}
 					if (strcmp(w_upload.c_str(),"")!=0){
 						const char *tempname = tlmpweb_getfilename(w_upload);
-						<call sendfile>("",tempname,fail);
+						<call sendfile>("",tempname,glocal.fail);
 						<f start>
 							<call bod_client_sendtalk>(glocal.con,w_session.c_str(),"",glocal.groupname,glocal.groupowner
 								,content,more);
@@ -1897,6 +1901,7 @@ tlmp_error ("restore %s %d\n",formid,glocal.ret);
 						</call>
 						if (!fail) w_upload.setempty();
 					}
+					fail = glocal.fail;
 					keepediting = true;
 				</f>
 				</call>
@@ -2552,6 +2557,7 @@ extern "C" void webmain()
 		/-ok
 		return;
 	}
+	long long start = fdpass_getnow();
 	<call tcpconnect>("unix:","/tmp/stop.sock",1);
 	<f init>
 	</f>
@@ -2563,6 +2569,16 @@ extern "C" void webmain()
 		webmain_real();
 	</f>
 	<f end>
+	</f>
+	</call>
+	long long end = fdpass_getnow();
+	glocal long long diff = end - start;
+	<call savefile>("/tmp/duration",true);
+	<f dowrite>
+		fprintf (fout,"%s?%s: %Ld.%06Ld\n"
+			,tlmpweb_curpage(),getenv ("QUERY_STRING")
+			,glocal.diff/1000000,glocal.diff%1000000);
+		return 0;
 	</f>
 	</call>
 }

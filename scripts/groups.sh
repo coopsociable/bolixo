@@ -56,9 +56,9 @@ elif [ "$1" = "sequence" ] ; then
 		fi
 	done
 	# We create a public project for user jacques-A allowing both jacques-A and jacques-B to contribute
-	./bofs -u jacques-A groups --create-group -G public
-	./bofs -u jacques-A groups --set-group-desc -D "public group for jacques-A" -G public 
-	./bofs -u jacques-A groups --set-group -L public -G public -A R
+	#./bofs -u jacques-A groups --create-group -G public
+	#./bofs -u jacques-A groups --set-group-desc -D "public group for jacques-A" -G public 
+	#./bofs -u jacques-A groups --set-group -L public -G public -A R
 	./bofs -u jacques-A groups --set-member -G public -U jacques-A -AW
 	./bofs -u jacques-A groups --set-member -G public -U jacques-B -AW
 
