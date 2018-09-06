@@ -942,7 +942,7 @@ static void index_show_shortmsg(
 					string path = string_f("/msgs/%s/short-inbox/%s/%s",glocal.groupowner,glocal.groupname,m.uuid);
 					if (m.content[0] != '\0'){
 						string tmp = index_format_shortmsg (m.content,5);
-						glocal.webtable.setrow("white",glocal.rownum,"\t%s\a",tmp.c_str());
+						glocal.webtable.setrow("image",glocal.rownum,"\t%s\a",tmp.c_str());
 					}else if (file_is_sound(m.file_type)){
 						glocal.webtable.setrow("image",glocal.rownum,"\t<audio controls>\n"
 							"<source src=\"%s?webstep=%u&image=%s\" type=\"audio/%s\">\n"
@@ -967,7 +967,7 @@ static void index_show_shortmsg(
 							}else{
 								string tmp = string((const char*)content.getbuffer(),content.getsize());
 								tmp = index_format_shortmsg (tmp.c_str(),5);
-								glocal.webtable.setrow("white",glocal.rownum,"\t%s\a",tmp.c_str());
+								glocal.webtable.setrow("image",glocal.rownum,"\t%s\a",tmp.c_str());
 							}
 						</f>
 						</call>
@@ -1187,14 +1187,14 @@ extern "C" void webmain_real()
 	<f webtableinit>
 		if (strncmp(tableid,"list:",5)==0){
 			c.settableparms ("border=0");
-			c.setrowstyle ("white+current","bgcolor=lightblue");
 		}else{
 			c.settableparms ("border=1");
 		}
-		c.setthparms ("bgcolor=lightgray","");
+		c.setthparms ("align=left bgcolor=lightgray","");
 		c.setrowstyle ("sep","bgcolor=ghostwhite");
 		c.setrowstyle ("sep+current","bgcolor=lightblue");
 		c.setrowstyle ("white","bgcolor=white");
+		c.setrowstyle ("white+current","bgcolor=lightblue");
 		c.setrowstyle ("image","bgcolor=white align=center");
 	</f>
 	</obj>
@@ -1953,6 +1953,10 @@ extern "C" void webmain_real()
 						</f>
 						<f setup>
 							glocal vector<string> groups;
+							// PATCH: Group contacts is not returned by list_groups
+							// For the public group, it is necessary. Maybe other projects would
+							// need access to special group contact...
+							if (strcmp(w_list.c_str(),"public")==0) glocal.groups.push_back("contacts");
 							<call bod_client_list_groups>(glocal.con,w_session.c_str(),"",true);
 							<f ok>
 								for (auto &g:groups) glocal.groups.push_back(g.name);
