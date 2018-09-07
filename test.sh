@@ -910,6 +910,8 @@ elif [ "$1" = "lxc0-web" ]; then # prod:
 			-e /usr/lib/tlmp/lib/tlmpwebsql.so.1 \
 			-e /usr/lib/tlmp/lib/tlmpsql.so \
 			-e /usr/lib/tlmp/help.eng/tlmpsql.eng \
+			-e /usr/lib/tlmp/help.eng/bolixo.eng \
+			-e /usr/lib/tlmp/help.fr/bolixo.fr \
 			-e /var/www/html/.tlmplibs \
 			-n $w -p /usr/sbin/httpd >/var/lib/lxc/$w/$w-lxc0.sh
 			chmod +x /var/lib/lxc/$w/$w-lxc0.sh

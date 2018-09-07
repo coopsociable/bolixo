@@ -8,15 +8,25 @@ PROGS=bod bod-client bod-control bo-writed bo-writed-control bo-sessiond bo-sess
 DOCS=
 OPTIONS=-funsigned-char -O2 -Wall -g -DVERSION=\"$(PACKAGE_REV)\" -I/usr/include/tlmp -I/usr/include/trlitool
 LIBS=/usr/lib64/trlitool/trlitool.a -llinuxconf -lstdc++ -lcrypto
+TLMP_LIB=/usr/lib/tlmp
+LDEVEL=/usr/lib/linuxconf-devel
 .SUFFIXES: .o .tex .tlcc .cc .png .uml
-all: $(PROGS)
+all: $(PROGS) msg.eng msg.fr
 	make -Cweb install
+
+msg:
+	$(LDEVEL)/msgscan bolixo \
+		bolixo.dic bolixo.m EF *.cc *.tlcc web/*.tlcc web/*.hcc
 
 compile: $(PROGS)
 	#make -Cweb 
 
-bofs: bofs.tlcc proto/bod_client.protoh proto/webapi.protoh filesystem.h
-	cctlcc -Wall $(OPTIONS) bofs.tlcc -o bofs $(LIBS) -lssl
+bofs: bofs.tlcc proto/bod_client.protoh proto/webapi.protoh filesystem.h _dict.o bolixo.m
+	cctlcc -Wall $(OPTIONS) bofs.tlcc _dict.o -o bofs $(LIBS) -lssl
+
+_dict.o: _dict.cc bolixo.m
+	gcc -Wall -c _dict.cc -o _dict.o
+	gcc -Wall -fPIC -c _dict.cc -o _dict.os
 
 bod: bod.tlcc filesystem.o proto/bod_control.protoh proto/bod_client.protoh proto/bod_admin.protoh \
 	proto/bo-writed_client.protoh proto/bo-sessiond_client.protoh
@@ -137,7 +147,7 @@ clean:
 	rm -f $(PROGS) *.o *.os proto/*.protoh proto/*.protoch proto/*.protodef web/*.hc web/*.os
 
 
-install:
+install: msg.eng msg.fr
 	mkdir -p $(RPM_BUILD_ROOT)/etc/bolixo
 	mkdir -p $(RPM_BUILD_ROOT)/usr/sbin
 	mkdir -p $(RPM_BUILD_ROOT)/usr/lib
@@ -167,6 +177,23 @@ install:
 	install -m644 web/twitter.png $(RPM_BUILD_ROOT)/var/www/html/twitter.png
 	install -m644 data/http_check.conf $(RPM_BUILD_ROOT)/etc/trli/http_check.conf
 	install -m755 bolixoserv.sysv $(RPM_BUILD_ROOT)/etc/init.d/bolixoserv
+
+msg.eng:
+	@mkdir -p $(TLMP_LIB)/help.eng
+	@echo Producing $(TLMP_LIB)/help.eng/bolixo.eng
+	@$(LDEVEL)/msgcomp -p./ $(TLMP_LIB)/help.eng/bolixo.eng eE bolixo
+
+msg.fr:
+	@mkdir -p $(TLMP_LIB)/help.fr
+	@echo Producing $(TLMP_LIB)/help.fr/bolixo.fr
+	@$(LDEVEL)/msgcomp -p./ -pmessages/fr/ $(TLMP_LIB)/help.fr/bolixo.fr TFeE bolixo
+
+msgupd:
+	$(LDEVEL)/msgupd -s./ -dmessages/fr/  -rE bolixo
+
+msgclean:
+	$(LDEVEL)/msgclean bolixo.dic
+
 
 RPMTOPDIR=$(HOME)/rpmbuild
 RPM=rpmbuild

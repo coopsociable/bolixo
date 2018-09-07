@@ -1,0 +1,99 @@
+extern const char **_dictionary_bolixo;
+#ifndef DICTIONARY_REQUEST
+	#define DICTIONARY_REQUEST \
+	const char **_dictionary_bolixo;\
+	TRANSLATE_SYSTEM_REQ _dictionary_req_bolixo("bolixo",_dictionary_bolixo,84,2);\
+	void dummy_dict_bolixo(){}
+#endif
+#ifndef MSG_U
+	#define MSG_U(id,m)	_dictionary_bolixo[id]
+	#define MSG_B(id,m,n)	_dictionary_bolixo[id]
+	#define MSG_R(id)	_dictionary_bolixo[id]
+	#define P_MSG_U(id,m)	new_trans_notload(_dictionary_bolixo,id)
+	#define P_MSG_B(id,m,n)	new_trans_notload(_dictionary_bolixo,id)
+	#define P_MSG_R(id)	new_trans_notload(_dictionary_bolixo,id)
+#endif
+#define E_CONFMISSING	0
+#define E_CANTMODIFY	1
+#define I_BOFS	2
+#define O_SELECT	3
+#define O_REPEAT	4
+#define M_MAIN	5
+#define M_TALK	6
+#define M_MAIL	7
+#define M_PROJECTS	8
+#define M_PROFILE	9
+#define M_DOCUM	10
+#define E_KEYWORD	11
+#define I_BOFSCONF	12
+#define E_NOUSER	13
+#define E_IVLDCOMMAND	14
+#define E_SAVECURFORM	15
+#define E_RESTOREFORM	16
+#define E_SAVEFORM	17
+#define T_LOGIN	18
+#define B_LOGIN	19
+#define T_CREATEACC	20
+#define H_PROJECTS	21
+#define I_CREATENEWDOC	22
+#define E_CREATEFOLDER	23
+#define E_INTERNAL	24
+#define I_NEW_FOLDER	25
+#define I_UPLOADFILE	26
+#define H_FOLDER	27
+#define I_DOCNAME	28
+#define B_SAVE	29
+#define T_MAILS	30
+#define H_MAILS	31
+#define I_INBOX	32
+#define T_TALKS	33
+#define H_TALKS	34
+#define B_SEND	35
+#define E_CANTSEND	36
+#define E_REACHMISS	37
+#define E_CONFIRMFAILED	38
+#define T_PROFILE	39
+#define I_CREATELIST	40
+#define H_INBOXES	41
+#define T_ACCOUNT	42
+#define T_INTERESTS	43
+#define T_CONTACTS	44
+#define T_PROJECTS	45
+#define T_GROUPS	46
+#define H_PROF_PROJECTS	47
+#define I_LANG	48
+#define I_ENGLISH	49
+#define I_FRENCH	50
+#define I_ENABLEPUB	51
+#define I_PUBFOLDER	52
+#define E_CANTSAVECONFIG	53
+#define I_CONFIGUPDATED	54
+#define I_CREATEGROUP	55
+#define H_GROUPS	56
+#define I_NEWCONTACT	57
+#define H_CONTACTS	58
+#define I_WAITING	59
+#define I_ACCEPTED	60
+#define I_REJECTED	61
+#define I_SENDCONTACT	62
+#define I_TOCONTACT	63
+#define I_MESSAGE	64
+#define E_CONTACTFAIL	65
+#define I_CONTACTSENT	66
+#define I_GROUP	67
+#define I_DESCRIPTION	68
+#define I_MEMBERS	69
+#define E_CANTCREATEGROUP	70
+#define E_CANTSETGROUPDESC	71
+#define E_CANTSETMEMBER	72
+#define E_CANTDELMEMBER	73
+#define T_PROJECT	74
+#define I_PRJ_PROJECT	75
+#define I_PRJ_DESCRIPTION	76
+#define I_PRJ_MEMBERS	77
+#define I_PRJ_GROUP	78
+#define H_TALK	79
+#define E_CANTREADFILE	80
+#define I_INHERIT	81
+#define I_READONLY	82
+#define I_READWRITE	83

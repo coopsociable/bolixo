@@ -23,6 +23,7 @@
 #include <trlitool.h>
 #define DEFINE_TBFTYPE
 #include "bolixo.h"
+#include "bolixo.m"
 
 using namespace std;
 
@@ -576,7 +577,7 @@ static int bofs_write_bofile(CONTEXT &ctx, PARAM_STRING path, FILE *fin, const c
 		</f>
 		</call>
 	}else if (!bolixo_isfile(type)){
-		tlmp_error ("Can't modify %s, not a file\n",path);
+		tlmp_error (MSG_U(E_CANTMODIFY,"Can't modify %s, not a file\n"),path.ptr);
 	}else{ 
 		<call bod_client_modifyfile_bob> (ctx.con,ctx.sessionid,path,BOB_TYPE(buf,len,false),glocal.more);
 		<f ok>
@@ -2239,10 +2240,10 @@ int main (int argc, char *argv[])
 	glocal int ret = -1;
 	glocal const char *user = NULL;
 	glocal int nbrep=1;
-	glocal.ret = <call tlmpprogram>(argc,argv);
+	glocal.ret = <call tlmpprogram>(argc,argv,"bolixo");
 	<f init>
 		setproginfo ("bofs",VERSION
-			,"Command line tool to perform filesystem operations on bolixo\n"
+			,MSG_U(I_BOFS,"Command line tool to perform filesystem operations on bolixo\n"
 			 "\n"
 			 "\tbofs cat ...\n"
 			 "\tbofs cp ...\n"
@@ -2254,10 +2255,10 @@ int main (int argc, char *argv[])
 			 "\tbofs mv ...\n"
 			 "\tbofs public ...\n"
 			 "\tbofs rm ...\n"
-			 "\tbofs rmdir ...\n"
+			 "\tbofs rmdir ...\n")
 			);
-		setarg ('u',"user","Select one user from .bofs.conf",glocal.user,false);
-		setarg (' ',"repeat","Repeat the operation N time (speed test)",glocal.nbrep,false);
+		setarg ('u',"user",MSG_U(O_SELECT,"Select one user from .bofs.conf"),glocal.user,false);
+		setarg (' ',"repeat",MSG_U(O_REPEAT,"Repeat the operation N time (speed test)"),glocal.nbrep,false);
 	</f>
 	<f main>
 		int ret = -1;
@@ -2294,15 +2295,15 @@ int main (int argc, char *argv[])
 					}else if (strcmp(subject,"sess_secret:")==0){
 						glocal.ctx.con_sess.secret = tb[1];
 					}else{
-						tlmp_error ("File %s, invalide keyword: %s\n",info.filename,subject);
+						tlmp_error (MSG_U(E_KEYWORD,"File %s, invalid keyword: %s\n"),info.filename,subject);
 					}
 				}
 			}
 			return ret;
 		</f>
 		<f missing>
-			tlmp_error ("File %s/.bofs.conf missing.\n",getenv("HOME"));
-			tlmp_error ("Create this file with the following fields:\n"
+			tlmp_error (MSG_U(E_CONFMISSING,"File %s/.bofs.conf missing.\n"),getenv("HOME"));
+			tlmp_error (MSG_U(I_BOFSCONF,"Create this file with the following fields:\n"
 				"\tuser:\n"
 				"\temail:\n"
 				"\tpassword:\n"
@@ -2311,12 +2312,12 @@ int main (int argc, char *argv[])
 				"\tbod_secret:\n"
 				"\tsess_secret:\n"
 				"\thttp_server:\n"
-				"\thttp_port:\n");
+				"\thttp_port:\n"));
 				exit (-1);
 		</f>
 		</call>
 		if (!glocal.thisuser){
-			tlmp_error ("No user definition found in .bofs.conf for user %s\n",glocal.user);
+			tlmp_error (MSG_U(E_NOUSER,"No user definition found in .bofs.conf for user %s\n"),glocal.user);
 			exit (-1);
 		}
 		{
@@ -2344,7 +2345,7 @@ int main (int argc, char *argv[])
 				}else if (strcmp(argv[0],"public")==0){
 					ret = bofs_public (glocal.ctx,argc,argv);
 				}else{
-					tlmp_error ("Invalid command: %s\n",argv[0]);
+					tlmp_error (MSG_U(E_IVLDCOMMAND,"Invalid command: %s\n"),argv[0]);
 					usage();
 					exit (-1);
 				}
