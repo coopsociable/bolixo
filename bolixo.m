@@ -2,7 +2,7 @@ extern const char **_dictionary_bolixo;
 #ifndef DICTIONARY_REQUEST
 	#define DICTIONARY_REQUEST \
 	const char **_dictionary_bolixo;\
-	TRANSLATE_SYSTEM_REQ _dictionary_req_bolixo("bolixo",_dictionary_bolixo,84,2);\
+	TRANSLATE_SYSTEM_REQ _dictionary_req_bolixo("bolixo",_dictionary_bolixo,107,2);\
 	void dummy_dict_bolixo(){}
 #endif
 #ifndef MSG_U
@@ -97,3 +97,26 @@ extern const char **_dictionary_bolixo;
 #define I_INHERIT	81
 #define I_READONLY	82
 #define I_READWRITE	83
+#define E_HTTPLOGIN	84
+#define E_IVLDPATH	85
+#define E_UPDGROUP	86
+#define I_ACCTCONFIRM	87
+#define I_HAVEACCT	88
+#define I_EMAIL	89
+#define I_PASSWORD	90
+#define I_PASSWDREQ	91
+#define I_PROVIDEEMAIL	92
+#define I_LOGINFAILED	93
+#define I_NOACCOUNT	94
+#define I_MOREDETAILS	95
+#define I_NICKNAME	96
+#define I_ENTERMAIL	97
+#define I_ENTERPWD	98
+#define I_CONFIRMPWD	99
+#define B_ACCACCOUNT	100
+#define E_NEEDNICKMAME	101
+#define E_NEEDEMAIL	102
+#define E_NEEDPWD	103
+#define E_PWDMISMATCH	104
+#define E_CREATACCT	105
+#define I_ACCTCREATED	106

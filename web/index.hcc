@@ -1015,7 +1015,7 @@ static void index_set_group (CONNECT_INFO &con, W_SSTRING &list, const char *gro
 	<call bod_client_set_group>(con,w_session.c_str(),list.c_str(),glocal.groupname,access,"");
 	<f ok>
 		if (!success){
-			htmlprintf ("Failure to update group %s: %s<br>\n",glocal.groupname,msg);
+			htmlprintf (MSG_U(E_UPDGROUP,"Failure to update group %s: %s<br>\n"),glocal.groupname,msg);
 			glocal.fail = true;
 		}
 	</f>
@@ -1204,7 +1204,7 @@ extern "C" void webmain_real()
 	<f setstep>
 		if (w_session.empty() && step > 2){
 			step = 1;
-		}else if (userinfo.name.empty() && step != 2){
+		}else if (userinfo.name.empty() && step != 2 && step != 3){
 			step = 1;
 		}
 	</f>
@@ -1246,18 +1246,19 @@ extern "C" void webmain_real()
 		<f top>
 			bolixo_title (MSG_U(T_LOGIN,"Login"),&glocal.websteps);
 			if (glocal.account_confirmed){
-				/- Welcome
-				/- <p>
-				/- The account is now confirmed, you can log in
+				<?#I_ACCTCONFIRM Welcome
+			 	<p>
+				The account is now confirmed, you can log in
+				?>
 			}else{
-				/- Already have an account, please login<p>
+				/-#I_HAVEACCT Already have an account, please login<p>
 			}
 		</f>
 		<f setup>
 			/- <table border=0 align=center>
-			/- <tr><td>Enter your email<td>
+			/-#I_EMAIL <tr><td>Enter your email<td>
 			field_string (w_email,"size=60");
-			/- <tr><td>Password<td>
+			/-#I_PASSWORD <tr><td>Password<td>
 			field_password (w_password,"");
 			/- <tr><td>
 			button_submit (MSG_U(B_LOGIN,"Login"));
@@ -1267,12 +1268,12 @@ extern "C" void webmain_real()
 			bool ret = false;
 			if (w_email.is_filled()){
 				if (w_password.is_empty()){
-					/- <font color=red>You must supply a password</font>
+					/-#I_PASSWDREQ <font color=red>You must supply a password</font>
 				}else{
 					ret = true;
 				}
 			}else{
-				/- <font color=red>Please provide an email</font>
+				/-#I_PROVIDEEMAIL <font color=red>Please provide an email</font>
 			}
 			return ret;
 		</f>
@@ -1284,7 +1285,7 @@ extern "C" void webmain_real()
 					trli_getsessioninfo(glocal.con,glocal.con_sess,glocal.docpointer);
 					glocal.websteps.gotostep(1);
 				}else{
-					/- <font color=red>Login failed, invalid email or password</font>
+					/-#I_LOGINFAILED <font color=red>Login failed, invalid email or password</font>
 					glocal.fail = true;
 				}
 			</f>
@@ -1298,49 +1299,49 @@ extern "C" void webmain_real()
 		<call form>("createaccount");
 		<f top>
 			bolixo_title (MSG_U(T_CREATEACC,"Account creation"),&glocal.websteps);
-			/- No account ? Please create one.
-			/- <p>
-			/- Your email will only be used for the following reasons.
-			/- <br>
-			/- <ul>
-			/- <li>Login.
-			/- <li>Account confirmation.
-			/- <li>Account modification confirmation.
-			/- <li>When posting a news, an email will be sent to confirm it was accepted.
-			/- </ul>
-			/- The only information shown on the web site is the nickname. Your email won't appear on the site.
-			/- <p>
-			/- See the
+			<?#I_NOACCOUNT No account ? Please create one.
+			<p>
+			Your email will only be used for the following reasons.
+			<br>
+			<ul>
+			<li>Login.
+			<li>Account confirmation.
+			<li>Account modification confirmation.
+			</ul>
+			The only information shown on the web site is the nickname. Your email won't appear on the site.
+			<p>
+			See the
+			?>
 			printhref_raw ("/terms-of-use.html","terms of use",false);
-			/- for more details
+			/-#I_MOREDETAILS for more details
 		</f>
 		<f setup>
 			/- <table border=0 align=center>
-			/- <tr><td>Enter your nickname<td>
+			/-#I_NICKNAME <tr><td>Enter your nickname<td>
 			field_string (new_nickname,"");
-			/- <tr><td>Enter your email<td>
+			/-#I_ENTERMAIL <tr><td>Enter your email<td>
 			field_string (new_email,"");
-			/- <tr><td>Password<td>
+			/-#I_ENTERPWD <tr><td>Password<td>
 			field_password (new_password1,"");
-			/- <tr><td>Confirm password<td>
+			/-#I_CONFIRMPWD <tr><td>Confirm password<td>
 			field_password (new_password2,"");
 			/- <tr><td>
-			button_submit ("Add account");
+			button_submit (MSG_U(B_ACCACCOUNT,"Add account"));
 			/- </table>
 		</f>
 		<f validate>
 			bool ret = true;
 			if (new_nickname.is_empty()){
-				/- <font color=red>Please provide a nickname</font>
+				/-#E_NEEDNICKMAME <font color=red>Please provide a nickname</font>
 				ret = false;
  			}else if (new_email.is_empty()){
-				/- <font color=red>Please provide an email</font>
+				/-#E_NEEDEMAIL <font color=red>Please provide an email</font>
 				ret = false;
 			}else if (new_password1.is_empty()){
-				/- <font color=red>Please enter a password</font>
+				/-#E_NEEDPWD <font color=red>Please enter a password</font>
 				ret = false;
 			}else if (strcmp(new_password1.c_str(),new_password2.c_str())!=0){
-				/- <font color=red>Passwords do not match</font>
+				/-#E_PWDMISMATCH <font color=red>Passwords do not match</font>
 				ret = false;
 			}
 			return ret;
@@ -1351,7 +1352,7 @@ extern "C" void webmain_real()
 			<f ok>
 				if (confirmid[0] == '\0'){
 					glocal.fail = true;
-					/- <font color=red>Account creation failure
+					/-#E_CREATACCT <font color=red>Account creation failure</font>
 					htmlout (msg);
 					/- </font>
 				}else{
@@ -1364,12 +1365,14 @@ extern "C" void webmain_real()
 		</call>
 		if (glocal.account_created){
 			bolixo_title (MSG_R(T_CREATEACC),&glocal.websteps);
-			/- The account has been created
-			/- <br>
-			/- A confirmation email has been sent.
-			/- <br>
-			/- Once you received the email click on the link.
-			/- This will complete the account creation process
+			<?#I_ACCTCREATED
+			The account has been created
+			<br>
+			A confirmation email has been sent.
+			<br>
+			Once you received the email click on the link.
+			This will complete the account creation process
+			?>
 		}
 
 	</f>
@@ -1891,7 +1894,7 @@ extern "C" void webmain_real()
 			if (strcmp(id,MSG_R(T_PROJECTS))==0){
 				<call vframe2h>(20);
 				<f left>
-					url_self ("add=1",MSG_U(I_CREATELIST,"Create a new list"));
+					url_self ("add=1",MSG_U(I_CREATELIST,"Create a new project"));
 					/- <p>
 					<call webtable>("list:projects","100%",currents["list:projects"]);
 					<f load>
