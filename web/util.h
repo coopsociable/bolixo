@@ -1,10 +1,10 @@
 struct USERINFO{
 	std::string name;
 	bool is_admin;
-	int lang;
+	std::string lang;
 	void reset(){
 		name.clear();
-		lang = 0;
+		lang = "eng";
 		is_admin = false;
 	}
 	USERINFO(){

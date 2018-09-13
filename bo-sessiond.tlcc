@@ -53,7 +53,7 @@ struct SESSION_INFO{
 	string userid_str;
 	string name;
 	string email;
-	unsigned short lang;
+	string lang;
 	bool admin;
 	vector<VAR> vars;
 	struct {
@@ -64,10 +64,9 @@ struct SESSION_INFO{
 		userid = (unsigned)-1;
 		stats.lastvisit = time(NULL);
 		stats.nbacc = 0;
-		lang = 0;
 		admin = false;
 	}
-	SESSION_INFO (unsigned _userid, const string &_userid_str, const char *_name, const char *_email, unsigned short _lang, bool _admin){
+	SESSION_INFO (unsigned _userid, const string &_userid_str, const char *_name, const char *_email, const char *_lang, bool _admin){
 		userid = _userid;
 		userid_str = _userid_str;
 		name = _name;
@@ -334,7 +333,7 @@ int main (int argc, char *argv[])
 						it->second.stats.nbacc++;
 						rep_getsessioninfo(true,it->second.name,it->second.lang,it->second.admin,it->second.userid);
 					}else{
-						rep_getsessioninfo(false,"",0,false,0);
+						rep_getsessioninfo(false,"","",false,0);
 					}
 				</f>
 				<f getsessioninfovars>
@@ -345,7 +344,7 @@ int main (int argc, char *argv[])
 						rep_getsessioninfovars(true,it->second.name,it->second.lang,it->second.admin,it->second.userid,it->second.vars);
 					}else{
 						vector<VAR> vars;
-						rep_getsessioninfovars(false,"",0,false,0,vars);
+						rep_getsessioninfovars(false,"","",false,0,vars);
 					}
 				</f>
 				<f setvar>
@@ -418,6 +417,14 @@ int main (int argc, char *argv[])
 						tlmp_error ("setsession: %s does not exist\n",sessionid);
 					}else{
 						it->second = SESSION_INFO(userid,userid_str,name,email,lang,admin);
+					}
+				</f>
+				<f setlang>
+					auto it = glocal.sessions.find(sessionid);
+					if (it == glocal.sessions.end()){
+						tlmp_error ("setsession: %s does not exist\n",sessionid);
+					}else{
+						it->second.lang = lang;
 					}
 				</f>
 				<f deletesession>

@@ -1189,12 +1189,18 @@ int main (int argc, char *argv[])
 				<f login>
 					glocal const char *email = email;
 					glocal const char *sessionid = sessionid;
-					<call sql_query>(*glocal.usq,"select userid,userid_str,name,email,lang,admin from users where email='%s' and password=password('%s')"
+					<call sql_query>(*glocal.usq,"select userid,userid_str,name,email,admin from users where email='%s' and password=password('%s')"
 						" and disabled is null and deleted is null and confirmed is not null and nbfail < 3",email,password);
 					<f onerow>
+						glocal string lang = "eng";
 						debug_printf (D_PROTO,"login ok\n");
 						int userid = atoi(row[0]);
-						<call bo_sessiond_admin_setsession>(glocal.con,glocal.sessionid,userid,row[1],row[2],row[3],atoi(row[4]),atoi(row[5]));
+						<call sql_query>("select lang from config where userid=%d",userid);
+						<f onerow>
+							glocal.lang = row[0];
+						</f>
+						</call>
+						<call bo_sessiond_admin_setsession>(glocal.con,glocal.sessionid,userid,row[1],row[2],row[3],glocal.lang,atoi(row[4]));
 						<f ok>
 							if (internal_error){
 								glocal.bo_writed_client.rep_login (false);
@@ -2056,6 +2062,11 @@ int main (int argc, char *argv[])
 						if (glocal.msg.size() == 0){
 							if (sql_action("update config set lang='%s',public_view=%d,public_dir='%s'",config.lang,config.public_view,config.public_dir)==-1){
 								glocal.msg = "Internal error, config table";
+							}else{
+								<call bo_sessiond_admin_setlang>(glocal.con,sessionid,config.lang);
+								<f ok>
+								</f>
+								</call>
 							}
 						}
 					}

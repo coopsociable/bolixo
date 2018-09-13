@@ -307,7 +307,6 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 			name char(50),
 			password char(41),
 			email varchar(100),
-			lang int default 0,
 			admin bool default false,
 			nbfail int default 0,
 			created datetime default current_timestamp,
@@ -912,6 +911,8 @@ elif [ "$1" = "lxc0-web" ]; then # prod:
 			-e /usr/lib/tlmp/help.eng/tlmpsql.eng \
 			-e /usr/lib/tlmp/help.eng/bolixo.eng \
 			-e /usr/lib/tlmp/help.fr/bolixo.fr \
+			-e /usr/lib/tlmp/help.fr/tlmpsql.fr \
+			-e /usr/lib/tlmp/help.fr/tlmpweb.fr \
 			-e /var/www/html/.tlmplibs \
 			-n $w -p /usr/sbin/httpd >/var/lib/lxc/$w/$w-lxc0.sh
 			chmod +x /var/lib/lxc/$w/$w-lxc0.sh
