@@ -52,11 +52,20 @@ static map<string,unsigned> offsets;
 static map<string,unsigned> currents;
 struct WEBTAB{
 	string tab;	// Name of this tab withing the webtab
-	string args;
+	string flags;
+	string state;
 	WEBTAB(){}
-	WEBTAB(PARAM_STRING _tab, PARAM_STRING _args){
+	WEBTAB(PARAM_STRING _tab, PARAM_STRING args){
 		tab  = _tab.ptr;
-		args = _args.ptr;
+		vector<string> tb;
+		str_splitline(args.ptr,',',tb);
+		for (auto &v:tb){
+			if (strncmp(v.c_str(),"f=",2)==0){
+				flags = v.substr(2);
+			}else if (strncmp(v.c_str(),"s=",2)==0){
+				state = v.substr(2);
+			}
+		}
 	}
 	bool operator < (const WEBTAB &n) const {
 		return tab < n.tab;
@@ -109,24 +118,30 @@ static W_SSTRING  w_webtab_add("webtab_add");
 #define _TLMP_webtabs
 struct _F_webtabs {
 	bool redo;
-	string curid;	// ID of the active tab
+	string curid;		// ID of the active tab
+	string curstate;	// State of the active TAB
 	_F_webtabs(){
 		redo = false;
 	}
 	void setid (PARAM_STRING id);	// Change the ID of the active TAB
+	void setstate (PARAM_STRING val);// Record some value for the active TAB
 	void redotab ();		// Ask webtabs to redraw the current TAB
-	#define _F_webtabs_docstyle1(x) void x docstyle1(const char *id, const char *formid)
+	#define _F_webtabs_docstyle1(x) void x docstyle1(const char *id, const char *formid, const char *state)
 	virtual _F_webtabs_docstyle1( )=0;
-	#define _F_webtabs_docstyle2(x) void x docstyle2(const char *id, const char *formid)
+	#define _F_webtabs_docstyle2(x) void x docstyle2(const char *id, const char *formid, const char *state)
 	virtual _F_webtabs_docstyle2( );
-	#define _F_webtabs_docstyle3(x) void x docstyle3(const char *id, const char *formid)
+	#define _F_webtabs_docstyle3(x) void x docstyle3(const char *id, const char *formid, const char *state)
 	virtual _F_webtabs_docstyle3( );
-	#define _F_webtabs_docstyle4(x) void x docstyle4(const char *id, const char *formid)
+	#define _F_webtabs_docstyle4(x) void x docstyle4(const char *id, const char *formid, const char *state)
 	virtual _F_webtabs_docstyle4( );
 };
 void _F_webtabs::setid (PARAM_STRING id)
 {
 	curid = id.ptr;
+}
+void _F_webtabs::setstate (PARAM_STRING state)
+{
+	curstate = state.ptr;
 }
 void _F_webtabs::redotab ()
 {
@@ -166,13 +181,13 @@ static void webtab_aref (const char *title, int tab)
 	string href = string_f ("%s?%s%swebtab=%d",tlmpweb_curpage(),hidden.c_str(),sep,tab);
 	webtab_href (title,href);
 }
-void _F_webtabs::docstyle2(const char *id, const char *formid)
+void _F_webtabs::docstyle2(const char *id, const char *formid, const char *state)
 {
 }
-void _F_webtabs::docstyle3(const char *id, const char *formid)
+void _F_webtabs::docstyle3(const char *id, const char *formid, const char *state)
 {
 }
-void _F_webtabs::docstyle4(const char *id, const char *formid)
+void _F_webtabs::docstyle4(const char *id, const char *formid, const char *state)
 {
 }
 struct TABSEL {
@@ -199,13 +214,13 @@ static void webtabs(_F_webtabs &c,
 		for (auto &t:tabs){
 			if (t.tab == id){
 				found = true;
-				t.args = "sel";
+				t.flags = "sel";
 			}else{
-				t.args.clear();
+				t.flags.clear();
 			}
 		}
 		if (!found){
-			tabs.push_back(WEBTAB(id,"sel"));
+			tabs.push_back(WEBTAB(id,"f=sel"));
 			sort (tabs.begin(),tabs.end());
 		}
 		w_webtab = 0;
@@ -217,12 +232,12 @@ static void webtabs(_F_webtabs &c,
 		if (delete_tab < nbtab){
 			// If the deleted tab is currently selected (active)
 			// we must select another one.
-			if (tabs[delete_tab].args == "sel"){
-				for (auto &t:tabs) t.args.clear();
+			if (tabs[delete_tab].flags == "sel"){
+				for (auto &t:tabs) t.flags.clear();
 				if (delete_tab > 0){
-					tabs[delete_tab-1].args = "sel";
+					tabs[delete_tab-1].flags = "sel";
 				}else if (delete_tab < nbtab-1){
-					tabs[delete_tab+1].args = "sel";
+					tabs[delete_tab+1].flags = "sel";
 				}
 			}
 			const char *id = tabs[delete_tab].tab.c_str();
@@ -244,14 +259,14 @@ static void webtabs(_F_webtabs &c,
 				default_sel.id = tabname;
 				default_sel.no = no;
 			}
-			bool is_sel = t.args == "sel";
+			bool is_sel = t.flags == "sel";
 			if (w_webtab > 0){
 				if (w_webtab == no){
 					glocal.sel.id = tabname;
 					glocal.sel.no = no;
-					t.args = "sel";
+					t.flags = "sel";
 				}else{
-					t.args.clear();
+					t.flags.clear();
 				}
 			}else{
 				if (is_sel){
@@ -278,6 +293,13 @@ static void webtabs(_F_webtabs &c,
 	vector<string> lines;
 	if (draw_ok) tlmpweb_pushgrab(lines);
 	if (glocal.sel.id.size() > 0){
+		WEBTAB *ptt = NULL;
+		for (auto &t:tabs){
+			if (t.tab == glocal.sel.id){
+				ptt = &t;
+				break;
+			}
+		}
 		while (1){
 			w_webtab = glocal.sel.no;
 			FORM_HIDDEN t(w_webtab);
@@ -290,28 +312,24 @@ static void webtabs(_F_webtabs &c,
 				id_2 = tmp.c_str();
 			}
 			c.curid = id_2;
+			c.curstate = ptt->state;
+			const char *state = ptt->state.c_str();
 			if (strncmp(id,"1:",2)==0){
-				c.docstyle1(id_2,id);
+				c.docstyle1(id_2,id,state);
 			}else if (strncmp(id,"2:",2)==0){
-				c.docstyle2(id_2,id);
+				c.docstyle2(id_2,id,state);
 			}else if (strncmp(id,"3:",2)==0){
-				c.docstyle3(id_2,id);
+				c.docstyle3(id_2,id,state);
 			}else if (strncmp(id,"4:",2)==0){
-				c.docstyle4(id_2,id);
+				c.docstyle4(id_2,id,state);
 			}else{
-				c.docstyle1(id,id);
+				c.docstyle1(id,id,state);
 			}
 			if (!draw_ok) break;
-			if (strcmp(id_2,c.curid.c_str())!=0){
-				// setid was called;
-				for (auto &t:tabs){
-					if (t.tab == glocal.sel.id){
-						t.tab = string(id,2)+c.curid;
-						glocal.sel.id = t.tab;
-						break;
-					}
-				}
-			}
+			// setid or setstate was called;
+			ptt->tab = string(id,2)+c.curid;
+			ptt->state = c.curstate;
+			glocal.sel.id = ptt->tab;
 			if (!c.redo) break;
 			c.redo = false;
 			lines.clear();
@@ -1056,6 +1074,12 @@ static ENTRY_TYPE index_entrytype(CONNECT_INFO &con,PARAM_STRING path)
 	return glocal.ret;
 }
 </mod>
+static bool profile_formactive (_F_webtabs &c, W_SSTRING &var, const char *state)
+{
+	if (!w_add.isset() && !var.isset() && state[0] != '\0') var.setinitval(state);
+	c.setstate(var.c_str());
+	return var.isset() || w_add.isset();
+}
 <mod>
 extern "C" void webmain_real()
 {
@@ -1894,6 +1918,7 @@ extern "C" void webmain_real()
 		vector<string> t={MSG_U(T_ACCOUNT,"Account"),MSG_U(T_INTERESTS,"Interests"),MSG_U(T_CONTACTS,"Contacts"),MSG_U(T_PROJECTS,"Projects"),MSG_U(T_GROUPS,"Groups")};
 		<call webtabs>("profile",t,tabs);
 		<f docstyle1>
+			glocal const char *state = state;
 			if (strcmp(id,MSG_R(T_PROJECTS))==0){
 				<call vframe2h>(20);
 				<f left>
@@ -1924,7 +1949,7 @@ extern "C" void webmain_real()
 					</call>
 				</f>
 				<f right>
-					if (w_list.isset() || w_add.isset()){
+					if (profile_formactive (glocal.webtabs,w_list,glocal.state)){
 						<call form>(string_f("project:%s",w_list.c_str()));
 						<f top>
 							/- <table border=0><tr><td>&nbsp;&nbsp;&nbsp;<td><table border=0>
@@ -2096,7 +2121,7 @@ extern "C" void webmain_real()
 					</call>
 				</f>
 				<f right>
-					if (w_group.isset() || w_add.isset()){
+					if (profile_formactive (glocal.webtabs,w_group,glocal.state)){
 						<call form>(string_f("group:%s",w_group.c_str()));
 						<f top>
 							/- <table border=0><tr><td>&nbsp;&nbsp;&nbsp;<td><table border=0>
@@ -2466,7 +2491,7 @@ extern "C" void webmain_real()
 			for (auto &t:v.second){
 				SNAMEVAL val;
 				val.sname = v.first + ':' + t.tab;
-				val.sval = t.args;
+				val.sval = string_f("f=%s,s=%s",t.flags.c_str(),t.state.c_str());
 				var.vals.push_back(val);
 			}
 		}
