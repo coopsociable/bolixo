@@ -22,6 +22,8 @@
 #include <tlmpsql.h>
 #include <trlitool.h>
 #include "filesystem.h"
+#include "bolixo.m"
+#include <translat.h>
 
 static DEBUG_KEY D_PROTO ("proto","Protocol information");
 enum CONNECT_TYPE { TYPE_NONE, TYPE_CONTROL, TYPE_CLIENT };
@@ -67,6 +69,7 @@ static unsigned trli_getsessionuser (CONNECT_INFO &con, const char *sessionid, s
 		glocal.userid = userid;
 		(*glocal.userid_str) = userid_str;
 		glocal.is_admin = admin;
+		translat_selectlang (lang);
 	</f>
 	</call>
 	is_admin = glocal.is_admin;
@@ -811,7 +814,9 @@ int main (int argc, char *argv[])
 	glocal const char *bob_dir = "/var/lib/bolixo";
 	glocal bool private_site = false;
 
-	glocal.ret = <call tlmpprogram>(argc,argv,"tlmpsql");
+	static const char *tbdict[]={"bolixo","tlmpsql",NULL};
+	translat_setlang ("eng,fr");
+	glocal.ret = <call tlmpprogram>(argc,argv,tbdict);
 	<f init>
 		setproginfo ("bo-writed",VERSION,"...");
 		setgrouparg ("Networking");
@@ -1667,7 +1672,7 @@ int main (int argc, char *argv[])
 							glocal unsigned groupid = atoi(row[0]);
 							<call sql_query>("select userid from id2name where name='%s'",glocal.user);
 							<f empty>
-								glocal.msg = "User does not exist";
+								glocal.msg = MSG_U(E_UNKNOWNUSER,"User does not exist");
 							</f>
 							<f onerow>
 								glocal unsigned member_userid = atoi(row[0]);

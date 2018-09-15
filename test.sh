@@ -16,6 +16,7 @@ fi
 if [ "$BOLIXOLOG" = "" ] ; then
 	BOLIXOLOG=/tmp
 fi
+INCLUDELANGS="-e /usr/lib/tlmp/help.eng/bolixo.eng -e /usr/lib/tlmp/help.fr/bolixo.fr"
 SOCKU=/var/lib/lxc/bosqlduser/rootfs/var/lib/mysql/mysql.sock
 SOCKN=/var/lib/lxc/bosqlddata/rootfs/var/lib/mysql/mysql.sock
 EXTRALXCPROG="$EXTRALXCPROG -d/var/run/blackhole -d/var/log/bolixo -e /etc/localtime"
@@ -812,6 +813,7 @@ elif [ "$1" = "lxc0-bod" ]; then # prod:
 		--savefile /var/lib/lxc/bod/bod.save \
 		--restorefile /var/lib/lxc/bod/bod.restore \
 		$EXTRALXCPROG \
+		$INCLUDELANGS \
 		-i /usr/sbin/trli-init -l /tmp/log -n bod -p $BOLIXOPATH/bod >/var/lib/lxc/bod/bod-lxc0.sh
 	chmod +x /var/lib/lxc/bod/bod-lxc0.sh
 	bod_save bod
@@ -827,6 +829,7 @@ elif [ "$1" = "lxc0-writed" ]; then # prod:
 		--savefile /var/lib/lxc/writed/writed.save \
 		--restorefile /var/lib/lxc/writed/writed.restore \
 		$EXTRALXCPROG \
+		$INCLUDELANGS \
 		-i /usr/sbin/trli-init -l /tmp/log -n writed -p $BOLIXOPATH/bo-writed >/var/lib/lxc/writed/writed-lxc0.sh
 	chmod +x /var/lib/lxc/writed/writed-lxc0.sh
 	writed_save writed

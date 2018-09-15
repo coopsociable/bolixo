@@ -21,6 +21,8 @@
 #include <openssl/bio.h>
 #include <openssl/x509.h>
 #include "bolixo.h"
+#include "bolixo.m"
+#include <translat.h>
 
 
 static DEBUG_KEY D_PROTO ("proto","Protocol information");
@@ -86,7 +88,7 @@ using namespace std;
 	Get the userid associated with the sessionid
 */
 <mod>
-static unsigned trli_getsessionuser (CONNECT_INFO &con, const char *sessionid, bool &is_admin, string &name)
+static unsigned trli_getsessionuser (CONNECT_INFO &con, const char *sessionid, bool &is_admin, string &name, string &msg)
 {
 	glocal unsigned userid = 0;
 	glocal bool is_admin = false;
@@ -98,27 +100,27 @@ static unsigned trli_getsessionuser (CONNECT_INFO &con, const char *sessionid, b
 		glocal.userid = userid;
 		glocal.is_admin = admin;
 		(*glocal.name) = name;
+		translat_selectlang(lang);
 	</f>
 	</call>
 	//}
 	//long long end = fdpass_getnow();
 	//printf ("exec time = %lf\n",(end-start)/1000000.0);
 	is_admin = glocal.is_admin;
+	if (glocal.userid == 0) msg = MSG_U(E_IVLDSESSION,"Invalid session");
 	return glocal.userid;
 }
 </mod>
-static unsigned trli_getsessionuser (CONNECT_INFO &con, const char *sessionid, bool &is_admin)
+static unsigned trli_getsessionuser (CONNECT_INFO &con, const char *sessionid, bool &is_admin, string &msg)
 {
 	string username;
-	return trli_getsessionuser (con,sessionid,is_admin,username);
+	return trli_getsessionuser (con,sessionid,is_admin,username,msg);
 }
 static int bod_findentry (CONNECT_INFO &con, const char *sessionid, PARAM_STRING name, ENTRY &entry, const char *threshold)
 {
 	int ret = -1;
-	entry.userid = trli_getsessionuser(con,sessionid,entry.is_admin);
-	if (entry.userid == 0){
-		entry.msg = "Invalid session";
-	}else{
+	entry.userid = trli_getsessionuser(con,sessionid,entry.is_admin,entry.msg);
+	if (entry.userid != 0){
 		ret = fs_findentry(name,entry,true,threshold);
 	}
 	return ret;
@@ -135,7 +137,7 @@ static int bod_findentry (CONNECT_INFO &con, const char *sessionid, PARAM_STRING
 static unsigned bo_writed_get_group_owner (CONNECT_INFO &con, const char *sessionid, const char *owner, string &username, string &msg)
 {
 	bool is_admin;
-	glocal unsigned userid = trli_getsessionuser (con,sessionid,is_admin,username);
+	glocal unsigned userid = trli_getsessionuser (con,sessionid,is_admin,username,msg);
 	if (is_admin && owner[0] != '\0'){
 		<call sql_query>("select userid from id2name where name='%s'",owner);
 		<f onerow>
@@ -146,7 +148,7 @@ static unsigned bo_writed_get_group_owner (CONNECT_INFO &con, const char *sessio
 		</f>
 		</call>
 		username = owner;
-		if (glocal.userid == 0) msg = "Unknown owner";
+		if (glocal.userid == 0) msg = MSG_R(E_UNKNOWNUSER);
 	}
 	return glocal.userid;
 }
@@ -254,7 +256,7 @@ static int bod_checkpublic(const char *username, const char *relative_path, stri
 	<f onerow>
 		bool public_view = atoi(row[0]);
 		if (!public_view){
-			(*glocal.msg) = "no public data available";
+			(*glocal.msg) = MSG_U(E_NOPUBLICACC,"no public data available");
 		}else{
 			glocal.public_dir = row[1];
 			glocal.ret = atoi(row[2]);
@@ -520,7 +522,7 @@ static int trlid_main (
 					rep_readfile (false,entry.msg,"");
 				}else{
 					if (!bolixo_isfile(entry.type)){
-						rep_readfile (false,"Entry is not a file","");
+						rep_readfile (false,MSG_U(E_NOTAFILE,"Entry is not a file"),"");
 					}else{
 						<call sql_query>("select content from files where id=%d and modified='%s'"
 							,entry.entryid,entry.modified.c_str());
@@ -528,7 +530,7 @@ static int trlid_main (
 							if (row[0] != NULL){
 								glocal.bod_client.rep_readfile (true,"",row[0]);
 							}else{
-								glocal.bod_client.rep_readfile (false,"Internal error, must use readfile_bob for large content","");
+								glocal.bod_client.rep_readfile (false,MSG_U(E_USEREADBOB,"Internal error, must use readfile_bob for large content"),"");
 							}
 						</f>
 						<f empty>
@@ -547,7 +549,7 @@ static int trlid_main (
 					rep_readfile_bob (false,glocal.entry.msg,empty,"",false,0);
 				}else{
 					if (!bolixo_isfile(glocal.entry.type)){
-						rep_readfile_bob (false,"Entry is not a file",empty,"",false,0);
+						rep_readfile_bob (false,MSG_R(E_NOTAFILE),empty,"",false,0);
 					}else{
 						<call sql_query>("select content from files where id=%d and modified='%s'"
 							,glocal.entry.entryid,glocal.entry.modified.c_str());
@@ -594,8 +596,9 @@ static int trlid_main (
 			</f>
 			<f readmore>	// sessionid handle = success:b msg content:o more:b
 				bool is_admin;
-				if (trli_getsessionuser(glocal.con_sess,sessionid,is_admin)==0){
-					rep_readmore (false,"Invalid session",BOB_TYPE(),false);
+				string msg;
+				if (trli_getsessionuser(glocal.con_sess,sessionid,is_admin,msg)==0){
+					rep_readmore (false,msg,BOB_TYPE(),false);
 				}else{
 					FILE *fin = fs_get_file (handle,sessionid);
 					if (fin == NULL){
@@ -700,9 +703,9 @@ static int trlid_main (
 				glocal bool history = history;
 				if (bod_findentry (glocal.con_sess,sessionid,name,entry,threshold)!=-1){
 					if (!bolixo_isdir(entry.type)){
-						entry.msg = "Is not a directory";
+						entry.msg = MSG_U(E_NOTDIR,"Is not a directory");
 					}else if (entry.ownerid != entry.userid && entry.listmode == 'p' && !entry.is_admin){
-						entry.msg = "Not allowed to list";
+						entry.msg = MSG_U(E_NOTALLOWEDLIST,"Not allowed to list");
 					}else{
 						if (threshold[0] == '\0') threshold = END_OF_TIME;
 						<call sql_query>("select dirs_content.name,dirs_content.modified,type,id2name.name"
@@ -857,7 +860,7 @@ static int trlid_main (
 				</call>
 			</f>
 			<f list_lists>	//  sessionid owner = success:b msg lists:v groups:vv access:v
-				glocal string msg = "Invalid session";
+				glocal string msg;
 				glocal vector<LIST> lists;
 				unsigned userid = bo_writed_get_group_owner (glocal.con_sess, sessionid, owner, glocal.msg);
 				if (userid != 0){
@@ -883,7 +886,7 @@ static int trlid_main (
 						glocal.msg = "";
 					</f>
 					<f empty>
-						glocal.msg = "No list";
+						glocal.msg = MSG_U(E_NOLIST,"No list");
 					</f>
 					</call>
 				}
@@ -897,7 +900,7 @@ static int trlid_main (
 			<f list_groups>	// sessionid owner only_onwer:b = success:b msg groups:v users:vv access:vv
 				// List either all groups own by the logged user
 				// or all groups it belongs to
-				glocal string msg = "Invalid session";
+				glocal string msg;
 				glocal vector<GROUP> groups;
 				unsigned userid = bo_writed_get_group_owner (glocal.con_sess, sessionid, owner, glocal.msg);
 				if (userid != 0){
@@ -936,7 +939,7 @@ static int trlid_main (
 						glocal.msg = "";
 					</f>
 					<f empty>
-						glocal.msg = "No group";
+						glocal.msg = MSG_U(E_NOGROUP,"No group");
 					</f>
 					</call>
 				}
@@ -949,7 +952,7 @@ static int trlid_main (
 			</f>
 			<f list_inboxes> // sessionid owner showroles = success:b msg inboxes:U{INBOX}v
 					 // &INBOX manager project role
-				glocal string msg = "Invalid session";
+				glocal string msg;
 				glocal vector<INBOX> inboxes;
 				unsigned userid = bo_writed_get_group_owner (glocal.con_sess, sessionid, owner, glocal.msg);
 				if (userid != 0){
@@ -1610,7 +1613,9 @@ int main (int argc, char *argv[])
 	glocal const char *pidfile = "/var/run/bod.pid";
 
 	signal (SIGPIPE,SIG_IGN);
-	glocal.ret = <call tlmpprogram>(argc,argv,"tlmpsql");
+	translat_setlang("eng,fr");
+	static const char *tbdict[]={"bolixo","tlmpsql",NULL};
+	glocal.ret = <call tlmpprogram>(argc,argv,tbdict);
 	<f init>
 		setproginfo ("bod",VERSION,"Implement all business logic");
 		setgrouparg ("Networking");

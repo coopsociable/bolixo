@@ -1076,8 +1076,18 @@ static ENTRY_TYPE index_entrytype(CONNECT_INFO &con,PARAM_STRING path)
 </mod>
 static bool profile_formactive (_F_webtabs &c, W_SSTRING &var, const char *state)
 {
-	if (!w_add.isset() && !var.isset() && state[0] != '\0') var.setinitval(state);
-	c.setstate(var.c_str());
+	static const char *adding = "__add__";
+	if (w_add.isset()){
+		c.setstate(adding);
+	}else if (var.isset()){
+		c.setstate(var.c_str());
+	}else if (state[0] != '\0'){
+		if (strcmp(state,adding)==0){
+			w_add.setinitval("1");
+		}else{
+			var.setinitval(state);
+		}
+	}
 	return var.isset() || w_add.isset();
 }
 <mod>
@@ -2084,10 +2094,12 @@ extern "C" void webmain_real()
 								}
 							}
 							fail = glocal.fail;
-							keepediting = true;
 							if (!fail){
+								if (w_add == 0){
+									keepediting = true;
+									reload();
+								}
 								w_add = 0;
-								reload();
 							}
 						</f>
 						</call>
@@ -2243,10 +2255,12 @@ extern "C" void webmain_real()
 								}
 							}
 							fail = glocal.fail;
-							keepediting = true;
 							if (!fail){
+								if (w_add == 0){
+									keepediting = true;
+									reload();
+								}
 								w_add = 0;
-								reload();
 							}
 						</f>
 						</call>

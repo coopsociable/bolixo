@@ -21,7 +21,7 @@ msg:
 compile: $(PROGS)
 	#make -Cweb 
 
-bofs: bofs.tlcc proto/bod_client.protoh proto/webapi.protoh filesystem.h _dict.o bolixo.m
+bofs: bofs.tlcc proto/bod_client.protoh proto/webapi.protoh filesystem.h _dict.o
 	cctlcc -Wall $(OPTIONS) bofs.tlcc _dict.o -o bofs $(LIBS) -lssl
 
 _dict.o: _dict.cc bolixo.m
@@ -30,21 +30,21 @@ _dict.o: _dict.cc bolixo.m
 
 bod: bod.tlcc filesystem.o proto/bod_control.protoh proto/bod_client.protoh proto/bod_admin.protoh \
 	proto/bo-writed_client.protoh proto/bo-sessiond_client.protoh
-	cctlcc -Wall $(OPTIONS) bod.tlcc filesystem.o -o bod $(LIBS) -ltlmpsql -L/usr/lib64/mysql -lmysqlclient
+	cctlcc -Wall $(OPTIONS) bod.tlcc filesystem.o _dict.o -o bod $(LIBS) -ltlmpsql -L/usr/lib64/mysql -lmysqlclient
 
 bod-client: bod-client.tlcc proto/bod_client.protoh proto/bod_admin.protoh \
 	proto/bo-sessiond_admin.protoh
 	cctlcc -Wall $(OPTIONS) bod-client.tlcc -o bod-client $(LIBS)
 
 bod-control: bod-control.tlcc proto/bod_control.protoh
-	cctlcc -Wall $(OPTIONS) bod-control.tlcc -o bod-control $(LIBS)
+	cctlcc -Wall $(OPTIONS) bod-control.tlcc _dict.o -o bod-control $(LIBS)
 
 bo-writed: bo-writed.tlcc filesystem.o proto/bo-writed_control.protoh proto/bo-writed_client.protoh \
 	proto/bo-sessiond_admin.protoh proto/bo-log.protoh proto/bo-keysd_control.protoh
-	cctlcc -Wall $(OPTIONS) bo-writed.tlcc filesystem.o -o bo-writed $(LIBS) -ltlmpsql -L/usr/lib64/mysql -lmysqlclient
+	cctlcc -Wall $(OPTIONS) bo-writed.tlcc filesystem.o _dict.o -o bo-writed $(LIBS) -ltlmpsql -L/usr/lib64/mysql -lmysqlclient
 
 bo-writed-control: bo-writed-control.tlcc
-	cctlcc -Wall $(OPTIONS) bo-writed-control.tlcc -o bo-writed-control $(LIBS)
+	cctlcc -Wall $(OPTIONS) bo-writed-control.tlcc _dict.o -o bo-writed-control $(LIBS)
 
 bo-sessiond: bo-sessiond.tlcc proto/bo-sessiond_control.protoh \
        	proto/bo-sessiond_client.protoh proto/bo-sessiond_admin.protoh proto/session_log.protoh
