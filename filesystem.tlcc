@@ -257,7 +257,7 @@ int fs_locate_dir (
  			sql += string_f (" %s name='%s'",sep,enc.enc(d));
 			sep = "or";
 		}
-		sql += ")";
+		sql += ") order by eventtime";
 		<call sql_query>(sql.c_str());
 		<f onerow>
 			unsigned group_list_id = row[4] == NULL ? (unsigned)-1 : atoi(row[4]);
@@ -269,12 +269,16 @@ int fs_locate_dir (
 		// overriden.
 		for (unsigned i=0; i<glocal.dirs.size(); i++){
 			DIRINFO &info = glocal.dirs[i];
-			for (unsigned j=i+1; j<glocal.dirs.size(); j++){
-				DIRINFO &info2 = glocal.dirs[j];
-				if (info2.type == ENTRY_DELETED && info.parentid == info2.parentid && info.dirid == info2.dirid){
-					info.name.clear();
-					info2.name.clear();
-					break;
+			if (info.type == ENTRY_DELETED){
+				// We have found a ENTRY_DELETED entry, so we look back to find the corresponding ENTRY_DIR
+				// The entries are sorted by eventtime
+				for (int j=i-1; j>=0; j--){
+					DIRINFO &info2 = glocal.dirs[j];
+					if (info.parentid == info2.parentid && info.dirid == info2.dirid){
+						info.name.clear();
+						info2.name.clear();
+						break;
+					}
 				}
 			}
 		}

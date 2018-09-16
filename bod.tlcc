@@ -684,7 +684,7 @@ static int trlid_main (
 							glocal.file.eventdate = eventdate;
 							glocal.file.file_type = file_type;
 							glocal.file.viewed = "not done";
-							glocal.entry.msg = "";
+							glocal.entry.msg.clear();
 						}
 					</f>
 					</call>
@@ -883,7 +883,7 @@ static int trlid_main (
 							l.groups.push_back(row[2]);
 							l.access.push_back(row[3]);
 						}
-						glocal.msg = "";
+						glocal.msg.clear();
 					</f>
 					<f empty>
 						glocal.msg = MSG_U(E_NOLIST,"No list");
@@ -936,7 +936,7 @@ static int trlid_main (
 							if (role == NULL) role = "";
 							g.roles.push_back(role);
 						}
-						glocal.msg = "";
+						glocal.msg.clear();
 					</f>
 					<f empty>
 						glocal.msg = MSG_U(E_NOGROUP,"No group");
@@ -956,7 +956,7 @@ static int trlid_main (
 				glocal vector<INBOX> inboxes;
 				unsigned userid = bo_writed_get_group_owner (glocal.con_sess, sessionid, owner, glocal.msg);
 				if (userid != 0){
-					glocal.msg = "";
+					glocal.msg.clear();
 					vector<unsigned> listids;
 					fs_list_inboxes (userid,glocal.inboxes,listids,showroles);
 				}
@@ -971,13 +971,12 @@ static int trlid_main (
 					// &MESSAGE manager project role uuid title submit viewed
 				// We can extract the messasges for either all inboxes or a single project
 				// if project is empty
-				glocal string msg = "Invalid session";
+				glocal string msg;
 				glocal vector<MESSAGE> msgs;
 				string username;
 				unsigned userid = bo_writed_get_group_owner (glocal.con_sess, sessionid, owner, username, glocal.msg);
 				if (userid != 0){
 					glocal map<int,INBOX> id2prj;
-					glocal.msg = "";
 					string dirids;
 					const char *sep = "";
 					if (project[0] == '\0'){
@@ -1016,7 +1015,7 @@ static int trlid_main (
 						}
 					}
 					if (dirids.size() > 0){
-						glocal.msg = "";
+						glocal.msg.clear();
 						<call sql_query>("select dirs_content.name,files.title,dirs_content.modified,id2name.name,marks.modified,dirs_content.dirid"
 							" from dirs_content"
 							" join files on files.id = dirs_content.itemid and files.modified = dirs_content.modified"
@@ -1094,7 +1093,7 @@ static int trlid_main (
 				<f onerow>
 					if (row[0] == NULL){
 						glocal.status = ERR_CODE_CANTVERIFY;
-						glocal.msg = "No public key for this account";
+						glocal.msg = MSG_U(E_NOPUBKEY,"No public key for this account");
 					}else{
 						EVP_PKEY *p = bod_load_public (row[0]);
 						if (p != NULL){
@@ -1109,10 +1108,10 @@ static int trlid_main (
 								strip_end (sig);
 								if (bod_verify(tmp,p,sig)==-1){
 									glocal.status = ERR_CODE_VERIFYFAILED;
-									glocal.msg = "Signature does not match";
+									glocal.msg = MSG_U(E_SIGNOMATCH,"Signature does not match");
 								}else{
 									glocal.status = ERR_CODE_NONE;
-									glocal.msg = "Signature ok";
+									glocal.msg = MSG_U(I_SIGOK,"Signature ok");
 								}
 							}
 							EVP_PKEY_free (p);
@@ -1141,7 +1140,7 @@ static int trlid_main (
 				glocal const char *groupowner = groupowner;
 				glocal unsigned offset = offset;
 				glocal unsigned nb = nb;
-				glocal string msg = "Invalid session";
+				glocal string msg;
 				glocal vector<SHORTMSG> msgs;
 				string username;
 				unsigned userid = bo_writed_get_group_owner (glocal.con_sess, sessionid, owner, username, glocal.msg);
@@ -1153,7 +1152,7 @@ static int trlid_main (
 						" where id2name.name='%s' and groups.name='%s' and group_members.userid=%u"
 						,groupowner,groupname,userid);
 					<f empty>
-						glocal.msg = "Unknown group name, empty group, or user not a member";
+						glocal.msg = MSG_U(E_GROUPPROBLEMS,"Unknown group name, empty group, or user not a member");
 					</f>
 					<f onerow>
 						int dirid = fs_find_short_inbox (atoi(row[0]),glocal.groupowner,glocal.groupname,false,glocal.msg);
@@ -1285,7 +1284,7 @@ static int trlid_main (
 					if (fs_findentry(abspath,entry,true,"")==-1){
 						glocal.msg = entry.msg;
 					}else if (!bolixo_isdir(entry.type)){
-						glocal.msg = "Is not a directory";
+						glocal.msg = MSG_R(E_NOTDIR);
 					}else{
 						<call sql_query>("select dirs_content.name,dirs_content.modified,type,id2name.name"
 							",group_list_id,group_lists.name,ids.listmode"
@@ -1365,7 +1364,7 @@ static int trlid_main (
 					if (fs_findentry(abspath,glocal.entry,true,"")==-1){
 						glocal.msg = glocal.entry.msg;
 					}else if (!bolixo_isfile(glocal.entry.type)){
-						glocal.msg = "Is not a file";
+						glocal.msg = MSG_R(E_NOTAFILE);
 					}else{
 						<call sql_query>("select content from files where id=%d and modified='%s'"
 							,glocal.entry.entryid,glocal.entry.modified.c_str());
@@ -1384,9 +1383,9 @@ static int trlid_main (
 									if (fstat64(fileno(fin),&st)==-1){
 										glocal.msg = "Internal error, getting file size";
 									}else if (glocal.offset >= st.st_size){
-										glocal.msg = "offset too large, no seek";
+										glocal.msg = MSG_U(E_OFFSETLARGE,"offset too large, no seek");
 									}else if (fseek(fin,glocal.offset,SEEK_SET)==-1){
-										glocal.msg = "Seek failed";
+										glocal.msg = MSG_U(E_SEEKFAIL,"Seek failed");
 									}else{
 										char buf[50000];
 										int len = fread (buf,1,50000,fin);
