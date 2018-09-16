@@ -1,7 +1,7 @@
 CURDIR=trli
 MANPAGES=/usr/share/man
 PACKAGE_REV:=$(shell ./makeversion $(BUILD_SVNVER))
-PROGS=bod bod-client bod-control bo-writed bo-writed-control bo-sessiond bo-sessiond-control \
+PROGS=_dict.o bod bod-client bod-control bo-writed bo-writed-control bo-sessiond bo-sessiond-control \
       bo-manager bofs ssltestsign bo-keysd bo-keysd-control
 #bo-log bo-log-control \
 #      bo-mon bo-mon-control

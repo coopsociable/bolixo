@@ -11,6 +11,7 @@
 #include <map>
 #include <trlitool.h>
 #include "filesystem.h"
+#include "bolixo.m"
 
 using namespace std;
 
@@ -211,13 +212,15 @@ struct DIRINFO{
 	unsigned ownerid;
 	unsigned group_list_id;
 	char listmode;
-	DIRINFO(const char *_name, int _parentid, int _dirid, unsigned _ownerid, unsigned _group_list_id, char _listmode){
+	ENTRY_TYPE type;	// ENTRY_DIR or ENTRY_DELETED
+	DIRINFO(const char *_name, int _parentid, int _dirid, unsigned _ownerid, unsigned _group_list_id, char _listmode, ENTRY_TYPE _type){
 		name = _name;
 		parentid = _parentid;
 		dirid = _dirid;
 		ownerid = _ownerid;
 		group_list_id = _group_list_id;
 		listmode = _listmode;
+		type = _type;
 	}
 };
 /*
@@ -246,9 +249,9 @@ int fs_locate_dir (
 		string tmp;
 		NSQL_ENCODE enc;
 		string owner_cmp;	// = is_admin ? "" : string_f ("(ownerid=1 or ownerid=%u) and",userid);
-		string sql = string_f ("select name,dirid,itemid,ids.ownerid,ids.group_list_id,ids.listmode"
-			" from dirs_content join ids on ids.id=itemid where eventtime <= '%s' and type=%u and %s"
-			,enc.enc(threshold),ENTRY_DIR,owner_cmp.c_str());
+		string sql = string_f ("select name,dirid,itemid,ids.ownerid,ids.group_list_id,ids.listmode,type"
+			" from dirs_content join ids on ids.id=itemid where eventtime <= '%s' and (type=%u or type=%u) and %s"
+			,enc.enc(threshold),ENTRY_DIR,ENTRY_DELETED,owner_cmp.c_str());
 		const char *sep = "(";
 		for (auto &d:tb){
  			sql += string_f (" %s name='%s'",sep,enc.enc(d));
@@ -258,9 +261,23 @@ int fs_locate_dir (
 		<call sql_query>(sql.c_str());
 		<f onerow>
 			unsigned group_list_id = row[4] == NULL ? (unsigned)-1 : atoi(row[4]);
-			glocal.dirs.push_back(DIRINFO(row[0],atoi(row[1]),atoi(row[2]),atoi(row[3]),group_list_id,row[5][0]));
+			glocal.dirs.push_back(DIRINFO(row[0],atoi(row[1]),atoi(row[2]),atoi(row[3]),group_list_id,row[5][0],(ENTRY_TYPE)atoi(row[6])));
 		</f>
 		</call>
+		// We have to remove entries in glocal.dirs which are followed by a deleted entry
+		// This is ineficient. One day, a special flag will be added to DIRS_CONTENT to indicate if this entry has been
+		// overriden.
+		for (unsigned i=0; i<glocal.dirs.size(); i++){
+			DIRINFO &info = glocal.dirs[i];
+			for (unsigned j=i+1; j<glocal.dirs.size(); j++){
+				DIRINFO &info2 = glocal.dirs[j];
+				if (info2.type == ENTRY_DELETED && info.parentid == info2.parentid && info.dirid == info2.dirid){
+					info.name.clear();
+					info2.name.clear();
+					break;
+				}
+			}
+		}
 		for (unsigned i=0; i<tb.size(); i++){
 			auto &d = tb[i];
 			tmp += string("/") + d;
@@ -282,7 +299,7 @@ int fs_locate_dir (
 			}
 			if (dirid == -1){
 				if (!create_missing){
-					msg = string_f ("%s does not exist",tmp.c_str());
+					msg = string_f (MSG_U(E_DOESNOTEXIST,"%s does not exist"),tmp.c_str());
 					ret = -1;
 					break;
 				}else{
@@ -307,11 +324,11 @@ int fs_locate_dir (
 					}
 				}
 			}else if (!bolixo_isdir(type)){
-				msg = string_f ("%s is not a directory",tmp.c_str());
+				msg = string_f (MSG_U(E_NAMENOTDIR,"%s is not a directory"),tmp.c_str());
 				ret = -1;
 				break;
 			}else if (!fs_check_access(userid,ownerid,group_list_id,listmode,is_admin,may_add)){
-				msg = string_f ("Access denied to directory %s (%u,%u,%u,'%c')",tmp.c_str()
+				msg = string_f (MSG_U(E_ACCESSDEN,"Access denied to directory %s (%u,%u,%u,'%c')"),tmp.c_str()
 					,userid,ownerid,group_list_id,listmode);
 				ret = -1;
 				break;
@@ -373,12 +390,12 @@ int fs_findentry (PARAM_STRING path, ENTRY &entry, bool expect_exist, const char
 		entry.ownerid = 0;
 		entry.group_list_id = 0;
 		if (!expect_exist){
-			entry.msg = "Entry with that name exist";
+			entry.msg = MSG_U(E_ALREADY,"Entry with that name exists");
 		}else{
 			ret = 0;
 		}
 	}else if (fs_parse_fname (name,parents,entry.basename) == -1){
-		entry.msg = "Invalid name";
+		entry.msg = MSG_U(E_IVLDNAME,"Invalid name");
 	}else{
 		entry.dirid = fs_locate_dir (parents,entry.userid,entry.is_admin,entry.msg,threshold,entry.may_add);
 		if (entry.dirid != -1){
@@ -386,16 +403,16 @@ int fs_findentry (PARAM_STRING path, ENTRY &entry, bool expect_exist, const char
 			entry.entryid = fs_locate_entry (entry.dirid,fname,entry.type,entry.modified,entry.ownerid,entry.group_list_id,entry.listmode,threshold);
 			if (entry.entryid == -1){
 				if (expect_exist){
-					entry.msg = "Entry with that name does exist";
+					entry.msg = string_f(MSG_R(E_DOESNOTEXIST),fname);
 				}else if (!entry.may_add){
-					entry.msg = "File does not exist, not allowed to create";
+					entry.msg = MSG_U(E_NOTALLOWCREATE,"File does not exist, not allowed to create");
 				}else{
 					ret = 0;
 				}
 			}else if (!expect_exist){
-				entry.msg = "Entry with that name exist";
+				entry.msg = MSG_R(E_ALREADY);
 			}else if (!fs_check_access(entry.userid,entry.ownerid,entry.group_list_id,entry.listmode,entry.is_admin,entry.may_modify)){
-				entry.msg = "File exist, not allowed to modify";
+				entry.msg = MSG_U(E_NOMODIFY,"File exist, not allowed to modify");
 			}else{
 				ret = 0;
 			}
