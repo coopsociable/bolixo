@@ -58,6 +58,34 @@ using namespace std;
 #define webapi_sendattach_NOTNEED
 #include "proto/webapi.protoch"
 
+
+static bool testmode = false;
+
+static const char *normalize_date (PARAM_STRING date)
+{
+	const char *ret = NULL;
+	if (testmode){
+		static map<string,string> dates;
+		auto d = dates.find(date.ptr);
+		if (d == dates.end()){
+			static int datecount = 0;
+			// Invent a different date;
+			time_t t = datecount;
+			datecount++;
+			struct tm *tt = localtime(&t);
+			auto &d = dates[date.ptr] = string_f("%04d/%02d/%02d %02d:%02d:%02d"
+				,tt->tm_year+1900,tt->tm_mon+1,tt->tm_mday
+				,tt->tm_hour,tt->tm_min,tt->tm_sec);
+			ret = d.c_str();
+		}else{
+			ret = d->second.c_str();
+		}
+	}else{
+		ret = date.ptr;
+	}
+	return ret;
+}
+
 static void bofs_maxlen (const char *s, unsigned &max_s)
 {
 	unsigned len = strlen(s);
@@ -376,7 +404,7 @@ static void bofs_printdir (bool opt_long, const vector<FILEINFO_receive> &files)
 					if (listmode[0] == '\0') listmode = " ";
 					printf ("\t%c%s   %s   %s   %*s/%-*s:%s   %*u   %-*s  %s\n"
 						,tbtype[f.type],tbftype[f.file_type]
-						,f.eventdate,f.modified
+						,normalize_date(f.eventdate),normalize_date(f.modified)
 						,max_owner,f.owner,max_members,f.listname,listmode,max_size,f.size
 						,max_name,f.name,f.title);
 				}
@@ -398,7 +426,7 @@ static int bofs_printonefile (CONTEXT &ctx, bool opt_long, bool https, const cha
 		if (opt_long){
 			printf ("\t%c%s   %s   %s   %s/%s:%s   %u   %s  %s\n"
 				,tbtype[file.type],tbftype[file.file_type]
-				,file.eventdate.c_str(),file.modified.c_str()
+				,normalize_date(file.eventdate),normalize_date(file.modified)
 				,file.owner.c_str(),file.listname.c_str(),file.listmode.c_str()
 				,file.size,file.name.c_str(),file.title.c_str());
 		}else{
@@ -2262,6 +2290,7 @@ int main (int argc, char *argv[])
 			);
 		setarg ('u',"user",MSG_U(O_SELECT,"Select one user from .bofs.conf"),glocal.user,false);
 		setarg (' ',"repeat",MSG_U(O_REPEAT,"Repeat the operation N time (speed test)"),glocal.nbrep,false);
+		setarg ('t',"testmode",MSG_U(O_TESTMODE,"Test mode, normalize output"),testmode,false);
 	</f>
 	<f main>
 		int ret = -1;
