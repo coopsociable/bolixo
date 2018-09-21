@@ -1153,6 +1153,20 @@ extern "C" void webmain_real()
 		if (cur != current_row){
 			cur = current_row;
 			web_updatecurrents(glocal.con_sess);
+			if (tableid[0] == '/'){
+				glocal const char *dir = tableid;
+				<call bod_client_listdir>(glocal.con,w_session.c_str(),tableid,"",false,current_row,1);
+				<f ok>
+					if (files.size()==1){
+						string fname = string_f("%s/%s",glocal.dir,files[0].name);
+						<call bod_client_markview>(glocal.con,w_session.c_str(),fname);
+						<f ok>
+						</f>
+						</call>
+					}
+				</f>
+				</call>
+			}
 		}
 	</f>
 	<f recordform>
@@ -1582,11 +1596,16 @@ extern "C" void webmain_real()
 							}else if (file_is_text(f.file_type)){
 								glocal.webtable.setclickopt (true,"",string_f("webtab_add=2:%s",path.c_str()));
 							}
-							glocal.webtable.setrow ("white",glocal.rownum,"%c%s\t%s\t%s\t%s/%s:%s\t%u\t%s"
-								,tbtype[f.type],tbftype[f.file_type]
-								,f.eventdate,f.modified
-								,f.owner,f.listname,f.listmode,f.size
-								,f.name);
+							const char *boldon = "", *boldoff = "";
+							if (f.viewed != VIEWED_OK){
+								boldon = "<b>";
+								boldoff = "</b>";
+							}
+							glocal.webtable.setrow ("white",glocal.rownum,"%s%c%s%s\t%s%s%s\t%s%s%s\t%s%s/%s:%s%s\t%s%u%s\t%s%s%s"
+								,boldon,tbtype[f.type],tbftype[f.file_type],boldoff
+								,boldon,f.eventdate,boldoff ,boldon,f.modified,boldoff
+								,boldon,f.owner,f.listname,f.listmode,boldoff ,boldon,f.size,boldoff
+								,boldon,f.name,boldoff);
 							glocal.rownum++;
 						}
 					</f>

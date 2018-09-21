@@ -412,6 +412,11 @@ static void bofs_printdir (bool opt_long, const vector<FILEINFO_receive> &files)
 		unsigned max_modes = 0;
 		unsigned max_size = 0;
 		unsigned max_name = 0;
+		unsigned max_viewed = 0;
+		for (auto s:tbviewed){
+			unsigned len = strlen(s->get());
+			if (len > max_viewed) max_viewed = len;
+		}
 		for (int r=0; r<2; r++){
 			for (auto &f:files){
 				bofs_maxlen (f.owner,max_owner);
@@ -424,7 +429,8 @@ static void bofs_printdir (bool opt_long, const vector<FILEINFO_receive> &files)
 					const char *listmode = f.listmode;
 					if (listmode[0] == '\0') listmode = " ";
 					string member_mode = string_f("%s:%s",f.listname,f.listmode);
-					printf ("\t%c%-3s   %s   %s   %*s/%-*s   %*u   %-*s  %s\n"
+					printf ("\t%-*s %c%-3s   %s   %s   %*s/%-*s   %*u   %-*s  %s\n"
+						,max_viewed,tbviewed[f.viewed]->get()
 						,tbtype[f.type],tbftype[f.file_type]
 						,normalize_date(f.eventdate),normalize_date(f.modified)
 						,max_owner,f.owner,max_members+max_modes+1,member_mode.c_str(),max_size,normalize_size(f.size)
@@ -446,7 +452,8 @@ static int bofs_printonefile (CONTEXT &ctx, bool opt_long, bool https, const cha
 		ret = -1;
 	}else{
 		if (opt_long){
-			printf ("\t%c%s   %s   %s   %s/%s:%s   %u   %s  %s\n"
+			printf ("\t%s %c%s   %s   %s   %s/%s:%s   %u   %s  %s\n"
+				,tbviewed[file.viewed]->get()
 				,tbtype[file.type],tbftype[file.file_type]
 				,normalize_date(file.eventdate),normalize_date(file.modified)
 				,file.owner.c_str(),file.listname.c_str(),file.listmode.c_str()

@@ -295,6 +295,21 @@ static string bod_first_lines (const char *txt, unsigned nblines)
 	}
 }
 
+static VIEWED_STATUS bod_readviewed(const char *mark_modified, const char *modified)
+{
+	VIEWED_STATUS ret = VIEWED_NEW;
+	// If there is no entry for the document or message in table marks, then it is new
+	if (mark_modified != NULL){
+		if (strcmp(mark_modified,modified)==0){
+			// Document has not changed since it was viewed
+			ret = VIEWED_OK;
+		}else{
+			ret = VIEWED_MODIFIED;
+		}
+	}
+	return ret;
+}
+
 <mod>
 static int trlid_main (
 	const char *bind,
@@ -638,14 +653,15 @@ static int trlid_main (
 					<call sql_query>("select dirs_content.name,dirs_content.modified,type,id2name.name"
 						",group_list_id,group_lists.name,ids.listmode"
 						",length(files.content),dirs_content.itemid,files.title,dirs_content.eventtime"
-						",files.filetype"
+						",files.filetype,marks.modified"
 						" from dirs_content"
 						" join ids on dirs_content.itemid=ids.id"
 						" join id2name on ids.ownerid=id2name.userid"
 						" left join group_lists on ids.group_list_id=group_lists.id"
 						" left join files on dirs_content.itemid=files.id and dirs_content.modified=files.modified"
+						" left join marks on marks.itemid=dirs_content.itemid and marks.userid=%u"
 						" where dirid=%d and dirs_content.name='%s' and dirs_content.eventtime <= '%s' order by eventtime desc limit 1"
-						,glocal.entry.dirid,glocal.entry.basename.c_str(),threshold);
+						,glocal.entry.userid,glocal.entry.dirid,glocal.entry.basename.c_str(),threshold);
 					<f onerow>
 						const char *name = row[0];
 						const char *modified = row[1];
@@ -672,7 +688,7 @@ static int trlid_main (
 						const char *title = row[9] == NULL ? "" : row[9];
 						const char *eventdate = row[10];
 						FILE_TYPE file_type = row[11] == NULL ? FILE_UNKNOWN : (FILE_TYPE)atoi(row[11]);
-						VIEWED_STATUS viewed = VIEWED_NEW;
+						VIEWED_STATUS viewed = bod_readviewed(row[12],modified);
 						if (!bolixo_isdeleted(type)){
 							glocal.file.name = name;
 							glocal.file.modified = modified;
@@ -712,14 +728,15 @@ static int trlid_main (
 						<call sql_query>("select dirs_content.name,dirs_content.modified,type,id2name.name"
 							",group_list_id,group_lists.name,ids.listmode"
 							",length(files.content),dirs_content.itemid,files.title,dirs_content.eventtime"
-							",files.filetype,files.content is null"
+							",files.filetype,files.content is null,marks.modified"
 							" from dirs_content"
 							" join ids on dirs_content.itemid=ids.id"
 							" join id2name on ids.ownerid=id2name.userid"
 							" left join group_lists on ids.group_list_id=group_lists.id"
 							" left join files on dirs_content.itemid=files.id and dirs_content.modified=files.modified"
+							" left join marks on marks.itemid=dirs_content.itemid and marks.userid=%u"
 							" where dirid=%d and dirs_content.eventtime <= '%s' order by eventtime"
-							,entry.entryid,threshold);
+							,entry.userid,entry.entryid,threshold);
 						<f onerow>
 							const char *name = row[0];
 							const char *modified = row[1];
@@ -747,7 +764,7 @@ static int trlid_main (
 							const char *eventdate = row[10];
 							FILE_TYPE file_type = row[11] == NULL ? FILE_UNKNOWN : (FILE_TYPE)atoi(row[11]);
 							bool islarge = atoi(row[12])!=0;
-							VIEWED_STATUS viewed = VIEWED_NEW;
+							VIEWED_STATUS viewed = bod_readviewed(row[13],modified);
 							if (glocal.history){
 								FILEINFO info;
 								info.name = name;
@@ -1032,13 +1049,7 @@ static int trlid_main (
 							msg.title = row[1];
 							msg.submit = row[2];
 							msg.from = row[3];
-							if (row[4] == NULL){
-								msg.viewed = VIEWED_NEW;
-							}else if (strcmp(row[4],row[2])==0){
-								msg.viewed = VIEWED_OK;
-							}else{
-								msg.viewed = VIEWED_MODIFIED;
-							}
+							msg.viewed = bod_readviewed(row[4],row[2]);
 							int dirid = atoi(row[5]);
 							auto pt = glocal.id2prj.find(dirid);
 							if (pt != glocal.id2prj.end()){
