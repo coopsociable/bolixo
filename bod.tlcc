@@ -532,59 +532,62 @@ static int trlid_main (
 				</call>
 			</f>
 			<f readfile> // sessionid name = success:b msg content
-				ENTRY entry;
-				if (bod_findentry (glocal.con_sess,sessionid,name,entry,threshold)==-1){
-					rep_readfile (false,entry.msg,"");
-				}else{
-					if (!bolixo_isfile(entry.type)){
-						rep_readfile (false,MSG_U(E_NOTAFILE,"Entry is not a file"),"");
+				glocal ENTRY entry;
+				glocal READINFO info;
+				if (bod_findentry (glocal.con_sess,sessionid,name,glocal.entry,threshold)!=-1){
+					if (!bolixo_isfile(glocal.entry.type)){
+						glocal.entry.msg = MSG_U(E_NOTAFILE,"Entry is not a file");
 					}else{
-						<call sql_query>("select content from files where id=%d and modified='%s'"
-							,entry.entryid,entry.modified.c_str());
+						<call sql_query>("select content,title,signature from files where id=%d and modified='%s'"
+							,glocal.entry.entryid,glocal.entry.modified.c_str());
 						<f onerow>
 							if (row[0] != NULL){
-								glocal.bod_client.rep_readfile (true,"",row[0]);
+								glocal.info.title = row[1] != NULL ? row[1] : "";
+								glocal.info.signature = row[2] != NULL ? row[2] : "";
+								glocal.bod_client.rep_readfile (true,"",row[0],glocal.info);
 							}else{
-								glocal.bod_client.rep_readfile (false,MSG_U(E_USEREADBOB,"Internal error, must use readfile_bob for large content"),"");
+								glocal.entry.msg = MSG_U(E_USEREADBOB,"Internal error, must use readfile_bob for large content");
 							}
 						</f>
 						<f empty>
-							glocal.bod_client.rep_readfile (false,"Internal error, reading table files","");
+							glocal.entry.msg = "Internal error, reading table files";
 						</f>
 						</call>
 					}
 				}
+				if (glocal.entry.msg.size()!=0){
+					rep_readfile(false,glocal.entry.msg,"",glocal.info);
+				}
 			</f>
 			<f readfile_bob> // sessionid name threshold nomore:b = success:b msg content:o handle more:b
 				glocal bool nomore = nomore;
+				glocal READINFO info;
 				glocal ENTRY entry;
 				glocal const char *sessionid = sessionid;
-				BOB_TYPE empty;
-				if (bod_findentry (glocal.con_sess,sessionid,name,glocal.entry,threshold)==-1){
-					rep_readfile_bob (false,glocal.entry.msg,empty,"",false,0);
-				}else{
+				if (bod_findentry (glocal.con_sess,sessionid,name,glocal.entry,threshold)!=-1){
 					if (!bolixo_isfile(glocal.entry.type)){
-						rep_readfile_bob (false,MSG_R(E_NOTAFILE),empty,"",false,0);
+						glocal.entry.msg = MSG_R(E_NOTAFILE);
 					}else{
-						<call sql_query>("select content from files where id=%d and modified='%s'"
+						<call sql_query>("select content,title,signature from files where id=%d and modified='%s'"
 							,glocal.entry.entryid,glocal.entry.modified.c_str());
 						<f onerow>
+							glocal.info.title = row[1] != NULL ? row[1] : "";
+							glocal.info.signature = row[2] != NULL ? row[2] : "";
+							glocal.info.modified = glocal.entry.modified;
 							if (row[0] != NULL){
 								unsigned len = strlen(row[0]);
 								BOB_TYPE bob (row[0],len,false);
-								glocal.bod_client.rep_readfile_bob (true,"",bob,"",false,len);
+								glocal.bod_client.rep_readfile_bob (true,"",bob,glocal.info,"",false,len);
 							}else{
 								string handle;
 								FILE *fin = fs_alloc_file_handle (glocal.entry.entryid,glocal.entry.modified,"r",handle,glocal.sessionid);
 								if (fin == NULL){
-									glocal.bod_client.rep_readfile_bob (false,"Internal error, reading content file"
-										,BOB_TYPE(),"",false,0);
+									glocal.entry.msg == "Internal error, reading content file";
 									fs_delete_handle (handle);
 								}else{
 									struct stat64 st;
 									if (fstat64(fileno(fin),&st)==-1){
-										glocal.bod_client.rep_readfile_bob (false,"Internal error, getting file size"
-											,BOB_TYPE(),"",false,0);
+										glocal.entry.msg = "Internal error, getting file size";
 										fs_delete_handle (handle);
 									}else{
 										char buf[50000];
@@ -596,17 +599,19 @@ static int trlid_main (
 											handle.clear();
 										}
 										glocal.bod_client.rep_readfile_bob (true,"Ok"
-											,bob,handle,more,st.st_size);
+											,bob,glocal.info,handle,more,st.st_size);
 									}
 								}
 							}
 						</f>
 						<f empty>
-							glocal.bod_client.rep_readfile_bob (false,"Internal error, reading table files"
-								,BOB_TYPE(),"",false,0);
+							glocal.entry.msg = "Internal error, reading table files";
 						</f>
 						</call>
 					}
+				}
+				if (glocal.entry.msg.size()!=0){
+					rep_readfile_bob(false,glocal.entry.msg,BOB_TYPE(),glocal.info,"",false,0);
 				}
 			</f>
 			<f readmore>	// sessionid handle = success:b msg content:o more:b
