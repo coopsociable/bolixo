@@ -24,6 +24,7 @@
 #define DEFINE_TBFTYPE
 #include "bolixo.h"
 #include "bolixo.m"
+#include <translat.h>
 
 using namespace std;
 
@@ -60,6 +61,7 @@ using namespace std;
 
 
 static bool testmode = false;
+static TRANS_NOTLOAD *tbviewed[]={P_MSG_U(I_VIEWNEW,"New"),P_MSG_U(I_VIEWSEEN,"Seen"),P_MSG_U(I_VIEWCHANGED,"Changed")};
 
 static const char *normalize_date (PARAM_STRING date)
 {
@@ -82,6 +84,23 @@ static const char *normalize_date (PARAM_STRING date)
 		}
 	}else{
 		ret = date.ptr;
+	}
+	return ret;
+}
+static unsigned normalize_size (unsigned size)
+{
+	unsigned ret = size;
+	if (size > 0 && testmode){
+		static map<unsigned,unsigned> sizes;
+		auto d = sizes.find(size);
+		if (d == sizes.end()){
+			static unsigned alloc_size=1000;
+			sizes[size] = alloc_size;
+			ret = alloc_size;
+			alloc_size++;
+		}else{
+			ret = d->second;
+		}
 	}
 	return ret;
 }
@@ -390,22 +409,25 @@ static void bofs_printdir (bool opt_long, const vector<FILEINFO_receive> &files)
 	if (opt_long){
 		unsigned max_owner = 0;
 		unsigned max_members = 0;
+		unsigned max_modes = 0;
 		unsigned max_size = 0;
 		unsigned max_name = 0;
 		for (int r=0; r<2; r++){
 			for (auto &f:files){
 				bofs_maxlen (f.owner,max_owner);
 				bofs_maxlen (f.listname,max_members);
+				bofs_maxlen (f.listmode,max_modes);
 				bofs_maxlen (f.name,max_name);
 				string tmp = string_f ("%u",f.size);
 				if (tmp.size() > max_size) max_size = tmp.size();
 				if (r==1){
 					const char *listmode = f.listmode;
 					if (listmode[0] == '\0') listmode = " ";
-					printf ("\t%c%s   %s   %s   %*s/%-*s:%s   %*u   %-*s  %s\n"
+					string member_mode = string_f("%s:%s",f.listname,f.listmode);
+					printf ("\t%c%-3s   %s   %s   %*s/%-*s   %*u   %-*s  %s\n"
 						,tbtype[f.type],tbftype[f.file_type]
 						,normalize_date(f.eventdate),normalize_date(f.modified)
-						,max_owner,f.owner,max_members,f.listname,listmode,max_size,f.size
+						,max_owner,f.owner,max_members+max_modes+1,member_mode.c_str(),max_size,normalize_size(f.size)
 						,max_name,f.name,f.title);
 				}
 			}
@@ -428,7 +450,7 @@ static int bofs_printonefile (CONTEXT &ctx, bool opt_long, bool https, const cha
 				,tbtype[file.type],tbftype[file.file_type]
 				,normalize_date(file.eventdate),normalize_date(file.modified)
 				,file.owner.c_str(),file.listname.c_str(),file.listmode.c_str()
-				,file.size,file.name.c_str(),file.title.c_str());
+				,normalize_size(file.size),file.name.c_str(),file.title.c_str());
 		}else{
 			printf ("%s\n",file.name.c_str());
 		}
@@ -1793,8 +1815,7 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 							glocal.stop = true;
 						}else{
 							for (auto &m:messages){
-								const char *markread = strcmp(m.viewed,m.submit)==0 ? "viewed" : "      ";
-								printf ("%-10s %-10s %-10s %-10s %-30s %-20s %s %s\n",m.from,m.manager,m.project,m.role,m.uuid,m.submit,markread,m.title);
+								printf ("%-10s %-10s %-10s %-10s %-30s %-20s %s %s\n",m.from,m.manager,m.project,m.role,m.uuid,m.submit,tbviewed[m.viewed]->get(),m.title);
 							}
 							glocal.stop = messages.size() < glocal.chunk;
 							glocal.offset += glocal.chunk;
@@ -2023,16 +2044,18 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 		glocal int ret = -1;
 		if (glocal.markview){
 			glocal.ret = 0;
-			for (int i=0; i<argc; i++){
-				<call bod_client_markview>(glocal.ctx->con,glocal.ctx->sessionid,argv[i]);
-				<f ok>
-					if (!success){
-						bofs_error ("markview",internal_error,msg);
-						glocal.ret = -1;
-					}
-				</f>
-				</call>
-				if (glocal.ret != 0) break;
+			if (glocal.ctx->login()!=-1){
+				for (int i=0; i<argc; i++){
+					<call bod_client_markview>(glocal.ctx->con,glocal.ctx->sessionid,argv[i]);
+					<f ok>
+						if (!success){
+							bofs_error ("markview",internal_error,msg);
+							glocal.ret = -1;
+						}
+					</f>
+					</call>
+					if (glocal.ret != 0) break;
+				}
 			}
 		}
 		return glocal.ret;

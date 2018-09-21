@@ -33,6 +33,12 @@ enum FILE_TYPE {
 	FILE_VIDEO,
 };
 
+enum VIEWED_STATUS{
+	VIEWED_NEW,	// This is new for you
+	VIEWED_OK,	// Ok you have seen it
+	VIEWED_MODIFIED	// You have seen it, but the document changed
+};
+
 inline bool file_is_text (FILE_TYPE type){
 	return type == FILE_TEXT;
 }
