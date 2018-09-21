@@ -1090,6 +1090,21 @@ static bool profile_formactive (_F_webtabs &c, W_SSTRING &var, const char *state
 	}
 	return var.isset() || w_add.isset();
 }
+/*
+	Format the path of a mail
+*/
+static string index_format_mail_fname(const MESSAGE_receive &m)
+{
+	string fname;
+	if (m.role[0] != '\0'){
+		fname = string_f ("/msg-projects/%s/%s/%s/%s",m.manager,m.project,m.role,m.uuid);
+	}else if (m.manager[0] != '\0'){
+		fname = string_f ("/msg-projects/%s/%s/%s",m.manager,m.project,m.uuid);
+	}else{
+		fname = string_f ("/msgs/%s/inbox/%s",userinfo.name.c_str(),m.uuid);
+	}	
+	return fname;
+}
 <mod>
 extern "C" void webmain_real()
 {
@@ -1151,13 +1166,18 @@ extern "C" void webmain_real()
 	<f settablerow>
 		unsigned &cur = currents[tableid];
 		if (cur != current_row){
-			cur = current_row;
-			web_updatecurrents(glocal.con_sess);
+			/*
+				We avoid poluting the session manager with fake request.
+				So we make sure the request is associated with a real or possible webtable
+				We do the markview at the same time.
+			*/
+			glocal bool valid = false;
 			if (tableid[0] == '/'){
 				glocal const char *dir = tableid;
 				<call bod_client_listdir>(glocal.con,w_session.c_str(),tableid,"",false,current_row,1);
 				<f ok>
 					if (files.size()==1){
+						glocal.valid = true;
 						string fname = string_f("%s/%s",glocal.dir,files[0].name);
 						<call bod_client_markview>(glocal.con,w_session.c_str(),fname);
 						<f ok>
@@ -1166,6 +1186,46 @@ extern "C" void webmain_real()
 					}
 				</f>
 				</call>
+			}else if (strncmp(tableid,"inbox",5)==0){
+				const char *project = tableid+5;
+				if (strcmp(project,"INBOX")==0) project = "";
+				<call bod_client_list_msgs>(glocal.con,w_session.c_str(),"",project,false,current_row,1);
+				<f ok>
+					if (messages.size()==1){
+						glocal.valid = true;
+						string fname = index_format_mail_fname(messages[0]);
+						<call bod_client_markview>(glocal.con,w_session.c_str(),fname);
+						<f ok>
+						</f>
+						</call>
+					}
+				</f>
+				</call>
+			}else if (strncmp(tableid,"list:",5)==0){
+				const char *tab = tableid+5;
+				if (strcmp(tab,"projects")==0
+					|| strcmp(tab,"groups")==0
+					|| strcmp(tab,"contacts")==0){
+					glocal.valid = true;
+				}
+			}else if (strncmp(tableid,"talk",4)==0){
+				vector<string> tb;
+				int n = str_splitline (tableid+4,':',tb);
+				if (n == 2){
+					<call bod_client_list_talk>(glocal.con,w_session.c_str(),"",tb[1],tb[0],current_row,1);
+					<f ok>
+						if (messages.size()==1){
+							glocal.valid = true;
+						}
+					</f>
+					</call>
+				}
+			}
+			if (glocal.valid){
+				cur = current_row;
+				web_updatecurrents(glocal.con_sess);
+			}else{
+				tlmp_error ("settablerow unknown tableid %s\n",tableid);
 			}
 		}
 	</f>
@@ -1733,25 +1793,15 @@ extern "C" void webmain_real()
 				string inbox = string("inbox") + id;
 				<call webtable>(inbox,"60%",currents[inbox],offsets[inbox],20);
 				<f click>
+					// This code is never called
 					tlmpweb_flushheader();
-					//htmlprintf ("click %d %d<p>\n",noline,nocol);
 					<call bod_client_list_msgs>(glocal.con,w_session.c_str(),"",glocal.project,false,noline,1);
 					<f ok>
 						if (messages.size()!=1){
 							htmlprintf ("Internal error: %s\n",msg);
 						}else{
-							auto &m = messages[0];
-							//htmlprintf ("uuid=%s<p>\n",m.uuid);
-							htmlprintf ("title=%s<p>\n",m.title);
-							string path;
-							if (m.role[0] != '\0'){
-								path = string_f ("/msg-projects/%s/%s/%s/%s",m.manager,m.project,m.role,m.uuid);
-							}else if (m.manager[0] != '\0'){
-								path = string_f ("/msg-projects/%s/%s/%s",m.manager,m.project,m.uuid);
-							}else{
-								path = string_f ("/msgs/%s/inbox/%s",userinfo.name.c_str(),m.uuid);
-							}	
-							//htmlprintf ("path=%s<p>\n",path.c_str());
+							htmlprintf ("title=%s<p>\n",messages[0].title);
+							string path = index_format_mail_fname(messages[0]);
 							<call bod_client_readfile>(glocal.con,w_session.c_str(),path,"");
 							<f ok>
 								const char *pt = content;
@@ -1777,14 +1827,7 @@ extern "C" void webmain_real()
 							htmlprintf ("Error: %d %s<br>",internal_error,msg);
 						}else{
 							for (auto &m:messages){
-								string path;
-								if (m.role[0] != '\0'){
-									path = string_f ("/msg-projects/%s/%s/%s/%s",m.manager,m.project,m.role,m.uuid);
-								}else if (m.manager[0] != '\0'){
-									path = string_f ("/msg-projects/%s/%s/%s",m.manager,m.project,m.uuid);
-								}else{
-									path = string_f ("/msgs/%s/inbox/%s",userinfo.name.c_str(),m.uuid);
-								}	
+								string path = index_format_mail_fname(m);
 								glocal.webtable.setclickopt (true,"",string_f("webtab_add=2:%s"
 									,path.c_str()));
 								const char *style = m.viewed != VIEWED_OK ? "whitebold" : "white";
@@ -1804,6 +1847,7 @@ extern "C" void webmain_real()
 				</call>
 			</f>
 			<f docstyle2>
+				//htmlprintf ("title=%s<p>\n",messages[0].title);
 				<call bod_client_readfile>(glocal.con,w_session.c_str(),id,"");
 				<f ok>
 					const char *pt = content;
