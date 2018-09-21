@@ -2,7 +2,7 @@ extern const char **_dictionary_bolixo;
 #ifndef DICTIONARY_REQUEST
 	#define DICTIONARY_REQUEST \
 	const char **_dictionary_bolixo;\
-	TRANSLATE_SYSTEM_REQ _dictionary_req_bolixo("bolixo",_dictionary_bolixo,148,3);\
+	TRANSLATE_SYSTEM_REQ _dictionary_req_bolixo("bolixo",_dictionary_bolixo,156,3);\
 	void dummy_dict_bolixo(){}
 #endif
 #ifndef MSG_U
@@ -161,3 +161,11 @@ extern const char **_dictionary_bolixo;
 #define I_VIEWSEEN	145
 #define I_VIEWCHANGED	146
 #define I_TITLE	147
+#define I_MANAGECONTACT	148
+#define I_REQUESTFROM	149
+#define I_ACCEPTREQ	150
+#define I_REFUSEREQ	151
+#define I_CONTACTDONE	152
+#define I_FROMNOWON	153
+#define I_MAKEMEMBER	154
+#define I_HEMAKEMEMBER	155
