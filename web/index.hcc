@@ -1106,6 +1106,15 @@ static string index_format_mail_fname(const MESSAGE_receive &m)
 	return fname;
 }
 <mod>
+static void index_markview (CONNECT_INFO &con, PARAM_STRING fname)
+{
+	<call bod_client_markview>(con,w_session.c_str(),fname);
+	<f ok>
+	</f>
+	</call>
+}
+</mod>
+<mod>
 extern "C" void webmain_real()
 {
 	glocal bool account_confirmed = false;
@@ -1165,68 +1174,62 @@ extern "C" void webmain_real()
 	<obj WEBCONTEXT wctx>();
 	<f settablerow>
 		unsigned &cur = currents[tableid];
-		if (cur != current_row){
-			/*
-				We avoid poluting the session manager with fake request.
-				So we make sure the request is associated with a real or possible webtable
-				We do the markview at the same time.
-			*/
-			glocal bool valid = false;
-			if (tableid[0] == '/'){
-				glocal const char *dir = tableid;
-				<call bod_client_listdir>(glocal.con,w_session.c_str(),tableid,"",false,current_row,1);
-				<f ok>
-					if (files.size()==1){
-						glocal.valid = true;
-						string fname = string_f("%s/%s",glocal.dir,files[0].name);
-						<call bod_client_markview>(glocal.con,w_session.c_str(),fname);
-						<f ok>
-						</f>
-						</call>
-					}
-				</f>
-				</call>
-			}else if (strncmp(tableid,"inbox",5)==0){
-				const char *project = tableid+5;
-				if (strcmp(project,"INBOX")==0) project = "";
-				<call bod_client_list_msgs>(glocal.con,w_session.c_str(),"",project,false,current_row,1);
+		/*
+			We avoid poluting the session manager with fake request.
+			So we make sure the request is associated with a real or possible webtable
+			We do the markview at the same time.
+		*/
+		glocal bool valid = false;
+		if (tableid[0] == '/'){
+			glocal const char *dir = tableid;
+			<call bod_client_listdir>(glocal.con,w_session.c_str(),tableid,"",false,current_row,1);
+			<f ok>
+				if (files.size()==1){
+					glocal.valid = true;
+					string fname = string_f("%s/%s",glocal.dir,files[0].name);
+					index_markview (glocal.con,fname);
+				}
+			</f>
+			</call>
+		}else if (strncmp(tableid,"inbox",5)==0){
+			const char *project = tableid+5;
+			if (strcmp(project,"INBOX")==0) project = "";
+			<call bod_client_list_msgs>(glocal.con,w_session.c_str(),"",project,false,current_row,1);
+			<f ok>
+				if (messages.size()==1){
+					glocal.valid = true;
+					string fname = index_format_mail_fname(messages[0]);
+					index_markview (glocal.con,fname);
+				}
+			</f>
+			</call>
+		}else if (strncmp(tableid,"list:",5)==0){
+			const char *tab = tableid+5;
+			if (strcmp(tab,"projects")==0
+				|| strcmp(tab,"groups")==0
+				|| strcmp(tab,"contacts")==0){
+				glocal.valid = true;
+			}
+		}else if (strncmp(tableid,"talk",4)==0){
+			vector<string> tb;
+			int n = str_splitline (tableid+4,':',tb);
+			if (n == 2){
+				<call bod_client_list_talk>(glocal.con,w_session.c_str(),"",tb[1],tb[0],current_row,1);
 				<f ok>
 					if (messages.size()==1){
 						glocal.valid = true;
-						string fname = index_format_mail_fname(messages[0]);
-						<call bod_client_markview>(glocal.con,w_session.c_str(),fname);
-						<f ok>
-						</f>
-						</call>
 					}
 				</f>
 				</call>
-			}else if (strncmp(tableid,"list:",5)==0){
-				const char *tab = tableid+5;
-				if (strcmp(tab,"projects")==0
-					|| strcmp(tab,"groups")==0
-					|| strcmp(tab,"contacts")==0){
-					glocal.valid = true;
-				}
-			}else if (strncmp(tableid,"talk",4)==0){
-				vector<string> tb;
-				int n = str_splitline (tableid+4,':',tb);
-				if (n == 2){
-					<call bod_client_list_talk>(glocal.con,w_session.c_str(),"",tb[1],tb[0],current_row,1);
-					<f ok>
-						if (messages.size()==1){
-							glocal.valid = true;
-						}
-					</f>
-					</call>
-				}
 			}
-			if (glocal.valid){
+		}
+		if (glocal.valid){
+			if (cur != current_row){
 				cur = current_row;
 				web_updatecurrents(glocal.con_sess);
-			}else{
-				tlmp_error ("settablerow unknown tableid %s\n",tableid);
 			}
+		}else{
+			tlmp_error ("settablerow unknown tableid %s\n",tableid);
 		}
 	</f>
 	<f recordform>
@@ -1298,10 +1301,10 @@ extern "C" void webmain_real()
 		}
 	</f>
 	<f webtableinit>
-		if (strncmp(tableid,"list:",5)==0){
+		if (strncmp(tableid,"list:",5)==0 || strncmp(tableid,"inbox",5)==0){
 			c.settableparms ("border=0");
 		}else{
-			c.settableparms ("border=1");
+			c.settableparms ("border=0");
 		}
 		c.setthparms ("align=left bgcolor=lightgray","");
 		c.setrowstyle ("sep","bgcolor=ghostwhite");
@@ -1543,6 +1546,8 @@ extern "C" void webmain_real()
 				glocal const char *id = id;
 				glocal string path = string_f ("/projects/%s",id);
 				//htmlprintf ("Project %s<br>\n",glocal.path.c_str());
+				/- <table id=t1 height=100% width=60% border=0>
+				/- <tr><td height=1%>
 				<call form>(formid);
 				<f top>
 					/- <table border=0>
@@ -1607,8 +1612,9 @@ extern "C" void webmain_real()
 					fail = glocal.fail;
 				</f>
 				</call>
+				/- <tr><td height=99%>
 				//HTMLDEBUG ("table",true);
-				<call webtable>(glocal.path,"60%",currents[glocal.path],offsets[glocal.path],20);
+				<call webtable>(glocal.path,"100%",currents[glocal.path],offsets[glocal.path],35);
 				<f click>
 					tlmpweb_flushheader();
 					<call bod_client_listdir>(glocal.con,w_session.c_str(),glocal.path,"",false,noline,1);
@@ -1670,6 +1676,7 @@ extern "C" void webmain_real()
 					</call>
 				</f>
 				</call>
+				/- </table>
 			</f>
 			<f docstyle2>
 				glocal.curtab = id;
@@ -1719,7 +1726,8 @@ extern "C" void webmain_real()
 					<call sendfile_var>(glocal.path,w_content,fail);	
 					<f start>
 						if (glocal.newdocument){
-							<call bod_client_addfile_bob>(glocal.con,w_session.c_str(),string_f("%s/%s",glocal.path.c_str(),w_filename.c_str()),content,more);
+							glocal.path = string_f("%s/%s",glocal.path.c_str(),w_filename.c_str());
+							<call bod_client_addfile_bob>(glocal.con,w_session.c_str(),glocal.path,content,more);
 							<f ok>
 								glocal.sendfile_var.setresult(success,msg);
 								glocal.sendfile_var.sethandle(handle);
@@ -1747,6 +1755,8 @@ extern "C" void webmain_real()
 							glocal.webtabs.setid (string_f("%s/%s",glocal.filename,w_filename.c_str()));
 							glocal.webtabs.redotab();
 							resetstate();
+							// We have to mark this document as viewed (we just created it)
+							index_markview (glocal.con,glocal.path);
 						}else{
 							keepediting = true;
 						}
@@ -1791,7 +1801,7 @@ extern "C" void webmain_real()
 				glocal const char *project = id;
 				if (strcmp(id,"INBOX")==0) glocal.project = "";
 				string inbox = string("inbox") + id;
-				<call webtable>(inbox,"60%",currents[inbox],offsets[inbox],20);
+				<call webtable>(inbox,"60%",currents[inbox],offsets[inbox],35);
 				<f click>
 					// This code is never called
 					tlmpweb_flushheader();
@@ -1899,12 +1909,19 @@ extern "C" void webmain_real()
 				if (n != 2) return;
 				glocal string groupowner = tb[0];
 				glocal string groupname = tb[1];
-				/- <table border=0 align=left width=40%>
+				/- <table border=0 height=100% align=left width=40%>
+				/- <tr><td height=1%>
 				<call form>(formid);
+				<f top>
+					/- <table border=0>
+				</f>
+				<f bottom>
+					/- </table>
+				</f>
 				<f setup>
-					/- <tr><td colspan=2>
+					/- <tr><td height=1% colspan=2>
 					field_textarea (w_content,5,60,"");
-					/- <tr><td>
+					/- <tr><td height=1%>
 					field_file (w_upload);
 					/- <td>
 					button_submit (MSG_U(B_SEND,"Send"));
@@ -1953,7 +1970,7 @@ extern "C" void webmain_real()
 					keepediting = true;
 				</f>
 				</call>
-				/- <tr><td colspan=2>
+				/- <tr><td height=99%>
 				string table = string("talk")+id;
 				index_show_shortmsg (glocal.con,glocal.con_sess,table,glocal.groupname,glocal.groupowner);
 				/- </table>

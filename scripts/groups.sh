@@ -1,13 +1,14 @@
 #!/bin/sh
 # Script to populate groups
 FILES=/b6/files
-if [ "$1" = "reset" ] ; then
-	./test.sh files <<-EOF
-		delete from groups;
-		delete from group_members;
-		delete from group_lists;
-		delete from group_list_members;
-	EOF
+if [ "$1" = "" ] ; then
+	if [ -x /usr/sbin/menutest ] ; then
+		/usr/sbin/menutest -s $0
+	else
+		echo "No menutest, can't display help"
+	fi
+elif [ "$1" = "reset" ] ; then # test: Reset the database, create some users
+	./test.sh test-sequence
 elif [ "$1" = "print" ] ; then
 	echo "------ Groups -------"
 	./test.sh files <<-EOF
@@ -25,7 +26,7 @@ elif [ "$1" = "print" ] ; then
 	./test.sh files <<-EOF
 		select * from group_list_members;
 	EOF
-elif [ "$1" = "sequence" ] ; then
+elif [ "$1" = "sequence" ] ; then # test: Create some users from scratch
 	NB=$2
 	if [ "$NB" = "" ] ; then
 		NB=5
@@ -204,7 +205,15 @@ elif [ "$1" = "print-lists" ] ; then
 			where group_lists.ownerid=$2;
 		EOF
 	fi
-
+elif [ "$1" = "manyusers" ] ; then # test: Add tons of users from scratch
+	echo manyusers
+	for letter in admin A B C D E F G H I J K L M N O P Q R S T U V W X Y Z
+	do
+		for ((i=0; i<100; i++))
+		do
+			./test.sh test-adduser $letter-$i
+		done
+	done
 else
 	echo reset print or config
 fi
