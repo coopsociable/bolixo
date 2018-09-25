@@ -779,6 +779,23 @@ static void bo_writed_group_member (unsigned userid, const char *groupname, unsi
 		}
 	}
 }
+/*
+	A short inbox was created.
+	If this is the public short inbox, we check if there are users having interest in it.
+	So we update the interests table to place the directory id of the newly create inbox
+*/
+static void bo_writed_update_interest(
+	bool created,
+	const char *groupname,
+	unsigned userid,
+	unsigned dirid)
+{
+	if (created && strcmp(groupname,"public")==0){
+		if (sql_action("update interests set dirid=%u where check_userid=%u",dirid,userid)==-1){
+			tlmp_error ("Fail to update interests table for %u/%u\n",userid,dirid);
+		}
+	}
+}
 <mod>
 int main (int argc, char *argv[])
 {
@@ -1914,11 +1931,14 @@ int main (int argc, char *argv[])
 							glocal.msg = "Unknown group name, empty group, or user not a member";
 						</f>
 						<f onerow>
-							int dirid = fs_find_short_inbox (atoi(row[0]),glocal.groupowner,glocal.groupname,true,glocal.msg);
+							bool created;
+							unsigned ownerid = atoi(row[0]);
+							int dirid = fs_find_short_inbox (ownerid,glocal.groupowner,glocal.groupname,glocal.msg,true,created);
 							if (dirid != -1){
 								bo_writed_addfile_bob (glocal.con_keys,glocal.sessionid,NULL,ENTRY_MSG,dirid,glocal.userid
 									,*glocal.content,glocal.more
 									,glocal.msgid,glocal.msg,glocal.handle);
+								bo_writed_update_interest(created,glocal.groupname,ownerid,dirid);
 							}
 							end = true;
 						</f>
@@ -1955,12 +1975,15 @@ int main (int argc, char *argv[])
 							glocal.msg = "Unknown group name, empty group, or user not a member";
 						</f>
 						<f onerow>
-							int dirid = fs_find_short_inbox (atoi(row[0]),glocal.groupowner,glocal.groupname,true,glocal.msg);
+							bool created;
+							unsigned ownerid = atoi(row[0]);
+							int dirid = fs_find_short_inbox (ownerid,glocal.groupowner,glocal.groupname,glocal.msg,true,created);
 							if (dirid != -1){
 								if (fs_insert_entry(dirid,glocal.srcentry.entryid,glocal.srcentry.modified
 									,glocal.srcentry.basename,glocal.srcentry.type)==-1){
 									glocal.msg = "Internal error (dirs_content table)";
 								}
+								bo_writed_update_interest(created,glocal.groupname,ownerid,dirid);
 							}
 							end = true;
 						</f>
@@ -2079,6 +2102,67 @@ int main (int argc, char *argv[])
 						rep_config_write (false,glocal.msg);
 					}else{
 						rep_config_write (true,glocal.msg);
+					}
+				</f>
+				<f interest_set> // sessionid user owner = success:b msg
+					glocal const char *user = user;
+					glocal string msg;
+					string username;
+					glocal unsigned userid = bo_writed_get_group_owner (glocal.con, sessionid, owner, username,glocal.msg);
+					if (glocal.userid > 0){
+						glocal int check_id = fs_rec_getid ("select userid from id2name where name='%s'",user);
+						if (glocal.check_id == -1){
+							glocal.msg = MSG_U(E_IVLDUSER,"unknown user");
+						}else{
+							glocal int dirid = fs_find_short_inbox(glocal.check_id,glocal.user,"public",glocal.msg);
+							if (glocal.dirid == -1){
+								// No public short inbox for this user. We register the interest
+								// When the short inbox will be create, we will update the interest on the fly.
+								glocal.msg.clear();
+							}
+							<call sql_query>("select check_userid from interests where userid=%u and check_userid=%d",glocal.userid,glocal.check_id);
+							<f empty>
+								if (sql_action("insert into interests (userid,check_userid,dirid) values (%u,%d,%d)",glocal.userid,glocal.check_id,glocal.dirid)==-1){
+									glocal.msg = "Internal error, interests table";
+								}
+							</f>
+							<f onerow>
+								glocal.msg = MSG_U(E_ALREADYSET,"Already member of the interest set");
+							</f>
+							</call>
+						}
+					}
+					if (glocal.msg.size() > 0){
+						rep_interest_set (false,glocal.msg);
+					}else{
+						rep_interest_set (true,glocal.msg);
+					}
+				</f>
+				<f interest_unset> // sessionid user owner = success:b msg
+					glocal string msg;
+					string username;
+					glocal unsigned userid = bo_writed_get_group_owner (glocal.con, sessionid, owner, username,glocal.msg);
+					if (glocal.userid > 0){
+						glocal int check_id = fs_rec_getid ("select userid from id2name where name='%s'",user);
+						if (glocal.check_id == -1){
+							glocal.msg = MSG_R(E_IVLDUSER);
+						}else{
+							<call sql_query>("select check_userid from interests where userid=%u and check_userid=%d",glocal.userid,glocal.check_id);
+							<f empty>
+								glocal.msg = MSG_U(E_USERNOTSET,"This user was not member of the interest set");
+							</f>
+							<f onerow>
+								if (sql_action("delete from interests where userid=%u and check_userid=%d",glocal.userid,glocal.check_id)==-1){
+									glocal.msg = "Internal error, interests table";
+								}
+							</f>
+							</call>
+						}
+					}
+					if (glocal.msg.size() > 0){
+						rep_interest_unset (false,glocal.msg);
+					}else{
+						rep_interest_unset (true,glocal.msg);
 					}
 				</f>
 				<f test>

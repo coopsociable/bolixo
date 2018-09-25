@@ -417,6 +417,14 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 			public_dir varchar(30) default ''
 		)engine=$ENGINE;
 		create unique index config_userid on config(userid);	
+		create table interests(
+			userid int,
+			check_userid int,
+			dirid int,
+			checked datetime default current_timestamp
+		)engine=$ENGINE;
+		create index interests_userid on interests(userid);
+		create index interests_checkid on interests(check_userid);
 	EOF
 	mysqladmin -uroot -S $SOCKN create $DBNAMET
 	mysql -uroot -S $SOCKN $DBNAMET <<-EOF

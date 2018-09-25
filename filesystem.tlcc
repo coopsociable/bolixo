@@ -606,7 +606,7 @@ unsigned fs_find_inbox (unsigned ownerid, PARAM_STRING name, bool create, string
 	The directory is created as needed.
 */
 <mod>
-unsigned fs_find_short_inbox (unsigned ownerid, PARAM_STRING username, PARAM_STRING groupname, bool create, string &msg)
+unsigned fs_find_short_inbox (unsigned ownerid, PARAM_STRING username, PARAM_STRING groupname, string &msg, bool create, bool &created)
 {
 	bool may_add;
 	glocal unsigned ownerid = ownerid;
@@ -614,6 +614,7 @@ unsigned fs_find_short_inbox (unsigned ownerid, PARAM_STRING username, PARAM_STR
 	glocal const char *groupname = groupname.ptr;
 	glocal vector<string> dirs = {"msgs",username.ptr,"short-inbox",groupname.ptr};
 	glocal unsigned ret = fs_locate_dir (glocal.dirs,ownerid,true,msg,END_OF_TIME,may_add,false,NULL,NULL);
+	created = false;
 	if (glocal.ret == (unsigned)-1 && create){
 		// We must lookup the ID of the special list called #groupname, holding only the group groupname
 		<call sql_query>("select id from group_lists where ownerid=%u and name='#%s'",ownerid,groupname.ptr);
@@ -629,10 +630,16 @@ unsigned fs_find_short_inbox (unsigned ownerid, PARAM_STRING username, PARAM_STR
 			(*glocal.msg) = string_f("Internal error, no #%s list",glocal.groupname);
 		</f>
 		</call>
+		if (glocal.ret != (unsigned)-1) created = true;
 	}
 	return glocal.ret;
 }
 </mod>
+unsigned fs_find_short_inbox (unsigned ownerid, PARAM_STRING username, PARAM_STRING groupname, string &msg)
+{
+	bool created;
+	return fs_find_short_inbox(ownerid,username,groupname,msg,false,created);
+}
 unsigned fs_find_project_inbox (unsigned ownerid, unsigned listid, const char *name, const char *project, const char *role, bool create, string &msg)
 {
 	vector<string> dirs = {"msg-projects",name,project};
