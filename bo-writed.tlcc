@@ -605,6 +605,16 @@ static FILE_TYPE bo_writed_file_type (PARAM_STRING name, const BOB_TYPE &content
 	}
 	return file_type;
 }
+/*
+	Update the modification date of a directory
+*/
+static void bo_writed_update_dirdate(unsigned dirid)
+{
+tlmp_error ("update date dirid=%u\n",dirid);
+	if (sql_action("update dirs_content set modified=now() where itemid=%u",dirid)==-1){
+		tlmp_error (MSG_U(E_CANTUPDDATEDIR,"Can't update directory modification date\n"));
+	}
+}
 
 static int bo_writed_addfile_bob (
 	CONNECT_INFO &con_keys,
@@ -639,19 +649,22 @@ static int bo_writed_addfile_bob (
 		}else if (sql_action("insert into files (id,modified,filetype,content,signature) values (%d,'%s',%u,'%s','%s')"
 			,fileid,now,file_type,content_str,sign.c_str())==-1){
 			msg = "Internal error (files table)";
-		}else if (content_str == NULL){
-			FILE *fout = fs_alloc_file_handle (fileid,now,"w",handle,sessionid);
-			if (fout == NULL){
-				tlmp_error ("Can't open file (%s)\n",strerror(errno));
-				msg = "Internal error (1-writing data)";
-			}else{
-				size_t size = content.getsize();
-				if (fwrite (content.getbuffer(),1,size,fout)!=size){
-					msg = "Internal error (2-writing data)";
+		}else{
+			if (content_str == NULL){
+				FILE *fout = fs_alloc_file_handle (fileid,now,"w",handle,sessionid);
+				if (fout == NULL){
+					tlmp_error ("Can't open file (%s)\n",strerror(errno));
+					msg = "Internal error (1-writing data)";
 				}else{
-					msg.clear();
+					size_t size = content.getsize();
+					if (fwrite (content.getbuffer(),1,size,fout)!=size){
+						msg = "Internal error (2-writing data)";
+					}else{
+						msg.clear();
+					}
 				}
 			}
+			bo_writed_update_dirdate(dirid);
 		}
 	}
 	return fileid;
@@ -779,11 +792,18 @@ static void bo_writed_group_member (unsigned userid, const char *groupname, unsi
 		}
 	}
 }
+static void bo_writed_update_interest_table(unsigned userid, int dirid)
+{
+	if (sql_action("update interests set dirid=%d where check_userid=%u",dirid,userid)==-1){
+		tlmp_error ("Fail to update interests table for %u/%d\n",userid,dirid);
+	}
+}
 /*
 	A short inbox was created.
 	If this is the public short inbox, we check if there are users having interest in it.
 	So we update the interests table to place the directory id of the newly create inbox
 */
+<mod>
 static void bo_writed_update_interest(
 	bool created,
 	const char *groupname,
@@ -791,10 +811,34 @@ static void bo_writed_update_interest(
 	unsigned dirid)
 {
 	if (created && strcmp(groupname,"public")==0){
-		if (sql_action("update interests set dirid=%u where check_userid=%u",dirid,userid)==-1){
-			tlmp_error ("Fail to update interests table for %u/%u\n",userid,dirid);
-		}
+		glocal unsigned userid = userid;
+		glocal unsigned dirid = dirid;
+		<call sql_query>("select public_view from config where userid=%u",userid);
+		<f onerow>
+			if (atoi(row[0])>0){
+				bo_writed_update_interest_table (glocal.userid,glocal.dirid);
+			}
+		</f>
+		</call>
 	}
+}
+</mod>
+/*
+	Update the interests table.
+	If a user switch the state of public_view, his public short inbox ID will be updated in the interests table.
+	If public_view is false, the ID will be set to -1.
+*/
+static void bo_writed_update_interest(
+	bool public_view,
+	unsigned userid,
+	PARAM_STRING username)
+{
+	int dirid = -1;
+	if (public_view){
+		string msg;
+		dirid = fs_find_short_inbox (userid,username,"public",msg);
+	}
+	bo_writed_update_interest_table (userid,dirid);
 }
 <mod>
 int main (int argc, char *argv[])
@@ -1090,6 +1134,7 @@ int main (int argc, char *argv[])
 				glocal.nbrequest_client++;
 				<call bo_writed_client>(this,c->req,line, info.linelen,endserver, endclient, no,c,c->host.c_str());
 				<f adduser>
+					glocal const char *lang = lang;
 					glocal string msg;
 					glocal string id_str;
 					glocal const char *name = name;
@@ -1127,7 +1172,7 @@ int main (int argc, char *argv[])
 										</f>
 										</call>
 										// Create a record in the config table
-										if (sql_action("insert into config (userid) value (%d)",userid)==-1){
+										if (sql_action("insert into config (userid,lang) value (%d,'%s')",userid,glocal.lang)==-1){
 											glocal.msg = "Can't create3: table config";
 										}
 										if (glocal.mailon){
@@ -1325,7 +1370,10 @@ int main (int argc, char *argv[])
 							}else if (sql_action("insert into files (id,modified,filetype,content,signature) values (%d,'%s',%u,'%s','%s')"
 								,fileid,now,FILE_TEXT,content,sign.c_str())==-1){
 								entry.msg = "Internal error (files table)";
+							}else{
+								bo_writed_update_dirdate(entry.dirid);
 							}
+
 						}
 					}
 					rep_addfile (entry.msg.size() == 0 ? false : true,entry.msg);
@@ -1385,6 +1433,7 @@ int main (int argc, char *argv[])
 								rep_delfile (false,"Internal error (dirs_files table)");
 							}else{
 								rep_delfile (true,"Ok");
+								bo_writed_update_dirdate(entry.dirid);
 							}
 						}
 					}
@@ -1539,6 +1588,8 @@ int main (int argc, char *argv[])
 							rep_rename (false,"Internal error (dirs_content table)");
 						}else{
 							rep_rename (true,"Ok");
+							bo_writed_update_dirdate(oldentry.dirid);
+							if (newentry.dirid != oldentry.dirid) bo_writed_update_dirdate(newentry.dirid);
 						}
 					}
 					
@@ -1982,6 +2033,8 @@ int main (int argc, char *argv[])
 								if (fs_insert_entry(dirid,glocal.srcentry.entryid,glocal.srcentry.modified
 									,glocal.srcentry.basename,glocal.srcentry.type)==-1){
 									glocal.msg = "Internal error (dirs_content table)";
+								}else{
+									bo_writed_update_dirdate(dirid);
 								}
 								bo_writed_update_interest(created,glocal.groupname,ownerid,dirid);
 							}
@@ -2088,13 +2141,15 @@ int main (int argc, char *argv[])
 							}
 						}
 						if (glocal.msg.size() == 0){
-							if (sql_action("update config set lang='%s',public_view=%d,public_dir='%s'",config.lang,config.public_view,config.public_dir)==-1){
+							if (sql_action("update config set lang='%s',public_view=%d,public_dir='%s' where userid=%u"
+								,config.lang,config.public_view,config.public_dir,glocal.userid)==-1){
 								glocal.msg = "Internal error, config table";
 							}else{
 								<call bo_sessiond_admin_setlang>(glocal.con,sessionid,config.lang);
 								<f ok>
 								</f>
 								</call>
+								bo_writed_update_interest (config.public_view,glocal.userid,username);
 							}
 						}
 					}

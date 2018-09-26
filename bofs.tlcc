@@ -1851,6 +1851,8 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 									const char *eol = strchr(m.content,'\n');
 									if (eol != NULL){
 										linelen=(eol-m.content);
+									}else{
+										linelen = strlen(m.content);
 									}
 								}
 								printf ("%s %-10s %-30s %-20s %7u %*.*s\n",tbftype[m.file_type],m.from,m.uuid,m.submit,m.size
@@ -2015,7 +2017,7 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 	glocal bool interest_check = false;
 	glocal const char *interest_user = NULL;
 	glocal const char *status = "A";
-	glocal const char *intro = "Hello I would like to chat with you";
+	glocal const char *intro = MSG_U(I_HELLOCONTACT,"Hello I would like to chat with you");
 	glocal const char *user = NULL;
 	glocal const char *owner = "";
 	glocal bool showconfig = false;
@@ -2027,11 +2029,11 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 	glocal.ret = <call tlmpprogram>(argc,argv);
 	<f init>
 		setproginfo ("bomisc",VERSION
-			,"Command line tool to do various things on bolixo files\n"
+			,MSG_U(I_BOFSMISC,"Command line tool to do various things on bolixo files\n"
 			 "\n"
-			 "bofs misc ...\n"
+			 "bofs misc ...\n")
 			);
-		setgrouparg ("Main commands");
+		setgrouparg (MSG_U(I_MAINCOMMAND,"Main commands"));
 		setarg ('c',"showconfig","Show user configuration",glocal.showconfig,false);
 		setarg ('w',"writeconfig","Update user configuration",glocal.writeconfig,false);
 		setarg ('m',"markview","Mark a file as viewed",glocal.markview,false);
@@ -2040,25 +2042,25 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 		setarg ('l',"contact_list","List the contacts for this user",glocal.contact_list,false);
 		setarg ('I',"interest_set","Add one user to your interest list",glocal.interest_set,false);
 		setarg ('U',"interest_unset","Remove one user from your interest list",glocal.interest_unset,false);
-		setarg ('L',"interest_list","List members of your interest list",glocal.interest_list,false);
+		setarg ('P',"interest_list","List members of your interest list",glocal.interest_list,false);
 		setarg ('C',"interest_check","List members of your interest list with new activity",glocal.interest_check,false);
 
 		setarg ('v',"verifysign","Verify a message signature",glocal.verifysign,false);
 
-		setgrouparg ("contact management arguments");
+		setgrouparg (MSG_U(I_CONTACTMGMT,"contact management arguments"));
 		setarg ('i',"intro","Introduction message for contact request",glocal.intro,false);
 		setarg ('s',"status","New status of the contact request",glocal.status,false);
 		setarg ('u',"user","User doing the contact request",glocal.user,false);
 
-		setgrouparg ("Interest management arguments");
-		setarg ('m',"int_user","User for interest_set and interest_unset",glocal.interest_user,false);
+		setgrouparg (MSG_U(I_INTERESTMGMT,"Interest management arguments"));
+		setarg (' ',"int_user","User for interest_set and interest_unset",glocal.interest_user,false);
 	
-		setgrouparg ("(http_)verifysign arguments");
+		setgrouparg (MSG_U(I_VERIYSIGN,"(http_)verifysign arguments"));
 		setarg ('n',"nickname","User nickname who signed the message",glocal.nickname,false);
 		setarg ('M',"message","Message to verify",glocal.message,false);
-		setarg ('r',"nbrep","Number of repetition (performance test)",glocal.nbrep,false);
+		setarg (' ',"nbrep","Number of repetition (performance test)",glocal.nbrep,false);
 	
-		setgrouparg ("writeconfig options");
+		setgrouparg (MSG_U(I_WRITECONFIG,"writeconfig options"));
 		setarg ('L',"lang","Language used in the UI",glocal.lang,false);
 		setarg ('V',"public_view","Enable public view (anonymous) 0 or 1",glocal.public_view,false);
 		setarg ('D',"public_dir","Select the sub-folder of the public project to display",glocal.public_dir,false);
@@ -2209,18 +2211,36 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 			}
 		}else if (glocal.interest_check){
 			if (glocal.ctx->login()!=-1){
-				<call bod_client_interest_check>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner);
-				<f ok>
-					if (!success){
-						bofs_error ("interest_check",internal_error,msg);
-						glocal.ret = -1;
-					}else{
-						for (auto u:users){
-							printf ("%s\n",u);
+				glocal bool stop = false;
+				glocal unsigned offset=0;
+				glocal unsigned chunk=100;
+				while (!glocal.stop){
+					<call bod_client_interest_check>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner
+						,glocal.offset,glocal.chunk);
+					<f ok>
+						if (!success){
+							bofs_error ("interest_check",internal_error,msg);
+							glocal.stop = true;
+						}else{
+							for (auto &m:messages){
+								int linelen = 0;
+								if (m.content[0] != '\0'){
+									const char *eol = strchr(m.content,'\n');
+									if (eol != NULL){
+										linelen=(eol-m.content);
+									}else{
+										linelen = strlen(m.content);
+									}
+								}
+								printf ("%s %-10s %-30s %-20s %7u %*.*s\n",tbftype[m.file_type],m.from,m.uuid,m.submit,m.size
+									,linelen,linelen,m.content);
+							}
+							glocal.stop = messages.size() < glocal.chunk;
+							glocal.offset += glocal.chunk;
 						}
-					}
-				</f>
-				</call>
+					</f>
+					</call>
+				}
 			}
 		}else if (glocal.showconfig){
 			if (glocal.ctx->login()!=-1){

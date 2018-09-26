@@ -431,7 +431,7 @@ static int trlid_main (
 				</call>
 			</f>
 			<f adduser>
-				<call bo_writed_client_adduser>(glocal.con,name,email,password);
+				<call bo_writed_client_adduser>(glocal.con,name,email,password,lang);
 				<f ok>
 					glocal.bod_client.rep_adduser (confirmid,msg);
 				</f>
@@ -1320,24 +1320,50 @@ static int trlid_main (
 					rep_interest_list (true,glocal.msg,glocal.users);
 				}
 			</f>
-			<f interest_check> // sessionid owner = success:b msg users:v
+			<f interest_check> // sessionid owner offset:u nb:u = success:b msg users:v
+				glocal unsigned nb = nb;
 				glocal string msg;
-				glocal vector<string> users;
+				glocal vector<SHORTMSG> messages;
 				unsigned userid = bo_writed_get_group_owner (glocal.con_sess, sessionid, owner, glocal.msg);
 				if (userid != 0){
-					<call sql_query>("select id2name.name from interests"
+					<call sql_query>("select id2name.name,dirs2.name,dirs2.modified,files.filetype,dirs2.itemid,files.content from interests"
 						" join id2name on id2name.userid = interests.check_userid"
-						" where interests.userid=%u",userid);
+						" left join dirs_content on interests.dirid=dirs_content.itemid"
+						" left join marks on marks.userid=%u and marks.itemid=interests.dirid"
+						" left join dirs_content dirs2 on interests.dirid = dirs2.dirid and (marks.modified is null or dirs2.modified > marks.modified)"
+						" join files on dirs2.itemid = files.id"
+						" where interests.userid=%u limit %u,%u",userid,userid,offset,nb);
 					<f onerow>
-						glocal.users.push_back(row[0]);
+						// If the dirid is -1 in interests, there nothing to show
+						// row[1] is null
+						if (row[1] != NULL){
+							SHORTMSG msg;
+							msg.from = row[0];
+							msg.uuid = row[1];
+							const char *modified = row[2];
+							msg.submit = modified;
+							msg.file_type = row[3] == NULL ? FILE_UNKNOWN : (FILE_TYPE)atoi(row[3]);
+							if (row[5] != NULL){
+								// Limit the number of lines if more than one message was requested
+								if (glocal.nb == 1){
+									msg.content = row[5];
+								}else{
+									msg.content = bod_first_lines(row[5],5);
+								}
+								msg.size = msg.content.size();
+							}else{
+								msg.size = fs_get_filesize(atoi(row[4]),modified);
+							}
+							glocal.messages.push_back(msg);
+						}
 					</f>
 					</call>
 				}	
 				if (glocal.msg.size() > 0){
-					glocal.users.clear();
-					rep_interest_list (false,glocal.msg,glocal.users);
+					glocal.messages.clear();
+					rep_interest_check (false,glocal.msg,glocal.messages);
 				}else{
-					rep_interest_list (true,glocal.msg,glocal.users);
+					rep_interest_check (true,glocal.msg,glocal.messages);
 				}
 			</f>
 			<f config_write>// sessionid owner config:U{CONFIG} = success:b msg

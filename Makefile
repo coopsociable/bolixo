@@ -21,7 +21,7 @@ msg:
 compile: $(PROGS)
 	#make -Cweb 
 
-bofs: bofs.tlcc proto/bod_client.protoh proto/webapi.protoh filesystem.h _dict.o
+bofs: bofs.tlcc proto/bod_client.protoh proto/webapi.protoh filesystem.h 
 	cctlcc -Wall $(OPTIONS) bofs.tlcc _dict.o -o bofs $(LIBS) -lssl
 
 _dict.o: _dict.cc bolixo.m

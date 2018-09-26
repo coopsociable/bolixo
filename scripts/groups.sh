@@ -44,6 +44,11 @@ elif [ "$1" = "sequence" ] ; then # test: Create some users from scratch
 	do
 		./bofs -u jacques-$letter misc -r -u jacques-A
 	done
+	# Add some user in the interest list of jacques-A
+	for letter in B G H I J K L M N O P
+	do
+		./bofs -u jacques-A misc -I --int_user jacques-$letter
+	done	
 	# We create a public project for all users and put a small photo in each
 	# test-sequence removes user E and F
 	for letter in A B C D G H I J K L M N O P Q R S T U V W X Y Z

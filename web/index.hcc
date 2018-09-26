@@ -911,6 +911,15 @@ static void index_popup (CONNECT_INFO &con, const char *content, FILE_TYPE file_
 	}
 }
 </mod>
+<mod>
+static void index_markview (CONNECT_INFO &con, PARAM_STRING fname)
+{
+	<call bod_client_markview>(con,w_session.c_str(),fname);
+	<f ok>
+	</f>
+	</call>
+}
+</mod>
 
 <mod>
 static void index_show_shortmsg(
@@ -924,6 +933,9 @@ static void index_show_shortmsg(
 	glocal CONNECT_INFO *con_sess = &con_sess;
 	glocal const char *groupname = groupname.ptr;
 	glocal const char *groupowner = groupowner.ptr;
+	if (offsets[table] == 0){
+		index_markview (con,string_f("/msgs/%s/short-inbox/%s",glocal.groupowner,glocal.groupname));
+	}
 	<call webtable>(table,"100%",currents[table],offsets[table],5);
 	<f click>
 		tlmpweb_flushheader();
@@ -1105,15 +1117,6 @@ static string index_format_mail_fname(const MESSAGE_receive &m)
 	}	
 	return fname;
 }
-<mod>
-static void index_markview (CONNECT_INFO &con, PARAM_STRING fname)
-{
-	<call bod_client_markview>(con,w_session.c_str(),fname);
-	<f ok>
-	</f>
-	</call>
-}
-</mod>
 <mod>
 extern "C" void webmain_real()
 {
@@ -1464,7 +1467,7 @@ extern "C" void webmain_real()
 		</f>
 		<f process>
 			glocal bool fail = false;
-			<call bod_client_adduser>(glocal.con,w_session.c_str(),new_nickname.c_str(),new_email.c_str(),new_password1.c_str());
+			<call bod_client_adduser>(glocal.con,w_session.c_str(),new_nickname.c_str(),new_email.c_str(),new_password1.c_str(),tlmpweb_getlang());
 			<f ok>
 				if (confirmid[0] == '\0'){
 					glocal.fail = true;
