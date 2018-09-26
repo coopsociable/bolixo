@@ -2169,22 +2169,32 @@ int main (int argc, char *argv[])
 						if (glocal.check_id == -1){
 							glocal.msg = MSG_U(E_IVLDUSER,"unknown user");
 						}else{
-							glocal int dirid = fs_find_short_inbox(glocal.check_id,glocal.user,"public",glocal.msg);
-							if (glocal.dirid == -1){
-								// No public short inbox for this user. We register the interest
-								// When the short inbox will be create, we will update the interest on the fly.
-								glocal.msg.clear();
-							}
-							<call sql_query>("select check_userid from interests where userid=%u and check_userid=%d",glocal.userid,glocal.check_id);
-							<f empty>
-								if (sql_action("insert into interests (userid,check_userid,dirid) values (%u,%d,%d)",glocal.userid,glocal.check_id,glocal.dirid)==-1){
-									glocal.msg = "Internal error, interests table";
-								}
-							</f>
+							<call sql_query>("select public_view from config where userid=%d",glocal.check_id);
 							<f onerow>
-								glocal.msg = MSG_U(E_ALREADYSET,"Already member of the interest set");
+								glocal int dirid = -1;
+								if (atoi(row[0]) > 0){
+									glocal.dirid = fs_find_short_inbox(glocal.check_id,glocal.user,"public",glocal.msg);
+									if (glocal.dirid == -1){
+										// No public short inbox for this user. We register the interest
+										// When the short inbox will be create, we will update the interest on the fly.
+										glocal.msg.clear();
+									}
+								}
+								<call sql_query>("select check_userid from interests where userid=%u and check_userid=%d",glocal.userid,glocal.check_id);
+								<f empty>
+									if (sql_action("insert into interests (userid,check_userid,dirid) values (%u,%d,%d)",glocal.userid,glocal.check_id,glocal.dirid)==-1){
+										glocal.msg = "Internal error, interests table";
+									}
+								</f>
+								<f onerow>
+									glocal.msg = MSG_U(E_ALREADYSET,"Already member of the interest set");
+								</f>
+								</call>
 							</f>
-							</call>
+							<f empty>
+								glocal.msg = "Internal error, no configuration for user";
+							</f>
+							</call>	
 						}
 					}
 					if (glocal.msg.size() > 0){
