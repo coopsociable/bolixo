@@ -51,12 +51,14 @@ static W_UNSIGNED w_offset ("offset");
 static map<string,unsigned> offsets;
 static map<string,unsigned> currents;
 struct WEBTAB{
-	string tab;	// Name of this tab withing the webtab
+	string tab;	// Name of this tab in the webtab
+	string title;
 	string flags;
 	string state;
 	WEBTAB(){}
-	WEBTAB(PARAM_STRING _tab, PARAM_STRING args){
+	WEBTAB(PARAM_STRING _tab, PARAM_STRING _title, PARAM_STRING args){
 		tab  = _tab.ptr;
+		title = _title.ptr;
 		vector<string> tb;
 		str_splitline(args.ptr,',',tb);
 		for (auto &v:tb){
@@ -78,7 +80,7 @@ void webtab_init (const vector<SNAMEVAL_receive> &vals)
 		// Split the name
 		const char *pt = strchr(s.sname,':');
 		if (pt != NULL){
-			tabs[string(s.sname,pt)].push_back(WEBTAB(pt+1,s.sval));
+			tabs[string(s.sname,pt)].push_back(WEBTAB(pt+1,"",s.sval));
 		}
 	}
 }
@@ -118,26 +120,32 @@ static W_SSTRING  w_webtab_add("webtab_add");
 #define _TLMP_webtabs
 struct _F_webtabs {
 	bool redo;
+	string curtitle;	// Title of the active tab
 	string curid;		// ID of the active tab
 	string curstate;	// State of the active TAB
 	_F_webtabs(){
 		redo = false;
 	}
 	void setid (PARAM_STRING id);	// Change the ID of the active TAB
+	void settitle (PARAM_STRING title);	// Change the title of the active TAB
 	void setstate (PARAM_STRING val);// Record some value for the active TAB
 	void redotab ();		// Ask webtabs to redraw the current TAB
-	#define _F_webtabs_docstyle1(x) void x docstyle1(const char *id, const char *formid, const char *state)
-	virtual _F_webtabs_docstyle1( )=0;
-	#define _F_webtabs_docstyle2(x) void x docstyle2(const char *id, const char *formid, const char *state)
-	virtual _F_webtabs_docstyle2( );
-	#define _F_webtabs_docstyle3(x) void x docstyle3(const char *id, const char *formid, const char *state)
-	virtual _F_webtabs_docstyle3( );
-	#define _F_webtabs_docstyle4(x) void x docstyle4(const char *id, const char *formid, const char *state)
-	virtual _F_webtabs_docstyle4( );
+	#define _F_webtabs_docmain(x) void x docmain(const char *id, const char *formid, const char *state)
+	virtual _F_webtabs_docmain( )=0;
+	#define _F_webtabs_doctype2(x) void x doctype2(const char *id, const char *formid, const char *state)
+	virtual _F_webtabs_doctype2( );
+	#define _F_webtabs_doctype3(x) void x doctype3(const char *id, const char *formid, const char *state)
+	virtual _F_webtabs_doctype3( );
+	#define _F_webtabs_doctype4(x) void x doctype4(const char *id, const char *formid, const char *state)
+	virtual _F_webtabs_doctype4( );
 };
 void _F_webtabs::setid (PARAM_STRING id)
 {
 	curid = id.ptr;
+}
+void _F_webtabs::settitle (PARAM_STRING title)
+{
+	curtitle = title.ptr;
 }
 void _F_webtabs::setstate (PARAM_STRING state)
 {
@@ -181,13 +189,13 @@ static void webtab_aref (const char *title, int tab)
 	string href = string_f ("%s?%s%swebtab=%d",tlmpweb_curpage(),hidden.c_str(),sep,tab);
 	webtab_href (title,href);
 }
-void _F_webtabs::docstyle2(const char *id, const char *formid, const char *state)
+void _F_webtabs::doctype2(const char *id, const char *formid, const char *state)
 {
 }
-void _F_webtabs::docstyle3(const char *id, const char *formid, const char *state)
+void _F_webtabs::doctype3(const char *id, const char *formid, const char *state)
 {
 }
-void _F_webtabs::docstyle4(const char *id, const char *formid, const char *state)
+void _F_webtabs::doctype4(const char *id, const char *formid, const char *state)
 {
 }
 struct TABSEL {
@@ -209,7 +217,20 @@ static void webtabs(_F_webtabs &c,
 	if (w_webtab_add.isset()){
 		// We are either adding a new tab or selecting an existing one.
 		// While we look if the tab already exist, we de-select the others
-		string id = w_webtab_add.c_str();
+		const char *ptid = w_webtab_add.c_str();
+		const char *pt = ptid;
+		if (isdigit(pt[0]) && pt[1] == ':'){
+			pt+=2;
+		}
+		pt = strchr(pt,':');
+		string id,title;
+		if (pt != NULL){
+			id = string(ptid,pt-ptid);
+			title = pt+1;
+		}else{
+			id = ptid;
+			title = id;
+		}
 		bool found = false;
 		for (auto &t:tabs){
 			if (t.tab == id){
@@ -220,7 +241,7 @@ static void webtabs(_F_webtabs &c,
 			}
 		}
 		if (!found){
-			tabs.push_back(WEBTAB(id,"f=sel"));
+			tabs.push_back(WEBTAB(id,title,"f=sel"));
 			sort (tabs.begin(),tabs.end());
 		}
 		w_webtab = 0;
@@ -311,24 +332,26 @@ static void webtabs(_F_webtabs &c,
 				tmp = string(id_2,end-id_2);
 				id_2 = tmp.c_str();
 			}
+			c.curtitle = ptt->title;
 			c.curid = id_2;
 			c.curstate = ptt->state;
 			const char *state = ptt->state.c_str();
 			if (strncmp(id,"1:",2)==0){
-				c.docstyle1(id_2,id,state);
+				c.docmain(id_2,id,state);
 			}else if (strncmp(id,"2:",2)==0){
-				c.docstyle2(id_2,id,state);
+				c.doctype2(id_2,id,state);
 			}else if (strncmp(id,"3:",2)==0){
-				c.docstyle3(id_2,id,state);
+				c.doctype3(id_2,id,state);
 			}else if (strncmp(id,"4:",2)==0){
-				c.docstyle4(id_2,id,state);
+				c.doctype4(id_2,id,state);
 			}else{
-				c.docstyle1(id,id,state);
+				c.docmain(id,id,state);
 			}
 			if (!draw_ok) break;
 			// setid or setstate was called;
 			ptt->tab = string(id,2)+c.curid;
 			ptt->state = c.curstate;
+			ptt->title = c.curtitle;
 			glocal.sel.id = ptt->tab;
 			if (!c.redo) break;
 			c.redo = false;
@@ -346,7 +369,8 @@ static void webtabs(_F_webtabs &c,
 			unsigned no = 1;
 			for (auto &t:*glocal.tabs){
 				split();
-				const char *name = t.tab.c_str();
+				const char *name = t.title.c_str();
+				if (name[0] == '\0') name = t.tab.c_str();
 				bool is_sel = glocal.sel.no == no;
 				if (is_sel){
 					webtab_aref_selected (name,no);
@@ -382,14 +406,24 @@ void webtabs(_F_webtabs &c,
 	vector<WEBTAB> &tabs = alltabs[name];
 	for (auto &s:starttabs){
 		bool found = false;
+		string tmp;
+		const char *tab = s.c_str();
+		const char *title = "";
+		const char *pt = strchr(tab,':');
+		if (pt != NULL){
+			title = pt + 1;
+			tmp = string(tab,pt-tab);
+			tab = tmp.c_str();
+		}
 		for (auto &w:tabs){
-			if (s == w.tab){
+			if (strcmp(tab,w.tab.c_str())==0){
+				w.title = title;
 				found = true;
 				break;
 			}
 		}
 		if (!found){
-			tabs.push_back(WEBTAB(s,""));
+			tabs.push_back(WEBTAB(tab,title,""));
 		}
 	}
 	webtabs (c,name,alltabs,false);
@@ -1544,7 +1578,7 @@ extern "C" void webmain_real()
 		</f>
 		<f right>
 			<call webtabs>(MSG_R(M_PROJECTS),tabs);
-			<f docstyle1>
+			<f docmain>
 				glocal.curtab = id;
 				glocal const char *id = id;
 				glocal string path = string_f ("/projects/%s",id);
@@ -1564,7 +1598,8 @@ extern "C" void webmain_real()
 					/- &nbsp;
 					field_string (w_folder,"size=30");
 					/- <tr><td>
-					url_self (string_f("webtab_add=2:%s%c%ld",glocal.id,WEBTAB_MARK,time(NULL)),MSG_U(I_CREATENEWDOC,"Create a new document"));
+					url_self (string_f("webtab_add=2:%s%c%ld:%s",glocal.id,WEBTAB_MARK,time(NULL),MSG_U(I_NEWDOC,"New_document"))
+						,MSG_U(I_CREATENEWDOC,"Create a new document"));
 					/- <tr><td>
 					/-#I_UPLOADFILE Upload file
 					/- &nbsp;
@@ -1665,7 +1700,7 @@ extern "C" void webmain_real()
 							}else if (file_is_sound(f.file_type)){
 								glocal.webtable.setclickopt (true,func,"350,50");
 							}else if (file_is_text(f.file_type)){
-								glocal.webtable.setclickopt (true,"",string_f("webtab_add=2:%s",path.c_str()));
+								glocal.webtable.setclickopt (true,"",string_f("webtab_add=2:%s:%s",path.c_str(),f.name));
 							}
 							const char *style = f.viewed != VIEWED_OK ? "whitebold" : "white";
 							glocal.webtable.setrow (style,glocal.rownum,"%c%s\t%s\t%s\t%s/%s:%s\t%u\t%s"
@@ -1681,7 +1716,7 @@ extern "C" void webmain_real()
 				</call>
 				/- </table>
 			</f>
-			<f docstyle2>
+			<f doctype2>
 				glocal.curtab = id;
 				glocal const char *filename = id;
 				glocal string path = string_f("/projects/%s",glocal.filename);
@@ -1756,6 +1791,7 @@ extern "C" void webmain_real()
 					if (!fail){
 						if (glocal.newdocument){
 							glocal.webtabs.setid (string_f("%s/%s",glocal.filename,w_filename.c_str()));
+							glocal.webtabs.settitle (w_filename.c_str());
 							glocal.webtabs.redotab();
 							resetstate();
 							// We have to mark this document as viewed (we just created it)
@@ -1799,7 +1835,7 @@ extern "C" void webmain_real()
 		</f>
 		<f right>
 			<call webtabs>("mails",tabs);
-			<f docstyle1>
+			<f docmain>
 				glocal.curtab = id;
 				glocal const char *project = id;
 				if (strcmp(id,"INBOX")==0) glocal.project = "";
@@ -1841,8 +1877,8 @@ extern "C" void webmain_real()
 						}else{
 							for (auto &m:messages){
 								string path = index_format_mail_fname(m);
-								glocal.webtable.setclickopt (true,"",string_f("webtab_add=2:%s"
-									,path.c_str()));
+								glocal.webtable.setclickopt (true,"",string_f("webtab_add=2:%s:%s"
+									,path.c_str(),m.from));
 								const char *style = m.viewed != VIEWED_OK ? "whitebold" : "white";
 								glocal.webtable.setrow (style,glocal.rownum,"%s\t%s\t%s\t%s\t%s\t%s"
 									,m.from
@@ -1859,7 +1895,7 @@ extern "C" void webmain_real()
 				</f>
 				</call>
 			</f>
-			<f docstyle2>
+			<f doctype2>
 				//htmlprintf ("title=%s<p>\n",messages[0].title);
 				<call bod_client_readfile>(glocal.con,w_session.c_str(),id,"");
 				<f ok>
@@ -1905,7 +1941,7 @@ extern "C" void webmain_real()
 		</f>
 		<f right>
 			<call webtabs>("talks",tabs);
-			<f docstyle1>
+			<f docmain>
 				glocal.curtab = id;
 				vector<string> tb;
 				int n = str_splitline (id,':',tb);
@@ -2005,11 +2041,16 @@ extern "C" void webmain_real()
 		bolixo_title (MSG_U(T_PROFILE,"Profile"),this);
 		/- <table border=0 width=100% height=100%>
 		/- <tr><td>
-		vector<string> t={MSG_U(T_ACCOUNT,"Account"),MSG_U(T_INTERESTS,"Interests"),MSG_U(T_CONTACTS,"Contacts"),MSG_U(T_PROJECTS,"Projects"),MSG_U(T_GROUPS,"Groups")};
+		vector<string> t={
+			string_f("Account:%s",MSG_U(T_ACCOUNT,"Account")),
+			string_f("Interests:%s",MSG_U(T_INTERESTS,"Interests")),
+			string_f("Contacts:%s",MSG_U(T_CONTACTS,"Contacts")),
+			string_f("Projects:%s",MSG_U(T_PROJECTS,"Projects")),
+			string_f("Groups:%s",MSG_U(T_GROUPS,"Groups"))};
 		<call webtabs>("profile",t,tabs);
-		<f docstyle1>
+		<f docmain>
 			glocal const char *state = state;
-			if (strcmp(id,MSG_R(T_PROJECTS))==0){
+			if (strcmp(id,"Projects")==0){
 				<call vframe2h>(20);
 				<f left>
 					url_self ("add=1",MSG_U(I_CREATELIST,"Create a new project"));
@@ -2186,7 +2227,7 @@ extern "C" void webmain_real()
 					}
 				</f>
 				</call>
-			}else if (strcmp(id,MSG_R(T_GROUPS))==0){
+			}else if (strcmp(id,"Groups")==0){
 				<call vframe2h>(20);
 				<f left>
 					url_self ("add=1",MSG_U(I_CREATEGROUP,"Create a new group"));
@@ -2347,7 +2388,7 @@ extern "C" void webmain_real()
 					}
 				</f>
 				</call>
-			}else if (strcmp(id,MSG_R(T_CONTACTS))==0){
+			}else if (strcmp(id,"Contacts")==0){
 				<call vframe2h>(20);
 				<f left>
 					url_self ("add=1",MSG_U(I_NEWCONTACT,"Send a new contact request"));
@@ -2500,7 +2541,7 @@ extern "C" void webmain_real()
 					}
 				</f>
 				</call>
-			}else if (strcmp(id,MSG_R(T_ACCOUNT))==0){
+			}else if (strcmp(id,"Account")==0){
 				glocal string status = "&nbsp;";
 				<call form>("configaccount");
 				<f top>
