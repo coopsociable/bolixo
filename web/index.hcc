@@ -50,29 +50,61 @@ extern W_SSTRING w_webtable;
 static W_UNSIGNED w_offset ("offset");
 static map<string,unsigned> offsets;
 static map<string,unsigned> currents;
+enum WEBTAB_TYPE{
+	WEBTAB_TYPE1, WEBTAB_TYPE2, WEBTAB_TYPE3, WEBTAB_TYPE4
+};
 struct WEBTAB{
+	WEBTAB_TYPE type;
 	string tab;	// Name of this tab in the webtab
 	string title;
-	string flags;
+	int selorder;
 	string state;
-	WEBTAB(){}
-	WEBTAB(PARAM_STRING _tab, PARAM_STRING _title, PARAM_STRING args){
-		tab  = _tab.ptr;
-		title = _title.ptr;
+	void setargs(PARAM_STRING args){
 		vector<string> tb;
 		str_splitline(args.ptr,',',tb);
 		for (auto &v:tb){
-			if (strncmp(v.c_str(),"f=",2)==0){
-				flags = v.substr(2);
-			}else if (strncmp(v.c_str(),"s=",2)==0){
-				state = v.substr(2);
-			}else if (strncmp(v.c_str(),"t=",2)==0){
-				title = v.substr(2);
+			const char *vs = v.c_str();
+			const char *vs2 = vs+2;
+			if (strncmp(vs,"f=",2)==0){
+				selorder = atoi(vs2);
+			}else if (strncmp(vs,"s=",2)==0){
+				state = vs2;
+			}else if (strncmp(vs,"t=",2)==0){
+				title = vs2;
 			}
 		}
 	}
+	WEBTAB(){
+		type = WEBTAB_TYPE1;
+		selorder = 0;
+	}
+	WEBTAB(WEBTAB_TYPE _type, PARAM_STRING _tab, PARAM_STRING _title, PARAM_STRING args){
+		selorder = 0;
+		type = _type;
+		tab = _tab.ptr;
+		title = _title.ptr;
+		setargs(args);
+	}
+	WEBTAB(PARAM_STRING _tab, PARAM_STRING args){
+		selorder = 0;
+		if (isdigit(_tab.ptr[0]) && _tab.ptr[1] == ':'){
+			type = (WEBTAB_TYPE)(_tab.ptr[0] - '1');
+			tab = _tab.ptr+2;
+		}else{
+			type = WEBTAB_TYPE1;
+			tab  = _tab.ptr;
+		}
+		title.clear();
+		setargs(args);
+	}
 	bool operator < (const WEBTAB &n) const {
-		return tab < n.tab;
+		bool ret = false;
+		if (type < n.type){
+			ret = true;
+		}else if (type == n.type){
+			ret = tab < n.tab;
+		}
+		return ret;
 	}
 };
 static map<string,vector<WEBTAB>> tabs;
@@ -82,7 +114,7 @@ void webtab_init (const vector<SNAMEVAL_receive> &vals)
 		// Split the name
 		const char *pt = strchr(s.sname,':');
 		if (pt != NULL){
-			tabs[string(s.sname,pt)].push_back(WEBTAB(pt+1,"",s.sval));
+			tabs[string(s.sname,pt)].push_back(WEBTAB(pt+1,s.sval));
 		}
 	}
 }
@@ -122,36 +154,44 @@ static W_SSTRING  w_webtab_add("webtab_add");
 #define _TLMP_webtabs
 struct _F_webtabs {
 	bool redo;
-	string curtitle;	// Title of the active tab
-	string curid;		// ID of the active tab
-	string curstate;	// State of the active TAB
+	WEBTAB *curtab;
+	const char *selected_id;
 	_F_webtabs(){
 		redo = false;
+		curtab = NULL;
+		selected_id = NULL;
 	}
 	void setid (PARAM_STRING id);	// Change the ID of the active TAB
 	void settitle (PARAM_STRING title);	// Change the title of the active TAB
 	void setstate (PARAM_STRING val);// Record some value for the active TAB
 	void redotab ();		// Ask webtabs to redraw the current TAB
+	bool selected(PARAM_STRING id);
+	#define _F_webtabs_documents(x) void x documents()
+	virtual _F_webtabs_documents( );
 	#define _F_webtabs_docmain(x) void x docmain(const char *id, const char *formid, const char *state)
 	virtual _F_webtabs_docmain( )=0;
-	#define _F_webtabs_doctype2(x) void x doctype2(const char *id, const char *formid, const char *state)
+	#define _F_webtabs_doctype2(x) void x doctype2(const char *id, const char *formid, const char *state, const char *title)
 	virtual _F_webtabs_doctype2( );
 	#define _F_webtabs_doctype3(x) void x doctype3(const char *id, const char *formid, const char *state)
 	virtual _F_webtabs_doctype3( );
 	#define _F_webtabs_doctype4(x) void x doctype4(const char *id, const char *formid, const char *state)
 	virtual _F_webtabs_doctype4( );
 };
+bool _F_webtabs::selected(PARAM_STRING id)
+{
+	return strcmp(selected_id,id.ptr)==0;
+}
 void _F_webtabs::setid (PARAM_STRING id)
 {
-	curid = id.ptr;
+	curtab->tab = id.ptr;
 }
 void _F_webtabs::settitle (PARAM_STRING title)
 {
-	curtitle = title.ptr;
+	curtab->title = title.ptr;
 }
 void _F_webtabs::setstate (PARAM_STRING state)
 {
-	curstate = state.ptr;
+	curtab->state = state.ptr;
 }
 void _F_webtabs::redotab ()
 {
@@ -191,7 +231,10 @@ static void webtab_aref (const char *title, int tab)
 	string href = string_f ("%s?%s%swebtab=%d",tlmpweb_curpage(),hidden.c_str(),sep,tab);
 	webtab_href (title,href);
 }
-void _F_webtabs::doctype2(const char *id, const char *formid, const char *state)
+void _F_webtabs::documents()
+{
+}
+void _F_webtabs::doctype2(const char *id, const char *formid, const char *state, const char *title)
 {
 }
 void _F_webtabs::doctype3(const char *id, const char *formid, const char *state)
@@ -212,19 +255,28 @@ struct TABSEL {
 static void webtabs(_F_webtabs &c,
 	const char *name,
 	map<string,vector<WEBTAB>> &alltabs,
-	bool may_delete)
+	bool may_delete,
+	unsigned size[5])
 {
 	vector<WEBTAB> &tabs = alltabs[name];
 	glocal bool may_delete = may_delete;
+	int maxsel = -1;
+	for (auto &t:tabs){
+		if (t.selorder > maxsel) maxsel = t.selorder;
+	}
+	c.selected_id = "";
 	if (w_webtab_add.isset()){
 		// We are either adding a new tab or selecting an existing one.
 		// While we look if the tab already exist, we de-select the others
 		const char *ptid = w_webtab_add.c_str();
 		const char *pt = ptid;
+		WEBTAB_TYPE type = WEBTAB_TYPE1;
 		if (isdigit(pt[0]) && pt[1] == ':'){
+			type = (WEBTAB_TYPE)(pt[0]-'1');
 			pt+=2;
+			ptid = pt;
 		}
-		pt = strchr(pt,':');
+		pt = strchr(pt,'~');
 		string id,title;
 		if (pt != NULL){
 			id = string(ptid,pt-ptid);
@@ -235,15 +287,18 @@ static void webtabs(_F_webtabs &c,
 		}
 		bool found = false;
 		for (auto &t:tabs){
-			if (t.tab == id){
-				found = true;
-				t.flags = "sel";
-			}else{
-				t.flags.clear();
+			if (t.type == type){
+				if (t.tab == id){
+					found = true;
+					t.selorder = ++maxsel;
+					c.selected_id = t.tab.c_str();
+				}
 			}
 		}
 		if (!found){
-			tabs.push_back(WEBTAB(id,title,"f=sel"));
+			WEBTAB w(type,id,title,"");
+			w.selorder = ++maxsel;
+			tabs.push_back(w);
 			sort (tabs.begin(),tabs.end());
 		}
 		w_webtab = 0;
@@ -253,16 +308,6 @@ static void webtabs(_F_webtabs &c,
 		unsigned delete_tab = (w_webtab-1) / 2;
 		unsigned nbtab = tabs.size();
 		if (delete_tab < nbtab){
-			// If the deleted tab is currently selected (active)
-			// we must select another one.
-			if (tabs[delete_tab].flags == "sel"){
-				for (auto &t:tabs) t.flags.clear();
-				if (delete_tab > 0){
-					tabs[delete_tab-1].flags = "sel";
-				}else if (delete_tab < nbtab-1){
-					tabs[delete_tab+1].flags = "sel";
-				}
-			}
 			const char *id = tabs[delete_tab].tab.c_str();
 			tlmpweb_deleteform(id);
 			tabs.erase (tabs.begin()+delete_tab);
@@ -271,38 +316,34 @@ static void webtabs(_F_webtabs &c,
 	}
 	glocal vector<WEBTAB> *tabs = &tabs;
 	glocal const char *name = name;
-	glocal TABSEL sel;
-	// Assign the selected tab if none is selected
-	{
-		TABSEL default_sel;
+	glocal WEBTAB *ptsel[4];
+	for (unsigned i=0; i<4; i++) glocal.ptsel[i] = NULL;
+	for (unsigned type=0; type < 4; type++){
 		unsigned no = 1;
 		for (auto &t:tabs){
-			const char *tabname = t.tab.c_str();
-			if (default_sel.id.size() == 0){
-				default_sel.id = tabname;
-				default_sel.no = no;
+			if (w_webtab == no){
+				t.selorder = maxsel;
+				c.selected_id = t.tab.c_str();
+				maxsel++;
 			}
-			bool is_sel = t.flags == "sel";
-			if (w_webtab > 0){
-				if (w_webtab == no){
-					glocal.sel.id = tabname;
-					glocal.sel.no = no;
-					t.flags = "sel";
-				}else{
-					t.flags.clear();
-				}
-			}else{
-				if (is_sel){
-					glocal.sel.id = tabname;
-					glocal.sel.no = no;
+			no+=2;
+		}
+	}
+	// Assign the selected tab if none is selected
+	for (unsigned type=0; type < 4; type++){
+		WEBTAB *cur = NULL;
+		int maxorder = -1;
+		unsigned no = 1;
+		for (auto &t:tabs){
+			if (t.type == type){
+				if (t.selorder > maxorder){
+					cur = &t;
+					maxorder = t.selorder;
 				}
 			}
 			no+=2;
 		}
-		if (glocal.sel.id.size()==0){
-			glocal.sel.id = default_sel.id;
-			glocal.sel.no = default_sel.no;
-		}
+		glocal.ptsel[type] = cur;
 	}
 	bool draw_ok = true;
 	if (!tlmpweb_get_output_state()){
@@ -313,97 +354,108 @@ static void webtabs(_F_webtabs &c,
 	}
 
 	// We draw the tab content before drawing the tabs because the tabs may change
-	vector<string> lines;
-	if (draw_ok) tlmpweb_pushgrab(lines);
-	if (glocal.sel.id.size() > 0){
-		WEBTAB *ptt = NULL;
-		for (auto &t:tabs){
-			if (t.tab == glocal.sel.id){
-				ptt = &t;
-				break;
+	vector<string> lines[4];
+	for (int type=3; type>=0; type--){
+		if (glocal.ptsel[type] != NULL){
+			if (draw_ok) tlmpweb_pushgrab(lines[type]);
+			WEBTAB *ptt = glocal.ptsel[type];
+			while (1){
+				unsigned no=1;
+				for (auto &t:*glocal.tabs){
+					if (&t == ptt) w_webtab = no;
+					no += 2;
+				}
+				FORM_HIDDEN t(w_webtab);
+				const char *id = ptt->tab.c_str();
+				const char *formid = id;
+				const char *end = strchr(id,WEBTAB_MARK);
+				string tmp;
+				if (end != NULL){
+					tmp = string(id,end-id);
+					id = tmp.c_str();
+				}
+				c.curtab = ptt;
+				const char *state = ptt->state.c_str();
+				if (type == WEBTAB_TYPE1){
+					c.docmain(id,formid,state);
+				}else if (type == WEBTAB_TYPE2){
+					c.doctype2(id,formid,state,ptt->title.c_str());
+				}else if (type == WEBTAB_TYPE3){
+					c.doctype3(id,formid,state);
+				}else if (type == WEBTAB_TYPE4){
+					c.doctype4(id,formid,state);
+				}else{
+					c.docmain(id,id,state);
+				}
+				if (!draw_ok) break;
+				if (!c.redo) break;
+				c.redo = false;
+				lines[type].clear();
 			}
+			if (draw_ok) tlmpweb_popgrab();
 		}
-		while (1){
-			w_webtab = glocal.sel.no;
-			FORM_HIDDEN t(w_webtab);
-			const char *id = glocal.sel.id.c_str();
-			const char *id_2 = id+2;
-			const char *end = strchr(id_2,WEBTAB_MARK);
-			string tmp;
-			if (end != NULL){
-				tmp = string(id_2,end-id_2);
-				id_2 = tmp.c_str();
-			}
-			c.curtitle = ptt->title;
-			c.curid = id_2;
-			c.curstate = ptt->state;
-			const char *state = ptt->state.c_str();
-			if (strncmp(id,"1:",2)==0){
-				c.docmain(id_2,id,state);
-			}else if (strncmp(id,"2:",2)==0){
-				c.doctype2(id_2,id,state);
-			}else if (strncmp(id,"3:",2)==0){
-				c.doctype3(id_2,id,state);
-			}else if (strncmp(id,"4:",2)==0){
-				c.doctype4(id_2,id,state);
-			}else{
-				c.docmain(id,id,state);
-			}
-			if (!draw_ok) break;
-			// setid or setstate was called;
-			ptt->tab = string(id,2)+c.curid;
-			ptt->state = c.curstate;
-			ptt->title = c.curtitle;
-			glocal.sel.id = ptt->tab;
-			if (!c.redo) break;
-			c.redo = false;
-			lines.clear();
-		}
-				
 	}
 	if (draw_ok){
-		tlmpweb_popgrab();
 		// height=100%
 		/- <table border=0 width=100% height=100%>
-		/- <tr><td height=1% valign=top>
-		<call button_row>(0,"white");
-		<f draw>
-			unsigned no = 1;
-			for (auto &t:*glocal.tabs){
-				split();
-				const char *name = t.title.c_str();
-				if (name[0] == '\0') name = t.tab.c_str();
-				bool is_sel = glocal.sel.no == no;
-				if (is_sel){
-					webtab_aref_selected (name,no);
-				}else{
-					webtab_aref (name,no);
-				}
-				if (glocal.may_delete){
-					split();
-					webtab_aref("x",no+1);
-				}
-				no += 2;
+		vector<string> docs;
+		tlmpweb_pushgrab(docs);
+		c.documents();
+		tlmpweb_popgrab();
+		/- <tr>
+		if (docs.size() > 0){
+			htmlprintf ("<td height=100%% width=%u%% valign=top>\n",size[0]);
+			htmlout(docs);
+		}
+		for (unsigned type=0; type <4; type++){
+			if (size[type+1] != 0){
+				htmlprintf ("<td height=100%% width=%u%%>\n",size[type+1]);
+				/- <table border=0 height=100% width=100%>
+				/- <tr><td height=1% valign=top>
+				glocal unsigned type = type;
+				<call button_row>(0,"white");
+				<f draw>
+					unsigned no = 1;
+					for (auto &t:*glocal.tabs){
+						if (t.type == glocal.type){
+							split();
+							const char *name = t.title.c_str();
+							if (name[0] == '\0') name = t.tab.c_str();
+							if (&t == glocal.ptsel[glocal.type]){
+								webtab_aref_selected (name,no);
+							}else{
+								webtab_aref (name,no);
+							}
+							if (glocal.may_delete){
+								split();
+								webtab_aref("x",no+1);
+							}
+						}
+						no += 2;
+					}
+				</f>
+				</call>
+				/- <tr><td valign=top height=99%>
+				htmlout (lines[type]);
+				/- </table>
 			}
-		</f>
-		</call>
-		/- <tr><td valign=top height=99%>
-		htmlout (lines);
-		///- allo
+		}
 		/- </table>
 	}
 }
 </mod>
 void webtabs(_F_webtabs &c,
 	const char *name,
-	map<string,vector<WEBTAB>> &tabs)
+	map<string,vector<WEBTAB>> &tabs,
+	unsigned size[5])
 {
-	webtabs (c,name,tabs,true);
+	webtabs (c,name,tabs,true,size);
 }
 void webtabs(_F_webtabs &c,
 	const char *name,
 	const vector<string> &starttabs,
-	map<string,vector<WEBTAB>> &alltabs)
+	map<string,vector<WEBTAB>> &alltabs,
+	unsigned size[5])
 {
 	vector<WEBTAB> &tabs = alltabs[name];
 	for (auto &s:starttabs){
@@ -411,7 +463,7 @@ void webtabs(_F_webtabs &c,
 		string tmp;
 		const char *tab = s.c_str();
 		const char *title = "";
-		const char *pt = strchr(tab,':');
+		const char *pt = strchr(tab,'~');
 		if (pt != NULL){
 			title = pt + 1;
 			tmp = string(tab,pt-tab);
@@ -425,10 +477,10 @@ void webtabs(_F_webtabs &c,
 			}
 		}
 		if (!found){
-			tabs.push_back(WEBTAB(tab,title,""));
+			tabs.push_back(WEBTAB(WEBTAB_TYPE1,tab,title,""));
 		}
 	}
-	webtabs (c,name,alltabs,false);
+	webtabs (c,name,alltabs,false,size);
 }
 struct _F_sendfile_common {
 	string handle;
@@ -1249,6 +1301,13 @@ extern "C" void webmain_real()
 				|| strcmp(tab,"contacts")==0){
 				glocal.valid = true;
 			}
+		}else if (strncmp(tableid,"tab:",4)==0){
+			const char *tab = tableid+4;
+			if (strcmp(tab,"projects")==0
+				|| strcmp(tab,"mails")==0
+				|| strcmp(tab,"talk")==0){
+				glocal.valid = true;
+			}
 		}else if (strncmp(tableid,"talk",4)==0){
 			vector<string> tb;
 			int n = str_splitline (tableid+4,':',tb);
@@ -1549,261 +1608,252 @@ extern "C" void webmain_real()
 	<f step7> // TAB Projects
 		//HTMLDEBUG d1("t1");
 		//HTMLDEBUG d2("t2");
-		glocal string curtab;
 		bolixo_title (MSG_R(M_PROJECTS),this);
-		<call vframe2h>(10);
-		<f left>
+		static unsigned size[5]={10,50,40,0,0};
+		<call webtabs>(MSG_R(M_PROJECTS),tabs,size);
+		<f documents>
 			// List projects
-			<call webtable>("list:Projects","100%");
+			static const char *id = "tab:projects";
+			<call webtable>(id,"100%",currents[id]);
 			<f load>
 				sethead (MSG_U(H_PROJECTS,"Owner\tProject"));
 				<call bod_client_list_inboxes>(glocal.con,w_session.c_str(),"",false);
 				<f ok>
+					unsigned rownum=0;
 					for (auto &inb:inboxes){
 						string id = string_f("%s/%s",inb.manager,inb.project);
 						const char *style = "white";
-						if (id == glocal.curtab){
-							style = "white+current";
-						}else if (strncmp(id.c_str(),glocal.curtab.c_str(),id.size())==0
-							&& glocal.curtab[id.size()] == '/'){
-							// Edit a document inside a project
-							style = "white+current";
-						}
+						if (glocal.webtabs.selected(id)) glocal.webtable.setcurrent(rownum);
 						string add = string_f("webtab_add=1:%s/%s",inb.manager,inb.project);
 						glocal.webtable.setclickopt (true,"",add);
-						glocal.webtable.setrow (style,0,"%s\t%s",inb.manager,inb.project);
+						glocal.webtable.setrow (style,rownum,"%s\t%s",inb.manager,inb.project);
+						rownum++;
 					}
 				</f>
 				</call>
 			</f>
 			</call>
 		</f>
-		<f right>
-			<call webtabs>(MSG_R(M_PROJECTS),tabs);
-			<f docmain>
-				glocal.curtab = id;
-				glocal const char *id = id;
-				glocal string path = string_f ("/projects/%s",id);
-				//htmlprintf ("Project %s<br>\n",glocal.path.c_str());
-				/- <table id=t1 height=100% width=60% border=0>
-				/- <tr><td height=1%>
-				<call form>(formid);
-				<f top>
-					/- <table border=0>
-				</f>
-				<f bottom>
-					/- </table>
-				</f>
-				<f setup>
-					/- <tr><td>
-					/-#I_NEW_FOLDER New folder
-					/- &nbsp;
-					field_string (w_folder,"size=30");
-					/- <tr><td>
-					url_self (string_f("webtab_add=2:%s%c%ld:%s",glocal.id,WEBTAB_MARK,time(NULL),MSG_U(I_NEWDOC,"New_document"))
-						,MSG_U(I_CREATENEWDOC,"Create a new document"));
-					/- <tr><td>
-					/-#I_UPLOADFILE Upload file
-					/- &nbsp;
-					field_file (w_upload);
-					/- <tr><td>
-					button_submit();
-				</f>
-				<f validate>
-					return true;
-				</f>
-				<f process>
-					glocal bool fail = false;
-					if (strcmp(w_folder.c_str(),"")!=0){
-						string filepath = string_f("%s/%s",glocal.path.c_str(),w_folder.c_str());
-						<call bod_client_mkdir>(glocal.con,w_session.c_str(),filepath);
-						<f ok>
-							if (!success){
-								glocal.fail = true;
-								htmlprintf (MSG_U(E_CREATEFOLDER,"Can't create folder: %s<br>\n"),msg);
-							}else{
-								w_folder.setempty();
-							}
-						</f>
-						</call>
-					}
-					if (strcmp(w_upload.c_str(),"")!=0){
-						const char *tempname = tlmpweb_getfilename(w_upload);
-						string filepath = string_f("%s/%s",glocal.path.c_str(),w_upload.c_str());
-						<call sendfile>(filepath,tempname,glocal.fail);
-						<f start>
-							<call bod_client_addfile_bob>(glocal.con,w_session.c_str(),filepath,content,more);
-							<f ok>
-								glocal.sendfile.sethandle(handle);
-								glocal.sendfile.setresult(success,msg);
-							</f>
-							</call>
-						</f>
-						<f rest>
-							<call bod_client_appendfile>(glocal.con,w_session.c_str(),handle,content,more);
-							<f ok>
-								glocal.sendfile.setresult(success,msg);
-							</f>
-							</call>
-						</f>
-						</call>
-					}
-					keepediting = true;
-					fail = glocal.fail;
-				</f>
-				</call>
-				/- <tr><td height=99%>
-				//HTMLDEBUG ("table",true);
-				<call webtable>(glocal.path,"100%",currents[glocal.path],offsets[glocal.path],35);
-				<f click>
-					tlmpweb_flushheader();
-					<call bod_client_listdir>(glocal.con,w_session.c_str(),glocal.path,"",false,noline,1);
-					<f ok>
-						if (files.size()!=1){
-							htmlprintf (MSG_U(E_INTERNAL,"Internal error: %s\n"),msg);
-						}else{
-							auto &f = files[0];
-							glocal FILE_TYPE file_type = f.file_type;
-							glocal string fname = string_f("%s/%s",glocal.path.c_str(),f.name);
-							if (file_is_text(f.file_type)){
-								if (f.islarge){
-									index_sendfile (glocal.con,glocal.fname,"text/html");
-								}else{
-									<call bod_client_readfile>(glocal.con,w_session.c_str(),glocal.fname,"");
-									<f ok>
-										if (!success){
-											index_popup (glocal.con,msg,glocal.file_type,glocal.fname);
-										}else{
-											index_popup (glocal.con,content,glocal.file_type,glocal.fname);
-										}
-									</f>
-									</call>
-								}
-							}else{
-								index_popup (glocal.con,"",f.file_type,glocal.fname);
-							}
-						}
-					</f>
-					</call>
-				</f>
-				<f load>
-					glocal unsigned rownum = nbskip;
-					sethead (MSG_U(H_FOLDER,"Type\tEventdate\tModified\tOwner\tSize\tName"));
-					<call bod_client_listdir>(glocal.con,w_session.c_str(),glocal.path,"",false,nbskip,nblines);
-					<f ok>
-						if (!success) htmlprintf (MSG_U(E_READDIR,"Can't read directory %s: %s<br>\n"),glocal.path.c_str(),msg);
-						const char *func = "Popup";
-						for (auto &f:files){
-							string path = string_f ("%s/%s",glocal.id,f.name);
-							if (bolixo_isdir(f.type)){
-								glocal.webtable.setclickopt (true,"",string_f("webtab_add=1:%s",path.c_str()));
-							}else if (file_is_image(f.file_type) || file_is_video(f.file_type)){
-								glocal.webtable.setclickopt (true,func,"800,800");
-							}else if (file_is_sound(f.file_type)){
-								glocal.webtable.setclickopt (true,func,"350,50");
-							}else if (file_is_text(f.file_type)){
-								glocal.webtable.setclickopt (true,"",string_f("webtab_add=2:%s:%s",path.c_str(),f.name));
-							}
-							const char *style = f.viewed != VIEWED_OK ? "whitebold" : "white";
-							glocal.webtable.setrow (style,glocal.rownum,"%c%s\t%s\t%s\t%s/%s:%s\t%u\t%s"
-								,tbtype[f.type],tbftype[f.file_type]
-								,f.eventdate,f.modified
-								,f.owner,f.listname,f.listmode,f.size
-								,f.name);
-							glocal.rownum++;
-						}
-					</f>
-					</call>
-				</f>
-				</call>
+		<f docmain>
+			glocal const char *id = id;
+			glocal string path = string_f ("/projects/%s",id);
+			/- <table id=t1 height=100% width=100% border=0>
+			/- <tr><td height=1% width=100%>
+			<call form>(formid);
+			<f top>
+				/- <table border=0>
+			</f>
+			<f bottom>
 				/- </table>
 			</f>
-			<f doctype2>
-				glocal.curtab = id;
-				glocal const char *filename = id;
-				glocal string path = string_f("/projects/%s",glocal.filename);
-				glocal bool newdocument = false;
-				if (index_entrytype(glocal.con,glocal.path)==ENTRY_DIR) glocal.newdocument = true;
-				<call form>(formid);
-				<f top>
-					/- <table border=0 height=100%>
-				</f>
-				<f bottom>
-					/- </table>
-				</f>
-				<f load>
-					if (!glocal.newdocument){
-						index_loadfile(glocal.con,glocal.path,w_content);
-					}
-				</f>
-				<f setup>
-					/- <tr><td align=left>
-					if (glocal.newdocument){
-						/-#I_NEWDOCNAME New document name&nbsp;
-						field_string (w_filename,"size=30");	
-					}else{
-						htmlprintf (MSG_U(I_DOCNAME,"Document name:&nbsp;<font size=+1>%s</font>"),glocal.filename);
-					}
-					/- <td align=right>
-					button_submit(MSG_U(B_SAVE,"Save"));
-					/- <tr><td colspan=2>
-					field_textarea(w_content,50,120,"");
-				</f>
-				<f validate>
-					bool ret = true;
-					if (glocal.newdocument){
-						if (strcmp(w_filename.c_str(),"")==0){
-							/- You must provide a file name
-							ret = false;
-						}else if (index_entrytype(glocal.con,string_f("%s/%s",glocal.path.c_str(),w_filename.c_str()))!=ENTRY_NONE){
-							/- Document already exist
-							ret = false;
-						}
-					}
-					return ret;
-				</f>
-				<f process>
-					<call sendfile_var>(glocal.path,w_content,fail);	
-					<f start>
-						if (glocal.newdocument){
-							glocal.path = string_f("%s/%s",glocal.path.c_str(),w_filename.c_str());
-							<call bod_client_addfile_bob>(glocal.con,w_session.c_str(),glocal.path,content,more);
-							<f ok>
-								glocal.sendfile_var.setresult(success,msg);
-								glocal.sendfile_var.sethandle(handle);
-							</f>
-							</call>
+			<f setup>
+				/- <tr><td>
+				/-#I_NEW_FOLDER New folder
+				/- &nbsp;
+				field_string (w_folder,"size=30");
+				/- <tr><td>
+				url_self (string_f("webtab_add=2:%s%c%ld~%s",glocal.id,WEBTAB_MARK,time(NULL),MSG_U(I_NEWDOC,"New_document"))
+					,MSG_U(I_CREATENEWDOC,"Create a new document"));
+				/- <tr><td>
+				/-#I_UPLOADFILE Upload file
+				/- &nbsp;
+				field_file (w_upload);
+				/- <tr><td>
+				button_submit();
+			</f>
+			<f validate>
+				return true;
+			</f>
+			<f process>
+				glocal bool fail = false;
+				if (strcmp(w_folder.c_str(),"")!=0){
+					string filepath = string_f("%s/%s",glocal.path.c_str(),w_folder.c_str());
+					<call bod_client_mkdir>(glocal.con,w_session.c_str(),filepath);
+					<f ok>
+						if (!success){
+							glocal.fail = true;
+							htmlprintf (MSG_U(E_CREATEFOLDER,"Can't create folder: %s<br>\n"),msg);
 						}else{
-							<call bod_client_modifyfile_bob>(glocal.con,w_session.c_str(),filepath,content,more);
-							<f ok>
-								glocal.sendfile_var.setresult(success,msg);
-								glocal.sendfile_var.sethandle(handle);
-							</f>
-							</call>
+							w_folder.setempty();
 						}
+					</f>
+					</call>
+				}
+				if (strcmp(w_upload.c_str(),"")!=0){
+					const char *tempname = tlmpweb_getfilename(w_upload);
+					string filepath = string_f("%s/%s",glocal.path.c_str(),w_upload.c_str());
+					<call sendfile>(filepath,tempname,glocal.fail);
+					<f start>
+						<call bod_client_addfile_bob>(glocal.con,w_session.c_str(),filepath,content,more);
+						<f ok>
+							glocal.sendfile.sethandle(handle);
+							glocal.sendfile.setresult(success,msg);
+						</f>
+						</call>
 					</f>
 					<f rest>
 						<call bod_client_appendfile>(glocal.con,w_session.c_str(),handle,content,more);
 						<f ok>
-							glocal.sendfile_var.setresult(success,msg);
+							glocal.sendfile.setresult(success,msg);
 						</f>
 						</call>
 					</f>
 					</call>
-					if (!fail){
-						if (glocal.newdocument){
-							glocal.webtabs.setid (string_f("%s/%s",glocal.filename,w_filename.c_str()));
-							glocal.webtabs.settitle (w_filename.c_str());
-							glocal.webtabs.redotab();
-							resetstate();
-							// We have to mark this document as viewed (we just created it)
-							index_markview (glocal.con,glocal.path);
+				}
+				keepediting = true;
+				fail = glocal.fail;
+			</f>
+			</call>
+			/- <tr><td height=99% width=100%>
+			//HTMLDEBUG ("table",true);
+			<call webtable>(glocal.path,"100%",currents[glocal.path],offsets[glocal.path],35);
+			<f click>
+				tlmpweb_flushheader();
+				<call bod_client_listdir>(glocal.con,w_session.c_str(),glocal.path,"",false,noline,1);
+				<f ok>
+					if (files.size()!=1){
+						htmlprintf (MSG_U(E_INTERNAL,"Internal error: %s\n"),msg);
+					}else{
+						auto &f = files[0];
+						glocal FILE_TYPE file_type = f.file_type;
+						glocal string fname = string_f("%s/%s",glocal.path.c_str(),f.name);
+						if (file_is_text(f.file_type)){
+							if (f.islarge){
+								index_sendfile (glocal.con,glocal.fname,"text/html");
+							}else{
+								<call bod_client_readfile>(glocal.con,w_session.c_str(),glocal.fname,"");
+								<f ok>
+									if (!success){
+										index_popup (glocal.con,msg,glocal.file_type,glocal.fname);
+									}else{
+										index_popup (glocal.con,content,glocal.file_type,glocal.fname);
+									}
+								</f>
+								</call>
+							}
 						}else{
-							keepediting = true;
+							index_popup (glocal.con,"",f.file_type,glocal.fname);
 						}
 					}
 				</f>
 				</call>
+			</f>
+			<f load>
+				glocal unsigned rownum = nbskip;
+				sethead (MSG_U(H_FOLDER,"Type\tEventdate\tModified\tOwner\tSize\tName"));
+				<call bod_client_listdir>(glocal.con,w_session.c_str(),glocal.path,"",false,nbskip,nblines);
+				<f ok>
+					if (!success) htmlprintf (MSG_U(E_READDIR,"Can't read directory %s: %s<br>\n"),glocal.path.c_str(),msg);
+					const char *func = "Popup";
+					for (auto &f:files){
+						string path = string_f ("%s/%s",glocal.id,f.name);
+						if (bolixo_isdir(f.type)){
+							glocal.webtable.setclickopt (true,"",string_f("webtab_add=1:%s",path.c_str()));
+						}else if (file_is_image(f.file_type) || file_is_video(f.file_type)){
+							glocal.webtable.setclickopt (true,func,"800,800");
+						}else if (file_is_sound(f.file_type)){
+							glocal.webtable.setclickopt (true,func,"350,50");
+						}else if (file_is_text(f.file_type)){
+							glocal.webtable.setclickopt (true,"",string_f("webtab_add=2:%s~%s",path.c_str(),f.name));
+						}
+						const char *style = f.viewed != VIEWED_OK ? "whitebold" : "white";
+						if (glocal.webtabs.selected(path)) glocal.webtable.setcurrent(glocal.rownum);
+						glocal.webtable.setrow (style,glocal.rownum,"%c%s\t%s\t%s\t%s/%s:%s\t%u\t%s"
+							,tbtype[f.type],tbftype[f.file_type]
+							,f.eventdate,f.modified
+							,f.owner,f.listname,f.listmode,f.size
+							,f.name);
+						glocal.rownum++;
+					}
+				</f>
+				</call>
+			</f>
+			</call>
+			/- </table>
+		</f>
+		<f doctype2>
+			glocal const char *filename = id;
+			glocal string path = string_f("/projects/%s",glocal.filename);
+			glocal bool newdocument = false;
+			if (index_entrytype(glocal.con,glocal.path)==ENTRY_DIR) glocal.newdocument = true;
+			<call form>(formid);
+			<f top>
+				/- <table border=0 height=100%>
+			</f>
+			<f bottom>
+				/- </table>
+			</f>
+			<f load>
+				if (!glocal.newdocument){
+					index_loadfile(glocal.con,glocal.path,w_content);
+				}
+			</f>
+			<f setup>
+				/- <tr><td align=left>
+				if (glocal.newdocument){
+					/-#I_NEWDOCNAME New document name&nbsp;
+					field_string (w_filename,"size=30");	
+				}else{
+					htmlprintf (MSG_U(I_DOCNAME,"Document name:&nbsp;<font size=+1>%s</font>"),glocal.filename);
+				}
+				/- <td align=right>
+				button_submit(MSG_U(B_SAVE,"Save"));
+				/- <tr><td colspan=2>
+				field_textarea(w_content,50,-100,"");
+			</f>
+			<f validate>
+				bool ret = true;
+				if (glocal.newdocument){
+					if (strcmp(w_filename.c_str(),"")==0){
+						/- You must provide a file name
+						ret = false;
+					}else if (index_entrytype(glocal.con,string_f("%s/%s",glocal.path.c_str(),w_filename.c_str()))!=ENTRY_NONE){
+						/- Document already exist
+						ret = false;
+					}
+				}
+				return ret;
+			</f>
+			<f process>
+				<call sendfile_var>(glocal.path,w_content,fail);	
+				<f start>
+					if (glocal.newdocument){
+						glocal.path = string_f("%s/%s",glocal.path.c_str(),w_filename.c_str());
+						<call bod_client_addfile_bob>(glocal.con,w_session.c_str(),glocal.path,content,more);
+						<f ok>
+							glocal.sendfile_var.setresult(success,msg);
+							glocal.sendfile_var.sethandle(handle);
+						</f>
+						</call>
+					}else{
+						<call bod_client_modifyfile_bob>(glocal.con,w_session.c_str(),filepath,content,more);
+						<f ok>
+							glocal.sendfile_var.setresult(success,msg);
+							glocal.sendfile_var.sethandle(handle);
+						</f>
+						</call>
+					}
+				</f>
+				<f rest>
+					<call bod_client_appendfile>(glocal.con,w_session.c_str(),handle,content,more);
+					<f ok>
+						glocal.sendfile_var.setresult(success,msg);
+					</f>
+					</call>
+				</f>
+				</call>
+				if (!fail){
+					if (glocal.newdocument){
+						glocal.webtabs.setid (string_f("%s/%s",glocal.filename,w_filename.c_str()));
+						glocal.webtabs.settitle (w_filename.c_str());
+						glocal.webtabs.redotab();
+						resetstate();
+						// We have to mark this document as viewed (we just created it)
+						index_markview (glocal.con,glocal.path);
+					}else{
+						keepediting = true;
+					}
+				}
 			</f>
 			</call>
 		</f>
@@ -1811,215 +1861,225 @@ extern "C" void webmain_real()
 		/- </table>
 	</f>
 	<f step8> // TAB Mails
-		glocal string curtab;
 		bolixo_title (MSG_U(T_MAILS,"Mails"),this);
-		<call vframe2h>(10);
-		<f left>
-			<call webtable>("list:mail","100%");
+		static unsigned size[5]={10,50,40,0,0};
+		<call webtabs>("mails",tabs,size);
+		<f documents>
+			static const char *id = "tab:mails";
+			<call webtable>(id,"100%",currents[id]);
 			<f load>
 				sethead (MSG_U(H_INBOXES,"Owner\tProject"));
-				setclickopt (true,"","webtab_add=1:INBOX");
-				const char *style = glocal.curtab == "INBOX" ? "white+current" : "white";
-				setrow (style,0,"\t%s",MSG_U(I_INBOX,"INBOX"));
+				setclickopt (true,"",string_f("webtab_add=1:INBOX~%s",MSG_R(I_INBOX)));
+				if (glocal.webtabs.selected("INBOX")) setcurrent(0);
+				setrow ("white",0,"\t%s",MSG_U(I_INBOX,"INBOX"));
 				<call bod_client_list_inboxes>(glocal.con,w_session.c_str(),"",true);
 				<f ok>
+					unsigned rownum=1;
 					for (auto s:inboxes){
-						const char *style = strcmp(s.project,glocal.curtab.c_str())==0 ? "white+current" : "white";
 						string add = string_f("webtab_add=1:%s",s.project);
 						//url_self (add.c_str(),"%s",s.role);
+						if (glocal.webtabs.selected(s.project)) glocal.webtable.setcurrent(rownum);
 						glocal.webtable.setclickopt (true,"",add);
-						glocal.webtable.setrow(style,0,"%s\t%s",s.manager,s.project);
+						glocal.webtable.setrow("white",rownum,"%s\t%s",s.manager,s.project);
+						rownum++;
 					}
 				</f>
 				</call>
 			</f>
 			</call>
 		</f>
-		<f right>
-			<call webtabs>("mails",tabs);
-			<f docmain>
-				glocal.curtab = id;
-				glocal const char *project = id;
-				if (strcmp(id,"INBOX")==0) glocal.project = "";
-				string inbox = string("inbox") + id;
-				<call webtable>(inbox,"60%",currents[inbox],offsets[inbox],35);
-				<f click>
-					// This code is never called
-					tlmpweb_flushheader();
-					<call bod_client_list_msgs>(glocal.con,w_session.c_str(),"",glocal.project,false,noline,1);
-					<f ok>
-						if (messages.size()!=1){
-							htmlprintf ("Internal error: %s\n",msg);
-						}else{
-							htmlprintf ("title=%s<p>\n",messages[0].title);
-							string path = index_format_mail_fname(messages[0]);
-							<call bod_client_readfile>(glocal.con,w_session.c_str(),path,"");
-							<f ok>
-								const char *pt = content;
-								while (*pt != '\0'){
-									const char *start = pt;
-									while (*pt != '\0' && *pt != '\n') pt++;
-									htmlwrite (start,pt-start);
-									htmlout ("<br>\n");
-									if (*pt == '\n') pt++;
-								}
-							</f>
-							</call>
-						}
-					</f>
-					</call>
-				</f>
-				<f load>
-					glocal unsigned rownum = nbskip;
-					sethead (MSG_U(H_MAILS,"From\tManager\tProject\tRole\tSubmit\tTitle"));
-					<call bod_client_list_msgs>(glocal.con,w_session.c_str(),"",glocal.project,false,nbskip,nblines);
-					<f ok>
-						if (!success){
-							htmlprintf ("Error: %d %s<br>",internal_error,msg);
-						}else{
-							for (auto &m:messages){
-								string path = index_format_mail_fname(m);
-								glocal.webtable.setclickopt (true,"",string_f("webtab_add=2:%s:%s"
-									,path.c_str(),m.from));
-								const char *style = m.viewed != VIEWED_OK ? "whitebold" : "white";
-								glocal.webtable.setrow (style,glocal.rownum,"%s\t%s\t%s\t%s\t%s\t%s"
-									,m.from
-									,m.manager
-									,m.project
-									,m.role
-									,m.submit
-									,m.title);
-								glocal.rownum++;
-							}
-						}
-					</f>
-					</call>
-				</f>
-				</call>
-			</f>
-			<f doctype2>
-				//htmlprintf ("title=%s<p>\n",messages[0].title);
-				<call bod_client_readfile>(glocal.con,w_session.c_str(),id,"");
+		<f docmain>
+			glocal const char *project = id;
+			if (strcmp(id,"INBOX")==0) glocal.project = "";
+			string inbox = string("inbox") + id;
+			<call webtable>(inbox,"100%",currents[inbox],offsets[inbox],35);
+			<f click>
+				// This code is never called
+				tlmpweb_flushheader();
+				<call bod_client_list_msgs>(glocal.con,w_session.c_str(),"",glocal.project,false,noline,1);
 				<f ok>
-					htmlprintf ("%s: %s<br>\n",MSG_U(I_TITLE,"Title"),info.title);
-					/- <p>
-					const char *pt = content;
-					while (*pt != '\0'){
-						const char *start = pt;
-						while (*pt != '\0' && *pt != '\n') pt++;
-						htmlout (start,pt-start);
-						htmlout ("<br>\n");
-						if (*pt == '\n') pt++;
+					if (messages.size()!=1){
+						htmlprintf ("Internal error: %s\n",msg);
+					}else{
+						htmlprintf ("title=%s<p>\n",messages[0].title);
+						string path = index_format_mail_fname(messages[0]);
+						<call bod_client_readfile>(glocal.con,w_session.c_str(),path,"");
+						<f ok>
+							const char *pt = content;
+							while (*pt != '\0'){
+								const char *start = pt;
+								while (*pt != '\0' && *pt != '\n') pt++;
+								htmlwrite (start,pt-start);
+								htmlout ("<br>\n");
+								if (*pt == '\n') pt++;
+							}
+						</f>
+						</call>
 					}
 				</f>
 				</call>
+			</f>
+			<f load>
+				glocal unsigned rownum = nbskip;
+				sethead (MSG_U(H_MAILS,"From\tManager\tProject\tRole\tSubmit\tTitle"));
+				<call bod_client_list_msgs>(glocal.con,w_session.c_str(),"",glocal.project,false,nbskip,nblines);
+				<f ok>
+					if (!success){
+						htmlprintf ("Error: %d %s<br>",internal_error,msg);
+					}else{
+						for (auto &m:messages){
+							string path = index_format_mail_fname(m);
+							glocal.webtable.setclickopt (true,"",string_f("webtab_add=2:%s~%s"
+								,path.c_str(),m.from));
+							if (glocal.webtabs.selected(path)) glocal.webtable.setcurrent(glocal.rownum);
+							const char *style = m.viewed != VIEWED_OK ? "whitebold" : "white";
+							glocal.webtable.setrow (style,glocal.rownum,"%s\t%s\t%s\t%s\t%s\t%s"
+								,m.from
+								,m.manager
+								,m.project
+								,m.role
+								,m.submit
+								,m.title);
+							glocal.rownum++;
+						}
+					}
+				</f>
+				</call>
+			</f>
+			</call>
+		</f>
+		<f doctype2>
+			glocal const char *id = id;
+			glocal const char *from = title;
+			<call bod_client_readfile>(glocal.con,w_session.c_str(),id,"");
+			<f ok>
+				vector<string> tb;
+				int n = str_splitline (glocal.id,'/',tb);
+				/- <table border=0>
+				if (n >= 5 && strcmp(tb[3].c_str(),"inbox")!=0){
+					if (n >= 6){
+						htmlprintf ("<tr><td><b>%s</b><td>%s<td>/<td>%s<td>/<td>%s\n",MSG_U(I_PROJECT,"Project"),tb[2].c_str(),tb[3].c_str(),tb[4].c_str());
+					}else{
+						htmlprintf ("<tr><td><b>%s</b><td>%s<td>/<td>%s\n",MSG_R(I_PROJECT),tb[2].c_str(),tb[3].c_str());
+					}
+				}
+				htmlprintf ("<tr><td><b>%s</b><td colspan=6>%s\n",MSG_U(I_FROM,"From"),glocal.from);
+				htmlprintf ("<tr><td><b>%s</b><td colspan=6>%s\n",MSG_U(I_TITLE,"Title"),info.title);
+				htmlprintf ("<tr><td><b>%s</b><td colspan=6>%s\n",MSG_U(I_DATE,"Date"),info.modified);
+				/- </table>
+				/- <p>
+				const char *pt = content;
+				while (*pt != '\0'){
+					const char *start = pt;
+					while (*pt != '\0' && *pt != '\n') pt++;
+					htmlout (start,pt-start);
+					htmlout ("<br>\n");
+					if (*pt == '\n') pt++;
+				}
 			</f>
 			</call>
 		</f>
 		</call>
-		/- </table>
+		///- </table>
 	</f>
 	<f step9>	// TAB Talks
-		glocal string curtab;
 		bolixo_title (MSG_U(T_TALKS,"Talks"),this);
-		<call vframe2h>(10);
-		<f left>
-			<call webtable>("list:talk","100%");
+		static unsigned size[5]={10,50,40,0,0};
+		<call webtabs>("talks",tabs,size);
+		<f documents>
+			static const char *id = "tab:talk";
+			<call webtable>(id,"100%",currents[id]);
 			<f load>
 				sethead (MSG_U(H_TALKS,"Proprio\tGroupe"));
 				<call bod_client_list_groups>(glocal.con,w_session.c_str(),"",false);
 				<f ok>
+					unsigned rownum = 0;
 					for (auto &g:groups){
 						string id = string_f("%s:%s",g.owner,g.name);
-						const char *style = id == glocal.curtab ? "white+current" : "white";
 						string add = string_f("webtab_add=1:%s:%s",g.owner,g.name);
+						if (glocal.webtabs.selected(id)) glocal.webtable.setcurrent(rownum);
 						glocal.webtable.setclickopt (true,"",add);
-						glocal.webtable.setrow (style,0,"%s\t%s",g.owner,g.name);
+						glocal.webtable.setrow ("white",rownum,"%s\t%s",g.owner,g.name);
+						rownum++;
 					}
 				</f>
 				</call>
 			</f>
 			</call>
 		</f>
-		<f right>
-			<call webtabs>("talks",tabs);
-			<f docmain>
-				glocal.curtab = id;
-				vector<string> tb;
-				int n = str_splitline (id,':',tb);
-				if (n != 2) return;
-				glocal string groupowner = tb[0];
-				glocal string groupname = tb[1];
-				/- <table border=0 height=100% align=left width=40%>
-				/- <tr><td height=1%>
-				<call form>(formid);
-				<f top>
-					/- <table border=0>
-				</f>
-				<f bottom>
-					/- </table>
-				</f>
-				<f setup>
-					/- <tr><td height=1% colspan=2>
-					field_textarea (w_content,5,60,"");
-					/- <tr><td height=1%>
-					field_file (w_upload);
-					/- <td>
-					button_submit (MSG_U(B_SEND,"Send"));
-				</f>
-				<f validate>
-					return true;
-				</f>
-				<f process>
-					glocal bool fail = false;
-					if (w_content.size() > 0){
-						BOB_TYPE bob;
-						bob.setbuffer (w_content.c_str(),w_content.size(),false);
-						<call bod_client_sendtalk>(glocal.con,w_session.c_str(),"",glocal.groupname,glocal.groupowner,bob,false);
-						<f ok>
-							if (!success){
-								htmlprintf (MSG_U(E_CANTSEND,"Can't send: %s<br>\n"),msg);
-								glocal.fail = true;
-							}
-						</f>
-						</call>
-						w_content.setempty();
-					}
-					if (strcmp(w_upload.c_str(),"")!=0){
-						const char *tempname = tlmpweb_getfilename(w_upload);
-						<call sendfile>("",tempname,glocal.fail);
-						<f start>
-							<call bod_client_sendtalk>(glocal.con,w_session.c_str(),"",glocal.groupname,glocal.groupowner
-								,content,more);
-							<f ok>
-								glocal.sendfile.sethandle (handle);
-								glocal.sendfile.setresult (success,msg);
-							</f>
-							</call>
-						</f>
-						<f rest>
-							<call bod_client_appendfile>(glocal.con,w_session.c_str(),handle,content,more);
-							<f ok>
-								glocal.sendfile.setresult (success,msg);
-							</f>
-							</call>
-						</f>
-						</call>
-						if (!fail) w_upload.setempty();
-					}
-					fail = glocal.fail;
-					keepediting = true;
-				</f>
-				</call>
-				/- <tr><td height=99%>
-				string table = string("talk")+id;
-				index_show_shortmsg (glocal.con,glocal.con_sess,table,glocal.groupname,glocal.groupowner);
+		<f docmain>
+			vector<string> tb;
+			int n = str_splitline (id,':',tb);
+			if (n != 2) return;
+			glocal string groupowner = tb[0];
+			glocal string groupname = tb[1];
+			/- <table border=0 height=100% align=left width=40%>
+			/- <tr><td height=1%>
+			<call form>(formid);
+			<f top>
+				/- <table border=0>
+			</f>
+			<f bottom>
 				/- </table>
 			</f>
+			<f setup>
+				/- <tr><td height=1% colspan=2>
+				field_textarea (w_content,5,60,"");
+				/- <tr><td height=1%>
+				field_file (w_upload);
+				/- <td>
+				button_submit (MSG_U(B_SEND,"Send"));
+			</f>
+			<f validate>
+				return true;
+			</f>
+			<f process>
+				glocal bool fail = false;
+				if (w_content.size() > 0){
+					BOB_TYPE bob;
+					bob.setbuffer (w_content.c_str(),w_content.size(),false);
+					<call bod_client_sendtalk>(glocal.con,w_session.c_str(),"",glocal.groupname,glocal.groupowner,bob,false);
+					<f ok>
+						if (!success){
+							htmlprintf (MSG_U(E_CANTSEND,"Can't send: %s<br>\n"),msg);
+							glocal.fail = true;
+						}
+					</f>
+					</call>
+					w_content.setempty();
+				}
+				if (strcmp(w_upload.c_str(),"")!=0){
+					const char *tempname = tlmpweb_getfilename(w_upload);
+					<call sendfile>("",tempname,glocal.fail);
+					<f start>
+						<call bod_client_sendtalk>(glocal.con,w_session.c_str(),"",glocal.groupname,glocal.groupowner
+							,content,more);
+						<f ok>
+							glocal.sendfile.sethandle (handle);
+							glocal.sendfile.setresult (success,msg);
+						</f>
+						</call>
+					</f>
+					<f rest>
+						<call bod_client_appendfile>(glocal.con,w_session.c_str(),handle,content,more);
+						<f ok>
+							glocal.sendfile.setresult (success,msg);
+						</f>
+						</call>
+					</f>
+					</call>
+					if (!fail) w_upload.setempty();
+				}
+				fail = glocal.fail;
+				keepediting = true;
+			</f>
 			</call>
+			/- <tr><td height=99%>
+			string table = string("talk")+id;
+			index_show_shortmsg (glocal.con,glocal.con_sess,table,glocal.groupname,glocal.groupowner);
+			/- </table>
 		</f>
 		</call>
-		/- </table>
 	</f>
 	<f step10> // Confirm user
 		if (w_confirm.is_empty()){
@@ -2041,15 +2101,14 @@ extern "C" void webmain_real()
 	</f>
 	<f step11> // TAB Profile
 		bolixo_title (MSG_U(T_PROFILE,"Profile"),this);
-		/- <table border=0 width=100% height=100%>
-		/- <tr><td>
 		vector<string> t={
-			string_f("Account:%s",MSG_U(T_ACCOUNT,"Account")),
-			string_f("Interests:%s",MSG_U(T_INTERESTS,"Interests")),
-			string_f("Contacts:%s",MSG_U(T_CONTACTS,"Contacts")),
-			string_f("Projects:%s",MSG_U(T_PROJECTS,"Projects")),
-			string_f("Groups:%s",MSG_U(T_GROUPS,"Groups"))};
-		<call webtabs>("profile",t,tabs);
+			string_f("Account~%s",MSG_U(T_ACCOUNT,"Account")),
+			string_f("Interests~%s",MSG_U(T_INTERESTS,"Interests")),
+			string_f("Contacts~%s",MSG_U(T_CONTACTS,"Contacts")),
+			string_f("Projects~%s",MSG_U(T_PROJECTS,"Projects")),
+			string_f("Groups~%s",MSG_U(T_GROUPS,"Groups"))};
+		static unsigned size[5]={15,50,0,0,0};
+		<call webtabs>("profile",t,tabs,size);
 		<f docmain>
 			glocal const char *state = state;
 			if (strcmp(id,"Projects")==0){
@@ -2612,8 +2671,6 @@ extern "C" void webmain_real()
 			}
 		</f>
 		</call>
-		/- </table>
-		/- </table>
 	</f>
 	<f step12> // Documentation
 		bolixo_title (MSG_R(M_DOCUM),this);
@@ -2634,8 +2691,8 @@ extern "C" void webmain_real()
 		for (auto &v:tabs){
 			for (auto &t:v.second){
 				SNAMEVAL val;
-				val.sname = v.first + ':' + t.tab;
-				val.sval = string_f("f=%s,s=%s,t=%s",t.flags.c_str(),t.state.c_str(),t.title.c_str());
+				val.sname = string_f("%s:%c:%s",v.first.c_str(),t.type+'1',t.tab.c_str());
+				val.sval = string_f("f=%u,s=%s,t=%s",t.selorder,t.state.c_str(),t.title.c_str());
 				var.vals.push_back(val);
 			}
 		}
