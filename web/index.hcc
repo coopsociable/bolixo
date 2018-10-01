@@ -397,7 +397,7 @@ static void webtabs(_F_webtabs &c,
 	}
 	if (draw_ok){
 		// height=100%
-		/- <table border=0 width=100% height=100%>
+		/- <table border=1 width=100% height=100%>
 		vector<string> docs;
 		tlmpweb_pushgrab(docs);
 		c.documents();
@@ -651,7 +651,7 @@ struct CURRENTFORM{
 	string id;
 	vector<string> vars;
 };
-static CURRENTFORM currentform;
+static vector<CURRENTFORM> currentforms;
 <mod>
 static void bolixo_title (const char *title, _F_websteps *c)
 {
@@ -665,7 +665,7 @@ static void bolixo_title (const char *title, _F_websteps *c)
 	/- <table border=0 height=100% width=100%><tr><td height=5%>
 	htmlprintf ("<table width=100%% bgcolor=%s cellspacing=0><tr><td align=left>\n",newscolor);
 		/- <table border=0><tr><td><a href=/7s.html style=\"text-decoration:none\"><img src=/favicon.ico></a></td><td align=left>
-		htmlout ("<a href=/index.hc style=\"text-decoration:none\"><font size=15 color=\"white\">Bolixo.org</font></a>&nbsp;&nbsp;&nbsp;");
+		htmlout ("<a href=/index.hc style=\"text-decoration:none\"><font size=8 color=\"white\">Bolixo.org</font></a>&nbsp;&nbsp;&nbsp;");
 		/- <td>
 		if (userinfo.name.empty()) printhref ("/about.html",MSG_U(I_ABOUT,"<font color=white>A peer to peer open social media</font>"),true);
 		/- </td></tr></table>
@@ -765,12 +765,20 @@ static void trli_getsessioninfo(CONNECT_INFO &con, CONNECT_INFO &con_sess, DOCUM
 					glocal.docpointer->resetchanged();
 						
 				}else if (strcmp(var.name,"currentform")==0){
+					CURRENTFORM form;
 					for (auto &v:var.vals){
 						if (strcmp(v.sname,"id")==0){
-							currentform.id = v.sval;
+							if (form.id.size()>0){
+								currentforms.push_back(form);
+							}
+							form.id = v.sval;
+							form.vars.clear();
 						}else if (strcmp(v.sname,"var")==0){
-							currentform.vars.push_back(v.sval);
+							form.vars.push_back(v.sval);
 						}
+					}
+					if (form.id.size()>0){
+						currentforms.push_back(form);
 					}
 				}
 			}
@@ -1333,14 +1341,16 @@ extern "C" void webmain_real()
 	<f recordform>
 		VAR var;
 		var.name = "currentform";
-		SNAMEVAL val;
-		val.sname = "id";
-		val.sval  = formid;
-		var.vals.push_back(val);
-		for (auto &v:variables){
-			val.sname = "var";
-			val.sval = v->getname();
+		for (auto &v:forms){
+			SNAMEVAL val;
+			val.sname = "id";
+			val.sval  = v.formid;
 			var.vals.push_back(val);
+			for (auto &vv:v.variables){
+				val.sname = "var";
+				val.sval = vv->getname();
+				var.vals.push_back(val);
+			}
 		}
 		<call bo_sessiond_client_setvar> (glocal.con_sess,w_session.c_str(),var);
 		<f ok>
@@ -1350,10 +1360,11 @@ extern "C" void webmain_real()
 	</f>
 	<f restoreform>
 		glocal int ret = -1;
+		glocal const char *formid = formid;
 		<call bod_client_form_readvar>(glocal.con,w_session.c_str(),formid);
 		<f ok>
 			if (!success){
-				tlmp_error (MSG_U(E_RESTOREFORM,"Can't restore active form state %s: %s\n"),currentform.id.c_str(),msg);
+				tlmp_error (MSG_U(E_RESTOREFORM,"Can't restore active form state %s: %s\n"),glocal.formid,msg);
 			}else{
 				if (vars.size() > 0){
 					glocal.ret = 0;
@@ -1382,20 +1393,25 @@ extern "C" void webmain_real()
 		</call>
 	</f>
 	<f saveform>
-		if (currentform.id.size() > 0){
-			FORMVARS f;
-			f.id = currentform.id;
-			for (auto &v:currentform.vars){
-				FORMVAR var;
-				var.name = v;
-				var.val = t_varstr(v.c_str());
-				f.vars.push_back(var);
+		if (currentforms.size() > 0){
+			for (auto &form:currentforms){
+				FORMVARS f;
+				glocal const char *id = form.id.c_str();
+				f.id = form.id;
+tlmp_error ("formid %s\n",f.id.c_str());
+				for (auto &v:form.vars){
+					FORMVAR var;
+					var.name = v;
+					var.val = t_varstr(v.c_str());
+tlmp_error ("formvar %s %lu\n",var.name.c_str(),var.val.size());
+					f.vars.push_back(var);
+				}
+				<call bod_client_form_savevar>(glocal.con,w_session.c_str(),f);
+				<f ok>
+					if (!success) tlmp_error (MSG_U(E_SAVEFORM,"saveform currentform %s: %s\n"),glocal.id,msg);
+				</f>
+				</call>
 			}
-			<call bod_client_form_savevar>(glocal.con,w_session.c_str(),f);
-			<f ok>
-				if (!success) tlmp_error (MSG_U(E_SAVEFORM,"saveform currentform %s: %s\n"),currentform.id.c_str(),msg);
-			</f>
-			</call>
 		}
 	</f>
 	<f webtableinit>
@@ -1799,7 +1815,7 @@ extern "C" void webmain_real()
 				/- <td align=right>
 				button_submit(MSG_U(B_SAVE,"Save"));
 				/- <tr><td colspan=2>
-				field_textarea(w_content,50,-100,"");
+				field_textarea(w_content,50,-100,"style=\"border: none\"");
 			</f>
 			<f validate>
 				bool ret = true;
