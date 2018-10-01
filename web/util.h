@@ -45,6 +45,7 @@ struct _F_button_row{
 	virtual _F_button_row_draw( )=0;
 };
 
+void button_row(_F_button_row &c, int border, const char *bgcolor, bool alignleft);
 void button_row(_F_button_row &c, int border, const char *bgcolor);
 void button_row(_F_button_row &c, int border);
 void button_row(_F_button_row &c);

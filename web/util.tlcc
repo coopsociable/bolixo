@@ -66,6 +66,10 @@ using namespace std;
 #define bod_client_form_savevar_NOTNEED
 #define bod_client_form_deletevar_NOTNEED
 #define bod_client_form_deleteall_NOTNEED
+#define bod_client_interest_set_NOTNEED
+#define bod_client_interest_unset_NOTNEED
+#define bod_client_interest_list_NOTNEED
+#define bod_client_interest_check_NOTNEED
 
 #include "../proto/bod_client.protoch"
 
@@ -76,7 +80,6 @@ using namespace std;
 static string w_session;
 USERINFO userinfo;
 static W_UNSIGNED w_robot ("robot");
-static const char *newscolor = "green";
 
 <mod>
 static void trli_getsessioninfo(CONNECT_INFO &con, CONNECT_INFO &con_sess, const char *varname, unsigned &varval)
@@ -153,7 +156,7 @@ static void print_href_c (const char *title, PARAM_STRING href, const char *colo
 }
 void print_href (const char *title, PARAM_STRING href)
 {
-	print_href_c(title, href,"#33cc33");
+	print_href_c(title, href,"grey");	//"#33cc33");
 }
 void print_aref (const char *page, const char *title, int step)
 {
@@ -469,99 +472,28 @@ void button_preview(int step)
 	htmlprintf ("<input type=\"submit\" value=\"Preview\" formaction=\"%s?webstep=%d&preview=1#form\">\n"
 		,tlmpweb_curpage(),step);
 }
-void button_row(_F_button_row &c, int border, const char *bgcolor)
+void button_row(_F_button_row &c, int border, const char *bgcolor, bool alignleft)
 {
 	htmlprintf ("<table border=%d bgcolor=%s cellspacing=0 width=100%%>\n",border,bgcolor);
-	htmlout ("<tr><td align=left>\n");
+	htmlprintf ("<tr><td align=%s>\n",alignleft ? "left" : "right");
 	htmlprintf ("<table border=%d bgcolor=%s cellspacing=0><tr>\n",border,bgcolor);
 	c.draw();
 	htmlout ("</table>\n");
 	htmlout ("</table>\n");
 }
+void button_row(_F_button_row &c, int border, const char *bgcolor)
+{
+	button_row(c,border,bgcolor,true);
+}
 void button_row(_F_button_row &c, int border)
 {
-	button_row (c,border,"white");
+	button_row (c,border,"white",true);
 }
 void button_row(_F_button_row &c)
 {
-	button_row(c,0,"white");
+	button_row(c,0,"white",true);
 }
 void _F_button_row::split()
 {
 	htmlout ("<td align=left>\n");
 }
-static unsigned subject=0;
-static W_UNSIGNED *w_tosubject;
-static const char *index_page = "/index.hc";
-static void trli_space()
-{
-	htmlprintf ("<td align=left>&nbsp;&nbsp;&nbsp;<td align=left>\n");
-}
-static void button_subject(const char *title, unsigned val)
-{
-	trli_space();
-	(*w_tosubject)=val;
-	if (subject != val){
-		print_aref (index_page,title,1,*w_tosubject);
-	}else{
-		print_aref_selected (index_page,title,1,*w_tosubject);
-	}
-}
-<mod>
-void trli_subjects (int step_statistics, int subject_selected, bool stat_selected, bool blog_selected, W_UNSIGNED &_w_tosubject)
-{
-	glocal bool blog_selected = blog_selected;
-	glocal bool stat_selected = stat_selected;
-	glocal int step_statistics = step_statistics;
-	w_tosubject = &_w_tosubject;
-	subject = 1000;
-	if (!stat_selected && !blog_selected) subject = subject_selected;
-	htmlprintf ("</td></tr>\n");
-	htmlprintf ("<tr><td align=left>\n");
-	if (w_robot == 0){
-		<call button_row>(0,newscolor);
-		<f draw>
-			unsigned cur = w_tosubject->getval();
-			split();
-			htmlprintf ("&nbsp;Topics\n");
-			split();
-			button_subject ("All",0);
-			split();
-			button_subject ("Peoples",1);
-			split();
-			button_subject ("Technology",2);
-			split();
-			button_subject ("Politic",3);
-			split();
-			button_subject ("Sports",4);
-			split();
-			button_subject ("Arts",5);
-			split();
-			button_subject ("Economy",6);
-			split();
-			button_subject ("Science",7);
-			split();
-			trli_space();
-			if (glocal.blog_selected){
-				printhref_selected ("/blog.hc","Blog/Making of");
-			}else{
-				printhref ("/blog.hc","Blog/Making of");
-			}
-			split();
-			trli_space();
-			const char *sitemap = "Sitemap/Stats";
-			if (glocal.stat_selected){
-				print_aref_selected (index_page,sitemap,glocal.step_statistics);
-			}else{
-				print_aref (index_page,sitemap,glocal.step_statistics);
-			}
-			// Check max_subject above
-			(*w_tosubject) = cur;
-		</f>
-		</call>
-	}
-	if (w_robot==0){
-		htmlprintf ("<td align=right><a href=https://twitter.com/bolixo_org><img src=twitter.png></a>\n");
-	}
-}
-</mod>

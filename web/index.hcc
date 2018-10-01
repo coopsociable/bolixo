@@ -15,13 +15,14 @@
 #include "../bolixo.h"
 #include "../bolixo.m"
 #include <linuxconf/translat.h>
+extern void bolixo_doc (DOCUMENT_POINTER &);
 
 using namespace std;
 
 #include "../proto/bod_client.protoch"
 #include "../proto/bo-sessiond_client.protoch"
 
-static const char *newscolor = "green";
+static const char *newscolor = "#DCDCDC";
 
 static string w_session;
 static W_SSTRING w_lang("lang");
@@ -221,7 +222,7 @@ static void webtab_aref_selected (const char *title, int tab)
 }
 static void webtab_href (const char *title, PARAM_STRING href)
 {
-	webtab_href_c(title, href.ptr,"#33cc33");
+	webtab_href_c(title, href.ptr,"grey");	//"#33cc33");
 }
 static void webtab_aref (const char *title, int tab)
 {
@@ -230,6 +231,14 @@ static void webtab_aref (const char *title, int tab)
 	const char *sep = hidden.size() > 0 ? "&" : "";
 	string href = string_f ("%s?%s%swebtab=%d",tlmpweb_curpage(),hidden.c_str(),sep,tab);
 	webtab_href (title,href);
+}
+static void webtab_aref (const char *title, int tab, const char *color)
+{
+	string hidden;
+	form_gethidden(hidden);
+	const char *sep = hidden.size() > 0 ? "&" : "";
+	string href = string_f ("%s?%s%swebtab=%d",tlmpweb_curpage(),hidden.c_str(),sep,tab);
+	webtab_href_c (title,href.c_str(),color);
 }
 void _F_webtabs::documents()
 {
@@ -428,7 +437,7 @@ static void webtabs(_F_webtabs &c,
 							}
 							if (glocal.may_delete){
 								split();
-								webtab_aref("x",no+1);
+								webtab_aref("x",no+1,"lightgrey");
 							}
 						}
 						no += 2;
@@ -609,7 +618,7 @@ static void show_buttons_right(_F_websteps *c)
 		print_aref (MSG_U(I_LOGOUT,"Logout"),step_logout);
 		/- <td>&nbsp;
 		/- <td>
-		/- <font size=4 color=lightgray>
+		/- <font size=4 color=gray>
 		htmlprintf (MSG_U(I_WELCOME,"Welcome %s"),userinfo.name.c_str());
 		int nb = 40 - userinfo.name.size() - 8; 
 		for (int i=0; i<nb; i++){
@@ -663,7 +672,7 @@ static void bolixo_title (const char *title, _F_websteps *c)
 	util_defstyles();
 	tlmpweb_body("white",NULL);
 	/- <table border=0 height=100% width=100%><tr><td height=5%>
-	htmlprintf ("<table width=100%% bgcolor=%s cellspacing=0><tr><td align=left>\n",newscolor);
+	htmlprintf ("<table border=0 width=100%% bgcolor=%s cellspacing=0><tr><td rowspan=2 align=left>\n",newscolor);
 		/- <table border=0><tr><td><a href=/7s.html style=\"text-decoration:none\"><img src=/favicon.ico></a></td><td align=left>
 		htmlout ("<a href=/index.hc style=\"text-decoration:none\"><font size=8 color=\"white\">Bolixo.org</font></a>&nbsp;&nbsp;&nbsp;");
 		/- <td>
@@ -672,9 +681,9 @@ static void bolixo_title (const char *title, _F_websteps *c)
 	/- </td><td align=right valign=top>
 	show_buttons_right (c);
 	/- </td></tr>
-	/- <tr><td align=left>
+	/- <tr><td align=right>
 	if (w_robot == 0 && userinfo.name.size() > 0){
-		<call button_row>(0,"white");
+		<call button_row>(0,newscolor,false);
 		<f draw>
 			split();
 			print_button (MSG_U(M_MAIN,"Main"),1,glocal.step);
@@ -1675,6 +1684,9 @@ tlmp_error ("formvar %s %lu\n",var.name.c_str(),var.val.size());
 				/-#I_NEW_FOLDER New folder
 				/- &nbsp;
 				field_string (w_folder,"size=30");
+				/- <td>
+				url_self (string_f("webtab_add=2:help~%s",MSG_U(I_HELP,"Help"))
+					,MSG_U(I_HELPTOPIC,"Help on this topic"));
 				/- <tr><td>
 				url_self (string_f("webtab_add=2:%s%c%ld~%s",glocal.id,WEBTAB_MARK,time(NULL),MSG_U(I_NEWDOC,"New_document"))
 					,MSG_U(I_CREATENEWDOC,"Create a new document"));
@@ -1682,7 +1694,7 @@ tlmp_error ("formvar %s %lu\n",var.name.c_str(),var.val.size());
 				/-#I_UPLOADFILE Upload file
 				/- &nbsp;
 				field_file (w_upload);
-				/- <tr><td>
+				/- <td>
 				button_submit();
 			</f>
 			<f validate>
@@ -1806,7 +1818,9 @@ tlmp_error ("formvar %s %lu\n",var.name.c_str(),var.val.size());
 				glocal.newdocument = true;
 				ftype = FILE_TEXT;
 			}
-			if (file_is_image(ftype)){
+			if (strcmp(id,"help")==0){
+				bolixo_doc(glocal.docpointer);
+			}else if (file_is_image(ftype)){
 				htmlprintf ("<img width=100%% src=%s?webstep=%u&image=%s>"
 					,tlmpweb_curpage(),step_image,glocal.path.c_str());
 			}else if (ftype == FILE_TEXT){
@@ -2709,7 +2723,6 @@ tlmp_error ("formvar %s %lu\n",var.name.c_str(),var.val.size());
 	</f>
 	<f step12> // Documentation
 		bolixo_title (MSG_R(M_DOCUM),this);
-		extern void bolixo_doc (DOCUMENT_POINTER &);
 		bolixo_doc(glocal.docpointer);
 	</f>
 	<f step13>
