@@ -1171,17 +1171,25 @@ static void index_delete_new_from_old(const vector<string> &news, vector<string>
 	}
 }
 <mod>
-static ENTRY_TYPE index_entrytype(CONNECT_INFO &con,PARAM_STRING path)
+static ENTRY_TYPE index_entrytype(CONNECT_INFO &con,PARAM_STRING path, FILE_TYPE &ftype)
 {
 	glocal ENTRY_TYPE ret = ENTRY_NONE;
+	glocal FILE_TYPE ftype = FILE_UNKNOWN; 
 	<call bod_client_stat>(con,w_session.c_str(),path,"");
 	<f ok>
 		glocal.ret = file.type;
+		glocal.ftype = file.file_type;
 	</f>
 	</call>
+	ftype = glocal.ftype;
 	return glocal.ret;
 }
 </mod>
+static ENTRY_TYPE index_entrytype(CONNECT_INFO &con,PARAM_STRING path)
+{
+	FILE_TYPE ftype;
+	return index_entrytype(con,path,ftype);
+}
 static bool profile_formactive (_F_webtabs &c, W_SSTRING &var, const char *state)
 {
 	static const char *adding = "__add__";
@@ -1766,7 +1774,8 @@ tlmp_error ("formvar %s %lu\n",var.name.c_str(),var.val.size());
 						if (bolixo_isdir(f.type)){
 							glocal.webtable.setclickopt (true,"",string_f("webtab_add=1:%s",path.c_str()));
 						}else if (file_is_image(f.file_type) || file_is_video(f.file_type)){
-							glocal.webtable.setclickopt (true,func,"800,800");
+							//glocal.webtable.setclickopt (true,func,"800,800");
+							glocal.webtable.setclickopt (true,"",string_f("webtab_add=2:%s~%s",path.c_str(),f.name));
 						}else if (file_is_sound(f.file_type)){
 							glocal.webtable.setclickopt (true,func,"350,50");
 						}else if (file_is_text(f.file_type)){
@@ -1791,87 +1800,93 @@ tlmp_error ("formvar %s %lu\n",var.name.c_str(),var.val.size());
 			glocal const char *filename = id;
 			glocal string path = string_f("/projects/%s",glocal.filename);
 			glocal bool newdocument = false;
-			if (index_entrytype(glocal.con,glocal.path)==ENTRY_DIR) glocal.newdocument = true;
-			<call form>(formid);
-			<f top>
-				/- <table border=0 height=100%>
-			</f>
-			<f bottom>
-				/- </table>
-			</f>
-			<f load>
-				if (!glocal.newdocument){
-					index_loadfile(glocal.con,glocal.path,w_content);
-				}
-			</f>
-			<f setup>
-				/- <tr><td align=left>
-				if (glocal.newdocument){
-					/-#I_NEWDOCNAME New document name&nbsp;
-					field_string (w_filename,"size=30");	
-				}else{
-					htmlprintf (MSG_U(I_DOCNAME,"Document name:&nbsp;<font size=+1>%s</font>"),glocal.filename);
-				}
-				/- <td align=right>
-				button_submit(MSG_U(B_SAVE,"Save"));
-				/- <tr><td colspan=2>
-				field_textarea(w_content,50,-100,"style=\"border: none\"");
-			</f>
-			<f validate>
-				bool ret = true;
-				if (glocal.newdocument){
-					if (strcmp(w_filename.c_str(),"")==0){
-						/- You must provide a file name
-						ret = false;
-					}else if (index_entrytype(glocal.con,string_f("%s/%s",glocal.path.c_str(),w_filename.c_str()))!=ENTRY_NONE){
-						/- Document already exist
-						ret = false;
-					}
-				}
-				return ret;
-			</f>
-			<f process>
-				<call sendfile_var>(glocal.path,w_content,fail);	
-				<f start>
-					if (glocal.newdocument){
-						glocal.path = string_f("%s/%s",glocal.path.c_str(),w_filename.c_str());
-						<call bod_client_addfile_bob>(glocal.con,w_session.c_str(),glocal.path,content,more);
-						<f ok>
-							glocal.sendfile_var.setresult(success,msg);
-							glocal.sendfile_var.sethandle(handle);
-						</f>
-						</call>
-					}else{
-						<call bod_client_modifyfile_bob>(glocal.con,w_session.c_str(),filepath,content,more);
-						<f ok>
-							glocal.sendfile_var.setresult(success,msg);
-							glocal.sendfile_var.sethandle(handle);
-						</f>
-						</call>
+			FILE_TYPE ftype = FILE_UNKNOWN;
+			if (index_entrytype(glocal.con,glocal.path,ftype)==ENTRY_DIR) glocal.newdocument = true;
+			if (file_is_image(ftype)){
+				htmlprintf ("<img width=100%% src=%s?webstep=%u&image=%s>"
+					,tlmpweb_curpage(),step_image,glocal.path.c_str());
+			}else if (ftype == FILE_TEXT){
+				<call form>(formid);
+				<f top>
+					/- <table border=0 width=100% height=100%>
+				</f>
+				<f bottom>
+					/- </table>
+				</f>
+				<f load>
+					if (!glocal.newdocument){
+						index_loadfile(glocal.con,glocal.path,w_content);
 					}
 				</f>
-				<f rest>
-					<call bod_client_appendfile>(glocal.con,w_session.c_str(),handle,content,more);
-					<f ok>
-						glocal.sendfile_var.setresult(success,msg);
+				<f setup>
+					/- <tr><td align=left>
+					if (glocal.newdocument){
+						/-#I_NEWDOCNAME New document name&nbsp;
+						field_string (w_filename,"size=30");	
+					}else{
+						htmlprintf (MSG_U(I_DOCNAME,"Document name:&nbsp;<font size=+1>%s</font>"),glocal.filename);
+					}
+					/- <td align=right>
+					button_submit(MSG_U(B_SAVE,"Save"));
+					/- <tr><td colspan=2>
+					field_textarea(w_content,50,-92,"style=\"border: none\"");
+				</f>
+				<f validate>
+					bool ret = true;
+					if (glocal.newdocument){
+						if (strcmp(w_filename.c_str(),"")==0){
+							/- You must provide a file name
+							ret = false;
+						}else if (index_entrytype(glocal.con,string_f("%s/%s",glocal.path.c_str(),w_filename.c_str()))!=ENTRY_NONE){
+							/- Document already exist
+							ret = false;
+						}
+					}
+					return ret;
+				</f>
+				<f process>
+					<call sendfile_var>(glocal.path,w_content,fail);	
+					<f start>
+						if (glocal.newdocument){
+							glocal.path = string_f("%s/%s",glocal.path.c_str(),w_filename.c_str());
+							<call bod_client_addfile_bob>(glocal.con,w_session.c_str(),glocal.path,content,more);
+							<f ok>
+								glocal.sendfile_var.setresult(success,msg);
+								glocal.sendfile_var.sethandle(handle);
+							</f>
+							</call>
+						}else{
+							<call bod_client_modifyfile_bob>(glocal.con,w_session.c_str(),filepath,content,more);
+							<f ok>
+								glocal.sendfile_var.setresult(success,msg);
+								glocal.sendfile_var.sethandle(handle);
+							</f>
+							</call>
+						}
+					</f>
+					<f rest>
+						<call bod_client_appendfile>(glocal.con,w_session.c_str(),handle,content,more);
+						<f ok>
+							glocal.sendfile_var.setresult(success,msg);
+						</f>
+						</call>
 					</f>
 					</call>
+					if (!fail){
+						if (glocal.newdocument){
+							glocal.webtabs.setid (string_f("%s/%s",glocal.filename,w_filename.c_str()));
+							glocal.webtabs.settitle (w_filename.c_str());
+							glocal.webtabs.redotab();
+							resetstate();
+							// We have to mark this document as viewed (we just created it)
+							index_markview (glocal.con,glocal.path);
+						}else{
+							keepediting = true;
+						}
+					}
 				</f>
 				</call>
-				if (!fail){
-					if (glocal.newdocument){
-						glocal.webtabs.setid (string_f("%s/%s",glocal.filename,w_filename.c_str()));
-						glocal.webtabs.settitle (w_filename.c_str());
-						glocal.webtabs.redotab();
-						resetstate();
-						// We have to mark this document as viewed (we just created it)
-						index_markview (glocal.con,glocal.path);
-					}else{
-						keepediting = true;
-					}
-				}
-			</f>
-			</call>
+			}
 		</f>
 		</call>
 		/- </table>
