@@ -15,7 +15,23 @@
 #include "../bolixo.h"
 #include "../bolixo.m"
 #include <linuxconf/translat.h>
-extern void bolixo_doc (DOCUMENT_POINTER &);
+
+#define SECTION_NONE 0
+extern DOC_ID section_none;
+#define SECTION_TALK 1
+extern DOC_ID section_talk;
+#define SECTION_PROJECT 2
+extern DOC_ID section_project;
+#define SECTION_ACCOUNT 3
+extern DOC_ID section_account;
+#define SECTION_GROUPS 4
+extern DOC_ID section_groups;
+#define SECTION_PROJECTS 5
+extern DOC_ID section_projects;
+#define SECTION_CONTACTS 6
+extern DOC_ID section_contacts;
+#define SECTION_NBSECTIONS 7
+extern void bolixo_doc (DOCUMENT_POINTER &, DOC_ID &jump);
 
 using namespace std;
 
@@ -719,10 +735,10 @@ static void trli_initvar (VAR &var, PARAM_STRING name, PARAM_STRING val)
 }
 
 <mod>
-static void trli_getsessioninfo(CONNECT_INFO &con, CONNECT_INFO &con_sess, DOCUMENT_POINTER &docpointer)
+static void trli_getsessioninfo(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER> &docpointers)
 {
 	glocal CONNECT_INFO *con = &con;
-	glocal DOCUMENT_POINTER *docpointer = &docpointer;
+	glocal vector<DOCUMENT_POINTER> *docpointers = &docpointers;
 	<call bo_sessiond_client_getsessioninfovars>(con_sess,w_session.c_str());
 	<f ok>
 		if (success){
@@ -740,6 +756,8 @@ static void trli_getsessioninfo(CONNECT_INFO &con, CONNECT_INFO &con_sess, DOCUM
 				}else if (strcmp(var.name,"webtabs")==0){
 					webtab_init (var.vals);
 				}else if (strcmp(var.name,"document")==0){
+					// Several document pointers are stored in sequence, repeating the same variable names
+					unsigned nodoc = 0;
 					unsigned s1=0,s2=0,s3=0,s4=0;
 					for (auto &v:var.vals){
 						if (strcmp(v.sname,"s1")==0){
@@ -750,10 +768,12 @@ static void trli_getsessioninfo(CONNECT_INFO &con, CONNECT_INFO &con_sess, DOCUM
 							s3 = atoi(v.sval);
 						}else if (strcmp(v.sname,"s4")==0){
 							s4 = atoi(v.sval);
+							while (nodoc >= glocal.docpointers->size()) glocal.docpointers->push_back(DOCUMENT_POINTER());
+							(*glocal.docpointers)[nodoc].set(s1,s2,s3,s4);
+							(*glocal.docpointers)[nodoc].resetchanged();
+							nodoc++;
 						}
 					}
-					glocal.docpointer->set(s1,s2,s3,s4);
-					glocal.docpointer->resetchanged();
 						
 				}else if (strcmp(var.name,"currentform")==0){
 					CURRENTFORM form;
@@ -1223,7 +1243,8 @@ extern "C" void webmain_real()
 	glocal.con.secret = "foo";
 	glocal.con_sess.port = "/dev/sessiond.sock";
 	glocal.con_sess.secret = "foo";
-	glocal DOCUMENT_POINTER docpointer;
+	glocal vector<DOCUMENT_POINTER> docpointers;
+	for (unsigned i=0; i<SECTION_NBSECTIONS; i++) glocal.docpointers.push_back(DOCUMENT_POINTER());
 	if (tlmpweb_isrobot()) w_robot = 1;
 	// debug
 	if (0){
@@ -1264,7 +1285,7 @@ extern "C" void webmain_real()
 		</call>
 	}else{
 		w_session=ptsession;
-		trli_getsessioninfo(glocal.con,glocal.con_sess,glocal.docpointer);
+		trli_getsessioninfo(glocal.con,glocal.con_sess,glocal.docpointers);
 	}
 	if (w_session.empty()) return;
 	
@@ -1514,7 +1535,7 @@ extern "C" void webmain_real()
 			<call bod_client_login>(glocal.con,w_session.c_str(),w_email.c_str(),w_password.c_str());
 			<f ok>
 				if (success){
-					trli_getsessioninfo(glocal.con,glocal.con_sess,glocal.docpointer);
+					trli_getsessioninfo(glocal.con,glocal.con_sess,glocal.docpointers);
 					glocal.websteps.gotostep(1);
 				}else{
 					/-#I_LOGINFAILED <font color=red>Login failed, invalid email or password</font>
@@ -1806,7 +1827,7 @@ extern "C" void webmain_real()
 				info.file_type = FILE_TEXT;
 			}
 			if (strcmp(id,"help")==0){
-				bolixo_doc(glocal.docpointer);
+				bolixo_doc(glocal.docpointers[SECTION_PROJECT],section_project);
 			}else if (file_is_image(info.file_type)){
 				htmlprintf (MSG_R(I_DOCNAME),glocal.filename);
 				/- <br>
@@ -2126,7 +2147,7 @@ extern "C" void webmain_real()
 			FILEINFO info;
 			index_entrytype(glocal.con,id,info);
 			if (strcmp(id,"help")==0){
-				bolixo_doc(glocal.docpointer);
+				bolixo_doc(glocal.docpointers[SECTION_TALK],section_talk);
 			}else if (file_is_image(info.file_type)){
 				htmlprintf ("<img width=100%% src=%s?webstep=%u&image=%s>"
 					,tlmpweb_curpage(),step_image,id);
@@ -2176,14 +2197,28 @@ extern "C" void webmain_real()
 			string_f("Contacts~%s",MSG_U(T_CONTACTS,"Contacts")),
 			string_f("Projects~%s",MSG_U(T_PROJECTS,"Projects")),
 			string_f("Groups~%s",MSG_U(T_GROUPS,"Groups"))};
-		static unsigned size[5]={15,50,0,0,0};
+		static unsigned size[5]={0,50,50,0,0};
 		<call webtabs>("profile",t,tabs,size);
+		<f doctype2>
+			if (strcmp(id,"helpgroups")==0){
+				bolixo_doc(glocal.docpointers[SECTION_GROUPS],section_groups);
+			}else if (strcmp(id,"helpprojects")==0){
+				bolixo_doc(glocal.docpointers[SECTION_PROJECTS],section_projects);
+			}else if (strcmp(id,"helpcontacts")==0){
+				bolixo_doc(glocal.docpointers[SECTION_CONTACTS],section_contacts);
+			}else if (strcmp(id,"helpaccount")==0){
+				bolixo_doc(glocal.docpointers[SECTION_ACCOUNT],section_account);
+			}
+		</f>
 		<f docmain>
 			glocal const char *state = state;
 			if (strcmp(id,"Projects")==0){
-				<call vframe2h>(20);
+				<call vframe2h>(30);
 				<f left>
 					url_self ("add=1",MSG_U(I_CREATELIST,"Create a new project"));
+					/- <br>
+					url_self (string_f("webtab_add=2:helpprojects~%s",MSG_U(I_HELPPROJECTS,"Projects"))
+						,MSG_R(I_HELPTOPIC));
 					/- <p>
 					<call webtable>("list:projects","100%",currents["list:projects"]);
 					<f load>
@@ -2358,9 +2393,12 @@ extern "C" void webmain_real()
 				</f>
 				</call>
 			}else if (strcmp(id,"Groups")==0){
-				<call vframe2h>(20);
+				<call vframe2h>(30);
 				<f left>
 					url_self ("add=1",MSG_U(I_CREATEGROUP,"Create a new group"));
+					/- <br>
+					url_self (string_f("webtab_add=2:helpgroups~%s",MSG_U(I_HELPGROUPS,"Groups"))
+						,MSG_R(I_HELPTOPIC));
 					/- <p>
 					<call webtable>("list:groups","100%",currents["list:groups"]);
 					<f load>
@@ -2519,9 +2557,12 @@ extern "C" void webmain_real()
 				</f>
 				</call>
 			}else if (strcmp(id,"Contacts")==0){
-				<call vframe2h>(20);
+				<call vframe2h>(30);
 				<f left>
 					url_self ("add=1",MSG_U(I_NEWCONTACT,"Send a new contact request"));
+					/- <br>
+					url_self (string_f("webtab_add=2:helpcontacts~%s",MSG_U(I_HELPCONTACTS,"Contacts"))
+						,MSG_R(I_HELPTOPIC));
 					/- <p>
 					static const string id = "list:contacts";
 					<call webtable>(id,"100%",currents[id],offsets[id],30);
@@ -2677,6 +2718,9 @@ extern "C" void webmain_real()
 				<f top>
 					/- <table border=0>
 					htmlprintf ("<tr><td colspan=2>%s",glocal.status.c_str());
+					/- <tr><td>
+					url_self (string_f("webtab_add=2:helpaccount~%s",MSG_U(I_HELPACCOUNT,"Account"))
+						,MSG_R(I_HELPTOPIC));
 				</f>
 				<f bottom>
 					/- </table>
@@ -2743,7 +2787,7 @@ extern "C" void webmain_real()
 	</f>
 	<f step12> // Documentation
 		bolixo_title (MSG_R(M_DOCUM),this);
-		bolixo_doc(glocal.docpointer);
+		bolixo_doc(glocal.docpointers[SECTION_NONE],section_none);
 	</f>
 	<f step13>
 	</f>
@@ -2770,22 +2814,32 @@ extern "C" void webmain_real()
 		</f>
 		</call>
 	}
-	if (glocal.docpointer.ischanged()){
+	{
 		// Save the position in the document
-		VAR var;
-		var.name = "document";
-		unsigned nos = 1;
-		for (auto s:glocal.docpointer.tb){
-			SNAMEVAL val;
-			val.sname = string_f("s%u",nos++);
-			val.sval = string_f("%u",s);
-			var.vals.push_back(val);
+		bool one_changed = false;
+		for (auto &d:glocal.docpointers){
+			if (d.ischanged()){
+				one_changed = true;
+			}
 		}
-		<call bo_sessiond_client_setvar>(glocal.con_sess,w_session.c_str(),var);
-		<f ok>
-			if (!success) htmlprintf ("Can't set variable document: %s\n",msg);
-		</f>
-		</call>
+		if (one_changed){
+			VAR var;
+			var.name = "document";
+			for (auto &d:glocal.docpointers){
+				unsigned nos = 1;
+				for (auto s:d.tb){
+					SNAMEVAL val;
+					val.sname = string_f("s%u",nos++);
+					val.sval = string_f("%u",s);
+					var.vals.push_back(val);
+				}
+			}
+			<call bo_sessiond_client_setvar>(glocal.con_sess,w_session.c_str(),var);
+			<f ok>
+				if (!success) htmlprintf ("Can't set variable document: %s\n",msg);
+			</f>
+			</call>
+		}
 	}
 }
 </mod>
