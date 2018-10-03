@@ -16,7 +16,8 @@ FLAGS=-Wall -Wno-unused-function
 		/usr/lib/tlmp/lib/tlmpdoc.so /usr/lib/tlmp/lib/tlmpwebsql.so -lcrypto
 	@rm -f /tmp/test.o
 
-%.os: %.hcc 
+%.os: %.hcc /usr/include/tlmp/tlmpweb.h /usr/include/tlmp/tlmpweb.p \
+	 /usr/include/tlmp/tlmpdoc.h /usr/include/tlmp/tlmpdoc.p
 	@echo tlmpwebcc $< $@
 	@tlmpwebcc $< \
 		| tlcc \
