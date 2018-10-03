@@ -48,7 +48,6 @@ static W_SSTRING w_access4("access4");
 
 static W_SSTRING w_image("image");
 extern W_SSTRING w_webtable;
-static W_UNSIGNED w_offset ("offset");
 static map<string,unsigned> offsets;
 static map<string,unsigned> currents;
 enum WEBTAB_TYPE{
@@ -660,6 +659,7 @@ static void bolixo_title (const char *title, _F_websteps *c)
 	htmlprintf ("<table border=0 width=100%% bgcolor=%s cellspacing=0><tr><td rowspan=2 align=left>\n",newscolor);
 		/- <table border=0><tr><td><a href=/7s.html style=\"text-decoration:none\"><img src=/favicon.ico></a></td><td align=left>
 		htmlout ("<a href=/index.hc style=\"text-decoration:none\"><font size=8 color=\"white\">Bolixo.org</font></a>&nbsp;&nbsp;&nbsp;");
+		htmlprintf ("screen %u %u\n",tlmpweb_screenwidth(),tlmpweb_screenheight());
 		/- <td>
 		if (userinfo.name.empty()) printhref ("/about.html",MSG_U(I_ABOUT,"<font color=white>A peer to peer open social media</font>"),true);
 		/- </td></tr></table>
@@ -798,9 +798,9 @@ static void button_validate(int step)
 <mod>
 static void web_updateoffsets(CONNECT_INFO &con_sess)
 {
-	if (w_webtable.isset() && w_offset.isset()){
-		if (offsets[w_webtable.c_str()] != w_offset){
-			offsets[w_webtable.c_str()] = w_offset;
+	//if (w_webtable.isset() && w_offset.isset()){
+	//	if (offsets[w_webtable.c_str()] != w_offset){
+	//		offsets[w_webtable.c_str()] = w_offset;
 			VAR var;
 			var.name = "offsets";
 			for (auto &v:offsets){
@@ -814,8 +814,8 @@ static void web_updateoffsets(CONNECT_INFO &con_sess)
 				if (!success) printf ("Can't set variable offset: %s\n",msg);
 			</f>
 			</call>
-		}
-	}
+	//	}
+	//}
 }
 </mod>
 <mod>
@@ -1268,11 +1268,9 @@ extern "C" void webmain_real()
 	}
 	if (w_session.empty()) return;
 	
-	web_updateoffsets (glocal.con_sess);
 	webtable_ctrloutput();
 	<obj WEBCONTEXT wctx>();
-	<f settablerow>
-		unsigned &cur = currents[tableid];
+	<f settablecoor>
 		/*
 			We avoid poluting the session manager with fake request.
 			So we make sure the request is associated with a real or possible webtable
@@ -1330,9 +1328,15 @@ extern "C" void webmain_real()
 			}
 		}
 		if (glocal.valid){
-			if (cur != current_row){
+			unsigned &cur = currents[tableid];
+			unsigned &off = offsets[tableid];
+			if (current_row_set && cur != current_row){
 				cur = current_row;
 				web_updatecurrents(glocal.con_sess);
+			}
+			if (offset_set && off != offset){
+				off = offset;
+				web_updateoffsets(glocal.con_sess);
 			}
 		}else{
 			tlmp_error ("settablerow unknown tableid %s\n",tableid);
@@ -1398,12 +1402,10 @@ extern "C" void webmain_real()
 				FORMVARS f;
 				glocal const char *id = form.id.c_str();
 				f.id = form.id;
-tlmp_error ("formid %s\n",f.id.c_str());
 				for (auto &v:form.vars){
 					FORMVAR var;
 					var.name = v;
 					var.val = t_varstr(v.c_str());
-tlmp_error ("formvar %s %lu\n",var.name.c_str(),var.val.size());
 					f.vars.push_back(var);
 				}
 				<call bod_client_form_savevar>(glocal.con,w_session.c_str(),f);
@@ -1725,7 +1727,9 @@ tlmp_error ("formvar %s %lu\n",var.name.c_str(),var.val.size());
 			</call>
 			/- <tr><td height=99% width=100%>
 			//HTMLDEBUG ("table",true);
-			<call webtable>(glocal.path,"100%",currents[glocal.path],offsets[glocal.path],35);
+			int sheight = tlmpweb_screenheight()-240;
+			int nblines = sheight/20;
+			<call webtable>(glocal.path,"100%",currents[glocal.path],offsets[glocal.path],nblines);
 			<f click>
 				tlmpweb_flushheader();
 				<call bod_client_listdir>(glocal.con,w_session.c_str(),glocal.path,"",false,noline,1);
@@ -1926,7 +1930,9 @@ tlmp_error ("formvar %s %lu\n",var.name.c_str(),var.val.size());
 			glocal const char *project = id;
 			if (strcmp(id,"INBOX")==0) glocal.project = "";
 			string inbox = string("inbox") + id;
-			<call webtable>(inbox,"100%",currents[inbox],offsets[inbox],35);
+			int sheight = tlmpweb_screenheight()-180;
+			int nblines = sheight/20;
+			<call webtable>(inbox,"100%",currents[inbox],offsets[inbox],nblines);
 			<f click>
 				// This code is never called
 				tlmpweb_flushheader();
