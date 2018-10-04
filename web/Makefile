@@ -1,5 +1,5 @@
 OPTIONS=-funsigned-char -O2 -Wall -g -DVERSION=\"$(PACKAGE_REV)\" -I/usr/include/tlmp -I/usr/include/trlitool
-all: util.os index.hc webapi.hc public.hc
+all: util.os document.os document_fr.os index.hc webapi.hc public.hc
 .suffixes: .hcc .hc
 FLAGS=-Wall -Wno-unused-function
 
