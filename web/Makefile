@@ -3,7 +3,8 @@ all: util.os index.hc webapi.hc public.hc
 .suffixes: .hcc .hc
 FLAGS=-Wall -Wno-unused-function
 
-%.hc: %.hcc /usr/lib64/trlitool/trlitool.pic.a util.os document.os ../proto/webapi.protoh \
+%.hc: %.hcc /usr/lib64/trlitool/trlitool.pic.a util.os document.os document_fr.os \
+	../proto/webapi.protoh \
 	/usr/include/tlmp/tlmpweb.h /usr/include/tlmp/tlmpweb.p
 	@echo tlmpwebcc $< $@
 	@tlmpwebcc $< \
@@ -12,7 +13,7 @@ FLAGS=-Wall -Wno-unused-function
 	@g++ -DEXPORT= -fPIC $(FLAGS) -I. -I/usr/include/tlmp -I/usr/include/linuxconf -I/usr/include/trlitool \
 		-c /tmp/$(basename $(notdir $@)).cc  -o /tmp/test.o
 	@g++ -g -shared -Wl,-soname,test.so.1 -o \
-		$@ /tmp/test.o ../_dict.os /usr/lib64/trlitool/trlitool.pic.a util.os document.os \
+		$@ /tmp/test.o ../_dict.os /usr/lib64/trlitool/trlitool.pic.a util.os document.os document_fr.os \
 		/usr/lib/tlmp/lib/tlmpdoc.so /usr/lib/tlmp/lib/tlmpwebsql.so -lcrypto
 	@rm -f /tmp/test.o
 

@@ -40,9 +40,15 @@ void button_preview(int step);
 
 #define _TLMP_button_row
 struct _F_button_row{
+	const char *align;
+	_F_button_row(){
+		align = "left";
+	}
 	void split();
 	#define _F_button_row_draw(x) void x draw()
 	virtual _F_button_row_draw( )=0;
+	#define _F_button_row_draw_right(x) void x draw_right()
+	virtual _F_button_row_draw_right( );
 };
 
 void button_row(_F_button_row &c, int border, const char *bgcolor, bool alignleft);

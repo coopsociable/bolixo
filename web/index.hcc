@@ -30,8 +30,13 @@ extern DOC_ID section_groups;
 extern DOC_ID section_projects;
 #define SECTION_CONTACTS 6
 extern DOC_ID section_contacts;
-#define SECTION_NBSECTIONS 7
+#define SECTION_MAILS 7
+extern DOC_ID section_mails;
+#define SECTION_NBSECTIONS 8
 extern void bolixo_doc (DOCUMENT_POINTER &, DOC_ID &jump);
+extern void bolixo_doc_fr (DOCUMENT_POINTER &, DOC_ID &jump);
+
+
 
 using namespace std;
 
@@ -74,7 +79,9 @@ struct WEBTAB{
 	string tab;	// Name of this tab in the webtab
 	string title;
 	int selorder;
-	string state;
+	bool locked;	// Can't be deleted
+	string state;	// It is a string set by the application and preserved
+			// in the session manager. The state is passed back to the application
 	void setargs(PARAM_STRING args){
 		vector<string> tb;
 		str_splitline(args.ptr,',',tb);
@@ -87,18 +94,22 @@ struct WEBTAB{
 				state = vs2;
 			}else if (strncmp(vs,"t=",2)==0){
 				title = vs2;
+			}else if (strncmp(vs,"l=",2)==0){
+				locked = atoi(vs2);
 			}
 		}
 	}
 	WEBTAB(){
 		type = WEBTAB_TYPE1;
 		selorder = 0;
+		locked = false;
 	}
 	WEBTAB(WEBTAB_TYPE _type, PARAM_STRING _tab, PARAM_STRING _title, PARAM_STRING args){
 		selorder = 0;
 		type = _type;
 		tab = _tab.ptr;
 		title = _title.ptr;
+		locked = false;
 		setargs(args);
 	}
 	WEBTAB(PARAM_STRING _tab, PARAM_STRING args){
@@ -111,6 +122,7 @@ struct WEBTAB{
 			tab  = _tab.ptr;
 		}
 		title.clear();
+		locked = false;
 		setargs(args);
 	}
 	bool operator < (const WEBTAB &n) const {
@@ -172,12 +184,16 @@ struct _F_webtabs {
 	bool redo;
 	WEBTAB *curtab;
 	const char *selected_id;
+	string help_id;
+	string help_title;
 	_F_webtabs(){
 		redo = false;
 		curtab = NULL;
 		selected_id = NULL;
 	}
 	void setid (PARAM_STRING id);	// Change the ID of the active TAB
+	void sethelp();			// Set the context help button
+	void sethelp(PARAM_STRING id, PARAM_STRING title);
 	void settitle (PARAM_STRING title);	// Change the title of the active TAB
 	void setstate (PARAM_STRING val);// Record some value for the active TAB
 	void redotab ();		// Ask webtabs to redraw the current TAB
@@ -192,6 +208,8 @@ struct _F_webtabs {
 	virtual _F_webtabs_doctype3( );
 	#define _F_webtabs_doctype4(x) void x doctype4(const char *id, const char *formid, const char *state)
 	virtual _F_webtabs_doctype4( );
+	#define _F_webtabs_init(x) void x init()
+	virtual _F_webtabs_init( );
 };
 bool _F_webtabs::selected(PARAM_STRING id)
 {
@@ -200,6 +218,16 @@ bool _F_webtabs::selected(PARAM_STRING id)
 void _F_webtabs::setid (PARAM_STRING id)
 {
 	curtab->tab = id.ptr;
+}
+void _F_webtabs::sethelp ()
+{
+	help_id = "help";
+	help_title = MSG_U(I_HELP,"Help");
+}
+void _F_webtabs::sethelp (PARAM_STRING id, PARAM_STRING title)
+{
+	help_id = id.ptr;
+	help_title = title.ptr;
 }
 void _F_webtabs::settitle (PARAM_STRING title)
 {
@@ -267,6 +295,9 @@ void _F_webtabs::doctype3(const char *id, const char *formid, const char *state)
 void _F_webtabs::doctype4(const char *id, const char *formid, const char *state)
 {
 }
+void _F_webtabs::init()
+{
+}
 struct TABSEL {
 	string id;
 	unsigned no;	// Position in tabs
@@ -289,6 +320,7 @@ static void webtabs(_F_webtabs &c,
 		if (t.selorder > maxsel) maxsel = t.selorder;
 	}
 	c.selected_id = "";
+	c.init();
 	if (w_webtab_add.isset()){
 		// We are either adding a new tab or selecting an existing one.
 		// While we look if the tab already exist, we de-select the others
@@ -323,7 +355,13 @@ static void webtabs(_F_webtabs &c,
 			WEBTAB w(type,id,title,"");
 			w.selorder = ++maxsel;
 			tabs.push_back(w);
-			sort (tabs.begin(),tabs.end());
+			// hack, do not sort the first locked tabs.
+			for (auto t=tabs.begin(); t!= tabs.end(); t++){
+				if (!t->locked){
+					sort (t,tabs.end());
+					break;
+				}
+			}
 		}
 		w_webtab = 0;
 	}
@@ -431,6 +469,8 @@ static void webtabs(_F_webtabs &c,
 			htmlprintf ("<td height=100%% width=%u%% valign=top>\n",size[0]);
 			htmlout(docs);
 		}
+		glocal const char *help_id = c.help_id.c_str();
+		glocal const char *help_title = c.help_title.c_str();
 		for (unsigned type=0; type <4; type++){
 			if (size[type+1] != 0){
 				htmlprintf ("<td height=100%% width=%u%%>\n",size[type+1]);
@@ -450,7 +490,7 @@ static void webtabs(_F_webtabs &c,
 							}else{
 								webtab_aref (name,no);
 							}
-							if (glocal.may_delete){
+							if (!t.locked && glocal.may_delete){
 								split();
 								webtab_aref("x",no+1,"lightgrey");
 							}
@@ -458,10 +498,18 @@ static void webtabs(_F_webtabs &c,
 						no += 2;
 					}
 				</f>
+				<f draw_right>
+					split();
+					if (glocal.help_id[0] != '\0'){
+						url_self (string_f("webtab_add=2:%s~%s",glocal.help_id,glocal.help_title),"?");
+						/- &nbsp;
+					}
+				</f>
 				</call>
 				/- <tr><td valign=top height=99%>
 				htmlout (lines[type]);
 				/- </table>
+				glocal.help_id = "";
 			}
 		}
 		/- </table>
@@ -496,15 +544,18 @@ void webtabs(_F_webtabs &c,
 		for (auto &w:tabs){
 			if (strcmp(tab,w.tab.c_str())==0){
 				w.title = title;
+				w.locked = true;
 				found = true;
 				break;
 			}
 		}
 		if (!found){
-			tabs.push_back(WEBTAB(WEBTAB_TYPE1,tab,title,""));
+			WEBTAB w(WEBTAB_TYPE1,tab,title,"");
+			w.locked = true;
+			tabs.push_back(w);
 		}
 	}
-	webtabs (c,name,alltabs,false,size);
+	webtabs (c,name,alltabs,true,size);
 }
 struct _F_sendfile_common {
 	string handle;
@@ -808,6 +859,14 @@ static void trli_getsessioninfo(CONNECT_INFO &con, CONNECT_INFO &con_sess, vecto
 	</call>
 }
 </mod>
+static void index_doc (DOCUMENT_POINTER &pt, DOC_ID &jump)
+{
+	if (userinfo.lang == "eng"){
+		bolixo_doc (pt,jump);
+	}else{
+		bolixo_doc_fr(pt,jump);
+	}
+}
 
 static void button_validate(int step)
 {
@@ -1651,6 +1710,7 @@ extern "C" void webmain_real()
 		static unsigned size[5]={10,40,50,0,0};
 		<call webtabs>(MSG_R(M_PROJECTS),tabs,size);
 		<f documents>
+			sethelp();
 			// List projects
 			static const char *id = "tab:projects";
 			<call webtable>(id,"100%",currents[id]);
@@ -1690,9 +1750,6 @@ extern "C" void webmain_real()
 				/-#I_NEW_FOLDER New folder
 				/- &nbsp;
 				field_string (w_folder,"size=30");
-				/- <td>
-				url_self (string_f("webtab_add=2:help~%s",MSG_U(I_HELP,"Help"))
-					,MSG_U(I_HELPTOPIC,"Help on this topic"));
 				/- <tr><td>
 				url_self (string_f("webtab_add=2:%s%c%ld~%s",glocal.id,WEBTAB_MARK,time(NULL),MSG_U(I_NEWDOC,"New_document"))
 					,MSG_U(I_CREATENEWDOC,"Create a new document"));
@@ -1827,7 +1884,7 @@ extern "C" void webmain_real()
 				info.file_type = FILE_TEXT;
 			}
 			if (strcmp(id,"help")==0){
-				bolixo_doc(glocal.docpointers[SECTION_PROJECT],section_project);
+				index_doc(glocal.docpointers[SECTION_PROJECT],section_project);
 			}else if (file_is_image(info.file_type)){
 				htmlprintf (MSG_R(I_DOCNAME),glocal.filename);
 				/- <br>
@@ -1924,6 +1981,7 @@ extern "C" void webmain_real()
 		static unsigned size[5]={10,50,40,0,0};
 		<call webtabs>("mails",tabs,size);
 		<f documents>
+			sethelp();
 			static const char *id = "tab:mails";
 			<call webtable>(id,"100%",currents[id]);
 			<f load>
@@ -2010,35 +2068,39 @@ extern "C" void webmain_real()
 			</call>
 		</f>
 		<f doctype2>
-			glocal const char *id = id;
-			glocal const char *from = title;
-			<call bod_client_readfile>(glocal.con,w_session.c_str(),id,"");
-			<f ok>
-				vector<string> tb;
-				int n = str_splitline (glocal.id,'/',tb);
-				/- <table border=0>
-				if (n >= 5 && strcmp(tb[3].c_str(),"inbox")!=0){
-					if (n >= 6){
-						htmlprintf ("<tr><td><b>%s</b><td>%s<td>/<td>%s<td>/<td>%s\n",MSG_U(I_PROJECT,"Project"),tb[2].c_str(),tb[3].c_str(),tb[4].c_str());
-					}else{
-						htmlprintf ("<tr><td><b>%s</b><td>%s<td>/<td>%s\n",MSG_R(I_PROJECT),tb[2].c_str(),tb[3].c_str());
+			if (strcmp(id,"help")==0){
+				index_doc(glocal.docpointers[SECTION_MAILS],section_mails);
+			}else{
+				glocal const char *id = id;
+				glocal const char *from = title;
+				<call bod_client_readfile>(glocal.con,w_session.c_str(),id,"");
+				<f ok>
+					vector<string> tb;
+					int n = str_splitline (glocal.id,'/',tb);
+					/- <table border=0>
+					if (n >= 5 && strcmp(tb[3].c_str(),"inbox")!=0){
+						if (n >= 6){
+							htmlprintf ("<tr><td><b>%s</b><td>%s<td>/<td>%s<td>/<td>%s\n",MSG_U(I_PROJECT,"Project"),tb[2].c_str(),tb[3].c_str(),tb[4].c_str());
+						}else{
+							htmlprintf ("<tr><td><b>%s</b><td>%s<td>/<td>%s\n",MSG_R(I_PROJECT),tb[2].c_str(),tb[3].c_str());
+						}
 					}
-				}
-				htmlprintf ("<tr><td><b>%s</b><td colspan=6>%s\n",MSG_U(I_FROM,"From"),glocal.from);
-				htmlprintf ("<tr><td><b>%s</b><td colspan=6>%s\n",MSG_U(I_TITLE,"Title"),info.title);
-				htmlprintf ("<tr><td><b>%s</b><td colspan=6>%s\n",MSG_U(I_DATE,"Date"),info.modified);
-				/- </table>
-				/- <p>
-				const char *pt = content;
-				while (*pt != '\0'){
-					const char *start = pt;
-					while (*pt != '\0' && *pt != '\n') pt++;
-					htmlout (start,pt-start);
-					htmlout ("<br>\n");
-					if (*pt == '\n') pt++;
-				}
-			</f>
-			</call>
+					htmlprintf ("<tr><td><b>%s</b><td colspan=6>%s\n",MSG_U(I_FROM,"From"),glocal.from);
+					htmlprintf ("<tr><td><b>%s</b><td colspan=6>%s\n",MSG_U(I_TITLE,"Title"),info.title);
+					htmlprintf ("<tr><td><b>%s</b><td colspan=6>%s\n",MSG_U(I_DATE,"Date"),info.modified);
+					/- </table>
+					/- <p>
+					const char *pt = content;
+					while (*pt != '\0'){
+						const char *start = pt;
+						while (*pt != '\0' && *pt != '\n') pt++;
+						htmlout (start,pt-start);
+						htmlout ("<br>\n");
+						if (*pt == '\n') pt++;
+					}
+				</f>
+				</call>
+			}
 		</f>
 		</call>
 		///- </table>
@@ -2048,6 +2110,7 @@ extern "C" void webmain_real()
 		static unsigned size[5]={10,50,40,0,0};
 		<call webtabs>("talks",tabs,size);
 		<f documents>
+			sethelp();
 			static const char *id = "tab:talk";
 			<call webtable>(id,"100%",currents[id]);
 			<f load>
@@ -2090,9 +2153,6 @@ extern "C" void webmain_real()
 				field_file (w_upload);
 				/- <td>
 				button_submit (MSG_U(B_SEND,"Send"));
-				/- <td>
-				url_self (string_f("webtab_add=2:help~%s",MSG_R(I_HELP))
-					,MSG_R(I_HELPTOPIC));
 			</f>
 			<f validate>
 				return true;
@@ -2147,7 +2207,7 @@ extern "C" void webmain_real()
 			FILEINFO info;
 			index_entrytype(glocal.con,id,info);
 			if (strcmp(id,"help")==0){
-				bolixo_doc(glocal.docpointers[SECTION_TALK],section_talk);
+				index_doc(glocal.docpointers[SECTION_TALK],section_talk);
 			}else if (file_is_image(info.file_type)){
 				htmlprintf ("<img width=100%% src=%s?webstep=%u&image=%s>"
 					,tlmpweb_curpage(),step_image,id);
@@ -2197,28 +2257,26 @@ extern "C" void webmain_real()
 			string_f("Contacts~%s",MSG_U(T_CONTACTS,"Contacts")),
 			string_f("Projects~%s",MSG_U(T_PROJECTS,"Projects")),
 			string_f("Groups~%s",MSG_U(T_GROUPS,"Groups"))};
-		static unsigned size[5]={0,50,50,0,0};
+		static unsigned size[5]={0,60,40,0,0};
 		<call webtabs>("profile",t,tabs,size);
 		<f doctype2>
 			if (strcmp(id,"helpgroups")==0){
-				bolixo_doc(glocal.docpointers[SECTION_GROUPS],section_groups);
+				index_doc(glocal.docpointers[SECTION_GROUPS],section_groups);
 			}else if (strcmp(id,"helpprojects")==0){
-				bolixo_doc(glocal.docpointers[SECTION_PROJECTS],section_projects);
+				index_doc(glocal.docpointers[SECTION_PROJECTS],section_projects);
 			}else if (strcmp(id,"helpcontacts")==0){
-				bolixo_doc(glocal.docpointers[SECTION_CONTACTS],section_contacts);
+				index_doc(glocal.docpointers[SECTION_CONTACTS],section_contacts);
 			}else if (strcmp(id,"helpaccount")==0){
-				bolixo_doc(glocal.docpointers[SECTION_ACCOUNT],section_account);
+				index_doc(glocal.docpointers[SECTION_ACCOUNT],section_account);
 			}
 		</f>
 		<f docmain>
+			sethelp("helpprojects",MSG_U(I_HELPPROJECTS,"Projects"));
 			glocal const char *state = state;
 			if (strcmp(id,"Projects")==0){
 				<call vframe2h>(30);
 				<f left>
 					url_self ("add=1",MSG_U(I_CREATELIST,"Create a new project"));
-					/- <br>
-					url_self (string_f("webtab_add=2:helpprojects~%s",MSG_U(I_HELPPROJECTS,"Projects"))
-						,MSG_R(I_HELPTOPIC));
 					/- <p>
 					<call webtable>("list:projects","100%",currents["list:projects"]);
 					<f load>
@@ -2393,12 +2451,10 @@ extern "C" void webmain_real()
 				</f>
 				</call>
 			}else if (strcmp(id,"Groups")==0){
+				sethelp("helpgroups",MSG_U(I_HELPGROUPS,"Groups"));
 				<call vframe2h>(30);
 				<f left>
 					url_self ("add=1",MSG_U(I_CREATEGROUP,"Create a new group"));
-					/- <br>
-					url_self (string_f("webtab_add=2:helpgroups~%s",MSG_U(I_HELPGROUPS,"Groups"))
-						,MSG_R(I_HELPTOPIC));
 					/- <p>
 					<call webtable>("list:groups","100%",currents["list:groups"]);
 					<f load>
@@ -2557,12 +2613,10 @@ extern "C" void webmain_real()
 				</f>
 				</call>
 			}else if (strcmp(id,"Contacts")==0){
+				sethelp("helpcontacts",MSG_U(I_HELPCONTACTS,"Contacts"));
 				<call vframe2h>(30);
 				<f left>
 					url_self ("add=1",MSG_U(I_NEWCONTACT,"Send a new contact request"));
-					/- <br>
-					url_self (string_f("webtab_add=2:helpcontacts~%s",MSG_U(I_HELPCONTACTS,"Contacts"))
-						,MSG_R(I_HELPTOPIC));
 					/- <p>
 					static const string id = "list:contacts";
 					<call webtable>(id,"100%",currents[id],offsets[id],30);
@@ -2714,13 +2768,11 @@ extern "C" void webmain_real()
 				</call>
 			}else if (strcmp(id,"Account")==0){
 				glocal string status = "&nbsp;";
+				sethelp("helpaccount",MSG_U(I_HELPACCOUNT,"Account"));
 				<call form>("configaccount");
 				<f top>
 					/- <table border=0>
 					htmlprintf ("<tr><td colspan=2>%s",glocal.status.c_str());
-					/- <tr><td>
-					url_self (string_f("webtab_add=2:helpaccount~%s",MSG_U(I_HELPACCOUNT,"Account"))
-						,MSG_R(I_HELPTOPIC));
 				</f>
 				<f bottom>
 					/- </table>
@@ -2787,7 +2839,7 @@ extern "C" void webmain_real()
 	</f>
 	<f step12> // Documentation
 		bolixo_title (MSG_R(M_DOCUM),this);
-		bolixo_doc(glocal.docpointers[SECTION_NONE],section_none);
+		index_doc(glocal.docpointers[SECTION_NONE],section_none);
 	</f>
 	<f step13>
 	</f>
@@ -2804,7 +2856,8 @@ extern "C" void webmain_real()
 			for (auto &t:v.second){
 				SNAMEVAL val;
 				val.sname = string_f("%s:%c:%s",v.first.c_str(),t.type+'1',t.tab.c_str());
-				val.sval = string_f("f=%u,s=%s,t=%s",t.selorder,t.state.c_str(),t.title.c_str());
+				val.sval = string_f("f=%u,s=%s,t=%s,l=%d",t.selorder,t.state.c_str()
+					,t.title.c_str(),t.locked);
 				var.vals.push_back(val);
 			}
 		}
