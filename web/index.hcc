@@ -1292,6 +1292,19 @@ static string index_format_mail_fname(const MESSAGE_receive &m)
 	}	
 	return fname;
 }
+/*
+	Compute/Guess the number of lines that can be displayed
+*/
+static unsigned index_suggested_lines (unsigned defval, unsigned offset, int cheat)
+{
+	unsigned ret = defval;
+	unsigned fontsize = tlmpweb_fontsize();
+	if (fontsize > 0){
+		int sheight = tlmpweb_screenheight()-offset;
+		ret = sheight/(fontsize+cheat);
+	}
+	return ret;
+}
 <mod>
 extern "C" void webmain_real()
 {
@@ -1805,8 +1818,7 @@ extern "C" void webmain_real()
 			</call>
 			/- <tr><td height=99% width=100%>
 			//HTMLDEBUG ("table",true);
-			int sheight = tlmpweb_screenheight()-240;
-			int nblines = sheight/(tlmpweb_fontsize()+4);
+			unsigned nblines = index_suggested_lines (20,240,4);
 			<call webtable>(glocal.path,"100%",currents[glocal.path],offsets[glocal.path],nblines);
 			<f click>
 				tlmpweb_flushheader();
@@ -1914,7 +1926,7 @@ extern "C" void webmain_real()
 					/- <td align=right>
 					button_submit(MSG_U(B_SAVE,"Save"));
 					/- <tr><td colspan=2>
-					int nblines = (tlmpweb_screenheight()-180)/tlmpweb_fontsize();
+					unsigned nblines = index_suggested_lines (20,180,-1);
 					field_textarea(w_content,nblines,-100,"style=\"border:none\"");
 				</f>
 				<f validate>
@@ -2010,8 +2022,7 @@ extern "C" void webmain_real()
 			glocal const char *project = id;
 			if (strcmp(id,"INBOX")==0) glocal.project = "";
 			string inbox = string("inbox") + id;
-			int sheight = tlmpweb_screenheight()-180;
-			int nblines = sheight/(tlmpweb_fontsize()+4);
+			unsigned nblines = index_suggested_lines (20,180,4);
 			<call webtable>(inbox,"100%",currents[inbox],offsets[inbox],nblines);
 			<f click>
 				// This code is never called

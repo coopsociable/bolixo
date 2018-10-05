@@ -10,7 +10,7 @@ FLAGS=-Wall -Wno-unused-function
 	@tlmpwebcc $< \
 		| tlcc \
 		--name $(basename $(notdir $@)).tlcc - /tmp/$(basename $(notdir $@)).cc
-	@g++ -DEXPORT= -fPIC $(FLAGS) -I. -I/usr/include/tlmp -I/usr/include/linuxconf -I/usr/include/trlitool \
+	@g++ -g -DEXPORT= -fPIC $(FLAGS) -I. -I/usr/include/tlmp -I/usr/include/linuxconf -I/usr/include/trlitool \
 		-c /tmp/$(basename $(notdir $@)).cc  -o /tmp/test.o
 	@g++ -g -shared -Wl,-soname,test.so.1 -o \
 		$@ /tmp/test.o ../_dict.os /usr/lib64/trlitool/trlitool.pic.a util.os document.os document_fr.os \
