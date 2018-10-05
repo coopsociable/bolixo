@@ -610,7 +610,6 @@ static FILE_TYPE bo_writed_file_type (PARAM_STRING name, const BOB_TYPE &content
 */
 static void bo_writed_update_dirdate(unsigned dirid)
 {
-tlmp_error ("update date dirid=%u\n",dirid);
 	if (sql_action("update dirs_content set modified=now() where itemid=%u",dirid)==-1){
 		tlmp_error (MSG_U(E_CANTUPDDATEDIR,"Can't update directory modification date\n"));
 	}
@@ -669,9 +668,37 @@ static int bo_writed_addfile_bob (
 	}
 	return fileid;
 }
-static int bo_writed_create_group_list(unsigned userid, const char *listname, const char *description)
+/*
+	Create the directory for a project
+*/
+static int bo_writed_create_project_dir (
+	unsigned userid,
+	PARAM_STRING username,
+	PARAM_STRING listname,
+	string &msg)
 {
-	return sql_action("insert into group_lists (ownerid,name,description) values (%u,'%s','%s')",userid,listname,description);
+	int ret = -1;
+	int listid = fs_rec_getid ("select id from group_lists where ownerid=%u and name='%s'"
+		,userid,listname.ptr);
+	if (listid == -1){
+		msg = "List does not exist";
+	}else{
+		vector<string> dirs = {"projects",username.ptr,listname.ptr};
+		vector<unsigned> listids = {0,0,(unsigned)listid};
+		vector<char> listmodes = {'p','p','w'};
+		bool may_add;
+		msg = "";
+		ret = fs_locate_dir (dirs,userid,true,msg,END_OF_TIME,may_add,true,&listids,&listmodes);
+	}
+	return ret;
+}
+static int bo_writed_create_group_list(unsigned userid, PARAM_STRING username, const char *listname, const char *description, string &msg)
+{
+	int ret = sql_action("insert into group_lists (ownerid,name,description) values (%u,'%s','%s')",userid,listname,description);
+	if (ret != -1){
+		ret = bo_writed_create_project_dir (userid,username,listname,msg);
+	}
+	return ret;
 }
 <mod>
 static int bo_writed_create_group (unsigned userid, const char *groupname, bool create_dash_list, const char *description, string &msg)
@@ -1190,15 +1217,15 @@ int main (int argc, char *argv[])
 				</f>
 				<f confirmuser>
 					glocal const char *confirmid = confirmid;
-					<call sql_query>(*glocal.usq,"select userid from users where userid_str='%s' and confirmed is null and disabled is null"
+					<call sql_query>(*glocal.usq,"select userid,name from users where userid_str='%s' and confirmed is null and disabled is null"
 						,confirmid);
 					<f onerow>
 						unsigned userid = atoi(row[0]);
 						if (sql_action(*glocal.usq,"update users set confirmed=now() where userid=%u",userid)!=-1){
 							glocal.bo_writed_client.rep_confirmuser(true,"New user confirmed");
 							bo_log_confirmuser (glocal.flog,glocal.confirmid,time(NULL));
-							bo_writed_create_group_list(userid,"public","Public view");
 							string msg;
+							bo_writed_create_group_list(userid,row[1],"public","Public view",msg);
 							bo_writed_create_group (userid,"contacts",false,"",msg);
 							bo_writed_set_group(userid,"public","contacts","R",msg);
 							bo_writed_create_group (userid,"public",true,"Public view",msg);
@@ -1627,18 +1654,7 @@ int main (int argc, char *argv[])
 					string username;
 					unsigned userid = bo_writed_get_group_owner (glocal.con, sessionid, owner, username, msg);
 					if (userid != 0){
-						int listid = fs_rec_getid ("select id from group_lists where ownerid=%u and name='%s'"
-							,userid,listname);
-						if (listid == -1){
-							msg = "List does not exist";
-						}else{
-							vector<string> dirs = {"projects",username,listname};
-							vector<unsigned> listids = {0,0,(unsigned)listid};
-							vector<char> listmodes = {'p','p','w'};
-							bool may_add;
-							msg = "";
-							fs_locate_dir (dirs,userid,true,msg,END_OF_TIME,may_add,true,&listids,&listmodes);
-						}
+						bo_writed_create_project_dir (userid,username,listname,msg);
 					}
 					if (msg.size()==0){
 						rep_create_project_dir(true,"");
@@ -1649,7 +1665,8 @@ int main (int argc, char *argv[])
 				<f create_group_list>	// sessionid listname owner = success:b msg
 					glocal string msg = "Invalid session";
 					glocal const char *listname = listname;
-					glocal unsigned userid = bo_writed_get_group_owner (glocal.con, sessionid, owner, glocal.msg);
+					glocal string username;
+					glocal unsigned userid = bo_writed_get_group_owner (glocal.con, sessionid, owner, glocal.username,glocal.msg);
 					if (glocal.userid != 0){
 						if (bo_writed_lex_check(listname,glocal.msg)){
 							<call sql_query>("select id from group_lists where ownerid=%u and name='%s'"
@@ -1658,7 +1675,7 @@ int main (int argc, char *argv[])
 								glocal.msg = "Group list alreay exist";
 							</f>
 							<f empty>
-								if (bo_writed_create_group_list(glocal.userid,glocal.listname,"")==-1){
+								if (bo_writed_create_group_list(glocal.userid,glocal.username,glocal.listname,"",glocal.msg)==-1){
 									glocal.msg = "Internal error (group_lists table)";
 								}else{
 									glocal.msg = "";
