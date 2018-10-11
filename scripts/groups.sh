@@ -219,6 +219,11 @@ elif [ "$1" = "manyusers" ] ; then # test: Add tons of users from scratch
 			./test.sh test-adduser $letter-$i
 		done
 	done
+elif [ "$1" = "manysubdirs" ] ; then # test: Add manu subdirs to project public of jacques-A
+	for ((i=0; i<100; i++))
+	do
+		./bofs mkdir bo://projects/jacques-A/public/sdir-$i
+	done
 else
 	echo reset print or config
 fi

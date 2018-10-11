@@ -915,6 +915,7 @@ elif [ "$1" = "lxc0-web" ]; then # prod:
 			-e /var/www/html/index.hc \
 			-e /var/www/html/webapi.hc \
 			-e /var/www/html/public.hc \
+			-e /var/www/html/journey.hc \
 			-e /usr/lib/tlmp/templates/default/webtable.tpl \
 			-e /usr/sbin/trli-stop \
 			-e /usr/lib/tlmp/lib/tlmpdoc.so.1 \
