@@ -448,25 +448,33 @@ void button_preview(int step)
 }
 void button_row(_F_button_row &c, int border, const char *bgcolor, bool alignleft)
 {
-	htmlprintf ("<table border=%d bgcolor=%s cellspacing=0 width=100%%>\n",border,bgcolor);
-	htmlprintf ("<tr><td align=%s>\n",alignleft ? "left" : "right");
-	htmlprintf ("<table border=%d bgcolor=%s cellspacing=0><tr>\n",border,bgcolor);
+	vector<string> left_lines;
+	tlmpweb_pushgrab(left_lines);
 	c.align="left";
 	c.draw();
-	htmlout ("</table>\n");
-
+	tlmpweb_popgrab();
+	vector<string> right_lines;
+	tlmpweb_pushgrab(right_lines);
 	c.align="right";
-	vector<string> lines;
-	tlmpweb_pushgrab(lines);
 	c.draw_right();
 	tlmpweb_popgrab();
-	if (lines.size() > 0){
-		htmlout ("<td align=right>\n");
-		htmlprintf ("<table border=%d bgcolor=%s cellspacing=0><tr>\n",border,bgcolor);
-		htmlout (lines);
+	if (left_lines.size() > 0 || right_lines.size()>0){
+		htmlprintf ("<table border=%d bgcolor=%s cellspacing=0 width=100%%>\n",border,bgcolor);
+		if (left_lines.size() > 0){
+			htmlprintf ("<tr><td align=%s>\n",alignleft ? "left" : "right");
+			htmlprintf ("<table border=%d bgcolor=%s cellspacing=0><tr>\n",border,bgcolor);
+			htmlout(left_lines);
+			htmlout ("</table>\n");
+		}
+
+		if (right_lines.size() > 0){
+			htmlout ("<td align=right>\n");
+			htmlprintf ("<table border=%d bgcolor=%s cellspacing=0><tr>\n",border,bgcolor);
+			htmlout (right_lines);
+			htmlout ("</table>\n");
+		}
 		htmlout ("</table>\n");
 	}
-	htmlout ("</table>\n");
 }
 void button_row(_F_button_row &c, int border, const char *bgcolor)
 {
