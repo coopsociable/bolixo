@@ -52,7 +52,7 @@ inline bool file_is_video (FILE_TYPE type){
 	return type == FILE_VIDEO;
 }
 #ifdef DEFINE_TBFTYPE
-static char tbtype[]={' ','_','D','F','M','C'};
+//static char tbtype[]={' ','_','D','F','M','C'};
 static const char *tbftype[]={
 	"?",	//FILE_UNKNOWN,
 	"txt",	//FILE_TEXT,

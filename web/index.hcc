@@ -36,7 +36,12 @@ extern DOC_ID section_mails;
 extern void bolixo_doc (DOCUMENT_POINTER &, DOC_ID &jump);
 extern void bolixo_doc_fr (DOCUMENT_POINTER &, DOC_ID &jump);
 
-
+static WEBID ID_TALK("talk");
+static WEBID ID_MAIL("mail");
+static WEBID ID_PROJECT("project");
+static WEBID ID_CONTACT("contact");
+static WEBID ID_PRJTEXT("prjtext");
+#define TAB_FORM "tab_form"
 
 using namespace std;
 
@@ -458,24 +463,23 @@ static void webtabs(_F_webtabs &c,
 		}
 	}
 	if (draw_ok){
-		// height=100%
-		/- <table border=1 width=100% height=100%>
+		DIV sc; sc.w(100).dispflex().flowrow().align("stetch").bg("Dodge-Blue").print();
 		vector<string> docs;
 		tlmpweb_pushgrab(docs);
 		c.documents();
 		tlmpweb_popgrab();
-		/- <tr>
 		if (docs.size() > 0){
-			htmlprintf ("<td height=100%% width=%u%% valign=top>\n",size[0]);
+			DIV d; d.id("tab").flexfixe().bg("pink").w(size[0]).h(60).print();
 			htmlout(docs);
 		}
 		glocal const char *help_id = c.help_id.c_str();
 		glocal const char *help_title = c.help_title.c_str();
 		for (unsigned type=0; type <4; type++){
-			if (size[type+1] != 0){
-				htmlprintf ("<td height=100%% width=%u%%>\n",size[type+1]);
-				/- <table border=0 height=100% width=100%>
-				/- <tr><td height=1% valign=top>
+			unsigned sz = size[type+1];
+			if (sz != 0){
+				DIV c; c.flexfixe().w(sz).bg("lightblue").print();
+				DIV cc("tabs","tab"); cc.dispflex().flowcol().bg("gray").print();
+				DIV top("","tabs"); top.align("flex-start").flexfixe().print();
 				glocal unsigned type = type;
 				<call button_row>(0,"white");
 				<f draw>
@@ -499,20 +503,21 @@ static void webtabs(_F_webtabs &c,
 					}
 				</f>
 				<f draw_right>
-					split();
 					if (glocal.help_id[0] != '\0'){
+						split();
 						url_self (string_f("webtab_add=2:%s~%s",glocal.help_id,glocal.help_title),"?");
 						/- &nbsp;
 					}
 				</f>
 				</call>
-				/- <tr><td valign=top height=99%>
+				top.end();
+				DIV mi; mi.bg("pink").align("flex-start").flexgrow().print();
 				htmlout (lines[type]);
-				/- </table>
 				glocal.help_id = "";
 			}
 		}
-		/- </table>
+		// /- </table>
+		// /- </div>
 	}
 }
 </mod>
@@ -722,11 +727,14 @@ static void bolixo_title (const char *title, _F_websteps *c)
 	util_google_code();
 	util_defstyles();
 	tlmpweb_body("white",NULL);
-	/- <table border=0 height=100% width=100%><tr><td height=5%>
+	
+	DIV main; main.id("main").h(100).w(100).dispflex().flowcol().print();
+	DIV head; head.id("head").flexfixe().print();
+	/- <table border=0 width=100%><tr><td>
 	htmlprintf ("<table border=0 width=100%% bgcolor=%s cellspacing=0><tr><td rowspan=2 align=left>\n",newscolor);
 		/- <table border=0><tr><td><a href=/7s.html style=\"text-decoration:none\"><img src=/favicon.ico></a></td><td align=left>
 		htmlout ("<a href=/index.hc style=\"text-decoration:none\"><font size=8 color=\"white\">Bolixo.org</font></a>&nbsp;&nbsp;&nbsp;");
-		htmlprintf ("screen %u %u %u\n",tlmpweb_screenwidth(),tlmpweb_screenheight(),tlmpweb_fontsize());
+		htmlprintf ("screen %u %u f=%u\n",tlmpweb_screenwidth(),tlmpweb_screenheight(),tlmpweb_fontsize());
 		/- <td>
 		if (userinfo.name.empty()) printhref ("/about.html",MSG_U(I_ABOUT,"<font color=white>A peer to peer open social media</font>"),true);
 		/- </td></tr></table>
@@ -753,7 +761,11 @@ static void bolixo_title (const char *title, _F_websteps *c)
 		</call>
 	}
 	/- </tr></table>
-	/- <tr><td height=95%>
+	/- </table>
+	head.end();
+	DIV body; body.id("body").flexgrow().print();
+	body.donotend();
+	main.donotend();
 }
 </mod>
 <mod>
@@ -841,6 +853,19 @@ static void trli_getsessioninfo(CONNECT_INFO &con, CONNECT_INFO &con_sess, vecto
 					}
 					if (form.id.size()>0){
 						currentforms.push_back(form);
+					}
+				}else if (strcmp(var.name,"geometry")==0){
+					// We receive triplets: id,height,width
+					WEBID id;
+					unsigned height;
+					for (auto &v:var.vals){
+						if (strcmp(v.sname,"id")==0){
+							id.set(v.sval);
+						}else if (strcmp(v.sname,"height")==0){
+							height = atoi(v.sval);
+						}else if (strcmp(v.sname,"width")==0){
+							tlmpweb_settablegeometry(id,height,atoi(v.sval));
+						}
 					}
 				}
 			}
@@ -1102,7 +1127,7 @@ static void index_show_shortmsg(
 	if (offsets[table] == 0){
 		index_markview (con,string_f("/msgs/%s/short-inbox/%s",glocal.groupowner,glocal.groupname));
 	}
-	<call webtable>(table,"100%",currents[table],offsets[table],5);
+	<call webtable>(ID_TALK,table,"100%",currents[table],offsets[table],5);
 	<f click>
 		tlmpweb_flushheader();
 		<call bod_client_list_talk>(*glocal.con,w_session.c_str(),"",glocal.groupname,glocal.groupowner,noline,1);
@@ -1292,19 +1317,25 @@ static string index_format_mail_fname(const MESSAGE_receive &m)
 	}	
 	return fname;
 }
+#if 0
 /*
 	Compute/Guess the number of lines that can be displayed
 */
-static unsigned index_suggested_lines (unsigned defval, unsigned offset, int cheat)
+static unsigned index_suggested_lines (const char *id, unsigned defval, int cheat)
 {
 	unsigned ret = defval;
-	unsigned fontsize = tlmpweb_fontsize();
-	if (fontsize > 0){
-		int sheight = tlmpweb_screenheight()-offset;
-		ret = sheight/(fontsize+cheat);
+	unsigned height,width;
+	tlmpweb_gettablegeometry(id,height,width);
+	if (height > 0){	
+		unsigned fontsize = tlmpweb_fontsize();
+		if (fontsize > 0){
+			ret = height/(fontsize+cheat)-2;
+		}
 	}
+	tlmp_error ("suggested_lines id=%s ret=%d defval=%d\n",id,ret,defval);
 	return ret;
 }
+#endif
 <mod>
 extern "C" void webmain_real()
 {
@@ -1363,6 +1394,27 @@ extern "C" void webmain_real()
 	
 	webtable_ctrloutput();
 	<obj WEBCONTEXT wctx>();
+	<f savetablegeometry>
+		VAR var;
+		var.name = "geometry";
+		for (auto &v:tb){
+			SNAMEVAL val;
+			val.sname = "id";
+			val.sval = v.id.c_str();
+			var.vals.push_back(val);
+			val.sname = "height";
+			val.sval = string_f("%u",v.height);
+			var.vals.push_back(val);
+			val.sname = "width";
+			val.sval = string_f("%u",v.width);
+			var.vals.push_back(val);
+		}
+		<call bo_sessiond_client_setvar>(glocal.con_sess,w_session.c_str(),var);
+		<f ok>
+			if (!success) tlmp_error ("Can't set variable geometry: %s\n",msg);
+		</f>
+		</call>
+	</f>
 	<f settablecoor>
 		/*
 			We avoid poluting the session manager with fake request.
@@ -1559,8 +1611,8 @@ extern "C" void webmain_real()
 				/- Documents
 			</f>
 			<f left>
-				string table = string("talk")+"public";
-				index_show_shortmsg (glocal.con,glocal.con_sess,table,"public",userinfo.name);
+				//string table = string("talk")+"public";
+				//index_show_shortmsg (glocal.con,glocal.con_sess,table,"public",userinfo.name);
 			</f>
 			</call>
 			/- </table>
@@ -1720,7 +1772,7 @@ extern "C" void webmain_real()
 		//HTMLDEBUG d1("t1");
 		//HTMLDEBUG d2("t2");
 		bolixo_title (MSG_R(M_PROJECTS),this);
-		static unsigned size[5]={10,40,50,0,0};
+		static unsigned size[5]={15,35,50,0,0};
 		<call webtabs>(MSG_R(M_PROJECTS),tabs,size);
 		<f documents>
 			sethelp();
@@ -1749,8 +1801,8 @@ extern "C" void webmain_real()
 		<f docmain>
 			glocal const char *id = id;
 			glocal string path = string_f ("/projects/%s",id);
-			/- <table id=t1 height=100% width=100% border=0>
-			/- <tr><td height=1% width=100%>
+			{
+			DIV f; f.id(TAB_FORM).print();
 			<call form>(formid);
 			<f top>
 				/- <table border=0>
@@ -1816,10 +1868,8 @@ extern "C" void webmain_real()
 				fail = glocal.fail;
 			</f>
 			</call>
-			/- <tr><td height=99% width=100%>
-			//HTMLDEBUG ("table",true);
-			unsigned nblines = index_suggested_lines (20,240,4);
-			<call webtable>(glocal.path,"100%",currents[glocal.path],offsets[glocal.path],nblines);
+			}
+			<call webtable>(ID_PROJECT,glocal.path,"100%",currents[glocal.path],offsets[glocal.path],5);
 			<f click>
 				tlmpweb_flushheader();
 				<call bod_client_listdir>(glocal.con,w_session.c_str(),glocal.path,"",false,noline,1);
@@ -1853,7 +1903,7 @@ extern "C" void webmain_real()
 			</f>
 			<f load>
 				glocal unsigned rownum = nbskip;
-				sethead (MSG_U(H_FOLDER,"Type\tModified\tOwner\tSize\tName"));
+				sethead (MSG_U(H_FOLDER,"\tModified\tOwner\tSize\tName"));
 				<call bod_client_listdir>(glocal.con,w_session.c_str(),glocal.path,"",false,nbskip,nblines);
 				<f ok>
 					if (!success) htmlprintf (MSG_U(E_READDIR,"Can't read directory %s: %s<br>\n"),glocal.path.c_str(),msg);
@@ -1871,10 +1921,10 @@ extern "C" void webmain_real()
 						}else if (file_is_text(f.file_type)){
 							glocal.webtable.setclickopt (true,"",string_f("webtab_add=2:%s~%s",path.c_str(),f.name));
 						}
-						const char *style = f.viewed != VIEWED_OK ? "whitebold" : "white";
 						if (glocal.webtabs.selected(path)) glocal.webtable.setcurrent(glocal.rownum);
-						glocal.webtable.setrow (style,glocal.rownum,"%c%s\t%s\t%s/%s:%s\t%u\t%s"
-							,tbtype[f.type],tbftype[f.file_type]
+						static const char *tbviewed[]={"new","&nbsp;&nbsp;&nbsp;","mod"};
+						glocal.webtable.setrow ("white",glocal.rownum,"%s\t%s\t%s/%s:%s\t%u\t%s"
+							,tbviewed[f.viewed]
 							,f.modified
 							,f.owner,f.listname,f.listmode,f.size
 							,f.name);
@@ -1884,7 +1934,6 @@ extern "C" void webmain_real()
 				</call>
 			</f>
 			</call>
-			/- </table>
 		</f>
 		<f doctype2>
 			glocal const char *filename = id;
@@ -1896,8 +1945,10 @@ extern "C" void webmain_real()
 				info.file_type = FILE_TEXT;
 			}
 			if (strcmp(id,"help")==0){
+				DIV d("webtable"); d.print();
 				index_doc(glocal.docpointers[SECTION_PROJECT],section_project);
 			}else if (file_is_image(info.file_type)){
+				DIV d("webtable"); d.print();
 				htmlprintf (MSG_R(I_DOCNAME),glocal.filename);
 				/- <br>
 				htmlprintf ("<img width=100%% src=%s?webstep=%u&image=%s>"
@@ -1905,10 +1956,8 @@ extern "C" void webmain_real()
 			}else if (info.file_type == FILE_TEXT){
 				<call form>(formid);
 				<f top>
-					/- <table border=0 width=100% height=100%>
 				</f>
 				<f bottom>
-					/- </table>
 				</f>
 				<f load>
 					if (!glocal.newdocument){
@@ -1916,18 +1965,21 @@ extern "C" void webmain_real()
 					}
 				</f>
 				<f setup>
-					/- <tr><td align=left>
-					if (glocal.newdocument){
-						/-#I_NEWDOCNAME New document name&nbsp;
-						field_string (w_filename,"size=30");	
-					}else{
-						htmlprintf (MSG_U(I_DOCNAME,"Document name:&nbsp;<font size=+1>%s</font>"),glocal.filename);
+					{
+						DIV f; f.id(TAB_FORM).print();
+						/- <table width=100% border=0>
+						/- <tr><td valign=top align=left>
+						if (glocal.newdocument){
+							/-#I_NEWDOCNAME New document name&nbsp;
+							field_string (w_filename,"size=30");	
+						}else{
+							htmlprintf (MSG_U(I_DOCNAME,"Document name:&nbsp;<font size=+4>%s</font>"),glocal.filename);
+						}
+						/- <td valign=top align=right>
+						button_submit(MSG_U(B_SAVE,"Save"));
+						/- </table>
 					}
-					/- <td align=right>
-					button_submit(MSG_U(B_SAVE,"Save"));
-					/- <tr><td colspan=2>
-					unsigned nblines = index_suggested_lines (20,180,-1);
-					field_textarea(w_content,nblines,-100,"style=\"border:none\"");
+					field_textarea(w_content,ID_PRJTEXT,-100,"style=\"border:none\"");
 				</f>
 				<f validate>
 					bool ret = true;
@@ -1991,7 +2043,7 @@ extern "C" void webmain_real()
 	</f>
 	<f step8> // TAB Mails
 		bolixo_title (MSG_U(T_MAILS,"Mails"),this);
-		static unsigned size[5]={10,50,40,0,0};
+		static unsigned size[5]={15,45,40,0,0};
 		<call webtabs>("mails",tabs,size);
 		<f documents>
 			sethelp();
@@ -2022,8 +2074,7 @@ extern "C" void webmain_real()
 			glocal const char *project = id;
 			if (strcmp(id,"INBOX")==0) glocal.project = "";
 			string inbox = string("inbox") + id;
-			unsigned nblines = index_suggested_lines (20,180,4);
-			<call webtable>(inbox,"100%",currents[inbox],offsets[inbox],nblines);
+			<call webtable>(ID_MAIL,inbox,"100%",currents[inbox],offsets[inbox],5);
 			<f click>
 				// This code is never called
 				tlmpweb_flushheader();
@@ -2080,6 +2131,7 @@ extern "C" void webmain_real()
 			</call>
 		</f>
 		<f doctype2>
+			DIV d("webtable"); d.print();
 			if (strcmp(id,"help")==0){
 				index_doc(glocal.docpointers[SECTION_MAILS],section_mails);
 			}else{
@@ -2119,7 +2171,7 @@ extern "C" void webmain_real()
 	</f>
 	<f step9>	// TAB Talks
 		bolixo_title (MSG_U(T_TALKS,"Talks"),this);
-		static unsigned size[5]={10,50,40,0,0};
+		static unsigned size[5]={15,40,45,0,0};
 		<call webtabs>("talks",tabs,size);
 		<f documents>
 			sethelp();
@@ -2149,8 +2201,8 @@ extern "C" void webmain_real()
 			if (n != 2) return;
 			glocal string groupowner = tb[0];
 			glocal string groupname = tb[1];
-			/- <table border=0 height=100% align=left width=40%>
-			/- <tr><td height=1%>
+			DIV tab; tab.dispflex().flowcol().print();
+			DIV f; f.id(string_f("%s-form",ID_TALK.c_str())).flexfixe().print();
 			<call form>(formid);
 			<f top>
 				/- <table border=0>
@@ -2210,7 +2262,8 @@ extern "C" void webmain_real()
 				keepediting = true;
 			</f>
 			</call>
-			/- <tr><td height=99%>
+			f.end();
+			DIV ff; ff.flexgrow().print();
 			string table = string("talk")+id;
 			index_show_shortmsg (glocal.con,glocal.con_sess,table,glocal.groupname,glocal.groupowner);
 			/- </table>
@@ -2218,6 +2271,7 @@ extern "C" void webmain_real()
 		<f doctype2>
 			FILEINFO info;
 			index_entrytype(glocal.con,id,info);
+			DIV d("webtable"); d.print();
 			if (strcmp(id,"help")==0){
 				index_doc(glocal.docpointers[SECTION_TALK],section_talk);
 			}else if (file_is_image(info.file_type)){
@@ -2272,6 +2326,7 @@ extern "C" void webmain_real()
 		static unsigned size[5]={0,60,40,0,0};
 		<call webtabs>("profile",t,tabs,size);
 		<f doctype2>
+			DIV f("webtable"); f.print();
 			if (strcmp(id,"helpgroups")==0){
 				index_doc(glocal.docpointers[SECTION_GROUPS],section_groups);
 			}else if (strcmp(id,"helpprojects")==0){
@@ -2628,10 +2683,13 @@ extern "C" void webmain_real()
 				sethelp("helpcontacts",MSG_U(I_HELPCONTACTS,"Contacts"));
 				<call vframe2h>(30);
 				<f left>
+					{
+					DIV f; f.id(TAB_FORM).bg("yellow").print();
 					url_self ("add=1",MSG_U(I_NEWCONTACT,"Send a new contact request"));
-					/- <p>
+					// /- <p>
+					}
 					static const string id = "list:contacts";
-					<call webtable>(id,"100%",currents[id],offsets[id],30);
+					<call webtable>(ID_CONTACT,id,"100%",currents[id],offsets[id],10);
 					<f load>
 						sethead (MSG_U(H_CONTACTS,"User\tDate\tStatus"));
 						<call bod_client_contact_list>(glocal.con,w_session.c_str(),"",nbskip,nblines);
@@ -2906,6 +2964,77 @@ extern "C" void webmain_real()
 			</call>
 		}
 	}
+	/- </div>
+	// Script to make sure the webtabs tabs use the full height of the screen
+	// Then it takes the webtables and grows them too.
+	<?
+	<script>
+		document.onreadystatechange = function () {
+			var state = document.readyState;
+			if (state == 'interactive') {
+				fixsize();
+			} else if (state == 'complete') {
+				//initOnCompleteLoad();
+			}
+		};
+		var t = document.getElementById('head').offsetHeight;
+		var diff = window.innerHeight-t;
+		document.getElementById("tab").style.height=diff;
+		function allDescendants (node,total) {
+			//console.log ("Enter " + node.className + " " + node.id);
+			for (var i = 0; i < node.childNodes.length; i++) {
+				var child = node.childNodes[i];
+				if (child.id != null
+					&& (child.id == "tabs"
+						|| child.id == "tab_form"
+						|| child.id == "webtable-top")){
+					total += child.offsetHeight;
+					console.log ("child.id=" + child.id + " total="+total+" height="+child.offsetHeight);
+				}else{
+					if (child.className == "webtable"){
+						console.log ("Set webtable total="+total);
+						child.style.height = diff - total;
+						break;
+					}
+					total = allDescendants(child,total);
+				}
+			}
+			return total;
+		}
+		function fixsize(){
+			var tabs = document.getElementsByClassName("tabs");
+			console.log ("tabs.length=" + tabs.length);
+			var i;
+			for (i=0; i<tabs.length; i++){
+				allDescendants (tabs[i],0);
+			}
+			var tables = document.getElementsByClassName('webtable');
+			console.log ("ready " + document.readyState);
+			for (i = 0; false && i < tables.length; i++) {
+				var table = tables[i];
+				if (table.id != "" && table.id != "doctype0" && table.id != "doctype1"){
+					var top = document.getElementById("webtable-top");
+					var toph = 0;
+					if (top != null){
+						toph = top.offsetHeight;
+					}
+					var form = document.getElementById("tab_form");
+					var formh = 0;
+					if (form != null){
+						formh = form.offsetHeight;
+					}
+					var newh = diff - toph - formh;
+					//if (table.id == "project") table.style.height = newh-35;
+					console.log ("upd2:" + table.id + "=" + toph + "=" + formh + "="+ newh);
+				}
+			}
+			for (i = 0; i < tables.length; i++) {
+				var table = tables[i];
+				console.log (table.id+" "+table.offsetHeight+" "+table.offsetWidth);
+			}
+		}
+	</script>
+	?>
 }
 </mod>
 
