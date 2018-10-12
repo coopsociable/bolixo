@@ -41,6 +41,9 @@ static WEBID ID_MAIL("mail");
 static WEBID ID_PROJECT("project");
 static WEBID ID_CONTACT("contact");
 static WEBID ID_PRJTEXT("prjtext");
+static WEBID ID_GROUPS("groups");
+static WEBID ID_PROJECTS("projects");
+static WEBID ID_CONTACTS("contacts");
 #define TAB_FORM "tab_form"
 
 using namespace std;
@@ -463,13 +466,13 @@ static void webtabs(_F_webtabs &c,
 		}
 	}
 	if (draw_ok){
-		DIV sc; sc.w(100).dispflex().flowrow().align("stetch").bg("Dodge-Blue").print();
+		DIV sc; sc.w(100).dispflex().flowrow().align("stetch").bg("white").print();
 		vector<string> docs;
 		tlmpweb_pushgrab(docs);
 		c.documents();
 		tlmpweb_popgrab();
 		if (docs.size() > 0){
-			DIV d; d.id("tab").flexfixe().bg("pink").w(size[0]).h(60).print();
+			DIV d; d.id("tab").flexfixe().bg("white").w(size[0]).h(60).print();
 			htmlout(docs);
 		}
 		glocal const char *help_id = c.help_id.c_str();
@@ -477,8 +480,8 @@ static void webtabs(_F_webtabs &c,
 		for (unsigned type=0; type <4; type++){
 			unsigned sz = size[type+1];
 			if (sz != 0){
-				DIV c; c.flexfixe().w(sz).bg("lightblue").print();
-				DIV cc("tabs","tab"); cc.dispflex().flowcol().bg("gray").print();
+				DIV c; c.flexfixe().w(sz).bg("white").print();
+				DIV cc("tabs","tab"); cc.dispflex().flowcol().bg("white").border(1,"black").print();
 				DIV top("","tabs"); top.align("flex-start").flexfixe().print();
 				glocal unsigned type = type;
 				<call button_row>(0,"white");
@@ -511,7 +514,7 @@ static void webtabs(_F_webtabs &c,
 				</f>
 				</call>
 				top.end();
-				DIV mi; mi.bg("pink").align("flex-start").flexgrow().print();
+				DIV mi; mi.bg("white").align("flex-start").flexgrow().print();
 				htmlout (lines[type]);
 				glocal.help_id = "";
 			}
@@ -2339,14 +2342,14 @@ extern "C" void webmain_real()
 			sethelp("helpprojects",MSG_U(I_HELPPROJECTS,"Projects"));
 			glocal const char *state = state;
 			if (strcmp(id,"Projects")==0){
-				<call vframe2h>(30);
+				<call vframe2h>(40);
 				<f left>
 					{
 						DIV t; t.id(TAB_FORM).print();
 						url_self ("add=1",MSG_U(I_CREATELIST,"Create a new project"));
+						/- <br>&nbsp;<br>
 					}
-					// /- <p>
-					<call webtable>("list:projects","100%",currents["list:projects"]);
+					<call webtable>(ID_PROJECTS,"list:projects","100%",currents["list:projects"]);
 					<f load>
 						sethead (MSG_U(H_PROF_PROJECTS,"Project\tMembers\tAccess"));
 						<call bod_client_list_lists>(glocal.con,w_session.c_str(),"");
@@ -2520,13 +2523,13 @@ extern "C" void webmain_real()
 				</call>
 			}else if (strcmp(id,"Groups")==0){
 				sethelp("helpgroups",MSG_U(I_HELPGROUPS,"Groups"));
-				<call vframe2h>(30);
+				<call vframe2h>(40);
 				<f left>
 					{
 						DIV t; t.id(TAB_FORM).print();
 						url_self ("add=1",MSG_U(I_CREATEGROUP,"Create a new group"));
+						/- <br>&nbsp;<br>
 					}
-					// /- <p>
 					<call webtable>("list:groups","100%",currents["list:groups"]);
 					<f load>
 						sethead (MSG_U(H_GROUPS,"Group\tMembers\tAccess\tRole"));
@@ -2685,12 +2688,12 @@ extern "C" void webmain_real()
 				</call>
 			}else if (strcmp(id,"Contacts")==0){
 				sethelp("helpcontacts",MSG_U(I_HELPCONTACTS,"Contacts"));
-				<call vframe2h>(30);
+				<call vframe2h>(40);
 				<f left>
 					{
-						DIV f; f.id(TAB_FORM).bg("yellow").print();
+						DIV f; f.id(TAB_FORM).print();
 						url_self ("add=1",MSG_U(I_NEWCONTACT,"Send a new contact request"));
-					// /- <p>
+						/- <br>&nbsp;<br>
 					}
 					static const string id = "list:contacts";
 					<call webtable>(ID_CONTACT,id,"100%",currents[id],offsets[id],10);
@@ -2985,6 +2988,11 @@ extern "C" void webmain_real()
 		document.getElementById("tab").style.height=diff;
 		function allDescendants (node,total) {
 			//console.log ("Enter " + node.className + " " + node.id);
+			if (node.id == "tab"){
+				var bord=(node.offsetWidth-node.clientWidth);
+				total += bord;
+				console.log ("border node.id=" + node.id + " total="+total+" border="+bord);
+			}
 			for (var i = 0; i < node.childNodes.length; i++) {
 				var child = node.childNodes[i];
 				if (child.id != null
