@@ -43,7 +43,6 @@ static WEBID ID_CONTACT("contact");
 static WEBID ID_PRJTEXT("prjtext");
 static WEBID ID_GROUPS("groups");
 static WEBID ID_PROJECTS("projects");
-static WEBID ID_CONTACTS("contacts");
 #define TAB_FORM "tab_form"
 
 using namespace std;
@@ -472,7 +471,7 @@ static void webtabs(_F_webtabs &c,
 		c.documents();
 		tlmpweb_popgrab();
 		if (docs.size() > 0){
-			DIV d; d.id("tab").flexfixe().bg("white").w(size[0]).h(60).print();
+			DIV d("tabs","tab"); d.flexfixe().bg("white").align("stretch").w(size[0]).h(60).print();
 			htmlout(docs);
 		}
 		glocal const char *help_id = c.help_id.c_str();
@@ -480,7 +479,7 @@ static void webtabs(_F_webtabs &c,
 		for (unsigned type=0; type <4; type++){
 			unsigned sz = size[type+1];
 			if (sz != 0){
-				DIV c; c.flexfixe().w(sz).bg("white").print();
+				DIV c; c.flexfixe().w(sz).align("stretch").bg("white").print();
 				DIV cc("tabs","tab"); cc.dispflex().flowcol().bg("white").border(1,"black").print();
 				DIV top("","tabs"); top.align("flex-start").flexfixe().print();
 				glocal unsigned type = type;
@@ -2530,7 +2529,7 @@ extern "C" void webmain_real()
 						url_self ("add=1",MSG_U(I_CREATEGROUP,"Create a new group"));
 						/- <br>&nbsp;<br>
 					}
-					<call webtable>("list:groups","100%",currents["list:groups"]);
+					<call webtable>(ID_GROUPS,"list:groups","100%",currents["list:groups"]);
 					<f load>
 						sethead (MSG_U(H_GROUPS,"Group\tMembers\tAccess\tRole"));
 						<call bod_client_list_groups>(glocal.con,w_session.c_str(),"",true);
@@ -2985,7 +2984,10 @@ extern "C" void webmain_real()
 		};
 		var t = document.getElementById('head').offsetHeight;
 		var diff = window.innerHeight-t;
-		document.getElementById("tab").style.height=diff;
+		var tabs = document.getElementsByClassName("tabs");
+		for (var i=0; i<tabs.length; i++){
+			tabs[i].style.height = diff-2;
+		}
 		function allDescendants (node,total) {
 			//console.log ("Enter " + node.className + " " + node.id);
 			if (node.id == "tab"){
@@ -3003,14 +3005,7 @@ extern "C" void webmain_real()
 					console.log ("child.id=" + child.id + " total="+total+" height="+child.offsetHeight);
 				}else{
 					if (child.id != null && child.id == "vframe2h"){
-						//var w = child.offsetWidth;
-						//var cssBackup=child.style.cssText;
-						// sets the borders to zero
-						//child.style.border="0px";
-						// computes the border size
 						var bord=(child.offsetWidth-child.clientWidth);
-						// resets the css
-						//child.style.cssText=cssBackup;
 						total += bord;
 						console.log ("border child.id=" + child.id + " total="+total+" border="+bord);
 					}else if (child.className == "webtable"){
