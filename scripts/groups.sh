@@ -146,7 +146,7 @@ elif [ "$1" = "writemails" ] ; then
 	./bofs -u jacques-B msgs -t -G common --groupowner jacques-B -C "Jacques-B writes to jacques-B:common"
 	echo Create an image from screen capture
 	if [ -x /usr/bin/import ] ; then
-		import -window root -resize 800x600 /tmp/image.jpg
+		import -window root /tmp/image.jpg
 		convert /tmp/image.jpg /tmp/image.gif
 		convert /tmp/image.jpg /tmp/image.png
 		./bofs msgs -t -G Agroup1 --groupowner jacques-A -F /tmp/image.jpg
