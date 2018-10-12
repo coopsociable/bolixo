@@ -470,17 +470,28 @@ static void webtabs(_F_webtabs &c,
 		tlmpweb_pushgrab(docs);
 		c.documents();
 		tlmpweb_popgrab();
+		const unsigned margin = 5;
+		static const char *mcolor = "#F3F3F3";
 		if (docs.size() > 0){
-			DIV d("tabs","tab"); d.flexfixe().bg("white").align("stretch").w(size[0]).h(60).print();
+			DIV d("tabs","tab"); d.flexfixe().bg(mcolor).align("stretch").w(size[0]).h(60).margins(margin,margin).print();
 			htmlout(docs);
 		}
 		glocal const char *help_id = c.help_id.c_str();
 		glocal const char *help_title = c.help_title.c_str();
+		bool putborder = true;	// On each side of the first tab only
 		for (unsigned type=0; type <4; type++){
 			unsigned sz = size[type+1];
 			if (sz != 0){
 				DIV c; c.flexfixe().w(sz).align("stretch").bg("white").print();
-				DIV cc("tabs","tab"); cc.dispflex().flowcol().bg("white").border(1,"black").print();
+				DIV cc("tabs","tab"); cc.dispflex().flowcol().bg(mcolor);
+				if (putborder){
+					cc.borderleft(1,"black");
+					cc.borderright(1,"black");
+					putborder = false;
+				}
+				cc.print();
+				// Set an internal margin, inside borders
+				DIV m; m.margins(margin,margin).bg("white").print();
 				DIV top("","tabs"); top.align("flex-start").flexfixe().print();
 				glocal unsigned type = type;
 				<call button_row>(0,"white");
@@ -2915,6 +2926,7 @@ extern "C" void webmain_real()
 	</f>
 	<f step12> // Documentation
 		bolixo_title (MSG_R(M_DOCUM),this);
+		DIV d("tabs","tab"); d.w(100).print();
 		index_doc(glocal.docpointers[SECTION_NONE],section_none);
 	</f>
 	<f step13>
