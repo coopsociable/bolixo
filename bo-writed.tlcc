@@ -724,10 +724,12 @@ static int bo_writed_create_group (unsigned userid, const char *groupname, bool 
 					<call sql_query>("select id from groups where ownerid=%u and name='%s'"
 						,glocal.userid,glocal.groupname);
 					<f onerow>
-						glocal unsigned groupid = atoi(row[0]);
+						unsigned groupid = atoi(row[0]);
 						if (sql_action("insert into group_list_members (group_list_id,groupid,defaultaccess) values (%u,%u,'r')"
-							,glocal.group_list_id,glocal.groupid)==-1){
+							,glocal.group_list_id,groupid)==-1){
 							(*glocal.msg) = "Internal error (group_list_members table)";
+						}else{
+							glocal.ret = groupid;
 						}
 					</f>
 					</call>
@@ -1221,15 +1223,30 @@ int main (int argc, char *argv[])
 						,confirmid);
 					<f onerow>
 						unsigned userid = atoi(row[0]);
+						const char *name = row[1];
 						if (sql_action(*glocal.usq,"update users set confirmed=now() where userid=%u",userid)!=-1){
 							glocal.bo_writed_client.rep_confirmuser(true,"New user confirmed");
 							bo_log_confirmuser (glocal.flog,glocal.confirmid,time(NULL));
 							string msg;
-							bo_writed_create_group_list(userid,row[1],"public","Public view",msg);
+							/*
+								Create a project named "public"
+								Create a group named "contacts"
+								Make this group member of the project "public"
+								Create a group named "public"
+								Make this group member of project "public"
+								Make this user member of his group "public"
+							*/
+							bo_writed_create_group_list(userid,name,"public","Public view",msg);
 							bo_writed_create_group (userid,"contacts",false,"",msg);
 							bo_writed_set_group(userid,"public","contacts","R",msg);
-							bo_writed_create_group (userid,"public",true,"Public view",msg);
-							bo_writed_set_group(userid,"public","public","R",msg);
+							int groupid = bo_writed_create_group (userid,"public",true,"Public view",msg);
+							if (groupid != -1){
+								bo_writed_set_group(userid,"public","public","R",msg);
+								if (sql_action("insert into group_members (groupid,userid,access,role) values (%u,%u,'W','')"
+									,groupid,userid)==-1){
+									tlmp_error ("Internal error setting user %s member of his group public",name);
+								}
+							}
 						}else{
 							glocal.bo_writed_client.rep_confirmuser(false,"Error, can't confirm new user");
 						}
