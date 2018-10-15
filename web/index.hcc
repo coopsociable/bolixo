@@ -41,8 +41,7 @@ static WEBID ID_MAIL("mail");
 static WEBID ID_PROJECT("project");
 static WEBID ID_CONTACT("contact");
 static WEBID ID_PRJTEXT("prjtext");
-static WEBID ID_GROUPS("groups");
-static WEBID ID_PROJECTS("projects");
+static WEBID ID_INTERESTS("interests");
 #define TAB_FORM "tab_form"
 
 using namespace std;
@@ -175,7 +174,7 @@ static const int step_login=2;
 static const int step_adduser=3;
 static const int step_logout=4;
 static const int step_image=5;
-// 6 unused
+static const int step_public=6;
 static const int step_projects=7;
 static const int step_mails=8;
 static const int step_talks=9;
@@ -259,7 +258,7 @@ static string toupper (const char *s)
 }
 static void webtab_href_c (const char *title, const char *href, const char *color)
 {
-	htmlprintf ("<a href=\"#\" style=\"text-decoration:none\" onclick=formsubmit(\"%s\")><table bgcolor=\"%s\"><tr><td style=\"padding:5px\"><font size=4 color=white>&nbsp;%s&nbsp;</font></table></a>\n"
+	htmlprintf ("<a href=\"#\" onclick=formsubmit(\"%s\")><table bgcolor=\"%s\"><tr><td style=\"padding:5px\"><font size=4 color=white>&nbsp;%s&nbsp;</font></table></a>\n"
 		,href,color,title);
 }
 static void webtab_aref_selected (const char *title, int tab)
@@ -692,7 +691,7 @@ static void show_buttons_right(_F_websteps *c)
 	}
 	if (userinfo.is_admin){
 		/- <td>
-		string tmp = string_f ("href=%s/admin.hc style=\"text-decoration:none\"",tlmpweb_curdir());
+		string tmp = string_f ("href=%s/admin.hc",tlmpweb_curdir());
 		print_href("Admin menu",tmp);
 	}
 	if (is_user){
@@ -743,8 +742,8 @@ static void bolixo_title (const char *title, _F_websteps *c)
 	DIV head; head.id("head").flexfixe().print();
 	/- <table border=0 width=100%><tr><td>
 	htmlprintf ("<table border=0 width=100%% bgcolor=%s cellspacing=0><tr><td rowspan=2 align=left>\n",newscolor);
-		/- <table border=0><tr><td><a href=/7s.html style=\"text-decoration:none\"><img src=/favicon.ico></a></td><td align=left>
-		htmlout ("<a href=/index.hc style=\"text-decoration:none\"><font size=8 color=\"white\">Bolixo.org</font></a>&nbsp;&nbsp;&nbsp;");
+		/- <table border=0><tr><td><a href=/7s.html><img src=/favicon.ico></a></td><td align=left>
+		htmlout ("<a href=/index.hc><font size=8 color=\"white\">Bolixo.org</font></a>&nbsp;&nbsp;&nbsp;");
 		htmlprintf ("screen %u %u f=%u\n",tlmpweb_screenwidth(),tlmpweb_screenheight(),tlmpweb_fontsize());
 		/- <td>
 		if (userinfo.name.empty()) printhref ("/about.html",MSG_U(I_ABOUT,"<font color=white>A peer to peer open social media</font>"),true);
@@ -951,6 +950,35 @@ static void web_updatecurrents(CONNECT_INFO &con_sess)
 	</call>
 }
 </mod>
+/*
+	Format an <img tag
+*/
+static string index_img(unsigned step, unsigned width, PARAM_STRING dirpath, PARAM_STRING filename, PARAM_STRING date)
+{
+	char tmp[strlen(date.ptr)+1];
+	strcpy (tmp,date.ptr);
+	char *pt = tmp;
+	while (*pt != '\0'){
+		if (*pt == ' ') *pt = '_';
+		pt++;
+	}
+	const char *sep = "/";
+	if (dirpath.ptr[0] == '\0') sep = "";
+	return string_f ("<img width=%u src=%s?webstep=%u&image=%s%s%s&mod=%s>"
+		,width,tlmpweb_curpage(),step,dirpath.ptr,sep,filename.ptr,tmp);
+}
+static string index_img(unsigned step, const char *style, PARAM_STRING filepath, PARAM_STRING date)
+{
+	char tmp[strlen(date.ptr)+1];
+	strcpy (tmp,date.ptr);
+	char *pt = tmp;
+	while (*pt != '\0'){
+		if (*pt == ' ') *pt = '_';
+		pt++;
+	}
+	return string_f ("<img style='%s' src=%s?webstep=%u&image=%s&mod=%s>"
+		,style,tlmpweb_curpage(),step,filepath.ptr,tmp);
+}
 
 /*
 	Format a short message, remove the signature
@@ -987,32 +1015,79 @@ static string index_format_shortmsg (const char *txt)
 {
 	return index_format_shortmsg (txt,0);
 }
+static const char *tbtype[]={
+        "text/html",	//FILE_UNKNOWN,
+        "text/html",	//FILE_TEXT,
+	"audio/mp3",	//FILE_SOUND_MP3,
+	"audio/ogg",	//FILE_SOUND_OGG,
+	"image/jpeg",	//FILE_IMAGE_JPG,
+	"image/png",	//FILE_IMAGE_PNG,
+	"image/gig",	//FILE_IMAGE_GIF,
+	"video/mpeg"	 //FILE_VIDEO,
+};
 <mod>
-static void index_sendfile (CONNECT_INFO &con, PARAM_STRING filename, const char *filetype)
+static void index_sendfile_common(CONNECT_INFO &con, const READINFO_receive &info, const BOB_TYPE &content, bool more, const char *handle)
 {
 	glocal CONNECT_INFO *con = &con;
-	glocal const char *filetype = filetype;
+	tlmpweb_setmodified(info.modified);
+	tlmpweb_doctype (tbtype[info.file_type],info.size);
+	htmlwrite (content.getbuffer(),content.getsize());
+	glocal bool more = more;
+	while (glocal.more){
+		<call bod_client_readmore>(*glocal.con,w_session.c_str(),handle);
+		<f ok>
+			htmlwrite (content.getbuffer(),content.getsize());
+			glocal.more = more;
+		</f>
+		</call>
+	}
+}
+</mod>	
+<mod>
+static void index_sendfile (CONNECT_INFO &con, PARAM_STRING filename)
+{
+	glocal CONNECT_INFO *con = &con;
 	<call bod_client_readfile_bob>(con,w_session.c_str(),filename,"",false);
 	<f ok>
 		if (!success){
 			htmlprintf ("Can't read file: %s\n",msg);
+
 		}else{
-			tlmpweb_setmodified(info.modified);
-			tlmpweb_doctype (glocal.filetype,size);
-			htmlwrite (content.getbuffer(),content.getsize());
-			glocal bool more = more;
-			while (glocal.more){
-				<call bod_client_readmore>(*glocal.con,w_session.c_str(),handle);
-				<f ok>
-					htmlwrite (content.getbuffer(),content.getsize());
-					glocal.more = more;
-				</f>
-				</call>
-			}	
+			index_sendfile_common(*glocal.con,info,content,more,handle);
 		}
 	</f>
 	</call>
 }
+</mod>
+/*
+	Send a file using the public api.
+	The file is /username/file. We accept also username/file.
+	So we extract the username
+*/
+<mod>
+static void index_sendpublicfile (CONNECT_INFO &con, PARAM_STRING filename)
+{
+	glocal CONNECT_INFO *con = &con;
+	const char *pt = filename.ptr;
+	if (*pt == '/') pt++;
+	const char *start = pt;
+	pt = strchr(pt,'/');
+	if (pt != NULL){
+		glocal string username;
+		glocal.username = string(start,pt-start);
+		<call bod_client_public_readfile>(con,glocal.username,pt,0);
+		<f ok>
+			if (!success){
+				tlmp_error ("Can't read public file for user %s: %s\n",glocal.username.c_str(),msg);
+			}else{
+				index_sendfile_common(*glocal.con,info,content,more,handle);
+			}
+		</f>
+		</call>
+	}
+}
+</mod>
+
 <mod>
 static int index_loadfile(CONNECT_INFO &con, PARAM_STRING filename, string &text)
 {
@@ -1056,7 +1131,7 @@ static int index_loadfile(CONNECT_INFO &con, PARAM_STRING filename, W_SSTRING &t
 	return ret;
 }
 
-</mod>
+
 static void index_format_large_text(const BOB_TYPE &content)
 {
 	string tmp = string((const char*)content.getbuffer(),content.getsize());
@@ -1064,7 +1139,7 @@ static void index_format_large_text(const BOB_TYPE &content)
 	htmlwrite (tmp.c_str(),tmp.size());
 }
 <mod>
-static void index_popup (CONNECT_INFO &con, const char *content, FILE_TYPE file_type, PARAM_STRING filepath)
+static void index_popup (CONNECT_INFO &con, const char *content, FILE_TYPE file_type, PARAM_STRING modified, PARAM_STRING filepath)
 {
 	glocal CONNECT_INFO *con = &con;
 	const char *path = filepath.ptr;
@@ -1085,13 +1160,13 @@ static void index_popup (CONNECT_INFO &con, const char *content, FILE_TYPE file_
 			,tlmpweb_curpage(),step_image,path,tbftype[file_type]);
 	}else if (file_is_video(file_type)){
 		htmlprintf ("<video width=\"800\" height=\"600\" controls>\n"
-			"<source src=\"%s?webstep=%u&image=%s\" type=\"video/mp4\">\n"
+			"<source src=\"%s?webstep=%u&image=%s\" type=\"video/mpeg\">\n"
 			"Your browser does not support the video tag.\n"
 			"</video>\n"
 			,tlmpweb_curpage(),step_image,path);
 	}else if (file_is_image(file_type)){
-		htmlprintf ("<img width=800 src=%s?webstep=%u&image=%s>"
-			,tlmpweb_curpage(),step_image,path);
+		string img = index_img (step_image,800,"",path,modified);
+		htmlout (img);
 	}else if (file_is_text(file_type)){
 		<call bod_client_readfile_bob>(con,w_session.c_str(),path,"",false);
 		<f ok>
@@ -1149,7 +1224,8 @@ static void index_show_shortmsg(
 			}else{
 				auto &m = messages[0];
 				//htmlprintf ("uuid=%s<p>\n",m.uuid);
-				index_popup (*glocal.con,m.content,m.file_type,string_f("/msgs/%s/short-inbox/%s/%s",glocal.groupowner,glocal.groupname,m.uuid));
+				index_popup (*glocal.con,m.content,m.file_type,m.submit
+					,string_f("/msgs/%s/short-inbox/%s/%s",glocal.groupowner,glocal.groupname,m.uuid));
 			}
 		</f>
 		</call>
@@ -1178,9 +1254,9 @@ static void index_show_shortmsg(
 						glocal.webtable.setrow ("sep",glocal.rownum,"\t%s"
 							,m.submit);
 					}else{
-						glocal.webtable.setrow ("sep",glocal.rownum,"<img width=30 src=%s?webstep=%u&image=/projects/%s/public/mini-photo.jpg>%s\t%s"
-							,tlmpweb_curpage(),step_image,m.from,m.from
-							,m.submit);
+						string dir = string_f("/projects/%s/public",m.from);
+						string img = index_img(step_image,30,dir,"mini-photo.jpg",m.submit);
+						glocal.webtable.setrow ("sep",glocal.rownum,"%s%s\t%s",img.c_str(),m.from,m.submit);
 					}
 					if (m.content[0] != '\0'){
 						string tmp = index_format_shortmsg (m.content,5);
@@ -1191,8 +1267,8 @@ static void index_show_shortmsg(
 							"</audio>\a"
 							,tlmpweb_curpage(),step_image,path.c_str(),tbftype[m.file_type]);
 					}else if (file_is_image(m.file_type)){
-						glocal.webtable.setrow("image",glocal.rownum,"\t<img width=100 src=%s?webstep=%u&image=%s>\a\a\a"
-							,tlmpweb_curpage(),step_image,path.c_str());
+						string img = index_img (step_image,100,"",path,m.submit);
+						glocal.webtable.setrow("image",glocal.rownum,"\t%s\a\a\a",img.c_str());
 					}else if (file_is_video(m.file_type)){
 						glocal.webtable.setrow("image",glocal.rownum,
 							"\t<video width=\"200\" height=\"200\" controls>\n"
@@ -1329,25 +1405,72 @@ static string index_format_mail_fname(const MESSAGE_receive &m)
 	}	
 	return fname;
 }
-#if 0
-/*
-	Compute/Guess the number of lines that can be displayed
-*/
-static unsigned index_suggested_lines (const char *id, unsigned defval, int cheat)
+static void index_script()
 {
-	unsigned ret = defval;
-	unsigned height,width;
-	tlmpweb_gettablegeometry(id,height,width);
-	if (height > 0){	
-		unsigned fontsize = tlmpweb_fontsize();
-		if (fontsize > 0){
-			ret = height/(fontsize+cheat)-2;
+	// Script to make sure the webtabs tabs use the full height of the screen
+	// Then it takes the webtables and grows them too.
+	<?
+	<script>
+		document.onreadystatechange = function () {
+			var state = document.readyState;
+			if (state == 'interactive') {
+				fixsize();
+			} else if (state == 'complete') {
+			}
+		};
+		var diff = 0;
+		function allDescendants (node,total) {
+			//console.log ("Enter " + node.className + " " + node.id);
+			if (node.id == "tab"){
+				var bord=(node.offsetWidth-node.clientWidth);
+				total += bord;
+				console.log ("border node.id=" + node.id + " total="+total+" border="+bord);
+			}
+			for (var i = 0; i < node.childNodes.length; i++) {
+				var child = node.childNodes[i];
+				if (child.id != null
+					&& (child.id == "tabs"
+						|| child.id == "tab_form"
+						|| child.id == "webtable-top")){
+					total += child.offsetHeight;
+					console.log ("child.id=" + child.id + " total="+total+" height="+child.offsetHeight);
+				}else{
+					if (child.id != null && child.id == "vframe2h"){
+						var bord=(child.offsetWidth-child.clientWidth);
+						total += bord;
+						console.log ("border child.id=" + child.id + " total="+total+" border="+bord);
+					}else if (child.className == "webtable"){
+						console.log ("Set webtable "+child.id+" total="+total+" diff="+diff+" oldheight="+child.offsetHeight);
+						child.style.height = diff - total;
+						break;
+					}
+					total = allDescendants(child,total);
+				}
+			}
+			return total;
 		}
-	}
-	tlmp_error ("suggested_lines id=%s ret=%d defval=%d\n",id,ret,defval);
-	return ret;
+		function fixsize(){
+			var t = document.getElementById('head').offsetHeight;
+			diff = window.innerHeight-t;
+			var tabs = document.getElementsByClassName("tabs");
+			for (var i=0; i<tabs.length; i++){
+				tabs[i].style.height = diff-2;
+			}
+			console.log ("tabs.length=" + tabs.length);
+			var i;
+			for (i=0; i<tabs.length; i++){
+				allDescendants (tabs[i],0);
+			}
+			var tables = document.getElementsByClassName('webtable');
+			console.log ("ready " + document.readyState);
+			for (i = 0; i < tables.length; i++) {
+				var table = tables[i];
+				console.log (table.id+" "+table.offsetHeight+" "+table.offsetWidth);
+			}
+		}
+	</script>
+	?>
 }
-#endif
 <mod>
 extern "C" void webmain_real()
 {
@@ -1359,6 +1482,7 @@ extern "C" void webmain_real()
 	glocal.con_sess.port = "/dev/sessiond.sock";
 	glocal.con_sess.secret = "foo";
 	glocal vector<DOCUMENT_POINTER> docpointers;
+	glocal bool doscript = true;	// Send javascript at tne end of not
 	for (unsigned i=0; i<SECTION_NBSECTIONS; i++) glocal.docpointers.push_back(DOCUMENT_POINTER());
 	if (tlmpweb_isrobot()) w_robot = 1;
 	// debug
@@ -1584,8 +1708,10 @@ extern "C" void webmain_real()
 		c.setrowstyle ("sep+current","bgcolor=lightblue");
 		c.setrowstyle ("white","bgcolor=white");
 		c.setrowstyle ("white+current","bgcolor=lightblue");
-		c.setrowstyle ("whitebold","bgcolor=white><b>\b</b>");
-		c.setrowstyle ("whitebold+current","bgcolor=lightblue><b>\b</b>");
+		c.setrowstyle ("whitebold","bgcolor=white style='font-weight:bold;'");
+		c.setrowstyle ("whitebold+current","bgcolor=lightblue style='font-weight:bold;'");
+		//c.setrowstyle ("whitebold","bgcolor=white><b>\b</b>");
+		//c.setrowstyle ("whitebold+current","bgcolor=lightblue><b>\b</b>");
 		c.setrowstyle ("image","bgcolor=white align=center");
 	</f>
 	</obj>
@@ -1596,6 +1722,10 @@ extern "C" void webmain_real()
 		}else if (userinfo.name.empty() && step != 2 && step != 3){
 			step = 1;
 		}
+	</f>
+	<f end>
+		/- </div>
+		index_script();
 	</f>
 	<f step1>
 		bolixo_title ("",this);
@@ -1608,8 +1738,7 @@ extern "C" void webmain_real()
 			glocal string prjdir = string_f ("/projects/%s/public/default",userinfo.name.c_str());
 			<call vframe4>("title","","");
 			<f top_left>
-				htmlprintf ("<img width=200 src=%s?webstep=%u&image=%s/image.jpg>"
-					,tlmpweb_curpage(),step_image,glocal.prjdir.c_str());
+				htmlout (index_img(step_image,200,glocal.prjdir.c_str(),"image.jpg","date"));
 			</f>
 			<f top>
 				<call bod_client_readfile>(glocal.con,w_session.c_str(),string_f("%s/intro.html",glocal.prjdir.c_str()),"");
@@ -1623,8 +1752,24 @@ extern "C" void webmain_real()
 				/- Documents
 			</f>
 			<f left>
-				//string table = string("talk")+"public";
-				//index_show_shortmsg (glocal.con,glocal.con_sess,table,"public",userinfo.name);
+				string table = string("talk")+"public";
+				<call webtable>(ID_INTERESTS,table,"100%",currents[table],offsets[table],5);
+				<f load>
+					sethead  ("From\tWhen\tWhat");
+					glocal unsigned rownum = nbskip;
+					<call bod_client_interest_check>(glocal.con,w_session.c_str(),"",nbskip,nblines);
+					<f ok>
+						// success:b msg messages:U{SHORTMSG}v
+						for (auto &m:messages){
+							string img = index_img(step_public,30,m.from,"mini-photo.jpg",m.submit);
+							glocal.webtable.setrow ("white",glocal.rownum,"%s%s\t%s\t%s",img.c_str(),m.from,m.submit,m.content);
+							glocal.rownum++;
+						}
+					</f>
+					</call>
+
+				</f>
+				</call>
 			</f>
 			</call>
 			/- </table>
@@ -1775,10 +1920,15 @@ extern "C" void webmain_real()
 		</f>
 		</call>
 	</f>
-	<f step5> // Send an image or video
-		index_sendfile (glocal.con,w_image.c_str(),"image/jpeg");
+	<f step5> // Send a file
+		index_sendfile (glocal.con,w_image.c_str());
+		glocal.doscript = false;
+		noend();
 	</f>	
-	<f step6> // 
+	<f step6> // Send a file from a user public directory
+		index_sendpublicfile (glocal.con,w_image.c_str());
+		glocal.doscript = false;
+		noend();
 	</f>
 	<f step7> // TAB Projects
 		//HTMLDEBUG d1("t1");
@@ -1894,20 +2044,20 @@ extern "C" void webmain_real()
 						glocal string fname = string_f("%s/%s",glocal.path.c_str(),f.name);
 						if (file_is_text(f.file_type)){
 							if (f.islarge){
-								index_sendfile (glocal.con,glocal.fname,"text/html");
+								index_sendfile (glocal.con,glocal.fname);
 							}else{
 								<call bod_client_readfile>(glocal.con,w_session.c_str(),glocal.fname,"");
 								<f ok>
 									if (!success){
-										index_popup (glocal.con,msg,glocal.file_type,glocal.fname);
+										index_popup (glocal.con,msg,glocal.file_type,info.modified,glocal.fname);
 									}else{
-										index_popup (glocal.con,content,glocal.file_type,glocal.fname);
+										index_popup (glocal.con,content,glocal.file_type,info.modified,glocal.fname);
 									}
 								</f>
 								</call>
 							}
 						}else{
-							index_popup (glocal.con,"",f.file_type,glocal.fname);
+							index_popup (glocal.con,"",f.file_type,f.modified,glocal.fname);
 						}
 					}
 				</f>
@@ -1963,8 +2113,7 @@ extern "C" void webmain_real()
 				DIV d("webtable"); d.print();
 				htmlprintf (MSG_R(I_DOCNAME),glocal.filename);
 				/- <br>
-				htmlprintf ("<img style='max-width:100%%; max-height=100%%;' src=%s?webstep=%u&image=%s>"
-					,tlmpweb_curpage(),step_image,glocal.path.c_str());
+				htmlout (index_img(step_image,"max-width:100%; max-height=100%;",glocal.path,info.modified));
 			}else if (info.file_type == FILE_TEXT){
 				<call form>(formid);
 				<f top>
@@ -1985,7 +2134,7 @@ extern "C" void webmain_real()
 							/-#I_NEWDOCNAME New document name&nbsp;
 							field_string (w_filename,"size=30");	
 						}else{
-							htmlprintf (MSG_U(I_DOCNAME,"Document name:&nbsp;<font size=+4>%s</font>"),glocal.filename);
+							htmlprintf (MSG_U(I_DOCNAME,"Document name:&nbsp;<font size=+1>%s</font>"),glocal.filename);
 						}
 						/- <td valign=top align=right>
 						button_submit(MSG_U(B_SAVE,"Save"));
@@ -2285,8 +2434,8 @@ extern "C" void webmain_real()
 			if (strcmp(id,"help")==0){
 				index_doc(glocal.docpointers[SECTION_TALK],section_talk);
 			}else if (file_is_image(info.file_type)){
-				htmlprintf ("<img width=100%% src=%s?webstep=%u&image=%s>"
-					,tlmpweb_curpage(),step_image,id);
+				string img = index_img(step_image,"max-width:100%; max-height:100%;",id,info.modified);
+				htmlout (img);
 			}else if (file_is_text(info.file_type)){
 				/- <table border=0>
 				vector<string> tb;
@@ -2358,7 +2507,7 @@ extern "C" void webmain_real()
 						url_self ("add=1",MSG_U(I_CREATELIST,"Create a new project"));
 						/- <br>&nbsp;<br>
 					}
-					<call webtable>(ID_PROJECTS,"list:projects","100%",currents["list:projects"]);
+					<call webtable>("list:projects","100%",currents["list:projects"]);
 					<f load>
 						sethead (MSG_U(H_PROF_PROJECTS,"Project\tMembers\tAccess"));
 						<call bod_client_list_lists>(glocal.con,w_session.c_str(),"");
@@ -2539,7 +2688,7 @@ extern "C" void webmain_real()
 						url_self ("add=1",MSG_U(I_CREATEGROUP,"Create a new group"));
 						/- <br>&nbsp;<br>
 					}
-					<call webtable>(ID_GROUPS,"list:groups","100%",currents["list:groups"]);
+					<call webtable>("list:groups","100%",currents["list:groups"]);
 					<f load>
 						sethead (MSG_U(H_GROUPS,"Group\tMembers\tAccess\tRole"));
 						<call bod_client_list_groups>(glocal.con,w_session.c_str(),"",true);
@@ -2855,6 +3004,7 @@ extern "C" void webmain_real()
 			}else if (strcmp(id,"Account")==0){
 				glocal string status = "&nbsp;";
 				sethelp("helpaccount",MSG_U(I_HELPACCOUNT,"Account"));
+				DIV d("webtable"); d.print();
 				<call form>("configaccount");
 				<f top>
 					/- <table border=0>
@@ -2935,6 +3085,7 @@ extern "C" void webmain_real()
 	<f step15>
 	</f>
 	</call>
+	if (glocal.doscript){
 	if (w_webtab_add.isset() || w_webtab.isset()){
 		// Save the webtabs state to the session manager
 		VAR var;
@@ -2981,70 +3132,7 @@ extern "C" void webmain_real()
 			</call>
 		}
 	}
-	/- </div>
-	// Script to make sure the webtabs tabs use the full height of the screen
-	// Then it takes the webtables and grows them too.
-	<?
-	<script>
-		document.onreadystatechange = function () {
-			var state = document.readyState;
-			if (state == 'interactive') {
-				fixsize();
-			} else if (state == 'complete') {
-			}
-		};
-		var t = document.getElementById('head').offsetHeight;
-		var diff = window.innerHeight-t;
-		var tabs = document.getElementsByClassName("tabs");
-		for (var i=0; i<tabs.length; i++){
-			tabs[i].style.height = diff-2;
-		}
-		function allDescendants (node,total) {
-			//console.log ("Enter " + node.className + " " + node.id);
-			if (node.id == "tab"){
-				var bord=(node.offsetWidth-node.clientWidth);
-				total += bord;
-				console.log ("border node.id=" + node.id + " total="+total+" border="+bord);
-			}
-			for (var i = 0; i < node.childNodes.length; i++) {
-				var child = node.childNodes[i];
-				if (child.id != null
-					&& (child.id == "tabs"
-						|| child.id == "tab_form"
-						|| child.id == "webtable-top")){
-					total += child.offsetHeight;
-					console.log ("child.id=" + child.id + " total="+total+" height="+child.offsetHeight);
-				}else{
-					if (child.id != null && child.id == "vframe2h"){
-						var bord=(child.offsetWidth-child.clientWidth);
-						total += bord;
-						console.log ("border child.id=" + child.id + " total="+total+" border="+bord);
-					}else if (child.className == "webtable"){
-						console.log ("Set webtable "+child.id+" total="+total+" diff="+diff+" oldheight="+child.offsetHeight);
-						child.style.height = diff - total;
-						break;
-					}
-					total = allDescendants(child,total);
-				}
-			}
-			return total;
-		}
-		function fixsize(){
-			var tabs = document.getElementsByClassName("tabs");
-			console.log ("tabs.length=" + tabs.length);
-			var i;
-			for (i=0; i<tabs.length; i++){
-				allDescendants (tabs[i],0);
-			}
-			var tables = document.getElementsByClassName('webtable');
-			console.log ("ready " + document.readyState);
-			for (i = 0; i < tables.length; i++) {
-				var table = tables[i];
-				console.log (table.id+" "+table.offsetHeight+" "+table.offsetWidth);
-			}
-		}
-	</script>
-	?>
+	}
 }
 </mod>
 

@@ -21,6 +21,7 @@
 #include <string>
 #include <vector>
 #include <trlitool.h>
+#define DEFINE_TBTYPE
 #define DEFINE_TBFTYPE
 #include "bolixo.h"
 #include "bolixo.m"
@@ -63,6 +64,10 @@ using namespace std;
 static bool testmode = false;
 static TRANS_NOTLOAD *tbviewed[]={P_MSG_U(I_VIEWNEW,"New"),P_MSG_U(I_VIEWSEEN,"Seen"),P_MSG_U(I_VIEWCHANGED,"Changed")};
 
+static void notdone()
+{
+	tlmp_error ("Sorry, not done yet!\n");
+}
 static const char *normalize_date (PARAM_STRING date)
 {
 	const char *ret = NULL;
@@ -235,7 +240,14 @@ struct CONTEXT{
 		return ret;
 	}
 	int hlogin(){
-		return login();
+		int ret = -1;
+		if (hsessionid.size()>0){
+			ret = 0;
+		}else{
+			ret = bofs_login (hcon,email,password,hsessionid);
+			if (ret == -1) tlmp_error ("webapi_login failed\n");
+		}
+		return ret;
 	}
 	bool is_internal(){
 		return con.port.size() > 0;
@@ -698,6 +710,7 @@ static int bofs_cat (CONTEXT &ctx, int argc, char *argv[])
 			return bofs_cat_bofile (ctx,path,stdout);
 		</f>
 		<f https_file>
+			notdone();
 			return -1;
 		</f>
 		<f local_file>
@@ -727,12 +740,33 @@ struct BO_ARGTYPE{
 static int bofs_copy_file(CONTEXT &ctx, PARAM_STRING path0, BO_SOURCE src0, PARAM_STRING path1, BO_SOURCE src1)
 {
 	glocal CONTEXT *ctx = &ctx;
-	glocal int ret = 0;
-	if (src0 == src1){
-		if (src0 == LOCAL_ENTRY){
+	glocal int ret = -1;
+	if (src0 == LOCAL_ENTRY){
+		if (src1 == LOCAL_ENTRY){
 			// Copying two local files
 			glocal.ret = system (string_f ("cp %s %s",path0.ptr,path1.ptr).c_str());
-		}else if (src0 == BO_ENTRY){
+		}else if (src1 == BO_ENTRY){
+			FILE *fin = fopen (path0.ptr,"r");
+			if (fin == NULL){
+				bofs_error ("cp",false,"Can't open file %s (%s)",path0,strerror(errno));
+				glocal.ret = -1;
+			}else{
+				glocal.ret = bofs_write_bofile (*glocal.ctx,path1,fin,"cp");
+				fclose (fin);
+			}
+		}else if (src1 == HTTPS_ENTRY){
+			notdone();
+		}
+	}else if (src0 == BO_ENTRY){
+		if (src1 == LOCAL_ENTRY){
+			glocal const char *path0 = path0.ptr;
+			<call savefile>(path1,false);
+			<f dowrite>
+				glocal.ret = bofs_cat_bofile (*glocal.ctx,glocal.path0,fout);
+				return 0;
+			</f>
+			</call>
+		}else if (src1 == BO_ENTRY){
 			<call bod_client_copy>(ctx.con,ctx.sessionid,path0,path1);
 			<f ok>
 				if (!success){
@@ -741,26 +775,11 @@ static int bofs_copy_file(CONTEXT &ctx, PARAM_STRING path0, BO_SOURCE src0, PARA
 				}
 			</f>
 			</call>
-		}else if (src0 == HTTPS_ENTRY){
-			glocal.ret = -1;
+		}else if (src1 == HTTPS_ENTRY){
+			notdone();
 		}
-	}else if (src0 == LOCAL_ENTRY && src1 == BO_ENTRY){
-		FILE *fin = fopen (path0.ptr,"r");
-		if (fin == NULL){
-			bofs_error ("cp",false,"Can't open file %s (%s)",path0,strerror(errno));
-			glocal.ret = -1;
-		}else{
-			glocal.ret = bofs_write_bofile (*glocal.ctx,path1,fin,"cp");
-			fclose (fin);
-		}
-	}else if (src0 == BO_ENTRY && src1 == LOCAL_ENTRY){
-		glocal const char *path0 = path0.ptr;
-		<call savefile>(path1,false);
-		<f dowrite>
-			glocal.ret = bofs_cat_bofile (*glocal.ctx,glocal.path0,fout);
-			return 0;
-		</f>
-		</call>
+	}else if (src0 == HTTPS_ENTRY){
+		notdone();
 	}
 	return glocal.ret;
 }
@@ -1020,7 +1039,7 @@ static int bofs_mkdir (CONTEXT &ctx, int argc, char *argv[])
 				if (success){
 					glocal.ret = 0;
 				}else{
-					bofs_error ("mkdir",internal_error,"Can't create directory %s: %s",glocal.path,msg);
+					bofs_error ("mkdir",internal_error,MSG_U(E_MKDIR,"Can't create directory %s: %s"),glocal.path,msg);
 				}
 			</f>
 			</call>
@@ -1034,7 +1053,7 @@ static int bofs_mkdir (CONTEXT &ctx, int argc, char *argv[])
 				if (success){
 					glocal.ret = 0;
 				}else{
-					bofs_error ("mkdir",internal_error,"Can't create directory %s: %s",glocal.path,msg);
+					bofs_error ("mkdir",internal_error,MSG_R(E_MKDIR),glocal.path,msg);
 				}
 			</f>
 			</call>
