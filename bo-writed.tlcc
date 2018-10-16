@@ -2100,9 +2100,9 @@ int main (int argc, char *argv[])
 							<f onerow>
 								unsigned userid = atoi(row[0]);
 								if (userid == glocal.userid){
-									glocal.msg = "Contact request already performed by your contact";
+									glocal.msg = MSG_U(E_DONEBYCONTACT,"Contact request already performed by your contact");
 								}else{
-									glocal.msg = "Contact request already performed by you";
+									glocal.msg = MSG_U(E_CONTACTDONE,"Contact request already performed by you");
 								}
 							</f>
 							<f empty>
@@ -2139,7 +2139,7 @@ int main (int argc, char *argv[])
 							<f onerow>
 								CONTACT_STATUS s = (CONTACT_STATUS)atoi(row[0]);
 								if (s != CONTACT_WAITING){
-									glocal.msg = "Contact request for this user already managed";
+									glocal.msg = MSG_U(E_CONTACTMANAGED,"Contact request for this user already managed");
 								}else  if (sql_action("update contact_requests set status=%d where userid=%u and reqid=%d"
 									,glocal.status,glocal.userid,glocal.target_userid)==-1){
 									glocal.msg = "Can't update contact_request";
@@ -2269,6 +2269,7 @@ int main (int argc, char *argv[])
 					glocal bool bdusers=false;
 					glocal bool sessiond=false;
 					glocal bool keysd=false;
+					glocal bool fsok= false;
 					<call sql_query>(*glocal.usq,"select count(*) from users");
 					<f onerow>
 						glocal.bdusers=true;
@@ -2289,7 +2290,15 @@ int main (int argc, char *argv[])
 						glocal.keysd = lines.size() > 0;
 					</f>
 					</call>
-					rep_test (glocal.bdtrli,glocal.bdusers,glocal.sessiond,glocal.keysd);
+					static const char *testfile = "/var/lib/bolixo/test";
+					<call savefile>(testfile,false);
+					<f dowrite>
+						glocal.fsok = true;
+						return 0;
+					</f>
+					</call>
+					unlink (testfile);
+					rep_test (glocal.bdtrli,glocal.bdusers,glocal.sessiond,glocal.keysd,glocal.fsok);
 				</f>
 				<f invalid>
 					tlmp_error ("Client: Invalid command: %s\n",line);
