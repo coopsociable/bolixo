@@ -149,15 +149,67 @@ int util_getsessioninfo (CONNECT_INFO &con, CONNECT_INFO &con_sess,string &sessi
 	return 0;
 }
 </mod>
+void draw_tab (
+	unsigned width,		// TAB width or 0 (computed from the title)
+	unsigned height,
+	const char *fill,	// Fill color
+	const char *fill_in, 	// Fill color for mouseover
+	bool close,		// Close the path or not
+	const char *title,
+	bool drawx,		// Put an X at the end (normally to close the TAB)
+	PARAM_STRING href,	// URL when the TAB is clicked
+	PARAM_STRING xref)	// URL when the X is clicked
+{
+	static unsigned id=0;
+	if (width == 0){
+		width = strlen(title)*9;
+		if (drawx) width += 25;
+	}
+	htmlprintf ("<svg width=%u height=%u>\n",width,height);
+	htmlprintf ("<a href='#' onclick=formsubmit('%s') onmouseover=changefill('tabrect%u','%s') onmouseout=changefill('tabrect%u','%s')>\n"
+		,href.ptr,id,fill_in,id,fill);
+	htmlprintf ("<path id=tabrect%u fill='%s' stroke=black stroke-width=1\n",id,fill);
+	htmlout ("d=\"\n");
+	htmlprintf ("M0,%u\n",height);
+	htmlout ("H1\n");
+	htmlout ("V10\n");
+	htmlout ("C1,0 10,0 20,0\n");
+	htmlprintf ("H%u\n",width-12);
+	htmlprintf ("C%u,0 %u,0 %u,5\n",width-10,width-2,width-2);
+	htmlprintf ("V%u\n",height);
+	htmlprintf ("H%u\n",width);
+	if (close) htmlout ("z\n");
+	htmlout ("\"/>\n");
+	htmlprintf ("\t<text x=10 y=%u class=small>%s</text>\n",height-10,title);
+	htmlout ("</a>\n");
+	if (drawx){
+		unsigned x=width-20;
+		unsigned y=height-10;
+		htmlprintf ("<a href='#' onclick=formsubmit('%s') onmouseover=changefill('tabxrect%u','#D0D0D0') onmouseout=changefill('tabxrect%u','none')>\n",xref.ptr,id,id);
+		htmlprintf ("<rect id='tabxrect%u' x=%u y=%u rx=2 ry=2 width=14 height=14 fill=none />\n",id,x-3,y-11);
+		htmlprintf ("<path stroke=black stroke-width=1 d='M%u,%u l8,8 M%u,%u l8,-8'/>\n",x,y-8,x,y);
+		htmlout ("</a>\n");
+	}
+	htmlout ("</svg>\n");
+	id++;
+}
+// Same thing with no X
+void draw_tab (unsigned width, unsigned height, const char *fill, const char *fill_in, bool close, const char *title, PARAM_STRING href)
+{
+	draw_tab (width,height,fill,fill_in,close,title,false,href,"");
+}
 
 static void print_href_c (const char *title, PARAM_STRING href, const char *color)
 {
-	htmlprintf ("<a href=\"#\" onclick=formsubmit(\"%s\")><table bgcolor=\"%s\"><tr><td style=\"padding:5px\"><font size=4 color=white>&nbsp;%s&nbsp;</font></table></a>\n"
-		,href.ptr,color,title);
+	// <font size=4 color=white>&nbsp;%s&nbsp;</font></table></a>\n"
+	//htmlprintf ("<a href=\"#\" onclick=formsubmit(\"%s\")>",href.ptr);
+	bool close = strcmp(color,"white")==0 ? false : true;
+	draw_tab (0,30,color,color,close,title,href);
+	//htmlout ("</a>\n");
 }
 void print_href (const char *title, PARAM_STRING href)
 {
-	print_href_c(title, href,"grey");	//"#33cc33");
+	print_href_c(title, href,"#EAEAEA");	//"#33cc33");
 }
 void print_aref (const char *page, const char *title, int step)
 {
@@ -171,7 +223,7 @@ void print_aref (const char *title, int step)
 void print_aref_selected (const char *page, const char *title, int step)
 {
 	string href = string_f ("%s?webstep=%d",page,step);
-	print_href_c (title,href,"#220022");
+	print_href_c (title,href,"white");
 }
 void print_aref_selected (const char *title, int step)
 {
@@ -391,7 +443,15 @@ void util_defstyles()
 		"   border-left: 4px solid #CCC;\n"
 		"   padding-left: 8px;\n"
 		"}\n"
-		" </style>\n");
+		".small { font: normal 13px ; file: gray;}\n"
+		" </style>\n"
+		"<script>\n"
+		"function changefill(id,color){\n"
+		"  var e = document.getElementById(id);\n"
+		"  //console.log (\"e \" + e != null);\n"
+    		"  e.setAttribute('fill', color);\n"
+    		"}\n"
+		"</script>\n");
 	tlmpweb_setscripts();
 }
 
@@ -462,17 +522,17 @@ void button_row(_F_button_row &c, int border, const char *bgcolor, bool alignlef
 	c.draw_right();
 	tlmpweb_popgrab();
 	if (left_lines.size() > 0 || right_lines.size()>0){
-		htmlprintf ("<table border=%d bgcolor=%s cellspacing=0 width=100%%>\n",border,bgcolor);
+		htmlprintf ("<table border=%d bgcolor=%s cellspacing=0 cellpadding=0 width=100%%>\n",border,bgcolor);
 		if (left_lines.size() > 0){
 			htmlprintf ("<tr><td align=%s>\n",alignleft ? "left" : "right");
-			htmlprintf ("<table border=%d bgcolor=%s cellspacing=0><tr>\n",border,bgcolor);
+			htmlprintf ("<table border=%d bgcolor=%s cellspacing=0 cellpadding=0><tr>\n",border,bgcolor);
 			htmlout(left_lines);
 			htmlout ("</table>\n");
 		}
 
 		if (right_lines.size() > 0){
 			htmlout ("<td align=right>\n");
-			htmlprintf ("<table border=%d bgcolor=%s cellspacing=0><tr>\n",border,bgcolor);
+			htmlprintf ("<table border=%d bgcolor=%s cellspacing=0 cellpadding=0><tr>\n",border,bgcolor);
 			htmlout (right_lines);
 			htmlout ("</table>\n");
 		}

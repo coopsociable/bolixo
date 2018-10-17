@@ -370,20 +370,139 @@ void scrollbar()
 	/- </div>
 }
 </mod>
+static void draw_tab (unsigned width, unsigned height, const char *fill, bool close, const char *title, bool drawx, const char *href, const char *xref)
+{
+	if (width == 0){
+		width = strlen(title)*9;
+		if (drawx) width += 25;
+	}
+	htmlprintf ("<svg width=%u height=%u>\n",width,height);
+	htmlprintf ("<a href=%s>\n",href);
+	htmlprintf ("<path fill='%s' stroke=black stroke-width=1\n",fill);
+	htmlout ("d=\"\n");
+	htmlprintf ("M0,%u\n",height);
+	htmlout ("H1\n");
+	htmlout ("V10\n");
+	htmlout ("C1,0 10,0 20,0\n");
+	htmlprintf ("H%u\n",width-12);
+	htmlprintf ("C%u,0 %u,0 %u,5\n",width-10,width-2,width-2);
+	htmlprintf ("V%u\n",height);
+	htmlprintf ("H%u\n",width);
+	if (close) htmlout ("z\n");
+	htmlout ("\"/>\n");
+	htmlprintf ("\t<text x=10 y=%u class=small>%s</text>\n",height-10,title);
+	htmlout ("</a>\n");
+	if (drawx){
+		unsigned x=width-20;
+		unsigned y=height-10;
+		static unsigned id=0;
+		htmlprintf ("<a href='%s' onmouseover=changefill('tabrect%u','#D0D0D0') onmouseout=changefill('tabrect%u','none')>\n",xref,id,id);
+		htmlprintf ("<rect id='tabrect%u' x=%u y=%u rx=2 ry=2 width=14 height=14 fill=none />\n",id,x-3,y-11);
+		htmlprintf ("<path stroke=black stroke-width=1 d='M%u,%u l8,8 M%u,%u l8,-8'/>\n",x,y-8,x,y);
+		id++;
+		htmlout ("</a>\n");
+	}
+	htmlout ("</svg>\n");
+}
+static void draw_tab (unsigned width, unsigned height, const char *fill, bool close, const char *title)
+{
+	draw_tab (width,height,fill,close,title,false,"","");
+}
 <mod>
+void draw_left_arrow(bool visible, const char *xref)
+{
+	htmlout ("<svg width=20 height=30>\n");
+	if (visible){
+		static unsigned id=0;
+		htmlprintf ("<a href='%s' onmouseover=changefill('larrow%u','#D0D0D0') onmouseout=changefill('larrow%u','none')>\n",xref,id,id);
+		htmlprintf ("<rect id='larrow%u' x=2 y=2 rx=2 ry=2 width=16 height=26 fill=none />\n",id);
+		id++;
+	}
+	const char *color = visible ? "black" : "white";
+	htmlprintf ("<path fill=%s stroke=%s stroke-width=1 d='M4,15 L12,8 L12,22 z' />\n",color,color);
+	if (visible) htmlout ("</a>\n");
+	htmlout ("</svg>\n");	
+}
+void draw_right_arrow(bool visible, const char *xref)
+{
+	htmlout ("<svg width=20 height=30>\n");
+	if (visible){
+		static unsigned id=0;
+		htmlprintf ("<a href='%s' onmouseover=changefill('rarrow%u','#D0D0D0') onmouseout=changefill('rarrow%u','none')>\n",xref,id,id);
+		htmlprintf ("<rect id='rarrow%u' x=2 y=2 rx=2 ry=2 width=16 height=26 fill=none />\n",id);
+		id++;
+	}
+	const char *color = visible ? "black" : "white";
+	htmlprintf ("<path fill=%s stroke=%s stroke-width=1 d='M16,15 L8,8 L8,22 z' />\n",color,color);
+	if (visible) htmlout ("</a>\n");
+	htmlout ("</svg>\n");	
+}
 // Draw nice tabs using SVG
+static void tabs (int nbrep, bool arrow_left, bool arrow_right)
+{
+	DIV main; main.dispflex().w(100).flowcol().print();
+	DIV head; head.h(10).w(100).flexfixe().bg("lightgray").print();
+	/- <h1>Title</h1>
+	head.end();
+	DIV body; body.h(10).w(100).flexfixe().print();
+	DIV tabs; tabs.dispflex().flowrow().print();
+	{
+		DIV col; col.flexfixe().w(50).print();
+		DIV cols; cols.dispflex().flowrow().print();
+		{
+			DIV col; col.flexfixe().print();
+			draw_left_arrow(arrow_left,"");
+		}
+		{
+			DIV col; col.flexgrow().overflow("hidden").print();
+			static struct {
+				const char *s;
+				bool dox;
+			} tb[]={{"Messages",false},{"Projects",true},{"Mails",true}};
+			DIV d; d.dispflex().flowrow().bg("none").overflow("hidden").print();
+			DIV c;
+			for (int i=0; i<nbrep; i++){
+				for (auto x:tb){
+					c.print();
+					draw_tab(0,30,"white",false,x.s,x.dox,"https://truelies.news","https://solucorp.solutions");
+				}
+			}
+			c.print();
+			<?
+			<svg width=2000 height=30>
+			<path stroke=black stroke-width=1 d="M0,30 h2000" />
+			</svg>
+			?>
+		}
+		{
+			DIV col; col.flexfixe().print();
+			draw_right_arrow(arrow_right,"");
+		}
+		DIV end; end.flexfixe().print();
+		/- ?
+	}
+	{
+		DIV col; col.flexfixe().w(50).bg("yellow").print();
+	}
+		//line x1=0 y1=20 x2=1000 y2=20 style='stroke-width:4; stroke=black;'/>
+}
+</mod>
 void tabs()
 {
-	// <circle cx="50" cy="50" r="40" stroke="green" stroke-width="4" fill="yellow" />
 	tlmpweb_body("white",NULL);
 	<?
+			<script>
+			function changefill(id,color){
+				var e = document.getElementById(id);
+				console.log ("e " + e != null);
+    				e.setAttribute('fill', color);
+    				//e.currentTarget.setAttribute('fill', color);
+			}
+			</script>
 			<style>
 			.small { font: normal 14px sans-serif; file: black;}
 			.heavy { font: bold 30px sans-serif; }
 
-			/* Note that the color of the text is set with the    *
-			* fill property, the color property is for HTML only */
-			.Rrrrr { font: italic 40px serif; fill: red; }
 			.table{
 				border:0;
 				padding:0;
@@ -396,53 +515,11 @@ void tabs()
 			}
 			</style>
 	?>
-	/- <table border=0 cellspacing=0 cellpadding=0>
-	/- <tr><td>
-	<?
-		<svg width=100 height=40>
-		<path fill=lightgrey id="tab-shape" stroke=black stroke-width=1
-			d="
-			M0,35
-			H5
-			V10
-			C5,5 10,5 20,5
-			H85
-			C90,5 95,5 95,10
-			V35
-			H100
-			z"/>
-		<text x=15 y=25 class=small>Messages</text>
-		</svg>
-	<td>
-		<svg width=100 height=40>
-		<path fill=white id="tab-shape-sel" stroke=black stroke-width=1
-			d="
-			M0,35
-			H5
-			V10
-			C5,5 10,5 20,5
-			H85
-			C90,5 95,5 95,10
-			V35
-			H100
-			"/>
-		<text x=15 y=25 class=small>Profile</text>
-		</svg>
-	<td>
-		<svg width=100 height=40>
-        		<use xlink:href="#tab-shape"></use>
-			<text x=15 y=25 class=small>Projects</text>
-	        </svg>
-	<td>
-		<svg width=100 height=40>
-        		<use xlink:href="#tab-shape-sel"></use>
-			<text x=15 y=25 class=small>Mails</text>
-	        </svg>
-	?>
-	/- <tr><td>1<td>2
-	/- </table>
+	tabs (0,true,true);
+	tabs (1,false,true);
+	tabs (2,false,true);
+	tabs (8,false,true);
 }
-</mod>
 extern "C" void webmain()
 {
 	tlmpweb_title ("This is the start of a long long journey");

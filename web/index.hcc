@@ -256,38 +256,30 @@ static string toupper (const char *s)
 	}
 	return ret;
 }
-static void webtab_href_c (const char *title, const char *href, const char *color)
+static void webtab_href_c (const char *title, int tab, int nox, const char *color, const char *color_in, bool close)
 {
-	htmlprintf ("<a href=\"#\" onclick=formsubmit(\"%s\")><table bgcolor=\"%s\"><tr><td style=\"padding:5px\"><font size=4 color=white>&nbsp;%s&nbsp;</font></table></a>\n"
-		,href,color,title);
-}
-static void webtab_aref_selected (const char *title, int tab)
-{
+	//<table bgcolor=\"%s\"><tr><td style=\"padding:5px\"><font size=4 color=white>&nbsp;%s&nbsp;</font></table></a>\n"
+	//		,href,color,title);
 	string hidden;
 	form_gethidden(hidden);
 	const char *sep = hidden.size() > 0 ? "&" : "";
 	string href = string_f ("%s?%s%swebtab=%d",tlmpweb_curpage(),hidden.c_str(),sep,tab);
-	webtab_href_c (title,href.c_str(),"#220022");
+	// htmlprintf ("<a href=\"#\" onclick=formsubmit(\"%s\")>",href.c_str());
+	if (nox != 0){
+		string xref = string_f ("%s?%s%swebtab=%d",tlmpweb_curpage(),hidden.c_str(),sep,nox);
+		draw_tab (0,30,color,color_in,close,title,true,href,xref);
+	}else{
+		draw_tab (0,30,color,color_in,close,title,href);
+	}
+	// /- </a>
 }
-static void webtab_href (const char *title, PARAM_STRING href)
+static void webtab_aref_selected (const char *title, int tab, int nox)
 {
-	webtab_href_c(title, href.ptr,"grey");	//"#33cc33");
+	webtab_href_c (title,tab,nox,"white","#F0F0F0",false);
 }
-static void webtab_aref (const char *title, int tab)
+static void webtab_aref (const char *title, int tab, int nox)
 {
-	string hidden;
-	form_gethidden(hidden);
-	const char *sep = hidden.size() > 0 ? "&" : "";
-	string href = string_f ("%s?%s%swebtab=%d",tlmpweb_curpage(),hidden.c_str(),sep,tab);
-	webtab_href (title,href);
-}
-static void webtab_aref (const char *title, int tab, const char *color)
-{
-	string hidden;
-	form_gethidden(hidden);
-	const char *sep = hidden.size() > 0 ? "&" : "";
-	string href = string_f ("%s?%s%swebtab=%d",tlmpweb_curpage(),hidden.c_str(),sep,tab);
-	webtab_href_c (title,href.c_str(),color);
+	webtab_href_c (title,tab,nox,"#EAEAEA","#E0E0E0",true);
 }
 void _F_webtabs::documents()
 {
@@ -470,7 +462,7 @@ static void webtabs(_F_webtabs &c,
 		c.documents();
 		tlmpweb_popgrab();
 		const unsigned margin = 5;
-		static const char *mcolor = "#F3F3F3";
+		static const char *mcolor = "white";	//"#F3F3F3";
 		if (docs.size() > 0){
 			DIV d("tabs","tab"); d.flexfixe().bg(mcolor).align("stretch").w(size[0]).h(60).margins(margin,margin).print();
 			htmlout(docs);
@@ -501,14 +493,14 @@ static void webtabs(_F_webtabs &c,
 							split();
 							const char *name = t.title.c_str();
 							if (name[0] == '\0') name = t.tab.c_str();
-							if (&t == glocal.ptsel[glocal.type]){
-								webtab_aref_selected (name,no);
-							}else{
-								webtab_aref (name,no);
-							}
+							int nodel = 0;
 							if (!t.locked && glocal.may_delete){
-								split();
-								webtab_aref("x",no+1,"lightgrey");
+								nodel = no+1;
+							}
+							if (&t == glocal.ptsel[glocal.type]){
+								webtab_aref_selected (name,no,nodel);
+							}else{
+								webtab_aref (name,no,nodel);
 							}
 						}
 						no += 2;
@@ -740,8 +732,8 @@ static void bolixo_title (const char *title, _F_websteps *c)
 	
 	DIV main; main.id("main").h(100).w(100).dispflex().flowcol().print();
 	DIV head; head.id("head").flexfixe().print();
-	/- <table border=0 width=100%><tr><td>
-	htmlprintf ("<table border=0 width=100%% bgcolor=%s cellspacing=0><tr><td rowspan=2 align=left>\n",newscolor);
+	/- <table border=0 width=100% cellpadding=0 cellspacing=0><tr><td>
+	htmlprintf ("<table border=0 width=100%% bgcolor=%s cellspacing=0 cellpadding=0><tr><td rowspan=2 align=left>\n",newscolor);
 		/- <table border=0><tr><td><a href=/7s.html><img src=/favicon.ico></a></td><td align=left>
 		htmlout ("<a href=/index.hc><font size=8 color=\"white\">Bolixo.org</font></a>&nbsp;&nbsp;&nbsp;");
 		htmlprintf ("screen %u %u f=%u\n",tlmpweb_screenwidth(),tlmpweb_screenheight(),tlmpweb_fontsize());
