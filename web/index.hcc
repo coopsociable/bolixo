@@ -141,14 +141,32 @@ struct WEBTAB{
 		return ret;
 	}
 };
-static map<string,vector<WEBTAB>> tabs;
+struct WEBTAB_CTRL{
+	vector<WEBTAB> tabs;
+	unsigned offsets[4];
+	WEBTAB_CTRL(){
+		for (auto &v:offsets) v=0;
+	}
+};
+static map<string,WEBTAB_CTRL> tabs;
 void webtab_init (const vector<SNAMEVAL_receive> &vals)
 {
 	for (auto &s:vals){
 		// Split the name
 		const char *pt = strchr(s.sname,':');
 		if (pt != NULL){
-			tabs[string(s.sname,pt)].push_back(WEBTAB(pt+1,s.sval));
+			WEBTAB_CTRL &ctrl = tabs[string(s.sname,pt)];
+			if (strcmp(pt,":0")==0){
+				vector<string> tb;
+				int n = str_splitline(s.sval,',',tb);
+				if (n == 4){
+					for (unsigned i=0; i<4; i++){
+						ctrl.offsets[i] = atoi(tb[i].c_str());
+					}
+				}
+			}else{
+				ctrl.tabs.push_back(WEBTAB(pt+1,s.sval));
+			}
 		}
 	}
 }
@@ -307,11 +325,12 @@ struct TABSEL {
 <mod>
 static void webtabs(_F_webtabs &c,
 	const char *name,
-	map<string,vector<WEBTAB>> &alltabs,
+	map<string,WEBTAB_CTRL> &alltabs,
 	bool may_delete,
 	unsigned size[5])
 {
-	vector<WEBTAB> &tabs = alltabs[name];
+	WEBTAB_CTRL &ctrl = alltabs[name];
+	vector<WEBTAB> &tabs = ctrl.tabs;
 	glocal bool may_delete = may_delete;
 	int maxsel = -1;
 	for (auto &t:tabs){
@@ -374,6 +393,13 @@ static void webtabs(_F_webtabs &c,
 			w_webtab = 0;
 		}
 	}
+	if (w_webtab >= 1000 && w_webtab < 1004){
+		unsigned &v = ctrl.offsets[w_webtab-1000];
+		if (v > 0) v--;
+	}else if (w_webtab >= 2000 && w_webtab < 2004){
+		ctrl.offsets[w_webtab-2000]++;
+	}
+	glocal WEBTAB_CTRL *ctrl = &ctrl;
 	glocal vector<WEBTAB> *tabs = &tabs;
 	glocal const char *name = name;
 	glocal WEBTAB *ptsel[4];
@@ -421,7 +447,7 @@ static void webtabs(_F_webtabs &c,
 			WEBTAB *ptt = glocal.ptsel[type];
 			while (1){
 				unsigned no=1;
-				for (auto &t:*glocal.tabs){
+				for (auto &t:tabs){
 					if (&t == ptt) w_webtab = no;
 					no += 2;
 				}
@@ -488,22 +514,41 @@ static void webtabs(_F_webtabs &c,
 				<call button_row>(0,"white");
 				<f draw>
 					unsigned no = 1;
+					drawendline();
+					unsigned skip = glocal.ctrl->offsets[glocal.type];
+					string hidden;
+					form_gethidden(hidden);
+					const char *sep = hidden.size() > 0 ? "&" : "";
+					{
+						string href = string_f ("%s?%s%swebtab=%d",tlmpweb_curpage(),hidden.c_str(),sep,1000+glocal.type);
+						drawleftarrow(href,skip>0);
+					}
+					unsigned nbprinted = 0;
 					for (auto &t:*glocal.tabs){
 						if (t.type == glocal.type){
-							split();
-							const char *name = t.title.c_str();
-							if (name[0] == '\0') name = t.tab.c_str();
-							int nodel = 0;
-							if (!t.locked && glocal.may_delete){
-								nodel = no+1;
-							}
-							if (&t == glocal.ptsel[glocal.type]){
-								webtab_aref_selected (name,no,nodel);
+							if (skip > 0){
+								skip--;
 							}else{
-								webtab_aref (name,no,nodel);
+								nbprinted++;
+								split();
+								const char *name = t.title.c_str();
+								if (name[0] == '\0') name = t.tab.c_str();
+								int nodel = 0;
+								if (!t.locked && glocal.may_delete){
+									nodel = no+1;
+								}
+								if (&t == glocal.ptsel[glocal.type]){
+									webtab_aref_selected (name,no,nodel);
+								}else{
+									webtab_aref (name,no,nodel);
+								}
 							}
 						}
 						no += 2;
+					}
+					{
+						string href = string_f ("%s?%s%swebtab=%d",tlmpweb_curpage(),hidden.c_str(),sep,2000+glocal.type);
+						drawrightarrow(href,nbprinted>1);	// For now, until we know the TAB width properly
 					}
 				</f>
 				<f draw_right>
@@ -525,7 +570,7 @@ static void webtabs(_F_webtabs &c,
 </mod>
 void webtabs(_F_webtabs &c,
 	const char *name,
-	map<string,vector<WEBTAB>> &tabs,
+	map<string,WEBTAB_CTRL> &tabs,
 	unsigned size[5])
 {
 	webtabs (c,name,tabs,true,size);
@@ -533,10 +578,11 @@ void webtabs(_F_webtabs &c,
 void webtabs(_F_webtabs &c,
 	const char *name,
 	const vector<string> &starttabs,
-	map<string,vector<WEBTAB>> &alltabs,
+	map<string,WEBTAB_CTRL> &alltabs,
 	unsigned size[5])
 {
-	vector<WEBTAB> &tabs = alltabs[name];
+	WEBTAB_CTRL &ctrl = alltabs[name];
+	vector<WEBTAB> &tabs = ctrl.tabs;
 	for (auto &s:starttabs){
 		bool found = false;
 		string tmp;
@@ -3083,7 +3129,17 @@ extern "C" void webmain_real()
 		VAR var;
 		var.name = "webtabs";
 		for (auto &v:tabs){
-			for (auto &t:v.second){
+			{
+				SNAMEVAL val;
+				val.sname = string_f("%s:0",v.first.c_str());
+				val.sval = string_f("%u,%u,%u,%u"
+					,v.second.offsets[0]
+					,v.second.offsets[1]
+					,v.second.offsets[2]
+					,v.second.offsets[3]);
+				var.vals.push_back(val);
+			}
+			for (auto &t:v.second.tabs){
 				SNAMEVAL val;
 				val.sname = string_f("%s:%c:%s",v.first.c_str(),t.type+'1',t.tab.c_str());
 				val.sval = string_f("f=%u,s=%s,t=%s,l=%d",t.selorder,t.state.c_str()

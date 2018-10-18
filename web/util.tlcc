@@ -198,6 +198,38 @@ void draw_tab (unsigned width, unsigned height, const char *fill, const char *fi
 {
 	draw_tab (width,height,fill,fill_in,close,title,false,href,"");
 }
+void draw_left_arrow(bool visible, PARAM_STRING xref)
+{
+	htmlout ("<svg width=20 height=30>\n");
+	if (visible){
+		static unsigned id=0;
+		htmlprintf ("<a href='#' onclick=formsubmit('%s') onmouseover=changefill('larrow%u','#D0D0D0') onmouseout=changefill('larrow%u','none')>\n",xref.ptr,id,id);
+		htmlprintf ("<rect id='larrow%u' x=2 y=2 rx=2 ry=2 width=16 height=26 fill=none />\n",id);
+		id++;
+	}
+	const char *color = visible ? "black" : "white";
+	htmlprintf ("<path fill=%s stroke=%s stroke-width=1 d='M4,15 L12,8 L12,22 z' />\n",color,color);
+	if (visible) htmlout ("</a>\n");
+	// Always put the underline
+	htmlout ("<path stroke=black stroke-width=1 d='M0,30 l20,0'/>\n");
+	htmlout ("</svg>\n");	
+}
+void draw_right_arrow(bool visible, PARAM_STRING xref)
+{
+	htmlout ("<svg width=20 height=30>\n");
+	if (visible){
+		static unsigned id=0;
+		htmlprintf ("<a href='#' onclick=formsubmit('%s') onmouseover=changefill('rarrow%u','#D0D0D0') onmouseout=changefill('rarrow%u','none')>\n",xref.ptr,id,id);
+		htmlprintf ("<rect id='rarrow%u' x=2 y=2 rx=2 ry=2 width=16 height=26 fill=none />\n",id);
+		id++;
+	}
+	const char *color = visible ? "black" : "white";
+	htmlprintf ("<path fill=%s stroke=%s stroke-width=1 d='M16,15 L8,8 L8,22 z' />\n",color,color);
+	if (visible) htmlout ("</a>\n");
+	// Always put the underline
+	htmlout ("<path stroke=black stroke-width=1 d='M0,30 l20,0'/>\n");
+	htmlout ("</svg>\n");	
+}
 
 static void print_href_c (const char *title, PARAM_STRING href, const char *color)
 {
@@ -522,6 +554,35 @@ void button_row(_F_button_row &c, int border, const char *bgcolor, bool alignlef
 	c.draw_right();
 	tlmpweb_popgrab();
 	if (left_lines.size() > 0 || right_lines.size()>0){
+		DIV cols; cols.dispflex().flowrow().print();
+		if (c.href_arrow_left.size() > 0){
+			DIV col; col.flexfixe().print();
+			draw_left_arrow(c.arrow_left_visible,c.href_arrow_left);
+		}
+		{
+			DIV col; col.flexgrow().overflow("hidden").print();
+			DIV d; d.dispflex().flowrow().bg("none").overflow("hidden").print();
+			if (left_lines.size() > 0){
+				htmlout (left_lines);
+				if (c.spliton) htmlout ("</div>\n");
+			}
+			// Draw a line to the end
+			if (c.endline){
+				htmlout ("<div>\n");
+				htmlout ("<svg width=2000 height=30>\n");
+				htmlout ("<path stroke=black stroke-width=1 d='M0,30 h2000' />\n");
+				htmlout ("</svg>\n");
+				htmlout ("</div>\n");
+			}
+		}
+		if (c.href_arrow_right.size() > 0){
+			DIV col; col.flexfixe().print();
+			draw_right_arrow(c.arrow_right_visible,c.href_arrow_right);
+		}
+		DIV end; end.flexfixe().print();
+		htmlout (right_lines);
+
+		#if 0
 		htmlprintf ("<table border=%d bgcolor=%s cellspacing=0 cellpadding=0 width=100%%>\n",border,bgcolor);
 		if (left_lines.size() > 0){
 			htmlprintf ("<tr><td align=%s>\n",alignleft ? "left" : "right");
@@ -537,6 +598,7 @@ void button_row(_F_button_row &c, int border, const char *bgcolor, bool alignlef
 			htmlout ("</table>\n");
 		}
 		htmlout ("</table>\n");
+		#endif
 	}
 }
 void button_row(_F_button_row &c, int border, const char *bgcolor)
@@ -556,5 +618,22 @@ void _F_button_row::draw_right()
 }
 void _F_button_row::split()
 {
-	htmlprintf ("<td align=%s>\n",align);
+	if (spliton) htmlout ("</div>\n");
+	htmlout ("<div>\n");
+	spliton = true;
+	//	htmlprintf ("<td align=%s>\n",align);
+}
+void _F_button_row::drawendline()
+{
+	endline = true;
+}
+void _F_button_row::drawleftarrow (PARAM_STRING href, bool visible)
+{
+	arrow_left_visible = visible;
+	href_arrow_left = href.ptr;
+}
+void _F_button_row::drawrightarrow (PARAM_STRING href, bool visible)
+{
+	arrow_right_visible = visible;
+	href_arrow_right = href.ptr;
 }

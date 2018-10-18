@@ -43,10 +43,22 @@ void draw_tab (unsigned width, unsigned height, const char *fill, const char *fi
 #define _TLMP_button_row
 struct _F_button_row{
 	const char *align;
+	bool spliton;
+	string href_arrow_left;
+	bool arrow_left_visible;
+	string href_arrow_right;
+	bool arrow_right_visible;
+	bool endline;
 	_F_button_row(){
 		align = "left";
+		spliton = false;
+		arrow_left_visible = arrow_right_visible = false;
+		endline = false;
 	}
 	void split();
+	void drawendline();
+	void drawleftarrow(PARAM_STRING href, bool visible);
+	void drawrightarrow(PARAM_STRING href, bool visible);
 	#define _F_button_row_draw(x) void x draw()
 	virtual _F_button_row_draw( )=0;
 	#define _F_button_row_draw_right(x) void x draw_right()
