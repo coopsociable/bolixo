@@ -233,11 +233,8 @@ void draw_right_arrow(bool visible, PARAM_STRING xref)
 
 static void print_href_c (const char *title, PARAM_STRING href, const char *color)
 {
-	// <font size=4 color=white>&nbsp;%s&nbsp;</font></table></a>\n"
-	//htmlprintf ("<a href=\"#\" onclick=formsubmit(\"%s\")>",href.ptr);
 	bool close = strcmp(color,"white")==0 ? false : true;
 	draw_tab (0,30,color,color,close,title,href);
-	//htmlout ("</a>\n");
 }
 void print_href (const char *title, PARAM_STRING href)
 {
@@ -551,6 +548,7 @@ void button_row(_F_button_row &c, int border, const char *bgcolor, bool alignlef
 	vector<string> right_lines;
 	tlmpweb_pushgrab(right_lines);
 	c.align="right";
+	c.spliton = false;
 	c.draw_right();
 	tlmpweb_popgrab();
 	if (left_lines.size() > 0 || right_lines.size()>0){
@@ -564,9 +562,11 @@ void button_row(_F_button_row &c, int border, const char *bgcolor, bool alignlef
 			DIV d; d.dispflex().flowrow().bg("none").overflow("hidden").print();
 			if (left_lines.size() > 0){
 				htmlout (left_lines);
-				if (c.spliton) htmlout ("</div>\n");
+				htmlout ("</div>\n");
 			}
-			// Draw a line to the end
+			// Draw a line to the end. We draw a very long line since we do not
+			// know exactly the width of the TAB. The overflow hidden above hides
+			// this.
 			if (c.endline){
 				htmlout ("<div>\n");
 				htmlout ("<svg width=2000 height=30>\n");
@@ -580,25 +580,10 @@ void button_row(_F_button_row &c, int border, const char *bgcolor, bool alignlef
 			draw_right_arrow(c.arrow_right_visible,c.href_arrow_right);
 		}
 		DIV end; end.flexfixe().print();
-		htmlout (right_lines);
-
-		#if 0
-		htmlprintf ("<table border=%d bgcolor=%s cellspacing=0 cellpadding=0 width=100%%>\n",border,bgcolor);
-		if (left_lines.size() > 0){
-			htmlprintf ("<tr><td align=%s>\n",alignleft ? "left" : "right");
-			htmlprintf ("<table border=%d bgcolor=%s cellspacing=0 cellpadding=0><tr>\n",border,bgcolor);
-			htmlout(left_lines);
-			htmlout ("</table>\n");
-		}
-
 		if (right_lines.size() > 0){
-			htmlout ("<td align=right>\n");
-			htmlprintf ("<table border=%d bgcolor=%s cellspacing=0 cellpadding=0><tr>\n",border,bgcolor);
 			htmlout (right_lines);
-			htmlout ("</table>\n");
+			htmlout ("</div>\n");
 		}
-		htmlout ("</table>\n");
-		#endif
 	}
 }
 void button_row(_F_button_row &c, int border, const char *bgcolor)

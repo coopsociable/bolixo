@@ -387,12 +387,23 @@ static void webtabs(_F_webtabs &c,
 		unsigned delete_tab = (w_webtab-1) / 2;
 		unsigned nbtab = tabs.size();
 		if (delete_tab < nbtab){
-			const char *id = tabs[delete_tab].tab.c_str();
+			WEBTAB &tab = tabs[delete_tab];
+			WEBTAB_TYPE type = tab.type;
+			const char *id = tab.tab.c_str();
 			tlmpweb_deleteform(id);
 			tabs.erase (tabs.begin()+delete_tab);
 			w_webtab = 0;
+			// Count the number of TABS remaining of this type
+			// Ajust the offset to have one visible
+			unsigned count=0;
+			for (auto &t:tabs){
+				if (t.type == type) count++;
+			}
+			unsigned &offset = ctrl.offsets[type];
+			if (offset > 0 && count <= offset) offset--;
 		}
 	}
+	// Manage the left and right arrows
 	if (w_webtab >= 1000 && w_webtab < 1004){
 		unsigned &v = ctrl.offsets[w_webtab-1000];
 		if (v > 0) v--;
@@ -439,7 +450,8 @@ static void webtabs(_F_webtabs &c,
 		draw_ok = false;
 	}
 
-	// We draw the tab content before drawing the tabs because the tabs may change
+	// We draw the tabs content before drawing the tabs because the tabs may change
+	// the content of the tab
 	vector<string> lines[4];
 	for (int type=3; type>=0; type--){
 		if (glocal.ptsel[type] != NULL){
