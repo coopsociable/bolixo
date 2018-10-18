@@ -730,13 +730,13 @@ static void show_buttons_right(_F_websteps *c)
 			/- </font>
 			/- <td>&nbsp;
 			/- <td>
-			print_aref (MSG_U(I_LOGIN,"Login"),step_login);
+			htmlprintf ("<a href=%s?webstep=%d>%s</a>\n",tlmpweb_curpage(),step_login,MSG_U(I_LOGIN,"Login"));
 			/- <td>&nbsp;
 			/- <td align=center>
-			/- <font size=4 color=black>or</font>
+			htmlprintf ("<font size=4 color=black>%s</font>",MSG_U(I_OR,"or"));
 			/- <td>&nbsp;
 			/- <td>
-			print_aref (MSG_U(I_CREATEACCT,"Create account"),step_adduser);
+			htmlprintf ("<a href=%s?webstep=%d>%s</a>\n",tlmpweb_curpage(),step_adduser,MSG_U(I_CREATEACCT,"Create account"));
 		}
 	}
 	if (userinfo.is_admin){
@@ -755,7 +755,8 @@ static void show_buttons_right(_F_websteps *c)
 		/- </font>
 		/- <td>&nbsp;
 		/- <td>
-		print_aref (MSG_U(I_LOGOUT,"Logout"),step_logout);
+		// PATCH: The <br> is there to avoid a vertical scroll bar. No idea why
+		htmlprintf ("<a href=%s?webstep=%d>%s<br>&nbsp;</a>\n",tlmpweb_curpage(),step_logout,MSG_U(I_LOGOUT,"Logout"));
 	}
 	/- </table>
 }
@@ -792,16 +793,16 @@ static void bolixo_title (const char *title, _F_websteps *c)
 	DIV head; head.id("head").flexfixe().print();
 	/- <table border=0 width=100% cellpadding=0 cellspacing=0><tr><td>
 	htmlprintf ("<table border=0 width=100%% bgcolor=%s cellspacing=0 cellpadding=0><tr><td rowspan=2 align=left>\n",newscolor);
-		/- <table border=0><tr><td><a href=/7s.html><img src=/favicon.ico></a></td><td align=left>
-		htmlout ("<a href=/index.hc><font size=8 color=\"white\">Bolixo.org</font></a>&nbsp;&nbsp;&nbsp;");
-		htmlprintf ("screen %u %u f=%u\n",tlmpweb_screenwidth(),tlmpweb_screenheight(),tlmpweb_fontsize());
+		/- <table border=0><tr><td><a href=/7s.html><img height=20 src=/favicon.ico></a></td><td align=left>
+		htmlout ("<a href=/index.hc><font size=7 color=\"white\">Bolixo.org</font></a>&nbsp;&nbsp;&nbsp;");
+		//htmlprintf ("screen %u %u f=%u\n",tlmpweb_screenwidth(),tlmpweb_screenheight(),tlmpweb_fontsize());
 		/- <td>
 		if (userinfo.name.empty()) printhref ("/about.html",MSG_U(I_ABOUT,"<font color=white>A peer to peer open social media</font>"),true);
 		/- </td></tr></table>
 	/- </td><td align=right valign=top>
 	show_buttons_right (c);
 	/- </td></tr>
-	/- <tr><td align=right>
+	/- <tr><td align=right valign=bottom>
 	if (w_robot == 0 && userinfo.name.size() > 0){
 		<call button_row>(0,newscolor,false);
 		<f draw>
@@ -823,7 +824,7 @@ static void bolixo_title (const char *title, _F_websteps *c)
 	/- </tr></table>
 	/- </table>
 	head.end();
-	DIV body; body.id("body").flexgrow().print();
+	DIV body; body.id("body").flexfixe().print();
 	body.donotend();
 	main.donotend();
 }
@@ -1502,6 +1503,8 @@ static void index_script()
 		function fixsize(){
 			var t = document.getElementById('head').offsetHeight;
 			diff = window.innerHeight-t;
+			document.getElementById('body').style.height = diff-1;
+			document.getElementById('main').style.height = window.innerHeight-1;
 			var tabs = document.getElementsByClassName("tabs");
 			for (var i=0; i<tabs.length; i++){
 				tabs[i].style.height = diff-2;
@@ -1775,13 +1778,14 @@ extern "C" void webmain_real()
 	</f>
 	<f end>
 		/- </div>
+		/- </div>
 		index_script();
 	</f>
 	<f step1>
 		bolixo_title ("",this);
 		if (userinfo.name.size() == 0){
 			// Anonymous, present public news ?
-			/- So far no public content
+			// /- So far no public content
 		}else{
 			/- <table border=0 height=100% width=100%>
 			/- <tr><td valign=top>
