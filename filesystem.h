@@ -47,6 +47,7 @@ unsigned fs_find_outbox (unsigned ownerid, PARAM_STRING name, std::string &msg);
 unsigned fs_find_project_inbox (unsigned ownerid, unsigned listid, const char *name, const char *project, const char *role, bool create, std::string &msg);
 void fs_set_now (char now[20]);
 int fs_newid (unsigned userid, unsigned listid, char listmode, std::string &msg, std::string &uuid);
+int fs_newid (unsigned userid, unsigned listid, char listmode, std::string &msg);
 int fs_newid (unsigned userid, std::string &msg, std::string &uuid);
 int fs_newid (unsigned userid, std::string &msg);
 int fs_insert_dir (int parentid,int dirid,PARAM_STRING modified,PARAM_STRING name);

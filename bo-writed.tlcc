@@ -1365,21 +1365,28 @@ int main (int argc, char *argv[])
 					</call>
 				</f>
 				<f mkdir>
-					ENTRY entry;
-					if (bo_writed_findentry (glocal.con,sessionid,name,entry,false)!=-1){
-						if (!entry.may_add){
-							entry.msg = "Not allowed";
-						}else if (bo_writed_fname_check(name,entry.msg)){
-							int subdirid = fs_newid (entry.userid,entry.msg);
-							if (subdirid != -1){
-								if (fs_insert_dir (entry.dirid,subdirid,entry.basename)==-1){
-									entry.msg = "Internal error (dirs_subdirs table)";
+					glocal ENTRY entry;
+					if (bo_writed_findentry (glocal.con,sessionid,name,glocal.entry,false)!=-1){
+						if (!glocal.entry.may_add){
+							glocal.entry.msg = MSG_U(E_NOTALLOWED,"Not allowed");
+						}else if (bo_writed_fname_check(name,glocal.entry.msg)){
+							<call sql_query>("select group_list_id,listmode from ids where id=%u",glocal.entry.dirid);
+							<f empty>
+								glocal.entry.msg = "Internal error (no group_list_id";
+							</f>
+							<f onerow>
+								int subdirid = fs_newid (glocal.entry.userid,atoi(row[0]),row[1][0],glocal.entry.msg);
+								if (subdirid != -1){
+									if (fs_insert_dir (glocal.entry.dirid,subdirid,glocal.entry.basename)==-1){
+										glocal.entry.msg = "Internal error (dirs_subdirs table)";
+									}
 								}
-							}
+							</f>
+							</call>
 						}
 					}
-					if (entry.msg.size() > 0){
-						rep_mkdir (false,entry.msg);
+					if (glocal.entry.msg.size() > 0){
+						rep_mkdir (false,glocal.entry.msg);
 					}else{
 						rep_mkdir (true,"");
 					}
