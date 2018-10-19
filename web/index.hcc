@@ -1,4 +1,3 @@
-#include <stdarg.h>
 #include <stdlib.h>
 #include <ctype.h>
 #include <unistd.h>
@@ -1535,7 +1534,6 @@ extern "C" void webmain_real()
 	glocal.con_sess.port = "/dev/sessiond.sock";
 	glocal.con_sess.secret = "foo";
 	glocal vector<DOCUMENT_POINTER> docpointers;
-	glocal bool doscript = true;	// Send javascript at tne end of not
 	for (unsigned i=0; i<SECTION_NBSECTIONS; i++) glocal.docpointers.push_back(DOCUMENT_POINTER());
 	if (tlmpweb_isrobot()) w_robot = 1;
 	// debug
@@ -1780,6 +1778,62 @@ extern "C" void webmain_real()
 		/- </div>
 		/- </div>
 		index_script();
+		if (w_webtab_add.isset() || w_webtab.isset()){
+			// Save the webtabs state to the session manager
+			VAR var;
+			var.name = "webtabs";
+			for (auto &v:tabs){
+				{
+					SNAMEVAL val;
+					val.sname = string_f("%s:0",v.first.c_str());
+					val.sval = string_f("%u,%u,%u,%u"
+						,v.second.offsets[0]
+						,v.second.offsets[1]
+						,v.second.offsets[2]
+						,v.second.offsets[3]);
+					var.vals.push_back(val);
+				}
+				for (auto &t:v.second.tabs){
+					SNAMEVAL val;
+					val.sname = string_f("%s:%c:%s",v.first.c_str(),t.type+'1',t.tab.c_str());
+					val.sval = string_f("f=%u,s=%s,t=%s,l=%d",t.selorder,t.state.c_str()
+						,t.title.c_str(),t.locked);
+					var.vals.push_back(val);
+				}
+			}
+			<call bo_sessiond_client_setvar>(glocal.con_sess,w_session.c_str(),var);
+			<f ok>
+				if (!success) htmlprintf ("Can't set variable webtabs: %s\n",msg);
+			</f>
+			</call>
+		}
+		{
+			// Save the position in the document
+			bool one_changed = false;
+			for (auto &d:glocal.docpointers){
+				if (d.ischanged()){
+					one_changed = true;
+				}
+			}
+			if (one_changed){
+				VAR var;
+				var.name = "document";
+				for (auto &d:glocal.docpointers){
+					unsigned nos = 1;
+					for (auto s:d.tb){
+						SNAMEVAL val;
+						val.sname = string_f("s%u",nos++);
+						val.sval = string_f("%u",s);
+						var.vals.push_back(val);
+					}
+				}
+				<call bo_sessiond_client_setvar>(glocal.con_sess,w_session.c_str(),var);
+				<f ok>
+					if (!success) htmlprintf ("Can't set variable document: %s\n",msg);
+				</f>
+				</call>
+			}
+		}
 	</f>
 	<f step1>
 		bolixo_title ("",this);
@@ -1976,12 +2030,10 @@ extern "C" void webmain_real()
 	</f>
 	<f step5> // Send a file
 		index_sendfile (glocal.con,w_image.c_str());
-		glocal.doscript = false;
 		noend();
 	</f>	
 	<f step6> // Send a file from a user public directory
 		index_sendpublicfile (glocal.con,w_image.c_str());
-		glocal.doscript = false;
 		noend();
 	</f>
 	<f step7> // TAB Projects
@@ -3139,64 +3191,6 @@ extern "C" void webmain_real()
 	<f step15>
 	</f>
 	</call>
-	if (glocal.doscript){
-	if (w_webtab_add.isset() || w_webtab.isset()){
-		// Save the webtabs state to the session manager
-		VAR var;
-		var.name = "webtabs";
-		for (auto &v:tabs){
-			{
-				SNAMEVAL val;
-				val.sname = string_f("%s:0",v.first.c_str());
-				val.sval = string_f("%u,%u,%u,%u"
-					,v.second.offsets[0]
-					,v.second.offsets[1]
-					,v.second.offsets[2]
-					,v.second.offsets[3]);
-				var.vals.push_back(val);
-			}
-			for (auto &t:v.second.tabs){
-				SNAMEVAL val;
-				val.sname = string_f("%s:%c:%s",v.first.c_str(),t.type+'1',t.tab.c_str());
-				val.sval = string_f("f=%u,s=%s,t=%s,l=%d",t.selorder,t.state.c_str()
-					,t.title.c_str(),t.locked);
-				var.vals.push_back(val);
-			}
-		}
-		<call bo_sessiond_client_setvar>(glocal.con_sess,w_session.c_str(),var);
-		<f ok>
-			if (!success) htmlprintf ("Can't set variable webtabs: %s\n",msg);
-		</f>
-		</call>
-	}
-	{
-		// Save the position in the document
-		bool one_changed = false;
-		for (auto &d:glocal.docpointers){
-			if (d.ischanged()){
-				one_changed = true;
-			}
-		}
-		if (one_changed){
-			VAR var;
-			var.name = "document";
-			for (auto &d:glocal.docpointers){
-				unsigned nos = 1;
-				for (auto s:d.tb){
-					SNAMEVAL val;
-					val.sname = string_f("s%u",nos++);
-					val.sval = string_f("%u",s);
-					var.vals.push_back(val);
-				}
-			}
-			<call bo_sessiond_client_setvar>(glocal.con_sess,w_session.c_str(),var);
-			<f ok>
-				if (!success) htmlprintf ("Can't set variable document: %s\n",msg);
-			</f>
-			</call>
-		}
-	}
-	}
 }
 </mod>
 
