@@ -422,7 +422,7 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 			userid int,
 			check_userid int,
 			dirid int,
-			checked datetime default current_timestamp
+			since date default current_timestamp
 		)engine=$ENGINE;
 		create index interests_userid on interests(userid);
 		create index interests_checkid on interests(check_userid);
@@ -965,6 +965,7 @@ elif [ "$1" = "lxc0-webssl" ]; then # prod:
 			-e /var/www/html/7s.html \
 			-e /var/www/html/robots.txt \
 			-e /var/www/html/twitter.png \
+			-e /var/www/html/private.png \
 			-i /usr/sbin/trli-init \
 			-l $LOG \
 			-n $w -p /usr/sbin/httpd >/var/lib/lxc/$w/$w-lxc0.sh

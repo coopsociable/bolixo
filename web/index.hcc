@@ -31,7 +31,9 @@ extern DOC_ID section_projects;
 extern DOC_ID section_contacts;
 #define SECTION_MAILS 7
 extern DOC_ID section_mails;
-#define SECTION_NBSECTIONS 8
+#define SECTION_INTERESTS 8
+extern DOC_ID section_interests;
+#define SECTION_NBSECTIONS 9
 extern void bolixo_doc (DOCUMENT_POINTER &, DOC_ID &jump);
 extern void bolixo_doc_fr (DOCUMENT_POINTER &, DOC_ID &jump);
 
@@ -41,6 +43,7 @@ static WEBID ID_PROJECT("project");
 static WEBID ID_CONTACT("contact");
 static WEBID ID_PRJTEXT("prjtext");
 static WEBID ID_INTERESTS("interests");
+static WEBID ID_FOLLOW("follow");
 #define TAB_FORM "tab_form"
 
 using namespace std;
@@ -219,6 +222,7 @@ struct _F_webtabs {
 	void sethelp(PARAM_STRING id, PARAM_STRING title);
 	void settitle (PARAM_STRING title);	// Change the title of the active TAB
 	void setstate (PARAM_STRING val);// Record some value for the active TAB
+	const char *getstate() const;	// Return the state previously stored for the active TAB
 	void redotab ();		// Ask webtabs to redraw the current TAB
 	bool selected(PARAM_STRING id);
 	#define _F_webtabs_documents(x) void x documents()
@@ -259,6 +263,10 @@ void _F_webtabs::settitle (PARAM_STRING title)
 void _F_webtabs::setstate (PARAM_STRING state)
 {
 	curtab->state = state.ptr;
+}
+const char *_F_webtabs::getstate () const
+{
+	return curtab->state.c_str();
 }
 void _F_webtabs::redotab ()
 {
@@ -1424,9 +1432,10 @@ static ENTRY_TYPE index_entrytype(CONNECT_INFO &con,PARAM_STRING path)
 	FILEINFO info;
 	return index_entrytype(con,path,info);
 }
-static bool profile_formactive (_F_webtabs &c, W_SSTRING &var, const char *state)
+static const char *adding = "__add__";
+static bool profile_formactive (_F_webtabs &c, W_SSTRING &var)
 {
-	static const char *adding = "__add__";
+	const char *state = c.getstate();
 	if (w_add.isset()){
 		c.setstate(adding);
 	}else if (var.isset()){
@@ -1439,6 +1448,18 @@ static bool profile_formactive (_F_webtabs &c, W_SSTRING &var, const char *state
 		}
 	}
 	return var.isset() || w_add.isset();
+}
+static bool profile_formactive (_F_webtabs &c)
+{
+	const char *state = c.getstate();
+	if (w_add.isset()){
+		c.setstate(adding);
+	}else if (state[0] != '\0'){
+		if (strcmp(state,adding)==0){
+			w_add.setinitval("1");
+		}
+	}
+	return w_add.isset();
 }
 /*
 	Format the path of a mail
@@ -1636,6 +1657,7 @@ extern "C" void webmain_real()
 			const char *tab = tableid+5;
 			if (strcmp(tab,"projects")==0
 				|| strcmp(tab,"groups")==0
+				|| strcmp(tab,"interests")==0
 				|| strcmp(tab,"contacts")==0){
 				glocal.valid = true;
 			}
@@ -1861,7 +1883,7 @@ extern "C" void webmain_real()
 			</f>
 			<f left>
 				string table = string("talk")+"public";
-				<call webtable>(ID_INTERESTS,table,"100%",currents[table],offsets[table],5);
+				<call webtable>(ID_FOLLOW,table,"100%",currents[table],offsets[table],5);
 				<f load>
 					sethead  ("From\tWhen\tWhat");
 					glocal unsigned rownum = nbskip;
@@ -2600,11 +2622,12 @@ extern "C" void webmain_real()
 				index_doc(glocal.docpointers[SECTION_CONTACTS],section_contacts);
 			}else if (strcmp(id,"helpaccount")==0){
 				index_doc(glocal.docpointers[SECTION_ACCOUNT],section_account);
+			}else if (strcmp(id,"helpinterests")==0){
+				index_doc(glocal.docpointers[SECTION_INTERESTS],section_interests);
 			}
 		</f>
 		<f docmain>
 			sethelp("helpprojects",MSG_U(I_HELPPROJECTS,"Projects"));
-			glocal const char *state = state;
 			if (strcmp(id,"Projects")==0){
 				<call vframe2h>(40);
 				<f left>
@@ -2638,7 +2661,7 @@ extern "C" void webmain_real()
 					</call>
 				</f>
 				<f right>
-					if (profile_formactive (glocal.webtabs,w_list,glocal.state)){
+					if (profile_formactive (glocal.webtabs,w_list)){
 						<call form>(string_f("project:%s",w_add==1 ? "" : w_list.c_str()));
 						<f top>
 							/- <table border=0><tr><td>&nbsp;&nbsp;&nbsp;<td><table border=0>
@@ -2816,7 +2839,7 @@ extern "C" void webmain_real()
 					</call>
 				</f>
 				<f right>
-					if (profile_formactive (glocal.webtabs,w_group,glocal.state)){
+					if (profile_formactive (glocal.webtabs,w_group)){
 						<call form>(string_f("group:%s",w_add==1 ? "" : w_group.c_str()));
 						<f top>
 							/- <table border=0><tr><td>&nbsp;&nbsp;&nbsp;<td><table border=0>
@@ -2978,7 +3001,7 @@ extern "C" void webmain_real()
 					</call>
 				</f>
 				<f right>
-					if (w_add == 1){
+					if (profile_formactive (glocal.webtabs)){
 						glocal bool done = false;
 						<call form>("contact");
 						<f top>
@@ -3103,7 +3126,111 @@ extern "C" void webmain_real()
 								/-#I_HEMAKEMEMBER and he can make you member of his groups.
 							}
 							/- </table></table>
+							glocal.webtabs.setstate("");
 						}
+					}
+				</f>
+				</call>
+			}else if (strcmp(id,"Interests")==0){
+				sethelp("helpinterests",MSG_U(I_HELPINTERESTS,"Interests"));
+				<call vframe2h>(40);
+				<f left>
+					{
+						DIV f; f.id(TAB_FORM).print();
+						url_self ("add=1",MSG_U(I_NEWINTEREST,"Add one interest"));
+						/- <br>&nbsp;<br>
+					}
+					static const string id = "list:interests";
+					<call webtable>(ID_INTERESTS,id,"100%",currents[id]);
+					<f load>
+						sethead (MSG_U(H_INTEREST,"\tPerson\tSince"));
+						<call bod_client_interest_list>(glocal.con,w_session.c_str(),"");
+						<f ok>
+							unsigned rownum=0;
+							for (auto &u:users){
+								glocal.webtable.setclickopt (true,"",string_f("user=%u:%s",rownum,u.name));
+								if (u.visible){
+									glocal.webtable.setrow("white",rownum,"<img src=/public/%s/mini-photo.jpg>\t%s\t%s"
+										,u.name,u.name,u.since);
+								}else{
+									glocal.webtable.setrow("white",rownum,"<img src=/private.png>\t%s\t%s"
+										,u.name,u.since);
+								}
+								rownum++;
+							}
+						</f>
+						</call>
+					</f>
+					</call>
+				</f>
+				<f right>
+					if (profile_formactive (glocal.webtabs)){
+						glocal bool done = false;
+						<call form>("interest");
+						<f top>
+							/- <table border=0><tr><td>&nbsp;&nbsp;&nbsp;<td><table border=0>
+							/- <table border=0>
+							/- <tr><td><td>
+							/-#I_ADDINTEREST <h2>Add more interesting people</h2>
+						</f>
+						<f bottom>
+							/- </table></table>
+						</f>
+						<f setup>
+							field_hidden (w_add);
+							/-#I_PEOPLES <tr><td valign=top>Peoples<td>
+							field_textarea (w_content,10,60,"");
+							/- <tr><td>
+							button_submit();
+						</f>
+						<f validate>
+							return true;
+						</f>
+						<f process>
+							glocal string error;
+							glocal bool fail = false;
+							glocal vector<string> users;
+							const char *pt = w_content.c_str();
+							while (*pt != '\0'){
+								pt = str_skip(pt);
+								if (*pt > ' '){
+									const char *start = pt;
+									while (*pt > ' ') pt++;
+									glocal.users.push_back(string(start,pt-start));
+								}
+							}
+							// Check if some are already in the interest list
+							<call bod_client_interest_list>(glocal.con,w_session.c_str(),"");
+							<f ok>
+								for (auto u:users){
+									if (find(glocal.users.begin(),glocal.users.end(),u.name)!=glocal.users.end()){
+										glocal.error += string_f(" %s",u.name);
+										glocal.fail = true;
+									}
+								}
+							</f>
+							</call>
+							if (!glocal.fail){
+								for (auto u:glocal.users){
+									glocal const char *user = u.c_str();
+									<call bod_client_interest_set>(glocal.con,w_session.c_str(),u,"");
+									<f ok>
+										if (!success){
+											htmlprintf (MSG_U(E_INTERESTSET,"Can't add user %s in interest list: %s<br>\n")
+												,glocal.user,msg);
+											glocal.fail = true;
+										}
+									</f>
+									</call>
+									if (glocal.fail) break;
+								}
+							}else{
+								htmlprintf ("%s<br>%s<br>",MSG_U(E_INTERESTDUP,"These people are already in your interest list"),glocal.error.c_str());
+							}
+							fail = glocal.fail;
+							if (!fail) glocal.webtabs.setstate("");
+						</f>
+						</call>
 					}
 				</f>
 				</call>

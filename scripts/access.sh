@@ -45,6 +45,15 @@ elif [ "$1" = "createsubdir" ] ; then # test: Create a project, then a subdir
 	./bofs mkdir bo://projects/jacques-A/$PRJ/sdir1
 	./bofs -t ls -l bo://projects/jacques-A
 	./bofs -t ls -l bo://projects/jacques-A/$PRJ
+elif [ "$1" = "public" ] ; then # test: Make the content of one user public, post a message
+	if [ "$2" = "" ] ; then
+		echo user
+		exit 1
+	fi
+	./bofs -u $2 mkdir bo://projects/$2/public/version1
+	./bofs -u $2 misc --writeconfig --public_view 1 --public_dir version1
+	./bofs -u $2 msgs -t -G public --groupowner $2 -C "This is a great day!"
+
 else
 	echo command
 fi

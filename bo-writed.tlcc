@@ -255,7 +255,7 @@ static unsigned bo_writed_get_group_owner (CONNECT_INFO &con, const char *sessio
 			glocal.userid = 0;
 		</f>
 		</call>
-		if (glocal.userid == 0) msg = "Unknown owner";
+		if (glocal.userid == 0) msg = MSG_U(E_UNKNOWNOWNER,"Unknown owner");
 		username = owner;
 	}else if (glocal.userid != 0){
 		<call sql_query>("select name from id2name where userid=%u",glocal.userid);
@@ -2020,7 +2020,7 @@ int main (int argc, char *argv[])
 							" where id2name.name='%s' and groups.name='%s' and group_members.userid=%u"
 							,groupowner,groupname,glocal.userid);
 						<f empty>
-							glocal.msg = "Unknown group name, empty group, or user not a member";
+							glocal.msg = MSG_U(E_UNKNOWNGROUP,"Unknown group name, empty group, or user not a member");
 						</f>
 						<f onerow>
 							bool created;
@@ -2064,7 +2064,7 @@ int main (int argc, char *argv[])
 							" where id2name.name='%s' and groups.name='%s' and group_members.userid=%u"
 							,groupowner,groupname,glocal.srcentry.userid);
 						<f empty>
-							glocal.msg = "Unknown group name, empty group, or user not a member";
+							glocal.msg = MSG_R(E_UNKNOWNGROUP);
 						</f>
 						<f onerow>
 							bool created;
@@ -2099,7 +2099,7 @@ int main (int argc, char *argv[])
 					if (glocal.userid > 0){
 						glocal int target_userid = fs_rec_getid ("select userid from id2name where name='%s'",user);
 						if (glocal.target_userid == -1){
-							glocal.msg = "Unknown user";
+							glocal.msg = MSG_U(E_UNKOWNUSER,"Unknown user");
 						}else{
 							<call sql_query>("select userid from contact_requests"
 								" where (userid=%u and reqid=%d) or (userid=%d and reqid=%u)"
@@ -2136,7 +2136,7 @@ int main (int argc, char *argv[])
 					if (glocal.userid > 0){
 						glocal int target_userid = fs_rec_getid ("select userid from id2name where name='%s'",user);
 						if (glocal.target_userid == -1){
-							glocal.msg = "Unknown user";
+							glocal.msg = MSG_R(E_UNKNOWNUSER);
 						}else{
 							<call sql_query>("select status from contact_requests where userid=%u and reqid=%d"
 								,glocal.userid,glocal.target_userid);
@@ -2176,9 +2176,9 @@ int main (int argc, char *argv[])
 							string dirname = string_f("/projects/%s/public/%s",username.c_str(),config.public_dir);
 							ENTRY entry;
 							if (bo_writed_findentry (glocal.con,sessionid,dirname.c_str(),entry,true)==-1){
-								glocal.msg = "Unknown folder for public_dir";
+								glocal.msg = MSG_U(E_UNKNOWNPUBDIR,"Unknown folder for public_dir");
 							}else if (!bolixo_isdir(entry.type)){
-								glocal.msg = "public_dir is not a directory";
+								glocal.msg = MSG_U(E_PUBDIRNOTDIR,"public_dir is not a directory");
 							}
 						}
 						if (glocal.msg.size() == 0){
@@ -2217,7 +2217,7 @@ int main (int argc, char *argv[])
 									glocal.dirid = fs_find_short_inbox(glocal.check_id,glocal.user,"public",glocal.msg);
 									if (glocal.dirid == -1){
 										// No public short inbox for this user. We register the interest
-										// When the short inbox will be create, we will update the interest on the fly.
+										// When the short inbox will be created, we will update the interest on the fly.
 										glocal.msg.clear();
 									}
 								}
