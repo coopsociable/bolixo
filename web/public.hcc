@@ -1,15 +1,19 @@
 /*
 	This is used to display public content. No authentication, no cookies. no security, beside using the public_* API.
+	The page always requires the image variable to return something useful.
+	The webssl rewriterule transforms /public/user/content into public.hc?image=user/content
 */
 #include <stdio.h>
 #include <sys/stat.h>
 #include <tlmpweb.h>
+#include <tlmpnet.h>
+#include <tlmplib.h>
 #include "../bolixo.m"
 #include <linuxconf/translat.h>
+#include <trlitool.h>
+#include "util.h"
 
-
-static W_SSTRING w_content("content");
-static W_SSTRING w_upload ("upload");
+static W_SSTRING w_image ("image");
 
 extern "C" void tlmp_initmod()
 {
@@ -17,46 +21,53 @@ extern "C" void tlmp_initmod()
 }
 
 <mod>
+static void webmain_real()
+{
+	glocal CONNECT_INFO con;
+	glocal.con.port = "/dev/bod.sock";
+	glocal.con.secret = "foo";
+	const char *pt = w_image.c_str();
+	tlmp_error ("image=%s\n",pt);
+	if (*pt == '/') pt++;
+	const char *user = pt;
+	pt = strchr(pt,'/');
+	if (pt == NULL){
+		// Display the public page of the user
+		htmlprintf ("<h1>%s</h1><p>\n",user);
+		htmlprintf ("<img width=30 src=/public/%s/mini-photo.jpg>\n",user);
+		htmlprintf ("<img width=100 src=/public/%s/image.jpg>\n",user);
+	}else{
+		util_sendpublicfile(glocal.con,w_image.c_str());
+	}
+}
+</mod>
+<mod>
 extern "C" void webmain()
 {
-	tlmpweb_title ("Public");
-	/- <p>
-	/- Message traduit:
-	htmlout (MSG_R(I_ANONYMOUS));
-	/- <p>
-	/- Hello
-				<call form>("test");
-				<f setup>
-					///- <tr><td colspan=2>
-					//field_textarea (w_content,5,60,"");
-					/- <tr><td>
-					field_file (w_upload);
-					/- <td>
-					button_submit ("Send");
-				</f>
-				<f validate>
-					return true;
-				</f>
-				<f process>
-					const char *tempname = t_varstr("filename:upload");
-					FILE *fin = fopen (tempname,"r");
-					if (fin == NULL){
-						htmlprintf ("Internal error reading temp file: :%s:\n",tempname);
-						fail = true;
-					}else{
-						struct stat64 st;
-						if (fstat64(fileno(fin),&st)==-1){
-							htmlprintf ("Can't stat\n");
-							fail = true;
-						}else{
-							htmlprintf ("size=%lu\n",st.st_size);
-							fail = true;
-						}
-						fclose (fin);
-					}
-					keepediting = true;
-				</f>
-				</call>
+	long long start = fdpass_getnow();
+	<call tcpconnect>("unix:","/tmp/stop.sock",1);
+	<f init>
+	</f>
+	<f oneline>
+		webmain_real();
+		end=true;
+	</f>
+	<f fail>
+		webmain_real();
+	</f>
+	<f end>
+	</f>
+	</call>
+	long long end = fdpass_getnow();
+	glocal long long diff = end - start;
+	<call savefile>("/tmp/public-duration",true);
+	<f dowrite>
+		fprintf (fout,"%s?%s: %Ld.%06Ld\n"
+			,tlmpweb_curpage(),getenv ("QUERY_STRING")
+			,glocal.diff/1000000,glocal.diff%1000000);
+		return 0;
+	</f>
+	</call>
 }
 </mod>
 

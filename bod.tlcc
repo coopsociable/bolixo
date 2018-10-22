@@ -626,24 +626,18 @@ static int trlid_main (
 				}
 			</f>
 			<f readmore>	// sessionid handle = success:b msg content:o more:b
-				bool is_admin;
-				string msg;
-				if (trli_getsessionuser(glocal.con_sess,sessionid,is_admin,msg)==0){
-					rep_readmore (false,msg,BOB_TYPE(),false);
+				FILE *fin = fs_get_file (handle,sessionid);
+				if (fin == NULL){
+					rep_readmore (false,"Internal error, reading content file",BOB_TYPE(),false);
+					fs_delete_handle (handle);
 				}else{
-					FILE *fin = fs_get_file (handle,sessionid);
-					if (fin == NULL){
-						rep_readmore (false,"Internal error, reading content file",BOB_TYPE(),false);
-						fs_delete_handle (handle);
-					}else{
-						char buf[50000];
-						int len = fread (buf,1,50000,fin);
-						BOB_TYPE bob (buf,len,false);
-						bool more = len == 50000;
-						rep_readmore (true,"Ok",bob,more);
-						if (!more){
-							fs_delete_handle(handle);
-						}
+					char buf[50000];
+					int len = fread (buf,1,50000,fin);
+					BOB_TYPE bob (buf,len,false);
+					bool more = len == 50000;
+					rep_readmore (true,"Ok",bob,more);
+					if (!more){
+						fs_delete_handle(handle);
 					}
 				}
 			</f>
@@ -1500,7 +1494,7 @@ static int trlid_main (
 								info.size = len;
 								glocal.bod_client.rep_public_readfile(true,"",bob,false,info,"");
 							}else{
-								FILE *fin = fs_alloc_file_handle (glocal.entry.entryid,info.modified,"r",glocal.handle,"");
+								FILE *fin = fs_alloc_file_handle (glocal.entry.entryid,info.modified,"r",glocal.handle,"public");
 								//string path = fs_createpath (glocal.entry.entryid,glocal.entry.modified);
 								//FILE *fin = fopen (path.c_str(),"r");
 								if (fin == NULL){

@@ -26,8 +26,6 @@ using namespace std;
 #define bod_client_rename_NOTNEED
 #define bod_client_copy_NOTNEED
 #define bod_client_readfile_NOTNEED
-#define bod_client_readfile_bob_NOTNEED
-#define bod_client_readmore_NOTNEED
 #define bod_client_mkdir_NOTNEED
 #define bod_client_rmdir_NOTNEED
 #define bod_client_listdir_NOTNEED
@@ -54,7 +52,6 @@ using namespace std;
 #define bod_client_sendtalk_NOTNEED
 #define bod_client_list_talk_NOTNEED
 #define bod_client_contact_list_NOTNEED
-#define bod_client_public_readfile_NOTNEED
 #define bod_client_public_listdir_NOTNEED
 #define bod_client_config_write_NOTNEED
 #define bod_client_config_read_NOTNEED
@@ -624,3 +621,78 @@ void _F_button_row::drawrightarrow (PARAM_STRING href, bool visible)
 	arrow_right_visible = visible;
 	href_arrow_right = href.ptr;
 }
+static const char *tbtype[]={
+        "text/html",	//FILE_UNKNOWN,
+        "text/html",	//FILE_TEXT,
+	"audio/mp3",	//FILE_SOUND_MP3,
+	"audio/ogg",	//FILE_SOUND_OGG,
+	"image/jpeg",	//FILE_IMAGE_JPG,
+	"image/png",	//FILE_IMAGE_PNG,
+	"image/gig",	//FILE_IMAGE_GIF,
+	"video/mpeg"	 //FILE_VIDEO,
+};
+<mod>
+static void util_sendfile_common(CONNECT_INFO &con, const READINFO_receive &info, const BOB_TYPE &content, bool more, const char *handle, const char *session)
+{
+	glocal CONNECT_INFO *con = &con;
+	tlmpweb_setmodified(info.modified);
+	tlmpweb_doctype (tbtype[info.file_type],info.size);
+	htmlwrite (content.getbuffer(),content.getsize());
+	glocal bool more = more;
+	while (glocal.more){
+		<call bod_client_readmore>(*glocal.con,session,handle);
+		<f ok>
+			htmlwrite (content.getbuffer(),content.getsize());
+			glocal.more = more;
+			tlmp_error ("readmore success=%d msg=%s\n",success,msg);
+		</f>
+		</call>
+	}
+}
+</mod>	
+<mod>
+void util_sendfile (CONNECT_INFO &con, PARAM_STRING filename)
+{
+	glocal CONNECT_INFO *con = &con;
+	<call bod_client_readfile_bob>(con,w_session.c_str(),filename,"",false);
+	<f ok>
+		if (!success){
+			htmlprintf ("Can't read file: %s\n",msg);
+
+		}else{
+			util_sendfile_common(*glocal.con,info,content,more,handle,w_session.c_str());
+		}
+	</f>
+	</call>
+}
+</mod>
+/*
+	Send a file using the public api.
+	The file is /username/file. We accept also username/file.
+	So we extract the username
+*/
+<mod>
+void util_sendpublicfile (CONNECT_INFO &con, PARAM_STRING filename)
+{
+	glocal CONNECT_INFO *con = &con;
+	const char *pt = filename.ptr;
+	if (*pt == '/') pt++;
+	const char *start = pt;
+	pt = strchr(pt,'/');
+	if (pt != NULL){
+		glocal string username;
+		glocal.username = string(start,pt-start);
+tlmp_error ("readfile :%s: :%s:\n",glocal.username.c_str(),pt);
+		<call bod_client_public_readfile>(con,glocal.username,pt,0);
+		<f ok>
+tlmp_error ("success %d handle %s more %d len=%lu\n",success,handle,more,content.getsize());
+			if (!success){
+				tlmp_error ("Can't read public file for user %s: %s\n",glocal.username.c_str(),msg);
+			}else{
+				util_sendfile_common(*glocal.con,info,content,more,handle,"public");
+			}
+		</f>
+		</call>
+	}
+}
+</mod>

@@ -1073,78 +1073,6 @@ static string index_format_shortmsg (const char *txt)
 {
 	return index_format_shortmsg (txt,0);
 }
-static const char *tbtype[]={
-        "text/html",	//FILE_UNKNOWN,
-        "text/html",	//FILE_TEXT,
-	"audio/mp3",	//FILE_SOUND_MP3,
-	"audio/ogg",	//FILE_SOUND_OGG,
-	"image/jpeg",	//FILE_IMAGE_JPG,
-	"image/png",	//FILE_IMAGE_PNG,
-	"image/gig",	//FILE_IMAGE_GIF,
-	"video/mpeg"	 //FILE_VIDEO,
-};
-<mod>
-static void index_sendfile_common(CONNECT_INFO &con, const READINFO_receive &info, const BOB_TYPE &content, bool more, const char *handle)
-{
-	glocal CONNECT_INFO *con = &con;
-	tlmpweb_setmodified(info.modified);
-	tlmpweb_doctype (tbtype[info.file_type],info.size);
-	htmlwrite (content.getbuffer(),content.getsize());
-	glocal bool more = more;
-	while (glocal.more){
-		<call bod_client_readmore>(*glocal.con,w_session.c_str(),handle);
-		<f ok>
-			htmlwrite (content.getbuffer(),content.getsize());
-			glocal.more = more;
-		</f>
-		</call>
-	}
-}
-</mod>	
-<mod>
-static void index_sendfile (CONNECT_INFO &con, PARAM_STRING filename)
-{
-	glocal CONNECT_INFO *con = &con;
-	<call bod_client_readfile_bob>(con,w_session.c_str(),filename,"",false);
-	<f ok>
-		if (!success){
-			htmlprintf ("Can't read file: %s\n",msg);
-
-		}else{
-			index_sendfile_common(*glocal.con,info,content,more,handle);
-		}
-	</f>
-	</call>
-}
-</mod>
-/*
-	Send a file using the public api.
-	The file is /username/file. We accept also username/file.
-	So we extract the username
-*/
-<mod>
-static void index_sendpublicfile (CONNECT_INFO &con, PARAM_STRING filename)
-{
-	glocal CONNECT_INFO *con = &con;
-	const char *pt = filename.ptr;
-	if (*pt == '/') pt++;
-	const char *start = pt;
-	pt = strchr(pt,'/');
-	if (pt != NULL){
-		glocal string username;
-		glocal.username = string(start,pt-start);
-		<call bod_client_public_readfile>(con,glocal.username,pt,0);
-		<f ok>
-			if (!success){
-				tlmp_error ("Can't read public file for user %s: %s\n",glocal.username.c_str(),msg);
-			}else{
-				index_sendfile_common(*glocal.con,info,content,more,handle);
-			}
-		</f>
-		</call>
-	}
-}
-</mod>
 
 <mod>
 static int index_loadfile(CONNECT_INFO &con, PARAM_STRING filename, string &text)
@@ -2051,11 +1979,11 @@ extern "C" void webmain_real()
 		</call>
 	</f>
 	<f step5> // Send a file
-		index_sendfile (glocal.con,w_image.c_str());
+		util_sendfile (glocal.con,w_image.c_str());
 		noend();
 	</f>	
 	<f step6> // Send a file from a user public directory
-		index_sendpublicfile (glocal.con,w_image.c_str());
+		util_sendpublicfile (glocal.con,w_image.c_str());
 		noend();
 	</f>
 	<f step7> // TAB Projects
@@ -2172,7 +2100,7 @@ extern "C" void webmain_real()
 						glocal string fname = string_f("%s/%s",glocal.path.c_str(),f.name);
 						if (file_is_text(f.file_type)){
 							if (f.islarge){
-								index_sendfile (glocal.con,glocal.fname);
+								util_sendfile (glocal.con,glocal.fname);
 							}else{
 								<call bod_client_readfile>(glocal.con,w_session.c_str(),glocal.fname,"");
 								<f ok>
