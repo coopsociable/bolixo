@@ -40,7 +40,8 @@ elif [ "$1" = "sequence" ] ; then # test: Create some users from scratch
 	./bofs -u  jacques-C misc -R -u jacques-A -s A
 	./bofs -u  jacques-C misc -R -u jacques-B -s A
 	# Then all the other users do a contact request to jacques-A
-	for letter in D G H I J K L M N O P Q R S T U V W X Y Z
+	# except X Y Z
+	for letter in D G H I J K L M N O P Q R S T U V W
 	do
 		./bofs -u jacques-$letter misc -r -u jacques-A
 	done
@@ -49,14 +50,19 @@ elif [ "$1" = "sequence" ] ; then # test: Create some users from scratch
 	do
 		./bofs -u jacques-A misc -I --int_user jacques-$letter
 	done	
-	# We create a public project for all users and put a small photo in each
+	# The public project and public dir are created by default when the account are create
+	# So we just put a small and large photo in each public dir
 	# test-sequence removes user E and F
 	for letter in A B C D G H I J K L M N O P Q R S T U V W X Y Z
 	do
-		./bofs -u jacques-$letter groups --create-project-dir -L public
+		#./bofs -u jacques-$letter groups --create-project-dir -L public
 		if [ -x /usr/bin/convert ]; then
 			convert -font helvetica -size 40x40 xc:white -pointsize 37 -draw "text 5,32 '$letter'" /tmp/mini-photo.jpg
 			./bofs -u jacques-$letter cp /tmp/mini-photo.jpg bo://projects/jacques-$letter/public/mini-photo.jpg
+			convert -font helvetica -size 100x100 xc:white \
+                                -stroke black -fill blue -draw "roundrectangle 5,5 95,95 10,10" \
+				-pointsize 50 -stroke black -fill red -draw "text 35,65 A" /tmp/photo.jpg
+			./bofs -u jacques-$letter cp /tmp/photo.jpg bo://projects/jacques-$letter/public/photo.jpg
 		else
 			echo no convert utility, install ImangeMagick
 		fi

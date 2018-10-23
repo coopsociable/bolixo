@@ -1259,26 +1259,44 @@ static int trlid_main (
 				</f>
 				</call>
 			</f>
-			<f contact_list>	// sessionid owner offset:u nb:u = success:b msg contacts:U{CONTACT}v
+			<f contact_list>	// sessionid owner to_me:b offset:u nb:u = success:b msg contacts:U{CONTACT}v
 				// CONTACT user reqdate message status
 				glocal vector<CONTACT> contacts;
 				glocal string msg;
 				string username;
 				unsigned userid = bo_writed_get_group_owner (glocal.con_sess, sessionid, owner, username, glocal.msg);
 				if (userid != 0){
-					<call sql_query>("select id2name.name,message,status,reqdate from contact_requests"
-						" join id2name on id2name.userid=contact_requests.reqid"
-						" where contact_requests.userid=%u order by id2name.name limit %u,%u"
-						,userid,offset,nb);
-					<f onerow>
-						CONTACT c;
-						c.user = row[0];
-						c.message = row[1];
-						c.status = (CONTACT_STATUS)atoi(row[2]);
-						c.reqdate = row[3];
-						glocal.contacts.push_back(c);
-					</f>
-					</call>
+					if (to_me){
+						// Some people made contact request to me
+						<call sql_query>("select id2name.name,message,status,reqdate from contact_requests"
+							" join id2name on id2name.userid=contact_requests.reqid"
+							" where contact_requests.userid=%u order by id2name.name limit %u,%u"
+							,userid,offset,nb);
+						<f onerow>
+							CONTACT c;
+							c.user = row[0];
+							c.message = row[1];
+							c.status = (CONTACT_STATUS)atoi(row[2]);
+							c.reqdate = row[3];
+							glocal.contacts.push_back(c);
+						</f>
+						</call>
+					}else{
+						// I made the request
+						<call sql_query>("select id2name.name,message,status,reqdate from contact_requests"
+							" join id2name on id2name.userid=contact_requests.userid"
+							" where contact_requests.reqid=%u order by id2name.name limit %u,%u"
+							,userid,offset,nb);
+						<f onerow>
+							CONTACT c;
+							c.user = row[0];
+							c.message = row[1];
+							c.status = (CONTACT_STATUS)atoi(row[2]);
+							c.reqdate = row[3];
+							glocal.contacts.push_back(c);
+						</f>
+						</call>
+					}
 				}
 				if (glocal.msg.size() != 0){
 					glocal.contacts.clear();
@@ -1401,6 +1419,14 @@ static int trlid_main (
 					glocal.bod_client.rep_config_write (success,msg);
 				</f>
 				</call>
+			</f>
+			<f public_checkuser>	// username = success:b msg exist:b
+				string msg;
+				if (bod_checkpublic(username,msg) != -1){
+					rep_public_checkuser(true,"",true);
+				}else{
+					rep_public_checkuser(true,"",false);
+				}
 			</f>
 			<f public_listdir>	// username dirpath offset:u nb:u = success:b msg files:U{FILEINFO}v
 				//glocal const char *username = username;

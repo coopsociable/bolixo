@@ -14,26 +14,19 @@
 #include "../bolixo.h"
 #include "../bolixo.m"
 #include <linuxconf/translat.h>
+#include "document.h"
 
 #define SECTION_NONE 0
-extern DOC_ID section_none;
 #define SECTION_TALK 1
-extern DOC_ID section_talk;
 #define SECTION_PROJECT 2
-extern DOC_ID section_project;
 #define SECTION_ACCOUNT 3
-extern DOC_ID section_account;
 #define SECTION_GROUPS 4
-extern DOC_ID section_groups;
 #define SECTION_PROJECTS 5
-extern DOC_ID section_projects;
 #define SECTION_CONTACTS 6
-extern DOC_ID section_contacts;
 #define SECTION_MAILS 7
-extern DOC_ID section_mails;
 #define SECTION_INTERESTS 8
-extern DOC_ID section_interests;
-#define SECTION_NBSECTIONS 9
+#define SECTION_CONTACT_REQ 9
+#define SECTION_NBSECTIONS 10
 extern void bolixo_doc (DOCUMENT_POINTER &, DOC_ID &jump);
 extern void bolixo_doc_fr (DOCUMENT_POINTER &, DOC_ID &jump);
 
@@ -1014,29 +1007,17 @@ static void web_updatecurrents(CONNECT_INFO &con_sess)
 */
 static string index_img(unsigned step, unsigned width, PARAM_STRING dirpath, PARAM_STRING filename, PARAM_STRING date)
 {
-	char tmp[strlen(date.ptr)+1];
-	strcpy (tmp,date.ptr);
-	char *pt = tmp;
-	while (*pt != '\0'){
-		if (*pt == ' ') *pt = '_';
-		pt++;
-	}
+	string tmp = util_flipspaces(date);
 	const char *sep = "/";
 	if (dirpath.ptr[0] == '\0') sep = "";
 	return string_f ("<img width=%u src=%s?webstep=%u&image=%s%s%s&mod=%s>"
-		,width,tlmpweb_curpage(),step,dirpath.ptr,sep,filename.ptr,tmp);
+		,width,tlmpweb_curpage(),step,dirpath.ptr,sep,filename.ptr,tmp.c_str());
 }
 static string index_img(unsigned step, const char *style, PARAM_STRING filepath, PARAM_STRING date)
 {
-	char tmp[strlen(date.ptr)+1];
-	strcpy (tmp,date.ptr);
-	char *pt = tmp;
-	while (*pt != '\0'){
-		if (*pt == ' ') *pt = '_';
-		pt++;
-	}
+	string tmp = util_flipspaces(date);
 	return string_f ("<img style='%s' src=%s?webstep=%u&image=%s&mod=%s>"
-		,style,tlmpweb_curpage(),step,filepath.ptr,tmp);
+		,style,tlmpweb_curpage(),step,filepath.ptr,tmp.c_str());
 }
 
 /*
@@ -2539,6 +2520,7 @@ extern "C" void webmain_real()
 			string_f("Account~%s",MSG_U(T_ACCOUNT,"Account")),
 			string_f("Interests~%s",MSG_U(T_INTERESTS,"Interests")),
 			string_f("Contacts~%s",MSG_U(T_CONTACTS,"Contacts")),
+			string_f("Contact-req~%s",MSG_U(T_CONTACT_REQS,"Requests")),
 			string_f("Projects~%s",MSG_U(T_PROJECTS,"Projects")),
 			string_f("Groups~%s",MSG_U(T_GROUPS,"Groups"))};
 		static unsigned size[5]={0,60,40,0,0};
@@ -2551,6 +2533,8 @@ extern "C" void webmain_real()
 				index_doc(glocal.docpointers[SECTION_PROJECTS],section_projects);
 			}else if (strcmp(id,"helpcontacts")==0){
 				index_doc(glocal.docpointers[SECTION_CONTACTS],section_contacts);
+			}else if (strcmp(id,"helpcontact-req")==0){
+				index_doc(glocal.docpointers[SECTION_CONTACT_REQ],section_contact_req);
 			}else if (strcmp(id,"helpaccount")==0){
 				index_doc(glocal.docpointers[SECTION_ACCOUNT],section_account);
 			}else if (strcmp(id,"helpinterests")==0){
@@ -2904,20 +2888,25 @@ extern "C" void webmain_real()
 					}
 				</f>
 				</call>
-			}else if (strcmp(id,"Contacts")==0){
-				sethelp("helpcontacts",MSG_U(I_HELPCONTACTS,"Contacts"));
+			}else if (strcmp(id,"Contacts")==0 || strcmp(id,"Contact-req")==0){
+				glocal bool to_me = strcmp(id,"Contacts")==0;
+				if (glocal.to_me){
+					sethelp("helpcontacts",MSG_U(I_HELPCONTACTS,"Contacts"));
+				}else{
+					sethelp("helpcontact-req",MSG_U(I_HELPCONTACT_REQ,"Requests"));
+				}
 				<call vframe2h>(40);
 				<f left>
-					{
+					if (!glocal.to_me){
 						DIV f; f.id(TAB_FORM).print();
-						url_self ("add=1",MSG_U(I_NEWCONTACT,"Send a new contact request"));
+						url_self ("add=1",MSG_U(I_NEWCONTACT,"Send a contact request"));
 						/- <br>&nbsp;<br>
 					}
 					static const string id = "list:contacts";
 					<call webtable>(ID_CONTACT,id,"100%",currents[id],offsets[id],10);
 					<f load>
 						sethead (MSG_U(H_CONTACTS,"User\tDate\tStatus"));
-						<call bod_client_contact_list>(glocal.con,w_session.c_str(),"",nbskip,nblines);
+						<call bod_client_contact_list>(glocal.con,w_session.c_str(),"",glocal.to_me,nbskip,nblines);
 						<f ok>
 							static const char *tbstatus[]={MSG_U(I_WAITING,"waiting"),MSG_U(I_ACCEPTED,"accepted"),MSG_U(I_REJECTED,"rejected")};
 							unsigned rownum = 0;
@@ -2975,7 +2964,7 @@ extern "C" void webmain_real()
 							if (glocal.done){
 								/-#I_CONTACTSENT Contact request sent!
 							}
-						}else if (w_user.isset()){
+						}else if (glocal.to_me && w_user.isset()){
 							glocal bool done = false;
 							glocal CONTACT_STATUS status = CONTACT_WAITING;
 							glocal string user;
@@ -2992,7 +2981,7 @@ extern "C" void webmain_real()
 							</f>
 							<f load>
 								unsigned rownum = atoi(w_user.c_str());
-								<call bod_client_contact_list>(glocal.con,w_session.c_str(),"",rownum,1);
+								<call bod_client_contact_list>(glocal.con,w_session.c_str(),"",glocal.to_me,rownum,1);
 								<f ok>
 									if (contacts.size() == 1){
 										auto &c = contacts[0];

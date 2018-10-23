@@ -33,52 +33,70 @@ static void webmain_real()
 	const char *user = pt;
 	pt = strchr(pt,'/');
 	if (pt == NULL){
-		glocal const char *user = user;
-		// Display the public page of the user
-		tlmpweb_title (user);
-		
-		<call vframe4>(30,10);
-		<f top>
-			htmlprintf ("<center><h1>%s</h1></center>\n",glocal.user);
-		</f>
-		<f top_left>
-			DIV d; d.h(100).w(100).dispflex().flowrow().print();
-			DIV dd; dd.dispflex().flexfixe().print();
-			htmlprintf ("<img width=30 src=/public/%s/mini-photo.jpg>\n",glocal.user);
-			dd.end();
-			dd.dispflex().flexfixe().print();
-			htmlprintf ("<img height=100%% src=/public/%s/image.jpg>\n",glocal.user);
-		</f>
-		<f left>
-			string table = string("talk")+"public";
-			DIV d; d.autoscroll().print();
-			<call webtable>(table,"100%");
-			<f load>
-				setthparms ("align=left bgcolor=lightgray","");
-				setrowstyle ("white","bgcolor=white");
-				sethead  ("When\tWhat");
-				glocal unsigned rownum = nbskip;
-				unsigned offset=0;
-				while (1){
-					glocal bool more = false;
-					<call bod_client_public_list_talk>(glocal.con,glocal.user,offset,50);
-					<f ok>
-						for (auto &m:messages){
-							glocal.webtable.setrow ("white",glocal.rownum,"%s\t%s",m.submit,m.content);
-							glocal.rownum++;
-						}
-						glocal.more = messages.size() == 50;
-					</f>
-					</call>
-					if (!glocal.more) break;
-					offset += 50;
-				}
-			</f>
-			</call>
-		</f>
-		<f body>
+		glocal bool exist = false;
+		<call bod_client_public_checkuser>(glocal.con,user);
+		<f ok>
+			glocal.exist = exist;
 		</f>
 		</call>
+		if (!glocal.exist){
+			tlmpweb_httpnotfound();
+		}else{
+			glocal const char *user = user;
+			// Display the public page of the user
+			tlmpweb_title (user);
+		
+			<call vframe4>(30,10);
+			<f top>
+				htmlprintf ("<center><h1>%s</h1></center>\n",glocal.user);
+			</f>
+			<f top_left>
+				DIV d; d.h(100).w(100).dispflex().flowrow().print();
+				DIV dd; dd.dispflex().flexfixe().print();
+				htmlprintf ("<img width=30 src=/public/%s/mini-photo.jpg>\n",glocal.user);
+				dd.end();
+				dd.dispflex().flexfixe().print();
+				htmlprintf ("<img height=100%% src=/public/%s/photo.jpg>\n",glocal.user);
+			</f>
+			<f left>
+				string table = string("talk")+"public";
+				DIV d; d.autoscroll().print();
+				<call webtable>(table,"100%");
+				<f load>
+					setthparms ("align=left bgcolor=lightgray","");
+					setrowstyle ("white","bgcolor=white");
+					sethead  ("When\tWhat");
+					glocal unsigned rownum = nbskip;
+					unsigned offset=0;
+					while (1){
+						glocal bool more = false;
+						<call bod_client_public_list_talk>(glocal.con,glocal.user,offset,50);
+						<f ok>
+							for (auto &m:messages){
+								glocal.webtable.setrow ("white",glocal.rownum,"%s\t%s",m.submit,m.content);
+								glocal.rownum++;
+							}
+							glocal.more = messages.size() == 50;
+						</f>
+						</call>
+						if (!glocal.more) break;
+						offset += 50;
+					}
+				</f>
+				</call>
+			</f>
+			<f body>
+				<call bod_client_public_listdir>(glocal.con,glocal.user,"/",0,20);
+				<f ok>
+					for (auto &f:files){
+						string tmp = util_flipspaces(f.modified);
+						htmlprintf ("<img width=100%% src=/public/%s/%s?mod=%s>\n",glocal.user,f.name,tmp.c_str());
+					}
+				</f>
+				</call>
+			</f>
+			</call>
+		}
 	}else{
 		if (util_sendpublicfile(glocal.con,w_image.c_str())==-1){
 			tlmpweb_httpnotfound();

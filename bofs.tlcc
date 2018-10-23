@@ -42,6 +42,7 @@ using namespace std;
 #define bod_client_form_savevar_NOTNEED
 #define bod_client_form_deletevar_NOTNEED
 #define bod_client_form_deleteall_NOTNEED
+#define bod_client_public_checkuser_NOTNEED
 
 #include "proto/bod_client.protoch"
 
@@ -2034,6 +2035,7 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 	glocal bool contact_request = false;
 	glocal bool contact_manage = false;
 	glocal bool contact_list = false;
+	glocal bool contact_request_by_me = false;
 	glocal bool interest_set = false;
 	glocal bool interest_unset = false;
 	glocal bool interest_list = false;
@@ -2074,6 +2076,7 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 		setarg ('i',"intro","Introduction message for contact request",glocal.intro,false);
 		setarg ('s',"status","New status of the contact request",glocal.status,false);
 		setarg ('u',"user","User doing the contact request",glocal.user,false);
+		setarg (' ',"request_by_me","(for contact_list) Show contact request made by me",glocal.contact_request_by_me,false);
 
 		setgrouparg (MSG_U(I_INTERESTMGMT,"Interest management arguments"));
 		setarg (' ',"int_user","User for interest_set and interest_unset",glocal.interest_user,false);
@@ -2175,7 +2178,7 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 			}
 		}else if (glocal.contact_list){
 			if (glocal.ctx->login()!=-1){
-				<call bod_client_contact_list>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner,0,1000);
+				<call bod_client_contact_list>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner,!glocal.contact_request_by_me,0,1000);
 				<f ok>
 					if (!success){
 						bofs_error ("contact_list",internal_error,msg);
