@@ -2932,132 +2932,134 @@ extern "C" void webmain_real()
 					</call>
 				</f>
 				<f right>
-					if (profile_formactive (glocal.webtabs)){
-						glocal bool done = false;
-						<call form>("contact");
-						<f top>
-							/- <table border=0><tr><td>&nbsp;&nbsp;&nbsp;<td><table border=0>
-							/- <table border=0>
-							/- <tr><td><td>
-							/-#I_SENDCONTACT <h2>Send a contact request</h2>
-						</f>
-						<f bottom>
-							/- </table></table>
-						</f>
-						<f setup>
-							field_hidden (w_add);
-							/-#I_TOCONTACT <tr><td>Person to contact<td>
-							field_string (w_user,"size=30");
-							/-#I_MESSAGE <tr><td valign=top>Message<td>
-							field_textarea (w_content,10,60,"");
-							/- <tr><td>
-							button_submit();
-						</f>
-						<f validate>
-							return true;
-						</f>
-						<f process>
-							glocal bool fail = false;
-							<call bod_client_contact_request>(glocal.con,w_session.c_str(),"",w_user.c_str(),w_content.c_str());
-							<f ok>
-								if (!success){
-									glocal.fail = true;
-									htmlprintf (MSG_U(E_CONTACTFAIL,"Contact request failed: %s<br>\n"),msg);
-								}else{
-									glocal.done = true;
-								}
+					if (profile_formactive (glocal.webtabs,w_user)){
+						if (w_add.isset()){
+							glocal bool done = false;
+							<call form>("contact");
+							<f top>
+								/- <table border=0><tr><td>&nbsp;&nbsp;&nbsp;<td><table border=0>
+								/- <table border=0>
+								/- <tr><td><td>
+								/-#I_SENDCONTACT <h2>Send a contact request</h2>
 							</f>
-							</call>
-							fail = glocal.fail;
-						</f>
-						</call>
-						if (glocal.done){
-							/-#I_CONTACTSENT Contact request sent!
-						}
-					}else if (w_user.isset()){
-						glocal bool done = false;
-						glocal CONTACT_STATUS status = CONTACT_WAITING;
-						glocal string user;
-						const char *pt = strchr(w_user.c_str(),':');
-						if (pt != NULL) glocal.user = pt+1;
-						<call form>(string_f("managecontact:%s",w_user.c_str()));
-						<f top>
-							/- <table border=0><tr><td>&nbsp;&nbsp;&nbsp;<td><table border=0>
-							/- <tr><td><td>
-							/-#I_MANAGECONTACT <h2>Manage a contact</h2>
-						</f>
-						<f bottom>
-							/- </table></table>
-						</f>
-						<f load>
-							unsigned rownum = atoi(w_user.c_str());
-							<call bod_client_contact_list>(glocal.con,w_session.c_str(),"",rownum,1);
-							<f ok>
-								if (contacts.size() == 1){
-									auto &c = contacts[0];
-									w_content = c.message;
-								}
+							<f bottom>
+								/- </table></table>
 							</f>
-							</call>
-						</f>
-						<f setup>
-							field_hidden(w_user);
-							/- <tr><td>
-							/-#I_REQUESTFROM Request from
-							/- <td>
-							htmlout (glocal.user);
-							htmlout (MSG_R(I_MESSAGE));
-							field_textarea(w_content,5,60,"readonly");
-							/- <tr><td>
-							/-#I_ACCEPTREQ Accept request
-							/- <td>
-							field_radio(w_accept,"accept",true,"");
-							/- <tr><td>
-							/-#I_REFUSEREQ Refuse request
-							/- <td>
-							field_radio(w_accept,"reject",false,"");
-							/- <tr><td>
-							button_submit();
-						</f>
-						<f validate>
-							return true;
-						</f>
-						<f process>
-							glocal bool fail = false;
-							if (strcmp(w_accept.c_str(),"accept")==0){
-								glocal.status = CONTACT_ACCEPTED;
-							}else if (strcmp(w_accept.c_str(),"reject")==0){
-								glocal.status = CONTACT_REJECTED;
-							}else{
-								glocal.fail = true;
-								/- Invalid input ???
-							}
-							if (!glocal.fail){
-								<call bod_client_contact_manage>(glocal.con,w_session.c_str(),"",glocal.user.c_str(),glocal.status);
+							<f setup>
+								field_hidden (w_add);
+								/-#I_TOCONTACT <tr><td>Person to contact<td>
+								field_string (w_user,"size=30");
+								/-#I_MESSAGE <tr><td valign=top>Message<td>
+								field_textarea (w_content,10,60,"");
+								/- <tr><td>
+								button_submit();
+							</f>
+							<f validate>
+								return true;
+							</f>
+							<f process>
+								glocal bool fail = false;
+								<call bod_client_contact_request>(glocal.con,w_session.c_str(),"",w_user.c_str(),w_content.c_str());
 								<f ok>
 									if (!success){
 										glocal.fail = true;
-										htmlprintf ("operation failed: %s<br>\n",msg);
+										htmlprintf (MSG_U(E_CONTACTFAIL,"Contact request failed: %s<br>\n"),msg);
 									}else{
 										glocal.done = true;
 									}
 								</f>
 								</call>
+								fail = glocal.fail;
+							</f>
+							</call>
+							if (glocal.done){
+								/-#I_CONTACTSENT Contact request sent!
 							}
-							fail = glocal.fail;
-						</f>
-						</call>
-						if (glocal.done){
-							/- <table border=0><tr><td>&nbsp;&nbsp;&nbsp;<td><table border=0><tr><td>
-							/-#I_CONTACTDONE Contact request processed!
-							/- <p>
-							if (glocal.status == CONTACT_ACCEPTED){
-								htmlprintf (MSG_U(I_FROMNOWON,"From now on, you can communicate with user %s<br>\n"),glocal.user.c_str());
-								htmlprintf (MSG_U(I_MAKEMEMBER,"You can make user %s member of your groups<br>\n"),glocal.user.c_str());
-								/-#I_HEMAKEMEMBER and he can make you member of his groups.
+						}else if (w_user.isset()){
+							glocal bool done = false;
+							glocal CONTACT_STATUS status = CONTACT_WAITING;
+							glocal string user;
+							const char *pt = strchr(w_user.c_str(),':');
+							if (pt != NULL) glocal.user = pt+1;
+							<call form>(string_f("managecontact:%s",w_user.c_str()));
+							<f top>
+								/- <table border=0><tr><td>&nbsp;&nbsp;&nbsp;<td><table border=0>
+								/- <tr><td><td>
+								/-#I_MANAGECONTACT <h2>Manage a contact</h2>
+							</f>
+							<f bottom>
+								/- </table></table>
+							</f>
+							<f load>
+								unsigned rownum = atoi(w_user.c_str());
+								<call bod_client_contact_list>(glocal.con,w_session.c_str(),"",rownum,1);
+								<f ok>
+									if (contacts.size() == 1){
+										auto &c = contacts[0];
+										w_content = c.message;
+									}
+								</f>
+								</call>
+							</f>
+							<f setup>
+								field_hidden(w_user);
+								/- <tr><td>
+								/-#I_REQUESTFROM Request from
+								/- <td>
+								htmlout (glocal.user);
+								htmlout (MSG_R(I_MESSAGE));
+								field_textarea(w_content,5,55,"readonly");
+								/- <tr><td>
+								/-#I_ACCEPTREQ Accept request
+								/- <td>
+								field_radio(w_accept,"accept",true,"");
+								/- <tr><td>
+								/-#I_REFUSEREQ Refuse request
+								/- <td>
+								field_radio(w_accept,"reject",false,"");
+								/- <tr><td>
+								button_submit();
+							</f>
+							<f validate>
+								return true;
+							</f>
+							<f process>
+								glocal bool fail = false;
+								if (strcmp(w_accept.c_str(),"accept")==0){
+									glocal.status = CONTACT_ACCEPTED;
+								}else if (strcmp(w_accept.c_str(),"reject")==0){
+									glocal.status = CONTACT_REJECTED;
+								}else{
+									glocal.fail = true;
+									/- Invalid input ???
+								}
+								if (!glocal.fail){
+									<call bod_client_contact_manage>(glocal.con,w_session.c_str(),"",glocal.user.c_str(),glocal.status);
+									<f ok>
+										if (!success){
+											glocal.fail = true;
+											htmlprintf ("operation failed: %s<br>\n",msg);
+										}else{
+											glocal.done = true;
+										}
+									</f>
+									</call>
+								}
+								fail = glocal.fail;
+							</f>
+							</call>
+							if (glocal.done){
+								/- <table border=0><tr><td>&nbsp;&nbsp;&nbsp;<td><table border=0><tr><td>
+								/-#I_CONTACTDONE Contact request processed!
+								/- <p>
+								if (glocal.status == CONTACT_ACCEPTED){
+									htmlprintf (MSG_U(I_FROMNOWON,"From now on, you can communicate with user %s<br>\n"),glocal.user.c_str());
+									htmlprintf (MSG_U(I_MAKEMEMBER,"You can make user %s member of your groups<br>\n"),glocal.user.c_str());
+									/-#I_HEMAKEMEMBER and he can make you member of his groups.
+								}
+								/- </table></table>
+								glocal.webtabs.setstate("");
 							}
-							/- </table></table>
-							glocal.webtabs.setstate("");
 						}
 					}
 				</f>
