@@ -52,7 +52,14 @@ elif [ "$1" = "public" ] ; then # test: Make the content of one user public, pos
 	fi
 	./bofs -u $2 mkdir bo://projects/$2/public/version1
 	./bofs -u $2 misc --writeconfig --public_view 1 --public_dir version1
-	./bofs -u $2 msgs -t -G public --groupowner $2 -C "This is a great day!"
+	NB=1
+	if [ "$3" != "" ] ; then
+		NB=$3
+	fi
+	for ((i=0; i<$NB; i++))
+	do
+		./bofs -u $2 msgs -t -G public --groupowner $2 -C "This is a great day!"
+	done
 
 else
 	echo command

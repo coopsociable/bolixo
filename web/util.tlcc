@@ -11,6 +11,8 @@
 using namespace std;
 
 #define bo_sessiond_client_test_NOTNEED
+#define bo_sessiond_client_getsessioninfovars_NOTNEED
+#define bod_client_createsession_NOTNEED
 #define bod_client_login_NOTNEED
 #define bod_client_logout_NOTNEED
 #define bod_client_adduser_NOTNEED
@@ -53,6 +55,7 @@ using namespace std;
 #define bod_client_list_talk_NOTNEED
 #define bod_client_contact_list_NOTNEED
 #define bod_client_public_listdir_NOTNEED
+#define bod_client_public_list_talk_NOTNEED
 #define bod_client_config_write_NOTNEED
 #define bod_client_config_read_NOTNEED
 #define bod_client_contact_manage_NOTNEED
@@ -75,10 +78,11 @@ using namespace std;
 #define bo_sessiond_client_setvar_NOTNEED
 #include "../proto/bo-sessiond_client.protoch"
 
+
+W_UNSIGNED w_robot ("robot");
+#if 0
 static string w_session;
 USERINFO userinfo;
-static W_UNSIGNED w_robot ("robot");
-
 <mod>
 static void trli_getsessioninfo(CONNECT_INFO &con, CONNECT_INFO &con_sess, const char *varname, unsigned &varval)
 {
@@ -146,6 +150,7 @@ int util_getsessioninfo (CONNECT_INFO &con, CONNECT_INFO &con_sess,string &sessi
 	return 0;
 }
 </mod>
+#endif
 void draw_tab (
 	unsigned width,		// TAB width or 0 (computed from the title)
 	unsigned height,
@@ -651,16 +656,16 @@ static void util_sendfile_common(CONNECT_INFO &con, const READINFO_receive &info
 }
 </mod>	
 <mod>
-void util_sendfile (CONNECT_INFO &con, PARAM_STRING filename)
+void util_sendfile (CONNECT_INFO &con, PARAM_STRING session, PARAM_STRING filename)
 {
 	glocal CONNECT_INFO *con = &con;
-	<call bod_client_readfile_bob>(con,w_session.c_str(),filename,"",false);
+	glocal const char *session = session.ptr;
+	<call bod_client_readfile_bob>(con,session,filename,"",false);
 	<f ok>
 		if (!success){
 			htmlprintf ("Can't read file: %s\n",msg);
-
 		}else{
-			util_sendfile_common(*glocal.con,info,content,more,handle,w_session.c_str());
+			util_sendfile_common(*glocal.con,info,content,more,handle,glocal.session);
 		}
 	</f>
 	</call>
@@ -672,8 +677,9 @@ void util_sendfile (CONNECT_INFO &con, PARAM_STRING filename)
 	So we extract the username
 */
 <mod>
-void util_sendpublicfile (CONNECT_INFO &con, PARAM_STRING filename)
+int util_sendpublicfile (CONNECT_INFO &con, PARAM_STRING filename)
 {
+	glocal int ret = -1;
 	glocal CONNECT_INFO *con = &con;
 	const char *pt = filename.ptr;
 	if (*pt == '/') pt++;
@@ -682,17 +688,17 @@ void util_sendpublicfile (CONNECT_INFO &con, PARAM_STRING filename)
 	if (pt != NULL){
 		glocal string username;
 		glocal.username = string(start,pt-start);
-tlmp_error ("readfile :%s: :%s:\n",glocal.username.c_str(),pt);
 		<call bod_client_public_readfile>(con,glocal.username,pt,0);
 		<f ok>
-tlmp_error ("success %d handle %s more %d len=%lu\n",success,handle,more,content.getsize());
 			if (!success){
 				tlmp_error ("Can't read public file for user %s: %s\n",glocal.username.c_str(),msg);
 			}else{
+				glocal.ret = 0;
 				util_sendfile_common(*glocal.con,info,content,more,handle,"public");
 			}
 		</f>
 		</call>
 	}
+	return glocal.ret;
 }
 </mod>

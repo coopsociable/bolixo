@@ -2,7 +2,7 @@ extern const char **_dictionary_bolixo;
 #ifndef DICTIONARY_REQUEST
 	#define DICTIONARY_REQUEST \
 	const char **_dictionary_bolixo;\
-	TRANSLATE_SYSTEM_REQ _dictionary_req_bolixo("bolixo",_dictionary_bolixo,200,5);\
+	TRANSLATE_SYSTEM_REQ _dictionary_req_bolixo("bolixo",_dictionary_bolixo,220,6);\
 	void dummy_dict_bolixo(){}
 #endif
 #ifndef MSG_U
@@ -213,3 +213,23 @@ extern const char **_dictionary_bolixo;
 #define E_UNKOWNUSER	197
 #define E_UNKNOWNPUBDIR	198
 #define E_PUBDIRNOTDIR	199
+#define O_ADDATTACH	200
+#define O_LISTINBOXES	201
+#define O_LISTALLINBOXES	202
+#define O_SENDMSG	203
+#define O_REPLYMSG	204
+#define O_SENDSHORTMSG	205
+#define O_SENDFILE	206
+#define O_LISTSHORTMSGS	207
+#define O_GROUPNAME	208
+#define O_GROUPOWNER	209
+#define O_MANAGER	210
+#define O_TARGETINBOX	211
+#define O_TARGETROLE	212
+#define O_RECIPIENT	213
+#define O_FILEMSG	214
+#define O_MSGID	215
+#define O_TITLE	216
+#define O_BODY	217
+#define O_BOFILEPATH	218
+#define O_OWNER	219

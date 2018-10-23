@@ -11,7 +11,6 @@ struct USERINFO{
 		reset();
 	}
 };
-extern USERINFO userinfo;
 
 int util_getsessioninfo (CONNECT_INFO &con, CONNECT_INFO &con_sess, std::string &session, const char *varname, unsigned &varval);
 void print_href (const char *title, PARAM_STRING href);
@@ -71,6 +70,6 @@ void button_row(_F_button_row &c, int border);
 void button_row(_F_button_row &c);
 
 void trli_subjects (int step_statistics, int subject_selected, bool stat_selected, bool blog_selected, W_UNSIGNED &_w_tosubject);
-void util_sendfile (CONNECT_INFO &con, PARAM_STRING filename);
-void util_sendpublicfile (CONNECT_INFO &con, PARAM_STRING filename);
+void util_sendfile (CONNECT_INFO &con, PARAM_STRING session, PARAM_STRING filename);
+int util_sendpublicfile (CONNECT_INFO &con, PARAM_STRING filename);
 

@@ -1236,7 +1236,7 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 		setarg ('U',"user","User/member of a group",glocal.user,false);
 		setarg ('A',"access","Access or default access",glocal.access,false);
 		setarg ('R',"role","(for set-member) Activity of this member",glocal.role,false);
-		setarg ('O',"owner","Apply the comand on behalf of this owner, must be admin",glocal.owner,false);
+		setarg ('O',"owner",MSG_R(O_OWNER),glocal.owner,false);
 		setarg (' ',"only_owner","Shows only groups own by this user (--print-groups)",glocal.only_owner,false);
 	</f>
 	<f main_noarg>
@@ -1768,6 +1768,22 @@ static void bofs_check_groupopt (const char *groupname, const char *groupowner)
 	}
 }
 
+static void bofs_listshortmsgs(const vector<SHORTMSG_receive> &messages)
+{
+	for (auto &m:messages){
+		int linelen = 0;
+		if (m.content[0] != '\0'){
+			const char *eol = strchr(m.content,'\n');
+			if (eol != NULL){
+				linelen=(eol-m.content);
+			}else{
+				linelen = strlen(m.content);
+			}
+		}
+		printf ("%s %-10s %-30s %-20s %7u %*.*s\n",tbftype[m.file_type],m.from,m.uuid,m.submit,m.size
+			,linelen,linelen,m.content);
+	}
+}
 <mod>
 static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 {
@@ -1802,29 +1818,29 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 			 "bofs msgs ...\n"
 			);
 		setgrouparg ("Main commands");
-		setarg ('a',"attach","Add an attachment to previously sent message",glocal.attach,false);
-		setarg ('l',"list","List inboxes",glocal.list,false);
-		setarg ('i',"listmsgs","List messages in all inboxes",glocal.listmsgs,false);
-		setarg ('n',"newmsg","Send a message",glocal.newmsg,false);
-		setarg ('r',"reply","Reply to a message",glocal.reply,false);
-		setarg ('t',"shortmsg","Send a short message to a group",glocal.shortmsg,false);
-		setarg ('f',"shortmsg_file","Send a bolixo file to a group",glocal.shortmsg_file,false);
-		setarg ('s',"listshortmsgs","List short messages",glocal.listshortmsgs,false);
+		setarg ('a',"attach",MSG_U(O_ADDATTACH,"Add an attachment to previously sent message"),glocal.attach,false);
+		setarg ('l',"list",MSG_U(O_LISTINBOXES,"List inboxes"),glocal.list,false);
+		setarg ('i',"listmsgs",MSG_U(O_LISTALLINBOXES,"List messages in all inboxes"),glocal.listmsgs,false);
+		setarg ('n',"newmsg",MSG_U(O_SENDMSG,"Send a message"),glocal.newmsg,false);
+		setarg ('r',"reply",MSG_U(O_REPLYMSG,"Reply to a message"),glocal.reply,false);
+		setarg ('t',"shortmsg",MSG_U(O_SENDSHORTMSG,"Send a short message to a group"),glocal.shortmsg,false);
+		setarg ('f',"shortmsg_file",MSG_U(O_SENDFILE,"Send a bolixo file to a group"),glocal.shortmsg_file,false);
+		setarg ('s',"listshortmsgs",MSG_U(O_LISTSHORTMSGS,"List short messages"),glocal.listshortmsgs,false);
 		setgrouparg ("Options");
-		setarg ('G',"groupname","Group name for short message",glocal.groupname,false);
-		setarg (' ',"groupowner","Group owner",glocal.groupowner,false);
-		setarg ('M',"manager","Manager or owner of the inbox",glocal.manager,false);
-		setarg ('P',"project","Target inbox or project",glocal.project,false);
-		setarg ('R',"role","Target role",glocal.role,false);
-		setarg ('D',"recipient","Recipient of the message",glocal.recipients,false);
+		setarg ('G',"groupname",MSG_U(O_GROUPNAME,"Group name for short message"),glocal.groupname,false);
+		setarg (' ',"groupowner",MSG_U(O_GROUPOWNER,"Group owner"),glocal.groupowner,false);
+		setarg ('M',"manager",MSG_U(O_MANAGER,"Manager or owner of the inbox"),glocal.manager,false);
+		setarg ('P',"project",MSG_U(O_TARGETINBOX,"Target inbox or project"),glocal.project,false);
+		setarg ('R',"role",MSG_U(O_TARGETROLE,"Target role"),glocal.role,false);
+		setarg ('D',"recipient",MSG_U(O_RECIPIENT,"Recipient of the message"),glocal.recipients,false);
 
-		setarg ('F',"filecontent","File holding a message content",glocal.filecontent,false);
-		setarg ('I',"msgid","Message ID we are replying to",glocal.msgid,false);
-		setarg ('T',"title","Title of the message",glocal.title,false);
-		setarg ('C',"content","body of the message",glocal.content,false);
-		setarg ('L',"bolixofile","Bolixo file path",glocal.filename,false);
+		setarg ('F',"filecontent",MSG_U(O_FILEMSG,"File holding a message content"),glocal.filecontent,false);
+		setarg ('I',"msgid",MSG_U(O_MSGID,"Message ID we are replying to"),glocal.msgid,false);
+		setarg ('T',"title",MSG_U(O_TITLE,"Title of the message"),glocal.title,false);
+		setarg ('C',"content",MSG_U(O_BODY,"body of the message"),glocal.content,false);
+		setarg ('L',"bolixofile",MSG_U(O_BOFILEPATH,"Bolixo file path"),glocal.filename,false);
 
-		setarg ('O',"owner","Apply the comand on behalf of this owner, must be admin",glocal.owner,false);
+		setarg ('O',"owner",MSG_U(O_OWNER,"Apply the comand on behalf of this owner, must be admin"),glocal.owner,false);
 	</f>
 	<f main_noarg>
 		glocal int ret = -1;
@@ -1864,19 +1880,7 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 							bofs_error ("msgs",internal_error,msg);
 							glocal.stop = true;
 						}else{
-							for (auto &m:messages){
-								int linelen = 0;
-								if (m.content[0] != '\0'){
-									const char *eol = strchr(m.content,'\n');
-									if (eol != NULL){
-										linelen=(eol-m.content);
-									}else{
-										linelen = strlen(m.content);
-									}
-								}
-								printf ("%s %-10s %-30s %-20s %7u %*.*s\n",tbftype[m.file_type],m.from,m.uuid,m.submit,m.size
-									,linelen,linelen,m.content);
-							}
+							bofs_listshortmsgs(messages);
 							glocal.stop = messages.size() < glocal.chunk;
 							glocal.offset += glocal.chunk;
 						}
@@ -2311,6 +2315,7 @@ static int bofs_public (CONTEXT &ctx, int argc, char *argv[])
 	glocal int ret = -1;
 	glocal CONTEXT *ctx = &ctx;
 	glocal const char *listdir = NULL;
+	glocal bool listshortmsgs = false;
 	glocal const char *readfile = NULL;
 	glocal const char *user = NULL;
 	glocal bool use_http = false;
@@ -2325,6 +2330,7 @@ static int bofs_public (CONTEXT &ctx, int argc, char *argv[])
 		setgrouparg ("Main commands");
 		setarg ('l',"listdir","List content of a directory",glocal.listdir,false);
 		setarg ('r',"readfile","Read one file",glocal.readfile,false);
+		setarg ('s',"listshortmsgs",MSG_R(O_LISTSHORTMSGS),glocal.listshortmsgs,false);
 		setarg ('u',"user","Specify the owner of the public files",glocal.user,true);
 		setarg ('h',"http","Use HTTP",glocal.use_http,false);
 		setarg ('O',"output","Copy readfile into this file",glocal.output,false);
@@ -2398,6 +2404,39 @@ static int bofs_public (CONTEXT &ctx, int argc, char *argv[])
 					</f>
 					</call>
 				}
+			}
+		}else if (glocal.listshortmsgs){
+			glocal bool done = false;
+			unsigned offset = 0;
+			while (!glocal.done){
+				if (glocal.use_http){
+					<call webapi_public_list_talk>(glocal.ctx->hcon,glocal.user,offset,20);
+					<f ok>
+						if (!success){
+							glocal.done = true;
+							bofs_error ("public_listshortmsgs",internal_error,msg);
+							glocal.ret = -1;
+						}else{
+							bofs_listshortmsgs (messages);
+							if (messages.size() < 20) glocal.done = true;
+						}
+					</f>
+					</call>
+				}else{
+					<call bod_client_public_list_talk>(glocal.ctx->con,glocal.user,offset,20);
+					<f ok>
+						if (!success){
+							glocal.done = true;
+							bofs_error ("public_listshortmsgs",internal_error,msg);
+							glocal.ret = -1;
+						}else{
+							bofs_listshortmsgs (messages);
+							if (messages.size() < 20) glocal.done = true;
+						}
+					</f>
+					</call>
+				}
+				offset += 20;
 			}
 		}else{
 			glocal.ret = -1;
