@@ -74,3 +74,4 @@ void util_sendfile (CONNECT_INFO &con, PARAM_STRING session, PARAM_STRING filena
 int util_sendpublicfile (CONNECT_INFO &con, PARAM_STRING filename);
 std::string util_flipspaces(PARAM_STRING s);
 
+

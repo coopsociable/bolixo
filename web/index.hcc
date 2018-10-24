@@ -27,8 +27,8 @@
 #define SECTION_INTERESTS 8
 #define SECTION_CONTACT_REQ 9
 #define SECTION_NBSECTIONS 10
-extern void bolixo_doc (DOCUMENT_POINTER &, DOC_ID &jump);
-extern void bolixo_doc_fr (DOCUMENT_POINTER &, DOC_ID &jump);
+extern void bolixo_doc (DOCUMENT_POINTER &, DOC_ID &jump, const char *username);
+extern void bolixo_doc_fr (DOCUMENT_POINTER &, DOC_ID &jump, const char *username);
 
 static WEBID ID_TALK("talk");
 static WEBID ID_MAIL("mail");
@@ -183,18 +183,7 @@ static W_SSTRING w_content("content");
 static W_SSTRING w_filename("filename");
 static W_SSTRING w_confirm("confirm");
 
-static const int step_main=1;
-static const int step_login=2;
-static const int step_adduser=3;
-static const int step_logout=4;
-static const int step_image=5;
-static const int step_public=6;
-static const int step_projects=7;
-static const int step_mails=8;
-static const int step_talks=9;
-static const int step_confirm=10;
-static const int step_profile=11;
-static const int step_doc=12;
+#include "steps.h"
 
 static W_UNSIGNED w_webtab("webtab");
 static W_SSTRING  w_webtab_add("webtab_add");
@@ -342,46 +331,52 @@ static void webtabs(_F_webtabs &c,
 	if (w_webtab_add.isset()){
 		// We are either adding a new tab or selecting an existing one.
 		// While we look if the tab already exist, we de-select the others
-		const char *ptid = w_webtab_add.c_str();
-		const char *pt = ptid;
-		WEBTAB_TYPE type = WEBTAB_TYPE1;
-		if (isdigit(pt[0]) && pt[1] == ':'){
-			type = (WEBTAB_TYPE)(pt[0]-'1');
-			pt+=2;
-			ptid = pt;
-		}
-		pt = strchr(pt,'~');
-		string id,title;
-		if (pt != NULL){
-			id = string(ptid,pt-ptid);
-			title = pt+1;
-		}else{
-			id = ptid;
-			title = id;
-		}
-		bool found = false;
-		for (auto &t:tabs){
-			if (t.type == type){
-				if (t.tab == id){
-					found = true;
-					t.selorder = ++maxsel;
-					c.selected_id = t.tab.c_str();
+		// The variable may contains to selection separated by a comma. This is
+		// used by the documentation to jump into the application and bring
+		// with it the help screen
+		vector<string> tb;
+		str_splitline(w_webtab_add.c_str(),',',tb);
+		for (auto &s:tb){
+			const char *ptid = s.c_str();
+			const char *pt = ptid;
+			WEBTAB_TYPE type = WEBTAB_TYPE1;
+			if (isdigit(pt[0]) && pt[1] == ':'){
+				type = (WEBTAB_TYPE)(pt[0]-'1');
+				pt+=2;
+				ptid = pt;
+			}
+			pt = strchr(pt,'~');
+			string id,title;
+			if (pt != NULL){
+				id = string(ptid,pt-ptid);
+				title = pt+1;
+			}else{
+				id = ptid;
+				title = id;
+			}
+			bool found = false;
+			for (auto &t:tabs){
+				if (t.type == type){
+					if (t.tab == id){
+						found = true;
+						t.selorder = ++maxsel;
+						c.selected_id = t.tab.c_str();
+					}
+				}
+			}
+			if (!found){
+				WEBTAB w(type,id,title,"");
+				w.selorder = ++maxsel;
+				tabs.push_back(w);
+				// hack, do not sort the first locked tabs.
+				for (auto t=tabs.begin(); t!= tabs.end(); t++){
+					if (!t->locked){
+						sort (t,tabs.end());
+						break;
+					}
 				}
 			}
 		}
-		if (!found){
-			WEBTAB w(type,id,title,"");
-			w.selorder = ++maxsel;
-			tabs.push_back(w);
-			// hack, do not sort the first locked tabs.
-			for (auto t=tabs.begin(); t!= tabs.end(); t++){
-				if (!t->locked){
-					sort (t,tabs.end());
-					break;
-				}
-			}
-		}
-		w_webtab = 0;
 	}
 	if (may_delete && w_webtab > 0 && (w_webtab & 1)==0){
 		// A click on the X to delete one tab
@@ -949,9 +944,9 @@ static void trli_getsessioninfo(CONNECT_INFO &con, CONNECT_INFO &con_sess, vecto
 static void index_doc (DOCUMENT_POINTER &pt, DOC_ID &jump)
 {
 	if (userinfo.lang == "eng"){
-		bolixo_doc (pt,jump);
+		bolixo_doc (pt,jump,userinfo.name.c_str());
 	}else{
-		bolixo_doc_fr(pt,jump);
+		bolixo_doc_fr(pt,jump,userinfo.name.c_str());
 	}
 }
 
@@ -1204,7 +1199,7 @@ static void index_show_shortmsg(
 		<call bod_client_list_talk>(*glocal.con,w_session.c_str(),"",glocal.groupname,glocal.groupowner,nbskip,nblines);
 		<f ok>
 			if (!success){
-				htmlprintf ("Error: %s %s<br>",internal_error?"Internal error":"",msg);
+				//htmlprintf ("Error: %s %s<br>",internal_error?"Internal error":"",msg);
 			}else{
 				for (auto &m:messages){
 					const char *func = "Popup";
@@ -2148,6 +2143,9 @@ extern "C" void webmain_real()
 			if (strcmp(id,"help")==0){
 				DIV d("webtable"); d.print();
 				index_doc(glocal.docpointers[SECTION_PROJECT],section_project);
+			}else if (strcmp(id,"helpmain")==0){
+				DIV d("webtable"); d.print();
+				index_doc(glocal.docpointers[SECTION_NONE],section_none);
 			}else if (file_is_image(info.file_type)){
 				DIV d("webtable"); d.print();
 				htmlprintf (MSG_R(I_DOCNAME),glocal.filename);
@@ -2307,7 +2305,7 @@ extern "C" void webmain_real()
 				<call bod_client_list_msgs>(glocal.con,w_session.c_str(),"",glocal.project,false,nbskip,nblines);
 				<f ok>
 					if (!success){
-						htmlprintf ("Error: %d %s<br>",internal_error,msg);
+						//htmlprintf ("Error: %d %s<br>",internal_error,msg);
 					}else{
 						for (auto &m:messages){
 							string path = index_format_mail_fname(m);
@@ -2334,6 +2332,8 @@ extern "C" void webmain_real()
 			DIV d("webtable"); d.print();
 			if (strcmp(id,"help")==0){
 				index_doc(glocal.docpointers[SECTION_MAILS],section_mails);
+			}else if (strcmp(id,"helpmain")==0){
+				index_doc(glocal.docpointers[SECTION_NONE],section_none);
 			}else{
 				glocal const char *id = id;
 				glocal const char *from = title;
@@ -2472,6 +2472,8 @@ extern "C" void webmain_real()
 			DIV d("webtable"); d.print();
 			if (strcmp(id,"help")==0){
 				index_doc(glocal.docpointers[SECTION_TALK],section_talk);
+			}else if (strcmp(id,"helpmain")==0){
+				index_doc(glocal.docpointers[SECTION_NONE],section_none);
 			}else if (file_is_image(info.file_type)){
 				string img = index_img(step_image,"max-width:100%; max-height:100%;",id,info.modified);
 				/- <br>
@@ -2539,6 +2541,8 @@ extern "C" void webmain_real()
 				index_doc(glocal.docpointers[SECTION_ACCOUNT],section_account);
 			}else if (strcmp(id,"helpinterests")==0){
 				index_doc(glocal.docpointers[SECTION_INTERESTS],section_interests);
+			}else if (strcmp(id,"helpmain")==0){
+				index_doc(glocal.docpointers[SECTION_NONE],section_none);
 			}
 		</f>
 		<f docmain>
