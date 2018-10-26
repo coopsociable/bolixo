@@ -34,9 +34,11 @@ static void webmain_real()
 	pt = strchr(pt,'/');
 	if (pt == NULL){
 		glocal bool exist = false;
+		glocal bool pubdir = false;
 		<call bod_client_public_checkuser>(glocal.con,user);
 		<f ok>
 			glocal.exist = exist;
+			glocal.pubdir = pubdir;
 		</f>
 		</call>
 		if (!glocal.exist){
@@ -86,18 +88,20 @@ static void webmain_real()
 				</call>
 			</f>
 			<f body>
-				<call bod_client_public_listdir>(glocal.con,glocal.user,"/",0,20);
-				<f ok>
-					for (auto &f:files){
-						if (file_is_image(f.file_type)){
-							string tmp = util_flipspaces(f.modified);
-							htmlprintf ("<img width=100%% src=/public/%s/%s?mod=%s>\n",glocal.user,f.name,tmp.c_str());
-						}else if (file_is_video(f.file_type)){
-						}else if (file_is_sound(f.file_type)){
+				if (glocal.pubdir){
+					<call bod_client_public_listdir>(glocal.con,glocal.user,"/",0,20);
+					<f ok>
+						for (auto &f:files){
+							if (file_is_image(f.file_type)){
+								string tmp = util_flipspaces(f.modified);
+								htmlprintf ("<img width=100%% src=/public/%s/%s?mod=%s>\n",glocal.user,f.name,tmp.c_str());
+							}else if (file_is_video(f.file_type)){
+							}else if (file_is_sound(f.file_type)){
+							}
 						}
-					}
-				</f>
-				</call>
+					</f>
+					</call>
+				}
 			</f>
 			</call>
 		}
