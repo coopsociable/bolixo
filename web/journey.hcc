@@ -527,7 +527,12 @@ void tabs()
 	tabs (8,false,true);
 }
 <mod>
+static W_SSTRING  table("webtable");
 static W_UNSIGNED menu("menu");
+static W_UNSIGNED line("line");
+static W_UNSIGNED screenheight("screenheight");
+static W_UNSIGNED screenwidth("screenwidth");
+static W_SSTRING fontsize("fontsize");
 void popup()
 {
 	<?
@@ -557,7 +562,7 @@ void popup()
 
 	.dropdown-content a {
 		color: black;
-		padding: 12px 16px;
+		padding: 6px 6px;
 		text-decoration: none;
 		display: block;
 	}
@@ -567,61 +572,119 @@ void popup()
 
 	</style>
 	<script>
-	var lasto;
-	function myFunction(o,event) {
-		lasto = o;
-		var rect = event.target.getBoundingClientRect();
-		console.log ("event " +o + " pos " + rect.left + " " + rect.top + " " + rect.bottom);
-		var drop = document.getElementById("dropdown");
-		drop.style.left = event.clientX;
-		drop.style.top = rect.bottom;
-		drop.classList.toggle("show");
+	var lasto = null;
+	function dropdown_function(id,o,event) {
+		if (lasto == null){
+			lasto = o;
+			var rect = event.target.getBoundingClientRect();
+			console.log ("event " +o + " pos " + rect.left + " " + rect.top + " " + rect.bottom);
+			var drop = document.getElementById(id);
+			if (drop == null){
+				console.log ("myFunction id " + id + " is null");
+			}else{
+				drop.style.left = event.clientX;
+				drop.style.top = rect.bottom;
+				drop.classList.toggle("show");
+			}
+		}
 		return false;
 	}
 
 	// Close the dropdown if the user clicks outside of it
 	window.onclick = function(event) {
 		console.log ("event = " + event.target + " lasto " + lasto + " coor " + event.clientX + " " + event.clientY);
-		var rect = lasto.getBoundingClientRect();
-		if (event.clientX >= rect.left && event.clientX <= rect.right
-			&& event.clientY >= rect.top && event.clientY <= rect.bottom){
-			console.log ("egal");
-		}else{
-			lasto = null;
-			var dropdowns = document.getElementsByClassName("dropdown-content");
-			var i;
-			for (i = 0; i < dropdowns.length; i++) {
-				var openDropdown = dropdowns[i];
-				if (openDropdown.classList.contains('show')) {
-					openDropdown.classList.remove('show');
+		if (lasto != null){
+			var rect = lasto.getBoundingClientRect();
+			if (event.clientX >= rect.left && event.clientX <= rect.right
+				&& event.clientY >= rect.top && event.clientY <= rect.bottom){
+				console.log ("egal");
+			}else{
+				lasto = null;
+				var dropdowns = document.getElementsByClassName("dropdown-content");
+				var i;
+				for (i = 0; i < dropdowns.length; i++) {
+					var openDropdown = dropdowns[i];
+					if (openDropdown.classList.contains('show')) {
+						openDropdown.classList.remove('show');
+					}
 				}
+				console.log ("different");
 			}
-			console.log ("different");
 		}
 	}
 	</script>
 	?>
 	tlmpweb_setscripts();
 	tlmpweb_body("white",NULL);
+	if (table.isset()) htmlprintf ("webtable=%s<br>\n",table.get());
 	if (menu.isset()) htmlprintf ("menu=%u<br>\n",menu.getval());
+	if (line.isset()) htmlprintf ("line=%u<br>\n",line.getval());
+	if (screenheight.isset()) htmlprintf ("screenheight=%u<br>\n",screenheight.getval());
+	if (screenwidth.isset()) htmlprintf ("screenwidth=%u<br>\n",screenwidth.getval());
+	if (fontsize.isset()) htmlprintf ("fontsize=%s<br>\n",fontsize.get());
+
 
 	<?
 	<h2>Test dropdown</h2>
-
+	<script>
+	var webtable_line=0;
+	var webtable_tb="";
+	function f_tb1(l,o,ev){
+		webtable_tb = "tb1";
+		webtable_line = l;
+		dropdown_function("dropdown-tb1",o,event);
+	}
+	function f_tb2(l,o,ev){
+		webtable_tb = "tb2";
+		webtable_line = l;
+		dropdown_function("dropdown-tb2",o,event);
+	}
+	function f_item(num){
+		formsubmit("/journey.hc?line="+webtable_line+"&webtable="+webtable_tb+"&menu="+num);
+	}
+	</script>
 	<div class="dropdown">
-		<button onclick="myFunction(this,event)" class="dropbtn">DDropdown</button>
+		<button onclick="dropdown_function('dropdown',this,event)" class="dropbtn">DDropdown</button>
 		<div id="dropdown" class="dropdown-content">
-		<a href="#" onclick=formsubmit("/journey.hc?menu=1")>Link 1</a>
-		<a href="#" onclick=formsubmit("/journey.hc?menu=2")>Link 2</a>
-		<a href="#" onclick=formsubmit("/journey.hc?menu=3")>Link 3</a>
+		<a href="#" onclick=f_item(1)>Link 1</a>
+		<a href="#" onclick=f_item(2)>Link 2</a>
+		<a href="#" onclick=f_item(3)>Link 3</a>
+		</div>
+	</div>
+	<div class="dropdown">
+		<div id="dropdown-tb1" class="dropdown-content">
+		<a href="#" onclick=f_item(1)>tb1 Link 1</a>
+		<a href="#" onclick=f_item(2)>tb1 Link 2</a>
+		<a href="#" onclick=f_item(3)>tb1 Link 3</a>
+		</div>
+	</div>
+	<div class="dropdown">
+		<div id="dropdown-tb2" class="dropdown-content">
+		<a href="#" onclick=f_item(1)>tb2 Link 1</a>
+		<a href="#" onclick=f_item(2)>tb2 Link 2</a>
+		<a href="#" onclick=f_item(3)>tb2 Link 3</a>
+		<a href="#" onclick=f_item(4)>tb2 Link 4</a>
+		<a href="#" onclick=f_item(5)>tb2 Link 5</a>
+		<a href="#" onclick=f_item(6)>tb2 Link 6</a>
 		</div>
 	</div>
 	?>
+	/- <h1>Table tb1</h1><br>
 	/- <table border=0>
-	for (int i=0; i<10; i++){
-		/- <tr style=cursor:pointer oncontextmenu="myFunction(this,event); return false">
+	for (int i=0; i<5; i++){
+		htmlprintf ("<tr style=cursor:pointer oncontextmenu=\"f_tb1(%d,this,event); return false\">\n",i);
 		for (int j=0; j<5; j++){
 			htmlprintf ("<td>hello world how are you today %d",j);
+		}
+		/-
+	}
+	/- </table>
+	/- <h1>Table tb2</h1><br>
+	/- <table border=0>
+	for (int i=0; i<5; i++){
+		htmlprintf ("<tr style=cursor:pointer oncontextmenu=\"f_tb2(%d,this,event); return false\">\n",i);
+		for (int j=0; j<5; j++){
+			htmlprintf ("<td>this is table tb2 %d",j);
 		}
 		/-
 	}
