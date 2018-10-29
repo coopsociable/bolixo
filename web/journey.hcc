@@ -573,15 +573,37 @@ void popup()
 	</style>
 	<script>
 	var lasto = null;
-	function dropdown_function(id,o,event) {
+	function dropdown_function(id,event,visibles) {
 		if (lasto == null){
-			lasto = o;
+			lasto = event.target;
 			var rect = event.target.getBoundingClientRect();
-			console.log ("event " +o + " pos " + rect.left + " " + rect.top + " " + rect.bottom);
+			console.log ("event.target " +event.target + " pos " + rect.left + " " + rect.top + " " + rect.bottom);
 			var drop = document.getElementById(id);
 			if (drop == null){
 				console.log ("myFunction id " + id + " is null");
 			}else{
+				if (visibles != null){
+					console.log ("childnodes="+drop.childNodes.length);
+					var atags = drop.getElementsByTagName('a');
+					console.log ("atags =" + atags.length);
+					for (var i = 0; i < atags.length; i++) {
+						var child = atags[i];
+						console.log ("child = " + child);
+						var found = false;
+						for (var j=0; j<visibles.length; j++){
+							if (visibles[j] == i){
+								found = true;
+								break;
+							}
+						}
+						console.log ("found="+found + " i="+i);
+						if (found){
+							child.style.display = "block";
+						}else{
+							child.style.display = "none";
+						}
+					}
+				}
 				drop.style.left = event.clientX;
 				drop.style.top = rect.bottom;
 				drop.classList.toggle("show");
@@ -629,22 +651,22 @@ void popup()
 	<script>
 	var webtable_line=0;
 	var webtable_tb="";
-	function f_tb1(l,o,ev){
+	function f_tb1(l,ev,visibles){
 		webtable_tb = "tb1";
 		webtable_line = l;
-		dropdown_function("dropdown-tb1",o,event);
+		return dropdown_function("dropdown-tb1",event,visibles);
 	}
-	function f_tb2(l,o,ev){
+	function f_tb2(l,ev,visibles){
 		webtable_tb = "tb2";
 		webtable_line = l;
-		dropdown_function("dropdown-tb2",o,event);
+		return dropdown_function("dropdown-tb2",event,visibles);
 	}
 	function f_item(num){
 		formsubmit("/journey.hc?line="+webtable_line+"&webtable="+webtable_tb+"&menu="+num);
 	}
 	</script>
 	<div class="dropdown">
-		<button onclick="dropdown_function('dropdown',this,event)" class="dropbtn">DDropdown</button>
+		<button onclick="dropdown_function('dropdown',event,null)" class="dropbtn">DDropdown</button>
 		<div id="dropdown" class="dropdown-content">
 		<a href="#" onclick=f_item(1)>Link 1</a>
 		<a href="#" onclick=f_item(2)>Link 2</a>
@@ -672,7 +694,7 @@ void popup()
 	/- <h1>Table tb1</h1><br>
 	/- <table border=0>
 	for (int i=0; i<5; i++){
-		htmlprintf ("<tr style=cursor:pointer oncontextmenu=\"f_tb1(%d,this,event); return false\">\n",i);
+		htmlprintf ("<tr style=cursor:pointer oncontextmenu=\"return f_tb1(%d,event,[1,2])\">\n",i);
 		for (int j=0; j<5; j++){
 			htmlprintf ("<td>hello world how are you today %d",j);
 		}
@@ -682,7 +704,7 @@ void popup()
 	/- <h1>Table tb2</h1><br>
 	/- <table border=0>
 	for (int i=0; i<5; i++){
-		htmlprintf ("<tr style=cursor:pointer oncontextmenu=\"f_tb2(%d,this,event); return false\">\n",i);
+		htmlprintf ("<tr style=cursor:pointer oncontextmenu=\"return f_tb2(%d,event,[%s])\">\n",i,i&1?"0,2,4":"0,1,3,5");
 		for (int j=0; j<5; j++){
 			htmlprintf ("<td>this is table tb2 %d",j);
 		}
