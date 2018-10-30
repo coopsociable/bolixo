@@ -545,7 +545,12 @@ void popup()
 		border: none;
 		cursor: pointer;
 	}
-
+	.show {display: block;}
+	.active { background-color: lightgrey;}
+	</style>
+	?>
+	#if 0
+	<?
 	.dropdown {
 		position: absolution;	//relative;
 		display: inline-block;
@@ -568,14 +573,12 @@ void popup()
 	}
 
 	.dropdown-content a:hover {background-color: #add;}
-	.show {display: block;}
 
 	</style>
 	<script>
-	var lasto = null;
+	var dropdown_rect = null;
 	function dropdown_function(id,event,visibles) {
-		if (lasto == null){
-			lasto = event.target;
+		if (dropdown_rect == null){
 			var rect = event.target.getBoundingClientRect();
 			console.log ("event.target " +event.target + " pos " + rect.left + " " + rect.top + " " + rect.bottom);
 			var drop = document.getElementById(id);
@@ -590,8 +593,13 @@ void popup()
 						var child = atags[i];
 						console.log ("child = " + child);
 						var found = false;
+						var gray_out = false;
 						for (var j=0; j<visibles.length; j++){
-							if (visibles[j] == i){
+							if (visibles[j] == 100+i){
+								gray_out = true;
+								found = true;
+								break;
+							}else if (visibles[j] == i){
 								found = true;
 								break;
 							}
@@ -599,6 +607,11 @@ void popup()
 						console.log ("found="+found + " i="+i);
 						if (found){
 							child.style.display = "block";
+							if(gray_out){
+								child.style.color = "gray";
+							}else{
+								child.style.color = "black";
+							}
 						}else{
 							child.style.display = "none";
 						}
@@ -607,6 +620,7 @@ void popup()
 				drop.style.left = event.clientX;
 				drop.style.top = rect.bottom;
 				drop.classList.toggle("show");
+				dropdown_rect = drop.getBoundingClientRect();
 			}
 		}
 		return false;
@@ -614,14 +628,13 @@ void popup()
 
 	// Close the dropdown if the user clicks outside of it
 	window.onclick = function(event) {
-		console.log ("event = " + event.target + " lasto " + lasto + " coor " + event.clientX + " " + event.clientY);
-		if (lasto != null){
-			var rect = lasto.getBoundingClientRect();
-			if (event.clientX >= rect.left && event.clientX <= rect.right
-				&& event.clientY >= rect.top && event.clientY <= rect.bottom){
+		console.log ("event = " + event.target + " dropdown_rect " + dropdown_rect + " coor " + event.clientX + " " + event.clientY);
+		if (dropdown_rect != null){
+			if (event.clientX >= dropdown_rect.left && event.clientX <= dropdown_rect.right
+				&& event.clientY >= dropdown_rect.top && event.clientY <= dropdown_rect.bottom){
 				console.log ("egal");
 			}else{
-				lasto = null;
+				dropdown_rect = null;
 				var dropdowns = document.getElementsByClassName("dropdown-content");
 				var i;
 				for (i = 0; i < dropdowns.length; i++) {
@@ -636,6 +649,7 @@ void popup()
 	}
 	</script>
 	?>
+	#endif
 	tlmpweb_setscripts();
 	tlmpweb_body("white",NULL);
 	if (table.isset()) htmlprintf ("webtable=%s<br>\n",table.get());
@@ -651,15 +665,15 @@ void popup()
 	<script>
 	var webtable_line=0;
 	var webtable_tb="";
-	function f_tb1(l,ev,visibles){
+	function f_tb1(l,tr,ev,visibles){
 		webtable_tb = "tb1";
 		webtable_line = l;
-		return dropdown_function("dropdown-tb1",event,visibles);
+		return dropdown_function("dropdown-tb1",tr,event,visibles);
 	}
-	function f_tb2(l,ev,visibles){
+	function f_tb2(l,tr,ev,visibles){
 		webtable_tb = "tb2";
 		webtable_line = l;
-		return dropdown_function("dropdown-tb2",event,visibles);
+		return dropdown_function("dropdown-tb2",tr,event,visibles);
 	}
 	function f_item(num){
 		formsubmit("/journey.hc?line="+webtable_line+"&webtable="+webtable_tb+"&menu="+num);
@@ -694,7 +708,7 @@ void popup()
 	/- <h1>Table tb1</h1><br>
 	/- <table border=0>
 	for (int i=0; i<5; i++){
-		htmlprintf ("<tr style=cursor:pointer oncontextmenu=\"return f_tb1(%d,event,[1,2])\">\n",i);
+		htmlprintf ("<tr style=cursor:pointer oncontextmenu=\"return f_tb1(%d,this,event,[1,2])\">\n",i);
 		for (int j=0; j<5; j++){
 			htmlprintf ("<td>hello world how are you today %d",j);
 		}
@@ -704,7 +718,7 @@ void popup()
 	/- <h1>Table tb2</h1><br>
 	/- <table border=0>
 	for (int i=0; i<5; i++){
-		htmlprintf ("<tr style=cursor:pointer oncontextmenu=\"return f_tb2(%d,event,[%s])\">\n",i,i&1?"0,2,4":"0,1,3,5");
+		htmlprintf ("<tr style=cursor:pointer oncontextmenu=\"return f_tb2(%d,this,event,[%s])\">\n",i,i&1?"0,2,4":"0,101,3,5");
 		for (int j=0; j<5; j++){
 			htmlprintf ("<td>this is table tb2 %d",j);
 		}
@@ -713,6 +727,37 @@ void popup()
 	/- </table>
 }
 </mod>
+<mod>
+void webtable_popup()
+{
+	WEBID table1("table1");
+	WEBID table2("table2");
+	tlmpweb_setscripts();
+	tlmpweb_body("white",NULL);
+	unsigned cur = 0;
+	<call webtable>(table1,"titi","100%",cur,0,5);
+	<f load>
+		setthparms ("align=left bgcolor=lightgray","");
+		setrowstyle ("white","bgcolor=white");
+		setrowstyle ("white+current","bgcolor=lightblue");
+
+		for (unsigned i=0; i<4; i++){
+			adddrop_opt (i,string_f("menu %u",i));
+		}
+		sethead ("title1\ttitle2\ttitle3\ttitle4");
+		setclickopt (true,"","");
+		for (int i=0; i<5; i++){
+			resetdrop();
+			if (i&1){
+				setdrop_visible({0,1,2});
+			}
+			setrow("white",i,"aaaa\tbbbb\tcccc\tdddd");
+		}
+	</f>
+	</call>
+}
+</mod>
+
 extern "C" void webmain()
 {
 	tlmpweb_title ("This is the start of a long long journey");
@@ -722,6 +767,7 @@ extern "C" void webmain()
 	//form_space();
 	//scrollbar();
 	//tabs();
-	popup();
+	//popup();
+	webtable_popup();
 }
 
