@@ -2,7 +2,7 @@ extern const char **_dictionary_bolixo;
 #ifndef DICTIONARY_REQUEST
 	#define DICTIONARY_REQUEST \
 	const char **_dictionary_bolixo;\
-	TRANSLATE_SYSTEM_REQ _dictionary_req_bolixo("bolixo",_dictionary_bolixo,224,6);\
+	TRANSLATE_SYSTEM_REQ _dictionary_req_bolixo("bolixo",_dictionary_bolixo,239,6);\
 	void dummy_dict_bolixo(){}
 #endif
 #ifndef MSG_U
@@ -237,3 +237,18 @@ extern const char **_dictionary_bolixo;
 #define I_HELPCONTACT_REQ	221
 #define I_NONE	222
 #define I_ROOTDIR	223
+#define M_COPY	224
+#define M_PASTE	225
+#define M_DELETE	226
+#define M_PREVIEWPUB	227
+#define M_HELPPREVIEW	228
+#define I_HELPPREVIEW	229
+#define E_CANTDELETEENTRY	230
+#define E_CANTDELETEDIR	231
+#define E_CANTUNDELETEENTRY	232
+#define M_UNDELETE	233
+#define E_CANTUNDELETE	234
+#define E_NOTAFILECANTDEL	235
+#define E_NOTDIRUNDEL	236
+#define E_NODELETED	237
+#define M_RENAME	238

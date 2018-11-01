@@ -2451,6 +2451,61 @@ static int bofs_public (CONTEXT &ctx, int argc, char *argv[])
 	return glocal.ret;
 }
 </mod>
+<mod>
+static int bofs_undelete (CONTEXT &ctx, int argc, char *argv[])
+{
+	glocal int ret = -1;
+	glocal CONTEXT *ctx = &ctx;
+	glocal const char *dir = NULL;
+	glocal.ret = <call tlmpprogram>(argc,argv);
+	<f init>
+		setproginfo ("boundelete",VERSION
+			,"Command line tool to undelete bolixo files and directories\n"
+			 "\n"
+			 "bofs undelete parent-dir ...\n"
+			);
+	</f>
+	<f main>
+		glocal int ret = 0;
+		glocal.ret = <call bofs_split>(*glocal.ctx,argc,argv);
+		<f bo_file>
+			glocal int ret = -1;
+			glocal const char *path = path;
+			<call bod_client_undelete> (ctx.con,ctx.sessionid,path);
+			<f ok>
+				if (success){
+					glocal.ret = 0;
+				}else{
+					bofs_error ("undelete",internal_error,MSG_U(E_CANTUNDELETE,"Can't undelete in folder %s: %s"),glocal.path,msg);
+				}
+			</f>
+			</call>
+			return glocal.ret;
+		</f>
+		<f https_file>
+			glocal int ret = -1;
+			glocal const char *path = path;
+			<call webapi_undelete> (ctx.hcon,ctx.hsessionid,path);
+			<f ok>
+				if (success){
+					glocal.ret = 0;
+				}else{
+					bofs_error ("rm",internal_error,MSG_R(E_CANTUNDELETE),glocal.path,msg);
+				}
+			</f>
+			</call>
+			return glocal.ret;
+		</f>
+		<f local_file>
+			return system (string_f("rm %s",path).c_str());
+		</f>
+		</call>
+		return glocal.ret;
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
 
 <mod>
 int main (int argc, char *argv[])
@@ -2473,7 +2528,8 @@ int main (int argc, char *argv[])
 			 "\tbofs mv ...\n"
 			 "\tbofs public ...\n"
 			 "\tbofs rm ...\n"
-			 "\tbofs rmdir ...\n")
+			 "\tbofs rmdir ...\n"
+			 "\tbofs undelete dir\n")
 			);
 		setarg ('u',"user",MSG_U(O_SELECT,"Select one user from .bofs.conf"),glocal.user,false);
 		setarg (' ',"repeat",MSG_U(O_REPEAT,"Repeat the operation N time (speed test)"),glocal.nbrep,false);
@@ -2563,6 +2619,8 @@ int main (int argc, char *argv[])
 					ret = bofs_misc (glocal.ctx,argc,argv);
 				}else if (strcmp(argv[0],"public")==0){
 					ret = bofs_public (glocal.ctx,argc,argv);
+				}else if (strcmp(argv[0],"undelete")==0){
+					ret = bofs_undelete (glocal.ctx,argc,argv);
 				}else{
 					tlmp_error (MSG_U(E_IVLDCOMMAND,"Invalid command: %s\n"),argv[0]);
 					usage();

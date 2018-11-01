@@ -1478,7 +1478,7 @@ int main (int argc, char *argv[])
 						rep_delfile (false,entry.msg);
 					}else{
 						if (!bolixo_isfile(entry.type)){
-							rep_delfile (false,"Not a file, can't delete");
+							rep_delfile (false,MSG_U(E_NOTAFILECANTDEL,"Not a file, can't delete"));
 						}else{
 							if (fs_insert_deleted(entry.dirid,entry.entryid,entry.basename)==-1){
 								rep_delfile (false,"Internal error (dirs_files table)");
@@ -1487,6 +1487,33 @@ int main (int argc, char *argv[])
 								bo_writed_update_dirdate(entry.dirid);
 							}
 						}
+					}
+				</f>
+				<f undelete>
+					glocal ENTRY entry;
+					if (bo_writed_findentry (glocal.con,sessionid,dirname,glocal.entry,true)!=-1){
+						if (!bolixo_isdir(glocal.entry.type)){
+							glocal.entry.msg = MSG_U(E_NOTDIRUNDEL,"Not a directory, can't undelete");
+						}else{
+							// Find the most recent deleted entry
+							<call sql_query>("select itemid,eventtime from dirs_content where dirid=%u and type=%d order by eventtime desc limit 1"
+								,glocal.entry.entryid,ENTRY_DELETED);
+							<f empty>
+								glocal.entry.msg = MSG_U(E_NODELETED,"no deleted entries in this folder");
+							</f>
+							<f onerow>
+								if (sql_action("delete from dirs_content where dirid=%u and itemid=%s and eventtime='%s'"
+									,glocal.entry.entryid,row[0],row[1])==-1){
+									glocal.entry.msg = "Internal error (dirs_content table)";
+								}
+							</f>
+							</call>
+						}
+					}
+					if (glocal.entry.msg.size() > 0){
+						rep_undelete (false,glocal.entry.msg);
+					}else{
+						rep_undelete(true,"");
 					}
 				</f>
 				<f modifyfile>

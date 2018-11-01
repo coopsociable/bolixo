@@ -26,7 +26,8 @@
 #define SECTION_MAILS 7
 #define SECTION_INTERESTS 8
 #define SECTION_CONTACT_REQ 9
-#define SECTION_NBSECTIONS 10
+#define SECTION_PREVIEW 10
+#define SECTION_NBSECTIONS 11
 extern void bolixo_doc (DOCUMENT_POINTER &, DOC_ID &jump, const char *username);
 extern void bolixo_doc_fr (DOCUMENT_POINTER &, DOC_ID &jump, const char *username);
 
@@ -47,6 +48,15 @@ using namespace std;
 static const char *newscolor = "#DCDCDC";
 
 static USERINFO userinfo;
+struct COPY{
+	string path;
+	string date;
+	void clear(){
+		path.clear();
+		date.clear();
+	}
+};
+static COPY fcopy;		// Cut buffer, holding a file path
 static string w_session;
 static W_SSTRING w_lang("lang");
 static W_SSTRING w_public_dir("public_dir");
@@ -195,7 +205,11 @@ struct _F_webtabs {
 	const char *selected_id;
 	string help_id;
 	string help_title;
+	vector<WEBTAB> *tabs;
+	int maxsel;
 	_F_webtabs(){
+		maxsel = 0;
+		tabs = NULL;
 		redo = false;
 		curtab = NULL;
 		selected_id = NULL;
@@ -208,6 +222,7 @@ struct _F_webtabs {
 	const char *getstate() const;	// Return the state previously stored for the active TAB
 	void redotab ();		// Ask webtabs to redraw the current TAB
 	bool selected(PARAM_STRING id);
+	void addtab (PARAM_STRING id, PARAM_STRING txt);
 	#define _F_webtabs_documents(x) void x documents()
 	virtual _F_webtabs_documents( );
 	#define _F_webtabs_docmain(x) void x docmain(const char *id, const char *formid, const char *state)
@@ -254,6 +269,45 @@ const char *_F_webtabs::getstate () const
 void _F_webtabs::redotab ()
 {
 	redo = true;
+}
+void _F_webtabs::addtab (PARAM_STRING id, PARAM_STRING title_txt)
+{
+	const char *ptid = id.ptr;
+	const char *pt = ptid;
+	WEBTAB_TYPE type = WEBTAB_TYPE1;
+	if (isdigit(pt[0]) && pt[1] == ':'){
+		type = (WEBTAB_TYPE)(pt[0]-'1');
+		pt+=2;
+		ptid = pt;
+	}
+	string title;
+	if (title_txt.ptr[0] == '\0'){
+		title = ptid;
+	}else{
+		title = title_txt.ptr;
+	}
+	bool found = false;
+	for (auto &t:*tabs){
+		if (t.type == type){
+			if (t.tab == ptid){
+				found = true;
+				t.selorder = ++maxsel;
+				selected_id = t.tab.c_str();
+			}
+		}
+	}
+	if (!found){
+		WEBTAB w(type,ptid,title,"");
+		w.selorder = ++maxsel;
+		tabs->push_back(w);
+		// hack, do not sort the first locked tabs.
+		for (auto t=tabs->begin(); t!= tabs->end(); t++){
+			if (!t->locked){
+				sort (t,tabs->end());
+				break;
+			}
+		}
+	}
 }
 static string toupper (const char *s)
 {
@@ -320,79 +374,50 @@ static void webtabs(_F_webtabs &c,
 	unsigned size[5])
 {
 	WEBTAB_CTRL &ctrl = alltabs[name];
-	vector<WEBTAB> &tabs = ctrl.tabs;
+	c.tabs = &ctrl.tabs;
 	glocal bool may_delete = may_delete;
-	int maxsel = -1;
-	for (auto &t:tabs){
-		if (t.selorder > maxsel) maxsel = t.selorder;
+	c.maxsel = -1;
+	for (auto &t:*c.tabs){
+		if (t.selorder > c.maxsel) c.maxsel = t.selorder;
 	}
 	c.selected_id = "";
 	c.init();
 	if (w_webtab_add.isset()){
 		// We are either adding a new tab or selecting an existing one.
 		// While we look if the tab already exist, we de-select the others
-		// The variable may contains to selection separated by a comma. This is
+		// The variable may contains two selections separated by a comma. This is
 		// used by the documentation to jump into the application and bring
 		// with it the help screen
 		vector<string> tb;
 		str_splitline(w_webtab_add.c_str(),',',tb);
 		for (auto &s:tb){
 			const char *ptid = s.c_str();
-			const char *pt = ptid;
-			WEBTAB_TYPE type = WEBTAB_TYPE1;
-			if (isdigit(pt[0]) && pt[1] == ':'){
-				type = (WEBTAB_TYPE)(pt[0]-'1');
-				pt+=2;
-				ptid = pt;
-			}
-			pt = strchr(pt,'~');
-			string id,title;
+			const char *title = ptid;
+			string id;
+			const char *pt = strchr(ptid,'~');
 			if (pt != NULL){
 				id = string(ptid,pt-ptid);
+				ptid = id.c_str();
 				title = pt+1;
-			}else{
-				id = ptid;
-				title = id;
 			}
-			bool found = false;
-			for (auto &t:tabs){
-				if (t.type == type){
-					if (t.tab == id){
-						found = true;
-						t.selorder = ++maxsel;
-						c.selected_id = t.tab.c_str();
-					}
-				}
-			}
-			if (!found){
-				WEBTAB w(type,id,title,"");
-				w.selorder = ++maxsel;
-				tabs.push_back(w);
-				// hack, do not sort the first locked tabs.
-				for (auto t=tabs.begin(); t!= tabs.end(); t++){
-					if (!t->locked){
-						sort (t,tabs.end());
-						break;
-					}
-				}
-			}
+			c.addtab (ptid,title);
 		}
 	}
 	if (may_delete && w_webtab > 0 && (w_webtab & 1)==0){
 		// A click on the X to delete one tab
 		unsigned delete_tab = (w_webtab-1) / 2;
-		unsigned nbtab = tabs.size();
+		unsigned nbtab = c.tabs->size();
 		if (delete_tab < nbtab){
-			WEBTAB &tab = tabs[delete_tab];
+			WEBTAB &tab = (*c.tabs)[delete_tab];
 			WEBTAB_TYPE type = tab.type;
 			const char *id = tab.tab.c_str();
 			tlmpweb_deleteform(id);
-			tabs.erase (tabs.begin()+delete_tab);
+			c.tabs->erase (c.tabs->begin()+delete_tab);
 			w_webtab = 0;
 			// Count the number of TABS remaining of this type
 			// Ajust the offset to have one visible
 			unsigned count=0;
-			for (auto &t:tabs){
+			for (auto &t:*c.tabs){
 				if (t.type == type) count++;
 			}
 			unsigned &offset = ctrl.offsets[type];
@@ -407,36 +432,21 @@ static void webtabs(_F_webtabs &c,
 		ctrl.offsets[w_webtab-2000]++;
 	}
 	glocal WEBTAB_CTRL *ctrl = &ctrl;
-	glocal vector<WEBTAB> *tabs = &tabs;
+	glocal vector<WEBTAB> *tabs = c.tabs;
 	glocal const char *name = name;
 	glocal WEBTAB *ptsel[4];
 	for (unsigned i=0; i<4; i++) glocal.ptsel[i] = NULL;
+	// w_webtab let the user select the active tab
 	for (unsigned type=0; type < 4; type++){
 		unsigned no = 1;
-		for (auto &t:tabs){
+		for (auto &t:*c.tabs){
 			if (w_webtab == no){
-				t.selorder = maxsel;
+				t.selorder = c.maxsel;
 				c.selected_id = t.tab.c_str();
-				maxsel++;
+				c.maxsel++;
 			}
 			no+=2;
 		}
-	}
-	// Assign the selected tab if none is selected
-	for (unsigned type=0; type < 4; type++){
-		WEBTAB *cur = NULL;
-		int maxorder = -1;
-		unsigned no = 1;
-		for (auto &t:tabs){
-			if (t.type == type){
-				if (t.selorder > maxorder){
-					cur = &t;
-					maxorder = t.selorder;
-				}
-			}
-			no+=2;
-		}
-		glocal.ptsel[type] = cur;
 	}
 	bool draw_ok = true;
 	if (!tlmpweb_get_output_state()){
@@ -449,13 +459,28 @@ static void webtabs(_F_webtabs &c,
 	// We draw the tabs content before drawing the tabs because the tabs may change
 	// the content of the tab
 	vector<string> lines[4];
-	for (int type=3; type>=0; type--){
-		if (glocal.ptsel[type] != NULL){
+	static vector<int> typeorder={1,3,2,0};
+	for (auto type:typeorder){
+		WEBTAB *ptt = NULL;
+		{
+			int maxorder = -1;
+			unsigned no = 1;
+			for (auto &t:*c.tabs){
+				if (t.type == type){
+					if (t.selorder > maxorder){
+						ptt = &t;
+						maxorder = t.selorder;
+					}
+				}
+				no+=2;
+			}
+			glocal.ptsel[type] = ptt;
+		}
+		if (ptt != NULL){
 			if (draw_ok) tlmpweb_pushgrab(lines[type]);
-			WEBTAB *ptt = glocal.ptsel[type];
 			while (1){
 				unsigned no=1;
-				for (auto &t:tabs){
+				for (auto &t:*c.tabs){
 					if (&t == ptt) w_webtab = no;
 					no += 2;
 				}
@@ -866,6 +891,7 @@ static void trli_getsessioninfo(CONNECT_INFO &con, CONNECT_INFO &con_sess, vecto
 			if (lang[0] != '\0') translat_selectlang (lang);
 			userinfo.name = name;
 			userinfo.is_admin = admin;
+			fcopy.clear();
 			for (auto &var:vars){
 				if (strcmp(var.name,"subject")==0 && var.vals.size()==1) subject=atoi(var.vals[0].sval);
 				if (strcmp(var.name,"order")==0 && var.vals.size()==1) order=atoi(var.vals[0].sval);
@@ -924,6 +950,14 @@ static void trli_getsessioninfo(CONNECT_INFO &con, CONNECT_INFO &con_sess, vecto
 							tlmpweb_settablegeometry(id,height,atoi(v.sval));
 						}
 					}
+				}else if (strcmp(var.name,"copy")==0){
+					for (auto &v:var.vals){
+						if (strcmp(v.sname,"path")==0){
+							fcopy.path = v.sval;
+						}else if (strcmp(v.sname,"date")==0){
+							fcopy.date = v.sval;
+						}
+					}
 				}
 			}
 			// Refresh the cookie so it is valid for 2 more days
@@ -959,24 +993,19 @@ static void button_validate(int step)
 <mod>
 static void web_updateoffsets(CONNECT_INFO &con_sess)
 {
-	//if (w_webtable.isset() && w_offset.isset()){
-	//	if (offsets[w_webtable.c_str()] != w_offset){
-	//		offsets[w_webtable.c_str()] = w_offset;
-			VAR var;
-			var.name = "offsets";
-			for (auto &v:offsets){
-				SNAMEVAL val;
-				val.sname = v.first;
-				val.sval = string_f ("%u",v.second);
-				var.vals.push_back(val);
-			}
-			<call bo_sessiond_client_setvar>(con_sess,w_session.c_str(),var);
-			<f ok>
-				if (!success) printf ("Can't set variable offset: %s\n",msg);
-			</f>
-			</call>
-	//	}
-	//}
+	VAR var;
+	var.name = "offsets";
+	for (auto &v:offsets){
+		SNAMEVAL val;
+		val.sname = v.first;
+		val.sval = string_f ("%u",v.second);
+		var.vals.push_back(val);
+	}
+	<call bo_sessiond_client_setvar>(con_sess,w_session.c_str(),var);
+	<f ok>
+		if (!success) tlmp_error ("Can't set variable offset: %s\n",msg);
+	</f>
+	</call>
 }
 </mod>
 <mod>
@@ -1448,6 +1477,59 @@ static void index_script()
 		}
 	</script>
 	?>
+}
+const unsigned MENU_COPY=1;
+const unsigned MENU_PASTE=2;
+const unsigned MENU_DELETE=3;
+const unsigned MENU_PREVIEW=4;
+const unsigned MENU_HELPPREVIEW=5;
+const unsigned MENU_UNDELETE=6;
+const unsigned MENU_RENAME=7;
+
+<mod>
+static void index_setcopyitem(CONNECT_INFO &con_sess, PARAM_STRING path, PARAM_STRING modified)
+{
+	VAR var;
+	var.name = "copy";
+	SNAMEVAL val;
+	val.sname = "path";
+	val.sval = path.ptr;
+	var.vals.push_back(val);
+	val.sname = "date";
+	val.sval = modified.ptr;
+	var.vals.push_back(val);
+	<call bo_sessiond_client_setvar>(con_sess,w_session.c_str(),var);
+	<f ok>
+		if (!success) tlmp_error ("Can't set variable offset: %s\n",msg);
+	</f>
+	</call>
+}
+</mod>
+// Disable the MENU_PASTE menu if it does not make sens
+static void index_setpastemenu (_F_webtable *c, PARAM_STRING path)
+{
+	bool disable = false;
+	if (fcopy.path.size()==0){
+		disable = true;	// Nothing to paste
+	}else{
+		if (fcopy.path == path.ptr){
+			disable = true;	// Pasting on itself
+		}else{
+			size_t size = strlen(path.ptr);
+			if (strncmp(fcopy.path.c_str(),path.ptr,size)==0){
+				// Check if copypath come from the directory path
+				const char *pt = fcopy.path.c_str()+size;
+				if (pt[0] == '/'){
+					pt = strchr(pt+1,'/');
+					if (pt == NULL){
+						// copypath is a file or folder member of path
+						disable = true;
+					}
+				}
+			}
+		}
+	}
+	if (disable) c->setdrop_disable(MENU_PASTE);
 }
 <mod>
 extern "C" void webmain_real()
@@ -1997,6 +2079,9 @@ extern "C" void webmain_real()
 		<f docmain>
 			glocal const char *id = id;
 			glocal string path = string_f ("/projects/%s",id);
+			glocal bool is_public = false;
+			const char *pt = strrchr(id,'/');
+			if (pt != NULL) glocal.is_public = strcmp(pt,"/public")==0;
 			{
 			DIV f; f.id(TAB_FORM).print();
 			<call form>(formid);
@@ -2067,46 +2152,101 @@ extern "C" void webmain_real()
 			}
 			<call webtable>(ID_PROJECT,glocal.path,"100%",currents[glocal.path],offsets[glocal.path],5);
 			<f click>
-				tlmpweb_flushheader();
-				<call bod_client_listdir>(glocal.con,w_session.c_str(),glocal.path,"",false,noline,1);
-				<f ok>
-					if (files.size()!=1){
-						htmlprintf (MSG_U(E_INTERNAL,"Internal error: %s\n"),msg);
-					}else{
-						auto &f = files[0];
-						glocal FILE_TYPE file_type = f.file_type;
-						glocal string fname = string_f("%s/%s",glocal.path.c_str(),f.name);
-						if (file_is_text(f.file_type)){
-							if (f.islarge){
-								util_sendfile (glocal.con,w_session.c_str(),glocal.fname);
-							}else{
-								<call bod_client_readfile>(glocal.con,w_session.c_str(),glocal.fname,"");
+				glocal unsigned dropmenu = dropmenu;
+				if (dropmenu == MENU_HELPPREVIEW){
+					glocal.webtabs.addtab("2:helppreview",MSG_U(I_HELPPREVIEW,"Preview"));
+				}else{
+					if (dropmenu == 0) tlmpweb_flushheader();
+					<call bod_client_listdir>(glocal.con,w_session.c_str(),glocal.path,"",false,noline,1);
+					<f ok>
+						if (files.size()!=1){
+							htmlprintf (MSG_U(E_INTERNAL,"Internal error: %s\n"),msg);
+						}else{
+							auto &f = files[0];
+							glocal FILE_TYPE file_type = f.file_type;
+							glocal string fname = string_f("%s/%s",glocal.path.c_str(),f.name);
+							if (glocal.dropmenu == MENU_DELETE){
+								glocal bool ok = false;
+								if (f.type == ENTRY_FILE){
+									<call bod_client_delfile> (glocal.con,w_session.c_str(),glocal.fname);
+									<f ok>
+										if (!success) htmlprintf (MSG_U(E_CANTDELETEENTRY,"Can't delete: %s<br>\n"),msg);
+										glocal.ok = success;
+									</f>
+									</call>
+								}else{
+									<call bod_client_rmdir> (glocal.con,w_session.c_str(),glocal.fname);
+									<f ok>
+										if (!success) htmlprintf (MSG_U(E_CANTDELETEDIR,"Can't delete folder: %s<br>\n"),msg);
+										glocal.ok = success;
+									</f>
+									</call>
+								}
+								if (glocal.ok) index_setcopyitem(glocal.con_sess,glocal.fname,f.modified);
+							}else if (glocal.dropmenu == MENU_UNDELETE){
+								<call bod_client_undelete> (glocal.con,w_session.c_str(),glocal.path);
 								<f ok>
-									if (!success){
-										index_popup (glocal.con,msg,glocal.file_type,info.modified,glocal.fname);
-									}else{
-										index_popup (glocal.con,content,glocal.file_type,info.modified,glocal.fname);
-									}
+									if (!success) htmlprintf (MSG_U(E_CANTUNDELETEENTRY,"Can't undelete: %s<br>\n"),msg);
 								</f>
 								</call>
+							}else if (glocal.dropmenu == MENU_PASTE){
+								htmlprintf ("pasting %s %s -> %s\n",fcopy.path.c_str(),fcopy.date.c_str(),glocal.path.c_str());
+							}else if (glocal.dropmenu == MENU_COPY){
+								index_setcopyitem(glocal.con_sess,glocal.fname,f.modified);
+							}else if (glocal.dropmenu == MENU_RENAME){
+							}else if (glocal.dropmenu == MENU_PREVIEW){
+								if (glocal.is_public && f.type == ENTRY_DIR){
+									glocal.webtabs.addtab(string_f("2:preview-%s",f.name),f.name);
+								}
+							}else if (glocal.dropmenu != 0){
+								if (file_is_text(f.file_type)){
+									if (f.islarge){
+										util_sendfile (glocal.con,w_session.c_str(),glocal.fname);
+									}else{
+										<call bod_client_readfile>(glocal.con,w_session.c_str(),glocal.fname,"");
+										<f ok>
+											if (!success){
+												index_popup (glocal.con,msg,glocal.file_type,info.modified,glocal.fname);
+											}else{
+												index_popup (glocal.con,content,glocal.file_type,info.modified,glocal.fname);
+											}
+										</f>
+										</call>
+									}
+								}
+							}else{
+								index_popup (glocal.con,"",f.file_type,f.modified,glocal.fname);
 							}
-						}else{
-							index_popup (glocal.con,"",f.file_type,f.modified,glocal.fname);
 						}
-					}
-				</f>
-				</call>
+					</f>
+					</call>
+				}
 			</f>
 			<f load>
 				glocal unsigned rownum = nbskip;
+				// Defines all posible options for dropdown
+				adddrop_opt (MENU_COPY,MSG_U(M_COPY,"Copy"));
+				adddrop_opt (MENU_PASTE,MSG_U(M_PASTE,"Paste"));
+				adddrop_opt (MENU_DELETE,MSG_U(M_DELETE,"Delete"));
+				adddrop_opt (MENU_UNDELETE,MSG_U(M_UNDELETE,"Undelete"));
+				adddrop_opt (MENU_RENAME,MSG_U(M_RENAME,"Rename"));
+				adddrop_opt (MENU_PREVIEW,MSG_U(M_PREVIEWPUB,"Public preview"));
+				adddrop_opt (MENU_HELPPREVIEW,MSG_U(M_HELPPREVIEW,"Preview help"));
+				index_setpastemenu (this,glocal.path);
+				if (!glocal.is_public) setdrop_hidden (MENU_HELPPREVIEW);
 				sethead (MSG_U(H_FOLDER,"\tName\tModified\tOwner\tSize"));
 				<call bod_client_listdir>(glocal.con,w_session.c_str(),glocal.path,"",false,nbskip,nblines);
 				<f ok>
 					if (!success) htmlprintf (MSG_U(E_READDIR,"Can't read directory %s: %s<br>\n"),glocal.path.c_str(),msg);
+					if (!deletes) glocal.webtable.setdrop_disable(MENU_UNDELETE);
 					const char *func = "Popup";
 					for (auto &f:files){
 						string path = string_f ("%s/%s",glocal.id,f.name);
+						glocal.webtable.setdrop_hidden (MENU_PREVIEW);
 						if (bolixo_isdir(f.type)){
+							if (glocal.is_public){
+								glocal.webtable.setdrop_visible (MENU_PREVIEW);
+							}
 							glocal.webtable.setclickopt (true,"",string_f("webtab_add=1:%s",path.c_str()));
 						}else if (file_is_image(f.file_type)){
 							glocal.webtable.setclickopt (true,"",string_f("webtab_add=2:%s~%s",path.c_str(),f.name));
@@ -2143,9 +2283,15 @@ extern "C" void webmain_real()
 			if (strcmp(id,"help")==0){
 				DIV d("webtable"); d.print();
 				index_doc(glocal.docpointers[SECTION_PROJECT],section_project);
+			}else if (strcmp(id,"helppreview")==0){
+				DIV d("webtable"); d.print();
+				index_doc(glocal.docpointers[SECTION_PREVIEW],section_preview);
 			}else if (strcmp(id,"helpmain")==0){
 				DIV d("webtable"); d.print();
 				index_doc(glocal.docpointers[SECTION_NONE],section_none);
+			}else if (strncmp(id,"preview-",8)==0){
+				DIV d("webtable"); d.print();
+				htmlprintf ("Preview of the folder %s<br>\n",id+8);	
 			}else if (file_is_image(info.file_type)){
 				DIV d("webtable"); d.print();
 				htmlprintf (MSG_R(I_DOCNAME),glocal.filename);

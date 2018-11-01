@@ -572,6 +572,13 @@ static int trlid_main (
 				</f>
 				</call>
 			</f>
+			<f undelete> // sessionid dirname = success:b msg
+				<call bo_writed_client_undelete>(glocal.con,sessionid,dirname);
+				<f ok>
+					glocal.bod_client.rep_undelete(success,msg);
+				</f>
+				</call>
+			</f>
 			<f modifyfile> // sessionid name content = success:b msg
 				<call bo_writed_client_modifyfile>(glocal.con,sessionid,name,content);
 				<f ok>
@@ -791,6 +798,7 @@ static int trlid_main (
 			</f>
 			<f listdir>
 				ENTRY entry;
+				glocal bool deletes=false;	// Is there some entries to undelete
 				glocal vector<FILEINFO> files;
 				glocal map<string,DIRENTRY> mp;
 				glocal bool history = history;
@@ -878,6 +886,8 @@ static int trlid_main (
 									info.viewed = x.second.viewed;
 									info.islarge = x.second.islarge;
 									glocal.files.push_back(info);
+								}else{
+									glocal.deletes = true;
 								}
 							}
 						}
@@ -885,10 +895,10 @@ static int trlid_main (
 				}
 				if (entry.msg.size() > 0){
 					glocal.files.clear();
-					rep_listdir (false,entry.msg,glocal.files);
+					rep_listdir (false,entry.msg,glocal.files,false);
 				}else{
 					bod_trim (glocal.files,offset,nb);
-					rep_listdir (true,"",glocal.files);
+					rep_listdir (true,"",glocal.files,glocal.deletes);
 				}
 			</f>
 			<f create_project_dir> // sessionid listname owner = success:b msg
