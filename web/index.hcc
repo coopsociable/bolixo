@@ -9,6 +9,7 @@
 #include <trlitool.h>
 #include <string>
 #include <algorithm>
+#include <deque>
 #include "util.h"
 #define DEFINE_TBFTYPE
 #include "../bolixo.h"
@@ -208,12 +209,14 @@ struct _F_webtabs {
 	vector<WEBTAB> *tabs;
 	int maxsel;
 	bool changed;
+	int added_tab;
 	_F_webtabs(){
 		maxsel = 0;
 		tabs = NULL;
 		redo = false;
 		curtab = NULL;
 		changed = false;
+		added_tab = -1;
 	}
 	void setid (PARAM_STRING id);	// Change the ID of the active TAB
 	void sethelp();			// Set the context help button
@@ -243,7 +246,10 @@ bool _F_webtabs::selected(PARAM_STRING id)
 }
 void _F_webtabs::setid (PARAM_STRING id)
 {
-	curtab->tab = id.ptr;
+	if (curtab->tab != id.ptr){
+		curtab->tab = id.ptr;
+		changed = true;
+	}
 }
 void _F_webtabs::sethelp ()
 {
@@ -257,7 +263,10 @@ void _F_webtabs::sethelp (PARAM_STRING id, PARAM_STRING title)
 }
 void _F_webtabs::settitle (PARAM_STRING title)
 {
-	curtab->title = title.ptr;
+	if (curtab->title != title.ptr){
+		curtab->title = title.ptr;
+		changed = true;
+	}
 }
 void _F_webtabs::setstate (PARAM_STRING state)
 {
@@ -297,10 +306,12 @@ void _F_webtabs::addtab (PARAM_STRING id, PARAM_STRING title_txt)
 				found = true;
 				t.selorder = ++maxsel;
 				selected_id = t.tab;
+				added_tab = type;
 			}
 		}
 	}
 	if (!found){
+		added_tab = type;
 		WEBTAB w(type,ptid,title,"");
 		w.selorder = ++maxsel;
 		tabs->push_back(w);
@@ -466,8 +477,11 @@ static void webtabs(_F_webtabs &c,
 	// We draw the tabs content before drawing the tabs because the tabs may change
 	// the content of the tab
 	vector<string> lines[4];
-	static vector<int> typeorder={0,3,2,1};
-	for (auto type:typeorder){
+	c.added_tab = -1;
+	deque<int> typeorder={3,2,1,0};
+	while (typeorder.size() > 0){
+		int type = typeorder.front();
+		typeorder.pop_front();	
 		WEBTAB *ptt = NULL;
 		{
 			int maxorder = -1;
@@ -483,6 +497,7 @@ static void webtabs(_F_webtabs &c,
 			}
 		}
 		if (ptt != NULL){
+			lines[type].clear();
 			if (draw_ok) tlmpweb_pushgrab(lines[type]);
 			while (1){
 				unsigned no=1;
@@ -519,6 +534,11 @@ static void webtabs(_F_webtabs &c,
 			}
 			if (draw_ok) tlmpweb_popgrab();
 		}
+		if (c.added_tab != -1){
+			// We have to replay the tab
+			typeorder.push_back(c.added_tab);
+			c.added_tab = -1;
+		} 
 	}
 	if (draw_ok){
 		DIV sc; sc.w(100).dispflex().flowrow().align("stetch").bg("white").print();
