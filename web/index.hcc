@@ -207,11 +207,13 @@ struct _F_webtabs {
 	string help_title;
 	vector<WEBTAB> *tabs;
 	int maxsel;
+	bool changed;
 	_F_webtabs(){
 		maxsel = 0;
 		tabs = NULL;
 		redo = false;
 		curtab = NULL;
+		changed = false;
 	}
 	void setid (PARAM_STRING id);	// Change the ID of the active TAB
 	void sethelp();			// Set the context help button
@@ -259,7 +261,10 @@ void _F_webtabs::settitle (PARAM_STRING title)
 }
 void _F_webtabs::setstate (PARAM_STRING state)
 {
-	curtab->state = state.ptr;
+	if (curtab->state != state.ptr){
+		curtab->state = state.ptr;
+		changed = true;
+	}
 }
 const char *_F_webtabs::getstate () const
 {
@@ -308,6 +313,7 @@ void _F_webtabs::addtab (PARAM_STRING id, PARAM_STRING title_txt)
 			}
 		}
 	}
+	changed = true;
 }
 static string toupper (const char *s)
 {
@@ -422,14 +428,17 @@ static void webtabs(_F_webtabs &c,
 			}
 			unsigned &offset = ctrl.offsets[type];
 			if (offset > 0 && count <= offset) offset--;
+			c.changed = true;
 		}
 	}
 	// Manage the left and right arrows
 	if (w_webtab >= 1000 && w_webtab < 1004){
 		unsigned &v = ctrl.offsets[w_webtab-1000];
 		if (v > 0) v--;
+		c.changed = true;
 	}else if (w_webtab >= 2000 && w_webtab < 2004){
 		ctrl.offsets[w_webtab-2000]++;
+		c.changed = true;
 	}
 	glocal WEBTAB_CTRL *ctrl = &ctrl;
 	glocal vector<WEBTAB> *tabs = c.tabs;
@@ -441,6 +450,7 @@ static void webtabs(_F_webtabs &c,
 			if (w_webtab == no){
 				t.selorder = ++c.maxsel;
 				c.selected_id = t.tab;
+				c.changed = true;
 			}
 			no+=2;
 		}
@@ -607,6 +617,7 @@ static void webtabs(_F_webtabs &c,
 			}
 		}
 	}
+	if (c.changed) tlmpweb_savetabs(alltabs);
 }
 </mod>
 void webtabs(_F_webtabs &c,
@@ -1782,6 +1793,35 @@ extern "C" void webmain_real()
 		//c.setrowstyle ("whitebold+current","bgcolor=lightblue><b>\b</b>");
 		c.setrowstyle ("image","bgcolor=white align=center");
 	</f>
+	<f savetabs>
+		// Save the webtabs state to the session manager
+		VAR var;
+		var.name = "webtabs";
+		for (auto &v:tabs){
+			{
+				SNAMEVAL val;
+				val.sname = string_f("%s:0",v.first.c_str());
+				val.sval = string_f("%u,%u,%u,%u"
+					,v.second.offsets[0]
+					,v.second.offsets[1]
+					,v.second.offsets[2]
+					,v.second.offsets[3]);
+				var.vals.push_back(val);
+			}
+			for (auto &t:v.second.tabs){
+				SNAMEVAL val;
+				val.sname = string_f("%s:%c:%s",v.first.c_str(),t.type+'1',t.tab.c_str());
+				val.sval = string_f("f=%u,s=%s,t=%s,l=%d",t.selorder,t.state.c_str()
+					,t.title.c_str(),t.locked);
+				var.vals.push_back(val);
+			}
+		}
+		<call bo_sessiond_client_setvar>(glocal.con_sess,w_session.c_str(),var);
+		<f ok>
+			if (!success) htmlprintf ("Can't set variable webtabs: %s\n",msg);
+		</f>
+		</call>
+	</f>
 	</obj>
 	<call websteps>();
 	<f setstep>
@@ -1795,35 +1835,6 @@ extern "C" void webmain_real()
 		/- </div>
 		/- </div>
 		index_script();
-		if (w_webtab_add.isset() || w_webtab.isset()){
-			// Save the webtabs state to the session manager
-			VAR var;
-			var.name = "webtabs";
-			for (auto &v:tabs){
-				{
-					SNAMEVAL val;
-					val.sname = string_f("%s:0",v.first.c_str());
-					val.sval = string_f("%u,%u,%u,%u"
-						,v.second.offsets[0]
-						,v.second.offsets[1]
-						,v.second.offsets[2]
-						,v.second.offsets[3]);
-					var.vals.push_back(val);
-				}
-				for (auto &t:v.second.tabs){
-					SNAMEVAL val;
-					val.sname = string_f("%s:%c:%s",v.first.c_str(),t.type+'1',t.tab.c_str());
-					val.sval = string_f("f=%u,s=%s,t=%s,l=%d",t.selorder,t.state.c_str()
-						,t.title.c_str(),t.locked);
-					var.vals.push_back(val);
-				}
-			}
-			<call bo_sessiond_client_setvar>(glocal.con_sess,w_session.c_str(),var);
-			<f ok>
-				if (!success) htmlprintf ("Can't set variable webtabs: %s\n",msg);
-			</f>
-			</call>
-		}
 		{
 			// Save the position in the document
 			bool one_changed = false;
