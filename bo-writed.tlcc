@@ -150,16 +150,20 @@ static int writed_mail_newaccount(
 		,"Account confirmation on bolixo.org"
 		,tmp);
 };
-static int bo_writed_findentry (CONNECT_INFO &con, const char *sessionid, const char *name, ENTRY &entry, bool expect_exist)
+static int bo_writed_findentry (CONNECT_INFO &con, const char *sessionid, const char *name, const char *threshold, ENTRY &entry, bool expect_exist)
 {
 	int ret = -1;
 	entry.userid = trli_getsessionuser(con,sessionid,entry.is_admin);
 	if (entry.userid == 0){
 		entry.msg = "Invalid session";
 	}else{
-		ret = fs_findentry(name,entry,expect_exist,"");
+		ret = fs_findentry(name,entry,expect_exist,threshold);
 	}
 	return ret;
+}
+static int bo_writed_findentry (CONNECT_INFO &con, const char *sessionid, const char *name, ENTRY &entry, bool expect_exist)
+{
+	return bo_writed_findentry(con,sessionid,name,"",entry,expect_exist);
 }
 struct DIRENTRY{
 	int itemid;
@@ -1672,10 +1676,10 @@ int main (int argc, char *argv[])
 					}
 					
 				</f>
-				<f copy> // sessionid srcname dstname
+				<f copy> // sessionid srcname srcdate dstname
 					// oldname is a path, newname is just a name inside the same directory
 					ENTRY srcentry,dstentry;
-					if (bo_writed_findentry (glocal.con,sessionid,srcname,srcentry,true)==-1){
+					if (bo_writed_findentry (glocal.con,sessionid,srcname,srcdate,srcentry,true)==-1){
 						rep_copy (false,srcentry.msg);
 					}else if (bo_writed_findentry (glocal.con,sessionid,dstname,dstentry,false)==-1){
 						rep_copy (false,dstentry.msg);

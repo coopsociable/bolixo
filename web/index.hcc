@@ -2221,7 +2221,7 @@ extern "C" void webmain_real()
 									</f>
 									</call>
 								}
-								if (glocal.ok) index_setcopyitem(glocal.con_sess,glocal.fname,f.modified);
+								if (glocal.ok) index_setcopyitem(glocal.con_sess,glocal.fname,f.eventdate);
 							}else if (glocal.dropmenu == MENU_UNDELETE){
 								<call bod_client_undelete> (glocal.con,w_session.c_str(),glocal.path);
 								<f ok>
@@ -2229,9 +2229,20 @@ extern "C" void webmain_real()
 								</f>
 								</call>
 							}else if (glocal.dropmenu == MENU_PASTE){
-								htmlprintf ("pasting %s %s -> %s\n",fcopy.path.c_str(),fcopy.date.c_str(),glocal.path.c_str());
+								const char *pt = strrchr(fcopy.path.c_str(),'/');
+								if (pt == NULL){
+									htmlprintf (MSG_U(E_NOTHINGTOPASTE,"Nothing to paste: fcopy.path = %s<br>\n"),fcopy.path.c_str());
+								}else{
+									string newfname = string_f("%s/%s",glocal.path.c_str(),pt+1);
+									htmlprintf ("pasting %s %s -> %s\n",fcopy.path.c_str(),fcopy.date.c_str(),newfname.c_str());
+									<call bod_client_copy> (glocal.con,w_session.c_str(),fcopy.path,fcopy.date,newfname);
+									<f ok>
+										if (!success) htmlprintf (MSG_U(E_CANTPASTEENTRY,"Can't paste: %s<br>\n"),msg);
+									</f>
+									</call>
+								}
 							}else if (glocal.dropmenu == MENU_COPY){
-								index_setcopyitem(glocal.con_sess,glocal.fname,f.modified);
+								index_setcopyitem(glocal.con_sess,glocal.fname,f.eventdate);
 							}else if (glocal.dropmenu == MENU_RENAME){
 							}else if (glocal.dropmenu == MENU_PREVIEW){
 								if (glocal.is_public && f.type == ENTRY_DIR){
@@ -3253,7 +3264,23 @@ extern "C" void webmain_real()
 					}
 					static const string id = "list:interests";
 					<call webtable>(ID_INTERESTS,id,"100%",currents[id]);
+					<f click>
+						glocal unsigned dropmenu = dropmenu;
+						glocal unsigned noline = noline;
+						<call bod_client_interest_list>(glocal.con,w_session.c_str(),"");
+						<f ok>
+							if (glocal.noline < users.size() && glocal.dropmenu == MENU_DELETE){
+								<call bod_client_interest_unset>(glocal.con,w_session.c_str()
+									,users[glocal.noline].name,"");
+								<f ok>
+								</f>
+								</call>
+							}
+						</f>
+						</call>
+					</f>
 					<f load>
+						adddrop_opt (MENU_DELETE,MSG_R(M_DELETE));
 						sethead (MSG_U(H_INTEREST,"\tPerson\tSince"));
 						<call bod_client_interest_list>(glocal.con,w_session.c_str(),"");
 						<f ok>
