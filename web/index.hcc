@@ -80,6 +80,7 @@ static W_SSTRING w_access2("access2");
 static W_SSTRING w_access3("access3");
 static W_SSTRING w_access4("access4");
 
+static W_SSTRING w_name("name");
 static W_SSTRING w_image("image");
 extern W_SSTRING w_webtable;
 static map<string,unsigned> offsets;
@@ -1524,6 +1525,7 @@ const unsigned MENU_PREVIEW=4;
 const unsigned MENU_HELPPREVIEW=5;
 const unsigned MENU_UNDELETE=6;
 const unsigned MENU_RENAME=7;
+const unsigned MENU_DOWNLOAD=8;
 
 <mod>
 static void index_setcopyitem(CONNECT_INFO &con_sess, PARAM_STRING path, PARAM_STRING modified)
@@ -2234,7 +2236,7 @@ extern "C" void webmain_real()
 									htmlprintf (MSG_U(E_NOTHINGTOPASTE,"Nothing to paste: fcopy.path = %s<br>\n"),fcopy.path.c_str());
 								}else{
 									string newfname = string_f("%s/%s",glocal.path.c_str(),pt+1);
-									htmlprintf ("pasting %s %s -> %s\n",fcopy.path.c_str(),fcopy.date.c_str(),newfname.c_str());
+									htmlprintf ("pasting %s %s -> %s<br>\n",fcopy.path.c_str(),fcopy.date.c_str(),newfname.c_str());
 									<call bod_client_copy> (glocal.con,w_session.c_str(),fcopy.path,fcopy.date,newfname);
 									<f ok>
 										if (!success) htmlprintf (MSG_U(E_CANTPASTEENTRY,"Can't paste: %s<br>\n"),msg);
@@ -2244,6 +2246,38 @@ extern "C" void webmain_real()
 							}else if (glocal.dropmenu == MENU_COPY){
 								index_setcopyitem(glocal.con_sess,glocal.fname,f.eventdate);
 							}else if (glocal.dropmenu == MENU_RENAME){
+								glocal const char *oldname = f.name;
+								<call form>("rename");
+								<f setup>
+									/- <table border=0>
+									/- <tr><td>
+									/-#F_OLDNAME Entry current name
+									/- <td>
+									htmlout(glocal.oldname);
+									/- <tr><td>
+									/-#F_NEWNAME New name
+									/- <td>
+									field_string (w_name,"");
+									/- </table>
+								</f>
+								<f validate>
+									return true;
+								</f>
+								<f process>
+									glocal bool fail = false;
+									string newname = string_f("%s/%s",glocal.path.c_str(),w_name.c_str());
+									<call bod_client_rename>(glocal.con,w_session.c_str(),glocal.fname,newname.c_str());
+									<f ok>
+										if (!success){
+											glocal.fail = true;
+											htmlprintf (MSG_U(E_RENAME,"Rename failed: %s<br>\n"),msg);
+										}
+									</f>
+									</call>
+									fail = glocal.fail;
+								</f>
+								</call>
+							}else if (glocal.dropmenu == MENU_DOWNLOAD){
 							}else if (glocal.dropmenu == MENU_PREVIEW){
 								if (glocal.is_public && f.type == ENTRY_DIR){
 									glocal.webtabs.addtab(string_f("2:preview-%s",f.name),f.name);
@@ -2280,6 +2314,7 @@ extern "C" void webmain_real()
 				adddrop_opt (MENU_DELETE,MSG_U(M_DELETE,"Delete"));
 				adddrop_opt (MENU_UNDELETE,MSG_U(M_UNDELETE,"Undelete"));
 				adddrop_opt (MENU_RENAME,MSG_U(M_RENAME,"Rename"));
+				adddrop_opt (MENU_DOWNLOAD,MSG_U(M_DOWNLOAD,"Download"));
 				adddrop_opt (MENU_PREVIEW,MSG_U(M_PREVIEWPUB,"Public preview"));
 				adddrop_opt (MENU_HELPPREVIEW,MSG_U(M_HELPPREVIEW,"Preview help"));
 				index_setpastemenu (this,glocal.path);

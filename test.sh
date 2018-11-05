@@ -354,7 +354,6 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 			title varchar(200),
 			content text,
 			signature varchar(400),
-			copiedby int default 0,
 			modifiedby int default 0
 		)engine=$ENGINE;
 		create index files_id on files (id);
@@ -365,7 +364,8 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 			eventtime datetime(6) default current_timestamp,
 			modified datetime,
 			type tinyint unsigned,
-			name varchar(100)
+			name varchar(100),
+			copiedby int default 0
 		) engine=$ENGINE;
 		create index dirs_content_dirid on dirs_content (dirid);
 		create index dirs_content_name on dirs_content (name);
