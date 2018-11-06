@@ -52,6 +52,7 @@ int fs_newid (unsigned userid, std::string &msg, std::string &uuid);
 int fs_newid (unsigned userid, std::string &msg);
 int fs_insert_dir (int parentid,int dirid,PARAM_STRING modified,PARAM_STRING name);
 int fs_insert_dir (int parentid,int dirid,PARAM_STRING name);
+int fs_insert_entry (int parentid,int id,PARAM_STRING modified,PARAM_STRING name, ENTRY_TYPE type, unsigned copiedby);
 int fs_insert_entry (int parentid,int id,PARAM_STRING modified,PARAM_STRING name, ENTRY_TYPE type);
 int fs_insert_file (int parentid,int fileid,PARAM_STRING modified,PARAM_STRING name);
 int fs_insert_file (int parentid,int fileid,PARAM_STRING name);

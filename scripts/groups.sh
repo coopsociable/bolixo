@@ -61,7 +61,7 @@ elif [ "$1" = "sequence" ] ; then # test: Create some users from scratch
 			./bofs -u jacques-$letter cp /tmp/mini-photo.jpg bo://projects/jacques-$letter/public/mini-photo.jpg
 			convert -font helvetica -size 100x100 xc:white \
                                 -stroke black -fill blue -draw "roundrectangle 5,5 95,95 10,10" \
-				-pointsize 50 -stroke black -fill red -draw "text 35,65 A" /tmp/photo.jpg
+				-pointsize 50 -stroke black -fill red -draw "text 35,65 $letter" /tmp/photo.jpg
 			./bofs -u jacques-$letter cp /tmp/photo.jpg bo://projects/jacques-$letter/public/photo.jpg
 		else
 			echo no convert utility, install ImangeMagick

@@ -57,6 +57,14 @@ struct COPY{
 		date.clear();
 	}
 };
+const unsigned MENU_COPY=1;
+const unsigned MENU_PASTE=2;
+const unsigned MENU_DELETE=3;
+const unsigned MENU_PREVIEW=4;
+const unsigned MENU_HELPPREVIEW=5;
+const unsigned MENU_UNDELETE=6;
+const unsigned MENU_RENAME=7;
+const unsigned MENU_DOWNLOAD=8;
 static COPY fcopy;		// Cut buffer, holding a file path
 static string w_session;
 static W_SSTRING w_lang("lang");
@@ -1230,6 +1238,74 @@ static void index_markview (CONNECT_INFO &con, PARAM_STRING fname)
 	</call>
 }
 </mod>
+<mod>
+static void index_paste(CONNECT_INFO &con, PARAM_STRING path)
+{
+	const char *pt = strrchr(fcopy.path.c_str(),'/');
+	if (pt == NULL){
+		htmlprintf (MSG_U(E_NOTHINGTOPASTE,"Nothing to paste: fcopy.path = %s<br>\n"),fcopy.path.c_str());
+	}else{
+		string newfname = string_f("%s/%s",path.ptr,pt+1);
+		//htmlprintf ("pasting %s %s -> %s<br>\n",fcopy.path.c_str(),fcopy.date.c_str(),newfname.c_str());
+		<call bod_client_copy> (con,w_session.c_str(),fcopy.path,fcopy.date,newfname);
+		<f ok>
+			if (!success) htmlprintf (MSG_U(E_CANTPASTEENTRY,"Can't paste: %s<br>\n"),msg);
+		</f>
+		</call>
+	}
+}
+</mod>
+// Set the MENU_PASTE menu, make it gray out sens
+static void index_setpastemenu (_F_webtable *c, PARAM_STRING path)
+{
+	bool disable = false;
+	string paste = MSG_U(M_PASTE,"Paste");
+	if (fcopy.path.size()==0){
+		disable = true;	// Nothing to paste
+	}else{
+		if (fcopy.path == path.ptr){
+			disable = true;	// Pasting on itself
+		}else{
+			size_t size = strlen(path.ptr);
+			if (strncmp(fcopy.path.c_str(),path.ptr,size)==0){
+				// Check if copypath come from the directory path
+				const char *pt = fcopy.path.c_str()+size;
+				if (pt[0] == '/'){
+					pt = strchr(pt+1,'/');
+					if (pt == NULL){
+						// copypath is a file or folder member of path
+						disable = true;
+					}
+				}
+			}
+		}
+		const char *pt = strrchr(fcopy.path.c_str(),'/');
+		if (pt != NULL) paste += string(" ") + (pt+1);
+	}
+	c->adddrop_opt (MENU_PASTE,paste);
+	if (disable) c->setdrop_disable(MENU_PASTE);
+}
+<mod>
+static void index_setcopyitem(CONNECT_INFO &con_sess, PARAM_STRING path, PARAM_STRING modified)
+{
+	VAR var;
+	var.name = "copy";
+	SNAMEVAL val;
+	val.sname = "path";
+	val.sval = path.ptr;
+	var.vals.push_back(val);
+	val.sname = "date";
+	val.sval = modified.ptr;
+	var.vals.push_back(val);
+	<call bo_sessiond_client_setvar>(con_sess,w_session.c_str(),var);
+	<f ok>
+		if (!success) tlmp_error ("Can't set variable offset: %s\n",msg);
+	</f>
+	</call>
+	fcopy.path = path.ptr;
+	fcopy.date = modified.ptr;
+}
+</mod>
 
 <mod>
 static void index_show_shortmsg(
@@ -1243,26 +1319,60 @@ static void index_show_shortmsg(
 	glocal CONNECT_INFO *con_sess = &con_sess;
 	glocal const char *groupname = groupname.ptr;
 	glocal const char *groupowner = groupowner.ptr;
+	glocal string path = string_f("/msgs/%s/short-inbox/%s",glocal.groupowner,glocal.groupname);
 	if (offsets[table] == 0){
-		index_markview (con,string_f("/msgs/%s/short-inbox/%s",glocal.groupowner,glocal.groupname));
+		index_markview (con,glocal.path);
 	}
 	<call webtable>(ID_TALK,table,"100%",currents[table],offsets[table],5);
 	<f click>
-		tlmpweb_flushheader();
-		<call bod_client_list_talk>(*glocal.con,w_session.c_str(),"",glocal.groupname,glocal.groupowner,noline,1);
-		<f ok>
-			if (messages.size()!=1){
-				htmlprintf ("Internal error: %s\n",msg);
-			}else{
-				auto &m = messages[0];
-				//htmlprintf ("uuid=%s<p>\n",m.uuid);
-				index_popup (*glocal.con,m.content,m.file_type,m.submit
-					,string_f("/msgs/%s/short-inbox/%s/%s",glocal.groupowner,glocal.groupname,m.uuid));
-			}
-		</f>
-		</call>
+		glocal unsigned dropmenu = dropmenu;
+		if (dropmenu == 0) tlmpweb_flushheader();
+		if (dropmenu == MENU_UNDELETE){
+			<call bod_client_undelete> (*glocal.con,w_session.c_str(),glocal.path);
+			<f ok>
+				if (!success) htmlprintf (MSG_R(E_CANTUNDELETEENTRY),msg);
+			</f>
+			</call>
+		}else if (dropmenu == MENU_PASTE){
+			index_paste (*glocal.con,glocal.path);
+		}else{
+			<call bod_client_list_talk>(*glocal.con,w_session.c_str(),"",glocal.groupname,glocal.groupowner,noline,1);
+			<f ok>
+				if (messages.size()!=1){
+					htmlprintf ("Internal error: %s\n",msg);
+				}else{
+					auto &m = messages[0];
+					glocal string fname = string_f("%s/%s",glocal.path.c_str(),m.uuid);
+					if (glocal.dropmenu == MENU_DELETE){
+						<call bod_client_delfile> (*glocal.con,w_session.c_str(),glocal.fname);
+						<f ok>
+							if (!success){
+								htmlprintf (MSG_R(E_CANTDELETEENTRY),msg);
+							}else{
+								index_setcopyitem(*glocal.con_sess,glocal.fname,"");
+							}
+						</f>
+						</call>
+					}else if (glocal.dropmenu == MENU_COPY){
+						index_setcopyitem(*glocal.con_sess,glocal.fname,"");
+					}else{
+						//htmlprintf ("uuid=%s<p>\n",m.uuid);
+						index_popup (*glocal.con,m.content,m.file_type,m.submit
+							,string_f("/msgs/%s/short-inbox/%s/%s"
+							,glocal.groupowner,glocal.groupname,m.uuid));
+					}
+				}
+			</f>
+			</call>
+		}
 	</f>
 	<f load>
+		// Defines all posible options for dropdown
+		adddrop_opt (MENU_COPY,MSG_R(M_COPY));
+		index_setpastemenu(this,glocal.path);
+		adddrop_opt (MENU_DELETE,MSG_R(M_DELETE));
+		adddrop_opt (MENU_UNDELETE,MSG_R(M_UNDELETE));
+		adddrop_opt (MENU_DOWNLOAD,MSG_R(M_DOWNLOAD));
 		glocal unsigned rownum = nbskip;
 		sethead (MSG_U(H_TALK,"From\tSubmit"));
 		<call bod_client_list_talk>(*glocal.con,w_session.c_str(),"",glocal.groupname,glocal.groupowner,nbskip,nblines);
@@ -1518,60 +1628,7 @@ static void index_script()
 	</script>
 	?>
 }
-const unsigned MENU_COPY=1;
-const unsigned MENU_PASTE=2;
-const unsigned MENU_DELETE=3;
-const unsigned MENU_PREVIEW=4;
-const unsigned MENU_HELPPREVIEW=5;
-const unsigned MENU_UNDELETE=6;
-const unsigned MENU_RENAME=7;
-const unsigned MENU_DOWNLOAD=8;
 
-<mod>
-static void index_setcopyitem(CONNECT_INFO &con_sess, PARAM_STRING path, PARAM_STRING modified)
-{
-	VAR var;
-	var.name = "copy";
-	SNAMEVAL val;
-	val.sname = "path";
-	val.sval = path.ptr;
-	var.vals.push_back(val);
-	val.sname = "date";
-	val.sval = modified.ptr;
-	var.vals.push_back(val);
-	<call bo_sessiond_client_setvar>(con_sess,w_session.c_str(),var);
-	<f ok>
-		if (!success) tlmp_error ("Can't set variable offset: %s\n",msg);
-	</f>
-	</call>
-}
-</mod>
-// Disable the MENU_PASTE menu if it does not make sens
-static void index_setpastemenu (_F_webtable *c, PARAM_STRING path)
-{
-	bool disable = false;
-	if (fcopy.path.size()==0){
-		disable = true;	// Nothing to paste
-	}else{
-		if (fcopy.path == path.ptr){
-			disable = true;	// Pasting on itself
-		}else{
-			size_t size = strlen(path.ptr);
-			if (strncmp(fcopy.path.c_str(),path.ptr,size)==0){
-				// Check if copypath come from the directory path
-				const char *pt = fcopy.path.c_str()+size;
-				if (pt[0] == '/'){
-					pt = strchr(pt+1,'/');
-					if (pt == NULL){
-						// copypath is a file or folder member of path
-						disable = true;
-					}
-				}
-			}
-		}
-	}
-	if (disable) c->setdrop_disable(MENU_PASTE);
-}
 <mod>
 extern "C" void webmain_real()
 {
@@ -2196,6 +2253,14 @@ extern "C" void webmain_real()
 				glocal unsigned dropmenu = dropmenu;
 				if (dropmenu == MENU_HELPPREVIEW){
 					glocal.webtabs.addtab("2:helppreview",MSG_U(I_HELPPREVIEW,"Preview"));
+				}else if (dropmenu == MENU_UNDELETE){
+					<call bod_client_undelete> (glocal.con,w_session.c_str(),glocal.path);
+					<f ok>
+						if (!success) htmlprintf (MSG_U(E_CANTUNDELETEENTRY,"Can't undelete: %s<br>\n"),msg);
+					</f>
+					</call>
+				}else if (dropmenu == MENU_PASTE){
+					index_paste(glocal.con,glocal.path);
 				}else{
 					if (dropmenu == 0) tlmpweb_flushheader();
 					<call bod_client_listdir>(glocal.con,w_session.c_str(),glocal.path,"",false,noline,1);
@@ -2224,25 +2289,6 @@ extern "C" void webmain_real()
 									</call>
 								}
 								if (glocal.ok) index_setcopyitem(glocal.con_sess,glocal.fname,f.eventdate);
-							}else if (glocal.dropmenu == MENU_UNDELETE){
-								<call bod_client_undelete> (glocal.con,w_session.c_str(),glocal.path);
-								<f ok>
-									if (!success) htmlprintf (MSG_U(E_CANTUNDELETEENTRY,"Can't undelete: %s<br>\n"),msg);
-								</f>
-								</call>
-							}else if (glocal.dropmenu == MENU_PASTE){
-								const char *pt = strrchr(fcopy.path.c_str(),'/');
-								if (pt == NULL){
-									htmlprintf (MSG_U(E_NOTHINGTOPASTE,"Nothing to paste: fcopy.path = %s<br>\n"),fcopy.path.c_str());
-								}else{
-									string newfname = string_f("%s/%s",glocal.path.c_str(),pt+1);
-									htmlprintf ("pasting %s %s -> %s<br>\n",fcopy.path.c_str(),fcopy.date.c_str(),newfname.c_str());
-									<call bod_client_copy> (glocal.con,w_session.c_str(),fcopy.path,fcopy.date,newfname);
-									<f ok>
-										if (!success) htmlprintf (MSG_U(E_CANTPASTEENTRY,"Can't paste: %s<br>\n"),msg);
-									</f>
-									</call>
-								}
 							}else if (glocal.dropmenu == MENU_COPY){
 								index_setcopyitem(glocal.con_sess,glocal.fname,f.eventdate);
 							}else if (glocal.dropmenu == MENU_RENAME){
@@ -2310,14 +2356,13 @@ extern "C" void webmain_real()
 				glocal unsigned rownum = nbskip;
 				// Defines all posible options for dropdown
 				adddrop_opt (MENU_COPY,MSG_U(M_COPY,"Copy"));
-				adddrop_opt (MENU_PASTE,MSG_U(M_PASTE,"Paste"));
+				index_setpastemenu (this,glocal.path);
 				adddrop_opt (MENU_DELETE,MSG_U(M_DELETE,"Delete"));
 				adddrop_opt (MENU_UNDELETE,MSG_U(M_UNDELETE,"Undelete"));
 				adddrop_opt (MENU_RENAME,MSG_U(M_RENAME,"Rename"));
 				adddrop_opt (MENU_DOWNLOAD,MSG_U(M_DOWNLOAD,"Download"));
 				adddrop_opt (MENU_PREVIEW,MSG_U(M_PREVIEWPUB,"Public preview"));
 				adddrop_opt (MENU_HELPPREVIEW,MSG_U(M_HELPPREVIEW,"Preview help"));
-				index_setpastemenu (this,glocal.path);
 				if (!glocal.is_public) setdrop_hidden (MENU_HELPPREVIEW);
 				sethead (MSG_U(H_FOLDER,"\tName\tModified\tOwner\tSize"));
 				<call bod_client_listdir>(glocal.con,w_session.c_str(),glocal.path,"",false,nbskip,nblines);

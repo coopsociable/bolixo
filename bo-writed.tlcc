@@ -1677,30 +1677,36 @@ int main (int argc, char *argv[])
 					
 				</f>
 				<f copy> // sessionid srcname srcdate dstname
-					// oldname is a path, newname is just a name inside the same directory
+					// srcname and dstname are path
+					string msg;
 					ENTRY srcentry,dstentry;
+					bool is_msg = strncmp(dstname,"/msgs/",6)==0;
 					if (bo_writed_findentry (glocal.con,sessionid,srcname,srcdate,srcentry,true)==-1){
-						rep_copy (false,srcentry.msg);
+						msg = srcentry.msg;
 					}else if (bo_writed_findentry (glocal.con,sessionid,dstname,dstentry,false)==-1){
-						rep_copy (false,dstentry.msg);
+						msg = dstentry.msg;
 					}else if (bolixo_isdir(srcentry.type)){
-						string msg;
-						if (bo_writed_copydir (srcentry.entryid,dstentry.dirid,dstentry.basename,srcentry.userid,msg)==-1){
-							rep_copy (false,msg);
+						if (is_msg){
+							msg = MSG_U(E_ONLYFILE,"Only files may be copied in a message folder");
 						}else{
-							rep_copy (true,"Ok");
+							// Error message will be in msg.
+							bo_writed_copydir (srcentry.entryid,dstentry.dirid,dstentry.basename,srcentry.userid,msg);
 						}
 					}else if (!bolixo_isfile(srcentry.type)){
-						rep_copy (false,"Copy only works on files and directories for now");
+						msg = MSG_U(E_ONLYFILEANDDIR,"Copy only works on files and directories for now");
 					}else{
 						// We insert a row so the new name still points to the same entryid and same date.
 						// It means that the new file will always be associated with the same entryid.
 						// The solution would be to allocate a new id and copy the data.
-						if (fs_insert_entry(dstentry.dirid,srcentry.entryid,srcentry.modified,dstentry.basename,srcentry.type)==-1){
-							rep_copy (false,"Internal error (dirs_content table)");
-						}else{
-							rep_copy (true,"Ok");
+						ENTRY_TYPE type = is_msg ? ENTRY_MSG : ENTRY_FILE;
+						if (fs_insert_entry(dstentry.dirid,srcentry.entryid,srcentry.modified,dstentry.basename,type,srcentry.userid)==-1){
+							msg = "Internal error (dirs_content table)";
 						}
+					}
+					if (msg.size() > 0){
+						rep_copy (false,msg);
+					}else{
+						rep_copy (true,"");
 					}
 					
 				</f>
