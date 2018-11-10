@@ -176,65 +176,6 @@ template<class T> static void bod_trim (vector<T> &tb, unsigned offset, unsigned
 		}
 	}
 }
-namespace {
-	struct BIOFreeAll { void operator()(BIO* p) { BIO_free_all(p); } };
-}
-// Assumes no newlines or extra characters in encoded string
-std::vector<unsigned char> Base64Decode(const char* encoded)
-{
-	std::unique_ptr<BIO,BIOFreeAll> b64(BIO_new(BIO_f_base64()));
-	BIO_set_flags(b64.get(), BIO_FLAGS_BASE64_NO_NL);
-	BIO* source = BIO_new_mem_buf(encoded, -1); // read-only source
-	BIO_push(b64.get(), source);
-	const int maxlen = strlen(encoded) / 4 * 3 + 1;
-	std::vector<unsigned char> decoded(maxlen);
-	const int len = BIO_read(b64.get(), decoded.data(), maxlen);
-	decoded.resize(len);
-	return decoded;
-}
-static int bod_verify( 
-	PARAM_STRING msg,
-	EVP_PKEY *key,
-	PARAM_STRING sig64)
-{
-	int ret = -1;
-	int len=strlen(sig64.ptr);
-	if (len < 2000){
-		/* Initialize `key` with a public key */
-		char sig64_clean[len+1];
-		char *dst = sig64_clean;
-		const char *pt = sig64.ptr;
-		while (*pt != '\0'){
-			char car = *pt++;
-			if (car > ' ') *dst++ = car;
-		}
-		*dst = '\0';
-		vector<unsigned char> sig = Base64Decode(sig64_clean);
-		EVP_MD_CTX *mdctx = EVP_MD_CTX_create();
-		if (mdctx != NULL){
-			if(EVP_DigestVerifyInit(mdctx, NULL, EVP_sha256(), NULL, key) == 1){
-				// Initialize `key` with a public key
-				if(EVP_DigestVerifyUpdate(mdctx, msg.ptr, strlen(msg.ptr)) == 1){
-					if(EVP_DigestVerifyFinal(mdctx, sig.data(), sig.size()) == 1){
-						// Success
-						ret = 0;
-					}else{
-						// Failure
-					}
-				}
-			}
-			EVP_MD_CTX_destroy(mdctx);
-		}
-	}
-	return ret;
-}
-static EVP_PKEY *bod_load_public (PARAM_STRING p)
-{
-	BIO *bio = BIO_new_mem_buf((void*)p.ptr, strlen(p.ptr));
-	EVP_PKEY *pkey = PEM_read_bio_PUBKEY(bio, NULL,NULL,NULL);
-	BIO_free_all (bio);
-	return pkey;
-}
 /*
 	Check that public access is enable for one account.
 	Translate the relative_path into absolute path by using the username and the public_dir
@@ -1200,7 +1141,7 @@ static int trlid_main (
 						glocal.status = ERR_CODE_CANTVERIFY;
 						glocal.msg = MSG_U(E_NOPUBKEY,"No public key for this account");
 					}else{
-						EVP_PKEY *p = bod_load_public (row[0]);
+						EVP_PKEY *p = fs_load_public (row[0]);
 						if (p != NULL){
 							// Find the signature in the content
 							const char *pt = strstr(glocal.content,"------\n");
@@ -1211,7 +1152,7 @@ static int trlid_main (
 								string tmp = string(glocal.content,pt-glocal.content);
 								string sig = pt+7;
 								strip_end (sig);
-								if (bod_verify(tmp,p,sig)==-1){
+								if (fs_verify(tmp,p,sig)==-1){
 									glocal.status = ERR_CODE_VERIFYFAILED;
 									glocal.msg = MSG_U(E_SIGNOMATCH,"Signature does not match");
 								}else{
@@ -1219,7 +1160,7 @@ static int trlid_main (
 									glocal.msg = MSG_U(I_SIGOK,"Signature ok");
 								}
 							}
-							EVP_PKEY_free (p);
+							fs_free_public (p);
 						}
 					}
 				</f>
@@ -1337,14 +1278,15 @@ static int trlid_main (
 				glocal CONFIG config;
 				unsigned userid = bo_writed_get_group_owner (glocal.con_sess, sessionid, owner, glocal.msg);
 				if (userid != 0){
-					<call sql_query>("select lang,public_view,public_dir from config where userid=%u",userid);
+					<call sql_query>("select lang,dateformat,public_view,public_dir from config where userid=%u",userid);
 					<f empty>
 						glocal.msg = "Internal error, no configuration for user";
 					</f>
 					<f onerow>
 						glocal.config.lang = row[0];
-						glocal.config.public_view = atoi(row[1]);
-						glocal.config.public_dir = row[2];
+						glocal.config.dateformat = atoi(row[1]);
+						glocal.config.public_view = atoi(row[2]);
+						glocal.config.public_dir = row[3];
 					</f>
 					</call>
 				}	
@@ -1729,6 +1671,71 @@ static int trlid_main (
 					rep_form_deleteall(true,"");
 				}
 			</f>
+			<f systempubkey>
+				glocal string pubkey;
+				<call sql_query>("select pub_key from id2name where userid=-2");
+				<f onerow>
+					glocal.pubkey = row[0];
+				</f>
+				</call>
+				rep_systempubkey (glocal.pubkey);
+			</f>
+			<f systemsign> // msg = sign
+				glocal string sign;
+				glocal string msg;
+				glocal bool success = false;
+				<call bo_writed_client_systemsign>(glocal.con,msg);
+				<f ok>
+					glocal.success = success;
+					glocal.msg = msg;
+					glocal.sign = sign;
+				</f>
+				</call>
+				rep_systemsign (glocal.success,glocal.msg, glocal.sign);
+			</f>
+			<f info_read>	// sessionid user owner = success:b msg info:U{USERPUBLICINFO}
+				glocal USERPUBLICINFO info;
+				glocal string msg;
+				unsigned userid = bo_writed_get_group_owner (glocal.con_sess, sessionid, "", glocal.msg);
+				if (userid != 0){
+					<call sql_query>("select publish,bosite_visible,fullname,address1,address2"
+						",city,zipcode,state,country,email,phone,fax,website,interest"
+						",publish_photo,publish_miniphoto"
+						" from userinfo where userid=%u",userid);
+					<f onerow>
+						glocal.info.publish = atoi(row[0]);
+						glocal.info.bosite_visible = atoi(row[1]);
+						glocal.info.fullname = row[2];
+						glocal.info.address1 = row[3];
+						glocal.info.address2 = row[4];
+						glocal.info.city = row[5];
+						glocal.info.zipcode = row[6];
+						glocal.info.state = row[7];
+						glocal.info.country = row[8];
+						glocal.info.email = row[9];
+						glocal.info.phone = row[10];
+						glocal.info.fax = row[11];
+						glocal.info.website = row[12];
+						glocal.info.interest = row[13];
+						glocal.info.photo = atoi(row[14]);
+						glocal.info.mini_photo = atoi(row[15]);
+					</f>
+					</call>
+				}
+				if (glocal.msg.size() > 0){
+					glocal.info.clear();
+					rep_info_read (false,glocal.msg,glocal.info);
+				}else{
+					rep_info_read (true,"",glocal.info);
+				}
+			</f>
+			<f info_write>	// sessionid user owner info:U{USERPUBLICINFO} = success:b msg
+				<call bo_writed_client_info_write>(glocal.con,sessionid,owner,info);
+				<f ok>
+					glocal.bod_client.rep_info_write(success,msg);
+				</f>
+				</call>
+			</f>
 			<f invalid>
 				tlmp_error ("CLIENT: Invalid command: %s\n",line);
 				endclient = true;
@@ -1840,11 +1847,11 @@ int main (int argc, char *argv[])
 		setarg (' ',"adminhost","Host running the bo-writed server",glocal.adminhost,false);
 		setarg (' ',"adminport","Port to reach the bo-writed server",glocal.adminport,false);
 		setarg (' ',"sesshost","Host running the bo-sessiond server",glocal.sesshost,false);
-		setarg (' ',"sessport","Port to reach the bo-sessiond server",glocal.sessport,false);
-		setarg (' ',"mysecret","Secret used to communicate with bo-writed",glocal.mysecret,true);
+		setarg (' ',"sessport",MSG_U(O_SESSPORT,"Port or unix socket to reach the bo-sessiond server"),glocal.sessport,false);
+		setarg (' ',"mysecret",MSG_U(O_MYSECRET,"Secret used to communicate with other services"),glocal.mysecret,true);
 		setgrouparg ("Misc.");
-		setarg (' ',"admin_secrets","File holding admin secrets for communication",glocal.admin_secretfile,false);
-		setarg (' ',"client_secrets","File holding client secrets for communication",glocal.client_secretfile,false);
+		setarg (' ',"admin_secrets",MSG_U(O_ADMINSECRETS,"File holding admin secrets for communication"),glocal.admin_secretfile,false);
+		setarg (' ',"client_secrets",MSG_U(O_CLIENTSECRETS,"File holding client secrets for communication"),glocal.client_secretfile,false);
 		setarg (' ',"user","Run the program as this user",glocal.user,false);
 		setarg (' ',"daemon","Run in background",glocal.daemon,false);
 		setarg (' ',"workers","Number of sub-process to lauch",glocal.workers,false);

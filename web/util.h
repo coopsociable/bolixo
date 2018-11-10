@@ -1,11 +1,13 @@
 struct USERINFO{
 	std::string name;
 	bool is_admin;
+	unsigned dateformat;
 	std::string lang;
 	void reset(){
 		name.clear();
 		lang = "eng";
 		is_admin = false;
+		dateformat = 0;
 	}
 	USERINFO(){
 		reset();

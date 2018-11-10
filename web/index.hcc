@@ -70,6 +70,7 @@ static string w_session;
 static W_SSTRING w_lang("lang");
 static W_SSTRING w_public_dir("public_dir");
 static W_UNSIGNED w_public_view("public_view");
+static W_SSTRING w_dateformat("dateformat");
 
 static W_SSTRING w_folder("folder");
 static W_SSTRING w_upload("upload");
@@ -93,6 +94,34 @@ static W_SSTRING w_image("image");
 extern W_SSTRING w_webtable;
 static map<string,unsigned> offsets;
 static map<string,unsigned> currents;
+
+static W_UNSIGNED w_publish("publish");
+static W_UNSIGNED w_bosite("bosite");
+static W_UNSIGNED w_photo("photo");
+static W_UNSIGNED w_miniphoto("miniphoto");
+static W_SSTRING w_address1("address1");
+static W_SSTRING w_address2("address2");
+static W_SSTRING w_city("city");
+static W_SSTRING w_state("state");
+static W_SSTRING w_country("country");
+static W_SSTRING w_zipcode("zipcode");
+static W_SSTRING w_phone("phone");
+static W_SSTRING w_fax("fax");
+static W_SSTRING w_website("website");
+static W_SSTRING w_interest("interest");
+
+static void index_field (_F_form *c, bool newline,unsigned colspan, const char *title, W_SSTRING &var, unsigned size)
+{
+	if (newline) htmlout ("<tr>");
+	htmlprintf ("<td>%s<td colspan=%u>\n",title,colspan);
+	char tmp[100];
+	snprintf (tmp,sizeof(tmp),"size=%u",size);
+	c->field_string (var,tmp);
+}
+static void index_field (_F_form *c, bool newline, const char *title, W_SSTRING &var)
+{
+	index_field (c,newline,1,title,var,25);
+}
 enum WEBTAB_TYPE{
 	WEBTAB_TYPE1, WEBTAB_TYPE2, WEBTAB_TYPE3, WEBTAB_TYPE4
 };
@@ -938,6 +967,7 @@ static void trli_getsessioninfo(CONNECT_INFO &con, CONNECT_INFO &con_sess, vecto
 			userinfo.lang = lang;
 			if (lang[0] != '\0') translat_selectlang (lang);
 			userinfo.name = name;
+			userinfo.dateformat = dateformat;
 			userinfo.is_admin = admin;
 			fcopy.clear();
 			for (auto &var:vars){
@@ -3468,17 +3498,50 @@ extern "C" void webmain_real()
 					<call bod_client_config_read>(glocal.con,w_session.c_str(),"");
 					<f ok>
 						w_lang = config.lang;
+						w_dateformat = string_f("%u",config.dateformat);
 						w_public_view = config.public_view;
 						w_public_dir = config.public_dir;
 					</f>
 					</call>
+					<call bod_client_info_read>(glocal.con,w_session.c_str(),"");
+					<f ok>
+						w_publish = info.publish;
+						w_bosite = info.bosite_visible;
+						w_name = info.fullname;
+						w_address1 = info.address1;
+						w_address2 = info.address2;
+						w_city = info.city;
+						w_zipcode = info.zipcode;
+						w_state = info.state;
+						w_country = info.country;
+						w_email = info.email;
+						w_phone = info.phone;
+						w_fax = info.fax;
+						w_website = info.website;
+						w_interest = info.interest;
+						w_photo = info.photo;
+						w_miniphoto = info.mini_photo;
+					</f>
+					</call>
 				</f>
 				<f setup>
+					{
+					DIV d; d.border(1,"gray").paddings(5,5).vpaddings(0,5).print();
+					/- <center><font size=+2>
+					/-#T_PERSOPREF Personal preferences
+					/- </font></center>
+					/- <table border=0>
 					/-#I_LANG <tr><td>Language<td>
 					field_list (w_lang,"");
 					field_list_item ("eng",MSG_U(I_ENGLISH,"English"));
 					field_list_item ("fr",MSG_U(I_FRENCH,"French"));
 					field_list_end();
+					/-#I_DATEFORMAT <tr><td>Date format<td>
+					field_list(w_dateformat,"");
+					field_list_item ("0",MSG_U(I_ENGDATE,"Month DD YYYY HH:MM:SS"));
+					field_list_item ("1",MSG_U(I_ISODATE,"YYYY/MM/DD HH:MM:SS"));
+					field_list_end();
+
 					/-#I_ENABLEPUB <tr><td>Enable public view<td>
 					field_checkbox (w_public_view,"");
 					/-#I_PUBFOLDER <tr><td>Public folder<td>
@@ -3495,7 +3558,47 @@ extern "C" void webmain_real()
 						}
 					</f>
 					</call>
+					/- </table>
+					}
+					{
+					DIV d; d.border(1,"gray").paddings(5,5).vpaddings(0,5).vmargins(5,0).print();
+					/- <center><font size=+2>
+					/-#T_PUBLISH Public information
+					/- </font></center>
+					/-#F_PUBLISH Publish to bolixo.org directory
+					/- &nbsp;&nbsp;
+					field_checkbox (w_publish,"");
+					DIV dd; dd.border(1,"lightgray").print();
+					/- <table border=0>
+					index_field (this,true,3,MSG_U(F_FULLNAME,"Name and surname"),w_name,40);
+					index_field (this,true,3,MSG_U(F_ADDRESS1,"Address"),w_address1,40);
+					index_field (this,true,3,MSG_U(F_ADDRESS2,"Address"),w_address2,40);
+					index_field (this,true,MSG_U(F_CITY,"City"),w_city);
+					index_field (this,false,MSG_U(F_STATE,"State"),w_state);
+					index_field (this,true,MSG_U(F_COUNTRY,"Country"),w_country);
+					index_field (this,false,MSG_U(F_ZIPCODE,"ZIP code"),w_zipcode);
+					index_field (this,true,MSG_U(F_EMAIL,"Email"),w_email);
+					index_field (this,true,MSG_U(F_PHONE,"Phone"),w_phone);
+					index_field (this,false,MSG_U(F_FAX,"Fax"),w_fax);
 					/- <tr><td>
+					/-#F_PUBLISHSOME Publish
+					/- <td colspan=3>
+					field_checkbox (w_bosite,"");
+					/-#F_PUBBOLIXOSITE your bolixo page
+					/-&nbsp;&nbsp;
+					field_checkbox (w_photo,"");
+					/-#F_YOURPHOTO Your photo
+					/-&nbsp;&nbsp;
+					field_checkbox (w_miniphoto,"");
+					/-#F_YOURMINIPHOTO Your mini photo
+					index_field (this,true,MSG_U(F_WEBSITE,"Web site"),w_website);
+					/- <tr><td>
+					/-#F_INTERESTS Interests
+					/- <td colspan=3>
+					field_textarea (w_interest,8,70,"");
+					/- </table>
+					}
+					/- <tr><td><br>
 					button_submit();
 				</f>
 				<f validate>
@@ -3505,6 +3608,7 @@ extern "C" void webmain_real()
 					glocal bool fail = false;
 					CONFIG config;
 					config.lang = w_lang.c_str();
+					config.dateformat = atoi(w_dateformat.c_str());
 					config.public_view = w_public_view;
 					config.public_dir = w_public_dir.c_str();
 					<call bod_client_config_write>(glocal.con,w_session.c_str(),"",config);
@@ -3515,6 +3619,31 @@ extern "C" void webmain_real()
 						}else{
 							translat_selectlang (w_lang.c_str());
 							glocal.status = MSG_U(I_CONFIGUPDATED,"Configuration updated");
+						}
+					</f>
+					</call>
+					USERPUBLICINFO info;
+					info.publish = w_publish.getval();
+					info.bosite_visible = w_bosite.getval();
+					info.fullname = w_name.c_str();
+					info.address1 = w_address1.c_str();
+					info.address2 = w_address2.c_str();
+					info.city = w_city.c_str();
+					info.zipcode = w_zipcode.c_str();
+					info.state = w_state.c_str();
+					info.country = w_country.c_str();
+					info.email = w_email.c_str();
+					info.phone = w_phone.c_str();
+					info.fax = w_fax.c_str();
+					info.website = w_website.c_str();
+					info.interest = w_interest.c_str();
+					info.photo = w_photo.getval();
+					info.mini_photo = w_miniphoto.getval();
+					<call bod_client_info_write>(glocal.con,w_session.c_str(),"",info);
+					<f ok>
+						if (!success){
+							glocal.fail = true;
+							htmlprintf (MSG_U(E_CANTSAVEPUBCONFIG,"Can't save public configurations: %s\n"),msg);
 						}
 					</f>
 					</call>

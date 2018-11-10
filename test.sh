@@ -19,6 +19,7 @@ fi
 INCLUDELANGS="-e /usr/lib/tlmp/help.eng/bolixo.eng -e /usr/lib/tlmp/help.fr/bolixo.fr"
 SOCKU=/var/lib/lxc/bosqlduser/rootfs/var/lib/mysql/mysql.sock
 SOCKN=/var/lib/lxc/bosqlddata/rootfs/var/lib/mysql/mysql.sock
+SOCKB=/var/lib/lxc/bosqldbolixo/rootfs/var/lib/mysql/mysql.sock
 EXTRALXCPROG="$EXTRALXCPROG -d/var/run/blackhole -d/var/log/bolixo -e /etc/localtime"
 HORIZONIP1=192.168.4.1
 IPSESSIOND=192.168.5.4
@@ -34,12 +35,14 @@ if [ "$LXCSOCK" = "" ] ; then
 	LXCSOCK=on
 fi
 if [ "$LXCSOCK" == "on" ] ; then
+	BOLIXOD_SOCK=/var/lib/lxc/bolixod/rootfs/var/run/blackhole/bolixod-0.sock
 	BOD_SOCK=/var/lib/lxc/bod/rootfs/var/run/blackhole/bod-0.sock
 	WRITED_SOCK=/var/lib/lxc/writed/rootfs/var/run/blackhole/bo-writed-0.sock
 	SESSIOND_SOCK=/var/lib/lxc/sessiond/rootfs/var/run/blackhole/bo-sessiond.sock
 	KEYSD_SOCK=/var/lib/lxc/keysd/rootfs/var/run/blackhole/bo-keysd.sock
 	WRITEDLOG=/var/lib/lxc/writed/rootfs/var/log/bolixo/bo-writed.log
 elif [ "$BOD_SOCK" = "" ] ; then
+	BOLIXOD_SOCK=/tmp/bolixod.sock
 	BOD_SOCK=/tmp/bod.sock
 	WRITED_SOCK=/tmp/bo-writed.sock
 	SESSIOND_SOCK=/tmp/bo-sessiond.sock
@@ -152,8 +155,44 @@ elif [ "$1" = "files" ] ; then	# db: Access files database
 	mysql -uroot -S $SOCKN $DBNAME
 elif [ "$1" = "users" ] ; then # db: Access users database
 	mysql -uroot -S $SOCKU  $DBNAMEU
+elif [ "$1" = "bolixo" ] ; then # db: Access bolixo nodes database
+	mysql -uroot -S $SOCKB  $DBNAMEBOLIXO
 elif [ "$1" = "temp" ] ; then	# db: Access temp database
 	mysql -uroot -S $SOCKN $DBNAMET
+elif [ "$1" = "bolixod" ] ; then # A: Runs bolixod
+	OPTIONS="--mysecret foo --client_secrets $BOLIXOCONF/secrets.client --user $USER \
+		--dbserv $BOLIXOD_DBSERV --dbuser $BOLIXOD_DBUSER --dbname $BOLIXOD_DBNAME  \
+		--clientport 1"
+	shift
+	WORKERS=1
+	while [ $# -gt 0 ]; do
+		if [ "$1" = "debug" ] ; then
+			OPTIONS="--debug $OPTIONS"
+		elif [ "$1" = "lxc0" ] ; then
+			STRACE="strace -o /tmp/log -f"
+		else
+			WORKERS=$1
+		fi
+		shift
+	done
+	if [ "$WORKERS" = 1 ] ;then
+		OPTIONS="$OPTIONS --control $BOLIXOD_SOCK"
+		if [ "$SILENT" = "on" ] ; then
+			echo bolixod
+		else
+			echo $BOLIXOPATH/bolixod $OPTIONS
+		fi
+		$STRACE $BOLIXOPATH/bolixod $OPTIONS
+	else
+		for ((work=0; work<$WORKERS; work++))
+		do
+			PORT=$work
+			SOCK="/tmp/bolixod-$work.sock"
+			WOPTIONS="$OPTIONS --debugfile /tmp/bolixod.log --clientport $PORT --daemon --control $SOCK"
+			echo ./bolixod $WOPTIONS 
+			$BOLIXOPATH/bolixod $WOPTIONS
+		done
+	fi
 elif [ "$1" = "bod" ] ; then # A: Runs bod
 	OPTIONS="--mysecret foo --admin_secrets $BOLIXOCONF/secrets.admin --client_secrets $BOLIXOCONF/secrets.client --user $USER \
 		--dbserv $BOD_DBSERV --dbuser $BOD_DBUSER --dbname $BOD_DBNAME --bindaddr 0.0.0.0 \
@@ -282,6 +321,9 @@ elif [ "$1" = "cmplog" ] ;then # S: Compares the writed log with the reference
 elif [ "$1" = "cmplxclog" ] ;then # S: Compares the lxc writed log with the reference
 	./trli-log --dump --normuuid /var/lib/lxc/writed/rootfs/tmp/bo-writed.log >/tmp/normuuid.log
 	diff -c data/normuuid.log /tmp/normuuid.log
+elif [ "$1" = "bolixod-control" ] ; then # A: Talks to bolixod
+	shift
+	$BOLIXOPATH/bolixod-control --control $BOLIXOD_SOCK $*
 elif [ "$1" = "bod-control" ] ; then # A: Talks to bod
 	shift
 	$BOLIXOPATH/bod-control --control $BOD_SOCK $*
@@ -297,6 +339,38 @@ elif [ "$1" = "bo-sessiond-control" ] ; then # A: Talks to sessiond
 elif [ "$1" = "bo-keysd-control" ] ; then # A: Talks to keysd
 	shift
 	$BOLIXOPATH/bo-keysd-control --control $KEYSD_SOCK $*
+elif [ "$1" = "createbolixodb" ] ; then # db: Create bolixo nodes database
+	ENGINE=myisam
+	mysqladmin -uroot -S $SOCKB create $DBNAMEBOLIXO
+	mysql -uroot -S $SOCKB $DBNAMEBOLIXO <<-EOF
+		create table nodes (
+			nodeid int primary key auto_increment,
+			nodename varchar(100),
+			created datetime default current_timestamp,
+			pub_key text default null
+		)engine=$ENGINE;
+		create index nodes_nodename on nodes (nodename);
+		create table users (
+			userid int primary key auto_increment,
+			nodeid int,
+			name char(40),
+			fullname char(40),
+			address1 varchar(100),
+			address2 varchar(100),
+			city varchar(50),
+			zipcode varchar(20),
+			state varchar(40),
+			country varchar(40),
+			email varchar(100),
+			phone varchar(40),
+			fax varchar(40),
+			bolixosite varchar(100),
+			website varchar(100),
+			interest text
+		)engine=$ENGINE;
+		create index users_name on users (name);
+		create index users_nodeid on users (nodeid);
+	EOF
 elif [ "$1" = "createdb" ] ; then # db: Create databases
 	ENGINE=myisam
 	mysqladmin -uroot -S $SOCKU create $DBNAMEU
@@ -317,12 +391,14 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 			disabled datetime default null,
 			priv_key text default null,
 			pub_key text default null
-		);
+		)engine=$ENGINE;
 		create index users_email on users (email);
 		create index users_idstr on users (userid_str);
+		insert into users (userid,userid_str) values (-2,"--system--");
 		create table user_interest (
 			userid int,
-			subjectid int);
+			subjectid int
+		)engine=$ENGINE;
 		create index user_sub on user_interest (userid,subjectid);
 	EOF
 	mysqladmin -uroot -S $SOCKN create $DBNAME
@@ -335,6 +411,7 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 		create unique index id2name_userid on id2name (userid);
 		create unique index id2name_name   on id2name (name);
 		insert into id2name (userid,name) values (-1,"Anonymous");
+		insert into id2name (userid,name) values (-2,"--system--");
 
 		create table ids (
 			id int primary key auto_increment,
@@ -414,6 +491,7 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 		create table config(
 			userid int,
 			lang char(10) default 'eng',
+			dateformat tinyint default 0,
 			public_view tinyint default 0,
 			public_dir varchar(30) default ''
 		)engine=$ENGINE;
@@ -426,6 +504,26 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 		)engine=$ENGINE;
 		create index interests_userid on interests(userid);
 		create index interests_checkid on interests(check_userid);
+		create table userinfo(
+			userid int,
+			publish tinyint default 0,
+			bosite_visible tinyint default 0,
+			publish_photo tinyint default 0,
+			publish_miniphoto tinyint default 0,
+			fullname char(40),
+			address1 varchar(100),
+			address2 varchar(100),
+			city varchar(50),
+			zipcode varchar(20),
+			state varchar(40),
+			country varchar(40),
+			email varchar(100),
+			phone varchar(40),
+			fax varchar(40),
+			website varchar(100),
+			interest text
+		)engine=$ENGINE;
+		create unique index userinfo_userid on userinfo(userid);
 	EOF
 	mysqladmin -uroot -S $SOCKN create $DBNAMET
 	mysql -uroot -S $SOCKN $DBNAMET <<-EOF
@@ -442,6 +540,9 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 		)engine=$ENGINE;
 		create index formvars_id on formvars(id);
 	EOF
+	$0 bo-keysd-control genkey --system--
+elif [ "$1" = "dropbolixodb" ] ; then # db: Drop databases
+	mysqladmin -uroot -S $SOCKB -f drop $DBNAMEBOLIXO
 elif [ "$1" = "dropdb" ] ; then # db: Drop databases
 	mysqladmin -uroot -S $SOCKN -f drop $DBNAME
 	mysqladmin -uroot -S $SOCKU -f drop $DBNAMEU
@@ -703,9 +804,8 @@ elif [ "$1" = "test-verifysign" ] ; then # T: Verify the RSA signature of a mess
 elif [ "$1" = "createsqlusers" ] ; then # db: Generates SQL to create users
 	TRLISQL=/tmp/files.sql
 	USERSQL=/tmp/users.sql
-	FROMTRLID=192.168.5.2
-	FROMWRITED=192.168.5.3
-	rm -f $TRLISQL $USERSQL
+	BOLIXOSQL=/tmp/bolixo.sql
+	rm -f $TRLISQL $USERSQL $BOLIXOSQL
 	(
 	echo "delete from user;"
 	echo "delete from db;"
@@ -733,7 +833,19 @@ elif [ "$1" = "createsqlusers" ] ; then # db: Generates SQL to create users
 	echo "create user '$BO_WRITED_DBUSER'@'localhost' identified by '$BO_WRITED_PWD';"
 	echo "insert into db (host,db,user,select_priv,Insert_priv,Update_priv,Delete_priv) values ('localhost','$DBNAMEU','$BO_WRITED_DBUSER','y','y','y','y');"
 	) >$USERSQL
-	echo $TRLISQL and $USERSQL were produced
+	(
+	echo "delete from user;"
+	echo "delete from db;"
+	echo "insert into user (host,user,password,select_priv,Insert_priv,Update_priv,Delete_priv,Create_priv,Drop_priv,Reload_priv,Shutdown_priv,Process_priv,File_priv,Grant_priv,References_priv,
+	Index_priv,Alter_priv,Show_db_priv,Super_priv,
+	Create_tmp_table_priv,Lock_tables_priv,Execute_priv,Repl_slave_priv,Repl_client_priv,Create_view_priv,Show_view_priv,Create_routine_priv,
+        Alter_routine_priv,Create_user_priv,Event_priv,Trigger_priv,Create_tablespace_priv,ssl_cipher,x509_issuer,x509_subject,authentication_string)
+	values
+	('localhost','root',password('$MYSQL_PWD'),'Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','','','','');"
+	echo "create user '$BOLIXOD_DBUSER'@'localhost' identified by '$BOLIXOD_PWD';"
+	echo "insert into db (host,db,user,select_priv,Insert_priv,Update_priv,Delete_priv) values ('localhost','$DBNAMEBOLIXO','$BOLIXOD_DBUSER','y','y','y','y');"
+	) >$BOLIXOSQL
+	echo $TRLISQL, $USERSQL and $BOLIXOSQL were produced
 elif [ "$1" = "printconfig" ] ; then # config:
 	./bo-manager -c data/manager.conf --devmode printconfig localhost
 elif [ "$1" = "infraconfig" ] ; then # config: minimal config for development
@@ -811,6 +923,21 @@ elif [ "$1" = "stopall" ] ; then # A: Stop all services with a *.sock in /tmp
 elif [ "$1" = "blackhole-control" ] ; then # A: Talks to blackhole
 	shift
 	blackhole-control -p /tmp/blackhole.sock $*
+elif [ "$1" = "lxc0-bolixod" ]; then # prod:
+	export LANG=eng
+	$0 bolixod lxc0 &
+	sleep 1
+	$0 bolixod-control quit
+	mkdir -p /var/lib/lxc/bolixod
+	trli-lxc0 $LXC0USELINK \
+		--filelist /var/lib/lxc/bolixod/bolixod.files \
+		--savefile /var/lib/lxc/bolixod/bolixod.save \
+		--restorefile /var/lib/lxc/bolixod/bolixod.restore \
+		-e /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem \
+		$EXTRALXCPROG \
+		$INCLUDELANGS \
+		-i /usr/sbin/trli-init -l /tmp/log -n bolixod -p $BOLIXOPATH/bolixod >/var/lib/lxc/bolixod/bolixod-lxc0.sh
+	chmod +x /var/lib/lxc/bolixod/bolixod-lxc0.sh
 elif [ "$1" = "lxc0-bod" ]; then # prod:
 	export LANG=eng
 	$0 bod lxc0 &
@@ -914,6 +1041,8 @@ elif [ "$1" = "lxc0-web" ]; then # prod:
 			-i /usr/sbin/trli-init -l $LOG -l /tmp/log.web2 \
 			-e /var/www/html/index.hc \
 			-e /var/www/html/webapi.hc \
+			-e /var/www/html/bolixoapi.hc \
+			-e /var/www/html/bolixo.hc \
 			-e /var/www/html/public.hc \
 			-e /var/www/html/journey.hc \
 			-e /usr/lib/tlmp/templates/default/webtable.tpl \
@@ -998,7 +1127,7 @@ elif [ "$1" = "lxc0-mysql" ]; then # prod:
 	mkdir -p /var/lib/lxc/bosqlduser
 	/usr/sbin/trli-lxc0 $LXC0USELINK \
 		$EXTRALXCPROG \
-		--filelist /var/lib/lxc/sqlduser/sqlduser.files \
+		--filelist /var/lib/lxc/bosqlduser/bosqlduser.files \
 		-i /usr/sbin/trli-init \
 		-e /usr/bin/mysqladmin -e /usr/bin/mysql \
 		-d /var/lib/mysql \
@@ -1006,10 +1135,24 @@ elif [ "$1" = "lxc0-mysql" ]; then # prod:
 		-l $LOG \
 		-n bosqlduser -p /usr/libexec/mysqld >/var/lib/lxc/bosqlduser/bosqlduser-lxc0.sh
 	chmod +x /var/lib/lxc/bosqlduser/bosqlduser-lxc0.sh
+	echo bosqldbolixo
+	mkdir -p /var/lib/lxc/bosqldbolixo
+	/usr/sbin/trli-lxc0 $LXC0USELINK \
+		$EXTRALXCPROG \
+		--filelist /var/lib/lxc/bosqldbolixo/bosqldbolixo.files \
+		-i /usr/sbin/trli-init \
+		-e /usr/bin/mysqladmin -e /usr/bin/mysql \
+		-d /var/lib/mysql \
+		-d /usr/lib64/mysql/plugin \
+		-l $LOG \
+		-n bosqldbolixo -p /usr/libexec/mysqld >/var/lib/lxc/bosqldbolixo/bosqldbolixo-lxc0.sh
+	chmod +x /var/lib/lxc/bosqldbolixo/bosqldbolixo-lxc0.sh
 	mysql_save bosqlddata
 	mysql_save bosqlduser
+	mysql_save bosqldbolixo
 	mysql_restore bosqlddata
 	mysql_restore bosqlduser
+	mysql_restore bosqldbolixo
 elif [ "$1" = "lxc0-exim" ]; then # prod:
 	ROOTLOG=/root/stracelogs/log.exim
 	LOG=/tmp/log.exim
@@ -1041,6 +1184,7 @@ elif [ "$1" = "lxc0s" ] ; then # prod: generates lxc0 scripts for all components
 	export LXCSOCK=off
 	$0 checks
 	export SILENT=on
+	$0 lxc0-bolixod
 	$0 lxc0-bod
 	$0 lxc0-writed
 	$0 lxc0-keysd

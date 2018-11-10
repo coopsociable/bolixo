@@ -1,0 +1,646 @@
+/*
+	Manage public directory for all bolixo nodes.
+*/
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <errno.h>
+#include <syslog.h>
+#include <unistd.h>
+#include <tlmpsql.h>
+#include <tlmplib.h>
+#include <tlmpnet.h>
+#include <trlitool.h>
+#include <string>
+#include <openssl/bn.h>
+#include <openssl/rsa.h>
+#include <openssl/pem.h>
+#include <openssl/bio.h>
+#include <openssl/x509.h>
+#include "filesystem.h"
+#include "bolixo.h"
+#include "bolixo.m"
+
+using namespace std;
+static DEBUG_KEY D_PROTO ("proto","Protocol information");
+
+enum CONNECT_TYPE { TYPE_NONE, TYPE_CONTROL, TYPE_CLIENT};
+
+struct HANDLE_INFO: public ARRAY_OBJ{
+	CONNECT_TYPE type;
+	REQUEST_INFO req;
+	HANDLE_INFO(){
+		type = TYPE_NONE;
+	}
+};
+#define bo_sessiond_admin_getsessioninfo_NOTNEED
+#define bo_sessiond_admin_deletesessions_NOTNEED
+#define bo_sessiond_admin_setlang_NOTNEED
+#include "proto/bo-sessiond_admin.protoch"
+
+#define webapi_test_NOTNEED
+#define webapi_login_NOTNEED
+#define webapi_logout_NOTNEED
+#define webapi_addfile_NOTNEED
+#define webapi_addfile_bob_NOTNEED
+#define webapi_appendfile_NOTNEED
+#define webapi_delfile_NOTNEED
+#define webapi_undelete_NOTNEED
+#define webapi_modifyfile_NOTNEED
+#define webapi_modifyfile_bob_NOTNEED
+#define webapi_rename_NOTNEED
+#define webapi_copy_NOTNEED
+#define webapi_readfile_NOTNEED
+#define webapi_readfile_bob_NOTNEED
+#define webapi_readmore_NOTNEED
+#define webapi_mkdir_NOTNEED
+#define webapi_rmdir_NOTNEED
+#define webapi_listdir_NOTNEED
+#define webapi_stat_NOTNEED
+#define webapi_set_access_NOTNEED
+#define webapi_markview_NOTNEED
+#define webapi_verifysign_NOTNEED
+#define webapi_list_inboxes_NOTNEED
+#define webapi_list_msgs_NOTNEED
+#define webapi_sendmsg_NOTNEED
+#define webapi_sendmsg_project_NOTNEED
+#define webapi_replymsg_NOTNEED
+#define webapi_replymsg_project_NOTNEED
+#define webapi_sendattach_NOTNEED
+#define webapi_sendtalk_NOTNEED
+#define webapi_sendtalk_file_NOTNEED
+#define webapi_list_talk_NOTNEED
+#define webapi_public_listdir_NOTNEED
+#define webapi_public_readfile_NOTNEED
+#define webapi_public_list_talk_NOTNEED
+#include "proto/webapi.protoch"
+
+#include "proto/bolixod_control.protoh"
+#include "proto/bolixod_client.protoh"
+
+
+// Some tests to show everyting is connected
+<mod>
+static void bolixod_test (CONNECT_INFO &con_sess, string &msg, bool &sessiond_ok, bool &db_ok)
+{
+	glocal string msg;
+	glocal bool sessiond_ok = false;
+	glocal bool db_ok = false;
+	<call bo_sessiond_admin_test>(con_sess);
+	<f ok>
+		if (!success){
+			glocal.msg = "sessiond failed";
+		}else{
+			glocal.sessiond_ok = true;
+		}
+	</f>
+	</call>
+	<call sql_query>("select count(*) from nodes");
+	<f onerow>
+		glocal.db_ok = true;
+	</f>
+	</call>
+	sessiond_ok = glocal.sessiond_ok;
+	db_ok = glocal.db_ok;
+	msg = glocal.msg;
+}
+</mod>
+<mod>
+static void bolixod_getpubkey (bool use_ssl, const char *hostname, const char *nodename)
+{
+	glocal const char *nodename = nodename;
+	CONNECT_HTTP_INFO con;
+	con.use_ssl = use_ssl;
+	const char *pt = strchr(hostname,':');
+	if (pt == NULL){
+		con.host = hostname;
+		con.port = use_ssl ? "443" : "80";
+	}else{
+		con.host = string(hostname,pt-hostname);
+		con.port = pt+1;
+	}
+	<call webapi_systempubkey>(con);
+	<f ok>
+		if (pubkey[0] != '\0'){
+			if (sql_action("update nodes set created=now(),pub_key='%s' where nodename='%s'"
+				,pubkey,glocal.nodename)==-1){
+				tlmp_error ("Internal error, inserting node pubkey\n");
+			}
+		}else{
+			tlmp_error ("No pubkey for nodename %s\n",glocal.nodename);
+		}
+	</f>
+	</call>
+}
+</mod>
+static void bolixod_getpubkey (const char *nodename)
+{
+	if (strncasecmp(nodename,"http://",7)==0){
+		bolixod_getpubkey(false,nodename+7,nodename);
+	}else if (strncasecmp(nodename,"https://",8)==0){
+		bolixod_getpubkey(true,nodename+8,nodename);
+	}else{
+		tlmp_error ("getpubkey invalid nodename: %s\n",nodename);
+	}
+}
+<mod>
+// Get the information of this session.
+// Return 1 for a new session
+// Return 2 for an established session (login done)
+// Return -1 for an invalid session
+static int bolixod_sessionstate(
+	CONNECT_INFO &con_sess,
+	PARAM_STRING session,
+	unsigned expected_state,
+	string &nodename,
+	string &msg)
+{
+	glocal CONNECT_INFO *con_sess = &con_sess;
+	glocal const char *session = session.ptr;
+	glocal unsigned expected = expected_state;
+	glocal string *msg = &msg;
+	glocal string *nodename = &nodename;
+	glocal int ret = -1;
+	<call bo_sessiond_admin_getsession>(con_sess,session);
+	<f ok>
+		if (internal_error){
+			*glocal.msg = "Internal error";
+		}else if (userid != glocal.expected){
+			*glocal.msg = "Invalid session";
+			<call bo_sessiond_admin_deletesession>(*glocal.con_sess,glocal.session);
+			<f ok>
+			</f>
+			</call>
+		}else{
+			glocal.ret = userid;
+			*glocal.nodename = userid_str;
+		}
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+<mod>
+int main (int argc, char *argv[])
+{
+	glocal int ret = -1;
+	glocal unsigned clientport=0;
+	glocal const char *dbserv = "localhost";
+	glocal const char *dbname = "files";
+	glocal const char *dbuser = "bolixo";
+	glocal const char *control = "/var/run/bolixod.sock";
+	glocal const char *user = "bolixo";
+	glocal const char *sessport = "/dev/sessiond.sock";
+	glocal const char *mysecret = NULL;
+	glocal bool daemon = false;
+	glocal const char *pidfile = "/var/run/bolixod.pid";
+	glocal const char *client_secretfile = "/etc/bolixo/secrets.client";
+	static const char *tbdic[]={"tlmpsql","bolixo",NULL};
+	glocal.ret = <call tlmpprogram>(argc,argv,tbdic);
+	<f init>
+		setproginfo ("bolixod",VERSION,MSG_U(I_BOLIXOD,"Manage public information for all bolixo nodes"));
+		setgrouparg (MSG_U(I_NETWORKING,"Networking"));
+		setarg ('c',"control",MSG_U(I_BOLIXOD_CONTROL,"Unix socket for bolixod"),glocal.control,false);
+		setarg ('p',"clientport",MSG_U(I_CLIENTPORT,"Number suffix to unix socket"),glocal.clientport,false);
+		setarg (' ',"sessport",MSG_R(O_SESSPORT),glocal.sessport,false);
+		setarg (' ',"mysecret",MSG_R(O_MYSECRET),glocal.mysecret,true);
+		setgrouparg ("Database");
+		setarg (' ',"dbserv",MSG_U(I_DBSERV,"Database server"),glocal.dbserv,false);
+		setarg (' ',"dbname",MSG_U(I_DBNAME,"Database name"),glocal.dbname,false);
+		setarg (' ',"dbuser",MSG_U(I_DBUSER,"Database user"),glocal.dbuser,true);
+		setgrouparg (MSG_U(I_MISC,"Misc."));
+		setarg (' ',"client_secrets",MSG_R(O_CLIENTSECRETS),glocal.client_secretfile,false);
+		setarg (' ',"user",MSG_U(I_RUNASUSER,"Run the program as this user"),glocal.user,false);
+		setarg (' ',"daemon",MSG_U(I_RUNBG,"Run in background"),glocal.daemon,false);
+		setarg (' ',"pidfile",MSG_U(I_PIDFILE,"FIle holding the PID of the process"),glocal.pidfile,false);
+	</f>
+	<f showerror>
+		if (glocal.daemon){
+			syslog (LOG_ERR,"%s",msg);
+		}else{
+			fprintf (stderr,"%s",msg);
+		}
+	</f>
+	<f showwarn>
+		if (glocal.daemon){
+			syslog (LOG_WARNING,"%s",msg);
+		}else{
+			fprintf (stderr,"%s",msg);
+		}
+	</f>
+	<f main_noarg>
+		int ret = -1;
+		glocal unsigned nbrequest=0;
+		glocal CONNECT_INFO con_sess;
+		glocal map<string,string> client_secrets;
+		glocal string controlport = string_f("unix:%s",glocal.control);
+		glocal pid_t pid = (pid_t)-1;
+		glocal string unixportclient = string_f("unix:/tmp/bolixod-client-%u.sock",glocal.clientport);
+		glocal.con_sess.port = glocal.sessport;
+		glocal.con_sess.secret = glocal.mysecret;
+		const char *passwd = getenv("BOLIXOD_PWD");
+		if (passwd == NULL){
+			tlmp_error (MSG_U(E_DBPASS,"Can't get database password from environment, aborting\n"));
+			exit (-1);
+		} 
+		fdpass_readsecrets (glocal.client_secretfile,glocal.client_secrets);
+		query_setdefaultdb (glocal.dbserv,glocal.dbname,glocal.dbuser,passwd);
+		query_getdefaultdb()->showerrormode(true);
+		<obj TCPSERVER s>("0.0.0.0",glocal.unixportclient,5);
+		<f newclient>
+			HANDLE_INFO *n = new HANDLE_INFO;
+			info.data = n;
+			if (glocal.unixportclient == info.port){
+				n->req.secret = fdpass_findsecret (glocal.client_secrets,info.port);
+				if (n->req.secret.size() > 0){
+					n->type = TYPE_CLIENT;
+				}else{
+					tlmp_error ("Rejected client connexion from port %s\n",info.port);
+					endclient = true;
+				}
+			}else if (string_cmp(info.port,glocal.controlport)==0){
+				n->type = TYPE_CONTROL;
+			}
+		</f>
+		<f endclient>
+		</f>
+		<f receive>
+			debug_printf (D_PROTO,"receive line: %s\n",line);
+			HANDLE_INFO *c = (HANDLE_INFO*)info.data;
+			ERROR_PREFIX prefix ("c->type %d:",c->type);
+			if (c->type == TYPE_CONTROL){
+				<call bolixod_control>(this,c->req,line, info.linelen,endserver, endclient, no,c);
+				<f status>
+					vector<string> tb;
+					tb.push_back(string_f ("Version %s",VERSION));
+					tb.push_back(string_f ("nbrequest %u",glocal.nbrequest));
+					rep_status(tb);
+				</f>
+				<f quit>
+					endserver = true;
+				</f>
+				<f debug>
+					if (on){
+						debug_seton();
+					}else{
+						debug_setoff();
+					}
+				</f>
+				<f debugfile>
+					debug_setfdebug (filename);
+				</f>
+				<f test>
+					string msg;
+					bool sessiond,db;
+					bolixod_test (glocal.con_sess,msg,sessiond,db);
+					rep_test(msg,sessiond,db);
+					tlmp_error ("One error\n");
+				</f>
+				<f invalid>
+					tlmp_error ("Control: Invalid command: %s\n",line);
+					endclient = true;
+				</f>
+				</call>
+			}else if (c->type == TYPE_CLIENT){
+				glocal.nbrequest++;
+				<call bolixod_client>(this,c->req,line, info.linelen,endserver, endclient, no,c);
+				<f registernode>	// Register a new node
+						// nodename
+					glocal string msg;
+					glocal const char *nodename = nodename;
+					<call sql_query>("select pub_key from nodes where nodename='%s'",nodename);
+					<f onerow>
+						if (row[0] == NULL){
+							bolixod_getpubkey (glocal.nodename);	
+						}else{
+							glocal.msg = "Already registered";
+						}
+					</f>
+					<f empty>
+						if (sql_action("insert into nodes (nodename) value ('%s')",glocal.nodename)==-1){
+							glocal.msg = "Internal error (nodes table)";
+						}else{
+							bolixod_getpubkey (glocal.nodename);	
+						}
+					</f>
+					</call>
+					if (glocal.msg.size() > 0){
+						rep_registernode(false,glocal.msg);
+					}else{
+						rep_registernode (true,"");
+					}
+				</f>
+				<f nodelogin>	// nodename
+					glocal const char *nodename = nodename;
+					glocal string msg;
+					glocal string sessionid;
+					<call sql_query>("select pub_key from nodes where nodename='%s'",nodename);
+					<f onerow>
+						if (row[0] != NULL){
+							glocal.sessionid = fs_makeid ();
+							<call bo_sessiond_admin_createsession>(glocal.con_sess,glocal.sessionid.c_str());
+							<f ok>
+								if (internal_error){
+									glocal.msg = "Internal error";
+								}else{
+									// We are reusing the same session manager as the nodes.
+									// We preserve the nodename. userid==1 means not logged yet.
+									<call bo_sessiond_admin_setsession>(glocal.con_sess,glocal.sessionid,1,glocal.nodename,"","","",false);
+									<f ok>
+										if (internal_error){
+											glocal.msg = "Internal error";
+										}
+									</f>
+									</call>
+								}
+							</f>
+							</call>
+						}
+					</f>
+					<f empty>
+						glocal.msg = "Node not registered";
+					</f>
+					</call>
+					if (glocal.msg.size() > 0){
+						rep_nodelogin(false,glocal.msg,"");
+					}else{
+						rep_nodelogin(true,"",glocal.sessionid);
+					}
+				</f>
+				<f nodepass>	// session sign
+					glocal string msg;
+					glocal const char *session = session;
+					glocal const char *sign = sign;
+					glocal string nodename;
+					int state = bolixod_sessionstate(glocal.con_sess,session,1,glocal.nodename,glocal.msg);
+					if (state == 1){
+						<call sql_query>("select pub_key from nodes where nodename='%s'",glocal.nodename.c_str());
+						<f onerow>
+							if (row[0] == NULL){
+								glocal.msg = MSG_R(E_NOPUBKEY);
+							}else{
+								EVP_PKEY *p = fs_load_public (row[0]);
+								if (p != NULL){
+									string sig = glocal.sign;
+									strip_end (sig);
+									string sessionnl = string_f("%s\n",glocal.session);
+									if (fs_verify(glocal.session,p,sig)==-1){
+										glocal.msg = MSG_R(E_SIGNOMATCH);
+									}else{
+										// We switch userid to 2, it means login completed
+										<call bo_sessiond_admin_setsession>(glocal.con_sess,glocal.session,2,glocal.nodename,"","","",false);
+										<f ok>
+											if (internal_error){
+												glocal.msg = "Internal error";
+											}
+										</f>
+										</call>
+									}
+									fs_free_public (p);
+								}
+							}
+						</f>
+						<f empty>
+							glocal.msg = "Internal error reading public key";
+						</f>
+						</call> 
+					}
+					if (glocal.msg.size() > 0){
+						if (0){
+						<call bo_sessiond_admin_deletesession>(glocal.con_sess,session);
+						<f ok>
+						</f>
+						</call>
+						}
+						rep_nodepass(false,glocal.msg);
+					}else{
+						rep_nodepass(true,"");
+					}
+				</f>
+				<f nodelogout>	// session
+					glocal string msg;
+					<call bo_sessiond_admin_deletesession>(glocal.con_sess,session);
+					<f ok>
+						if (internal_error){
+							glocal.msg = "nodelogout failed";
+						}
+					</f>
+					</call>
+					if (glocal.msg.size() > 0){
+						rep_nodelogout(false,glocal.msg);
+					}else{
+						rep_nodelogout(true,"");
+					}
+				</f>
+				<f publish>	// session user info
+					// &USERINFO fullname address1 address2 city zipcode state country email phone fax interest
+					glocal const USERINFO_receive *info = &info;
+					glocal const char *user = info.user;
+					glocal string msg;
+					glocal string nodename;
+					int state = bolixod_sessionstate(glocal.con_sess,session,2,glocal.nodename,glocal.msg);
+					if (state == 2){
+						<call sql_query>("select nodes.nodeid,userid from nodes"
+							" left join users on users.nodeid=nodes.nodeid and users.name='%s'"
+							" where nodes.nodename='%s'",glocal.user,glocal.nodename.c_str());
+						<f onerow>
+							if (row[1] == NULL){
+								if (sql_action("insert into users (nodeid,name,fullname,address1,address2,city,state,country"
+									" ,zipcode,email,phone,fax,bolixosite,website,interest)"
+									" value (%s,'%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s')"
+									,row[0],glocal.user
+									,glocal.info->fullname
+									,glocal.info->address1
+									,glocal.info->address2
+									,glocal.info->city
+									,glocal.info->state
+									,glocal.info->country
+									,glocal.info->zipcode
+									,glocal.info->email
+									,glocal.info->phone
+									,glocal.info->fax
+									,glocal.info->bolixosite
+									,glocal.info->website
+									,glocal.info->interest
+									)==-1){
+									glocal.msg = "Internal error, insert in table";
+								}
+							}else{
+								if (sql_action("update users"
+									" set fullname='%s',address1='%s',address2='%s',city='%s',state='%s',country='%s'"
+									" ,zipcode='%s',email='%s',phone='%s',fax='%s'"
+									" ,bolixosite='%s',website='%s',interest='%s'"
+									" where userid=%s"
+									,glocal.info->fullname
+									,glocal.info->address1
+									,glocal.info->address2
+									,glocal.info->city
+									,glocal.info->state
+									,glocal.info->country
+									,glocal.info->zipcode
+									,glocal.info->email
+									,glocal.info->phone
+									,glocal.info->fax
+									,glocal.info->bolixosite
+									,glocal.info->website
+									,glocal.info->interest
+									,row[1])==-1){
+									glocal.msg = "Internal error, updating table";
+								}
+							}
+						</f>
+						<f empty>
+							glocal.msg = "Node not found";
+						</f>
+						</call>
+					}
+					if (glocal.msg.size() > 0){
+						rep_publish(false,glocal.msg);
+					}else{
+						rep_publish(true,"");
+					}
+				</f>
+				<f remove> // session user
+					string msg;
+					string nodename;
+					int state = bolixod_sessionstate(glocal.con_sess,session,2,nodename,msg);
+					if (state == 2){
+						if (sql_action("delete from users join nodes on users.nodeid=nodes.nodeid"
+							" where users.name='%s' and nodes.nodename='%s'",user,nodename.c_str())==-1){
+							msg = "Internal error, deleting entry";
+						}
+					}
+					if (msg.size() > 0){
+						rep_remove(false,msg);
+					}else{
+						rep_remove(true,"");
+					}
+				</f>
+				<f pub_search>	// filter:U{FILTER} offset:u nb:u = success:b msg users:v
+					glocal vector<USERINFO> users;
+					NSQL_ENCODE enc;
+					string pattern;
+					const char *sep = "";
+					if (filter.user[0] != '\0'){
+						pattern += string_f("name like '%%%%%s%%%%'",enc.enc(filter.user));
+						sep = " or ";
+					}
+					if (filter.fullname[0] != '\0'){
+						pattern += string_f("%sfullname like '%%%%%s%%%%'",sep,enc.enc(filter.fullname));
+						sep = " or ";
+					}
+					if (filter.address[0] != '\0'){
+						pattern += string_f("%saddress1 like '%%%%%s%%%%' or address2 like '%%%%%s%%%%'"
+							,sep,enc.enc(filter.address),enc.enc(filter.address));
+						sep = " or ";
+					}
+					if (filter.city[0] != '\0'){
+						pattern += string_f("%scity like '%%%%%s%%%%'",sep,enc.enc(filter.city));
+						sep = " or ";
+					}
+					if (filter.state[0] != '\0'){
+						pattern += string_f("%sstate like '%%%%%s%%%%'",sep,enc.enc(filter.state));
+						sep = " or ";
+					}
+					if (filter.country[0] != '\0'){
+						pattern += string_f("%scountry like '%%%%%s%%%%'",sep,enc.enc(filter.country));
+						sep = " or ";
+					}
+					string query = string_f("select name,fullname"
+						",address1,address2,city,state,country"
+						",zipcode,email,phone,fax,bolixosite,website,interest"
+						" from users where %s limit %u,%u",pattern.c_str(),offset,nb);
+					<call sql_query>(query.c_str());
+					<f onerow>
+						USERINFO info;
+						info.user = row[0];
+						info.fullname = row[1];
+						info.address1 = row[2];
+						info.address2 = row[3];
+						info.city = row[4];
+						info.state = row[5];
+						info.country = row[6];
+						info.zipcode = row[7];
+						info.email = row[8];
+						info.phone = row[9];
+						info.fax = row[10];
+						info.bolixosite = row[11];
+						info.website = row[12];
+						info.interest = row[13];
+						glocal.users.push_back(info);
+					</f>
+					</call>
+					rep_pub_search (true,"",glocal.users);
+				</f>
+				<f pub_list>	// prefix offset:u nb:u = success:b msg users:v
+					glocal vector<USERINFO> users;
+					<call sql_query>("select users.name,fullname"
+						",address1,address2,city,state,country"
+						",zipcode,email,phone,fax,bolixosite,website,interest"
+						",nodes.nodename"
+						" from users join nodes on nodes.nodeid=users.nodeid"
+						" where fullname >= '%s' limit %u,%u",prefix,offset,nb);
+					<f onerow>
+						USERINFO info;
+						const char *nodename = row[14];
+						if (strncasecmp(nodename,"https://",8)==0){
+							nodename += 8;
+						}else if (strncasecmp(nodename,"http://",7)==0){
+							nodename += 7;
+						}
+						info.user = string_f("%s@%s",row[0],nodename);
+						info.fullname = row[1];
+						info.address1 = row[2];
+						info.address2 = row[3];
+						info.city = row[4];
+						info.state = row[5];
+						info.country = row[6];
+						info.zipcode = row[7];
+						info.email = row[8];
+						info.phone = row[9];
+						info.fax = row[10];
+						info.bolixosite = row[11];
+						info.website = row[12];
+						info.interest = row[13];
+						glocal.users.push_back(info);
+					</f>
+					</call>
+					rep_pub_list (true,"",glocal.users);
+				</f>
+				<f test>
+					string msg;
+					bool sessiond,db;
+					bolixod_test (glocal.con_sess,msg,sessiond,db);
+					rep_test(msg,sessiond,db);
+				</f>
+				<f invalid>
+					tlmp_error ("Client: Invalid command: %s\n",line);
+					endclient = true;
+				</f>
+				</call>
+			}
+		</f>
+		</obj>
+		bool some_errors = false;
+		if (fdpass_setcontrol(s,glocal.control,glocal.user)==-1){
+			some_errors = true;
+		}
+
+		if (!some_errors && s.is_ok()){
+			chmod (glocal.unixportclient.c_str()+5,0666);
+			s.setrawmode(true);
+			if (glocal.daemon){
+				daemon_init(glocal.pidfile,glocal.user);
+			}
+			s.loop();
+			ret = 0;
+		}
+		return ret;
+		return ret;
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+

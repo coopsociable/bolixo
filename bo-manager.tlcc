@@ -16,6 +16,7 @@
 #include <map>
 #include <set>
 #include <manager.h>
+#include "bolixo.m"
 
 using namespace std;
 
@@ -115,6 +116,16 @@ struct MON {
 		alarmcmd = _alarmcmd;
 	}
 };
+struct BOLIXOD {
+	string server;
+	string secret;
+	unsigned workers;
+	BOLIXOD (const string &_server, const string &_secret, unsigned _workers){
+		server = _server;
+		secret = _secret;
+		workers = _workers;
+	}
+};
 static bool closeweb = false;
 static const char *config_dir = "/etc/bolixo";
 static const char *log_dir = "/var/log/bolixo";
@@ -128,6 +139,8 @@ static const char *horizon_ip = "192.168.4.1";
 static const char *horizon_ip2 = "192.168.4.2";
 static const char *dnsproxy_ip = "192.168.4.3";
 static const char *horizon_masterip = "192.168.4.1";
+static const char *sql_bolixod_pwd = "bolixod.1";
+static const char *sql_bolixod_user = "bolixod";
 static const char *sql_bod_pwd = "bod.1";
 static const char *sql_bod_user = "bod";
 static const char *sql_bo_writed_pwd = "bo_writed.1";
@@ -158,8 +171,10 @@ static const char *ip_webssl = IP_PREFIX "8";
 static const char *ip_webssl_fail = IP_PREFIX "18";
 static const char *ip_bosqlduser = IP_PREFIX "9";
 static const char *ip_bosqlddata = IP_PREFIX "10";
+static const char *ip_bosqldbolixo = IP_PREFIX "14";
 static const char *ip_exim = IP_PREFIX "11";
 static const char *ip_keysd = IP_PREFIX "12";
+static const char *ip_bolixod = IP_PREFIX "13";
 
 #define IP_PREFIX_P "192.168.5."
 static const char *ip_sqld_p = IP_PREFIX_P "1";
@@ -173,6 +188,7 @@ static const char *ip_webssl_p = IP_PREFIX_P "8";
 
 
 static const char *vs_bod = "bod";
+static const char *vs_bolixod = "bolixod";
 static const char *vs_writed = "writed";
 static const char *vs_sessiond = "sessiond";
 
@@ -185,6 +201,7 @@ struct CONFIG {
 	vector<SESSIOND> sessionds;
 	vector<SQLD> bosqlddatas;
 	vector<SQLD> bosqldusers;
+	vector<SQLD> bosqldbolixos;
 	vector<PROTO> protos;
 	vector<WEB> webs;
 	vector<WEB> webadms;
@@ -194,6 +211,7 @@ struct CONFIG {
 	vector<WEB> exims;
 	vector<WEB> dnsproxys;
 	vector<MON> monitors;
+	vector<BOLIXOD> bolixods;
 };
 static bool preprodmode = false;
 
@@ -209,12 +227,14 @@ static void generateconfig (
 	const char *rootserver = theserver.c_str();	// For now, there is only one server, so it is the one testing itself
 	// Finds all servers
 	set<string> servers;
+	for (auto x:config.bolixods) servers.insert(x.server);
 	for (auto x:config.bods) servers.insert(x.server);
 	for (auto x:config.writeds) servers.insert(x.server);
 	for (auto x:config.keysds) servers.insert(x.server);
 	for (auto x:config.sessionds) servers.insert(x.server);
 	for (auto x:config.bosqlddatas) servers.insert(x.server);
 	for (auto x:config.bosqldusers) servers.insert(x.server);
+	for (auto x:config.bosqldbolixos) servers.insert(x.server);
 	for (auto x:config.protos) servers.insert(x.server);
 	for (auto x:config.webs) servers.insert(x.server);
 	for (auto x:config.webadms) servers.insert(x.server);
@@ -290,6 +310,9 @@ static void generateconfig (
 	prefix = "";
 	fprintf (fout,"# rules to connect services to syslog\n");
 	for (auto l:config.logs){
+		for (auto t:config.bolixods){
+			fprintf (fout,"%s %srule %s bolixod unix /dev/log %s root %s\n",bk_control,prefix,t.server.c_str(),l.server.c_str(),devlog);
+		}
 		for (auto t:config.bods){
 			fprintf (fout,"%s %srule %s bod unix /dev/log %s root %s\n",bk_control,prefix,t.server.c_str(),l.server.c_str(),devlog);
 		}
@@ -321,6 +344,9 @@ static void generateconfig (
 		}
 		for (auto t:config.bosqldusers){
 			fprintf (fout,"%s %srule %s bosqlduser unix /dev/log %s root %s\n",bk_control,prefix,t.server.c_str(),l.server.c_str(),devlog);
+		}
+		for (auto t:config.bosqldbolixos){
+			fprintf (fout,"%s %srule %s bosqldbolixo unix /dev/log %s root %s\n",bk_control,prefix,t.server.c_str(),l.server.c_str(),devlog);
 		}
 		for (auto t:config.exims){
 			fprintf (fout,"%s %srule %s exim unix /dev/log %s root %s\n",bk_control,prefix,t.server.c_str(),l.server.c_str(),devlog);
@@ -369,6 +395,15 @@ static void generateconfig (
 		fprintf (fout,"%s rule %s root unix %s/A-sessiond-%s-client-9200.sock %s sessiond /tmp/sessiond-client-9200.sock\n"
 			,bk_control,rootserver,sock_tests_dir,server,server);
 	}
+	fprintf (fout,"# rules to connect to bolixod for monitoring\n");
+	for (auto t:config.bolixods){
+		const char *server = t.server.c_str();
+		for (unsigned i=0; i<t.workers; i++){
+			unsigned port = i;
+			fprintf (fout,"%s rule %s root unix %s/B-bolixod-%s-client-%u.sock %s bolixod /tmp/bolixod-client-%u.sock\n"
+				,bk_control,rootserver,sock_tests_dir,server,port,server,port);
+		}
+	}
 	fprintf (fout,"# rules to connect to bod for monitoring\n");
 	for (auto t:config.bods){
 		const char *server = t.server.c_str();
@@ -404,6 +439,19 @@ static void generateconfig (
 			fprintf (fout,"%s %srule %s root unix /dev/smtp.sock %s exim 25\n"
 				,bk_control,prefix,s.c_str(),e.server.c_str());
 			prefix = "a";
+		}
+	}
+	fprintf (fout,"# rules to connect web to bolixod\n");
+	prefix = "";
+	for (auto w:config.webs){
+		for (auto t:config.bolixods){
+			for (unsigned i=0; i<t.workers; i++){
+				fprintf (fout,"%s %srule %s web unix /dev/bolixod.sock %s %s /tmp/bolixod-client-%d.sock\n"
+					,bk_control,prefix,w.server.c_str(),t.server.c_str(),vs_bolixod,i);
+				fprintf (fout,"%s %srule %s web-fail unix /dev/bolixod.sock %s %s /tmp/bolixod-client-%d.sock\n"
+					,bk_control,prefix,w.server.c_str(),t.server.c_str(),vs_bolixod,i);
+				prefix = "a";
+			}
 		}
 	}
 	fprintf (fout,"# rules to connect web to bod\n");
@@ -455,7 +503,7 @@ static void generateconfig (
 			}
 		}
 	}
-	fprintf (fout,"# rules to connect bod to trli-sessiond\n");
+	fprintf (fout,"# rules to connect bod to bo-sessiond\n");
 	prefix = "";
 	for (auto t:config.bods){
 		for (auto s:config.sessionds){
@@ -468,7 +516,7 @@ static void generateconfig (
 			prefix = "a";
 		}
 	}
-	fprintf (fout,"# rules to connect web to trli-sessiond\n");
+	fprintf (fout,"# rules to connect web to bo-sessiond\n");
 	prefix = "";
 	for (auto w:config.webs){
 		for (auto s:config.sessionds){
@@ -485,7 +533,7 @@ static void generateconfig (
 			prefix = "a";
 		}
 	}
-	fprintf (fout,"# rules to connect webadm to trli-sessiond\n");
+	fprintf (fout,"# rules to connect webadm to bo-sessiond\n");
 	prefix = "";
 	for (auto w:config.webadms){
 		for (auto s:config.sessionds){
@@ -500,7 +548,7 @@ static void generateconfig (
 			prefix = "a";
 		}
 	}
-	fprintf (fout,"# rules to connect writed to trli-sessiond\n");
+	fprintf (fout,"# rules to connect writed to bo-sessiond\n");
 	prefix = "";
 	for (auto w:config.writeds){
 		for (auto s:config.sessionds){
@@ -531,7 +579,7 @@ static void generateconfig (
 			prefix = "a";
 		}
 	}
-	fprintf (fout,"# rules to connect writed to news database\n");
+	fprintf (fout,"# rules to connect writed to data database\n");
 	prefix = "";
 	for (auto w:config.writeds){
 		for (auto s:config.bosqlddatas){
@@ -568,6 +616,24 @@ static void generateconfig (
 			prefix = "a";
 		}
 	}
+	fprintf (fout,"# rules to connect bolixod to bo-sessiond\n");
+	prefix = "";
+	for (auto w:config.bolixods){
+		for (auto s:config.sessionds){
+			fprintf (fout,"%s %srule %s bolixod unix /dev/sessiond.sock %s %s /tmp/sessiond-admin-9200.sock\n"
+				,bk_control,prefix,w.server.c_str(),s.server.c_str(),vs_sessiond);
+			prefix = "a";
+		}
+	}
+	fprintf (fout,"# rules to connect bolixod to bolixo database\n");
+	prefix = "";
+	for (auto w:config.bolixods){
+		for (auto s:config.bosqldbolixos){
+			fprintf (fout,"%s %srule %s bolixod unix /var/lib/mysql/mysql.sock %s bosqldbolixo /var/lib/mysql/mysql.sock\n"
+				,bk_control,prefix,w.server.c_str(),s.server.c_str());
+			prefix = "a";
+		}
+	}
 	fprintf (fout,"# rules to connect keysd to news database\n");
 	prefix = "";
 	for (auto w:config.keysds){
@@ -586,7 +652,7 @@ static void generateconfig (
 			prefix = "a";
 		}
 	}
-	fprintf (fout,"# rules to connect bod to news database\n");
+	fprintf (fout,"# rules to connect bod to data database\n");
 	prefix = "";
 	for (auto t:config.bods){
 		for (auto s:config.bosqlddatas){
@@ -627,6 +693,7 @@ static void print_configs (
 	glocal const char *public_ip = public_ip.c_str();
 	glocal string server = server;
 	glocal string stopbod;
+	glocal string stopbolixod;
 	glocal string stopwrited;
 	glocal string stopkeysd;
 	glocal string stopsessiond;
@@ -635,6 +702,7 @@ static void print_configs (
 	glocal string stopwebssl;
 	glocal string stopsqlddata;
 	glocal string stopsqlduser;
+	glocal string stopsqldbolixo;
 	glocal string stopproto;
 	glocal string stopexim;
 	glocal string stoptrlimon;
@@ -761,6 +829,7 @@ static void print_configs (
 			fprintf (fout,"%s vserver dnsproxy %s\n",hc,dnsproxy_ip);
 			fprintf (fout,"%s vserver sqlsource %s\n",hc,horizon_ip);
 			fprintf (fout,"%s vserver sqlsource2 %s\n",hc,horizon_ip2);
+			fprintf (fout,"%s vserver bolixod %s\n",hc,ip_bolixod);
 			fprintf (fout,"%s vserver bod %s\n",hc,ip_bod);
 			fprintf (fout,"%s vserver bod_p %s\n",hc,ip_bod_p);
 			fprintf (fout,"%s vserver writed %s\n",hc,ip_writed);
@@ -775,6 +844,7 @@ static void print_configs (
 			fprintf (fout,"%s vserver webssl_p %s\n",hc,ip_webssl_p);
 			fprintf (fout,"%s vserver bosqlddata %s\n",hc,ip_bosqlddata);
 			fprintf (fout,"%s vserver bosqlduser %s\n",hc,ip_bosqlduser);
+			fprintf (fout,"%s vserver bosqldbolixo %s\n",hc,ip_bosqldbolixo);
 			fprintf (fout,"%s vserver sqld_p %s\n",hc,ip_sqld_p);
 			fprintf (fout,"%s vserver proto %s\n",hc,ip_proto);
 			fprintf (fout,"%s vserver proto_p %s\n",hc,ip_proto_p);
@@ -1017,6 +1087,65 @@ static void print_configs (
 				</call>
 				fprintf (glocal.all_fout,"/var/lib/lxc/udpproxy.sh\n");
 				trli_chmod ("/var/lib/lxc/udpproxy.sh",0755);
+			}
+			// SERVICE bolixod
+			for (auto t:glocal.config->bolixods){
+				if (t.server == glocal.server){
+					mkdir ("/var/lib/lxc/bolixod",0755);
+					glocal const char *secret = t.secret.c_str();
+					glocal int workers = t.workers;
+					<call savefile>("/var/lib/lxc/bolixod/bolixod.init",false);
+					<f dowrite>
+						fprintf (fout,"export BOLIXOD_PWD=%s\n",sql_bolixod_pwd);
+						for (int i=0; i<glocal.workers; i++){
+							fprintf (fout,"%s/bolixod ",project_path);
+							fprintf (fout,"--clientport %d --control %s/bolixod-%d.sock"
+								" --dbserv %s --dbname bolixo --dbuser %s"
+								" --client_secrets %s/secrets.client"
+								" --mysecret %s --user %s --daemon"
+								" --pidfile /tmp/bolixod-%d.pid\n"
+								,i,lxcsock_dir,i
+								,"localhost",sql_bolixod_user
+								,config_dir
+								,glocal.secret,trli_user
+								,i);
+						}
+						return 0;
+					</f>
+					</call>
+					string startfile;	
+					<call lxc_start> ("bolixod",ip_bolixod,startfile,trli_user,trli_userid);
+					<f horizon>
+						fprintf (fout,"mkdir -p /var/lib/lxc/%s/rootfs/var/lib/mysql\n",name);
+						fprintf (fout,"%s/horizon-control -p %s/horizon.sock --bind unix,/var/lib/mysql/mysql.sock:/var/lib/lxc/%s/rootfs/var/lib/mysql/mysql.sock,%s\n"
+							,blackhole_path,sock_dir,name,name);
+						fprintf (fout,"chown %s /var/lib/lxc/%s/rootfs/var/lib/mysql/mysql.sock\n",trli_user,name);
+						fprintf (fout,"%s/horizon-control -p %s/horizon.sock --bind unix,/dev/sessiond.sock:/var/lib/lxc/%s/rootfs/dev/sessiond.sock,%s\n"
+							,blackhole_path,sock_dir,name,name);
+						fprintf (fout,"chown %s /var/lib/lxc/%s/rootfs/dev/sessiond.sock\n",trli_user,name);
+					</f>
+					<f insert>
+						fprintf (fout,"echo nameserver %s >/var/lib/lxc/bolixod/rootfs/etc/resolv.conf\n"
+							,horizon_ip);
+						if (glocal.devmode){
+							fprintf (fout,"echo %s testlies.news >>/var/lib/lxc/bolixod/rootfs/etc/hosts\n"
+								,ip_webssl);
+						}
+					</f>
+					</call>
+					fprintf (glocal.all_fout,"%s\n",startfile.c_str());
+					<call lxc_stop> ("bolixod","bolixod",project_path,glocal.workers,glocal.stopbolixod);
+					<f horizon>
+						fprintf (fout,"%s/horizon-control -p %s/horizon.sock unbindfd unix /dev/sessiond.sock %s\n"
+							,blackhole_path,sock_dir,name);
+						fprintf (fout,"%s/horizon-control -p %s/horizon.sock unbindfd unix /var/lib/mysql/mysql.sock %s\n"
+							,blackhole_path,sock_dir,name);
+					</f>
+					</call>
+					lxc_config ("bolixod",ip_bolixod);
+					lxc_status (project_path,"bolixod","bolixod",glocal.workers);
+					lxc_debug (project_path,"bolixod","bolixod",glocal.workers);
+				}
 			}
 			// SERVICE bod
 			for (auto t:glocal.config->bods){
@@ -1271,6 +1400,9 @@ static void print_configs (
 							fprintf (fout,"%s/horizon-control -p %s/horizon.sock --bind unix,/dev/sessiond.sock:/var/lib/lxc/%s/rootfs/dev/sessiond.sock,%s\n"
 								,blackhole_path,sock_dir,name,name);
 							fprintf (fout,"chown 48 /var/lib/lxc/%s/rootfs/dev/sessiond.sock\n",name);
+							fprintf (fout,"%s/horizon-control -p %s/horizon.sock --bind unix,/dev/bolixod.sock:/var/lib/lxc/%s/rootfs/dev/bolixod.sock,%s\n"
+								,blackhole_path,sock_dir,name,name);
+							fprintf (fout,"chown 48 /var/lib/lxc/%s/rootfs/dev/bolixod.sock\n",name);
 						</f>
 						<f insert>
 							tlmpweb_conf (fout,name);
@@ -1289,6 +1421,8 @@ static void print_configs (
 							fprintf (fout,"%s/horizon-control -p %s/horizon.sock unbindfd unix /dev/bod.sock %s\n"
 								,blackhole_path,sock_dir,name);
 							fprintf (fout,"%s/horizon-control -p %s/horizon.sock unbindfd unix /dev/sessiond.sock %s\n"
+								,blackhole_path,sock_dir,name);
+							fprintf (fout,"%s/horizon-control -p %s/horizon.sock unbindfd unix /dev/bolixod.sock %s\n"
 								,blackhole_path,sock_dir,name);
 						</f>
 						<f insert>
@@ -1362,6 +1496,8 @@ static void print_configs (
 							fprintf (fout,"DirectoryIndex index.hc\n");
 							fprintf (fout,"ProxyPass \"/index.hc\" \"http://192.168.4.1:9080/index.hc\"\n");
 							fprintf (fout,"ProxyPass \"/webapi.hc\" \"http://192.168.4.1:9080/webapi.hc\"\n");
+							fprintf (fout,"ProxyPass \"/bolixoapi.hc\" \"http://192.168.4.1:9080/bolixoapi.hc\"\n");
+							fprintf (fout,"ProxyPass \"/bolixo.hc\" \"http://192.168.4.1:9080/bolixo.hc\"\n");
 							fprintf (fout,"RewriteEngine On\n");
 							//fprintf (fout,"LogLevel alert rewrite:trace7\n");
 							fprintf (fout,"RewriteRule ^/public/(.*) /public.hc?image=\\$1 [PT]\n");
@@ -1464,6 +1600,14 @@ static void print_configs (
 				if (s.server == glocal.server){
 					string startfile;
 					config_sql ("bosqlduser",ip_bosqlduser,startfile,glocal.stopsqlduser);
+					fprintf (glocal.all_fout,"%s\n",startfile.c_str());
+				}
+			}
+			// SERVICE bosqldbolixo
+			for (auto s:glocal.config->bosqldbolixos){
+				if (s.server == glocal.server){
+					string startfile;
+					config_sql ("bosqldbolixo",ip_bosqldbolixo,startfile,glocal.stopsqldbolixo);
 					fprintf (glocal.all_fout,"%s\n",startfile.c_str());
 				}
 			}
@@ -1597,6 +1741,7 @@ static void print_configs (
 		if (glocal.stopcompute.size() > 0) fprintf (fout,"%s\n",glocal.stopcompute.c_str());
 		if (glocal.stoptrlimon.size() > 0) fprintf (fout,"%s\n",glocal.stoptrlimon.c_str());
 		if (glocal.stopbod.size() > 0) fprintf (fout,"%s\n",glocal.stopbod.c_str());
+		if (glocal.stopbolixod.size() > 0) fprintf (fout,"%s\n",glocal.stopbolixod.c_str());
 		if (glocal.stopwrited.size() > 0) fprintf (fout,"%s\n",glocal.stopwrited.c_str());
 		if (glocal.stopkeysd.size() > 0) fprintf (fout,"%s\n",glocal.stopkeysd.c_str());
 		if (glocal.stopsessiond.size() > 0) fprintf (fout,"%s\n",glocal.stopsessiond.c_str());
@@ -1605,6 +1750,7 @@ static void print_configs (
 		if (glocal.stopwebssl.size() > 0) fprintf (fout,"%s\n",glocal.stopwebssl.c_str());
 		if (glocal.stopsqlddata.size() > 0) fprintf (fout,"%s\n",glocal.stopsqlddata.c_str());
 		if (glocal.stopsqlduser.size() > 0) fprintf (fout,"%s\n",glocal.stopsqlduser.c_str());
+		if (glocal.stopsqldbolixo.size() > 0) fprintf (fout,"%s\n",glocal.stopsqldbolixo.c_str());
 		if (glocal.stopproto.size() > 0) fprintf (fout,"%s\n",glocal.stopproto.c_str());
 		if (glocal.stopexim.size() > 0) fprintf (fout,"%s\n",glocal.stopexim.c_str());
 		if (glocal.stoptrlisyslog.size() > 0) fprintf (fout,"%s\n",glocal.stoptrlisyslog.c_str());
@@ -1655,9 +1801,9 @@ int main (int argc, char *argv[])
 	glocal bool devmode = false;
 	glocal vector<string> devip;	// List of services which requires a development IP
 	glocal bool inframode = false;
-	glocal.ret = <call tlmpprogram>(argc,argv);
+	glocal.ret = <call tlmpprogram>(argc,argv,"bolixo");
 	<f init>
-		setproginfo ("trli-manager",VERSION,"Control the bolix cluster");
+		setproginfo ("bo-manager",VERSION,MSG_U(I_BOMANAGER,"Configure the bolixo cluster"));
 		setarg ('c',"config","Config file",glocal.config_file,false);
 		setarg (' ',"dump","Dump config (debug)",glocal.dumpconfig,false);
 		setarg (' ',"devip","Use development IP (127.0.0.X) for a given service",glocal.devip,false);
@@ -1669,6 +1815,8 @@ int main (int argc, char *argv[])
 		setgrouparg ("SQL");
 		setarg (' ',"boduser","SQL user for bod server",sql_bod_user,false);
 		setarg (' ',"bodpwd","SQL password for bod server",sql_bod_pwd,false);
+		setarg (' ',"bolixoduser","SQL user for bolixod server",sql_bolixod_user,false);
+		setarg (' ',"bolixodpwd","SQL password for bolixod server",sql_bolixod_pwd,false);
 		setarg (' ',"writeduser","SQL user for bo-writed server",sql_bo_writed_user,false);
 		setarg (' ',"writedpwd","SQL password for bo-writed server",sql_bo_writed_pwd,false);
 	</f>
@@ -1676,6 +1824,7 @@ int main (int argc, char *argv[])
 		int ret = -1;
 		glocal CONFIG config;
 		if (getenv("BOD_PWD")!=NULL) sql_bod_pwd = getenv("BOD_PWD");
+		if (getenv("BOLIXOD_PWD")!=NULL) sql_bolixod_pwd = getenv("BOLIXOD_PWD");
 		if (getenv("BO_WRITED_PWD")!=NULL) sql_bo_writed_pwd = getenv("BO_WRITED_PWD");
 		closeweb = file_exist("/root/closeweb");
 		<call loadfile>(glocal.config_file,true);
@@ -1702,6 +1851,8 @@ int main (int argc, char *argv[])
 						glocal.config.bosqlddatas.push_back(SQLD(tb[1]));
 					}else if (strcmp(word,"bosqlduser")==0 && n == 2){
 						glocal.config.bosqldusers.push_back(SQLD(tb[1]));
+					}else if (strcmp(word,"bosqldbolixo")==0 && n == 2){
+						glocal.config.bosqldbolixos.push_back(SQLD(tb[1]));
 					}else if (strcmp(word,"proto")==0 && n == 3){
 						glocal.config.protos.push_back(PROTO(tb[1],trli_atou(tb[2])));
 					}else if (strcmp(word,"web")==0 && n == 2){
@@ -1720,6 +1871,8 @@ int main (int argc, char *argv[])
 						glocal.config.dnsproxys.push_back(WEB(tb[1]));
 					}else if (strcmp(word,"monitor")==0 && n == 4){
 						glocal.config.monitors.push_back(MON(tb[1],tb[2],tb[3]));
+					}else if (strcmp(word,"bolixod")==0 && n == 4){
+						glocal.config.bolixods.push_back(BOLIXOD(tb[1],tb[2],atoi(tb[3].c_str())));
 					}else{
 						tlmp_error ("Invalid line %d in configuration file %s\n",noline,info.filename);
 					}

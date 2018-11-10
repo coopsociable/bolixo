@@ -2,7 +2,7 @@ extern const char **_dictionary_bolixo;
 #ifndef DICTIONARY_REQUEST
 	#define DICTIONARY_REQUEST \
 	const char **_dictionary_bolixo;\
-	TRANSLATE_SYSTEM_REQ _dictionary_req_bolixo("bolixo",_dictionary_bolixo,247,6);\
+	TRANSLATE_SYSTEM_REQ _dictionary_req_bolixo("bolixo",_dictionary_bolixo,293,6);\
 	void dummy_dict_bolixo(){}
 #endif
 #ifndef MSG_U
@@ -260,3 +260,49 @@ extern const char **_dictionary_bolixo;
 #define M_DOWNLOAD	244
 #define E_ONLYFILE	245
 #define E_ONLYFILEANDDIR	246
+#define I_BOLIXOD	247
+#define I_NETWORKING	248
+#define I_BOLIXOD_CONTROL	249
+#define I_DBSERV	250
+#define I_DBNAME	251
+#define I_MISC	252
+#define I_RUNASUSER	253
+#define I_RUNBG	254
+#define I_PIDFILE	255
+#define E_DBPASS	256
+#define I_DBUSER	257
+#define I_BOLIXOD_SOCK	258
+#define I_BOLIXOD_CTRL	259
+#define I_BOMANAGER	260
+#define I_CLIENTPORT	261
+#define O_MYSECRET	262
+#define O_ADMINSECRETS	263
+#define O_CLIENTSECRETS	264
+#define O_SESSPORT	265
+#define I_BOLIXOAPI	266
+#define T_BOLIXO_ORG_DIR	267
+#define F_EMAIL	268
+#define F_PHONE	269
+#define F_FAX	270
+#define F_BOLIXOSITE	271
+#define F_WEBSITE	272
+#define H_FILTER	273
+#define I_DATEFORMAT	274
+#define I_ENGDATE	275
+#define I_ISODATE	276
+#define F_FULLNAME	277
+#define F_ADDRESS1	278
+#define F_ADDRESS2	279
+#define F_CITY	280
+#define F_STATE	281
+#define F_COUNTRY	282
+#define F_ZIPCODE	283
+#define F_INTERESTS	284
+#define F_PUBLISH	285
+#define F_PUBBOLIXOSITE	286
+#define E_CANTSAVEPUBCONFIG	287
+#define T_PUBLISH	288
+#define T_PERSOPREF	289
+#define F_YOURPHOTO	290
+#define F_YOURMINIPHOTO	291
+#define F_PUBLISHSOME	292

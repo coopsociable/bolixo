@@ -1,0 +1,75 @@
+/*
+	Command line tool to control bod
+*/
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <tlmplib.h>
+#include <tlmpnet.h>
+#include <string>
+#include <trlitool.h>
+#include "bolixo.m"
+
+using namespace std;
+
+#include "proto/bolixod_control.protoch"
+
+<mod>
+int main (int argc, char *argv[])
+{
+	glocal int ret = -1;
+	glocal const char *control = "/var/run/bolixod.sock";
+	glocal.ret = <call tlmpprogram>(argc,argv,"bolixo");
+	<f init>
+		setproginfo ("bolixod-control",VERSION
+			,MSG_U(I_BOLIXOD_CTRL,"Command line tool to control bolixod\n"
+			 "\n"
+			 "\tdebug 0/1\n"
+			 "\tdebugfile filename\n"
+			 "\tquit\n"
+			 "\tstatus\n"
+			 "\ttest\n"));
+		setarg ('p',"control",MSG_U(I_BOLIXOD_SOCK,"Unix socket to reach bolixod"),glocal.control,false);
+	</f>
+	<f main>
+		int ret = -1;
+		CONNECT_INFO con;
+		con.port = glocal.control;	
+		if (strcmp(argv[0],"status")==0 && argc==1){
+			<call bolixod_control_status>(con);
+			<f ok>
+				for (auto x:lines) printf ("%s\n",x);
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"quit")==0){
+			<call bolixod_control_quit>(con);
+			<f ok>
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"debug")==0 && argc==2){
+			<call bolixod_control_debug>(con,atoi(argv[1]));
+			<f ok>
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"debugfile")==0 && argc==2){
+			<call bolixod_control_debugfile>(con,argv[1]);
+			<f ok>
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"test")==0 && argc==1){
+			<call bolixod_control_test>(con);
+			<f ok>
+				printf ("msg=%s sessiond=%d db=%d\n",msg,sessiond,db);
+			</f>
+			</call>
+		}else{
+			tlmp_error (MSG_R(E_IVLDCOMMAND),argv[0]);
+			usage();
+		}
+		return ret;
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+

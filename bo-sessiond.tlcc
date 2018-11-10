@@ -54,6 +54,7 @@ struct SESSION_INFO{
 	string name;
 	string email;
 	string lang;
+	unsigned dateformat;
 	bool admin;
 	vector<VAR> vars;
 	struct {
@@ -249,8 +250,8 @@ int main (int argc, char *argv[])
 								tmp = string_f ("%07u: %s anonymous %s %u",pos,it.first.c_str()
 									,datetime,it.second.stats.nbacc);
 							}else{
-								tmp = string_f ("%07u: %s %s %s %s %u %u %d %s",pos,it.first.c_str()
-									,it.second.name.c_str(),it.second.email.c_str()
+								tmp = string_f ("%07u: %s %d-%s %s %s %s %u %u %d %s",pos,it.first.c_str()
+									,it.second.userid,it.second.userid_str.c_str(),it.second.name.c_str(),it.second.email.c_str()
 									,datetime,it.second.stats.nbacc
 									,it.second.userid,it.second.admin,it.second.lang.c_str());
 							}
@@ -331,9 +332,9 @@ int main (int argc, char *argv[])
 					if (it != glocal.sessions.end()){
 						it->second.stats.lastvisit = time(NULL);
 						it->second.stats.nbacc++;
-						rep_getsessioninfo(true,it->second.name,it->second.lang,it->second.admin,it->second.userid);
+						rep_getsessioninfo(true,it->second.name,it->second.lang,it->second.dateformat,it->second.admin,it->second.userid);
 					}else{
-						rep_getsessioninfo(false,"","",false,0);
+						rep_getsessioninfo(false,"","",0,false,0);
 					}
 				</f>
 				<f getsessioninfovars>
@@ -341,10 +342,10 @@ int main (int argc, char *argv[])
 					if (it != glocal.sessions.end()){
 						it->second.stats.lastvisit = time(NULL);
 						it->second.stats.nbacc++;
-						rep_getsessioninfovars(true,it->second.name,it->second.lang,it->second.admin,it->second.userid,it->second.vars);
+						rep_getsessioninfovars(true,it->second.name,it->second.lang,it->second.dateformat,it->second.admin,it->second.userid,it->second.vars);
 					}else{
 						vector<VAR> vars;
-						rep_getsessioninfovars(false,"","",false,0,vars);
+						rep_getsessioninfovars(false,"","",0,false,0,vars);
 					}
 				</f>
 				<f setvar>
@@ -425,9 +426,13 @@ int main (int argc, char *argv[])
 						tlmp_error ("setsession: %s does not exist\n",sessionid);
 					}else{
 						it->second.lang = lang;
+						it->second.dateformat = dateformat;
 						// Update all sessions for this user
 						for (auto &s:glocal.sessions){
-							if (s.second.userid==it->second.userid) s.second.lang = lang;
+							if (s.second.userid==it->second.userid){
+								s.second.lang = lang;
+								s.second.dateformat = dateformat;
+							}
 						}
 					}
 				</f>
@@ -436,7 +441,7 @@ int main (int argc, char *argv[])
 					if (it != glocal.sessions.end()){
 						glocal.sessions.erase(it);
 					}else{
-						tlmp_error ("deletesession: unknown sessionid %s\n",it->first.c_str());
+						tlmp_error ("deletesession: unknown sessionid %s\n",sessionid);
 					}
 				</f>
 				<f deletesessions>

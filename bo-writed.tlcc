@@ -2221,11 +2221,11 @@ int main (int argc, char *argv[])
 							}
 						}
 						if (glocal.msg.size() == 0){
-							if (sql_action("update config set lang='%s',public_view=%d,public_dir='%s' where userid=%u"
-								,config.lang,config.public_view,config.public_dir,glocal.userid)==-1){
+							if (sql_action("update config set lang='%s',dateformat=%u,public_view=%d,public_dir='%s' where userid=%u"
+								,config.lang,config.dateformat,config.public_view,config.public_dir,glocal.userid)==-1){
 								glocal.msg = "Internal error, config table";
 							}else{
-								<call bo_sessiond_admin_setlang>(glocal.con,sessionid,config.lang);
+								<call bo_sessiond_admin_setlang>(glocal.con,sessionid,config.lang,config.dateformat);
 								<f ok>
 								</f>
 								</call>
@@ -2345,6 +2345,50 @@ int main (int argc, char *argv[])
 					</call>
 					unlink (testfile);
 					rep_test (glocal.bdtrli,glocal.bdusers,glocal.sessiond,glocal.keysd,glocal.fsok);
+				</f>
+				<f systemsign> // msg = sign
+					glocal bool success;
+					glocal string msg;
+					glocal string sign;
+					<call bo_keysd_control_sign>(glocal.con_keys,-2,msg);
+					<f ok>
+						glocal.success = status == ERR_CODE_NONE ? true : false;
+						glocal.msg = msg;
+						glocal.sign = sign;
+					</f>
+					</call>
+					rep_systemsign (glocal.success,glocal.msg,glocal.sign);
+				</f>
+				<f info_write>	// sessionid user owner = success:b msg info:U{USERPUBLICINFO}
+					string msg;
+					unsigned userid = bo_writed_get_group_owner (glocal.con, sessionid, owner, msg);
+					if (userid > 0){
+						if (sql_action("insert into userinfo (userid,publish,bosite_visible,fullname,address1,address2"
+							",city,zipcode,state,country,email,phone,fax,website,interest"
+							",publish_photo,publish_miniphoto)"
+							" values "
+							" (%u,%u,%u,'%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s',%d,%d)"
+							" on duplicate key update"
+							" publish=%d,bosite_visible=%d,fullname='%s',address1='%s',address2='%s'"
+							",city='%s',zipcode='%s',state='%s',country='%s',email='%s',phone='%s',fax='%s',website='%s',interest='%s'"
+							",publish_photo=%d,publish_miniphoto=%d"
+							,userid
+							,info.publish,info.bosite_visible,info.fullname,info.address1,info.address2
+							,info.city,info.zipcode,info.state,info.country,info.email,info.phone
+							,info.fax,info.website,info.interest,info.photo,info.mini_photo
+							
+							,info.publish,info.bosite_visible,info.fullname,info.address1,info.address2
+							,info.city,info.zipcode,info.state,info.country,info.email,info.phone
+							,info.fax,info.website,info.interest,info.photo,info.mini_photo
+							)==-1){
+							msg = "Internal error, updating userinfo table";
+						}
+					}
+					if (msg.size() > 0){
+						rep_info_write (false,msg);
+					}else{
+						rep_info_write (true,"");
+					}
 				</f>
 				<f invalid>
 					tlmp_error ("Client: Invalid command: %s\n",line);

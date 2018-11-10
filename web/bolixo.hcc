@@ -1,0 +1,118 @@
+#include <stdio.h>
+#include <string.h>
+#include <tlmpweb.h>
+#include "trlitool.h"
+#include "../bolixo.h"
+#include "../proto/bolixod_client.protoch"
+#include <linuxconf/translat.h>
+#include <tlmplib.h>
+#include "../bolixo.m"
+
+static W_SSTRING w_user("user");
+static W_SSTRING w_fullname("fullname");
+static W_SSTRING w_address("address");
+static W_SSTRING w_city("city");
+static W_SSTRING w_state("state");
+static W_SSTRING w_country("country");
+
+extern "C" void tlmp_initmod()
+{
+	translat_load ("bolixo");
+}
+
+static bool f(const char *s)
+{
+	return s[0] != '\0';
+}
+
+<mod>
+extern "C" void webmain()
+{
+	glocal CONNECT_INFO con;
+	glocal.con.port = "/dev/bolixod.sock";
+	glocal.con.secret = "foo";
+	tlmpweb_flushheader();
+	tlmpweb_title (MSG_U(T_BOLIXO_ORG_DIR,"Bolixo.org directory"));
+	<call websteps>();
+	<f setstep>
+	</f>
+	<f step1>
+		DIV v; v.dispflex().flowcol().print();
+		DIV t; t.w(100).print();
+		/- <center><h1>
+		htmlout (MSG_R(T_BOLIXO_ORG_DIR));
+		/- </h1></center>
+		t.end();
+		DIV b; b.w(100).print(); 
+		<call form>("filter");
+		<f setup>
+			/- <table border=0>
+			/-#H_FILTER <tr><td>User<td>Full name<td>Address<td>City<td>State<td>Country
+			/- <tr><td>
+			field_string (w_user,"");
+			/- <td>
+			field_string (w_fullname,"");
+			/- <td>
+			field_string (w_address,"");
+			/- <td>
+			field_string (w_city,"");
+			/- <td>
+			field_string (w_state,"");
+			/- <td>
+			field_string (w_country,"");
+			/- </table>
+		</f>
+		<f validate>
+			return true;
+		</f>
+		<f process>
+			keepediting = true;
+		</f>
+		</call>
+		FILTER filter;
+		filter.user = w_user.c_str();
+		filter.fullname = w_fullname.c_str();
+		filter.address = w_address.c_str();
+		filter.city = w_city.c_str();
+		filter.state = w_state.c_str();
+		filter.country = w_country.c_str();
+		<call bolixod_client_pub_search>(glocal.con,filter,0,10);
+		<f ok>
+			/- <table border=0>
+			for (auto &u:users){
+				htmlprintf ("<tr><td valign=top>%s<td valign=top>%s<td valign=top>\n",u.user,u.fullname);
+				DIV info; info.dispflex().flowrow().print();
+				if (f(u.address1)  || f(u.address2) || f(u.city) || f(u.state) || f(u.country) || f(u.zipcode)){
+					DIV d; d.bg("lightblue").border(1,"gray").print();
+					htmlprintf ("%s<br>\n",u.address1);
+					htmlprintf ("%s<br>\n",u.address2);
+					htmlprintf ("%s, %s<br>\n",u.city,u.state);
+					htmlprintf ("%s, %s<br>\n",u.country,u.zipcode);
+				}
+				if (f(u.email) || f(u.phone) || f(u.fax) || f(u.bolixosite) || f(u.website)){
+					DIV d; d.bg("lightblue").border(1,"gray").print();
+					/- <table border=0>
+					if (f(u.email)) htmlprintf ("<tr><td>%s<td>%s\n",MSG_R(F_EMAIL),u.email);
+					if (f(u.phone)) htmlprintf ("<tr><td>%s<td>%s\n",MSG_R(F_PHONE),u.phone);
+					if (f(u.fax))   htmlprintf ("<tr><td>%s<td>%s\n",MSG_R(F_FAX),u.fax);
+					if (f(u.bolixosite)) htmlprintf ("<tr><td>%s<td><a href=%s>%s</a>\n",MSG_U(F_BOLIXOSITE,"Bolixo site")
+						,u.bolixosite,u.bolixosite);
+					if (f(u.website)) htmlprintf ("<tr><td>%s<td><a href=%s>%s</a>\n",MSG_R(F_WEBSITE)
+						,u.website,u.website);
+					/- </table>
+				}
+				if (f(u.interest)){
+					DIV d; d.bg("lightgray").border(1,"gray").print();
+					htmlprintf ("%s\n",u.interest);
+				}
+			}
+			/- </table>
+		</f>
+		</call>
+	</f>
+	<f step2>
+	</f>
+	</call>
+	
+}
+</mod>

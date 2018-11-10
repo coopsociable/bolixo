@@ -1,0 +1,82 @@
+#include <stdio.h>
+#include <string.h>
+#include <tlmpweb.h>
+#include "trlitool.h"
+#include "../bolixo.h"
+#include "../proto/bolixod_client.protoch"
+#include "../proto/bolixoapi.protoh"
+#include <linuxconf/translat.h>
+#include <tlmplib.h>
+
+extern "C" void tlmp_initmod()
+{
+	translat_load ("bolixo");
+}
+
+<mod>
+extern "C" void webmain()
+{
+	glocal CONNECT_INFO con;
+	glocal.con.port = "/dev/bolixod.sock";
+	glocal.con.secret = "foo";
+	bool endserver,endclient;
+	REQUEST_JSON_INFO req;
+	const char *json = tlmpweb_getpost();
+	tlmpweb_flushheader();
+	<call bolixoapi>(NULL, req, json, strlen(json), endserver, endclient);
+	<f test>
+		<call bolixod_client_test>(glocal.con);
+		<f ok>
+			tlmp_error ("msg=%s sessiond=%d db=%d\n",msg,sessiond,db);
+			glocal.bolixoapi.rep_test(msg,sessiond,db);
+		</f>
+		</call>
+	</f>
+	<f registernode>	// nodename pubkey = success:b msg
+		<call bolixod_client_registernode>(glocal.con,nodename);
+		<f ok>
+			glocal.bolixoapi.rep_registernode(success,msg);
+		</f>
+		</call>
+	</f>
+	<f nodelogout>		// session = success:b msg
+		<call bolixod_client_nodelogout>(glocal.con,session);
+		<f ok>
+			glocal.bolixoapi.rep_nodelogout(success,msg);
+		</f>
+		</call>
+	</f>
+	<f nodelogin>		// nodename = success:b msg session
+		<call bolixod_client_nodelogin>(glocal.con,nodename);
+		<f ok>
+			glocal.bolixoapi.rep_nodelogin(success,msg,session);
+		</f>
+		</call>
+	</f>
+	<f nodepass>		// session sign = success:b msg
+		<call bolixod_client_nodepass>(glocal.con,session,sign);
+		<f ok>
+			glocal.bolixoapi.rep_nodepass(success,msg);
+		</f>
+		</call>
+	</f>
+	<f publish>		// session user info:U{USERINFO} = success:b msg
+		<call bolixod_client_publish>(glocal.con,session,info);
+		<f ok>
+			glocal.bolixoapi.rep_publish(success,msg);
+		</f>
+		</call>
+	</f>
+	<f remove>		// session user = success:b msg
+		<call bolixod_client_remove>(glocal.con,session,user);
+		<f ok>
+			glocal.bolixoapi.rep_remove(success,msg);
+		</f>
+		</call>
+	</f>
+	<f invalid>
+		htmlprintf ("Invalid request\n");
+	</f>
+	</call>
+}
+</mod>

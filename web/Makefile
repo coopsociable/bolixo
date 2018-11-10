@@ -1,10 +1,11 @@
 OPTIONS=-funsigned-char -O2 -Wall -g -DVERSION=\"$(PACKAGE_REV)\" -I/usr/include/tlmp -I/usr/include/trlitool
-all: util.os document.os document_fr.os index.os webapi.os public.os journey.os  index.hc webapi.hc public.hc journey.hc
+all: util.os document.os document_fr.os index.os bolixoapi.os webapi.os public.os journey.os bolixo.os  \
+	index.hc webapi.hc public.hc journey.hc bolixoapi.hc bolixo.hc
 .suffixes: .hcc .hc
 FLAGS=-Wall -Wno-unused-function
 
 %.hc: %.os /usr/lib64/trlitool/trlitool.pic.a util.os document.os document_fr.os \
-	../proto/webapi.protoh \
+	../proto/webapi.protoh ../proto/bolixoapi.protoh \
 	/usr/include/tlmp/tlmpweb.h /usr/include/tlmp/tlmpweb.p
 	@echo $@
 	@g++ -g -shared -Wl,-soname,test.so.1 -o \
@@ -19,6 +20,9 @@ FLAGS=-Wall -Wno-unused-function
 		--name $(basename $(notdir $@)).tlcc - /tmp/$(basename $(notdir $@)).cc
 	@g++ -DEXPORT= -fPIC $(FLAGS) -I. -I/usr/include/tlmp -I/usr/include/linuxconf -I/usr/include/trlitool \
 		-c /tmp/$(basename $(notdir $@)).cc  -o $@
+
+webapi.os: webapi.hcc ../proto/webapi.protoh
+bolixoapi.os: bolixoapi.hcc ../proto/bolixoapi.protoh ../proto/bolixod_client.protoh
 
 install: all
 	@cp *.png *.hc *.html robots.txt favicon.ico $(RPM_BUILD_ROOT)/var/www/html/.

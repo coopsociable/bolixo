@@ -2,7 +2,7 @@ CURDIR=trli
 MANPAGES=/usr/share/man
 PACKAGE_REV:=$(shell ./makeversion $(BUILD_SVNVER))
 PROGS=_dict.o bod bod-client bod-control bo-writed bo-writed-control bo-sessiond bo-sessiond-control \
-      bo-manager bofs ssltestsign bo-keysd bo-keysd-control
+      bo-manager bofs ssltestsign bo-keysd bo-keysd-control bolixod bolixod-control
 #bo-log bo-log-control \
 #      bo-mon bo-mon-control
 DOCS=
@@ -21,12 +21,18 @@ msg:
 compile: $(PROGS)
 	#make -Cweb 
 
-bofs: bofs.tlcc proto/bod_client.protoh proto/webapi.protoh filesystem.h 
+bofs: bofs.tlcc proto/bod_client.protoh proto/webapi.protoh proto/bolixoapi.protoh filesystem.h 
 	cctlcc -Wall $(OPTIONS) bofs.tlcc _dict.o -o bofs $(LIBS) -lssl
 
 _dict.o: _dict.cc bolixo.m
 	gcc -Wall -c _dict.cc -o _dict.o
 	gcc -Wall -fPIC -c _dict.cc -o _dict.os
+
+bolixod: bolixod.tlcc proto/bolixod_control.protoh proto/bolixod_client.protoh filesystem.o
+	cctlcc -Wall $(OPTIONS) bolixod.tlcc filesystem.o _dict.o -o bolixod $(LIBS) -lssl -ltlmpsql -L/usr/lib64/mysql -lmysqlclient
+
+bolixod-control: bolixod-control.tlcc proto/bolixod_control.protoh
+	cctlcc -Wall $(OPTIONS) bolixod-control.tlcc _dict.o -o bolixod-control $(LIBS) 
 
 bod: bod.tlcc filesystem.o proto/bod_control.protoh proto/bod_client.protoh proto/bod_admin.protoh \
 	proto/bo-writed_client.protoh proto/bo-sessiond_client.protoh
@@ -60,7 +66,7 @@ bo-log-control: trli-log-control.tlcc proto/trli-log-control.protoh
 	cctlcc -Wall $(OPTIONS) trli-log-control.tlcc -o trli-log-control $(LIBS) 
 
 bo-manager: bo-manager.tlcc
-	cctlcc -Wall $(OPTIONS) bo-manager.tlcc /usr/lib64/trlitool/manager.o -o bo-manager $(LIBS)
+	cctlcc -Wall $(OPTIONS) bo-manager.tlcc _dict.o /usr/lib64/trlitool/manager.o -o bo-manager $(LIBS)
 
 bo-mon: bo-mon.tlcc proto/bod_client.protoh proto/bo_mon_control.protoh \
 		proto/trli_syslog_control.protoh proto/trli_stop_control.protoh
@@ -86,6 +92,15 @@ proto/bo-log-admin.protoh: proto/bo-log-admin.proto
 proto/bo_mon_control.protoh: proto/bo_mon_control.proto
 	build-protocol --arg "int no" --arg "HANDLE_INFO *c" --name bo_mon_control \
 	       --protoch proto/bo_mon_control.protoch proto/bo_mon_control.proto >proto/bo_mon_control.protoh
+
+proto/bolixod_control.protoh: proto/bolixod_control.proto
+	build-protocol --arg "int no" --arg "HANDLE_INFO *c" --name bolixod_control \
+	       --protoch proto/bolixod_control.protoch proto/bolixod_control.proto >proto/bolixod_control.protoh
+
+proto/bolixod_client.protoh: proto/bolixod_client.proto
+	build-protocol --secretmode --arg "int no" --arg "HANDLE_INFO *c" --name bolixod_client \
+		--protodef proto/bolixod_client.protodef --protoch proto/bolixod_client.protoch proto/bolixod_client.proto >proto/bolixod_client.protoh
+		
 
 proto/bod_control.protoh: proto/bod_control.proto
 	build-protocol --arg "int no" --arg "HANDLE_INFO *c" --arg "const char *host" --name bod_control \
@@ -136,6 +151,11 @@ proto/webapi.protoh: proto/webapi.proto
 	build-protocol --request_obj REQUEST_JSON --request_info_obj REQUEST_JSON_INFO \
 		--connect_info_obj CONNECT_HTTP_INFO --name webapi \
 		--protoch proto/webapi.protoch proto/webapi.proto >proto/webapi.protoh
+
+proto/bolixoapi.protoh: proto/bolixoapi.proto proto/bolixod_client.protoh
+	build-protocol --request_obj REQUEST_JSON --request_info_obj REQUEST_JSON_INFO \
+		--connect_info_obj CONNECT_HTTP_INFO --name bolixoapi \
+		--protoch proto/bolixoapi.protoch proto/bolixoapi.proto >proto/bolixoapi.protoh
 
 ssltestsign: ssltestsign.tlcc
 	cctlcc $(OPTIONS) ssltestsign.tlcc -o ssltestsign -lstdc++ -lcrypto
