@@ -196,7 +196,7 @@ elif [ "$1" = "bolixod" ] ; then # A: Runs bolixod
 elif [ "$1" = "bod" ] ; then # A: Runs bod
 	OPTIONS="--mysecret foo --admin_secrets $BOLIXOCONF/secrets.admin --client_secrets $BOLIXOCONF/secrets.client --user $USER \
 		--dbserv $BOD_DBSERV --dbuser $BOD_DBUSER --dbname $BOD_DBNAME --bindaddr 0.0.0.0 \
-		--sqltcpport 3307 --adminhost $HORIZONIP1 --sesshost $HORIZONIP1 --workers 1"
+		--sqltcpport 3307 --adminhost $HORIZONIP1 --sesshost $HORIZONIP1 --workers 1 --nodename=foo"
 	shift
 	WORKERS=1
 	while [ $# -gt 0 ]; do
@@ -948,6 +948,7 @@ elif [ "$1" = "lxc0-bod" ]; then # prod:
 		--filelist /var/lib/lxc/bod/bod.files \
 		--savefile /var/lib/lxc/bod/bod.save \
 		--restorefile /var/lib/lxc/bod/bod.restore \
+		-e /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem \
 		$EXTRALXCPROG \
 		$INCLUDELANGS \
 		-i /usr/sbin/trli-init -l /tmp/log -n bod -p $BOLIXOPATH/bod >/var/lib/lxc/bod/bod-lxc0.sh

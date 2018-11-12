@@ -71,6 +71,10 @@ struct DIRENTRY{
 		size = 0;
 	}
 };
+#define bolixoapi_test_NOTNEED
+#define bolixoapi_registernode_NOTNEED
+#include "proto/bolixod_client.protodef"
+#include "proto/bolixoapi.protoch"
 
 #include "proto/bod_control.protoh"
 #include "proto/bod_client.protoh"
@@ -321,7 +325,97 @@ static void bod_list_talk (
 	}
 }
 </mod>
+<mod>
+static int bod_bolixoapi_login(
+	CONNECT_HTTP_INFO &hcon,	// Connection info to the bolixo directory
+	CONNECT_INFO &con,		// Connection info to the writed
+	const char *nodename,		// This system nodename as seen by the bolixo directory
+	string &session)
+{
+	glocal string *session = &session;
+	glocal CONNECT_HTTP_INFO *hcon = &hcon;
+	glocal CONNECT_INFO *con = &con;
+	glocal int ret = -1;
+	<call bolixoapi_nodelogin> (hcon,nodename);
+	<f ok>
+		tlmp_error ("nodelogin: internal_error=%d success=%d msg=%s session=%s\n",internal_error,success,msg,session);
+		if (success){
+			glocal string sign;
+			*glocal.session = session;
+			CONNECT_INFO con_key;
+			<call bo_writed_client_systemsign>(*glocal.con,session);
+			<f ok>
+				glocal.sign = sign;
+			</f>
+			</call>
+			//printf ("sign=%s\n",glocal.sign.c_str());
+			<call bolixoapi_nodepass> (*glocal.hcon,session,glocal.sign);
+			<f ok>
+				tlmp_error ("nodepass: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
+				if (success){
+					glocal.ret = 0;
+				}
+			</f>
+			</call>
+		}
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
 
+<mod>
+static void bod_publish(
+	CONNECT_INFO &con,
+	PARAM_STRING user,
+	const USERPUBLICINFO &pinfo,
+	const char *dirserver,		// URL of the directory server
+	const char *nodename)
+{
+	CONNECT_HTTP_INFO hcon;
+	if (hcon.init(dirserver)==-1){
+		tlmp_error ("bod_publish: CONNECT_HTTP_INFO::init failed: dirserver=%s\n",dirserver);
+	}else{
+		hcon.setpageapi("bolixoapi");
+		string session;
+		if (bod_bolixoapi_login (hcon,con,nodename,session)!=-1){
+			if (pinfo.publish){
+				USERINFO info;
+				info.user = user.ptr;
+				info.fullname = pinfo.fullname;
+				info.address1 = pinfo.address1;
+				info.address2 = pinfo.address2;
+				info.city = pinfo.city;
+				info.state = pinfo.state;
+				info.country = pinfo.country;
+				info.zipcode = pinfo.zipcode;
+				info.email = pinfo.email;
+				info.phone = pinfo.phone;
+				info.fax = pinfo.fax;
+				info.bolixosite = pinfo.bosite_visible ? string_f("%s/%s/%s",nodename,MSG_U(I_PUBLIC,"public"),user.ptr) : "";
+				info.website = pinfo.website;
+				info.interest = pinfo.interest;
+				<call bolixoapi_publish> (hcon,session,info);
+				<f ok>
+					tlmp_error ("publish: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
+				</f>
+				</call>
+			}else{
+				<call bolixoapi_remove> (hcon,session,user);
+				<f ok>
+					tlmp_error ("remove: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
+				</f>
+				</call>
+			}
+			<call bolixoapi_nodelogout> (hcon,session);
+			<f ok>
+				tlmp_error ("nodelogout: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
+			</f>
+			</call>
+		}
+	}
+}
+</mod>
 <mod>
 static int trlid_main (
 	const char *bind,
@@ -333,9 +427,13 @@ static int trlid_main (
 	const char *pidfile,
 	bool daemon,
 	const map<string,string> &admin_secrets,
-	const map<string,string> &client_secrets)
+	const map<string,string> &client_secrets,
+	const char *nodename,
+	const char *dirserver)
 {
 	int ret = -1;
+	glocal const char *nodename = nodename;
+	glocal const char *dirserver = dirserver;
 	glocal CONNECT_INFO con = con;
 	glocal CONNECT_INFO con_sess = con_sess;
 	glocal const map<string,string> *admin_secrets = &admin_secrets;
@@ -397,6 +495,8 @@ static int trlid_main (
 			<f status>
 				vector<string> tb;
 				tb.push_back(string_f("Version %s",VERSION));
+				tb.push_back(string_f("dirserver: %s",glocal.dirserver));
+				tb.push_back(string_f("nodename: %s",glocal.nodename));
 				tb.push_back(string_f ("nbrequest_admin=%lu",glocal.nbrequest_admin));
 				tb.push_back(string_f ("nbrequest_client=%lu",glocal.nbrequest_client));
 				tb.push_back(string_f("filehandle %u\n",fs_getnbhandle()));
@@ -1730,11 +1830,22 @@ static int trlid_main (
 				}
 			</f>
 			<f info_write>	// sessionid user owner info:U{USERPUBLICINFO} = success:b msg
-				<call bo_writed_client_info_write>(glocal.con,sessionid,owner,info);
-				<f ok>
-					glocal.bod_client.rep_info_write(success,msg);
-				</f>
-				</call>
+				glocal string msg;
+				string username;
+				unsigned userid = bo_writed_get_group_owner (glocal.con_sess, sessionid, "", username,glocal.msg);
+				if (userid != 0){
+					<call bo_writed_client_info_write>(glocal.con,sessionid,owner,info);
+					<f ok>
+						glocal.msg = msg;
+					</f>
+					</call>
+				}
+				if (glocal.msg.size() != 0){
+					rep_info_write(false,glocal.msg);
+				}else{
+					rep_info_write(true,"");
+					bod_publish (glocal.con,username,info,glocal.dirserver,glocal.nodename);
+				}
 			</f>
 			<f invalid>
 				tlmp_error ("CLIENT: Invalid command: %s\n",line);
@@ -1832,6 +1943,8 @@ int main (int argc, char *argv[])
 	glocal bool daemon = false;
 	glocal int workers = 1;
 	glocal const char *pidfile = "/var/run/bod.pid";
+	glocal const char *nodename = NULL;	// Who am I
+	glocal const char *dirserver = "https://bolixo.org";	// Directory server for all nodes
 
 	signal (SIGPIPE,SIG_IGN);
 	translat_setlang("eng,fr");
@@ -1856,6 +1969,8 @@ int main (int argc, char *argv[])
 		setarg (' ',"daemon","Run in background",glocal.daemon,false);
 		setarg (' ',"workers","Number of sub-process to lauch",glocal.workers,false);
 		setarg (' ',"pidfile","FIle holding the PID of the process",glocal.pidfile,false);
+		setarg (' ',"nodename",MSG_U(O_NODENAME,"My node name (URL)"),glocal.nodename,true);
+		setarg (' ',"dirserver",MSG_U(O_DIRSERVE,"Directory server"),glocal.dirserver,false);
 		setgrouparg ("Database");
 		setarg (' ',"dbserv","Database server",glocal.dbserv,false);
 		setarg (' ',"dbname","Database name",glocal.dbname,false);
@@ -1912,7 +2027,7 @@ int main (int argc, char *argv[])
 		if (glocal.workers==1){
 			ret = trlid_main (glocal.bind,glocal.port,glocal.control
 				,glocal.con,glocal.con_sess,glocal.user,glocal.pidfile,glocal.daemon
-				,glocal.admin_secrets,glocal.client_secrets);
+				,glocal.admin_secrets,glocal.client_secrets,glocal.nodename,glocal.dirserver);
 		}else{
 			int port = atoi(glocal.port);
 			for (int w=0; w<glocal.workers; w++){
@@ -1923,7 +2038,7 @@ int main (int argc, char *argv[])
 				if (pid == (pid_t)0){
 					ret = trlid_main (glocal.bind,portstr,control.c_str()
 						,glocal.con,glocal.con_sess,glocal.user,glocal.pidfile,false
-						,glocal.admin_secrets,glocal.client_secrets);
+						,glocal.admin_secrets,glocal.client_secrets,glocal.nodename,glocal.dirserver);
 				}else if (pid == (pid_t)-1){
 					tlmp_error("Can't fork (%s), aborting\n",strerror(errno));
 					exit (-1);

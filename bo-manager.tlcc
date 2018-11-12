@@ -1163,13 +1163,19 @@ static void print_configs (
 								" --dbserv %s --dbname files --dbuser %s"
 								" --admin_secrets %s/secrets.admin --client_secrets %s/secrets.client"
 								" --mysecret %s --user %s --sqltcpport 3307 --daemon"
-								" --pidfile /tmp/bod-%d.pid\n"
+								" --pidfile /tmp/bod-%d.pid"
 								,9000+i,lxcsock_dir,i
 								,horizon_ip,horizon_ip
 								,"localhost",sql_bod_user
 								,config_dir,config_dir
 								,glocal.secret,trli_user
 								,i);
+							if (glocal.devmode){
+								fprintf (fout," --nodename http://testlies.news --dirserver http://testlies.news");
+							}else{
+								fprintf (fout," --nodename https://somename --dirserver https://bolixo.org");
+							}
+							fprintf (fout,"\n");
 						}
 						return 0;
 					</f>
@@ -1189,6 +1195,12 @@ static void print_configs (
 						fprintf (fout,"chown %s /var/lib/lxc/%s/rootfs/var/lib/mysql/mysql.sock\n",trli_user,name);
 					</f>
 					<f insert>
+						fprintf (fout,"echo nameserver %s >/var/lib/lxc/bod/rootfs/etc/resolv.conf\n"
+							,horizon_ip);
+						if (glocal.devmode){
+							fprintf (fout,"echo %s testlies.news >>/var/lib/lxc/bod/rootfs/etc/hosts\n"
+								,ip_webssl);
+						}
 					</f>
 					</call>
 					fprintf (glocal.all_fout,"%s\n",startfile.c_str());
