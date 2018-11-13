@@ -367,6 +367,45 @@ static int bod_bolixoapi_login(
 </mod>
 
 <mod>
+static void bod_loadphoto (BOB_TYPE &img, const char *user, const char *filename)
+{
+	glocal BOB_TYPE *img = &img;
+	glocal ENTRY entry;
+	string fpath = string_f("/projects/%s/public/%s",user,filename);
+	if (fs_findentry(fpath,glocal.entry,true,"") != -1
+		&& bolixo_isfile(glocal.entry.type)){
+		<call sql_query>("select content,title,signature,filetype from files where id=%d and modified='%s'"
+			,glocal.entry.entryid,glocal.entry.modified.c_str());
+		<f onerow>
+			if (row[0] != NULL){
+				unsigned len = strlen(row[0]);
+				glocal.img->setbuffer(row[0],len,true);
+			}else{
+				string handle;
+				FILE *fin = fs_alloc_file_handle (glocal.entry.entryid,glocal.entry.modified,"r",handle,"xx");
+				if (fin == NULL){
+					tlmp_error ("bod_loadphoto: Internal error, reading content file\n");
+				}else{
+					struct stat64 st;
+					if (fstat64(fileno(fin),&st)==-1){
+						tlmp_error ("bod_loadphoto: Internal error, getting file size\n");
+					}else{
+						char buf[50000];
+						int len = fread (buf,1,50000,fin);
+						if (len > 0){
+							glocal.img->setbuffer (buf,len,true);
+						}
+					}
+				}
+				fs_delete_handle (handle);
+			}
+		</f>
+		</call>
+	}
+}
+</mod>
+
+<mod>
 static void bod_publish(
 	CONNECT_INFO &con,
 	PARAM_STRING user,
@@ -397,6 +436,8 @@ static void bod_publish(
 				info.bolixosite = pinfo.bosite_visible ? string_f("%s/%s/%s",nodename,MSG_U(I_PUBLIC,"public"),user.ptr) : "";
 				info.website = pinfo.website;
 				info.interest = pinfo.interest;
+				if (pinfo.photo) bod_loadphoto (info.photo,user.ptr,"photo.jpg");
+				if (pinfo.mini_photo) bod_loadphoto (info.mini_photo,user.ptr,"mini-photo.jpg");
 				<call bolixoapi_publish> (hcon,session,info);
 				<f ok>
 					if (!success) tlmp_error ("publish: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);

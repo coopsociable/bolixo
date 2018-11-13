@@ -100,7 +100,7 @@ writed_save(){
 	echo "mkdir -p $DATA" >>$SAVE
 	echo "test -d $DATA/bo-writed.log && echo \"$DATA/bo-writed.log already exists, can't save\" && exit 1" >>$SAVE
 	echo "mv $ROOTFS/var/log/bolixo/bo-writed.log $DATA/bo-writed.log" >>$SAVE
-	echo "umount $ROOTFS/var/lib/bolixo" >>$SAVE
+	echo "umount $ROOTFS/var/lib/bolixo || true" >>$SAVE
 	chmod +x $SAVE
 }
 writed_restore(){
@@ -112,6 +112,24 @@ writed_restore(){
 	echo "mv $DATA/bo-writed.log $ROOTFS/var/log/bolixo" >>$REST
 	echo "mkdir -p $ROOTFS/var/lib/bolixo" >>$REST
 	echo "mount --bind /var/lib/bolixo $ROOTFS/var/lib/bolixo" >>$REST
+	chmod +x $REST
+}
+bolixod_save(){
+	ROOTFS=/var/lib/lxc/$1/rootfs
+	SAVE=/var/lib/lxc/$1/$1.save
+	DATA=/var/lib/lxc/$1/data
+	echo "#!/bin/sh" > $SAVE
+	echo "mkdir -p $DATA" >>$SAVE
+	echo "umount $ROOTFS/var/lib/bolixod || true" >>$SAVE
+	chmod +x $SAVE
+}
+bolixod_restore(){
+	ROOTFS=/var/lib/lxc/$1/rootfs
+	REST=/var/lib/lxc/$1/$1.restore
+	DATA=/var/lib/lxc/$1/data
+	echo "#!/bin/sh" > $REST
+	echo "mkdir -p $ROOTFS/var/lib/bolixod" >>$REST
+	echo "mount --bind /var/lib/bolixod $ROOTFS/var/lib/bolixod" >>$REST
 	chmod +x $REST
 }
 bod_save(){
@@ -941,6 +959,8 @@ elif [ "$1" = "lxc0-bolixod" ]; then # prod:
 		$INCLUDELANGS \
 		-i /usr/sbin/trli-init -l /tmp/log -n bolixod -p $BOLIXOPATH/bolixod >/var/lib/lxc/bolixod/bolixod-lxc0.sh
 	chmod +x /var/lib/lxc/bolixod/bolixod-lxc0.sh
+	bolixod_save bolixod
+	bolixod_restore bolixod
 elif [ "$1" = "lxc0-bod" ]; then # prod:
 	export LANG=eng
 	$0 bod lxc0 &

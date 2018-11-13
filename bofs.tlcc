@@ -2549,6 +2549,19 @@ static int bofs_bolixoapi_login(
 	return glocal.ret;
 }
 </mod>
+static void bofs_loadimage (BOB_TYPE &img, const char *fname)
+{
+	img.clear();
+	FILE *fin = fopen (fname,"r");
+	if (fin != NULL){
+		char buf[100000];
+		int n = fread (buf,1,sizeof(buf),fin);
+		if (n>0){
+			img.setbuffer(buf,n,true);
+		}
+		fclose (fin);
+	}
+}
 <mod>
 static int bofs_bolixoapi (CONTEXT &ctx, int argc, char *argv[])
 {
@@ -2642,6 +2655,8 @@ static int bofs_bolixoapi (CONTEXT &ctx, int argc, char *argv[])
 				for (unsigned i=0; i<5; i++){
 					info.interest += string_f("%s is interested in various topics such as this one<br>\n",user);
 				}
+				bofs_loadimage (info.photo,"/tmp/photo.jpg");
+				bofs_loadimage (info.mini_photo,"/tmp/mini-photo.jpg");
 				<call bolixoapi_publish> (glocal.ctx->hcon,session,info);
 				<f ok>
 					printf ("publish: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);

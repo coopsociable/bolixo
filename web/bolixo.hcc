@@ -14,6 +14,9 @@ static W_SSTRING w_address("address");
 static W_SSTRING w_city("city");
 static W_SSTRING w_state("state");
 static W_SSTRING w_country("country");
+static W_SSTRING w_interest("interest");
+static W_SSTRING w_node("node");
+static W_SSTRING w_file("file");
 static W_UNSIGNED w_offset("offset");
 
 extern "C" void tlmp_initmod()
@@ -63,14 +66,57 @@ static void bolixo_script()
 	?>
 }
 
+struct WEBENC{
+	string enc(W_SSTRING &var){
+		string tmp;
+		const char *pt = var.c_str();
+		while (*pt != '\0'){
+			if (*pt == ' '){
+				tmp += "%20";
+			}else if (*pt == '&'){
+				tmp += "%26";
+			}else{
+				tmp += *pt;
+			}
+			pt++;
+		}
+		return tmp;
+	}
+};
+
+static void bolixo_prevnext(bool display_more)
+{
+	/- <tr><td align=left colspan=4>
+	WEBENC enc;
+	if (w_offset.getval() > 0){
+		htmlprintf ("<a href=%s?offset=%u&user=%s&fullname=%s&address=%s&city=%s&state=%s&country=%s&interest=%s>%s</a>\n"
+			,tlmpweb_curpage(),w_offset.getval()-10
+			,enc.enc(w_user).c_str(),enc.enc(w_fullname).c_str(),enc.enc(w_address).c_str()
+			,enc.enc(w_city).c_str(),enc.enc(w_state).c_str(),enc.enc(w_country).c_str()
+			,enc.enc(w_interest).c_str()
+			,MSG_U(I_PREVPAGE,"Previous page"));
+	}else{
+		htmlprintf ("<font color=white>%s</font>\n",MSG_R(I_PREVPAGE));
+	}
+	if (display_more){
+		htmlprintf ("<a href=%s?offset=%u&user=%s&fullname=%s&address=%s&city=%s&state=%s&country=%s&interest=%s>%s</a>\n"
+			,tlmpweb_curpage(),w_offset.getval()+10
+			,enc.enc(w_user).c_str(),enc.enc(w_fullname).c_str(),enc.enc(w_address).c_str()
+			,enc.enc(w_city).c_str(),enc.enc(w_state).c_str(),enc.enc(w_country).c_str()
+			,enc.enc(w_interest).c_str()
+			,MSG_U(I_NEXTPAGE,"Next page"));
+	}else{
+		// Make sure the prevpage link stays in place
+		htmlprintf ("<font color=white>%s</font>\n",MSG_R(I_NEXTPAGE));
+	}
+}
+
 <mod>
 extern "C" void webmain()
 {
 	glocal CONNECT_INFO con;
 	glocal.con.port = "/dev/bolixod.sock";
 	glocal.con.secret = "foo";
-	tlmpweb_flushheader();
-	tlmpweb_title (MSG_U(T_BOLIXO_ORG_DIR,"Bolixo.org directory"));
 	<call websteps>();
 	<f setstep>
 	</f>
@@ -78,6 +124,8 @@ extern "C" void webmain()
 		bolixo_script();
 	</f>
 	<f step1>
+		tlmpweb_flushheader();
+		tlmpweb_title (MSG_U(T_BOLIXO_ORG_DIR,"Bolixo.org directory"));
 		DIV v; v.dispflex().flowcol().print();
 		DIV t; t.w(100).print();
 		/- <center><h1>
@@ -92,7 +140,7 @@ extern "C" void webmain()
 			/-#I_LOOKINGFOR Looking for someone ?
 			/- </font></center>
 			/- <table border=0>
-			/-#H_FILTER <tr><td>User<td>Full name<td>Address<td>City<td>State<td>Country
+			/-#H_FILTER <tr><td>User<td>Full name<td>Address<td>City<td>State<td>Country<td>Interest
 			/- <tr><td>
 			field_string (w_user,"");
 			/- <td>
@@ -105,6 +153,8 @@ extern "C" void webmain()
 			field_string (w_state,"");
 			/- <td>
 			field_string (w_country,"");
+			/- <td>
+			field_string (w_interest,"");
 			/- <td>
 			button_submit (MSG_U(B_SEARCH,"Search"));
 			/- </table>
@@ -123,29 +173,21 @@ extern "C" void webmain()
 		filter.city = w_city.c_str();
 		filter.state = w_state.c_str();
 		filter.country = w_country.c_str();
+		filter.interest = w_interest.c_str();
 		<call bolixod_client_pub_search>(glocal.con,filter,w_offset,10);
 		<f ok>
 			if (!success){
 				htmlprintf ("<br><p><center>%s</center><br>\n",MSG_U(E_NOFILTER,"No filter specified"));
 			}else{
 				/- <table id=tb border=0>
-				/- <tr><td align=right colspan=4>
-				if (w_offset.getval() > 0){
-					htmlprintf ("<a href=%s?offset=%u&user=%s>%s</a>\n"
-						,tlmpweb_curpage(),w_offset.getval()-10,w_user.c_str(),MSG_U(I_PREVPAGE,"Previous page"));
-				}
-				if (users.size() == 10){
-					htmlprintf ("<a href=%s?offset=%u&user=%s>%s</a>\n"
-						,tlmpweb_curpage(),w_offset.getval()+10,w_user.c_str(),MSG_U(I_NEXTPAGE,"Next page"));
-				}else{
-					// Make sure the prevpage link stays in place
-					htmlprintf ("<font color=white>%s</font>\n",MSG_R(I_NEXTPAGE));
-				}
+				bolixo_prevnext(users.size()==10);
 				for (auto &u:users){
 					/- <tr><td valign=top>
 					{
 					DIV d("col0"); d.print();
-					htmlprintf ("%s@%s<br>%s\n",u.user,u.nodename,u.fullname);
+					htmlprintf ("%s@%s<br>%s<br>\n",u.user,u.nodename,u.fullname);
+					if (u.photo) htmlprintf ("<img src=%s?webstep=2&user=%s&node=%s&file=photo.jpg>\n",tlmpweb_curpage(),u.user,u.nodename);
+					if (u.mini_photo) htmlprintf ("<img src=%s?webstep=2&user=%s&node=%s&file=mini-photo.jpg>\n",tlmpweb_curpage(),u.user,u.nodename);
 					}
 					/- <td valign=top>
 					DIV info; info.dispflex().flowrow().print();
@@ -173,12 +215,29 @@ extern "C" void webmain()
 						htmlprintf ("%s\n",u.interest);
 					}
 				}
+				bolixo_prevnext(users.size()==10);
 			}
 			/- </table>
 		</f>
 		</call>
 	</f>
 	<f step2>
+		<call bolixod_client_readfile>(glocal.con,w_node.c_str(),w_user.c_str(),w_file.c_str());
+		<f ok>
+			if (!success){
+				tlmpweb_title ("Error");
+				htmlprintf ("msg=%s<br>\n",msg);
+				htmlprintf ("node=%s<br>\n",w_node.c_str());
+				htmlprintf ("user=%s<br>\n",w_user.c_str());
+				htmlprintf ("file=%s<br>\n",w_file.c_str());
+			}else{
+				tlmpweb_setmodified(modified);
+				tlmpweb_doctype ("image/jpeg",content.getsize());
+				htmlwrite (content.getbuffer(),content.getsize());
+			}
+		</f>
+		</call>
+		noend();
 	</f>
 	</call>
 	

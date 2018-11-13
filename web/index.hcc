@@ -1397,6 +1397,23 @@ static void index_show_shortmsg(
 		}
 	</f>
 	<f load>
+		<?
+		<style>
+		.smsg {
+			display: block;
+			overflow-wrap: normal;
+			background-color: pink;
+			border-radius: 10px;
+			padding-left: 5px;
+			padding-right: 5px;
+			padding-top: 5px;
+			padding-bottom: 5px;
+		}
+		.webtable tr {
+			white-space: nowrap;
+		}
+		</style>
+		?>
 		// Defines all posible options for dropdown
 		adddrop_opt (MENU_COPY,MSG_R(M_COPY));
 		index_setpastemenu(this,glocal.path);
@@ -1404,7 +1421,7 @@ static void index_show_shortmsg(
 		adddrop_opt (MENU_UNDELETE,MSG_R(M_UNDELETE));
 		adddrop_opt (MENU_DOWNLOAD,MSG_R(M_DOWNLOAD));
 		glocal unsigned rownum = nbskip;
-		sethead (MSG_U(H_TALK,"From\tSubmit"));
+		sethead (MSG_U(H_TALK,"From\tSubmit\tMessage"));
 		<call bod_client_list_talk>(*glocal.con,w_session.c_str(),"",glocal.groupname,glocal.groupowner,nbskip,nblines);
 		<f ok>
 			if (!success){
@@ -1422,18 +1439,20 @@ static void index_show_shortmsg(
 					}else if (file_is_text(m.file_type)){
 						glocal.webtable.setclickopt (true,"",string_f("webtab_add=2:%s~%s",path.c_str(),"text"));
 					}
+					string small_content;
+					if (m.content[0] != '\0'){
+						small_content = string_f("<div class=smsg>%s</div>",index_format_shortmsg (m.content,5).c_str());
+					}
 					if (strcmp(m.from,userinfo.name.c_str())==0){
-						glocal.webtable.setrow ("sep",glocal.rownum,"\t%s"
-							,m.submit);
+						glocal.webtable.setrow ("sep",glocal.rownum,"\t%s\t%s"
+							,m.submit,small_content.c_str());
 					}else{
 						string dir = string_f("/projects/%s/public",m.from);
 						string img = index_img(step_image,30,dir,"mini-photo.jpg",m.submit);
-						glocal.webtable.setrow ("sep",glocal.rownum,"%s%s\t%s",img.c_str(),m.from,m.submit);
+						glocal.webtable.setrow ("sep",glocal.rownum,"%s%s\t%s\t%s"
+							,img.c_str(),m.from,m.submit,small_content.c_str());
 					}
-					if (m.content[0] != '\0'){
-						string tmp = index_format_shortmsg (m.content,5);
-						glocal.webtable.setrow("image",glocal.rownum,"\t%s\a",tmp.c_str());
-					}else if (file_is_sound(m.file_type)){
+					if (file_is_sound(m.file_type)){
 						glocal.webtable.setrow("image",glocal.rownum,"\t<audio controls>\n"
 							"<source src=\"%s?webstep=%u&image=%s\" type=\"audio/%s\">\n"
 							"</audio>\a"
@@ -1448,7 +1467,7 @@ static void index_show_shortmsg(
 							"Your browser does not support the video tag.\n"
 							"</video>\a"
 							,tlmpweb_curpage(),step_image,path.c_str());
-					}else if (file_is_text(m.file_type)){
+					}else if (small_content.size() ==0 && file_is_text(m.file_type)){
 						// Large text file
 						<call bod_client_readfile_bob>(*glocal.con,w_session.c_str(),path,"",true);
 						<f ok>

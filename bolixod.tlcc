@@ -181,6 +181,80 @@ static int bolixod_sessionstate(
 	return glocal.ret;
 }
 </mod>
+// Check if the nodename is a valid server URL
+static int bolixod_validnode(const char *node)
+{
+	int ret = 0;
+	if (strncasecmp(node,"http://",7)==0){
+		node += 7;
+	}else if (strncasecmp(node,"https://",8)==0){
+		node += 8;
+	}else{
+		ret = -1;
+	}
+	while (*node != '\0'){
+		if (*node == '/' || *node <= ' '){
+			ret = -1;
+			break;
+		}
+		node++;
+	}
+	return ret;
+}
+// Check that a file (or a user id) is valid
+static int bolixod_validfile(const char *file)
+{
+	int ret = 0;
+	if (file[0] == '\0'){
+		ret = -1;
+	}else{
+		while (*file != '\0'){
+			if (*file == '/' || *file <= ' '){
+				ret = -1;
+				break;
+			}
+			file++;
+		}
+	}
+	return ret;
+}
+
+static void bolixod_updatephoto (PARAM_STRING fname, const BOB_TYPE &img)
+{
+	if (img.getsize()==0){
+		unlink (fname.ptr);
+	}else{
+		FILE *fout = fopen (fname.ptr,"w");
+		if (fout == NULL){
+			tlmp_error ("Can't open file %s (%s)\n",fname.ptr,strerror(errno));
+		}else{
+			fwrite (img.getbuffer(),1,img.getsize(),fout);
+			fclose (fout);
+		}
+	}
+}
+// Get the directory where photos are stored for this node
+static string bolixod_getnodedir(PARAM_STRING nodename)
+{
+	string ret;
+	const char *node = nodename.ptr;
+	if (strncasecmp(node,"http://",7)==0){
+		node += 7;
+	}else if (strncasecmp(node,"http://",8)==0){
+		node += 8;
+	}
+	return string_f("/var/lib/bolixod/%s",node);
+}
+// Set the status of the photos (they exist or not)
+static void bolixod_setphotos(USERPUBINFO &info)
+{
+	string dir = bolixod_getnodedir(info.nodename);
+	string tmp = string_f("%s/%s-photo.jpg",dir.c_str(),info.user.c_str());
+	struct stat st;
+	if (stat(tmp.c_str(),&st)!=-1) info.photo = true;
+	tmp = string_f("%s/%s-mini-photo.jpg",dir.c_str(),info.user.c_str());
+	if (stat(tmp.c_str(),&st)!=-1) info.mini_photo = true;
+}
 <mod>
 int main (int argc, char *argv[])
 {
@@ -309,22 +383,26 @@ int main (int argc, char *argv[])
 						// nodename
 					glocal string msg;
 					glocal const char *nodename = nodename;
-					<call sql_query>("select pub_key from nodes where nodename='%s'",nodename);
-					<f onerow>
-						if (row[0] == NULL){
-							bolixod_getpubkey (glocal.nodename);	
-						}else{
-							glocal.msg = "Already registered";
-						}
-					</f>
-					<f empty>
-						if (sql_action("insert into nodes (nodename) value ('%s')",glocal.nodename)==-1){
-							glocal.msg = "Internal error (nodes table)";
-						}else{
-							bolixod_getpubkey (glocal.nodename);	
-						}
-					</f>
-					</call>
+					if (bolixod_validnode (nodename) == -1){
+						glocal.msg = "Invalid nodename";
+					}else{
+						<call sql_query>("select pub_key from nodes where nodename='%s'",nodename);
+						<f onerow>
+							if (row[0] == NULL){
+								bolixod_getpubkey (glocal.nodename);	
+							}else{
+								glocal.msg = "Already registered";
+							}
+						</f>
+						<f empty>
+							if (sql_action("insert into nodes (nodename) value ('%s')",glocal.nodename)==-1){
+								glocal.msg = "Internal error (nodes table)";
+							}else{
+								bolixod_getpubkey (glocal.nodename);	
+							}
+						</f>
+						</call>
+					}
 					if (glocal.msg.size() > 0){
 						rep_registernode(false,glocal.msg);
 					}else{
@@ -489,6 +567,13 @@ int main (int argc, char *argv[])
 									glocal.msg = "Internal error, updating table";
 								}
 							}
+							// Copy or remove the photos
+							string dir = bolixod_getnodedir(glocal.nodename);
+							mkdir (dir.c_str(),0755);
+							string tmp = string_f("%s/%s-photo.jpg",dir.c_str(),glocal.user);
+							bolixod_updatephoto (tmp,glocal.info->photo);
+							tmp = string_f("%s/%s-mini-photo.jpg",dir.c_str(),glocal.user);
+							bolixod_updatephoto (tmp,glocal.info->mini_photo);
 						</f>
 						<f empty>
 							glocal.msg = "Node not found";
@@ -509,6 +594,13 @@ int main (int argc, char *argv[])
 						if (sql_action("delete users from users join nodes on users.nodeid=nodes.nodeid"
 							" where users.name='%s' and nodes.nodename='%s'",user,nodename.c_str())==-1){
 							msg = "Internal error, deleting entry";
+						}else{
+							// Deletes the photos
+							string dir = bolixod_getnodedir(nodename);
+							string tmp = string_f("%s/%s-photo.jpg",dir.c_str(),user);
+							unlink (tmp.c_str());
+							tmp = string_f("%s/%s-mini-photo.jpg",dir.c_str(),user);
+							unlink (tmp.c_str());
 						}
 					}
 					if (msg.size() > 0){
@@ -518,7 +610,7 @@ int main (int argc, char *argv[])
 					}
 				</f>
 				<f pub_search>	// filter:U{FILTER} offset:u nb:u = success:b msg users:v
-					glocal vector<USERINFO> users;
+					glocal vector<USERPUBINFO> users;
 					NSQL_ENCODE enc;
 					string pattern;
 					const char *sep = "";
@@ -547,6 +639,9 @@ int main (int argc, char *argv[])
 						pattern += string_f("%scountry like '%%%%%s%%%%'",sep,enc.enc(filter.country));
 						sep = " or ";
 					}
+					if (filter.interest[0] != '\0'){
+						pattern += string_f("%sinterest like '%%%%%s%%%%'",sep,enc.enc(filter.interest));
+					}
 					if (pattern.size() == 0){
 						rep_pub_search (false,"No filter specified",glocal.users);
 					}else{
@@ -557,7 +652,7 @@ int main (int argc, char *argv[])
 							" where %s order by name,nodename limit %u,%u",pattern.c_str(),offset,nb);
 						<call sql_query>(query.c_str());
 						<f onerow>
-							USERINFO info;
+							USERPUBINFO info;
 							info.user = row[0];
 							info.fullname = row[1];
 							info.address1 = row[2];
@@ -573,6 +668,7 @@ int main (int argc, char *argv[])
 							info.website = row[12];
 							info.interest = row[13];
 							info.nodename = row[14];
+							bolixod_setphotos (info);
 							glocal.users.push_back(info);
 						</f>
 						</call>
@@ -580,7 +676,7 @@ int main (int argc, char *argv[])
 					}
 				</f>
 				<f pub_list>	// prefix offset:u nb:u = success:b msg users:v
-					glocal vector<USERINFO> users;
+					glocal vector<USERPUBINFO> users;
 					<call sql_query>("select users.name,fullname"
 						",address1,address2,city,state,country"
 						",zipcode,email,phone,fax,bolixosite,website,interest"
@@ -588,7 +684,7 @@ int main (int argc, char *argv[])
 						" from users join nodes on nodes.nodeid=users.nodeid"
 						" where fullname >= '%s' limit %u,%u",prefix,offset,nb);
 					<f onerow>
-						USERINFO info;
+						USERPUBINFO info;
 						const char *nodename = row[14];
 						if (strncasecmp(nodename,"https://",8)==0){
 							nodename += 8;
@@ -609,10 +705,54 @@ int main (int argc, char *argv[])
 						info.bolixosite = row[11];
 						info.website = row[12];
 						info.interest = row[13];
+						bolixod_setphotos (info);
 						glocal.users.push_back(info);
 					</f>
 					</call>
 					rep_pub_list (true,"",glocal.users);
+				</f>
+				<f readfile> // node user file = success:b msg modified content:o
+					string msg;
+					BOB_TYPE content;
+					string modified;
+					if (bolixod_validnode(node)==-1){
+						msg = "Invalid node name";
+					}else if (bolixod_validfile(user)==-1){
+						msg = "Invalid user";
+					}else if (bolixod_validfile(user)==-1){
+						msg = "Invalid file";
+					}else{
+						string dir = bolixod_getnodedir(node);
+						string path = string_f("%s/%s-%s",dir.c_str(),user,file);
+						FILE *fin = fopen(path.c_str(),"r");
+						if (fin == NULL){
+							msg = "Internal error opening file";
+							tlmp_error ("Can't open file %s (%s)\n",path.c_str(),strerror(errno));
+						}else{
+							char buf[50000];
+							int len = fread(buf,1,sizeof(buf),fin);
+							if (len > 0){
+								struct stat st;
+								if (fstat(fileno(fin),&st)!=-1){
+									struct tm *t = localtime(&st.st_mtime);
+									modified = string_f("%04d/%02d/%02d %2d:%2d:%2d"
+										,t->tm_year+1900,t->tm_mon+1,t->tm_mday
+										,t->tm_hour,t->tm_min,t->tm_sec);
+								}
+								content.setbuffer(buf,len,true);
+							}else{
+								msg = "Internal error reading file";
+								tlmp_error ("Error reading file %s (%s)\n",path.c_str(),strerror(errno));
+							}
+							fclose (fin);
+						}
+					} 
+					if (msg.size() > 0){
+						content.clear();
+						rep_readfile(false,msg,"",content);
+					}else{
+						rep_readfile(true,"",modified,content);
+					}
 				</f>
 				<f test>
 					string msg;
