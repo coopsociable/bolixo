@@ -638,6 +638,9 @@ elif [ "$1" = "test-sequence" ] ; then # S: Reloads database (big,medium,real,no
 		shift
 	done
 	$0 resetdb 
+	$0 dropbolixodb
+	$0 createbolixodb
+	./bofs bolixoapi registernode http://testlies.news
 	rm -f /var/lib/bolixo/*
 	$0 test-system
 	echo ==== admin

@@ -225,10 +225,15 @@ elif [ "$1" = "manyusers" ] ; then # test: Add tons of users from scratch
 			./test.sh test-adduser $letter-$i
 		done
 	done
-elif [ "$1" = "manysubdirs" ] ; then # test: Add manu subdirs to project public of jacques-A
+elif [ "$1" = "manysubdirs" ] ; then # test: Add many subdirs to project public of jacques-A
 	for ((i=0; i<100; i++))
 	do
 		./bofs mkdir bo://projects/jacques-A/public/sdir-$i
+	done
+elif [ "$1" = "manypublish" ] ; then # test: Add many entries into the bolixo.org directory
+	for ((i=0; i<100; i++))
+	do
+		./bofs bolixoapi publish http://testlies.news jacques-X$i
 	done
 else
 	echo reset print or config

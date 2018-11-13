@@ -14,6 +14,7 @@ static W_SSTRING w_address("address");
 static W_SSTRING w_city("city");
 static W_SSTRING w_state("state");
 static W_SSTRING w_country("country");
+static W_UNSIGNED w_offset("offset");
 
 extern "C" void tlmp_initmod()
 {
@@ -23,6 +24,43 @@ extern "C" void tlmp_initmod()
 static bool f(const char *s)
 {
 	return s[0] != '\0';
+}
+static void bolixo_script()
+{
+	<?
+	<script>
+		document.onreadystatechange = function () {
+			var state = document.readyState;
+			if (state == 'interactive') {
+				fixsize();
+			} else if (state == 'complete') {
+			}
+		};
+		function fitcol(divs){
+			var maxwidth = 0;
+			for (var i=0; i<divs.length; i++){
+				var b = divs[i].getBoundingClientRect();
+				if (maxwidth < b.width) maxwidth = b.width;
+			}
+			for (var i=0; i<divs.length; i++){
+				var d = divs[i];
+				d.style.width = maxwidth;
+			}
+			return maxwidth;
+		}
+		function fixsize(){
+			var w = fitcol (document.getElementsByClassName('col0'));
+			w += fitcol (document.getElementsByClassName('col1'));
+			w += fitcol (document.getElementsByClassName('col2'));
+			w += fitcol (document.getElementsByClassName('col3'));
+			var tb = document.getElementById("tb");
+			var tb_b = tb.getBoundingClientRect();
+			var top = document.getElementById("topform");
+			var top_b = top.getBoundingClientRect();
+			if (tb_b.width > top_b.width) top.style.width = tb_b.width;
+		}
+	</script>
+	?>
 }
 
 <mod>
@@ -36,6 +74,9 @@ extern "C" void webmain()
 	<call websteps>();
 	<f setstep>
 	</f>
+	<f end>
+		bolixo_script();
+	</f>
 	<f step1>
 		DIV v; v.dispflex().flowcol().print();
 		DIV t; t.w(100).print();
@@ -46,6 +87,10 @@ extern "C" void webmain()
 		DIV b; b.w(100).print(); 
 		<call form>("filter");
 		<f setup>
+			DIV d("x","topform"); d.borderradius(5).border(1,"lightgray").bg("lightgray").disp("inline-block").print();
+			/- <center><font size=+2>
+			/-#I_LOOKINGFOR Looking for someone ?
+			/- </font></center>
 			/- <table border=0>
 			/-#H_FILTER <tr><td>User<td>Full name<td>Address<td>City<td>State<td>Country
 			/- <tr><td>
@@ -60,6 +105,8 @@ extern "C" void webmain()
 			field_string (w_state,"");
 			/- <td>
 			field_string (w_country,"");
+			/- <td>
+			button_submit (MSG_U(B_SEARCH,"Search"));
 			/- </table>
 		</f>
 		<f validate>
@@ -76,34 +123,55 @@ extern "C" void webmain()
 		filter.city = w_city.c_str();
 		filter.state = w_state.c_str();
 		filter.country = w_country.c_str();
-		<call bolixod_client_pub_search>(glocal.con,filter,0,10);
+		<call bolixod_client_pub_search>(glocal.con,filter,w_offset,10);
 		<f ok>
-			/- <table border=0>
-			for (auto &u:users){
-				htmlprintf ("<tr><td valign=top>%s<td valign=top>%s<td valign=top>\n",u.user,u.fullname);
-				DIV info; info.dispflex().flowrow().print();
-				if (f(u.address1)  || f(u.address2) || f(u.city) || f(u.state) || f(u.country) || f(u.zipcode)){
-					DIV d; d.bg("lightblue").border(1,"gray").print();
-					htmlprintf ("%s<br>\n",u.address1);
-					htmlprintf ("%s<br>\n",u.address2);
-					htmlprintf ("%s, %s<br>\n",u.city,u.state);
-					htmlprintf ("%s, %s<br>\n",u.country,u.zipcode);
+			if (!success){
+				htmlprintf ("<br><p><center>%s</center><br>\n",MSG_U(E_NOFILTER,"No filter specified"));
+			}else{
+				/- <table id=tb border=0>
+				/- <tr><td align=right colspan=4>
+				if (w_offset.getval() > 0){
+					htmlprintf ("<a href=%s?offset=%u&user=%s>%s</a>\n"
+						,tlmpweb_curpage(),w_offset.getval()-10,w_user.c_str(),MSG_U(I_PREVPAGE,"Previous page"));
 				}
-				if (f(u.email) || f(u.phone) || f(u.fax) || f(u.bolixosite) || f(u.website)){
-					DIV d; d.bg("lightblue").border(1,"gray").print();
-					/- <table border=0>
-					if (f(u.email)) htmlprintf ("<tr><td>%s<td>%s\n",MSG_R(F_EMAIL),u.email);
-					if (f(u.phone)) htmlprintf ("<tr><td>%s<td>%s\n",MSG_R(F_PHONE),u.phone);
-					if (f(u.fax))   htmlprintf ("<tr><td>%s<td>%s\n",MSG_R(F_FAX),u.fax);
-					if (f(u.bolixosite)) htmlprintf ("<tr><td>%s<td><a href=%s>%s</a>\n",MSG_U(F_BOLIXOSITE,"Bolixo site")
-						,u.bolixosite,u.bolixosite);
-					if (f(u.website)) htmlprintf ("<tr><td>%s<td><a href=%s>%s</a>\n",MSG_R(F_WEBSITE)
-						,u.website,u.website);
-					/- </table>
+				if (users.size() == 10){
+					htmlprintf ("<a href=%s?offset=%u&user=%s>%s</a>\n"
+						,tlmpweb_curpage(),w_offset.getval()+10,w_user.c_str(),MSG_U(I_NEXTPAGE,"Next page"));
+				}else{
+					// Make sure the prevpage link stays in place
+					htmlprintf ("<font color=white>%s</font>\n",MSG_R(I_NEXTPAGE));
 				}
-				if (f(u.interest)){
-					DIV d; d.bg("lightgray").border(1,"gray").print();
-					htmlprintf ("%s\n",u.interest);
+				for (auto &u:users){
+					/- <tr><td valign=top>
+					{
+					DIV d("col0"); d.print();
+					htmlprintf ("%s@%s<br>%s\n",u.user,u.nodename,u.fullname);
+					}
+					/- <td valign=top>
+					DIV info; info.dispflex().flowrow().print();
+					if (f(u.address1)  || f(u.address2) || f(u.city) || f(u.state) || f(u.country) || f(u.zipcode)){
+						DIV d("col1"); d.bg("lightblue").margins(2,2).paddings(4,4).borderradius(5).border(1,"gray").print();
+						htmlprintf ("%s<br>\n",u.address1);
+						htmlprintf ("%s<br>\n",u.address2);
+						htmlprintf ("%s, %s<br>\n",u.city,u.state);
+						htmlprintf ("%s, %s<br>\n",u.country,u.zipcode);
+					}
+					if (f(u.email) || f(u.phone) || f(u.fax) || f(u.bolixosite) || f(u.website)){
+						DIV d("col2"); d.bg("lightblue").margins(2,2).paddings(2,2).borderradius(5).border(1,"gray").print();
+						/- <table border=0>
+						if (f(u.email)) htmlprintf ("<tr><td>%s<td>%s\n",MSG_R(F_EMAIL),u.email);
+						if (f(u.phone)) htmlprintf ("<tr><td>%s<td>%s\n",MSG_R(F_PHONE),u.phone);
+						if (f(u.fax))   htmlprintf ("<tr><td>%s<td>%s\n",MSG_R(F_FAX),u.fax);
+						if (f(u.bolixosite)) htmlprintf ("<tr><td>%s<td><a href=%s>%s</a>\n",MSG_U(F_BOLIXOSITE,"Bolixo site")
+							,u.bolixosite,u.bolixosite);
+						if (f(u.website)) htmlprintf ("<tr><td>%s<td><a href=%s>%s</a>\n",MSG_R(F_WEBSITE)
+							,u.website,u.website);
+						/- </table>
+					}
+					if (f(u.interest)){
+						DIV d("col3"); d.bg("lightgray").margins(2,2).paddings(4,4).borderradius(5).border(1,"gray").print();
+						htmlprintf ("%s\n",u.interest);
+					}
 				}
 			}
 			/- </table>

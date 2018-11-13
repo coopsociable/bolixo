@@ -338,8 +338,9 @@ static int bod_bolixoapi_login(
 	glocal int ret = -1;
 	<call bolixoapi_nodelogin> (hcon,nodename);
 	<f ok>
-		tlmp_error ("nodelogin: internal_error=%d success=%d msg=%s session=%s\n",internal_error,success,msg,session);
-		if (success){
+		if (!success){
+			tlmp_error ("nodelogin: internal_error=%d success=%d msg=%s session=%s\n",internal_error,success,msg,session);
+		}else{
 			glocal string sign;
 			*glocal.session = session;
 			CONNECT_INFO con_key;
@@ -351,8 +352,9 @@ static int bod_bolixoapi_login(
 			//printf ("sign=%s\n",glocal.sign.c_str());
 			<call bolixoapi_nodepass> (*glocal.hcon,session,glocal.sign);
 			<f ok>
-				tlmp_error ("nodepass: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
-				if (success){
+				if (!success){
+					tlmp_error ("nodepass: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
+				}else{
 					glocal.ret = 0;
 				}
 			</f>
@@ -397,19 +399,19 @@ static void bod_publish(
 				info.interest = pinfo.interest;
 				<call bolixoapi_publish> (hcon,session,info);
 				<f ok>
-					tlmp_error ("publish: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
+					if (!success) tlmp_error ("publish: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
 				</f>
 				</call>
 			}else{
 				<call bolixoapi_remove> (hcon,session,user);
 				<f ok>
-					tlmp_error ("remove: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
+					if (!success) tlmp_error ("remove: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
 				</f>
 				</call>
 			}
 			<call bolixoapi_nodelogout> (hcon,session);
 			<f ok>
-				tlmp_error ("nodelogout: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
+				if (!success) tlmp_error ("nodelogout: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
 			</f>
 			</call>
 		}

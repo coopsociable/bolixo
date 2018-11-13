@@ -547,31 +547,37 @@ int main (int argc, char *argv[])
 						pattern += string_f("%scountry like '%%%%%s%%%%'",sep,enc.enc(filter.country));
 						sep = " or ";
 					}
-					string query = string_f("select name,fullname"
-						",address1,address2,city,state,country"
-						",zipcode,email,phone,fax,bolixosite,website,interest"
-						" from users where %s limit %u,%u",pattern.c_str(),offset,nb);
-					<call sql_query>(query.c_str());
-					<f onerow>
-						USERINFO info;
-						info.user = row[0];
-						info.fullname = row[1];
-						info.address1 = row[2];
-						info.address2 = row[3];
-						info.city = row[4];
-						info.state = row[5];
-						info.country = row[6];
-						info.zipcode = row[7];
-						info.email = row[8];
-						info.phone = row[9];
-						info.fax = row[10];
-						info.bolixosite = row[11];
-						info.website = row[12];
-						info.interest = row[13];
-						glocal.users.push_back(info);
-					</f>
-					</call>
-					rep_pub_search (true,"",glocal.users);
+					if (pattern.size() == 0){
+						rep_pub_search (false,"No filter specified",glocal.users);
+					}else{
+						string query = string_f("select name,fullname"
+							",address1,address2,city,state,country"
+							",zipcode,email,phone,fax,bolixosite,website,interest,nodename"
+							" from users join nodes on nodes.nodeid=users.nodeid"
+							" where %s order by name,nodename limit %u,%u",pattern.c_str(),offset,nb);
+						<call sql_query>(query.c_str());
+						<f onerow>
+							USERINFO info;
+							info.user = row[0];
+							info.fullname = row[1];
+							info.address1 = row[2];
+							info.address2 = row[3];
+							info.city = row[4];
+							info.state = row[5];
+							info.country = row[6];
+							info.zipcode = row[7];
+							info.email = row[8];
+							info.phone = row[9];
+							info.fax = row[10];
+							info.bolixosite = row[11];
+							info.website = row[12];
+							info.interest = row[13];
+							info.nodename = row[14];
+							glocal.users.push_back(info);
+						</f>
+						</call>
+						rep_pub_search (true,"",glocal.users);
+					}
 				</f>
 				<f pub_list>	// prefix offset:u nb:u = success:b msg users:v
 					glocal vector<USERINFO> users;
