@@ -7,6 +7,8 @@
 #include <tlmpweb.h>
 #include "util.h"
 #include "../bolixo.h"
+#include <translat.h>
+#include "../bolixo.m"
 
 using namespace std;
 
@@ -517,10 +519,16 @@ void printhref_raw(const char *url, const char *text, bool largewindow)
 		htmlprintf ("<a href=\"#\" onclick=%s(\"%s\")>%s</a>",script,url,text);
 	}
 }
-void print_date (PARAM_STRING pdate)
+string format_date (unsigned format, PARAM_STRING pdate)
 {
+	static TRANS_NOTLOAD *tbmonth[]={P_MSG_U(I_JANUARY,"Jan"),P_MSG_U(I_FEBRUARY,"Feb"),P_MSG_U(I_MARCH,"Mar")
+		,P_MSG_U(I_APRIL,"Apr"),P_MSG_U(I_MAY,"May"),P_MSG_U(I_JUNE,"Jun")
+		,P_MSG_U(I_JULY,"Jul"),P_MSG_U(I_AUGUST,"Aug"),P_MSG_U(I_SEPTEMBER,"Sep")
+		,P_MSG_U(I_OCTOBER,"Oct"),P_MSG_U(I_NOVEMBER,"Nov"),P_MSG_U(I_DECEMBER,"Dec")};
 	const char *date = pdate.ptr;
-	if (strlen(date)==19){
+	if (format != 0){
+		return date;
+	}else if (strlen(date)==19){
 		int year = atoi(date);
 		int month = atoi(date+5);
 		int day = atoi(date+8);
@@ -531,8 +539,14 @@ void print_date (PARAM_STRING pdate)
 			hour -= 12;
 			ampm="PM";
 		}
-		static const char *tbmonth[]={"January","February","March","April","May","June","July","August","September","October","November","December"};
-		htmlprintf (" %s %d %04d @%d:%02d%s ",tbmonth[month-1],day,year,hour,minu,ampm);
+		return string_f (" %s %d %04d @%d:%02d%s",tbmonth[month-1]->get(),day,year,hour,minu,ampm);
+	}else if (strlen(date)==10){
+		int year = atoi(date);
+		int month = atoi(date+5);
+		int day = atoi(date+8);
+		return string_f (" %s %d %04d",tbmonth[month-1]->get(),day,year);
+	}else{
+		return date;
 	}
 }
 

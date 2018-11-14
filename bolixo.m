@@ -2,7 +2,7 @@ extern const char **_dictionary_bolixo;
 #ifndef DICTIONARY_REQUEST
 	#define DICTIONARY_REQUEST \
 	const char **_dictionary_bolixo;\
-	TRANSLATE_SYSTEM_REQ _dictionary_req_bolixo("bolixo",_dictionary_bolixo,304,6);\
+	TRANSLATE_SYSTEM_REQ _dictionary_req_bolixo("bolixo",_dictionary_bolixo,316,6);\
 	void dummy_dict_bolixo(){}
 #endif
 #ifndef MSG_U
@@ -317,3 +317,15 @@ extern const char **_dictionary_bolixo;
 #define E_NOFILTER	301
 #define I_PREVPAGE	302
 #define I_NEXTPAGE	303
+#define I_JANUARY	304
+#define I_FEBRUARY	305
+#define I_MARCH	306
+#define I_APRIL	307
+#define I_MAY	308
+#define I_JUNE	309
+#define I_JULY	310
+#define I_AUGUST	311
+#define I_SEPTEMBER	312
+#define I_OCTOBER	313
+#define I_NOVEMBER	314
+#define I_DECEMBER	315

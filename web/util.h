@@ -35,7 +35,7 @@ void util_defstyles();
 void printhref(const char *url, const char *text);
 void printhref(const char *url, const char *text, bool largewindow);
 void printhref_raw(const char *url, const char *text, bool largewindow);
-void print_date (PARAM_STRING date);
+std::string format_date (unsigned format, PARAM_STRING date);
 void util_formanchor();
 void button_preview(int step);
 void draw_tab (unsigned width, unsigned height, const char *fill, const char *fill_in, bool close, const char *title, bool drawx, PARAM_STRING href, PARAM_STRING xref);

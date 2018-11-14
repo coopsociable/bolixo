@@ -1445,7 +1445,7 @@ static void index_show_shortmsg(
 					}
 					if (strcmp(m.from,userinfo.name.c_str())==0){
 						glocal.webtable.setrow ("sep",glocal.rownum,"\t%s\t%s"
-							,m.submit,small_content.c_str());
+							,format_date(userinfo.dateformat,m.submit).c_str(),small_content.c_str());
 					}else{
 						string dir = string_f("/projects/%s/public",m.from);
 						string img = index_img(step_image,30,dir,"mini-photo.jpg",m.submit);
@@ -2027,7 +2027,8 @@ extern "C" void webmain_real()
 						// success:b msg messages:U{SHORTMSG}v
 						for (auto &m:messages){
 							string img = index_img(step_public,30,m.from,"mini-photo.jpg",m.submit);
-							glocal.webtable.setrow ("white",glocal.rownum,"%s%s\t%s\t%s",img.c_str(),m.from,m.submit,m.content);
+							glocal.webtable.setrow ("white",glocal.rownum,"%s%s\t%s\t%s",img.c_str(),m.from
+								,format_date(userinfo.dateformat,m.submit).c_str(),m.content);
 							glocal.rownum++;
 						}
 					</f>
@@ -2441,7 +2442,7 @@ extern "C" void webmain_real()
 						glocal.webtable.setrow ("white",glocal.rownum,"%s\t%s%s\t%s\t%s/%s:%s\t%u"
 							,tbviewed[f.viewed]->get()
 							,f.name,bolixo_isdir(f.type) ? "/" : ""
-							,f.modified
+							,format_date(userinfo.dateformat,f.modified).c_str()
 							,f.owner,f.listname,f.listmode,f.size);
 						glocal.rownum++;
 					}
@@ -2643,7 +2644,7 @@ extern "C" void webmain_real()
 								,m.manager
 								,m.project
 								,m.role
-								,m.submit
+								,format_date(userinfo.dateformat,m.submit).c_str()
 								,m.title);
 							glocal.rownum++;
 						}
@@ -3241,7 +3242,8 @@ extern "C" void webmain_real()
 							unsigned rownum = 0;
 							for (auto &c:contacts){
 								glocal.webtable.setclickopt (true,"",string_f("user=%u:%s",rownum,c.user));
-								glocal.webtable.setrow("white",rownum,"%s\t%s\t%s",c.user,c.reqdate,tbstatus[c.status]);
+								glocal.webtable.setrow("white",rownum,"%s\t%s\t%s",c.user
+									,format_date(userinfo.dateformat,c.reqdate).c_str(),tbstatus[c.status]);
 								rownum++;
 							}
 						</f>
@@ -3416,12 +3418,13 @@ extern "C" void webmain_real()
 							unsigned rownum=0;
 							for (auto &u:users){
 								glocal.webtable.setclickopt (true,"",string_f("user=%u:%s",rownum,u.name));
+								string since = format_date(userinfo.dateformat,u.since);
 								if (u.visible){
 									glocal.webtable.setrow("white",rownum,"<img src=/public/%s/mini-photo.jpg>\t%s\t%s"
-										,u.name,u.name,u.since);
+										,u.name,u.name,since.c_str());
 								}else{
 									glocal.webtable.setrow("white",rownum,"<img src=/private.png>\t%s\t%s"
-										,u.name,u.since);
+										,u.name,since.c_str());
 								}
 								rownum++;
 							}
