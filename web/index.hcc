@@ -1402,12 +1402,13 @@ static void index_show_shortmsg(
 		.smsg {
 			display: block;
 			overflow-wrap: normal;
-			background-color: pink;
+			background-color: #F0F0F0;
 			border-radius: 10px;
 			padding-left: 5px;
 			padding-right: 5px;
 			padding-top: 5px;
 			padding-bottom: 5px;
+			width: 95%;
 		}
 		.webtable tr {
 			white-space: nowrap;
@@ -1427,7 +1428,19 @@ static void index_show_shortmsg(
 			if (!success){
 				//htmlprintf ("Error: %s %s<br>",internal_error?"Internal error":"",msg);
 			}else{
+				string day;
+				static const char *line_styles[]={"sep","sep1"};
+				unsigned line_style = 0;
 				for (auto &m:messages){
+					string now = string(m.submit,10);
+					if (now != day){
+						day = now;
+						glocal.webtable.setclickopt (true,"","");
+						glocal.webtable.setdrop_visible({MENU_PASTE,0});
+						glocal.webtable.setrow("hline",-1,"<font size=-1 color=white>%s</font>\a\a",format_date(userinfo.dateformat,day).c_str());
+						glocal.webtable.resetdrop();
+						line_style=0;
+					}
 					const char *func = "Popup";
 					string path = string_f("/msgs/%s/short-inbox/%s/%s",glocal.groupowner,glocal.groupname,m.uuid);
 					if (file_is_sound(m.file_type)){
@@ -1439,35 +1452,26 @@ static void index_show_shortmsg(
 					}else if (file_is_text(m.file_type)){
 						glocal.webtable.setclickopt (true,"",string_f("webtab_add=2:%s~%s",path.c_str(),"text"));
 					}
-					string small_content;
+					string content;
 					if (m.content[0] != '\0'){
-						small_content = string_f("<div class=smsg>%s</div>",index_format_shortmsg (m.content,5).c_str());
-					}
-					if (strcmp(m.from,userinfo.name.c_str())==0){
-						glocal.webtable.setrow ("sep",glocal.rownum,"\t%s\t%s"
-							,format_date(userinfo.dateformat,m.submit).c_str(),small_content.c_str());
-					}else{
-						string dir = string_f("/projects/%s/public",m.from);
-						string img = index_img(step_image,30,dir,"mini-photo.jpg",m.submit);
-						glocal.webtable.setrow ("sep",glocal.rownum,"%s%s\t%s\t%s"
-							,img.c_str(),m.from,m.submit,small_content.c_str());
-					}
-					if (file_is_sound(m.file_type)){
-						glocal.webtable.setrow("image",glocal.rownum,"\t<audio controls>\n"
-							"<source src=\"%s?webstep=%u&image=%s\" type=\"audio/%s\">\n"
-							"</audio>\a"
-							,tlmpweb_curpage(),step_image,path.c_str(),tbftype[m.file_type]);
+						content = string_f("<div class=smsg>%s</div>",index_format_shortmsg (m.content,5).c_str());
+					}else if (file_is_sound(m.file_type)){
+						string tmp = util_flipspaces(m.submit);
+						content = string_f("<audio controls>\n"
+							"<source src=\"%s?webstep=%u&image=%s&mod=%s\" type=\"audio/%s\">\n"
+							"</audio>"
+							,tlmpweb_curpage(),step_image,path.c_str(),tmp.c_str(),tbftype[m.file_type]);
 					}else if (file_is_image(m.file_type)){
-						string img = index_img (step_image,100,"",path,m.submit);
-						glocal.webtable.setrow("image",glocal.rownum,"\t%s\a\a\a",img.c_str());
+						content = index_img (step_image,100,"",path,m.submit);
 					}else if (file_is_video(m.file_type)){
-						glocal.webtable.setrow("image",glocal.rownum,
-							"\t<video width=\"200\" height=\"200\" controls>\n"
-							"<source src=\"%s?webstep=%u&image=%s\" type=\"video/mp4\">\n"
+						string tmp = util_flipspaces(m.submit);
+						content = string_f(
+							"<video width=\"200\" height=\"200\" controls>\n"
+							"<source src=\"%s?webstep=%u&image=%s&mod=%s\" type=\"video/mp4\">\n"
 							"Your browser does not support the video tag.\n"
-							"</video>\a"
-							,tlmpweb_curpage(),step_image,path.c_str());
-					}else if (small_content.size() ==0 && file_is_text(m.file_type)){
+							"</video>"
+							,tlmpweb_curpage(),step_image,path.c_str(),tmp.c_str());
+					}else if (file_is_text(m.file_type)){
 						// Large text file
 						<call bod_client_readfile_bob>(*glocal.con,w_session.c_str(),path,"",true);
 						<f ok>
@@ -1480,6 +1484,19 @@ static void index_show_shortmsg(
 							}
 						</f>
 						</call>
+					}
+					string time = string_f("<font size=-1>%s</font>",format_time(userinfo.dateformat,m.submit+11).c_str());
+					const char *style = line_styles[line_style];
+					line_style++;
+					if (line_style == 2) line_style = 0;
+					if (strcmp(m.from,userinfo.name.c_str())==0){
+						glocal.webtable.setrow (style,glocal.rownum,"\t%s\t%s"
+							,time.c_str(),content.c_str());
+					}else{
+						string dir = string_f("/projects/%s/public",m.from);
+						string img = index_img(step_image,30,dir,"mini-photo.jpg",m.submit);
+						glocal.webtable.setrow (style,glocal.rownum,"%s%s\t%s\t%s"
+							,img.c_str(),m.from,time.c_str(),content.c_str());
 					}
 					glocal.rownum++;
 				}
@@ -1827,7 +1844,7 @@ extern "C" void webmain_real()
 				web_updateoffsets(glocal.con_sess);
 			}
 		}else{
-			tlmp_error ("settablerow unknown tableid %s\n",tableid);
+			tlmp_error ("settablerow unknown tableid %s %d\n",tableid,current_row);
 		}
 	</f>
 	<f recordform>
@@ -1911,8 +1928,11 @@ extern "C" void webmain_real()
 			c.settableparms ("border=0");
 		}
 		c.setthparms ("align=left bgcolor=lightgray","");
-		c.setrowstyle ("sep","bgcolor=ghostwhite");
-		c.setrowstyle ("sep+current","bgcolor=lightblue");
+		c.setrowstyle ("sep","bgcolor=ghostwhite valign=top");
+		c.setrowstyle ("sep+current","bgcolor=lightblue valign=top");
+		c.setrowstyle ("sep1","bgcolor=white valign=top");
+		c.setrowstyle ("sep1+current","bgcolor=lightblue valign=top");
+		c.setrowstyle ("hline","bgcolor=gray valign=top");
 		c.setrowstyle ("white","bgcolor=white");
 		c.setrowstyle ("white+current","bgcolor=lightblue");
 		c.setrowstyle ("whitebold","bgcolor=white style='font-weight:bold;'");
