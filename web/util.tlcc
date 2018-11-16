@@ -159,7 +159,7 @@ int util_getsessioninfo (CONNECT_INFO &con, CONNECT_INFO &con_sess,string &sessi
 }
 </mod>
 #endif
-void draw_tab (
+unsigned draw_tab (
 	unsigned width,		// TAB width or 0 (computed from the title)
 	unsigned height,
 	const char *fill,	// Fill color
@@ -207,11 +207,12 @@ void draw_tab (
 		htmlout ("</a>\n");
 	}
 	htmlout ("</svg>\n");
+	return width;
 }
 // Same thing with no X
-void draw_tab (unsigned width, unsigned height, const char *fill, const char *fill_in, bool close, const char *title, PARAM_STRING href)
+unsigned draw_tab (unsigned width, unsigned height, const char *fill, const char *fill_in, bool close, const char *title, PARAM_STRING href)
 {
-	draw_tab (width,height,fill,fill_in,close,title,false,href,"");
+	return draw_tab (width,height,fill,fill_in,close,title,false,href,"");
 }
 void draw_left_arrow(bool visible, PARAM_STRING xref)
 {
@@ -572,11 +573,6 @@ void util_formanchor()
 {
 	htmlprintf ("<a name=\"form\">\n");
 }
-void button_preview(int step)
-{
-	htmlprintf ("<input type=\"submit\" value=\"Preview\" formaction=\"%s?webstep=%d&preview=1#form\">\n"
-		,tlmpweb_curpage(),step);
-}
 void button_row(_F_button_row &c, int border, const char *bgcolor, bool alignleft)
 {
 	vector<string> left_lines;
@@ -610,8 +606,8 @@ void button_row(_F_button_row &c, int border, const char *bgcolor, bool alignlef
 			// this.
 			if (c.endline){
 				htmlout ("<div>\n");
-				htmlout ("<svg width=2000 height=30>\n");
-				htmlout ("<path stroke=black stroke-width=1 d='M0,30 h2000' />\n");
+				htmlprintf ("<svg width=%u height=30>\n",c.endline_width);
+				htmlprintf ("<path stroke=black stroke-width=1 d='M0,30 h%u' />\n",c.endline_width);
 				htmlout ("</svg>\n");
 				htmlout ("</div>\n");
 			}
@@ -642,6 +638,11 @@ void button_row(_F_button_row &c)
 void _F_button_row::draw_right()
 {
 }
+void _F_button_row::reset()
+{
+	spliton = false;
+	tlmpweb_resetgrab();
+}
 void _F_button_row::split()
 {
 	if (spliton) htmlout ("</div>\n");
@@ -649,8 +650,9 @@ void _F_button_row::split()
 	spliton = true;
 	//	htmlprintf ("<td align=%s>\n",align);
 }
-void _F_button_row::drawendline()
+void _F_button_row::drawendline(unsigned width)
 {
+	endline_width = width;
 	endline = true;
 }
 void _F_button_row::drawleftarrow (PARAM_STRING href, bool visible)

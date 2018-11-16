@@ -38,9 +38,8 @@ void printhref_raw(const char *url, const char *text, bool largewindow);
 std::string format_date (unsigned format, PARAM_STRING date);
 std::string format_time (unsigned format, PARAM_STRING time);
 void util_formanchor();
-void button_preview(int step);
-void draw_tab (unsigned width, unsigned height, const char *fill, const char *fill_in, bool close, const char *title, bool drawx, PARAM_STRING href, PARAM_STRING xref);
-void draw_tab (unsigned width, unsigned height, const char *fill, const char *fill_in, bool close, const char *title, PARAM_STRING href);
+unsigned draw_tab (unsigned width, unsigned height, const char *fill, const char *fill_in, bool close, const char *title, bool drawx, PARAM_STRING href, PARAM_STRING xref);
+unsigned draw_tab (unsigned width, unsigned height, const char *fill, const char *fill_in, bool close, const char *title, PARAM_STRING href);
 
 #define _TLMP_button_row
 struct _F_button_row{
@@ -51,14 +50,17 @@ struct _F_button_row{
 	string href_arrow_right;
 	bool arrow_right_visible;
 	bool endline;
+	unsigned endline_width;
 	_F_button_row(){
 		align = "left";
 		spliton = false;
 		arrow_left_visible = arrow_right_visible = false;
 		endline = false;
+		endline_width = 0;
 	}
 	void split();
-	void drawendline();
+	void reset();
+	void drawendline(unsigned width);
 	void drawleftarrow(PARAM_STRING href, bool visible);
 	void drawrightarrow(PARAM_STRING href, bool visible);
 	#define _F_button_row_draw(x) void x draw()
