@@ -64,7 +64,7 @@ const unsigned MENU_PREVIEW=4;
 const unsigned MENU_HELPPREVIEW=5;
 const unsigned MENU_UNDELETE=6;
 const unsigned MENU_RENAME=7;
-const unsigned MENU_DOWNLOAD=8;
+const unsigned MENU_DOWNLOAD=100;
 static COPY fcopy;		// Cut buffer, holding a file path
 static string w_session;
 static W_SSTRING w_lang("lang");
@@ -1337,6 +1337,35 @@ static void index_setcopyitem(CONNECT_INFO &con_sess, PARAM_STRING path, PARAM_S
 }
 </mod>
 
+static void index_download (CONNECT_INFO &con, FILE_TYPE file_type, PARAM_STRING fname)
+{
+	// Message do not have a meaningful filename, so we invent something
+	const char *filename = MSG_U(I_BOLIXOMESSAGE,"bolixomessage");
+	const char *extension = "txt";
+	if (file_is_sound(file_type)){
+		filename=MSG_U(I_BOLIXOAUDIO,"bolixoaudio");
+		if (file_type == FILE_SOUND_MP3){
+			extension = "mp3";
+		}else if (file_type == FILE_SOUND_OGG){
+			extension = "ogg";
+		}
+	}else if (file_is_image(file_type)){
+		filename=MSG_U(I_BOLIXOIMAGE,"bolixoimage");
+		if (file_type == FILE_IMAGE_JPG){
+			extension = "jpg";
+		}else if (file_type == FILE_IMAGE_GIF){
+			extension = "gif";
+		}else if (file_type == FILE_IMAGE_PNG){
+			extension = "png";
+		}
+	}else if (file_is_video(file_type)){
+		filename=MSG_U(I_BOLIXOVIDEO,"bolixovideo");
+		extension = "mp4";
+	}
+	tlmpweb_header ("Content-Disposition"," attachment; filename=%s.%s",filename,extension);
+	util_sendfile (con,w_session.c_str(),fname);
+}
+
 <mod>
 static void index_show_shortmsg(
 	CONNECT_INFO &con,
@@ -1385,6 +1414,8 @@ static void index_show_shortmsg(
 						</call>
 					}else if (glocal.dropmenu == MENU_COPY){
 						index_setcopyitem(*glocal.con_sess,glocal.fname,"");
+					}else if (glocal.dropmenu == MENU_DOWNLOAD){
+						index_download (*glocal.con,m.file_type,glocal.fname);
 					}else{
 						//htmlprintf ("uuid=%s<p>\n",m.uuid);
 						index_popup (*glocal.con,m.content,m.file_type,m.submit
@@ -1751,7 +1782,6 @@ extern "C" void webmain_real()
 	}
 	if (w_session.empty()) return;
 	
-	webtable_ctrloutput();
 	<obj WEBCONTEXT wctx>();
 	<f savetablegeometry>
 		VAR var;
@@ -2394,6 +2424,8 @@ extern "C" void webmain_real()
 								</f>
 								</call>
 							}else if (glocal.dropmenu == MENU_DOWNLOAD){
+								tlmpweb_header ("Content-Disposition"," attachment; filename=%s",f.name);
+								util_sendfile (glocal.con,w_session.c_str(),glocal.fname);
 							}else if (glocal.dropmenu == MENU_PREVIEW){
 								if (glocal.is_public && f.type == ENTRY_DIR){
 									glocal.webtabs.addtab(string_f("2:preview-%s",f.name),f.name);
