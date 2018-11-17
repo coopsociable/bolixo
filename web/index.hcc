@@ -1368,7 +1368,7 @@ static void index_setcopyitem(CONNECT_INFO &con_sess, PARAM_STRING path, PARAM_S
 	var.vals.push_back(val);
 	<call bo_sessiond_client_setvar>(con_sess,w_session.c_str(),var);
 	<f ok>
-		if (!success) tlmp_error ("Can't set variable offset: %s\n",msg);
+		if (!success) tlmp_error ("Can't set variable copy: %s\n",msg);
 	</f>
 	</call>
 	fcopy.path = path.ptr;
@@ -1501,12 +1501,13 @@ static void index_show_shortmsg(
 				string day;
 				static const char *line_styles[]={"sep","sep1"};
 				unsigned line_style = 0;
+				glocal.webtable.setdrop_default({MENU_PASTE});
 				for (auto &m:messages){
 					string now = string(m.submit,10);
 					if (now != day){
 						day = now;
 						glocal.webtable.setclickopt (true,"","");
-						glocal.webtable.setdrop_visible({MENU_PASTE,0});
+						glocal.webtable.setdrop_visibles({MENU_PASTE});
 						glocal.webtable.setrow("hline",-1,"<font size=-1 color=white>%s</font>\a\a",format_date(userinfo.dateformat,day).c_str());
 						glocal.webtable.resetdrop();
 						line_style=0;
@@ -2506,6 +2507,7 @@ extern "C" void webmain_real()
 				adddrop_opt (MENU_PREVIEW,MSG_U(M_PREVIEWPUB,"Public preview"));
 				adddrop_opt (MENU_HELPPREVIEW,MSG_U(M_HELPPREVIEW,"Preview help"));
 				if (!glocal.is_public) setdrop_hidden (MENU_HELPPREVIEW);
+				glocal.webtable.setdrop_default({MENU_PASTE});
 				sethead (MSG_U(H_FOLDER,"\tName\tModified\tOwner\tSize"));
 				<call bod_client_listdir>(glocal.con,w_session.c_str(),glocal.path,"",false,nbskip,nblines);
 				<f ok>

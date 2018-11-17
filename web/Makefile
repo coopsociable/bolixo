@@ -31,7 +31,7 @@ install: all
 clean:
 	rm -f *.hc *.o
 
-util.os: util.tlcc util.h
+util.os: util.tlcc util.h /usr/include/tlmp/tlmpweb.h /usr/include/tlmp/tlmpweb.p
 	cctlcc -fPIC -Wall $(OPTIONS) -c util.tlcc -o util.os
 
 ../proto/webapi.protoh: ../proto/webapi.proto ../proto/bod_client.proto
