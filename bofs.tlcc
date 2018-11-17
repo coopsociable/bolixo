@@ -1533,6 +1533,7 @@ static int bofs_send_talk (
 static int bofs_send_talk_file (
 	CONTEXT &ctx,
 	const char *filename,
+	const char *filedate,
 	const char *owner,
 	const char *groupname,
 	const char *groupowner)
@@ -1542,7 +1543,7 @@ static int bofs_send_talk_file (
 		tlmp_error ("groupname required for talkmsg\n");
 	}else{
 		if (ctx.is_internal()){
-			<call bod_client_sendtalk_file>(ctx.con,ctx.sessionid,owner,groupname,groupowner,filename);
+			<call bod_client_sendtalk_file>(ctx.con,ctx.sessionid,owner,groupname,groupowner,filename,filedate);
 			<f ok>
 				if (!success){
 					bofs_error ("msgs",internal_error,msg);
@@ -1552,7 +1553,7 @@ static int bofs_send_talk_file (
 			</f>
 			</call>
 		}else{
-			<call webapi_sendtalk_file>(ctx.hcon,ctx.hsessionid,owner,groupname,groupowner,filename);
+			<call webapi_sendtalk_file>(ctx.hcon,ctx.hsessionid,owner,groupname,groupowner,filename,filedate);
 			<f ok>
 				if (!success){
 					bofs_error ("msgs",internal_error,msg);
@@ -1968,7 +1969,7 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 				tlmp_error ("You must specify the filename\n");
 			}else if (glocal.ctx->login()!=-1){
 				bofs_check_groupopt (glocal.groupname,glocal.groupowner);
-				glocal.ret = bofs_send_talk_file(*glocal.ctx,glocal.filename,glocal.owner,glocal.groupname,glocal.groupowner);
+				glocal.ret = bofs_send_talk_file(*glocal.ctx,glocal.filename,"",glocal.owner,glocal.groupname,glocal.groupowner);
 			}
 		}else if (glocal.reply){
 			if (glocal.content == NULL && glocal.filecontent == NULL){

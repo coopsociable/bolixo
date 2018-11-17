@@ -50,11 +50,14 @@ static const char *newscolor = "#DCDCDC";
 
 static USERINFO userinfo;
 struct COPY{
+	string name;	// Suggested base name
+			// used for short messages
 	string path;
 	string date;
 	void clear(){
 		path.clear();
 		date.clear();
+		name.clear();
 	}
 };
 const unsigned MENU_COPY=1;
@@ -1072,6 +1075,8 @@ static void trli_getsessioninfo(CONNECT_INFO &con, CONNECT_INFO &con_sess, vecto
 							fcopy.path = v.sval;
 						}else if (strcmp(v.sname,"date")==0){
 							fcopy.date = v.sval;
+						}else if (strcmp(v.sname,"name")==0){
+							fcopy.name = v.sval;
 						}
 					}
 				}
@@ -1308,17 +1313,92 @@ static void index_markview (CONNECT_INFO &con, PARAM_STRING fname)
 }
 </mod>
 <mod>
+static ENTRY_TYPE index_entrytype(CONNECT_INFO &con,PARAM_STRING path, FILEINFO &info)
+{
+	glocal FILEINFO *info = &info;
+	<call bod_client_stat>(con,w_session.c_str(),path,"");
+	<f ok>
+		(*glocal.info) = file;
+	</f>
+	</call>
+	return info.type;
+}
+</mod>
+static ENTRY_TYPE index_entrytype(CONNECT_INFO &con,PARAM_STRING path)
+{
+	FILEINFO info;
+	return index_entrytype(con,path,info);
+}
+<mod>
+static int index_paste_copy (CONNECT_INFO &con, PARAM_STRING newfname)
+{
+	glocal int ret = -1;
+	//htmlprintf ("pasting %s %s -> %s<br>\n",fcopy.path.c_str(),fcopy.date.c_str(),newfname.c_str());
+	<call bod_client_copy> (con,w_session.c_str(),fcopy.path,fcopy.date,newfname);
+	<f ok>
+		if (!success){
+			htmlprintf (MSG_U(E_CANTPASTEENTRY,"Can't paste: %s<br>\n"),msg);
+		}else{
+			glocal.ret = 0;
+		}
+	</f>
+	</call>
+	return glocal.ret;
+}
+<mod>
 static void index_paste(CONNECT_INFO &con, PARAM_STRING path)
 {
-	const char *pt = strrchr(fcopy.path.c_str(),'/');
-	if (pt == NULL){
+	if (fcopy.path.size() == 0){
 		htmlprintf (MSG_U(E_NOTHINGTOPASTE,"Nothing to paste: fcopy.path = %s<br>\n"),fcopy.path.c_str());
 	}else{
-		string newfname = string_f("%s/%s",path.ptr,pt+1);
-		//htmlprintf ("pasting %s %s -> %s<br>\n",fcopy.path.c_str(),fcopy.date.c_str(),newfname.c_str());
-		<call bod_client_copy> (con,w_session.c_str(),fcopy.path,fcopy.date,newfname);
+		glocal const char *path = path.ptr;
+		glocal CONNECT_INFO *con = &con;
+		glocal string newfname = string_f("%s/%s",path.ptr,fcopy.name.c_str());
+		ENTRY_TYPE type = index_entrytype(con,glocal.newfname);
+		if (type != ENTRY_NONE){
+			<call form>("pasterename");
+			<f setup>
+				/- <table border=0>
+				/- <tr><td>
+				htmlout (MSG_R(F_OLDNAME));
+				/- <td>
+				htmlout(fcopy.name);
+				/- <tr><td>
+				htmlout (MSG_R(F_NEWNAME));
+				/- <td>
+				field_string (w_name,"");
+				/- </table>
+			</f>
+			<f validate>
+				bool ret = true;
+				glocal.newfname = string_f("%s/%s",glocal.path,w_name.c_str());
+				if (index_entrytype(*glocal.con,glocal.newfname) != ENTRY_NONE){
+					htmlprintf (MSG_U(E_NAMEEXIST,"FIle or folder name %s already exist"),w_name.c_str());
+					ret = false;
+				}
+				return ret;
+			</f>
+			<f process>
+				if (index_paste_copy (*glocal.con,glocal.newfname)==-1){
+					fail = true;
+				}
+			</f>
+			</call>
+		}else{
+			index_paste_copy (con,glocal.newfname);
+		}
+	}
+}
+</mod>
+<mod>
+static void index_paste(CONNECT_INFO &con, PARAM_STRING path, PARAM_STRING groupowner, PARAM_STRING group)
+{
+	if (fcopy.path.size()==0){
+		htmlprintf (MSG_R(E_NOTHINGTOPASTE),fcopy.path.c_str());
+	}else{
+		<call bod_client_sendtalk_file> (con,w_session.c_str(),"",group,groupowner,fcopy.path,fcopy.date);
 		<f ok>
-			if (!success) htmlprintf (MSG_U(E_CANTPASTEENTRY,"Can't paste: %s<br>\n"),msg);
+			if (!success) htmlprintf (MSG_R(E_CANTPASTEENTRY),msg);
 		</f>
 		</call>
 	}
@@ -1332,6 +1412,7 @@ static void index_setpastemenu (_F_webtable *c, PARAM_STRING path)
 	if (fcopy.path.size()==0){
 		disable = true;	// Nothing to paste
 	}else{
+		#if 0
 		if (fcopy.path == path.ptr){
 			disable = true;	// Pasting on itself
 		}else{
@@ -1348,14 +1429,14 @@ static void index_setpastemenu (_F_webtable *c, PARAM_STRING path)
 				}
 			}
 		}
-		const char *pt = strrchr(fcopy.path.c_str(),'/');
-		if (pt != NULL) paste += string(" ") + (pt+1);
+		#endif
+		paste = string_f("%s %s",MSG_R(M_PASTE),fcopy.name.c_str());
 	}
 	c->adddrop_opt (MENU_PASTE,paste);
 	if (disable) c->setdrop_disable(MENU_PASTE);
 }
 <mod>
-static void index_setcopyitem(CONNECT_INFO &con_sess, PARAM_STRING path, PARAM_STRING modified)
+static void index_setcopyitem(CONNECT_INFO &con_sess, PARAM_STRING path, PARAM_STRING modified, PARAM_STRING name)
 {
 	VAR var;
 	var.name = "copy";
@@ -1363,8 +1444,13 @@ static void index_setcopyitem(CONNECT_INFO &con_sess, PARAM_STRING path, PARAM_S
 	val.sname = "path";
 	val.sval = path.ptr;
 	var.vals.push_back(val);
+
 	val.sname = "date";
 	val.sval = modified.ptr;
+	var.vals.push_back(val);
+
+	val.sname = "name";
+	val.sval = name.ptr;
 	var.vals.push_back(val);
 	<call bo_sessiond_client_setvar>(con_sess,w_session.c_str(),var);
 	<f ok>
@@ -1373,14 +1459,18 @@ static void index_setcopyitem(CONNECT_INFO &con_sess, PARAM_STRING path, PARAM_S
 	</call>
 	fcopy.path = path.ptr;
 	fcopy.date = modified.ptr;
+	fcopy.name = name.ptr;
 }
 </mod>
 
-static void index_download (CONNECT_INFO &con, FILE_TYPE file_type, PARAM_STRING fname)
+/*
+	Define a meaningful filename for a short message
+*/
+static void index_msg_name (FILE_TYPE file_type, string &filename, string &extension)
 {
 	// Message do not have a meaningful filename, so we invent something
-	const char *filename = MSG_U(I_BOLIXOMESSAGE,"bolixomessage");
-	const char *extension = "txt";
+	filename = MSG_U(I_BOLIXOMESSAGE,"bolixomessage");
+	extension = "txt";
 	if (file_is_sound(file_type)){
 		filename=MSG_U(I_BOLIXOAUDIO,"bolixoaudio");
 		if (file_type == FILE_SOUND_MP3){
@@ -1401,7 +1491,12 @@ static void index_download (CONNECT_INFO &con, FILE_TYPE file_type, PARAM_STRING
 		filename=MSG_U(I_BOLIXOVIDEO,"bolixovideo");
 		extension = "mp4";
 	}
-	tlmpweb_header ("Content-Disposition"," attachment; filename=%s.%s",filename,extension);
+}
+static void index_download (CONNECT_INFO &con, FILE_TYPE file_type, PARAM_STRING fname)
+{
+	string filename,extension;
+	index_msg_name(file_type,filename,extension);
+	tlmpweb_header ("Content-Disposition"," attachment; filename=%s.%s",filename.c_str(),extension.c_str());
 	util_sendfile (con,w_session.c_str(),fname);
 }
 
@@ -1432,7 +1527,7 @@ static void index_show_shortmsg(
 			</f>
 			</call>
 		}else if (dropmenu == MENU_PASTE){
-			index_paste (*glocal.con,glocal.path);
+			index_paste (*glocal.con,glocal.path,glocal.groupowner,glocal.groupname);
 		}else{
 			<call bod_client_list_talk>(*glocal.con,w_session.c_str(),"",glocal.groupname,glocal.groupowner,noline,1);
 			<f ok>
@@ -1441,18 +1536,22 @@ static void index_show_shortmsg(
 				}else{
 					auto &m = messages[0];
 					glocal string fname = string_f("%s/%s",glocal.path.c_str(),m.uuid);
+					glocal string suggested_name;
+					string filename,extension;
+					index_msg_name (m.file_type,filename,extension);
+					glocal.suggested_name = filename + "." + extension;
 					if (glocal.dropmenu == MENU_DELETE){
 						<call bod_client_delfile> (*glocal.con,w_session.c_str(),glocal.fname);
 						<f ok>
 							if (!success){
 								htmlprintf (MSG_R(E_CANTDELETEENTRY),msg);
 							}else{
-								index_setcopyitem(*glocal.con_sess,glocal.fname,"");
+								index_setcopyitem(*glocal.con_sess,glocal.fname,"",glocal.suggested_name);
 							}
 						</f>
 						</call>
 					}else if (glocal.dropmenu == MENU_COPY){
-						index_setcopyitem(*glocal.con_sess,glocal.fname,"");
+						index_setcopyitem(*glocal.con_sess,glocal.fname,"",glocal.suggested_name);
 					}else if (glocal.dropmenu == MENU_DOWNLOAD){
 						index_download (*glocal.con,m.file_type,glocal.fname);
 					}else{
@@ -1495,13 +1594,13 @@ static void index_show_shortmsg(
 		sethead (MSG_U(H_TALK,"From\tSubmit\tMessage"));
 		<call bod_client_list_talk>(*glocal.con,w_session.c_str(),"",glocal.groupname,glocal.groupowner,nbskip,nblines);
 		<f ok>
+			glocal.webtable.setdrop_default({MENU_PASTE});
 			if (!success){
 				//htmlprintf ("Error: %s %s<br>",internal_error?"Internal error":"",msg);
 			}else{
 				string day;
 				static const char *line_styles[]={"sep","sep1"};
 				unsigned line_style = 0;
-				glocal.webtable.setdrop_default({MENU_PASTE});
 				for (auto &m:messages){
 					string now = string(m.submit,10);
 					if (now != day){
@@ -1635,23 +1734,6 @@ static void index_delete_new_from_old(const vector<string> &news, vector<string>
 			old.erase(p);
 		}
 	}
-}
-<mod>
-static ENTRY_TYPE index_entrytype(CONNECT_INFO &con,PARAM_STRING path, FILEINFO &info)
-{
-	glocal FILEINFO *info = &info;
-	<call bod_client_stat>(con,w_session.c_str(),path,"");
-	<f ok>
-		(*glocal.info) = file;
-	</f>
-	</call>
-	return info.type;
-}
-</mod>
-static ENTRY_TYPE index_entrytype(CONNECT_INFO &con,PARAM_STRING path)
-{
-	FILEINFO info;
-	return index_entrytype(con,path,info);
 }
 static const char *adding = "__add__";
 static bool profile_formactive (_F_webtabs &c, W_SSTRING &var)
@@ -2429,9 +2511,9 @@ extern "C" void webmain_real()
 									</f>
 									</call>
 								}
-								if (glocal.ok) index_setcopyitem(glocal.con_sess,glocal.fname,f.eventdate);
+								if (glocal.ok) index_setcopyitem(glocal.con_sess,glocal.fname,f.eventdate,f.name);
 							}else if (glocal.dropmenu == MENU_COPY){
-								index_setcopyitem(glocal.con_sess,glocal.fname,f.eventdate);
+								index_setcopyitem(glocal.con_sess,glocal.fname,f.eventdate,f.name);
 							}else if (glocal.dropmenu == MENU_RENAME){
 								glocal const char *oldname = f.name;
 								<call form>("rename");
