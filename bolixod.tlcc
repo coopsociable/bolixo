@@ -485,12 +485,10 @@ int main (int argc, char *argv[])
 						</call> 
 					}
 					if (glocal.msg.size() > 0){
-						if (0){
 						<call bo_sessiond_admin_deletesession>(glocal.con_sess,session);
 						<f ok>
 						</f>
 						</call>
-						}
 						rep_nodepass(false,glocal.msg);
 					}else{
 						rep_nodepass(true,"");
@@ -752,6 +750,29 @@ int main (int argc, char *argv[])
 						rep_readfile(false,msg,"",content);
 					}else{
 						rep_readfile(true,"",modified,content);
+					}
+				</f>
+				<f recordemail>		// session email = success:b msg
+					glocal const char *email = email;
+					glocal string msg;
+					glocal string nodename;
+					int state = bolixod_sessionstate(glocal.con_sess,session,2,glocal.nodename,glocal.msg);
+					if (state == 2){
+						<call sql_query>("select 1 from emails where email='%s' and nodename='%s'",email,glocal.nodename.c_str());
+						<f onerow>
+							// Already there, ok
+						</f>
+						<f empty>
+							if (sql_action("insert into emails (email,nodename) values ('%s','%s')",glocal.email,glocal.nodename.c_str())==-1){
+								glocal.msg = "Internal error, emails table";
+							}
+						</f>
+						</call>
+					}
+					if (glocal.msg.size() > 0){
+						rep_recordemail(false,glocal.msg);
+					}else{
+						rep_recordemail(true,"");
 					}
 				</f>
 				<f test>

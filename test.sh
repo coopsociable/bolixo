@@ -388,6 +388,11 @@ elif [ "$1" = "createbolixodb" ] ; then # db: Create bolixo nodes database
 		)engine=$ENGINE;
 		create index users_name on users (name);
 		create index users_nodeid on users (nodeid);
+		create table emails (
+			email varchar(100),
+			nodename varchar(100)
+		)engine=$ENGINE;
+		create index emails_email on emails (email);
 	EOF
 elif [ "$1" = "createdb" ] ; then # db: Create databases
 	ENGINE=myisam
@@ -559,6 +564,8 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 		create index formvars_id on formvars(id);
 	EOF
 	$0 bo-keysd-control genkey --system--
+	sleep 1
+	./bofs bolixoapi registernode $THISNODE
 elif [ "$1" = "dropbolixodb" ] ; then # db: Drop databases
 	mysqladmin -uroot -S $SOCKB -f drop $DBNAMEBOLIXO
 elif [ "$1" = "dropdb" ] ; then # db: Drop databases
@@ -655,10 +662,9 @@ elif [ "$1" = "test-sequence" ] ; then # S: Reloads database (big,medium,real,no
 		fi
 		shift
 	done
-	$0 resetdb 
 	$0 dropbolixodb
 	$0 createbolixodb
-	./bofs bolixoapi registernode http://testlies.news
+	$0 resetdb 
 	rm -f /var/lib/bolixo/*
 	$0 test-system
 	echo ==== admin
