@@ -132,7 +132,7 @@ static string bod_createsession(CONNECT_INFO &con)
 }
 </mod>
 
-static void bofs_error (const char *cmd, bool internal_error, const char *msg, ...)
+__attribute__((format(printf, 3, 4))) static void bofs_error (const char *cmd, bool internal_error, const char *msg, ...)
 {
 	va_list list;
 	va_start (list,msg);
@@ -465,7 +465,7 @@ static int bofs_printonefile (CONTEXT &ctx, bool opt_long, bool https, const cha
 	FILEINFO file;
 	string parent;
 	if (bofs_stat(ctx,path,https,parent,file)==-1){
-		bofs_error ("ls",false,"");
+		bofs_error ("ls",false,"Can't stat file %s",path);
 		ret = -1;
 	}else{
 		if (opt_long){
@@ -514,7 +514,7 @@ static int bofs_ls (CONTEXT &ctx, int argc, char *argv[])
 				<f ok>
 					if (!success){
 						if (internal_error){
-							bofs_error ("ls",true,"");
+							bofs_error ("ls",true,"Can't list directory");
 						}else{
 							// Maybe glocal.path is a file, so listdir failed
 							//tlmp_error ("listdir %d %s\n",success,msg);
@@ -542,7 +542,7 @@ static int bofs_ls (CONTEXT &ctx, int argc, char *argv[])
 				<f ok>
 					if (!success){
 						if (internal_error){
-							bofs_error ("ls",true,"");
+							bofs_error ("ls",true,"webapi can't list directory");
 						}else{
 							glocal.ret = bofs_printonefile(*glocal.ctx,glocal.opt_long,true,glocal.path);
 						}
@@ -753,7 +753,7 @@ static int bofs_copy_file(CONTEXT &ctx, PARAM_STRING path0, BO_SOURCE src0, PARA
 		}else if (src1 == BO_ENTRY){
 			FILE *fin = fopen (path0.ptr,"r");
 			if (fin == NULL){
-				bofs_error ("cp",false,"Can't open file %s (%s)",path0,strerror(errno));
+				bofs_error ("cp",false,"Can't open file %s (%s)",path0.ptr,strerror(errno));
 				glocal.ret = -1;
 			}else{
 				glocal.ret = bofs_write_bofile (*glocal.ctx,path1,fin,"cp");
@@ -2525,7 +2525,7 @@ static int bofs_bolixoapi_login(
 	glocal int ret = -1;
 	<call bolixoapi_nodelogin> (hcon,nodename);
 	<f ok>
-		printf ("nodelogin: internal_error=%d success=%d msg=%s session=%s\n",internal_error,success,msg,session);
+		debug_printf ("nodelogin: internal_error=%d success=%d msg=%s session=%s\n",internal_error,success,msg,session);
 		if (success){
 			glocal string sign;
 			*glocal.session = session;
@@ -2535,21 +2535,37 @@ static int bofs_bolixoapi_login(
 				glocal.sign = sign;
 			</f>
 			</call>
-			//printf ("sign=%s\n",glocal.sign.c_str());
+			debug_printf ("bolixoapi_login sign=%s\n",glocal.sign.c_str());
 			<call bolixoapi_nodepass> (*glocal.hcon,session,glocal.sign);
 			<f ok>
-				printf ("nodepass: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
+				debug_printf ("nodepass: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
 				if (success){
 					glocal.ret = 0;
+				}else{
+					bofs_error ("bolixoapi_login nodepass",internal_error,"success=%d msg=%s\n",success,msg);
 				}
 			</f>
 			</call>
+		}else{
+			bofs_error ("bolixoapi_login nodelogin",internal_error," success=%d msg=%s session=%s\n",success,msg,session);
 		}
 	</f>
 	</call>
 	return glocal.ret;
 }
 </mod>
+<mod>
+static void bofs_bolixoapi_logout(CONNECT_HTTP_INFO &hcon, string &session)
+{
+	<call bolixoapi_nodelogout> (hcon,session);
+	<f ok>
+		debug_printf ("nodelogout: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
+		if (!success){
+			bofs_error ("bolixoapi nodelogout",internal_error,"success=%d msg=%s\n",success,msg);
+		}
+	</f>
+	</call>
+}
 static void bofs_loadimage (BOB_TYPE &img, const char *fname)
 {
 	img.clear();
@@ -2587,7 +2603,7 @@ static int bofs_bolixoapi (CONTEXT &ctx, int argc, char *argv[])
 				 "\tnodelogout directory_url\n"
 				 "\tpublish directory_url user\n"
 				 "\tremove directory_url user\n"
-				 "\trecordemail directory_url email\n"
+				 "\trecordemail directory_url userid email\n"
 				 "\tupdate directory_url user\n"
 				)
 			);
@@ -2617,7 +2633,10 @@ static int bofs_bolixoapi (CONTEXT &ctx, int argc, char *argv[])
 		}else if (strcmp(arg,"registernode")==0 && argc==2){
 			<call bolixoapi_registernode> (glocal.ctx->hcon,argv[1]);
 			<f ok>
-				printf ("internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
+				debug_printf ("registernode internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
+				if (!success){
+					bofs_error ("registernode",internal_error,"success=%d msg=%s\n",success,msg);
+				}
 			</f>
 			</call>
 		}else if (strcmp(arg,"nodelogin")==0 && argc==2){
@@ -2661,14 +2680,13 @@ static int bofs_bolixoapi (CONTEXT &ctx, int argc, char *argv[])
 				bofs_loadimage (info.mini_photo,"/tmp/mini-photo.jpg");
 				<call bolixoapi_publish> (glocal.ctx->hcon,session,info);
 				<f ok>
-					printf ("publish: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
+					debug_printf ("publish: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
+					if (!success){
+						bofs_error ("bolixoapi publish",internal_error,"success=%d msg=%s\n",success,msg);
+					}
 				</f>
 				</call>
-				<call bolixoapi_nodelogout> (glocal.ctx->hcon,session);
-				<f ok>
-					printf ("nodelogout: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
-				</f>
-				</call>
+				bofs_bolixoapi_logout (glocal.ctx->hcon,session);
 			}
 		}else if (strcmp(arg,"remove")==0 && argc==3){
 			const char *nodename = argv[1];
@@ -2677,14 +2695,13 @@ static int bofs_bolixoapi (CONTEXT &ctx, int argc, char *argv[])
 			if (bofs_bolixoapi_login (glocal.ctx->hcon,glocal.ctx->con,nodename,session)!=-1){
 				<call bolixoapi_remove> (glocal.ctx->hcon,session,user);
 				<f ok>
-					printf ("remove: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
+					debug_printf ("remove: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
+					if (!success){
+						bofs_error ("bolixoapi remove",internal_error,"success=%d msg=%s\n",success,msg);
+					}
 				</f>
 				</call>
-				<call bolixoapi_nodelogout> (glocal.ctx->hcon,session);
-				<f ok>
-					printf ("nodelogout: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
-				</f>
-				</call>
+				bofs_bolixoapi_logout (glocal.ctx->hcon,session);
 			}
 		}else if (strcmp(arg,"update")==0 && argc==2){
 			const char *nodename = argv[1];
@@ -2731,27 +2748,20 @@ static int bofs_bolixoapi (CONTEXT &ctx, int argc, char *argv[])
 						</call>
 					}
 				}
-				<call bolixoapi_nodelogout> (glocal.ctx->hcon,session);
-				<f ok>
-					printf ("nodelogout: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
-				</f>
-				</call>
+				bofs_bolixoapi_logout (glocal.ctx->hcon,session);
 			}
-		}else if (strcmp(arg,"recordemail")==0 && argc==3){
+		}else if (strcmp(arg,"recordemail")==0 && argc==4){
 			const char *nodename = argv[1];
-			const char *email = argv[2];
+			const char *userid = argv[2];
+			const char *email = argv[3];
 			string session;
 			if (bofs_bolixoapi_login (glocal.ctx->hcon,glocal.ctx->con,nodename,session)!=-1){
-				<call bolixoapi_recordemail> (glocal.ctx->hcon,session,email);
+				<call bolixoapi_recordemail> (glocal.ctx->hcon,session,userid,email);
 				<f ok>
 					printf ("recordemail: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
 				</f>
 				</call>
-				<call bolixoapi_nodelogout> (glocal.ctx->hcon,session);
-				<f ok>
-					printf ("nodelogout: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
-				</f>
-				</call>
+				bofs_bolixoapi_logout (glocal.ctx->hcon,session);
 			}
 		}else if (strcmp(arg,"infowrite")==0 && argc==1){
 			if (glocal.ctx->login()==-1){

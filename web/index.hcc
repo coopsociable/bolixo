@@ -916,6 +916,7 @@ struct CURRENTFORM{
 	vector<string> vars;
 };
 static vector<CURRENTFORM> currentforms;
+static string nodename;
 <mod>
 static void bolixo_title (const char *title, _F_websteps *c)
 {
@@ -933,7 +934,9 @@ static void bolixo_title (const char *title, _F_websteps *c)
 	htmlprintf ("<table border=0 width=100%% bgcolor=%s cellspacing=0 cellpadding=0><tr><td rowspan=2 align=left>\n",newscolor);
 		/- <table border=0><tr><td><a href=/7s.html><img height=20 src=/favicon.ico></a></td><td align=left>
 		htmlout ("<a href=/index.hc><font size=7 color=\"white\">Bolixo.org</font></a>&nbsp;&nbsp;&nbsp;");
-		//htmlprintf ("screen %u %u f=%u\n",tlmpweb_screenwidth(),tlmpweb_screenheight(),tlmpweb_fontsize());
+		/- <font color=gray>
+		htmlprintf (MSG_U(I_NODENAME,"Node %s"),nodename.c_str());
+		/- </font>
 		/- <td>
 		if (userinfo.name.empty()) printhref ("/about.html",MSG_U(I_ABOUT,"<font color=white>A peer to peer open social media</font>"),true);
 		/- </td></tr></table>
@@ -1861,6 +1864,12 @@ extern "C" void webmain_real()
 	glocal vector<DOCUMENT_POINTER> docpointers;
 	for (unsigned i=0; i<SECTION_NBSECTIONS; i++) glocal.docpointers.push_back(DOCUMENT_POINTER());
 	if (tlmpweb_isrobot()) w_robot = 1;
+	<call loadfile>("/etc/bolixonode.conf",true);
+	<f oneline>
+		nodename = line;
+		return 0;
+	</f>
+	</call>
 	// debug
 	if (0){
 		<call savefile>("/tmp/environ.log",false);
@@ -2217,14 +2226,23 @@ extern "C" void webmain_real()
 		<call form>("login");
 		<f top>
 			bolixo_title (MSG_U(T_LOGIN,"Login"),&glocal.websteps);
+			/- <p>
+			DIV d; d.w(50).marginauto().paddings(10,10).vpaddings(10,10).borderradius(5).border(1,"black").print();
+			d.donotend();
 			if (glocal.account_confirmed){
 				<?#I_ACCTCONFIRM Welcome
 			 	<p>
 				The account is now confirmed, you can log in
 				?>
 			}else{
+				/- <center><font size=+2>
+				htmlprintf (MSG_R(I_NODENAME),nodename.c_str());
+				/- </font></center><p>
 				/-#I_HAVEACCT Already have an account, please login<p>
 			}
+		</f>
+		<f bottom>
+			/- </div>
 		</f>
 		<f setup>
 			/- <table border=0 align=center>
@@ -2289,7 +2307,7 @@ extern "C" void webmain_real()
 		</f>
 		<f setup>
 			/- <table border=0 align=center>
-			/-#I_NICKNAME <tr><td>Enter your nickname<td>
+			/-#I_NICKNAME <tr><td>Select a nickname<td>
 			field_string (new_nickname,"");
 			/-#I_ENTERMAIL <tr><td>Enter your email<td>
 			field_string (new_email,"");
@@ -3682,7 +3700,7 @@ extern "C" void webmain_real()
 			}else if (strcmp(id,"Account")==0){
 				glocal string status = "&nbsp;";
 				sethelp("helpaccount",MSG_U(I_HELPACCOUNT,"Account"));
-				DIV d("webtable"); d.print();
+				DIV d("webtable"); d.autoscroll().print();
 				<call form>("configaccount");
 				<f top>
 					/- <table border=0>

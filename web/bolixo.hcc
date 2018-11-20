@@ -18,6 +18,8 @@ static W_SSTRING w_interest("interest");
 static W_SSTRING w_node("node");
 static W_SSTRING w_file("file");
 static W_UNSIGNED w_offset("offset");
+static W_SSTRING w_email("email");
+static W_SSTRING w_nickname("nickname");
 
 extern "C" void tlmp_initmod()
 {
@@ -61,6 +63,14 @@ static void bolixo_script()
 			var top = document.getElementById("topform");
 			var top_b = top.getBoundingClientRect();
 			if (tb_b.width > top_b.width) top.style.width = tb_b.width;
+			top = document.getElementById("top");
+			var middle = document.getElementById("middle");
+			var search = document.getElementById("search");
+			if (top != null && middle != null && search != null){
+				top_b = top.getBoundingClientRect();
+				var middle_b = middle.getBoundingClientRect();
+				search.style.height = window.innerHeight-top_b.height-middle_b.height-20;
+			}
 		}
 	</script>
 	?>
@@ -111,6 +121,25 @@ static void bolixo_prevnext(bool display_more)
 	}
 }
 
+static void bolixo_title(int called_from_step)
+{
+	DIV t; t.dispflex().flowrow().print();
+	DIV tt; tt.flexgrow().marginauto().disp("inline-block").textalign("center").print();
+	/- <font size=+4>
+	htmlout (MSG_R(T_BOLIXO_ORG_DIR));
+	/- </font>
+	tt.end();
+	tt.flexfixe().sfloat("right").print();
+	if (called_from_step != 5) htmlprintf ("<a href=%s?webstep=5>%s</a>\n",tlmpweb_curpage(),MSG_U(I_ABOUTBOLIXO,"What is bolixo ?"));
+	/- <br>
+	if (called_from_step != 3) htmlprintf ("<a href=%s?webstep=3>%s</a>\n",tlmpweb_curpage(),MSG_R(I_LOGIN));
+	/- <br>
+	if (called_from_step != 4) htmlprintf ("<a href=%s?webstep=4>%s</a>\n",tlmpweb_curpage(),MSG_R(I_CREATEACCT));
+	/- <br>
+	if (called_from_step != 1) htmlprintf ("<a href=%s?webstep=1>%s</a>\n",tlmpweb_curpage(),MSG_U(I_BACKTOSEARCH,"Back to search"));
+	/- <br>
+}
+
 <mod>
 extern "C" void webmain()
 {
@@ -124,15 +153,12 @@ extern "C" void webmain()
 		bolixo_script();
 	</f>
 	<f step1>
-		tlmpweb_flushheader();
 		tlmpweb_title (MSG_U(T_BOLIXO_ORG_DIR,"Bolixo.org directory"));
 		DIV v; v.dispflex().flowcol().print();
-		DIV t; t.w(100).print();
-		/- <center><h1>
-		htmlout (MSG_R(T_BOLIXO_ORG_DIR));
-		/- </h1></center>
-		t.end();
-		DIV b; b.w(100).print(); 
+		DIV b("","top"); b.print(); 
+		bolixo_title(1);
+		b.end();
+		b.id("middle").textalign("center").print();
 		<call form>("filter");
 		<f setup>
 			DIV d("x","topform"); d.borderradius(5).border(1,"lightgray").bg("lightgray").disp("inline-block").print();
@@ -166,6 +192,8 @@ extern "C" void webmain()
 			keepediting = true;
 		</f>
 		</call>
+		b.end();
+		/- <center>
 		FILTER filter;
 		filter.user = w_user.c_str();
 		filter.fullname = w_fullname.c_str();
@@ -179,6 +207,7 @@ extern "C" void webmain()
 			if (!success){
 				htmlprintf ("<br><p><center>%s</center><br>\n",MSG_U(E_NOFILTER,"No filter specified"));
 			}else{
+				DIV d("","search"); d.autoscroll().print();
 				/- <table id=tb border=0>
 				bolixo_prevnext(users.size()==10);
 				for (auto &u:users){
@@ -220,6 +249,7 @@ extern "C" void webmain()
 			/- </table>
 		</f>
 		</call>
+		/- </center>
 	</f>
 	<f step2>
 		<call bolixod_client_readfile>(glocal.con,w_node.c_str(),w_user.c_str(),w_file.c_str());
@@ -238,6 +268,98 @@ extern "C" void webmain()
 		</f>
 		</call>
 		noend();
+	</f>
+	<f step3>
+		tlmpweb_title (MSG_R(T_BOLIXO_ORG_DIR));
+		bolixo_title(3);
+		DIV d; d.w(50).marginauto().vmargins(30,0).vpaddings(10,10).paddings(10,10).border(1,"black").borderradius(5).print();
+		<call form>("login");
+		<f setup>
+			/-#I_REDIRECT Enter your email and you will be redirected to the login page of your bolixo node.
+			/-<p>
+			/- <table border=0>
+			htmlout (MSG_R(I_EMAIL));
+			field_string (w_email,"size=60");
+			/- </table>
+			button_submit();
+		</f>
+		<f validate>
+			return true;
+		</f>
+		<f process>
+			glocal bool fail = false;
+			<call bolixod_client_getnode>(glocal.con,w_email.c_str());
+			<f ok>
+				if (!success){
+					glocal.fail = true;
+					/- <font color=red>* </font>
+					htmlprintf (MSG_U(E_EMAILNOTFOUND,"This email do not correspond to any account"));
+					/-<p>
+				}else{
+					htmlprintf ("<a href=%s/index.hc?webstep=2&email=%s>Click</a>\n",nodename,w_email.c_str());
+					glocal.fail = true;
+				}
+			</f>
+			</call>
+			fail = glocal.fail;
+		</f>
+		</call>
+	</f>
+	<f step4>
+		tlmpweb_title (MSG_R(T_BOLIXO_ORG_DIR));
+		bolixo_title(4);
+		DIV d; d.w(50).marginauto().vmargins(30,0).vpaddings(10,10).paddings(10,10).border(1,"black").borderradius(5).print();
+		<call form>("create");
+		<f setup>
+			/-#I_SELECTNICKNAME Select a nickname you like and an available node will be found.
+			/-<p>
+			/- <table border=0>
+			htmlout (MSG_R(I_NICKNAME));
+			field_string (w_nickname,"size=60");
+			/- </table>
+			button_submit();
+		</f>
+		<f validate>
+			return true;
+		</f>
+		<f process>
+			glocal bool fail = false;
+			<call bolixod_client_newacct_findnode>(glocal.con,w_nickname.c_str());
+			<f ok>
+				if (!success){
+					glocal.fail = true;
+					/- <font color=red>* </font>
+					htmlprintf (MSG_U(E_NICKNAMEUSED,"The nickname is already in all nodes"));
+					/-<p>
+				}else{
+					htmlprintf ("<a href=%s/index.hc?webstep=3&nickname=%s>Click</a>\n",nodename,w_nickname.c_str());
+					glocal.fail = true;
+				}
+			</f>
+			</call>
+			fail = glocal.fail;
+		</f>
+		</call>
+	</f>
+	<f step5>
+		tlmpweb_title (MSG_R(T_BOLIXO_ORG_DIR));
+		bolixo_title(5);
+		DIV d; d.w(50).marginauto().vmargins(30,0).vpaddings(10,10).paddings(10,10).border(1,"black").borderradius(5).print();
+		<?#I_BOLIXO
+			Bolixo is a distributed social media. It is also free software.
+			<p>
+			Bolixo is made of several nodes (or servers) each hosting end users.
+			<ul>
+			<li>End users can communicate and collaborate with users on any node.
+			<li>By default, all user content is private.
+			<li>Users decide what they want to make public.
+			</ul>
+			<p>
+			<ul>
+			<li>Users can send short messages, images, video and sound.
+			<li>Users can create their personnal web page.
+			</ul>
+		?>
 	</f>
 	</call>
 	

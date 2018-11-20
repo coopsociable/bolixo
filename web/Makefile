@@ -23,6 +23,7 @@ FLAGS=-Wall -Wno-unused-function
 
 webapi.os: webapi.hcc ../proto/webapi.protoh
 bolixoapi.os: bolixoapi.hcc ../proto/bolixoapi.protoh ../proto/bolixod_client.protoh
+bolixo.os: bolixo.hcc ../proto/bolixod_client.protoh
 
 install: all
 	@cp *.png *.hc *.html robots.txt favicon.ico $(RPM_BUILD_ROOT)/var/www/html/.

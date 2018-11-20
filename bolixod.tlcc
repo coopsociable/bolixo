@@ -287,7 +287,7 @@ int main (int argc, char *argv[])
 		setarg (' ',"client_secrets",MSG_R(O_CLIENTSECRETS),glocal.client_secretfile,false);
 		setarg (' ',"user",MSG_U(I_RUNASUSER,"Run the program as this user"),glocal.user,false);
 		setarg (' ',"daemon",MSG_U(I_RUNBG,"Run in background"),glocal.daemon,false);
-		setarg (' ',"pidfile",MSG_U(I_PIDFILE,"FIle holding the PID of the process"),glocal.pidfile,false);
+		setarg (' ',"pidfile",MSG_U(I_PIDFILE,"File holding the PID of the process"),glocal.pidfile,false);
 	</f>
 	<f showerror>
 		if (glocal.daemon){
@@ -752,20 +752,39 @@ int main (int argc, char *argv[])
 						rep_readfile(true,"",modified,content);
 					}
 				</f>
-				<f recordemail>		// session email = success:b msg
+				<f recordemail>		// session email userid = success:b msg
 					glocal const char *email = email;
+					glocal const char *userid = userid;
 					glocal string msg;
 					glocal string nodename;
 					int state = bolixod_sessionstate(glocal.con_sess,session,2,glocal.nodename,glocal.msg);
 					if (state == 2){
-						<call sql_query>("select 1 from emails where email='%s' and nodename='%s'",email,glocal.nodename.c_str());
-						<f onerow>
-							// Already there, ok
-						</f>
+						<call sql_query>("select nodeid from nodes where nodename='%s'",glocal.nodename.c_str());
 						<f empty>
-							if (sql_action("insert into emails (email,nodename) values ('%s','%s')",glocal.email,glocal.nodename.c_str())==-1){
-								glocal.msg = "Internal error, emails table";
-							}
+							glocal.msg = "Unknown node";
+						</f>
+						<f onerow>
+							glocal unsigned nodeid = atoi(row[0]);
+							<call sql_query>("select 1 from emails where nodeid=%u and email='%s'"
+								,glocal.nodeid,glocal.email);
+							<f onerow>
+								// Already there, ok
+							</f>
+							<f empty>
+								if (sql_action("insert into emails (email,userid,nodeid) values ('%s','%s',%u)"
+									,glocal.email,glocal.userid,glocal.nodeid)==-1){
+									glocal.msg = "Internal error, emails table";
+								}
+								// Compute the number of users for this node
+								<call sql_query>("select count(*) from emails where nodename='%s'",glocal.nodename.c_str());
+								<f onerow>
+									if (sql_action("update nodes set nbuser=%s where nodeid=%u",row[0],glocal.nodeid)==-1){
+										tlmp_error ("Internal error updation user count for nodename %s\n",glocal.nodename.c_str());
+									}
+								</f>
+								</call>
+							</f>
+							</call>
 						</f>
 						</call>
 					}
@@ -773,6 +792,46 @@ int main (int argc, char *argv[])
 						rep_recordemail(false,glocal.msg);
 					}else{
 						rep_recordemail(true,"");
+					}
+				</f>
+				<f getnode>	// email = success:b msg nodename
+					glocal string msg;
+					glocal string nodename;
+					<call sql_query>("select nodename from emails"
+						" join nodes on nodes.nodeid=emails.nodeid"
+						" where email='%s'",email);
+					<f onerow>
+						glocal.nodename = row[0];
+					</f>
+					<f empty>
+						glocal.msg = "Not found";
+					</f>
+					</call>
+					if (glocal.msg.size() > 0){
+						rep_getnode(false,glocal.msg,"");
+					}else{
+						rep_getnode(true,"",glocal.nodename);
+					}
+				</f>
+				<f newacct_findnode> // userid = success:b msg nodename
+					glocal string msg;
+					glocal string nodename;
+					<call sql_query>("select nodes.nodename,nodes.nbuser from emails"
+						" join nodes on emails.nodeid=nodes.nodeid"
+						" where nodes.nodeid not in (select nodeid from emails where userid='%s')"
+						" order by nodes.nbuser asc limit 1"
+						,userid);
+					<f onerow>
+						glocal.nodename = row[0];
+					</f>
+					<f empty>
+						glocal.msg = "No node available";
+					</f>
+					</call>
+					if (glocal.msg.size() > 0){
+						rep_newacct_findnode(false,"","");
+					}else{
+						rep_newacct_findnode(true,"",glocal.nodename);
 					}
 				</f>
 				<f test>

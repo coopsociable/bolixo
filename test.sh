@@ -364,6 +364,7 @@ elif [ "$1" = "createbolixodb" ] ; then # db: Create bolixo nodes database
 		create table nodes (
 			nodeid int primary key auto_increment,
 			nodename varchar(100),
+			nbuser int default 0,
 			created datetime default current_timestamp,
 			pub_key text default null
 		)engine=$ENGINE;
@@ -389,10 +390,13 @@ elif [ "$1" = "createbolixodb" ] ; then # db: Create bolixo nodes database
 		create index users_name on users (name);
 		create index users_nodeid on users (nodeid);
 		create table emails (
-			email varchar(100),
-			nodename varchar(100)
+			nodeid int,
+			userid varchar(40),
+			email varchar(100)
 		)engine=$ENGINE;
 		create index emails_email on emails (email);
+		create index emails_userid on emails (userid);
+		create index emails_nodeid on emails (nodeid);
 	EOF
 elif [ "$1" = "createdb" ] ; then # db: Create databases
 	ENGINE=myisam
