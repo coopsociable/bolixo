@@ -20,6 +20,7 @@
 #include <tlmpnet.h>
 #include <string>
 #include <vector>
+#include <deque>
 #include <trlitool.h>
 #define DEFINE_TBTYPE
 #define DEFINE_TBFTYPE
@@ -65,6 +66,7 @@ using namespace std;
 #include "proto/bolixod_client.protodef"
 #include "proto/bolixoapi.protoch"
 
+static bool verbose = false;
 static bool testmode = false;
 static TRANS_NOTLOAD *tbviewed[]={P_MSG_U(I_VIEWNEW,"New"),P_MSG_U(I_VIEWSEEN,"Seen"),P_MSG_U(I_VIEWCHANGED,"Changed")};
 
@@ -732,10 +734,17 @@ enum BO_SOURCE { BO_ENTRY, HTTPS_ENTRY, LOCAL_ENTRY};
 
 struct BO_ARGTYPE{
 	string path;
+	string name;
 	BO_SOURCE source;
 	ENTRY_TYPE type;
 	BO_ARGTYPE(PARAM_STRING _path, BO_SOURCE _source, ENTRY_TYPE _type){
 		path = _path.ptr;
+		const char *pt = strrchr(_path.ptr,'/');
+		if (pt != NULL){
+			name = pt+1;
+		}else{
+			name = path;
+		}
 		source = _source;
 		type = _type;
 	} 
@@ -771,6 +780,119 @@ static int bofs_copy_file(CONTEXT &ctx, PARAM_STRING path0, BO_SOURCE src0, PARA
 				return 0;
 			</f>
 			</call>
+		}else if (src1 == BO_ENTRY){
+			<call bod_client_copy>(ctx.con,ctx.sessionid,path0,"",path1);
+			<f ok>
+				if (!success){
+					glocal.ret = -1;
+					bofs_error ("cp",internal_error,msg);
+				}
+			</f>
+			</call>
+		}else if (src1 == HTTPS_ENTRY){
+			notdone();
+		}
+	}else if (src0 == HTTPS_ENTRY){
+		notdone();
+	}
+	return glocal.ret;
+}
+</mod>
+<mod>
+static int bofs_mkdir (CONTEXT &ctx, PARAM_STRING path)
+{
+	glocal int ret = -1;
+	glocal const char *path = path.ptr;
+	<call bod_client_mkdir> (ctx.con,ctx.sessionid,path);
+	<f ok>
+		if (success){
+			glocal.ret = 0;
+		}else{
+			bofs_error ("mkdir",internal_error,MSG_U(E_MKDIR,"Can't create directory %s: %s"),glocal.path,msg);
+		}
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+<mod>
+static int bofs_copy_dir(CONTEXT &ctx, PARAM_STRING path0, BO_SOURCE src0, PARAM_STRING path1, BO_SOURCE src1)
+{
+	glocal CONTEXT *ctx = &ctx;
+	glocal int ret = -1;
+	if (src0 == LOCAL_ENTRY){
+		if (src1 == LOCAL_ENTRY){
+			// Copying two local directories
+			glocal.ret = system (string_f ("cp -r %s %s %s",verbose ? "-v" : "",path0.ptr,path1.ptr).c_str());
+		}else if (src1 == BO_ENTRY){
+			glocal string path1 = path1.ptr;
+			if (bofs_mkdir(ctx,path1)!=-1){
+				<call walkfs>(path0);
+				<f onefile>
+					string dstpath = string_f("%s/%s",glocal.path1.c_str(),relpath);
+					if (is_dir){
+						if (verbose) printf (MSG_U(I_MKDIR,"mkdir %s\n"),dstpath.c_str());
+						glocal.ret = bofs_mkdir (*glocal.ctx,dstpath);
+					}else{
+						FILE *fin = fopen (path,"r");
+						if (fin == NULL){
+							bofs_error ("cp",false,MSG_U(E_OPENFILE,"Can't open file %s (%s)"),path,strerror(errno));
+							glocal.ret = -1;
+						}else{
+							if (verbose) printf (MSG_U(I_COPY,"copy %s %s\n"),path,dstpath.c_str());
+							glocal.ret = bofs_write_bofile (*glocal.ctx,dstpath,fin,"cp");
+							fclose (fin);
+						}
+					}
+					if (glocal.ret == -1) end();
+				</f>
+				</call>
+			}
+		}else if (src1 == HTTPS_ENTRY){
+			notdone();
+		}
+	}else if (src0 == BO_ENTRY){
+		if (src1 == LOCAL_ENTRY){
+			glocal deque<string> todo;
+			glocal.todo.push_back(path0.ptr);
+			glocal.ret = 0;
+			while(glocal.todo.size() > 0 && glocal.ret != -1){
+				glocal bool stop = false;
+				glocal string dir = glocal.todo.front();
+				glocal string path1;
+				glocal.todo.pop_front();
+				// We compute the target directory
+				unsigned len = strlen(path0.ptr);
+				if (glocal.dir.size() > len){
+					glocal.path1 = string_f("%s/%s",path1.ptr,glocal.dir.c_str()+len+1);
+				}else{
+					glocal.path1 = path1.ptr;
+				}
+				if (verbose) printf ("mkdir %s\n",glocal.path1.c_str()); 
+				if (mkdir (glocal.path1.c_str(),0755)==-1){
+					tlmp_error (MSG_R(E_MKDIR),path1.ptr,strerror(errno));
+					glocal.ret = -1;
+				}
+				unsigned offset = 0;
+				while (!glocal.stop && glocal.ret != -1){
+					<call bod_client_listdir> (ctx.con,ctx.sessionid,glocal.dir,"",false,offset,500);
+					<f ok>
+						for (auto &f:files){
+							string path = string_f("%s/%s",glocal.dir.c_str(),f.name);
+							if (bolixo_isdir(f.type)){
+								glocal.todo.push_back(path);
+							}else{
+								string dst = string_f("%s/%s",glocal.path1.c_str(),f.name);
+								if (verbose) printf ("copy %s -> %s\n",path.c_str(),dst.c_str()); 
+								glocal.ret = bofs_copy_file (*glocal.ctx,path,BO_ENTRY,dst,LOCAL_ENTRY);
+							}
+						}
+						glocal.stop = files.size() < 500;
+					</f>
+					</call>
+					offset += 500;
+				}
+			}
 		}else if (src1 == BO_ENTRY){
 			<call bod_client_copy>(ctx.con,ctx.sessionid,path0,"",path1);
 			<f ok>
@@ -835,10 +957,11 @@ static int bofs_cp (CONTEXT &ctx, int argc, char *argv[])
 	glocal.ret = <call tlmpprogram>(argc,argv);
 	<f init>
 		setproginfo ("bocp",VERSION
-			,"Command line tool to copy bolixo content\n"
+			,MSG_U(I_BOCP,"Command line tool to copy bolixo content\n"
 			 "\n"
-			 "bofs cp ...\n"
+			 "bofs cp ...\n")
 			);
+		setarg ('v',"verbose",MSG_U(I_VERBOSE,"Display files as they are copied"),verbose,false);
 	</f>
 	<f main>
 		int ret = 0;
@@ -853,57 +976,63 @@ static int bofs_cp (CONTEXT &ctx, int argc, char *argv[])
 				if (args[i].type == ENTRY_NONE){
 					// Entry does not exist
 					missing_one = true;
-					bofs_error ("cp",false,"Source file/directory %s is missing, can't continue"
+					bofs_error ("cp",false,MSG_U(E_SOURCEMISSING,"Source file/directory %s is missing, can't continue")
 						,args[i].path.c_str());
 				}
 			}
 			if (missing_one){
 				ret = -1;
 			}else if (args_size < 2){
-				bofs_error ("cp",false,"minimum 2 arguments");
+				bofs_error ("cp",false,MSG_U(E_MIN2ARG,"minimum 2 arguments"));
 				ret = -1;
-			}else if (args[args_size-1].type == 'D'){
+			}else if (bolixo_isdir(args[args_size-1].type)){
 				// Last argument is a directory
 				size_t last = args_size-1;
 				const BO_SOURCE dest_source = args[last].source;
 				const char *dir = args[last].path.c_str();
 				for (unsigned i=0; ret != -1 && i<last; i++){
-					const char *name = args[i].path.c_str();
-					const char *pt = strrchr(name,'/');
-					if (pt != NULL) name = pt+1;
+					const char *name = args[i].name.c_str();
 					string dest = string_f("%s/%s",dir,name);
-					if (args[i].type == 'D'){
-						if (dest_source == BO_ENTRY && args[i].source == BO_ENTRY){
-							glocal int ret = 0;
-							<call bod_client_copy>(glocal.ctx->con,glocal.ctx->sessionid,args[i].path,"",dest);
-							<f ok>
-								if (!success){
-									glocal.ret = -1;
-									bofs_error ("cp",internal_error,msg);
-								}
-							</f>
-							</call>
-							ret = glocal.ret;
-						}else{
-							tlmp_error ("bofs cp: Can't copy directory yet\n");
-							ret = -1;
-						}
+					if (bolixo_isdir(args[i].type)){
+						ret = bofs_copy_dir (*glocal.ctx,args[i].path,args[i].source,dest,dest_source);
 					}else{
 						ret = bofs_copy_file (*glocal.ctx,args[i].path,args[i].source,dest,dest_source);
 					}
 				}
 			}else if (args_size != 2){
 				// Last argument is a file, problem
-				bofs_error ("cp",false,"Can't copy multiple inputs onto a file");
+				bofs_error ("cp",false,MSG_U(E_MANYONFILE,"Can't copy multiple inputs onto a file"));
 				ret = -1;
-			}else if (!bolixo_isfile(args[0].type)){
-				bofs_error ("cp",false,"Can't copy a directory over a file");
+			}else if (bolixo_isdir(args[0].type)){
+				if (bolixo_isfile(args[1].type)){
+					bofs_error ("cp",false,MSG_U(E_DIROVERFILE,"Can't copy a directory over a file"));
+				}else if (bolixo_isdir(args[1].type)){
+					// Copy a dir1 into dir2/dir1
+					string path = string_f("%s/%s",args[1].path.c_str(),args[0].name.c_str());
+					ret = bofs_copy_dir (*glocal.ctx
+						,args[0].path,args[0].source
+						,path,args[1].source);
+				}else{
+					// Copy dir1 into dir2, but dir2 does not exist
+					ret = bofs_copy_dir (*glocal.ctx
+						,args[0].path,args[0].source
+						,args[1].path,args[1].source);
+				}
+			}else if (bolixo_isfile(args[0].type)){
+				if (bolixo_isdir(args[1].type)){
+					// Copy file1 onto dir2/file1
+					string path = string_f("%s/%s",args[1].path.c_str(),args[1].name.c_str());
+					ret = bofs_copy_file (*glocal.ctx
+						,args[0].path,args[0].source
+						,path,args[1].source);
+				}else{
+					// Ok, we copy a file onto a file
+					ret = bofs_copy_file (*glocal.ctx
+						,args[0].path,args[0].source
+						,args[1].path,args[1].source);
+				}
 				ret = -1;
 			}else{
-				// Ok, we copy a file onto a file
-				ret = bofs_copy_file (*glocal.ctx
-					,args[0].path,args[0].source
-					,args[1].path,args[1].source);
 			}
 		}
 		return ret;
@@ -1037,18 +1166,7 @@ static int bofs_mkdir (CONTEXT &ctx, int argc, char *argv[])
 		int ret = -1;
 		ret = <call bofs_split>(*glocal.ctx,argc,argv);
 		<f bo_file>
-			glocal int ret = -1;
-			glocal const char *path = path;
-			<call bod_client_mkdir> (ctx.con,ctx.sessionid,path);
-			<f ok>
-				if (success){
-					glocal.ret = 0;
-				}else{
-					bofs_error ("mkdir",internal_error,MSG_U(E_MKDIR,"Can't create directory %s: %s"),glocal.path,msg);
-				}
-			</f>
-			</call>
-			return glocal.ret;
+			return bofs_mkdir(ctx,path);
 		</f>
 		<f https_file>
 			glocal int ret = -1;
