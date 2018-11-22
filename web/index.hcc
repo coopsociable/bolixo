@@ -2428,8 +2428,18 @@ extern "C" void webmain_real()
 			glocal const char *id = id;
 			glocal string path = string_f ("/projects/%s",id);
 			glocal bool is_public = false;
-			const char *pt = strrchr(id,'/');
-			if (pt != NULL) glocal.is_public = strcmp(pt,"/public")==0;
+			glocal bool is_public_sub = false;
+			const char *pt = strchr(id,'/');
+			if (pt != NULL){
+				// is_public is true for the public project
+				// and for sub-directories (direct child) of the public project
+				if (strcmp(pt,"/public")==0){
+					glocal.is_public = true;
+				}else if (strncmp(pt,"/public/",8)==0 && strchr(pt+8,'/') == NULL){
+					glocal.is_public = true;
+					glocal.is_public_sub = true;
+				}
+			}
 			{
 			DIV f; f.id(TAB_FORM).print();
 			<call form>(formid);
@@ -2511,6 +2521,8 @@ extern "C" void webmain_real()
 					</call>
 				}else if (dropmenu == MENU_PASTE){
 					index_paste(glocal.con,glocal.path);
+				}else if (dropmenu == MENU_PREVIEW && glocal.is_public && noline == (unsigned)-1){
+					glocal.webtabs.addtab(string_f("2:preview-%s",glocal.id),glocal.id);
 				}else{
 					if (dropmenu == 0) tlmpweb_flushheader();
 					<call bod_client_listdir>(glocal.con,w_session.c_str(),glocal.path,"",false,noline,1);
@@ -2578,7 +2590,8 @@ extern "C" void webmain_real()
 								util_sendfile (glocal.con,w_session.c_str(),glocal.fname);
 							}else if (glocal.dropmenu == MENU_PREVIEW){
 								if (glocal.is_public && f.type == ENTRY_DIR){
-									glocal.webtabs.addtab(string_f("2:preview-%s",f.name),f.name);
+									string tmp = string_f("%s/%s",glocal.id,f.name);
+									glocal.webtabs.addtab(string_f("2:preview-%s",tmp.c_str()),tmp);
 								}
 							}else if (glocal.dropmenu != 0){
 								if (file_is_text(f.file_type)){
@@ -2616,7 +2629,11 @@ extern "C" void webmain_real()
 				adddrop_opt (MENU_PREVIEW,MSG_U(M_PREVIEWPUB,"Public preview"));
 				adddrop_opt (MENU_HELPPREVIEW,MSG_U(M_HELPPREVIEW,"Preview help"));
 				if (!glocal.is_public) setdrop_hidden (MENU_HELPPREVIEW);
-				glocal.webtable.setdrop_default({MENU_PASTE});
+				if (glocal.is_public){
+					glocal.webtable.setdrop_default({MENU_PASTE,MENU_PREVIEW,MENU_HELPPREVIEW});
+				}else{
+					glocal.webtable.setdrop_default({MENU_PASTE});
+				}
 				sethead (MSG_U(H_FOLDER,"\tName\tModified\tOwner\tSize"));
 				<call bod_client_listdir>(glocal.con,w_session.c_str(),glocal.path,"",false,nbskip,nblines);
 				<f ok>
@@ -2627,7 +2644,7 @@ extern "C" void webmain_real()
 						string path = string_f ("%s/%s",glocal.id,f.name);
 						glocal.webtable.setdrop_hidden (MENU_PREVIEW);
 						if (bolixo_isdir(f.type)){
-							if (glocal.is_public){
+							if (glocal.is_public && !glocal.is_public_sub){
 								glocal.webtable.setdrop_visible (MENU_PREVIEW);
 							}
 							glocal.webtable.setclickopt (true,"",string_f("webtab_add=1:%s",path.c_str()));
