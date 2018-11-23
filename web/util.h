@@ -79,4 +79,25 @@ void util_sendfile (CONNECT_INFO &con, PARAM_STRING session, PARAM_STRING filena
 int util_sendpublicfile (CONNECT_INFO &con, PARAM_STRING filename);
 std::string util_flipspaces(PARAM_STRING s);
 
+class FILEINFO;
+class SHORTMSG;
 
+#define _TLMP_public_page
+struct _F_public_page{
+	void sendhtml (const BOB_TYPE &content);
+	#define _F_public_page_listdir(x) int x listdir(PARAM_STRING path, unsigned offset, unsigned nb, std::vector<FILEINFO> &files)
+	virtual _F_public_page_listdir( )=0;
+	#define _F_public_page_list_talk(x) int x list_talk(unsigned offset, unsigned nb, std::vector<SHORTMSG> &msgs)
+	virtual _F_public_page_list_talk( )=0;
+	#define _F_public_page_readfile(x) int x readfile(PARAM_STRING path, BOB_TYPE &content)
+	virtual _F_public_page_readfile( )=0;
+	#define _F_public_page_process(x) void x process()
+	virtual _F_public_page_process( )=0;
+	#define _F_public_page_baseurl(x) std::string x baseurl(PARAM_STRING name, PARAM_STRING modified)
+	virtual _F_public_page_baseurl( )=0;
+	#define _F_public_page_sendfile(x) void x sendfile(PARAM_STRING name)
+	virtual _F_public_page_sendfile( )=0;
+};
+
+void public_page (_F_public_page &c);
+void public_display (_F_public_page &c, CONNECT_INFO &con, PARAM_STRING user);

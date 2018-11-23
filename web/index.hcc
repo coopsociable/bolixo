@@ -515,7 +515,7 @@ static void webtabs(_F_webtabs &c,
 
 	// We draw the tabs content before drawing the tabs because the tabs may change
 	// the content of the tab
-	vector<string> lines[4];
+	vector<GRABLINE> lines[4];
 	c.added_tab = -1;
 	deque<int> typeorder={3,2,1,0};
 	while (typeorder.size() > 0){
@@ -581,7 +581,7 @@ static void webtabs(_F_webtabs &c,
 	}
 	if (draw_ok){
 		DIV sc; sc.w(100).dispflex().flowrow().align("stetch").bg("white").print();
-		vector<string> docs;
+		vector<GRABLINE> docs;
 		tlmpweb_pushgrab(docs);
 		c.documents();
 		tlmpweb_popgrab();
@@ -2691,7 +2691,76 @@ extern "C" void webmain_real()
 				index_doc(glocal.docpointers[SECTION_NONE],section_none);
 			}else if (strncmp(id,"preview-",8)==0){
 				DIV d("webtable"); d.print();
-				htmlprintf ("Preview of the folder %s<br>\n",id+8);	
+				glocal const char *base = id+8;
+				glocal string groupowner;
+				const char *pt = strchr(glocal.base,'/');
+				if (pt != NULL) glocal.groupowner = string(glocal.base,pt-glocal.base);;
+				// htmlprintf (MSG_U(I_PREVIEW,"Preview of the folder %s"),glocal.base);
+				// /- <br>
+				<call public_page>();
+				<f list_talk>
+					glocal vector<SHORTMSG> *msgs = &msgs;
+					glocal int ret = -1;
+					<call bod_client_list_talk>(glocal.con,w_session.c_str(),"","public",glocal.groupowner,offset,nb);
+					<f ok>
+						if (success){
+							glocal.ret = 0;
+							glocal.msgs->clear();
+							for (auto &m:messages) glocal.msgs->push_back(m);
+						}
+					</f>
+					</call>
+					return glocal.ret;
+				</f>
+				<f listdir>
+					glocal int ret = -1;
+					glocal vector<FILEINFO> *files = &files;
+					string fname;
+					if (strcmp(path.ptr,"/")==0){
+						fname = string_f("/projects/%s",glocal.base);
+					}else{
+						fname = string_f("/projects/%s%s",glocal.base,path.ptr);
+					}
+					<call bod_client_listdir>(glocal.con,w_session.c_str(),fname,"",false,offset,nb);
+					<f ok>
+						if (success){
+							glocal.ret = 0;
+							glocal.files->clear();
+							for (auto &f:files) glocal.files->push_back(f);
+						}
+					</f>
+					</call>
+					return glocal.ret;
+				</f>
+				<f readfile>
+					glocal int ret = -1;
+					glocal BOB_TYPE *content = &content;
+					string fname = string_f("/projects/%s/%s",glocal.base,path.ptr);
+					<call bod_client_readfile_bob>(glocal.con,w_session.c_str(),fname,"",true);
+					<f ok>
+						if (success){
+							glocal.ret = 0;
+							*glocal.content = content;
+						}
+					</f>
+					</call>
+					return glocal.ret;
+				</f>
+				<f baseurl>
+					string tmp = util_flipspaces(modified.ptr);
+					string ret = string_f("%s?webstep=%d&image=/projects/%s/%s&mod=%s"
+						,tlmpweb_curpage(),step_image,glocal.base,name.ptr,tmp.c_str());
+					return ret;
+				</f>
+				<f process>
+					public_display (*this,glocal.con,userinfo.name);
+				</f>
+				<f sendfile>
+					string fname = string_f("/projects/%s/%s",glocal.base,name.ptr);
+tlmp_error ("sendfile %s\n",fname.c_str());
+					util_sendfile(glocal.con,w_session.c_str(),fname);
+				</f>
+				</call>
 			}else if (file_is_image(info.file_type)){
 				DIV d("webtable"); d.print();
 				htmlprintf (MSG_R(I_DOCNAME),glocal.filename);
@@ -3847,6 +3916,7 @@ extern "C" void webmain_real()
 					bool ret = true;
 					if (w_bosite.getval() != 0 && w_public_view.getval()==0){
 						ret = false;
+						/- <font color=red>* </font>
 						/-#E_CANTPUBBOSITE You can't publish your bolixo page unless you enable public view
 					}
 					return ret;
