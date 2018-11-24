@@ -73,7 +73,7 @@ static void webmain_real()
 			<f listdir>
 				glocal int ret = -1;
 				glocal vector<FILEINFO> *files = &files;
-				<call bod_client_public_listdir>(glocal.con,glocal.user,path,offset,nb);
+				<call bod_client_public_listdir>(glocal.con,glocal.user,string_f("/project%s",path.ptr),offset,nb);
 				<f ok>
 					if (success){
 						glocal.ret = 0;
@@ -87,7 +87,7 @@ static void webmain_real()
 			<f readfile>
 				glocal int ret = -1;
 				glocal BOB_TYPE *content = &content;
-				<call bod_client_public_readfile>(glocal.con,glocal.user,path,0);
+				<call bod_client_public_readfile>(glocal.con,glocal.user,string_f("/project/%s",path.ptr),0);
 				<f ok>
 					if (success){
 						glocal.ret = 0;
@@ -97,12 +97,16 @@ static void webmain_real()
 				</call>
 				return glocal.ret;
 			</f>
-			<f baseurl>
-				return string_f("/public/%s/%s?mod=%s",glocal.user.c_str(),name.ptr,modified.ptr);
+			<f projecturl>
+				const char *slash = name.ptr[0] == '/' ? "" : "/";
+				return string_f("/public/%s/project%s%s?mod=%s",glocal.user.c_str(),slash,name.ptr,modified.ptr);
+			</f>
+			<f msgurl>
+				return string_f("/public/%s/msg/%s?mod=%s",glocal.user.c_str(),name.ptr,modified.ptr);
 			</f>
 			<f process>
 				tlmpweb_title (glocal.user.c_str());
-				tlmpweb_setbaseurl(string_f("/Public/%s",glocal.user.c_str()));
+				//tlmpweb_setbaseurl(string_f("/Public/%s",glocal.user.c_str()));
 				tlmpweb_body ("white",NULL);
 				public_display (*this,glocal.con,glocal.user);
 			</f>

@@ -213,19 +213,29 @@ static int bod_checkpublic(const char *username, const char *relative_path, stri
 	</call>
 	pubdir = glocal.public_dir.size() > 0;
 	if (glocal.ret != -1 && relative_path != NULL){
-		if (strcmp(relative_path,"/mini-photo.jpg")==0
-			|| strcmp(relative_path,"/photo.jpg")==0
-			|| glocal.public_dir == "/"){
-			abspath = string_f("/projects/%s/public",username);
-		}else{
-			abspath = string_f("/projects/%s/public/%s",username,glocal.public_dir.c_str());
-		}
-		if (strcmp(relative_path,"/") !=0){
-			if (relative_path[0] == '/'){
-				abspath += relative_path;
+		if (relative_path[0] == '/') relative_path++;
+		if (strncmp(relative_path,"project/",8)==0){
+			relative_path += 7;
+			if (strcmp(relative_path,"/mini-photo.jpg")==0
+				|| strcmp(relative_path,"/photo.jpg")==0
+				|| glocal.public_dir == "/"){
+				abspath = string_f("/projects/%s/public",username);
 			}else{
-				abspath += string_f ("/%s",relative_path);
+				abspath = string_f("/projects/%s/public/%s",username,glocal.public_dir.c_str());
 			}
+			if (strcmp(relative_path,"/") !=0){
+				if (relative_path[0] == '/'){
+					abspath += relative_path;
+				}else{
+					abspath += string_f ("/%s",relative_path);
+				}
+			}
+		}else if (strncmp(relative_path,"msg/",4)==0){
+			relative_path += 4;
+			abspath = string_f("/msgs/%s/short-inbox/public/%s",username,relative_path);
+		}else{
+			msg = MSG_U(E_IVLDPUBPREFIX,"Invalid prefix for public access");
+			glocal.ret = -1;
 		}
 	}
 	return glocal.ret;
@@ -294,7 +304,8 @@ static void bod_list_talk (
 	glocal vector<SHORTMSG> *msgs = &msgs;
 	int dirid = fs_find_short_inbox (ownerid,groupowner,groupname,msg);
 	if (dirid != -1){
-		<call sql_query>("select dirs_content.name,dirs_content.modified,id2name.name,files.filetype,dirs_content.itemid,files.content"
+		<call sql_query>("select dirs_content.name,dirs_content.modified,id2name.name,files.filetype"
+			",dirs_content.itemid,files.content,dirs_content.eventtime"
 			" from dirs_content"
 			" join files on files.id = dirs_content.itemid and files.modified = dirs_content.modified"
 			" join ids on dirs_content.itemid = ids.id"
@@ -305,7 +316,9 @@ static void bod_list_talk (
 			SHORTMSG msg;
 			msg.uuid = row[0];
 			const char *modified = row[1];
-			msg.submit = modified;
+			msg.submit = string(row[6],19);		// The file modification time is not useful for message
+								// An image paste into a message list will keep its
+								// modification time. So we use the eventtime.
 			msg.from = row[2];
 			msg.file_type = row[3] == NULL ? FILE_UNKNOWN : (FILE_TYPE)atoi(row[3]);
 			if (row[5] != NULL){

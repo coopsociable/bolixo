@@ -55,7 +55,7 @@ inline bool file_is_video (FILE_TYPE type){
 static char tbtype[]={' ','_','D','F','M','C'};
 #endif
 #ifdef DEFINE_TBFTYPE
-static const char *tbftype[]={
+const char *tbftype[]={
 	"?",	//FILE_UNKNOWN,
 	"txt",	//FILE_TEXT,
 	"mp3",	//FILE_SOUND_MP3,
@@ -65,6 +65,8 @@ static const char *tbftype[]={
 	"gif",	//FILE_IMAGE_GIF,
 	"vid"	//FILE_VIDEO,
 };
+#else
+extern const char *tbftype[];
 #endif
 
 

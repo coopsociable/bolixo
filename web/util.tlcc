@@ -6,6 +6,7 @@
 #include <string>
 #include <tlmpweb.h>
 #include "util.h"
+#define DEFINE_TBFTYPE
 #include "../bolixo.h"
 #include <translat.h>
 #include "../bolixo.m"
@@ -750,30 +751,74 @@ string util_flipspaces(PARAM_STRING src)
 	}
 	return ret;
 }
+/*
+	Format a short message, remove the signature
+*/
+string util_format_shortmsg (PARAM_STRING msg, unsigned nblines)
+{
+	const char *txt = msg.ptr;
+	string ret;
+	unsigned pos=0;
+	unsigned noline=0;
+	if (nblines == 0) nblines=(unsigned)-1;
+	while (*txt != '\0' && noline < nblines){
+		if (strncmp(txt,"------\n",7)==0){
+			break;
+		}else if (*txt == '<'){
+			ret += "&lt;";
+		}else if (*txt == '>'){
+			ret += "&gt;";
+		}else if (*txt == '\n'){
+			ret += "<br>\n";
+			pos=0;
+			noline++;
+		}else if (*txt == '\t'){
+			unsigned nb = 4 - (pos%4);
+			for (unsigned i=0; i<nb; i++) ret += "&nbsp;";
+		}else{
+			ret += *txt;
+			pos++;
+		}
+		txt++;
+	}
+	return ret;
+}
+string util_format_shortmsg (PARAM_STRING txt)
+{
+	return util_format_shortmsg (txt,0);
+}
+
 // Send an HTML document. Does some remaping of relative URLs. Prevent scripting as well.
 void _F_public_page::sendhtml (const BOB_TYPE &content)
 {
 	string tmp((const char*)content.getbuffer(),content.getsize());
 	const char *txt = tmp.c_str();
+	const char *tosend = txt;
 	while (*txt != '\0'){
 		if (strncmp(txt,"src=",4)==0){
-			htmlout ("src=");
 			txt += 4;
-			if (*txt == '"' || *txt == '\'') htmlout (*txt++);
+			char space = ' ';	// Spaces are not part of the URL unless there is a quote
+			if (*txt == '"' || *txt == '\''){
+				txt++;
+				space = '\0';
+			}
 			if (strncasecmp(txt,"http:",5)==0 || strncasecmp(txt,"https:",6)==0 || *txt == '/'){
-				htmlout (*txt++);
+				txt++;
 			}else{
 				const char *pt = txt;
-				while (*pt != '\0' && *pt != '"' && *pt != '\'' && *pt != '>') pt++;
+				while (*pt != '\0' && *pt > space && *pt != '"' && *pt != '\'' && *pt != '>') pt++;
 				string url(txt,pt-txt);
-				string newurl = baseurl (url,"");
+				string newurl = projecturl (url,"");
+				if (tosend < txt) htmlout (tosend,txt-tosend);
 				htmlout (newurl);
 				txt = pt;
+				tosend = txt;
 			}
 		}else{
-			htmlout (*txt++);
+			txt++;
 		}
 	}
+	if (tosend < txt) htmlout (tosend,txt-tosend);
 }
 /*
 	Display the public page of a user either in the front-end (preview mode) or in the public.hc page
@@ -782,6 +827,16 @@ void public_page (_F_public_page &c)
 {
 	c.process();
 }
+#if 0
+static string util_img(unsigned step, unsigned width, PARAM_STRING dirpath, PARAM_STRING filename, PARAM_STRING date)
+{
+	string tmp = util_flipspaces(date);
+	const char *sep = "/";
+	if (dirpath.ptr[0] == '\0') sep = "";
+	return string_f ("<img width=%u src=%s?webstep=%u&image=%s%s%s&mod=%s>"
+		,width,tlmpweb_curpage(),step,dirpath.ptr,sep,filename.ptr,tmp.c_str());
+}
+#endif
 <mod>
 void public_display (_F_public_page &c, CONNECT_INFO &con, PARAM_STRING user)
 {
@@ -797,27 +852,77 @@ void public_display (_F_public_page &c, CONNECT_INFO &con, PARAM_STRING user)
 	<f top_left>
 		DIV d; d.h(100).w(100).dispflex().flowrow().print();
 		DIV dd; dd.dispflex().flexfixe().print();
-		htmlprintf ("<img width=30 src=/public/%s/mini-photo.jpg>\n",glocal.user);
+		htmlprintf ("<img width=30 src=%s>\n",glocal.c->projecturl("/mini-photo.jpg","").c_str());
 		dd.end();
 		dd.dispflex().flexfixe().print();
-		htmlprintf ("<img height=100%% src=/public/%s/photo.jpg>\n",glocal.user);
+		htmlprintf ("<img height=100%% src=%s>\n",glocal.c->projecturl("/photo.jpg","").c_str());
 	</f>
 	<f left>
 		string table = string("talk")+"public";
 		DIV d; d.autoscroll().print();
 		<call webtable>(table,"100%");
 		<f load>
+			setrowstyle ("hline","bgcolor=gray valign=top");
+			setrowstyle ("sep","bgcolor=ghostwhite valign=top");
+			setrowstyle ("sep+current","bgcolor=lightblue valign=top");
+			setrowstyle ("sep1","bgcolor=white valign=top");
+			setrowstyle ("sep1+current","bgcolor=lightblue valign=top");
 			setthparms ("align=left bgcolor=lightgray","");
 			setrowstyle ("white","bgcolor=white");
-			sethead  ("When\tWhat");
+			sethead  (MSG_U(H_MESSAGES,"Messages\a"));
 			glocal unsigned rownum = nbskip;
 			unsigned offset=0;
+			static const char *func = "Popup";
 			while (1){
 				glocal bool more = false;
 				vector<SHORTMSG> messages;
 				if (glocal.c->list_talk(offset,50,messages) != -1){
+					string day;
+					static const char *line_styles[]={"sep","sep1"};
+					unsigned line_style = 0;
 					for (auto &m:messages){
-						glocal.webtable.setrow ("white",glocal.rownum,"%s\t%s",m.submit.c_str(),m.content.c_str());
+						string now = m.submit.substr(0,10);
+						if (now != day){
+							day = now;
+							glocal.webtable.setclickopt (true,"","");
+							glocal.webtable.setrow("hline",-1,"<font size=-1 color=white>%s</font>\a\a",format_date(0,day).c_str());
+							line_style=0;
+						}
+						const char *style = line_styles[line_style];
+						line_style++;
+						if (line_style == 2) line_style = 0;
+						if (file_is_sound(m.file_type)){
+							glocal.webtable.setclickopt (true,func,"400,100");
+						}else if (file_is_video(m.file_type)){
+							glocal.webtable.setclickopt (true,func,"800,800");
+						}else if (file_is_image(m.file_type)){
+							glocal.webtable.setclickopt (true,func,"800,800");
+						}
+						string time = string_f("<font size=-1>%s</font>",format_time(0,m.submit.substr(11)).c_str());
+						string path = string_f("/msgs/%s/short-inbox/public/%s",glocal.user,m.uuid.c_str());
+						const int step_image = 5;
+						string content;
+						if (m.content.size() != 0){
+							content = string_f("<div class=smsg>%s</div>",util_format_shortmsg (m.content,5).c_str());
+						}else if (file_is_sound(m.file_type)){
+							string tmp = util_flipspaces(m.submit);
+							content = string_f("<audio controls>\n"
+								"<source src=\"%s?webstep=%u&image=%s&mod=%s\" type=\"audio/%s\">\n"
+								"</audio>"
+								,tlmpweb_curpage(),step_image,path.c_str(),tmp.c_str(),tbftype[m.file_type]);
+						}else if (file_is_image(m.file_type)){
+							string url = glocal.c->msgurl(m.uuid,m.submit);
+							content = string_f("<img width=100 src=%s>",url.c_str());
+						}else if (file_is_video(m.file_type)){
+							string tmp = util_flipspaces(m.submit);
+							content = string_f(
+								"<video width=\"200\" height=\"200\" controls>\n"
+								"<source src=\"%s?webstep=%u&image=%s&mod=%s\" type=\"video/mp4\">\n"
+								"Your browser does not support the video tag.\n"
+								"</video>"
+								,tlmpweb_curpage(),step_image,path.c_str(),tmp.c_str());
+						}
+						glocal.webtable.setrow (style,glocal.rownum,"%s\t%s",time.c_str(),content.c_str());
 						glocal.rownum++;
 					}
 					glocal.more = messages.size() == 50;
@@ -860,7 +965,7 @@ void public_display (_F_public_page &c, CONNECT_INFO &con, PARAM_STRING user)
 			}else{
 				for (auto &f:files){
 					if (file_is_image(f.file_type)){
-						htmlprintf ("<img width=100%% src=%s>\n",glocal.c->baseurl(f.name,f.modified).c_str());
+						htmlprintf ("<img width=100%% src=%s>\n",glocal.c->projecturl(f.name,f.modified).c_str());
 					}else if (file_is_video(f.file_type)){
 					}else if (file_is_sound(f.file_type)){
 					}else if (file_is_text(f.file_type)){

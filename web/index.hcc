@@ -11,7 +11,6 @@
 #include <algorithm>
 #include <deque>
 #include "util.h"
-#define DEFINE_TBFTYPE
 #include "../bolixo.h"
 #include "../bolixo.m"
 #include <linuxconf/translat.h>
@@ -1167,42 +1166,6 @@ static string index_img(unsigned step, const char *style, PARAM_STRING filepath,
 		,style,tlmpweb_curpage(),step,filepath.ptr,tmp.c_str());
 }
 
-/*
-	Format a short message, remove the signature
-*/
-static string index_format_shortmsg (const char *txt, unsigned nblines)
-{
-	string ret;
-	unsigned pos=0;
-	unsigned noline=0;
-	if (nblines == 0) nblines=(unsigned)-1;
-	while (*txt != '\0' && noline < nblines){
-		if (strncmp(txt,"------\n",7)==0){
-			break;
-		}else if (*txt == '<'){
-			ret += "&lt;";
-		}else if (*txt == '>'){
-			ret += "&gt;";
-		}else if (*txt == '\n'){
-			ret += "<br>\n";
-			pos=0;
-			noline++;
-		}else if (*txt == '\t'){
-			unsigned nb = 4 - (pos%4);
-			for (unsigned i=0; i<nb; i++) ret += "&nbsp;";
-		}else{
-			ret += *txt;
-			pos++;
-		}
-		txt++;
-	}
-	return ret;
-}
-static string index_format_shortmsg (const char *txt)
-{
-	return index_format_shortmsg (txt,0);
-}
-
 <mod>
 static int index_loadfile(CONNECT_INFO &con, PARAM_STRING filename, string &text)
 {
@@ -1250,7 +1213,7 @@ static int index_loadfile(CONNECT_INFO &con, PARAM_STRING filename, W_SSTRING &t
 static void index_format_large_text(const BOB_TYPE &content)
 {
 	string tmp = string((const char*)content.getbuffer(),content.getsize());
-	tmp = index_format_shortmsg (tmp.c_str());
+	tmp = util_format_shortmsg (tmp.c_str());
 	htmlwrite (tmp.c_str(),tmp.size());
 }
 <mod>
@@ -1626,7 +1589,7 @@ static void index_show_shortmsg(
 					}
 					string content;
 					if (m.content[0] != '\0'){
-						content = string_f("<div class=smsg>%s</div>",index_format_shortmsg (m.content,5).c_str());
+						content = string_f("<div class=smsg>%s</div>",util_format_shortmsg (m.content,5).c_str());
 					}else if (file_is_sound(m.file_type)){
 						string tmp = util_flipspaces(m.submit);
 						content = string_f("<audio controls>\n"
@@ -1651,7 +1614,7 @@ static void index_show_shortmsg(
 								htmlprintf (MSG_U(E_CANTREADFILE,"Can't read file: %s\n"),msg);
 							}else{
 								string tmp = string((const char*)content.getbuffer(),content.getsize());
-								tmp = index_format_shortmsg (tmp.c_str(),5);
+								tmp = util_format_shortmsg (tmp.c_str(),5);
 								glocal.webtable.setrow("image",glocal.rownum,"\t%s\a",tmp.c_str());
 							}
 						</f>
@@ -2195,7 +2158,7 @@ extern "C" void webmain_real()
 			<f top>
 				<call bod_client_readfile>(glocal.con,w_session.c_str(),string_f("%s/intro.html",glocal.prjdir.c_str()),"");
 				<f ok>
-					string tmp = index_format_shortmsg (content);
+					string tmp = util_format_shortmsg (content);
 					htmlout (tmp);
 				</f>
 				</call>
@@ -2690,13 +2653,15 @@ extern "C" void webmain_real()
 				DIV d("webtable"); d.print();
 				index_doc(glocal.docpointers[SECTION_NONE],section_none);
 			}else if (strncmp(id,"preview-",8)==0){
-				DIV d("webtable"); d.print();
 				glocal const char *base = id+8;
 				glocal string groupowner;
 				const char *pt = strchr(glocal.base,'/');
 				if (pt != NULL) glocal.groupowner = string(glocal.base,pt-glocal.base);;
-				// htmlprintf (MSG_U(I_PREVIEW,"Preview of the folder %s"),glocal.base);
-				// /- <br>
+				DIV dd; dd.id(TAB_FORM).bg("lightgray").print();
+				htmlprintf (MSG_U(I_PREVIEW,"Preview of the folder %s"),glocal.base);
+				/- <br>
+				dd.end();
+				DIV d("webtable"); d.print();
 				<call public_page>();
 				<f list_talk>
 					glocal vector<SHORTMSG> *msgs = &msgs;
@@ -2746,10 +2711,29 @@ extern "C" void webmain_real()
 					</call>
 					return glocal.ret;
 				</f>
-				<f baseurl>
+				<f projecturl>
+					string ret;
 					string tmp = util_flipspaces(modified.ptr);
-					string ret = string_f("%s?webstep=%d&image=/projects/%s/%s&mod=%s"
-						,tlmpweb_curpage(),step_image,glocal.base,name.ptr,tmp.c_str());
+					if (strcmp(name.ptr,"/photo.jpg")==0 || strcmp(name.ptr,"/mini-photo.jpg")==0){
+						// Those tow are located in the public folder directly
+						ret = string_f("%s?webstep=%d&image=/projects/%s/public%s&mod=%s"
+							,tlmpweb_curpage(),step_image,glocal.groupowner.c_str(),name.ptr,tmp.c_str());
+					}else{
+						const char *slash = name.ptr[0] == '/' ? "" : "/";
+						ret = string_f("%s?webstep=%d&image=/projects/%s%s%s&mod=%s"
+							,tlmpweb_curpage(),step_image,glocal.base,slash,name.ptr,tmp.c_str());
+					}
+					return ret;
+				</f>
+				<f msgurl>
+					string ret;
+					const char *pt = strchr(glocal.base,'/');
+					if (pt != NULL){
+						string user (glocal.base,pt-glocal.base);
+						string tmp = util_flipspaces(modified.ptr);
+						ret = string_f("%s?webstep=%d&image=/msgs/%s/short-inbox/public/%s&mod=%s"
+							,tlmpweb_curpage(),step_image,user.c_str(),name.ptr,tmp.c_str());
+					}
 					return ret;
 				</f>
 				<f process>
@@ -3105,7 +3089,7 @@ tlmp_error ("sendfile %s\n",fname.c_str());
 				/- </table><p>
 				<call bod_client_readfile>(glocal.con,w_session.c_str(),id,"");
 				<f ok>
-					string tmp = index_format_shortmsg (content);
+					string tmp = util_format_shortmsg (content);
 					htmlout (tmp);
 				</f>
 				</call>

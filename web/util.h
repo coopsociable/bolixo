@@ -93,11 +93,15 @@ struct _F_public_page{
 	virtual _F_public_page_readfile( )=0;
 	#define _F_public_page_process(x) void x process()
 	virtual _F_public_page_process( )=0;
-	#define _F_public_page_baseurl(x) std::string x baseurl(PARAM_STRING name, PARAM_STRING modified)
-	virtual _F_public_page_baseurl( )=0;
+	#define _F_public_page_projecturl(x) std::string x projecturl(PARAM_STRING name, PARAM_STRING modified)
+	virtual _F_public_page_projecturl( )=0;
+	#define _F_public_page_msgurl(x) std::string x msgurl(PARAM_STRING name, PARAM_STRING modified)
+	virtual _F_public_page_msgurl( )=0;
 	#define _F_public_page_sendfile(x) void x sendfile(PARAM_STRING name)
 	virtual _F_public_page_sendfile( )=0;
 };
 
 void public_page (_F_public_page &c);
 void public_display (_F_public_page &c, CONNECT_INFO &con, PARAM_STRING user);
+std::string util_format_shortmsg (PARAM_STRING txt, unsigned nblines);
+std::string util_format_shortmsg (PARAM_STRING txt);
