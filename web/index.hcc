@@ -2,6 +2,8 @@
 #include <ctype.h>
 #include <unistd.h>
 #include <string.h>
+#include <sys/time.h>
+#include <sys/resource.h>
 #include <tlmpweb.h>
 #include <tlmpnet.h>
 #include <tlmplib.h>
@@ -15,6 +17,7 @@
 #include "../bolixo.m"
 #include <linuxconf/translat.h>
 #include "document.h"
+#include "../instrument.h"
 
 #define SECTION_NONE 0
 #define SECTION_TALK 1
@@ -1060,7 +1063,7 @@ static void trli_getsessioninfo(CONNECT_INFO &con, CONNECT_INFO &con_sess, vecto
 				}else if (strcmp(var.name,"geometry")==0){
 					// We receive triplets: id,height,width
 					WEBID id;
-					unsigned height;
+					unsigned height=0;
 					for (auto &v:var.vals){
 						if (strcmp(v.sname,"id")==0){
 							id.set(v.sval);
@@ -2657,7 +2660,7 @@ extern "C" void webmain_real()
 				glocal string groupowner;
 				const char *pt = strchr(glocal.base,'/');
 				if (pt != NULL) glocal.groupowner = string(glocal.base,pt-glocal.base);;
-				DIV dd; dd.id(TAB_FORM).bg("lightgray").print();
+				DIV dd; dd.id(TAB_FORM).bg("#F1F1F1").paddings(5,5).print();
 				htmlprintf (MSG_U(I_PREVIEW,"Preview of the folder %s"),glocal.base);
 				/- <br>
 				dd.end();
@@ -2747,8 +2750,10 @@ tlmp_error ("sendfile %s\n",fname.c_str());
 				</call>
 			}else if (file_is_image(info.file_type)){
 				DIV d("webtable"); d.print();
+				DIV dd; dd.id(TAB_FORM).bg("#F1F1F1").paddings(5,5).print();
 				htmlprintf (MSG_R(I_DOCNAME),glocal.filename);
 				/- <br>
+				dd.end();
 				htmlout (index_img(step_image,"max-width:100%; max-height=100%;",glocal.path,info.modified));
 			}else if (info.file_type == FILE_TEXT){
 				<call form>(formid);
@@ -3984,6 +3989,9 @@ extern "C" void webmain()
 		return;
 	}
 	long long start = fdpass_getnow();
+	#ifdef INSTRUMENT
+		fprintf (f_instrument,"--------\n");
+	#endif
 	<call tcpconnect>("unix:","/tmp/stop.sock",1);
 	<f init>
 	</f>
@@ -4001,9 +4009,15 @@ extern "C" void webmain()
 	glocal long long diff = end - start;
 	<call savefile>("/tmp/duration",true);
 	<f dowrite>
-		fprintf (fout,"%s?%s: %Ld.%06Ld\n"
+		struct rusage u;
+		if (getrusage(RUSAGE_SELF,&u)==-1){
+			fprintf (fout,"syscall getrusage failed: %s\n",strerror(errno));
+		}
+		fprintf (fout,"%s?%s: %Ld.%06Ld [%lu.%06lu,%lu.%06lu]\n"
 			,tlmpweb_curpage(),getenv ("QUERY_STRING")
-			,glocal.diff/1000000,glocal.diff%1000000);
+			,glocal.diff/1000000,glocal.diff%1000000
+			,u.ru_utime.tv_sec,u.ru_utime.tv_usec
+			,u.ru_stime.tv_sec,u.ru_stime.tv_usec);
 		return 0;
 	</f>
 	</call>

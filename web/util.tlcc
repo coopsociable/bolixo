@@ -10,6 +10,8 @@
 #include "../bolixo.h"
 #include <translat.h>
 #include "../bolixo.m"
+#undef INSTRUMENT
+#include "../instrument.h"
 
 using namespace std;
 
@@ -838,108 +840,120 @@ static string util_img(unsigned step, unsigned width, PARAM_STRING dirpath, PARA
 }
 #endif
 <mod>
-void public_display (_F_public_page &c, CONNECT_INFO &con, PARAM_STRING user)
+static void public_messages(_F_public_page &c, CONNECT_INFO &con, PARAM_STRING user)
+{       
+        glocal CONNECT_INFO *con = &con;
+        glocal _F_public_page *c = &c;
+        glocal const char *user = user.ptr;
+
+	string table = string("talk")+"public";
+	DIV d; d.autoscroll().print();
+	<call webtable>(table,"100%");
+	<f load>
+		setrowstyle ("hline","bgcolor=gray valign=top");
+		setrowstyle ("sep","bgcolor=ghostwhite valign=top");
+		setrowstyle ("sep+current","bgcolor=lightblue valign=top");
+		setrowstyle ("sep1","bgcolor=white valign=top");
+		setrowstyle ("sep1+current","bgcolor=lightblue valign=top");
+		setthparms ("align=left bgcolor=lightgray","");
+		setrowstyle ("white","bgcolor=white");
+		sethead  ("%s\a",MSG_U(H_MESSAGES,"Messages"));
+		glocal unsigned rownum = nbskip;
+		unsigned offset=0;
+		static const char *func = "Popup";
+		while (1){
+			glocal bool more = false;
+			vector<SHORTMSG> messages;
+			if (glocal.c->list_talk(offset,50,messages) != -1){
+				string day;
+				static const char *line_styles[]={"sep","sep1"};
+				unsigned line_style = 0;
+				for (auto &m:messages){
+					string now = m.submit.substr(0,10);
+					if (now != day){
+						day = now;
+						glocal.webtable.setclickopt (true,"","");
+						glocal.webtable.setrow("hline",-1,"<font size=-1 color=white>%s</font>\a\a",format_date(0,day).c_str());
+						line_style=0;
+					}
+					const char *style = line_styles[line_style];
+					line_style++;
+					if (line_style == 2) line_style = 0;
+					if (file_is_sound(m.file_type)){
+						glocal.webtable.setclickopt (true,func,"400,100");
+					}else if (file_is_video(m.file_type)){
+						glocal.webtable.setclickopt (true,func,"800,800");
+					}else if (file_is_image(m.file_type)){
+						glocal.webtable.setclickopt (true,func,"800,800");
+					}
+					string time = string_f("<font size=-1>%s</font>",format_time(0,m.submit.substr(11)).c_str());
+					string path = string_f("/msgs/%s/short-inbox/public/%s",glocal.user,m.uuid.c_str());
+					const int step_image = 5;
+					string content;
+					if (m.content.size() != 0){
+						content = string_f("<div class=smsg>%s</div>",util_format_shortmsg (m.content,5).c_str());
+					}else if (file_is_sound(m.file_type)){
+						string tmp = util_flipspaces(m.submit);
+						content = string_f("<audio controls>\n"
+							"<source src=\"%s?webstep=%u&image=%s&mod=%s\" type=\"audio/%s\">\n"
+							"</audio>"
+							,tlmpweb_curpage(),step_image,path.c_str(),tmp.c_str(),tbftype[m.file_type]);
+					}else if (file_is_image(m.file_type)){
+						string url = glocal.c->msgurl(m.uuid,m.submit);
+						content = string_f("<img width=100 src=%s>",url.c_str());
+					}else if (file_is_video(m.file_type)){
+						string tmp = util_flipspaces(m.submit);
+						content = string_f(
+							"<video width=\"200\" height=\"200\" controls>\n"
+							"<source src=\"%s?webstep=%u&image=%s&mod=%s\" type=\"video/mp4\">\n"
+							"Your browser does not support the video tag.\n"
+							"</video>"
+							,tlmpweb_curpage(),step_image,path.c_str(),tmp.c_str());
+					}
+					glocal.webtable.setrow (style,glocal.rownum,"%s\t%s",time.c_str(),content.c_str());
+					glocal.rownum++;
+				}
+				glocal.more = messages.size() == 50;
+			}else{
+				break;
+			}
+			if (!glocal.more) break;
+			offset += 50;
+		}
+	</f>
+	</call>
+}
+</mod>
+static void public_top_left(_F_public_page &c)
+{
+	DIV d; d.h(100).w(100).dispflex().flowrow().print();
+	DIV dd; dd.dispflex().flexfixe().print();
+	htmlprintf ("<img width=30 src=%s>\n",c.projecturl("/mini-photo.jpg","").c_str());
+	dd.end();
+	dd.dispflex().flexfixe().print();
+	htmlprintf ("<img height=100%% src=%s>\n",c.projecturl("/photo.jpg","").c_str());
+}
+<mod>
+static void public_display_full (_F_public_page &c, CONNECT_INFO &con, PARAM_STRING user, vector<FILEINFO> &files)
 {
 	glocal CONNECT_INFO *con = &con;
 	glocal _F_public_page *c = &c;
 	glocal const char *user = user.ptr;
-	// Display the public page of the user
-		
+	glocal vector<FILEINFO> *files = &files;
 	<call vframe4>(30,10);
 	<f top>
 		htmlprintf ("<center><h1>%s</h1></center>\n",glocal.user);
 	</f>
 	<f top_left>
-		DIV d; d.h(100).w(100).dispflex().flowrow().print();
-		DIV dd; dd.dispflex().flexfixe().print();
-		htmlprintf ("<img width=30 src=%s>\n",glocal.c->projecturl("/mini-photo.jpg","").c_str());
-		dd.end();
-		dd.dispflex().flexfixe().print();
-		htmlprintf ("<img height=100%% src=%s>\n",glocal.c->projecturl("/photo.jpg","").c_str());
+		public_top_left (*glocal.c);
 	</f>
 	<f left>
-		string table = string("talk")+"public";
-		DIV d; d.autoscroll().print();
-		<call webtable>(table,"100%");
-		<f load>
-			setrowstyle ("hline","bgcolor=gray valign=top");
-			setrowstyle ("sep","bgcolor=ghostwhite valign=top");
-			setrowstyle ("sep+current","bgcolor=lightblue valign=top");
-			setrowstyle ("sep1","bgcolor=white valign=top");
-			setrowstyle ("sep1+current","bgcolor=lightblue valign=top");
-			setthparms ("align=left bgcolor=lightgray","");
-			setrowstyle ("white","bgcolor=white");
-			sethead  (MSG_U(H_MESSAGES,"Messages\a"));
-			glocal unsigned rownum = nbskip;
-			unsigned offset=0;
-			static const char *func = "Popup";
-			while (1){
-				glocal bool more = false;
-				vector<SHORTMSG> messages;
-				if (glocal.c->list_talk(offset,50,messages) != -1){
-					string day;
-					static const char *line_styles[]={"sep","sep1"};
-					unsigned line_style = 0;
-					for (auto &m:messages){
-						string now = m.submit.substr(0,10);
-						if (now != day){
-							day = now;
-							glocal.webtable.setclickopt (true,"","");
-							glocal.webtable.setrow("hline",-1,"<font size=-1 color=white>%s</font>\a\a",format_date(0,day).c_str());
-							line_style=0;
-						}
-						const char *style = line_styles[line_style];
-						line_style++;
-						if (line_style == 2) line_style = 0;
-						if (file_is_sound(m.file_type)){
-							glocal.webtable.setclickopt (true,func,"400,100");
-						}else if (file_is_video(m.file_type)){
-							glocal.webtable.setclickopt (true,func,"800,800");
-						}else if (file_is_image(m.file_type)){
-							glocal.webtable.setclickopt (true,func,"800,800");
-						}
-						string time = string_f("<font size=-1>%s</font>",format_time(0,m.submit.substr(11)).c_str());
-						string path = string_f("/msgs/%s/short-inbox/public/%s",glocal.user,m.uuid.c_str());
-						const int step_image = 5;
-						string content;
-						if (m.content.size() != 0){
-							content = string_f("<div class=smsg>%s</div>",util_format_shortmsg (m.content,5).c_str());
-						}else if (file_is_sound(m.file_type)){
-							string tmp = util_flipspaces(m.submit);
-							content = string_f("<audio controls>\n"
-								"<source src=\"%s?webstep=%u&image=%s&mod=%s\" type=\"audio/%s\">\n"
-								"</audio>"
-								,tlmpweb_curpage(),step_image,path.c_str(),tmp.c_str(),tbftype[m.file_type]);
-						}else if (file_is_image(m.file_type)){
-							string url = glocal.c->msgurl(m.uuid,m.submit);
-							content = string_f("<img width=100 src=%s>",url.c_str());
-						}else if (file_is_video(m.file_type)){
-							string tmp = util_flipspaces(m.submit);
-							content = string_f(
-								"<video width=\"200\" height=\"200\" controls>\n"
-								"<source src=\"%s?webstep=%u&image=%s&mod=%s\" type=\"video/mp4\">\n"
-								"Your browser does not support the video tag.\n"
-								"</video>"
-								,tlmpweb_curpage(),step_image,path.c_str(),tmp.c_str());
-						}
-						glocal.webtable.setrow (style,glocal.rownum,"%s\t%s",time.c_str(),content.c_str());
-						glocal.rownum++;
-					}
-					glocal.more = messages.size() == 50;
-				}else{
-					break;
-				}
-				if (!glocal.more) break;
-				offset += 50;
-			}
-		</f>
-		</call>
+		public_messages(*glocal.c,*glocal.con,glocal.user);
 	</f>
 	<f body>
-		vector<FILEINFO> files;
-		if (glocal.c->listdir("/",0,20,files)!=-1){
+		{
 			bool guide = false;
-			for (auto &f:files){
+			for (auto &f:*glocal.files){
 				if (f.name == "guide.tpl"){
 					guide = true;
 					break;
@@ -963,7 +977,7 @@ void public_display (_F_public_page &c, CONNECT_INFO &con, PARAM_STRING user)
 					}
 				}
 			}else{
-				for (auto &f:files){
+				for (auto &f:*glocal.files){
 					if (file_is_image(f.file_type)){
 						htmlprintf ("<img width=100%% src=%s>\n",glocal.c->projecturl(f.name,f.modified).c_str());
 					}else if (file_is_video(f.file_type)){
@@ -979,5 +993,40 @@ void public_display (_F_public_page &c, CONNECT_INFO &con, PARAM_STRING user)
 		}
 	</f>
 	</call>
+}
+</mod>
+/*
+	Display only the short messages
+*/
+<mod>
+static void public_display_base(_F_public_page &c, CONNECT_INFO &con, PARAM_STRING user)
+{
+	glocal CONNECT_INFO *con = &con;
+	glocal _F_public_page *c = &c;
+	glocal const char *user = user.ptr;
+	<call vframe3>(30,10);
+	<f top>
+		htmlprintf ("<center><h1>%s</h1></center>\n",glocal.user);
+	</f>
+	<f top_left>
+		public_top_left (*glocal.c);
+	</f>
+	<f body>
+		public_messages(*glocal.c,*glocal.con,glocal.user);
+	</f>
+	</call>
+}
+</mod>
+// Display the public page of the user
+<mod>
+void public_display (_F_public_page &c, CONNECT_INFO &con, PARAM_STRING user)
+{
+	vector<FILEINFO> files;
+	if (c.listdir("/",0,20,files)==-1){
+	}else if (files.size() == 0){
+		public_display_base (c,con,user);
+	}else{
+		public_display_full (c,con,user,files);
+	}
 }
 </mod>

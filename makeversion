@@ -4,8 +4,12 @@ elif [ -f ../version ] ; then
 	echo "SVN_"`cat ../version`"+dev"
 else
 	unset LANG
-	NB=`svn status -u | grep -v "? " | wc -l`
-	SVNVER=`svn status -u | grep against | (read a b c d; echo $d)`
+	FILE=/tmp/makeversion.bolixo
+	if [ ! -f $FILE ] ; then
+		svn status -u | grep -v "? " >$FILE
+	fi
+	NB=`cat $FILE | wc -l`
+	SVNVER=`cat $FILE | grep against | (read a b c d; echo $d)`
 	if [ "$NB" != 1 ] ; then
 		#echo "const char *version=\"SVN:$SVNVER+dev\";" >/tmp/version.cc
 		echo "SVN_$SVNVER+dev"

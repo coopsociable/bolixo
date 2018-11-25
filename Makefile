@@ -1,12 +1,14 @@
 CURDIR=trli
 MANPAGES=/usr/share/man
 PACKAGE_REV:=$(shell ./makeversion $(BUILD_SVNVER))
+INSTRUMENT:=$(shell test -f ../instrument && echo --instrument --getnow fdpass_getnow)
+DINSTRUMENT:=$(shell test -f ../instrument && echo -DINSTRUMENT)
 PROGS=_dict.o bod bod-client bod-control bo-writed bo-writed-control bo-sessiond bo-sessiond-control \
       bo-manager bofs ssltestsign bo-keysd bo-keysd-control bolixod bolixod-control
 #bo-log bo-log-control \
 #      bo-mon bo-mon-control
 DOCS=
-OPTIONS=-funsigned-char -O2 -Wall -g -DVERSION=\"$(PACKAGE_REV)\" -I/usr/include/tlmp -I/usr/include/trlitool
+OPTIONS=$(DINSTRUMENT) -funsigned-char -O2 -Wall -g -DVERSION=\"$(PACKAGE_REV)\" -I/usr/include/tlmp -I/usr/include/trlitool
 LIBS=/usr/lib64/trlitool/trlitool.a -llinuxconf -lstdc++ -lcrypto
 TLMP_LIB=/usr/lib/tlmp
 LDEVEL=/usr/lib/linuxconf-devel
@@ -36,7 +38,7 @@ bolixod-control: bolixod-control.tlcc proto/bolixod_control.protoh
 
 bod: bod.tlcc filesystem.o proto/bod_control.protoh proto/bod_client.protoh proto/bod_admin.protoh \
 	proto/bo-writed_client.protoh proto/bo-sessiond_client.protoh proto/bolixod_client.protoh \
-	proto/bolixoapi.protoh
+	proto/bolixoapi.protoh _dict.o
 	cctlcc -Wall $(OPTIONS) bod.tlcc filesystem.o _dict.o -o bod $(LIBS) -lssl -ltlmpsql -L/usr/lib64/mysql -lmysqlclient
 
 bod-client: bod-client.tlcc proto/bod_client.protoh proto/bod_admin.protoh \
@@ -87,7 +89,7 @@ proto/bo-log-control.protoh: proto/bo-log-control.proto
 	       --protoch proto/bo-log-control.protoch proto/bo-log-control.proto >proto/bo-log-control.protoh
 
 proto/bo-log-admin.protoh: proto/bo-log-admin.proto
-	build-protocol --secretmode --arg "int no" --arg "HANDLE_INFO *c" --name bo_log_admin \
+	build-protocol $(INSTRUMENT) --secretmode --arg "int no" --arg "HANDLE_INFO *c" --name bo_log_admin \
 	       --protoch proto/bo-log-admin.protoch proto/bo-log-admin.proto >proto/bo-log-admin.protoh
 
 proto/bo_mon_control.protoh: proto/bo_mon_control.proto
@@ -99,7 +101,7 @@ proto/bolixod_control.protoh: proto/bolixod_control.proto
 	       --protoch proto/bolixod_control.protoch proto/bolixod_control.proto >proto/bolixod_control.protoh
 
 proto/bolixod_client.protoh: proto/bolixod_client.proto
-	build-protocol --secretmode --arg "int no" --arg "HANDLE_INFO *c" --name bolixod_client \
+	build-protocol $(INSTRUMENT) --secretmode --arg "int no" --arg "HANDLE_INFO *c" --name bolixod_client \
 		--protodef proto/bolixod_client.protodef --protoch proto/bolixod_client.protoch proto/bolixod_client.proto >proto/bolixod_client.protoh
 		
 
@@ -108,12 +110,12 @@ proto/bod_control.protoh: proto/bod_control.proto
 	       --protoch proto/bod_control.protoch proto/bod_control.proto >proto/bod_control.protoh
 
 proto/bod_client.protoh: proto/bod_client.proto
-	build-protocol --secretmode --arg "int no" --arg "HANDLE_INFO *c" --arg "const char *host" --name bod_client \
+	build-protocol $(INSTRUMENT) --secretmode --arg "int no" --arg "HANDLE_INFO *c" --arg "const char *host" --name bod_client \
 		--protodef proto/bod_client.protodef --protoch proto/bod_client.protoch proto/bod_client.proto >proto/bod_client.protoh
 		
 
 proto/bod_admin.protoh: proto/bod_admin.proto
-	build-protocol --secretmode --arg "int no" --arg "HANDLE_INFO *c" --arg "const char *host" --name bod_admin \
+	build-protocol $(INSTRUMENT) --secretmode --arg "int no" --arg "HANDLE_INFO *c" --arg "const char *host" --name bod_admin \
 		--protoch proto/bod_admin.protoch proto/bod_admin.proto >proto/bod_admin.protoh
 
 proto/bo-writed_control.protoh: proto/bo-writed_control.proto
@@ -121,7 +123,7 @@ proto/bo-writed_control.protoh: proto/bo-writed_control.proto
 		--protoch proto/bo-writed_control.protoch proto/bo-writed_control.proto >proto/bo-writed_control.protoh
 
 proto/bo-writed_client.protoh: proto/bo-writed_client.proto
-	build-protocol --secretmode --arg "int no" --arg "HANDLE_INFO *c" --arg "const char *host" --name bo_writed_client \
+	build-protocol $(INSTRUMENT) --secretmode --arg "int no" --arg "HANDLE_INFO *c" --arg "const char *host" --name bo_writed_client \
 		--protoch proto/bo-writed_client.protoch proto/bo-writed_client.proto >proto/bo-writed_client.protoh
 
 proto/bo-log.protoh: proto/bo-log.proto
@@ -137,11 +139,11 @@ proto/bo-sessiond_control.protoh: proto/bo-sessiond_control.proto
 		--protoch proto/bo-sessiond_control.protoch proto/bo-sessiond_control.proto >proto/bo-sessiond_control.protoh
 
 proto/bo-sessiond_client.protoh: proto/bo-sessiond_client.proto
-	build-protocol --secretmode --arg "int no" --arg "HANDLE_INFO *c" --arg "const char *host" --name bo_sessiond_client \
+	build-protocol $(INSTRUMENT) --secretmode --arg "int no" --arg "HANDLE_INFO *c" --arg "const char *host" --name bo_sessiond_client \
 		--protoch proto/bo-sessiond_client.protoch proto/bo-sessiond_client.proto >proto/bo-sessiond_client.protoh
 
 proto/bo-sessiond_admin.protoh: proto/bo-sessiond_admin.proto
-	build-protocol --secretmode --arg "int no" --arg "HANDLE_INFO *c" --arg "const char *host" --name bo_sessiond_admin \
+	build-protocol $(INSTRUMENT) --secretmode --arg "int no" --arg "HANDLE_INFO *c" --arg "const char *host" --name bo_sessiond_admin \
 		--protoch proto/bo-sessiond_admin.protoch proto/bo-sessiond_admin.proto >proto/bo-sessiond_admin.protoh
 
 proto/bo-keysd_control.protoh: proto/bo-keysd_control.proto

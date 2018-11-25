@@ -4,6 +4,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/time.h>
+#include <sys/resource.h>
 #include <unistd.h>
 #include <syslog.h>
 #include <signal.h>
@@ -23,6 +25,7 @@
 #include "bolixo.h"
 #include "bolixo.m"
 #include <translat.h>
+#include "instrument.h"
 
 
 static DEBUG_KEY D_PROTO ("proto","Protocol information");
@@ -591,6 +594,35 @@ static int trlid_main (
 				tb.push_back(string_f ("nbrequest_client=%lu",glocal.nbrequest_client));
 				tb.push_back(string_f("filehandle %u\n",fs_getnbhandle()));
 				rep_status(tb);
+			</f>
+			<f helptest> // dotimes:b readproc:b = lines:v
+				// This performs various test from inside the container that may failed or not.
+				// Bolixo containers are so minimal that they do not contain bash.
+				glocal vector<string> lines;
+				if (dotimes){
+					struct rusage u;
+					if (getrusage(RUSAGE_SELF,&u)==-1){
+						glocal.lines.push_back(string_f("syscall getrusage failed: %s",strerror(errno)));
+					}else{
+						glocal.lines.push_back(string_f("rusage: %lu.%06lu,%lu.%06lu"
+							,u.ru_utime.tv_sec
+							,u.ru_utime.tv_usec
+							,u.ru_stime.tv_sec
+							,u.ru_stime.tv_usec));
+					}
+				}
+				if (readproc){
+					glocal.lines.push_back("readproc:");
+					<call walkfs>("/proc");
+					<f recurse>
+						return false;
+					</f>
+					<f onefile>
+						glocal.lines.push_back(path);
+					</f>
+					</call>
+				}
+				rep_helptest(glocal.lines);
 			</f>
 			<f quit>
 				endserver = true;
