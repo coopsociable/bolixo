@@ -50,11 +50,11 @@ elif [ "$1" = "createdb" ] ; then # db: Access trliusers database
 	echo -n "mysql root password : "
 	read pass
 	export MYSQL_PWD=$pass
-	/usr/lib/trli-test.sh createdb
+	/usr/lib/bolixo-test.sh createdb
 elif [ "$1" = "createsqluser" ] ; then # db: Configure sql user
 	echo -n "Enter new root password : "
 	read pass
-	/usr/lib/trli-test.sh createsqlusers
+	/usr/lib/bolixo-test.sh createsqlusers
 	cat <<-EOF >/tmp/root.sql
 	delete from user where user='root' and host != 'localhost';
 	delete from user where user='';
@@ -67,7 +67,7 @@ elif [ "$1" = "createsqluser" ] ; then # db: Configure sql user
 	/var/lib/lxc/sqlduser/sqlduser.runsql mysql </tmp/trliusers.sql
 	/var/lib/lxc/sqlduser/sqlduser.admsql reload
 elif [ "$1" = "test-system" ]; then # A: Checks components
-	time -p trli-mon-control test
+	time -p bo-mon-control test
 elif [ "$1" = "checks" ]; then # A: Sanity checks blackhole
 	if blackhole-control status >/dev/null 2>/dev/null
 	then
@@ -82,77 +82,70 @@ elif [ "$1" = "checks" ]; then # A: Sanity checks blackhole
 		echo "*** Horizon not connected"
 	fi
 elif [ "$1" = "config" ] ; then # config: Generate config
-	/usr/lib/trli-test.sh prodconfig
+	/usr/lib/bolixo-test.sh prodconfig
 elif [ "$1" = "lxc0s" ] ; then # config: Produces the lxc0 scripts
 	export SILENT=on
 	$0 checks
-	/usr/lib/trli-test.sh lxc0-web
-	/usr/lib/trli-test.sh lxc0-webssl
-	/usr/lib/trli-test.sh lxc0-mysql
-	/usr/lib/trli-test.sh lxc0-exim
-	/usr/lib/trli-test.sh lxc0-trlid
-	/usr/lib/trli-test.sh lxc0-writed
-	/usr/lib/trli-test.sh lxc0-sessiond
-	/usr/lib/trli-test.sh lxc0-proto
+	/usr/lib/bolixo-test.sh lxc0-web
+	/usr/lib/bolixo-test.sh lxc0-webssl
+	/usr/lib/bolixo-test.sh lxc0-mysql
+	/usr/lib/bolixo-test.sh lxc0-exim
+	/usr/lib/bolixo-test.sh lxc0-bod
+	/usr/lib/bolixo-test.sh lxc0-writed
+	/usr/lib/bolixo-test.sh lxc0-sessiond
+	/usr/lib/bolixo-test.sh lxc0-keysd
+	/usr/lib/bolixo-test.sh lxc0-bolixod
+	/usr/lib/bolixo-test.sh lxc0-proto
 elif [ "$1" = "webtest" ] ; then # P:
 	shift
-	/usr/lib/trli-test.sh webtest $*
+	/usr/lib/bolixo-test.sh webtest $*
 elif [ "$1" = "webtest-static" ] ; then # P:
 	shift
-	/usr/lib/trli-test.sh webtest-static $*
+	/usr/lib/bolixo-test.sh webtest-static $*
 elif [ "$1" = "webtest-direct" ] ; then # P:
 	shift
-	/usr/lib/trli-test.sh webtest-direct $*
+	/usr/lib/bolixo-test.sh webtest-direct $*
 elif [ "$1" = "webtest-direct-static" ] ; then # P:
 	shift
-	/usr/lib/trli-test.sh webtest-direct-static $*
+	/usr/lib/bolixo-test.sh webtest-direct-static $*
 elif [ "$1" = "webssltest" ] ; then # P:
 	shift
-	/usr/lib/trli-test.sh webssltest $*
+	/usr/lib/bolixo-test.sh webssltest $*
 elif [ "$1" = "webssltest-static" ] ; then # P:
 	shift
-	/usr/lib/trli-test.sh webssltest-static $*
+	/usr/lib/bolixo-test.sh webssltest-static $*
 elif [ "$1" = "stop-stop" ] ; then # prod: Stop the web
-	/usr/lib/trli-test.sh stop-stop
+	/usr/lib/bolixo-test.sh stop-stop
 elif [ "$1" = "stop-status" ] ; then # prod: status of trli-stop
-	/usr/lib/trli-test.sh stop-status
+	/usr/lib/bolixo-test.sh stop-status
 elif [ "$1" = "stop-start" ] ; then # prod: Restart the web
-	/usr/lib/trli-test.sh stop-start
+	/usr/lib/bolixo-test.sh stop-start
 elif [ "$1" = "eraseanon" ] ; then # prod: [nbsec default 1 day]
 	NBSEC=`expr 60 \* 60 \* 24`
 	if [ "$2" != "" ] ; then
 		NBSEC=$2
 	fi
 	echo Erase anonymous session older than $NBSEC seconds
-	/usr/lib/trli-test.sh eraseanon-lxc $NBSEC
+	/usr/lib/bolixo-test.sh eraseanon-lxc $NBSEC
 elif [ "$1" = "listsessions" ] ; then # prod: list web sessions (offset)
 	OFF=0
 	if [ "$2" != "" ] ; then
 		OFF=$2
 	fi
-	trli-sessiond-control -p /var/lib/lxc/sessiond/rootfs/var/run/blackhole/trli-sessiond.sock listsessions $OFF 100
+	bo-sessiond-control -p /var/lib/lxc/sessiond/rootfs/var/run/blackhole/bo-sessiond.sock listsessions $OFF 100
 elif [ "$1" = "mailctrl" ] ; then # config: Control writed sendmail
 	if [ $# != 3 ] ;then
 		echo "mailctrl 0|1 force_addr"
 		exit 1
 	fi
-	/usr/lib/trli-test.sh mailctrl "$2" "$3"
-elif [ "$1" = "loadusers" ] ; then # config: Load users from a file
-	export LXCSOCK=on
-	/usr/lib/trli-test.sh loadusers
-elif [ "$1" = "loadnews" ] ; then # config: Load news from a directory
-	shift
-	/usr/lib/trli-test.sh loadnews $*
-elif [ "$1" = "loadblog" ] ; then # config: Load blog from a directory (admin_pass,any)
-	shift
-	/usr/lib/trli-test.sh loadblog $*
+	/usr/lib/bolixo-test.sh mailctrl "$2" "$3"
 elif [ "$1" = "monitor" ] ; then # prod: Test all trlids
-	trli-mon-control status	
+	bo-mon-control status	
 elif [ "$1" = "resetmsg" ] ; then # prod: Reset alarm
-	trli-mon-control resetmsg
+	bo-mon-control resetmsg
 elif [ "$1" = "restart" ] ; then # prod: restart some services (webs, internals, ...)
 	shift
-	trli-mon-control autotest 0
+	bo-mon-control autotest 0
 	if [ "$1" = "webs" ] ; then
 		$0 loadfail normal
 		echo Restarting webssl-fail and web-fail
@@ -180,7 +173,7 @@ elif [ "$1" = "restart" ] ; then # prod: restart some services (webs, internals,
 		for serv in $*
 		do
 			if [ "$serv" = "internals" ] ; then
-				SERVICES="$SERVICES trlid writed sessiond protocheck trli-mon trli-syslog compute"
+				SERVICES="$SERVICES bod writed sessiond keys bolixod protocheck bo-mon trli-syslog"
 			else
 				SERVICES="$SERVICES $serv"
 			fi
@@ -196,16 +189,13 @@ elif [ "$1" = "restart" ] ; then # prod: restart some services (webs, internals,
 				done
 			elif [ "$serv" = "web" -o "$serv" = "webssl" ] ; then
 				echo "   Can't restart web or webssl, use webs"
-			elif [ "$serv" = "trli-mon" ] ; then
-				/var/lib/lxc/trli-mon-stop.sh
-				/var/lib/lxc/trli-mon-start.sh
-				trli-mon-control autotest 0
+			elif [ "$serv" = "bo-mon" ] ; then
+				/var/lib/lxc/bo-mon-stop.sh
+				/var/lib/lxc/bo-mon-start.sh
+				bo-mon-control autotest 0
 			elif [ "$serv" = "trli-syslog" ] ; then
 				/var/lib/lxc/trli-syslog-stop.sh
 				/var/lib/lxc/trli-syslog-start.sh
-			elif [ "$serv" = "compute" ] ; then
-				/var/lib/lxc/compute-stop.sh
-				/var/lib/lxc/compute-start.sh
 			else
 				DIR=/var/lib/lxc/$serv
 				if [ -d "$DIR" ] ; then
@@ -240,31 +230,34 @@ elif [ "$1" = "syslog-tail" ] ; then # syslog: Shows the last syslog lines
 elif [ "$1" = "syslog-logs" ] ; then # syslog: Shows the syslog lines
 	trli-syslog-control logs
 elif [ "$1" = "writed-sendmail" ] ; then # S: writed will send a mail
-	. /etc/trli/admins.conf
-	trli-writed-control -p /var/lib/lxc/writed/rootfs/var/run/blackhole/trli-writed-0.sock sendmail $ADMIN1 "This is title" "This is the body"
-elif [ "$1" = "mon-sendmail" ] ; then # S: trli-mon will send a mail
-	trli-mon-control testmail
+	. /etc/bolixo/admins.conf
+	bo-writed-control -p /var/lib/lxc/writed/rootfs/var/run/blackhole/bo-writed-0.sock sendmail $ADMIN1 "This is title" "This is the body"
+elif [ "$1" = "mon-sendmail" ] ; then # S: bo-mon will send a mail
+	bo-mon-control testmail
 elif [ "$1" = "install-web" ] ; then # prod: Replace web parts in running lxcs
 	VCGI=/var/www/cgi-bin
 	VHTML=/var/www/html
 	VLXC=/var/lib/lxc
-	install -m755 $VCGI/tlmpweb $VLXC/web/rootfs/$VCGI/tlmpweb
-	install -m755 $VHTML/index.hc $VLXC/web/rootfs/$VHTML/index.hc
-	install -m755 $VHTML/blog.hc $VLXC/web/rootfs/$VHTML/blog.hc
-	install -m755 $VHTML/index.hc $VLXC/web-fail/rootfs/$VHTML/index.hc
-	install -m755 $VHTML/blog.hc $VLXC/web-fail/rootfs/$VHTML/blog.hc
-	install -m755 $VHTML/admin.hc $VLXC/webadm/rootfs/$VHTML/admin.hc
-	for file in twitter.png robots.txt true-o-meter.html 7s.html  about.html  favicon.ico  guidelines.html  marker.html terms-of-use.html
+	for w in web web-fail
+	do
+		install -m755 $VCGI/tlmpweb $VLXC/$w/rootfs/$VCGI/tlmpweb
+		install -m755 $VHTML/index.hc $VLXC/$w/rootfs/$VHTML/index.hc
+		install -m755 $VHTML/public.hc $VLXC/$w/rootfs/$VHTML/public.hc
+		install -m755 $VHTML/bolixo.hc $VLXC/$w/rootfs/$VHTML/bolixo.hc
+		install -m755 $VHTML/webapi.hc $VLXC/$w/rootfs/$VHTML/webapi.hc
+		install -m755 $VHTML/bolixoapi.hc $VLXC/$w/rootfs/$VHTML/bolixoapi.hc
+	done
+	for file in robots.txt about.html  favicon.ico terms-of-use.html
 	do
 		install -m644 $VHTML/$file $VLXC/webssl/rootfs/$VHTML/$file
 	done
 elif [ "$1" = "rotatelog" ] ; then # prod: Rotate writed logs
-	LOG=/var/lib/lxc/writed/rootfs/var/log/trli/trli-writed.log
+	LOG=/var/lib/lxc/writed/rootfs/var/log/bolixo/bo-writed.log
 	test -f $LOG.3 && mv $LOG.3 $LOG.4
 	test -f $LOG.2 && mv $LOG.2 $LOG.3
 	test -f $LOG.1 && mv $LOG.1 $LOG.2
 	test -f $LOG   && mv $LOG   $LOG.1
-	trli-writed-control -p /var/lib/lxc/writed/rootfs/var/run/blackhole/trli-writed-0.sock rotatelog
+	bo-writed-control -p /var/lib/lxc/writed/rootfs/var/run/blackhole/bo-writed-0.sock rotatelog
 	mkdir -p /root/logs
 	FILE=/root/logs/writedlog-`date +%F_%H:%M:%S`
 	cp $LOG.1 $FILE
@@ -275,7 +268,7 @@ elif [ "$1" = "newacctresend" ] ; then # prod: Resend account confirmation mail 
 		echo newacctresend email [ to_stdout ]
 		exit 1
 	fi
-	trli-writed-control -p /var/lib/lxc/writed/rootfs/var/run/blackhole/trli-writed-0.sock newacctresend $2 $3
+	bo-writed-control -p /var/lib/lxc/writed/rootfs/var/run/blackhole/bo-writed-0.sock newacctresend $2 $3
 elif [ "$1" = "status" ] ; then # prod: Status of one service
 	shift
 	while [ "$1" != "" ]
@@ -285,15 +278,12 @@ elif [ "$1" = "status" ] ; then # prod: Status of one service
 		shift
 	done
 elif [ "$1" = "checkupdates" ] ; then # prod: Check all containers are up to date
-	for lxc in trlid writed sessiond protocheck exim web webadm webssl sqlddata sqlduser
+	for lxc in bod writed sessiond keysd bolixod protocheck exim web webadm webssl bosqlddata bosqlduser bosqldbolixo
 	do
 		if [ -d /var/lib/lxc/$lxc ] ; then
 			trli-cmp --name $lxc /var/lib/lxc/$lxc/$lxc.files
 		fi
 	done
-elif [ "$1" = "test-listnews" ] ; then # P: Lists news (WORKERS,NBREP,NBROWS,IDONLY,VERBOSE)
-	shift
-	/usr/lib/trli-test.sh test-listnews $*
 elif [ "$1" = "loadfail" ] ; then # prod: Switch web access (normal,backup,split)
 	if [ "$THISSERVER" = "" ] ;then
 		echo THISSERVER not defined in trli.conf
@@ -354,7 +344,7 @@ elif [ "$1" = "loadfail" ] ; then # prod: Switch web access (normal,backup,split
 elif [ "$1" = "calltest" ] ; then # A: Call /usr/lib/trli-test.sh
 	export LXCSOCK=on
 	shift
-	/usr/lib/trli-test.sh $*
+	/usr/lib/bolixo-test.sh $*
 elif [ "$1" = "certificate-renew" ] ; then # prod: Renew the SSL certificate
 	# Do a backup
 	cd /etc
