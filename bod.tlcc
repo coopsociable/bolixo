@@ -14,6 +14,7 @@
 #include <tlmpnet.h>
 #include <string>
 #include <memory>
+#include <algorithm>
 #include <trlitool.h>
 #include <tlmpsql.h>
 #include "filesystem.h"
@@ -293,6 +294,12 @@ static VIEWED_STATUS bod_readviewed(const char *mark_modified, const char *modif
 	}
 	return ret;
 }
+static bool msg_compare (const SHORTMSG &s1, const SHORTMSG &s2)
+{
+	return s2.submit < s1.submit;
+}
+
+
 <mod>
 static void bod_list_talk (
 	vector<SHORTMSG> &msgs,
@@ -301,44 +308,65 @@ static void bod_list_talk (
 	const char *groupname,
 	unsigned offset,
 	unsigned nb,
+	bool &deletes,
 	string &msg)
 {
 	glocal unsigned nb = nb;
-	glocal vector<SHORTMSG> *msgs = &msgs;
+	glocal map<string,SHORTMSG> mp;
+	glocal bool deletes = false;
 	int dirid = fs_find_short_inbox (ownerid,groupowner,groupname,msg);
 	if (dirid != -1){
-		<call sql_query>("select dirs_content.name,dirs_content.modified,id2name.name,files.filetype"
-			",dirs_content.itemid,files.content,dirs_content.eventtime"
+		<call sql_query>("select dirs_content.name,dirs_content.modified,id2name.name,id2name_copy.name,files.filetype"
+			",dirs_content.itemid,files.content,dirs_content.eventtime,dirs_content.type"
 			" from dirs_content"
 			" join files on files.id = dirs_content.itemid and files.modified = dirs_content.modified"
 			" join ids on dirs_content.itemid = ids.id"
 			" join id2name on ids.ownerid = id2name.userid"
-			" where dirid = %d and type=%u order by eventtime desc limit %u,%u"
-			,dirid,ENTRY_MSG,offset,nb);
+			" left join id2name as id2name_copy on dirs_content.copiedby = id2name_copy.userid"
+			" where dirid = %d and (type=%u or type=%u) order by eventtime"
+			,dirid,ENTRY_MSG,ENTRY_DELETED);
 		<f onerow>
 			SHORTMSG msg;
+tlmp_error ("uuid=%s type=%s\n",row[0],row[8]);
 			msg.uuid = row[0];
 			const char *modified = row[1];
-			msg.submit = string(row[6],19);		// The file modification time is not useful for message
+			msg.submit = string(row[7],19);		// The file modification time is not useful for message
 								// An image paste into a message list will keep its
 								// modification time. So we use the eventtime.
-			msg.from = row[2];
-			msg.file_type = row[3] == NULL ? FILE_UNKNOWN : (FILE_TYPE)atoi(row[3]);
-			if (row[5] != NULL){
+			msg.from = row[3] != NULL ? row[3] : row[2];	// We pick copiedby instead of the file owner if not NULL
+			ENTRY_TYPE type = (ENTRY_TYPE)atoi(row[8]);
+			if (type == ENTRY_DELETED){
+				msg.file_type = FILE_UNKNOWN;
+				glocal.deletes = true;
+			}else{
+				msg.file_type = row[4] == NULL ? FILE_UNKNOWN : (FILE_TYPE)atoi(row[4]);
+			}
+			if (row[6] != NULL){
 				// Limit the number of lines if more than one message was requested
 				if (glocal.nb == 1){
 					msg.content = row[5];
 				}else{
-					msg.content = bod_first_lines(row[5],5);
+					msg.content = bod_first_lines(row[6],5);
 				}
 				msg.size = msg.content.size();
 			}else{
-				msg.size = fs_get_filesize(atoi(row[4]),modified);
+				msg.size = fs_get_filesize(atoi(row[5]),modified);
 			}
-			glocal.msgs->push_back(msg);
+			glocal.mp[msg.uuid] = msg;
 		</f>
 		</call>
 	}
+tlmp_error ("glocal.mp.size()=%lu\n",glocal.mp.size());
+	for (auto &m:glocal.mp){
+tlmp_error ("m.second.file_type %u\n",m.second.file_type);
+		if (m.second.file_type != FILE_UNKNOWN){
+			msgs.push_back(m.second);
+		}
+	}
+	sort (msgs.begin(),msgs.end(),msg_compare);
+	bod_trim (msgs,offset,nb);
+tlmp_error ("msgs.size()=%lu deletes=%d\n",msgs.size(),glocal.deletes);
+	deletes = glocal.deletes;
 }
 </mod>
 <mod>
@@ -1415,6 +1443,7 @@ static int trlid_main (
 				glocal const char *groupowner = groupowner;
 				glocal unsigned offset = offset;
 				glocal unsigned nb = nb;
+				glocal bool deletes = false;	// Is there some deleted entries
 				glocal string msg;
 				glocal vector<SHORTMSG> msgs;
 				string username;
@@ -1430,15 +1459,15 @@ static int trlid_main (
 						glocal.msg = MSG_U(E_GROUPPROBLEMS,"Unknown group name, empty group, or user not a member");
 					</f>
 					<f onerow>
-						bod_list_talk (glocal.msgs,atoi(row[0]),glocal.groupowner,glocal.groupname,glocal.offset,glocal.nb,glocal.msg);
+						bod_list_talk (glocal.msgs,atoi(row[0]),glocal.groupowner,glocal.groupname,glocal.offset,glocal.nb,glocal.deletes,glocal.msg);
 					</f>
 					</call>
 				}
 				if (glocal.msg.size()>0){
 					glocal.msgs.clear();
-					rep_list_talk(false,glocal.msg,glocal.msgs);
+					rep_list_talk(false,glocal.msg,glocal.msgs,false);
 				}else{
-					rep_list_talk(true,glocal.msg,glocal.msgs);
+					rep_list_talk(true,glocal.msg,glocal.msgs,glocal.deletes);
 				}
 			</f>
 			<f contact_request>	// sessionid owner user intro = success:b msg
@@ -1784,7 +1813,8 @@ static int trlid_main (
 				vector<SHORTMSG> msgs;
 				unsigned userid = bod_checkpublic(username,msg);
 				if (userid != (unsigned)-1){
-					bod_list_talk (msgs,userid,username,"public",offset,nb,msg);
+					bool deletes;
+					bod_list_talk (msgs,userid,username,"public",offset,nb,deletes,msg);
 				}
 				if (msg.size() > 0){
 					msgs.clear();

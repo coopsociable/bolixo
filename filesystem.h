@@ -56,7 +56,7 @@ int fs_insert_entry (int parentid,int id,PARAM_STRING modified,PARAM_STRING name
 int fs_insert_entry (int parentid,int id,PARAM_STRING modified,PARAM_STRING name, ENTRY_TYPE type);
 int fs_insert_file (int parentid,int fileid,PARAM_STRING modified,PARAM_STRING name);
 int fs_insert_file (int parentid,int fileid,PARAM_STRING name);
-int fs_insert_deleted (int parentid,int id,PARAM_STRING name);
+int fs_insert_deleted (int parentid,int id,PARAM_STRING name, PARAM_STRING modified);
 __attribute__((format(printf, 1, 2))) int fs_rec_getid(const char *query, ...);
 int fs_locate_dir (
 	const std::vector<std::string> &tb,

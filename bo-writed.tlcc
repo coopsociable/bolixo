@@ -1411,7 +1411,7 @@ int main (int argc, char *argv[])
 						if (!bolixo_isdir(entry.type)){
 							rep_rmdir (false,"Not a directory, can't delete");
 						}else{
-							if (fs_insert_deleted(entry.dirid,entry.entryid,entry.basename)==-1){
+							if (fs_insert_deleted(entry.dirid,entry.entryid,entry.basename,entry.modified)==-1){
 								rep_rmdir (false,"Internal error (dirs_files table)");
 							}else{
 								rep_rmdir (true,"Ok");
@@ -1492,7 +1492,7 @@ int main (int argc, char *argv[])
 						if (!bolixo_isfile(entry.type)){
 							rep_delfile (false,MSG_U(E_NOTAFILECANTDEL,"Not a file, can't delete"));
 						}else{
-							if (fs_insert_deleted(entry.dirid,entry.entryid,entry.basename)==-1){
+							if (fs_insert_deleted(entry.dirid,entry.entryid,entry.basename,entry.modified)==-1){
 								rep_delfile (false,"Internal error (dirs_files table)");
 							}else{
 								rep_delfile (true,"Ok");
@@ -2094,15 +2094,12 @@ int main (int argc, char *argv[])
 				</f>
 				<f sendtalk_file>	// sessionid owner groupname groupowner filename = success:b msg
 					glocal string msg;
-glocal const char *filename = filename;
 					glocal const char *groupname = groupname;
 					glocal const char *groupowner = groupowner;
 					glocal ENTRY srcentry;
-tlmp_error ("sendtalk_file %s\n",filename);
 					if (bo_writed_findentry (glocal.con,sessionid,filename,glocal.srcentry,true)==-1){
 						glocal.msg = glocal.srcentry.msg;
 					}else{
-tlmp_error ("sendtalk_file found %s\n",filename);
 						// We store the message in the short inbox of the group owner (like mail sent to the project) 
 						// The query is to check if the user posting the message is a member of the group
 						// and to validate the group exist
@@ -2112,14 +2109,12 @@ tlmp_error ("sendtalk_file found %s\n",filename);
 							" where id2name.name='%s' and groups.name='%s' and group_members.userid=%u"
 							,groupowner,groupname,glocal.srcentry.userid);
 						<f empty>
-tlmp_error ("sendtalk_file not member %s\n",glocal.filename);
 							glocal.msg = MSG_R(E_UNKNOWNGROUP);
 						</f>
 						<f onerow>
 							bool created;
 							unsigned ownerid = atoi(row[0]);
 							int dirid = fs_find_short_inbox (ownerid,glocal.groupowner,glocal.groupname,glocal.msg,true,created);
-tlmp_error ("sendtalk_file %s dirid=%d\n",glocal.filename,dirid);
 							if (dirid != -1){
 								string newname = fs_makeid();
 								if (fs_insert_entry(dirid,glocal.srcentry.entryid,glocal.srcentry.modified
