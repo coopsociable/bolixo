@@ -1125,7 +1125,6 @@ elif [ "$1" = "lxc0-webssl" ]; then # prod:
 			-d /var/www/html \
 			$EXTRALXCPROG \
 			-e /var/www/html/favicon.ico \
-			-e /var/www/html/7s.html \
 			-e /var/www/html/robots.txt \
 			-e /var/www/html/twitter.png \
 			-e /var/www/html/private.png \
@@ -1324,6 +1323,26 @@ elif [ "$1" = "loadfail" ] ; then # prod: Control access to normal or fail web (
 	else
 		echo normal,fail or split
 	fi
+elif [ "$1" = "instrument" ] ; then # A: Report remote call statistics
+	/var/lib/lxc/bod/status.sh >/dev/null	# Force a fflush
+	echo -n "bod: "
+	(echo -n 0
+	cat /var/lib/lxc/bod/rootfs/tmp/instrument.log | while read t a b c
+	do
+		echo -n +$b
+	done
+	echo
+	) | bc -l
+	echo -n "web: "
+	(echo -n 0
+	cat /var/lib/lxc/web/rootfs/tmp/instrument.log | while read t a b c
+	do
+		if [ "$a" != "--------" ]; then
+			echo -n +$b
+		fi
+	done
+	echo
+	) | bc -l
 else
 	echo test.sh command ...
 fi

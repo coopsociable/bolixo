@@ -1,4 +1,4 @@
-CURDIR=trli
+CURDIR=bolixo
 MANPAGES=/usr/share/man
 PACKAGE_REV:=$(shell ./makeversion $(BUILD_SVNVER))
 INSTRUMENT:=$(shell test -f ../instrument && echo --instrument --getnow fdpass_getnow)
@@ -10,7 +10,7 @@ PROGS=_dict.o bod bod-client bod-control bo-writed bo-writed-control bo-sessiond
 DOCS=
 OPTIONS=$(DINSTRUMENT) -funsigned-char -O2 -Wall -g -DVERSION=\"$(PACKAGE_REV)\" -I/usr/include/tlmp -I/usr/include/trlitool
 LIBS=/usr/lib64/trlitool/trlitool.a -llinuxconf -lstdc++ -lcrypto
-TLMP_LIB=/usr/lib/tlmp
+TLMP_LIB=$(RPM_BUILD_ROOT)/usr/lib/tlmp
 LDEVEL=/usr/lib/linuxconf-devel
 .SUFFIXES: .o .tex .tlcc .cc .png .uml
 all: $(PROGS) msg.eng msg.fr
@@ -21,7 +21,7 @@ msg:
 		bolixo.dic bolixo.m EF *.cc *.tlcc web/*.tlcc web/*.hcc
 
 compile: $(PROGS)
-	#make -Cweb 
+	make -Cweb 
 
 bofs: bofs.tlcc proto/bod_client.protoh proto/webapi.protoh proto/bolixoapi.protoh filesystem.h 
 	cctlcc -Wall $(OPTIONS) bofs.tlcc _dict.o -o bofs $(LIBS) -lssl
@@ -62,11 +62,11 @@ bo-sessiond: bo-sessiond.tlcc proto/bo-sessiond_control.protoh \
 bo-sessiond-control: bo-sessiond-control.tlcc proto/bo-sessiond_control.protoh
 	cctlcc -Wall $(OPTIONS) bo-sessiond-control.tlcc -o bo-sessiond-control $(LIBS)
 
-bo-log: trli-log.tlcc proto/trli-log.protoh proto/trli-log-control.protoh proto/trli-log-admin.protoh
+bo-log: bo-log.tlcc proto/bo-log.protoh proto/bo-log-control.protoh proto/bo-log-admin.protoh
 	cctlcc -Wall $(OPTIONS) trli-log.tlcc -o trli-log $(LIBS) -ltlmpsql -L/usr/lib64/mysql -lmysqlclient
 
-bo-log-control: trli-log-control.tlcc proto/trli-log-control.protoh
-	cctlcc -Wall $(OPTIONS) trli-log-control.tlcc -o trli-log-control $(LIBS) 
+bo-log-control: trli-log-control.tlcc proto/bo-log-control.protoh
+	cctlcc -Wall $(OPTIONS) bo-log-control.tlcc -o bo-log-control $(LIBS) 
 
 bo-manager: bo-manager.tlcc
 	cctlcc -Wall $(OPTIONS) bo-manager.tlcc _dict.o /usr/lib64/trlitool/manager.o -o bo-manager $(LIBS)
@@ -173,6 +173,7 @@ clean:
 install: msg.eng msg.fr
 	mkdir -p $(RPM_BUILD_ROOT)/etc/bolixo
 	mkdir -p $(RPM_BUILD_ROOT)/usr/sbin
+	mkdir -p $(RPM_BUILD_ROOT)/usr/bin
 	mkdir -p $(RPM_BUILD_ROOT)/usr/lib
 	mkdir -p $(RPM_BUILD_ROOT)/var/www/html
 	mkdir -p $(RPM_BUILD_ROOT)/var/log/bolixo
@@ -180,26 +181,35 @@ install: msg.eng msg.fr
 	install -m755 bolixo-production.sh $(RPM_BUILD_ROOT)/usr/sbin/bolixo-production
 	install -m755 test.sh $(RPM_BUILD_ROOT)/usr/lib/bolixo-test.sh
 	install -m755 bod $(RPM_BUILD_ROOT)/usr/sbin/bod
-	install -m755 bod-client $(RPM_BUILD_ROOT)/usr/sbin/bodd-client
+	install -m755 bod-client $(RPM_BUILD_ROOT)/usr/sbin/bod-client
 	install -m755 bod-control $(RPM_BUILD_ROOT)/usr/sbin/bod-control
 	install -m755 bo-writed $(RPM_BUILD_ROOT)/usr/sbin/bo-writed
 	install -m755 bo-writed-control $(RPM_BUILD_ROOT)/usr/sbin/bo-writed-control
 	install -m755 bo-sessiond $(RPM_BUILD_ROOT)/usr/sbin/bo-sessiond
 	install -m755 bo-sessiond-control $(RPM_BUILD_ROOT)/usr/sbin/bo-sessiond-control
-	install -m755 bolixo-manager $(RPM_BUILD_ROOT)/usr/sbin/bolixo-manager
-	install -m755 bo-log $(RPM_BUILD_ROOT)/usr/sbin/bo-log
-	install -m755 bo-log-control $(RPM_BUILD_ROOT)/usr/sbin/bo-log-control
-	install -m755 bo-mon $(RPM_BUILD_ROOT)/usr/sbin/bo-mon
-	install -m755 bo-mon-control $(RPM_BUILD_ROOT)/usr/sbin/bo-mon-control
+	install -m755 bo-manager $(RPM_BUILD_ROOT)/usr/sbin/bo-manager
 	install -m755 web/index.hc $(RPM_BUILD_ROOT)/var/www/html/index.hc
-	install -m755 web/admin.hc $(RPM_BUILD_ROOT)/var/www/html/admin.hc
+	install -m755 web/public.hc $(RPM_BUILD_ROOT)/var/www/html/public.hc
+	install -m755 web/bolixo.hc $(RPM_BUILD_ROOT)/var/www/html/bolixo.hc
+	install -m755 web/webapi.hc $(RPM_BUILD_ROOT)/var/www/html/webapi.hc
+	install -m755 web/bolixoapi.hc $(RPM_BUILD_ROOT)/var/www/html/bolixoapi.hc
 	install -m644 web/favicon.ico $(RPM_BUILD_ROOT)/var/www/html/favicon.ico
 	install -m644 web/about.html $(RPM_BUILD_ROOT)/var/www/html/about.html
 	install -m644 web/robots.txt $(RPM_BUILD_ROOT)/var/www/html/robots.txt
-	install -m644 web/7s.html $(RPM_BUILD_ROOT)/var/www/html/7s.html
-	install -m644 web/twitter.png $(RPM_BUILD_ROOT)/var/www/html/twitter.png
-	install -m644 data/http_check.conf $(RPM_BUILD_ROOT)/etc/trli/http_check.conf
+	install -m644 web/private.png $(RPM_BUILD_ROOT)/var/www/html/private.png
+	install -m644 data/http_check.conf $(RPM_BUILD_ROOT)/etc/bolixo/http_check.conf
 	install -m755 bolixoserv.sysv $(RPM_BUILD_ROOT)/etc/init.d/bolixoserv
+	install -m755 bolixod $(RPM_BUILD_ROOT)/usr/sbin/bolixod
+	install -m755 bolixod-control $(RPM_BUILD_ROOT)/usr/sbin/bolixod-control
+	install -m755 bo-keysd $(RPM_BUILD_ROOT)/usr/sbin/bo-keysd
+	install -m755 bo-keysd-control $(RPM_BUILD_ROOT)/usr/sbin/bo-keysd-control
+	install -m755 bofs $(RPM_BUILD_ROOT)/usr/bin/bofs
+
+#	install -m755 web/admin.hc $(RPM_BUILD_ROOT)/var/www/html/admin.hc
+#	install -m755 bo-log $(RPM_BUILD_ROOT)/usr/sbin/bo-log
+#	install -m755 bo-log-control $(RPM_BUILD_ROOT)/usr/sbin/bo-log-control
+#	install -m755 bo-mon $(RPM_BUILD_ROOT)/usr/sbin/bo-mon
+#	install -m755 bo-mon-control $(RPM_BUILD_ROOT)/usr/sbin/bo-mon-control
 
 msg.eng:
 	@mkdir -p $(TLMP_LIB)/help.eng
@@ -237,7 +247,7 @@ buildrpm: buildspec
 	unset LD_PRELOAD; $(RPM) -ba $(RPMTOPDIR)/SPECS/$(CURDIR)-$(PACKAGE_REV).spec
 
 
-REPO=http://svn.solucorp.qc.ca/repos/solucorp/lasuite
+REPO=https://solucorp.solutions/repos/solucorp/bolixo
 distrpm:
 	@eval `svn cat $(REPO)/trunk/Makefile | grep ^PACKAGE_REV=` ; \
 	$(MAKE) COPY="svn export --force $(REPO)/trunk/" \
