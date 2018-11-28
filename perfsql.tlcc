@@ -1,0 +1,68 @@
+/*
+	Execute SQL and print statitics
+*/
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <tlmplib.h>
+#include <string>
+#include <tlmpsql.h>
+#include <trlitool.h>
+
+using namespace std;
+
+<mod>
+int main (int argc, char *argv[])
+{
+	glocal int ret = -1;
+	glocal const char *dbserv = "localhost";
+	glocal const char *dbname = "files";
+	glocal const char *dbuser = "root";
+	glocal const char *dbpass = NULL;
+	glocal string sql = "select count(*) from dirs_content";
+	glocal const char *sqlfile = NULL;
+	glocal bool printres = false;
+	static const char *tb[]={"bolixo","tlmpsql",NULL};
+	glocal.ret = <call tlmpprogram>(argc,argv,tb);
+	<f init>
+		setproginfo ("","0.0","...");
+		setarg ('s',"server","Database server",glocal.dbserv,false);
+		setarg ('p',"password","Database password",glocal.dbpass,true);
+		setarg ('q',"query","Database query",glocal.sql,false);
+		setarg ('Q',"queryfile","File holding a query",glocal.sqlfile,false);
+		setarg (' ',"printres","Print the results",glocal.printres,false);
+	</f>
+	<f main_noarg>
+		int ret = -1;
+		query_setdefaultdb (glocal.dbserv,glocal.dbname,glocal.dbuser,glocal.dbpass);
+		query_getdefaultdb()->setunixpath ("/var/lib/lxc/bosqlddata/rootfs/var/lib/mysql/mysql.sock");
+		if (glocal.sqlfile != NULL){
+			glocal.sql.clear();
+			<call loadfile>(glocal.sqlfile,false);
+			<f oneline>
+				glocal.sql += line;
+				return 0;
+			</f>
+			</call>
+		}
+		for (int i=0; i<10; i++){
+			glocal long long start = fdpass_getnow();
+			glocal long long end = glocal.start;
+			<call sql_query>(glocal.sql.c_str());
+			<f onerow>
+				if (rownum == 0){
+					glocal.end = fdpass_getnow();
+				}
+				if (glocal.printres) printf ("\t%s\n",row[0]);
+			</f>
+			</call>
+			long long duration = glocal.end - glocal.start;
+			printf ("duration: %Ld.%06Ld\n",duration/1000000,duration%1000000);
+		}
+		return ret;
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+

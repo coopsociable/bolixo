@@ -170,7 +170,8 @@ elif [ "$1" = "checks" ]; then # A: Sanity checks
 		echo "*** Horizon not connected"
 	fi
 elif [ "$1" = "files" ] ; then	# db: Access files database
-	mysql -uroot -S $SOCKN $DBNAME
+	shift
+	mysql $* -uroot -S $SOCKN $DBNAME
 elif [ "$1" = "users" ] ; then # db: Access users database
 	mysql -uroot -S $SOCKU  $DBNAMEU
 elif [ "$1" = "bolixo" ] ; then # db: Access bolixo nodes database

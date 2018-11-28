@@ -839,6 +839,30 @@ static string util_img(unsigned step, unsigned width, PARAM_STRING dirpath, PARA
 		,width,tlmpweb_curpage(),step,dirpath.ptr,sep,filename.ptr,tmp.c_str());
 }
 #endif
+static void util_urls (_F_public_page &c, const SHORTMSG &m, string &content, bool large)
+{
+	string url = c.msgurl(m.uuid,m.submit);
+	if (file_is_sound(m.file_type)){
+		content = string_f("<audio controls>\n"
+			"<source src=\"%s\" type=\"audio/%s\">\n"
+			"</audio>"
+			,url.c_str(),tbftype[m.file_type]);
+	}else if (file_is_image(m.file_type)){
+		unsigned width = large ? 800 : 100;
+		content = string_f("<img width=%u src=%s>",width,url.c_str());
+	}else if (file_is_video(m.file_type)){
+		unsigned height=600,width=800;
+		if (!large){
+			height = width = 200;
+		}
+		content = string_f(
+			"<video width=\"%u\" height=\"%u\" controls>\n"
+			"<source src=\"%s\" type=\"video/mp4\">\n"
+			"Your browser does not support the video tag.\n"
+			"</video>"
+			,width,height,url.c_str());
+	}
+}
 <mod>
 static void public_messages(_F_public_page &c, CONNECT_INFO &con, PARAM_STRING user)
 {       
@@ -849,6 +873,16 @@ static void public_messages(_F_public_page &c, CONNECT_INFO &con, PARAM_STRING u
 	string table = string("talk")+"public";
 	DIV d; d.autoscroll().print();
 	<call webtable>(table,"100%");
+	<f click>
+		tlmpweb_body("white",NULL);
+		vector<SHORTMSG> messages;
+		if (glocal.c->list_talk(noline,1,messages) != -1){
+			auto &m = messages[0];
+			string content;
+			util_urls(*glocal.c,m,content,true);
+			htmlout (content);
+		}
+	</f>
 	<f load>
 		setrowstyle ("hline","bgcolor=gray valign=top");
 		setrowstyle ("sep","bgcolor=ghostwhite valign=top");
@@ -888,27 +922,11 @@ static void public_messages(_F_public_page &c, CONNECT_INFO &con, PARAM_STRING u
 					}
 					string time = string_f("<font size=-1>%s</font>",format_time(0,m.submit.substr(11)).c_str());
 					string path = string_f("/msgs/%s/short-inbox/public/%s",glocal.user,m.uuid.c_str());
-					const int step_image = 5;
 					string content;
 					if (m.content.size() != 0){
 						content = string_f("<div class=smsg>%s</div>",util_format_shortmsg (m.content,5).c_str());
-					}else if (file_is_sound(m.file_type)){
-						string tmp = util_flipspaces(m.submit);
-						content = string_f("<audio controls>\n"
-							"<source src=\"%s?webstep=%u&image=%s&mod=%s\" type=\"audio/%s\">\n"
-							"</audio>"
-							,tlmpweb_curpage(),step_image,path.c_str(),tmp.c_str(),tbftype[m.file_type]);
-					}else if (file_is_image(m.file_type)){
-						string url = glocal.c->msgurl(m.uuid,m.submit);
-						content = string_f("<img width=100 src=%s>",url.c_str());
-					}else if (file_is_video(m.file_type)){
-						string tmp = util_flipspaces(m.submit);
-						content = string_f(
-							"<video width=\"200\" height=\"200\" controls>\n"
-							"<source src=\"%s?webstep=%u&image=%s&mod=%s\" type=\"video/mp4\">\n"
-							"Your browser does not support the video tag.\n"
-							"</video>"
-							,tlmpweb_curpage(),step_image,path.c_str(),tmp.c_str());
+					}else{
+						util_urls(*glocal.c,m,content,false);
 					}
 					glocal.webtable.setrow (style,glocal.rownum,"%s\t%s",time.c_str(),content.c_str());
 					glocal.rownum++;
@@ -928,10 +946,10 @@ static void public_top_left(_F_public_page &c)
 {
 	DIV d; d.h(100).w(100).dispflex().flowrow().print();
 	DIV dd; dd.dispflex().flexfixe().print();
-	htmlprintf ("<img width=30 src=%s>\n",c.projecturl("/mini-photo.jpg","").c_str());
+	htmlprintf ("<img width=40 height=40 src=%s>\n",c.projecturl("/mini-photo.jpg","").c_str());
 	dd.end();
 	dd.dispflex().flexfixe().print();
-	htmlprintf ("<img height=100%% src=%s>\n",c.projecturl("/photo.jpg","").c_str());
+	htmlprintf ("<img width=100 height=100 src=%s>\n",c.projecturl("/photo.jpg","").c_str());
 }
 <mod>
 static void public_display_full (_F_public_page &c, CONNECT_INFO &con, PARAM_STRING user, vector<FILEINFO> &files)

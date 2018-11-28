@@ -4,7 +4,7 @@ PACKAGE_REV:=$(shell ./makeversion $(BUILD_SVNVER))
 INSTRUMENT:=$(shell test -f ../instrument && echo --instrument --getnow fdpass_getnow)
 DINSTRUMENT:=$(shell test -f ../instrument && echo -DINSTRUMENT)
 PROGS=_dict.o bod bod-client bod-control bo-writed bo-writed-control bo-sessiond bo-sessiond-control \
-      bo-manager bofs ssltestsign bo-keysd bo-keysd-control bolixod bolixod-control
+      bo-manager bofs ssltestsign bo-keysd bo-keysd-control bolixod bolixod-control perfsql
 #bo-log bo-log-control \
 #      bo-mon bo-mon-control
 DOCS=
@@ -83,6 +83,9 @@ bo-keysd: bo-keysd.tlcc proto/bo-keysd_control.protoh
 
 bo-keysd-control: bo-keysd-control.tlcc proto/bo-keysd_control.protoh
 	cctlcc -Wall $(OPTIONS) bo-keysd-control.tlcc -o bo-keysd-control $(LIBS)
+
+perfsql: perfsql.tlcc
+	cctlcc -Wall $(OPTIONS) perfsql.tlcc -o perfsql $(LIBS) -ltlmpsql -L/usr/lib64/mysql -lmysqlclient
 
 proto/bo-log-control.protoh: proto/bo-log-control.proto
 	build-protocol --arg "int no" --arg "HANDLE_INFO *c" --name bo_log_control \

@@ -1000,7 +1000,18 @@ static int trlid_main (
 				glocal vector<FILEINFO> files;
 				glocal map<string,DIRENTRY> mp;
 				glocal bool history = history;
+				#ifdef INSTRUMENT
+				glocal long long start = fdpass_getnow();
+				#endif
 				if (bod_findentry (glocal.con_sess,sessionid,name,entry,threshold)!=-1){
+					#ifdef INSTRUMENT
+					{
+					long long end = fdpass_getnow();
+					fprintf (f_instrument,"%Ld listdir:findentry %lf userid=%u dirid=%d name=%s\n"
+						,glocal.start,(end-glocal.start)/1000000.0,entry.userid,entry.entryid,name);
+					glocal.start = end;
+					}
+					#endif
 					if (!bolixo_isdir(entry.type)){
 						entry.msg = MSG_U(E_NOTDIR,"Is not a directory");
 					}else if (entry.ownerid != entry.userid && entry.listmode == 'p' && !entry.is_admin){
@@ -1020,6 +1031,13 @@ static int trlid_main (
 							" where dirid=%d and dirs_content.eventtime <= '%s' order by eventtime"
 							,entry.userid,entry.entryid,threshold);
 						<f onerow>
+							#ifdef INSTRUMENT
+							if (rownum==0){
+								long long end = fdpass_getnow();
+								fprintf (f_instrument,"%Ld listdir:row0 %lf\n",glocal.start,(end-glocal.start)/1000000.0);
+								glocal.start = end;
+							}
+							#endif
 							const char *name = row[0];
 							const char *modified = row[1];
 							ENTRY_TYPE type = (ENTRY_TYPE) atoi(row[2]);
@@ -1067,6 +1085,13 @@ static int trlid_main (
 							}
 						</f>
 						</call>
+						#ifdef INSTRUMENT
+						{
+						long long end = fdpass_getnow();
+						fprintf (f_instrument,"%Ld listdir:endsql %lf\n",glocal.start,(end-glocal.start)/1000000.0);
+						glocal.start = end;
+						}
+						#endif
 						if (!glocal.history){
 							for (auto &x:glocal.mp){
 								if (!bolixo_isdeleted(x.second.type)){
@@ -1091,6 +1116,12 @@ static int trlid_main (
 						}
 					}
 				}
+				#ifdef INSTRUMENT
+				{
+				long long end = fdpass_getnow();
+				fprintf (f_instrument,"%Ld listdir:rep %lf\n",glocal.start,(end-glocal.start)/1000000.0);
+				}
+				#endif
 				if (entry.msg.size() > 0){
 					glocal.files.clear();
 					rep_listdir (false,entry.msg,glocal.files,false);
