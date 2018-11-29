@@ -59,6 +59,8 @@ make install
 /var/www/html/about.html
 /var/www/html/favicon.ico
 /var/www/html/robots.txt
+/var/log/bolixo
+%attr(-,bolixo,bolixo)/var/lib/bolixo
 
 %clean
 if [ "$RPM_BUILD_ROOT" != "" ] ; then
@@ -66,6 +68,9 @@ if [ "$RPM_BUILD_ROOT" != "" ] ; then
 fi
 
 %post
+
+id bolixo >/dev/null 2>/dev/null || useradd -r bolixo
+chkconfig --add bolixoserv
 
 %postun
 

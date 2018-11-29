@@ -180,6 +180,7 @@ install: msg.eng msg.fr
 	mkdir -p $(RPM_BUILD_ROOT)/usr/lib
 	mkdir -p $(RPM_BUILD_ROOT)/var/www/html
 	mkdir -p $(RPM_BUILD_ROOT)/var/log/bolixo
+	mkdir -p $(RPM_BUILD_ROOT)/var/lib/bolixo
 	mkdir -p $(RPM_BUILD_ROOT)/etc/init.d
 	install -m755 bolixo-production.sh $(RPM_BUILD_ROOT)/usr/sbin/bolixo-production
 	install -m755 test.sh $(RPM_BUILD_ROOT)/usr/lib/bolixo-test.sh
