@@ -82,15 +82,20 @@ elif [ "$1" = "checks" ]; then # A: Sanity checks blackhole
 		echo "*** Horizon not connected"
 	fi
 elif [ "$1" = "config" ] ; then # config: Generate config
+	if [ ! -f /etc/bolixo/secrets.admin ] ; then
+		NANO=`date +%N`
+		sed "s/ adm/ $NANO/" </usr/share/bolixo/secrets.admin >/etc/bolixo/secrets.admin
+	fi
+	if [ ! -f /etc/bolixo/secrets.client ] ; then
+		NANO=`date +%N`
+		sed "s/ foo/ $NANO/" </usr/share/bolixo/secrets.client >/etc/bolixo/secrets.client
+	fi
+	if [ ! -f /root/data/manager.conf ] ; then
+		FOO=`head -1 /etc/bolixo/secrets.client | (read a b; echo $b)`
+		ADM=`head -1 /etc/bolixo/secrets.admin | (read a b; echo $b)`
+		sed "s/ foo/ $FOO/" </usr/share/bolixo/manager.conf | sed "s/ adm/ $ADM/" >/root/data/manager.conf
+	fi
 	/usr/lib/bolixo-test.sh prodconfig
-	if [ ! -f /root/data/secrets.admin ] ; then
-		NANO=`date +%N`
-		sed 's/adm/$NANO/' </usr/share/bolixo/secrets.admin >/root/data/secrets.admin
-	fi
-	if [ ! -f /root/data/secrets.client ] ; then
-		NANO=`date +%N`
-		sed 's/foo/$NANO/' </usr/share/bolixo/secrets.client >/root/data/secrets.client
-	fi
 elif [ "$1" = "lxc0s" ] ; then # config: Produces the lxc0 scripts
 	export SILENT=on
 	$0 checks

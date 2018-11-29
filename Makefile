@@ -185,6 +185,7 @@ install: msg.eng msg.fr
 	mkdir -p $(RPM_BUILD_ROOT)/usr/share/bolixo
 	install data/secrets.admin $(RPM_BUILD_ROOT)/usr/share/bolixo/secrets.admin
 	install data/secrets.client $(RPM_BUILD_ROOT)/usr/share/bolixo/secrets.client
+	install data/manager.conf $(RPM_BUILD_ROOT)/usr/share/bolixo/manager.conf
 	install -m755 bolixo-production.sh $(RPM_BUILD_ROOT)/usr/sbin/bolixo-production
 	install -m755 test.sh $(RPM_BUILD_ROOT)/usr/lib/bolixo-test.sh
 	install -m755 bod $(RPM_BUILD_ROOT)/usr/sbin/bod

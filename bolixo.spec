@@ -32,6 +32,7 @@ make install
 %defattr(-,root,root)
 /usr/share/bolixo/secrets.admin
 /usr/share/bolixo/secrets.client
+/usr/share/bolixo/manager.conf
 /usr/sbin/bod
 /usr/sbin/bod-control
 /usr/sbin/bod-client
