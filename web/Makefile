@@ -43,5 +43,14 @@ util.os: util.tlcc util.h /usr/include/tlmp/tlmpweb.h /usr/include/tlmp/tlmpweb.
 		--protoch proto/webapi.protoch proto/webapi.proto >proto/webapi.protoh
 
 private.png: private.scad
-	openscad --imgsize 20,20 -oprivate.png --camera=0,0,50,0,0,0 private.scad
+	openscad --imgsize 20,20 -oprivate.png --colorscheme=Nature --camera=0,0,50,0,0,0 private.scad
+	convert private.png -fuzz 20% -transparent white private.png 
+
+new.png: new.scad
+	openscad --imgsize 20,20 -onew.png -Dview=\"new\" --colorscheme=Nature --camera=0,0,50,0,0,0 new.scad
+	convert new.png -fuzz 20% -transparent white new.png 
+	openscad --imgsize 20,20 -omodified.png -Dview=\"modified\" --colorscheme=Nature --camera=0,0,50,0,0,0 new.scad
+	convert modified.png -fuzz 20% -transparent white modified.png 
+	openscad --imgsize 20,20 -oseen.png -Dview=\"seen\" --colorscheme=Nature --camera=0,0,50,0,0,0 new.scad
+	convert seen.png -fuzz 20% -transparent white seen.png 
 

@@ -81,20 +81,30 @@ elif [ "$1" = "checks" ]; then # A: Sanity checks blackhole
 	else
 		echo "*** Horizon not connected"
 	fi
-elif [ "$1" = "config" ] ; then # config: Generate config
+elif [ "$1" = "secrets" ] ; then # config: Generate secrets
 	if [ ! -f /etc/bolixo/secrets.admin ] ; then
+		echo Write /etc/bolixo/secrets.admin
 		NANO=`date +%N`
 		sed "s/ adm/ $NANO/" </usr/share/bolixo/secrets.admin >/etc/bolixo/secrets.admin
+		chmod 600 /etc/bolixo/secrets.admin
 	fi
 	if [ ! -f /etc/bolixo/secrets.client ] ; then
+		echo Write /etc/bolixo/secrets.client
 		NANO=`date +%N`
 		sed "s/ foo/ $NANO/" </usr/share/bolixo/secrets.client >/etc/bolixo/secrets.client
+		chmod 600 /etc/bolixo/secrets.client
 	fi
 	if [ ! -f /root/data/manager.conf ] ; then
+		echo Write /root/data/manager.conf
 		FOO=`head -1 /etc/bolixo/secrets.client | (read a b; echo $b)`
 		ADM=`head -1 /etc/bolixo/secrets.admin | (read a b; echo $b)`
-		sed "s/ foo/ $FOO/" </usr/share/bolixo/manager.conf | sed "s/ adm/ $ADM/" >/root/data/manager.conf
+		MYIP=`ifconfig eth0 | grep "inet " | ( read a b c; echo $b)`
+		sed "s/ foo/ $FOO/" </usr/share/bolixo/manager.conf \
+			| sed "s/ adm/ $ADM/" \
+			| sed "s/testhost/localhost/" \
+			| sed "s/1.2.3.4/$MYIP/" >/root/data/manager.conf
 	fi
+elif [ "$1" = "config" ] ; then # config: Generate config
 	/usr/lib/bolixo-test.sh prodconfig
 elif [ "$1" = "lxc0s" ] ; then # config: Produces the lxc0 scripts
 	export SILENT=on

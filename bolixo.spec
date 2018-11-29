@@ -55,6 +55,9 @@ make install
 /var/www/html/bolixoapi.hc
 /var/www/html/.tlmplibs
 /var/www/html/private.png
+/var/www/html/new.png
+/var/www/html/modified.png
+/var/www/html/seen.png
 /usr/lib/bolixo-test.sh
 /usr/sbin/bolixo-production
 /etc/bolixo/http_check.conf
