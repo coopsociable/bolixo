@@ -461,7 +461,7 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 			signature varchar(400),
 			modifiedby int default 0
 		)engine=$ENGINE;
-		create index files_id on files (id,modified);
+		create index files_id on files (modified,id);
 
 		create table dirs_content (
 			dirid int,
