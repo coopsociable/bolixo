@@ -1067,6 +1067,10 @@ elif [ "$1" = "lxc0-web" ]; then # prod:
 	strace -f -o /tmp/log.web2 /var/www/cgi-bin/tlmpweb >/dev/null
 	for w in web web-fail
 	do
+		JOURNEY=
+		if [ -f /var/www/html/journey.hc ] ; then
+			JOURNEY="-e /var/www/html/journey.hc"
+		fi
 		mkdir -p /var/lib/lxc/$w
 		/usr/sbin/trli-lxc0 $LXC0USELINK \
 			--filelist /var/lib/lxc/$w/$w.files \
@@ -1079,7 +1083,7 @@ elif [ "$1" = "lxc0-web" ]; then # prod:
 			-e /var/www/html/bolixoapi.hc \
 			-e /var/www/html/bolixo.hc \
 			-e /var/www/html/public.hc \
-			-e /var/www/html/journey.hc \
+			$JOURNEY \
 			-e /usr/lib/tlmp/templates/default/webtable.tpl \
 			-e /usr/sbin/trli-stop \
 			-e /usr/lib/tlmp/lib/tlmpdoc.so.1 \
@@ -1094,18 +1098,21 @@ elif [ "$1" = "lxc0-web" ]; then # prod:
 			-n $w -p /usr/sbin/httpd >/var/lib/lxc/$w/$w-lxc0.sh
 			chmod +x /var/lib/lxc/$w/$w-lxc0.sh
 	done
-	echo webadm
-	mkdir -p /var/lib/lxc/webadm
-	/usr/sbin/trli-lxc0 $LXC0USELINK \
-		--filelist /var/lib/lxc/webadm/webadm.files \
-		--savefile /var/lib/lxc/webadm/webadm.save \
-		--restorefile /var/lib/lxc/webadm/webadm.restore \
-		$EXTRALXCPROG \
-		-i /usr/sbin/trli-init -l $LOG -l /tmp/log.web2 \
-		-e /var/www/html/admin.hc \
-		-e /usr/sbin/trli-stop \
-		-n webadm -p /usr/sbin/httpd >/var/lib/lxc/webadm/webadm-lxc0.sh
-	chmod +x /var/lib/lxc/webadm/webadm-lxc0.sh
+	if false
+	then
+		echo webadm
+		mkdir -p /var/lib/lxc/webadm
+		/usr/sbin/trli-lxc0 $LXC0USELINK \
+			--filelist /var/lib/lxc/webadm/webadm.files \
+			--savefile /var/lib/lxc/webadm/webadm.save \
+			--restorefile /var/lib/lxc/webadm/webadm.restore \
+			$EXTRALXCPROG \
+			-i /usr/sbin/trli-init -l $LOG -l /tmp/log.web2 \
+			-e /var/www/html/admin.hc \
+			-e /usr/sbin/trli-stop \
+			-n webadm -p /usr/sbin/httpd >/var/lib/lxc/webadm/webadm-lxc0.sh
+		chmod +x /var/lib/lxc/webadm/webadm-lxc0.sh
+	fi
 elif [ "$1" = "lxc0-webssl" ]; then # prod:
 	ROOTLOG=/root/stracelogs/log.web
 	LOG=/tmp/log.web

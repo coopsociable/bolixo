@@ -50,6 +50,7 @@ make install
 /var/www/html/bolixo.hc
 /var/www/html/webapi.hc
 /var/www/html/bolixoapi.hc
+/var/www/html/.tlmplibs
 /var/www/html/private.png
 /usr/lib/bolixo-test.sh
 /usr/sbin/bolixo-production

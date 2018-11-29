@@ -191,6 +191,7 @@ install: msg.eng msg.fr
 	install -m755 bo-sessiond $(RPM_BUILD_ROOT)/usr/sbin/bo-sessiond
 	install -m755 bo-sessiond-control $(RPM_BUILD_ROOT)/usr/sbin/bo-sessiond-control
 	install -m755 bo-manager $(RPM_BUILD_ROOT)/usr/sbin/bo-manager
+	@cp web/tlmplibs $(RPM_BUILD_ROOT)/var/www/html/.tlmplibs
 	install -m755 web/index.hc $(RPM_BUILD_ROOT)/var/www/html/index.hc
 	install -m755 web/public.hc $(RPM_BUILD_ROOT)/var/www/html/public.hc
 	install -m755 web/bolixo.hc $(RPM_BUILD_ROOT)/var/www/html/bolixo.hc
