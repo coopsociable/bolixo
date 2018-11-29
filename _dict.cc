@@ -1,4 +1,4 @@
 #include "bolixo.m"
-#include <linuxconf/translat.h>
+#include <tlmp/translat.h>
 DICTIONARY_REQUEST;
 

@@ -7,8 +7,8 @@ Vendor: Solucorp
 Group: Networking/util
 Source0: bolixo-REV.src.tar.gz
 BuildRoot: /var/tmp/bolixo
-BuildRequires: linuxconf-devel mariadb-devel trlitool tlmpsql tlmpweb
-Requires: mariadb-libs linuxconf-lib tlmpsql trlitool tlmpweb
+BuildRequires: tlmp-devel mariadb-devel trlitool tlmpsql tlmpweb
+Requires: mariadb-libs tlmp-lib tlmpsql trlitool tlmpweb
 
 %description
 Bolixo is a distributed social media. This package includes everything

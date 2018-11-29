@@ -9,9 +9,9 @@ PROGS=_dict.o bod bod-client bod-control bo-writed bo-writed-control bo-sessiond
 #      bo-mon bo-mon-control
 DOCS=
 OPTIONS=$(DINSTRUMENT) -funsigned-char -O2 -Wall -g -DVERSION=\"$(PACKAGE_REV)\" -I/usr/include/tlmp -I/usr/include/trlitool
-LIBS=/usr/lib64/trlitool/trlitool.a -llinuxconf -lstdc++ -lcrypto
+LIBS=/usr/lib64/trlitool/trlitool.a -ltlmp -lstdc++ -lcrypto
 TLMP_LIB=$(RPM_BUILD_ROOT)/usr/lib/tlmp
-LDEVEL=/usr/lib/linuxconf-devel
+LDEVEL=/usr/lib64/tlmp-devel
 .SUFFIXES: .o .tex .tlcc .cc .png .uml
 all: $(PROGS) msg.eng msg.fr
 	make -Cweb install
