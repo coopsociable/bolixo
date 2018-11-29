@@ -83,6 +83,14 @@ elif [ "$1" = "checks" ]; then # A: Sanity checks blackhole
 	fi
 elif [ "$1" = "config" ] ; then # config: Generate config
 	/usr/lib/bolixo-test.sh prodconfig
+	if [ ! -f /root/data/secrets.admin ] ; then
+		NANO=`date +%N`
+		sed 's/adm/$NANO/' </usr/share/bolixo/secrets.admin >/root/data/secrets.admin
+	fi
+	if [ ! -f /root/data/secrets.client ] ; then
+		NANO=`date +%N`
+		sed 's/foo/$NANO/' </usr/share/bolixo/secrets.client >/root/data/secrets.client
+	fi
 elif [ "$1" = "lxc0s" ] ; then # config: Produces the lxc0 scripts
 	export SILENT=on
 	$0 checks

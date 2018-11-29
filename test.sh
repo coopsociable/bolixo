@@ -10,7 +10,7 @@
 if [ "$BOLIXOPATH" = "" ] ; then
 	BOLIXOPATH=`pwd`
 fi
-if [ "$BOLIXCONF" = "" ] ; then
+if [ "$BOLIXOCONF" = "" ] ; then
 	BOLIXOCONF=`pwd`/data
 fi
 if [ "$BOLIXOLOG" = "" ] ; then
@@ -1134,7 +1134,6 @@ elif [ "$1" = "lxc0-webssl" ]; then # prod:
 			$EXTRALXCPROG \
 			-e /var/www/html/favicon.ico \
 			-e /var/www/html/robots.txt \
-			-e /var/www/html/twitter.png \
 			-e /var/www/html/private.png \
 			-i /usr/sbin/trli-init \
 			-l $LOG \
