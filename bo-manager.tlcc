@@ -1846,6 +1846,22 @@ int main (int argc, char *argv[])
 		if (getenv("BOLIXOD_PWD")!=NULL) sql_bolixod_pwd = getenv("BOLIXOD_PWD");
 		if (getenv("BO_WRITED_PWD")!=NULL) sql_bo_writed_pwd = getenv("BO_WRITED_PWD");
 		closeweb = file_exist("/root/closeweb");
+		if (glocal.devmode){
+			glocal.config.nodename = "http://test1.bolixo.org";
+			glocal.config.dirserver = "http://test1.bolixo.org";
+		}else{
+			char hostname[200];
+			if (gethostname(hostname,sizeof(hostname)-1)!=-1){
+				glocal.config.nodename = string_f("http%s://%s",preprodmode || glocal.devmode ? "" : "s",hostname);
+			}else{
+				tlmp_error (MSG_U(E_HOSTNAME,"Can't get the this server hostname (%s)\n"),strerror(errno));
+			}
+			if (preprodmode){
+				glocal.config.dirserver = "http://test1.bolixo.org";
+			}else{
+				glocal.config.dirserver = "https://bolixo.org";
+			}
+		}
 		<call loadfile>(glocal.config_file,true);
 		<f oneline>
 			const char *pt = str_skip(line);
