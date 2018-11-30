@@ -102,8 +102,13 @@ struct PROTO {
 };
 struct WEB {
 	string server;
+	string secret;
 	WEB (const string &_server){
 		server = _server;
+	}
+	WEB (const string &_server, const string &_secret){
+		server = _server;
+		secret = _secret;
 	}
 };
 struct MON {
@@ -159,7 +164,6 @@ static const char *horizon_rules = "/etc/horizon-rules.sh";
 static const char *conproxy_options_conf = "/etc/conproxy-options.conf";
 
 #define IP_PREFIX "192.168.122."
-static const char *ip_lxc_gateway = IP_PREFIX "1";
 static const char *ip_bod = IP_PREFIX "2";
 static const char *ip_writed = IP_PREFIX "3";
 static const char *ip_sessiond = IP_PREFIX "4";
@@ -167,6 +171,7 @@ static const char *ip_web = IP_PREFIX "5";
 static const char *ip_web_fail = IP_PREFIX "15";
 static const char *ip_webadm = IP_PREFIX "6";
 static const char *ip_proto = IP_PREFIX "7";
+static const char *ip0_webssl = IP_PREFIX "8";
 static const char *ip_webssl = IP_PREFIX "8";
 static const char *ip_webssl_fail = IP_PREFIX "18";
 static const char *ip_alpha = IP_PREFIX "21";
@@ -1203,9 +1208,9 @@ static void print_configs (
 					<f insert>
 						fprintf (fout,"echo nameserver %s >/var/lib/lxc/bod/rootfs/etc/resolv.conf\n"
 							,horizon_ip);
-						if (glocal.devmode){
+						if (glocal.devmode || preprodmode){
 							fprintf (fout,"echo %s test1.bolixo.org >>/var/lib/lxc/bod/rootfs/etc/hosts\n"
-								,ip_webssl);
+								,ip0_webssl);
 						}
 					</f>
 					</call>
@@ -1398,6 +1403,7 @@ static void print_configs (
 			// SERVICE web
 			for (auto s:glocal.config->webs){
 				if (s.server == glocal.server){
+					glocal const char *secret = s.secret.c_str();
 					static const char *tb[]={"web","web-fail"};
 					const char *ip = ip_web;
 					for (auto w:tb){
@@ -1430,7 +1436,8 @@ static void print_configs (
 							fprintf (fout,"this is a test\n");
 							fprintf (fout,"</html>\n");
 							fprintf (fout,"EOF\n");
-							fprintf (fout,"echo %s >/var/lib/lxc/web/rootfs/etc/bolixonode.conf\n",glocal.nodename);
+							fprintf (fout,"echo %s >/var/lib/lxc/%s/rootfs/etc/secret\n",glocal.secret,name);
+							fprintf (fout,"echo %s >/var/lib/lxc/%s/rootfs/etc/bolixonode.conf\n",glocal.nodename,name);
 						</f>
 						</call>
 						fprintf (glocal.all_fout,"%s\n",startfile.c_str());
@@ -1890,8 +1897,8 @@ int main (int argc, char *argv[])
 						glocal.config.bosqldbolixos.push_back(SQLD(tb[1]));
 					}else if (strcmp(word,"proto")==0 && n == 3){
 						glocal.config.protos.push_back(PROTO(tb[1],trli_atou(tb[2])));
-					}else if (strcmp(word,"web")==0 && n == 2){
-						glocal.config.webs.push_back(WEB(tb[1]));
+					}else if (strcmp(word,"web")==0 && n == 3){
+						glocal.config.webs.push_back(WEB(tb[1],tb[2]));
 					}else if (strcmp(word,"webadm")==0 && n == 2){
 						glocal.config.webadms.push_back(WEB(tb[1]));
 					}else if (strcmp(word,"webssl")==0 && n == 2){
@@ -1953,7 +1960,6 @@ int main (int argc, char *argv[])
 			// Run preprod as an lxc container 
 			manager_setpreprodmode();
 			#define PIP_PREFIX "192.168.124."
-			ip_lxc_gateway = PIP_PREFIX "1";
 			ip_bod = PIP_PREFIX "2";
 			ip_writed = PIP_PREFIX "3";
 			ip_sessiond = PIP_PREFIX "4";
@@ -1965,8 +1971,10 @@ int main (int argc, char *argv[])
 			ip_webssl_fail = PIP_PREFIX "18";
 			ip_bosqlduser = PIP_PREFIX "9";
 			ip_bosqlddata = PIP_PREFIX "10";
+			ip_bosqldbolixo = PIP_PREFIX "14";
 			ip_exim = PIP_PREFIX "11";
 			ip_keysd = PIP_PREFIX "12";
+			ip_bolixod = PIP_PREFIX "13";
 		}
 		if (glocal.devmode){
 			char path[PATH_MAX];

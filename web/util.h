@@ -105,3 +105,4 @@ void public_page (_F_public_page &c);
 void public_display (_F_public_page &c, CONNECT_INFO &con, PARAM_STRING user, bool pubdir);
 std::string util_format_shortmsg (PARAM_STRING txt, unsigned nblines);
 std::string util_format_shortmsg (PARAM_STRING txt);
+std::string util_readsecret();
