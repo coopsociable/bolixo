@@ -532,7 +532,7 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 			userid int,
 			check_userid int,
 			dirid int,
-			since date default current_timestamp
+			since date
 		)engine=$ENGINE;
 		create index interests_userid on interests(userid);
 		create index interests_checkid on interests(check_userid);
@@ -580,7 +580,9 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 	$0 bo-writed-control adduser admin admin@bolixo.org $ADMINPASSWORD eng && $0 bo-writed-control confirmuser admin
 	$0 bo-keysd-control genkey --system--
 	sleep 1
-	$0 bolixod-control deletenode $THISNODE
+	if [ -s /var/lib/lxc/bolixod/rootfs/var/run/blackhole/bolixod-0.sock ]; then
+		$0 bolixod-control deletenode $THISNODE
+	fi
 	$BOFS bolixoapi registernode $THISNODE
 elif [ "$1" = "dropbolixodb" ] ; then # db: Drop databases
 	mysqladmin -uroot -S $SOCKB -f drop $DBNAMEBOLIXO
@@ -697,10 +699,14 @@ elif [ "$1" = "test-sendmail" ] ;then # prod: ask writed to send one email
 elif [ "$1" = "eraseanon-lxc" ] ; then # prod:
 	export LXCSOCK=on
 	NBSEC=0
+	FILTER="1 0 0"
 	if [ "$2" != "" ] ; then
 		NBSEC=$2
 	fi
-	$0 bo-sessiond-control eraseold $NBSEC 1 0 0
+	if [ "$3" != "" ] ; then
+		FILTER="$3"
+	fi
+	$0 bo-sessiond-control eraseold $NBSEC $FILTER
 elif [ "$1" = "test-sequence-lxc" ] ; then # S: Reloads and fills database lxc mode
 	export LXCSOCK=on
 	shift
