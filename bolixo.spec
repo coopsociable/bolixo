@@ -45,6 +45,8 @@ make install
 /usr/sbin/bo-keysd
 /usr/sbin/bo-keysd-control
 /usr/sbin/bo-manager
+/usr/sbin/bo-mon
+/usr/sbin/bo-mon-control
 /usr/bin/bofs
 /usr/lib/tlmp/help.eng/bolixo.eng
 /usr/lib/tlmp/help.fr/bolixo.fr

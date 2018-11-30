@@ -4,7 +4,8 @@ PACKAGE_REV:=$(shell ./makeversion $(BUILD_SVNVER))
 INSTRUMENT:=$(shell test -f ../instrument && echo --instrument --getnow fdpass_getnow)
 DINSTRUMENT:=$(shell test -f ../instrument && echo -DINSTRUMENT)
 PROGS=_dict.o bod bod-client bod-control bo-writed bo-writed-control bo-sessiond bo-sessiond-control \
-      bo-manager bofs ssltestsign bo-keysd bo-keysd-control bolixod bolixod-control perfsql
+      bo-manager bofs ssltestsign bo-keysd bo-keysd-control bolixod bolixod-control perfsql \
+      bo-mon bo-mon-control
 #bo-log bo-log-control \
 #      bo-mon bo-mon-control
 DOCS=
@@ -71,12 +72,11 @@ bo-log-control: trli-log-control.tlcc proto/bo-log-control.protoh
 bo-manager: bo-manager.tlcc /usr/include/trlitool/manager.h
 	cctlcc -Wall $(OPTIONS) bo-manager.tlcc _dict.o /usr/lib64/trlitool/manager.o -o bo-manager $(LIBS)
 
-bo-mon: bo-mon.tlcc proto/bod_client.protoh proto/bo_mon_control.protoh \
-		proto/trli_syslog_control.protoh proto/trli_stop_control.protoh
-	cctlcc -Wall $(OPTIONS) bo-mon.tlcc -o bo-mon $(LIBS)
+bo-mon: bo-mon.tlcc proto/bod_client.protoh proto/bo-mon_control.protoh _dict.o
+	cctlcc -Wall $(OPTIONS) bo-mon.tlcc _dict.o -o bo-mon $(LIBS)
 
-bo-mon-control: bo-mon-control.tlcc proto/bo_mon_control.protoh
-	cctlcc -Wall $(OPTIONS) bo-mon-control.tlcc -o bo-mon-control $(LIBS)
+bo-mon-control: bo-mon-control.tlcc proto/bo-mon_control.protoh _dict.o
+	cctlcc -Wall $(OPTIONS) bo-mon-control.tlcc _dict.o -o bo-mon-control $(LIBS)
 
 bo-keysd: bo-keysd.tlcc proto/bo-keysd_control.protoh
 	cctlcc -Wall $(OPTIONS) bo-keysd.tlcc -o bo-keysd $(LIBS) -lcrypto -ltlmpsql -L/usr/lib64/mysql -lmysqlclient
@@ -95,9 +95,9 @@ proto/bo-log-admin.protoh: proto/bo-log-admin.proto
 	build-protocol $(INSTRUMENT) --secretmode --arg "int no" --arg "HANDLE_INFO *c" --name bo_log_admin \
 	       --protoch proto/bo-log-admin.protoch proto/bo-log-admin.proto >proto/bo-log-admin.protoh
 
-proto/bo_mon_control.protoh: proto/bo_mon_control.proto
+proto/bo-mon_control.protoh: proto/bo-mon_control.proto
 	build-protocol --arg "int no" --arg "HANDLE_INFO *c" --name bo_mon_control \
-	       --protoch proto/bo_mon_control.protoch proto/bo_mon_control.proto >proto/bo_mon_control.protoh
+	       --protoch proto/bo-mon_control.protoch proto/bo-mon_control.proto >proto/bo-mon_control.protoh
 
 proto/bolixod_control.protoh: proto/bolixod_control.proto
 	build-protocol --arg "int no" --arg "HANDLE_INFO *c" --name bolixod_control \
@@ -215,6 +215,8 @@ install: msg.eng msg.fr
 	install -m755 bolixod-control $(RPM_BUILD_ROOT)/usr/sbin/bolixod-control
 	install -m755 bo-keysd $(RPM_BUILD_ROOT)/usr/sbin/bo-keysd
 	install -m755 bo-keysd-control $(RPM_BUILD_ROOT)/usr/sbin/bo-keysd-control
+	install -m755 bo-mon $(RPM_BUILD_ROOT)/usr/sbin/bo-mon
+	install -m755 bo-mon-control $(RPM_BUILD_ROOT)/usr/sbin/bo-mon-control
 	install -m755 bofs $(RPM_BUILD_ROOT)/usr/bin/bofs
 
 #	install -m755 web/admin.hc $(RPM_BUILD_ROOT)/var/www/html/admin.hc

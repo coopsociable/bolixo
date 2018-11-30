@@ -1,0 +1,468 @@
+/*
+	Monitoring system for bolixo. It connects to all services and perform a test query
+*/
+#include <stdio.h>
+#include <unistd.h>
+#include <stdlib.h>
+#include <string.h>
+#include <syslog.h>
+#include <signal.h>
+#include <sys/vfs.h>
+#include <tlmplib.h>
+#include <tlmpnet.h>
+#include <string>
+#include <algorithm>
+#include <trlitool.h>
+#include "bolixo.m"
+#include "instrument.h"
+
+using namespace std;
+
+enum CONNECT_TYPE { TYPE_NONE, TYPE_CONTROL, TYPE_PIPE, TYPE_IDLE };
+
+struct HANDLE_INFO: public ARRAY_OBJ{
+	CONNECT_TYPE type;
+	REQUEST_INFO req;
+	pid_t pid;
+	time_t start;
+	HANDLE_INFO(){
+		type = TYPE_NONE;
+		pid = (pid_t)-1;
+		start = time(NULL);
+	}
+};
+
+
+#include "proto/bod_admin.protoch"
+
+#define bo_sessiond_client_getsessioninfo_NOTNEED
+#define bo_sessiond_client_getsessioninfovars_NOTNEED
+#define bo_sessiond_client_setvar_NOTNEED
+#include "proto/bo-sessiond_client.protoch"
+
+#include "proto/bo-mon_control.protoh"
+
+static const char *ok_marker = "   ";
+static const char *err_marker = "-> ";
+
+<mod>
+static int test_system(vector<string> &out)
+{
+	glocal int ret = 0;
+	glocal vector<string> *out = &out;
+	<call loadfile>("/proc/meminfo",true);
+	<f oneline>
+		vector<string> tb;
+		int n = str_splitline(line,' ',tb);
+		if (n == 3){
+			if (tb[0] == "SwapFree:"){
+				unsigned long freekb = atol(tb[1].c_str());
+				bool ok = freekb > 50000;
+				glocal.out->push_back(string_f("%sSwapFree ok=%d freekb=%lu"
+					,ok ? ok_marker : err_marker
+					,ok,freekb));
+				if (!ok) glocal.ret = -1;
+			}
+		}
+		return 0;
+	</f>
+	</call>
+	<call loadfile>("/proc/loadavg",true);
+	<f oneline>
+		vector<string> tb;
+		int n = str_splitline(line,' ',tb);
+		if (n >= 3){
+			float avg = atof(tb[2].c_str());
+			bool ok = avg < 0.5;
+			glocal.out->push_back(string_f("%sloadavg ok=%d %s"
+				,ok ? ok_marker : err_marker
+				,ok,line));
+			if (!ok) glocal.ret = -1;
+		}
+		return 0;
+	</f>
+	</call>
+	struct statfs st;
+	if (statfs ("/",&st)!=-1){
+		const unsigned long long gig = 1024*1024*1024;
+		unsigned long long space = st.f_bfree * st.f_bsize;
+		bool ok = space > 20*gig || st.f_bfree > (st.f_blocks/4);
+		out.push_back(string_f("%sdiskfree ok=%d f_blocks=%lu f_bfree=%lu space=%lf"
+			,ok ? ok_marker : err_marker
+			,ok,st.f_blocks,st.f_bfree,(double)space/gig));
+	}
+	return glocal.ret;
+}
+</mod>
+
+<mod>
+static int test_loop (const vector<string> &socks, const char *secret, bool debug, vector<string> &out)
+{
+	glocal int ret = 0;
+	glocal vector<string> *out = &out;
+	out.clear();
+	glocal.ret = test_system (out);
+	time_t start = time(NULL);
+	for (auto &s:socks){
+		if (debug) out.push_back(string_f("%sdebug=%lu",ok_marker,time(NULL)-start));
+		glocal const char *path = s.c_str();
+		CONNECT_INFO con;
+		con.port = glocal.path;
+		con.secret = secret;
+		//out.push_back(string_f("Try to connect to %s",glocal.path));
+		if (strstr(glocal.path,"-sessiond")!=NULL){
+			if (strstr(glocal.path,"-admin")!=NULL){
+				<call bo_sessiond_client_test>(con);
+				<f ok>
+					glocal.out->push_back(string_f("%s%s: internal_error=%d success=%d"
+						,success ? ok_marker : err_marker
+						,glocal.path,internal_error,success));
+					if (!success) glocal.ret = -1;
+				</f>
+				</call>
+			}
+		}else if (strstr(glocal.path,"-bod")!=NULL){
+			if (strstr(glocal.path,"-admin")!=NULL){
+				<call bod_admin_test>(con);
+				<f ok>
+					if (internal_error){
+						glocal.out->push_back(string_f("%sCan't talk to bod server: %s"
+							,err_marker,glocal.path));
+						glocal.ret = -1;
+					}else{
+						bool ok = true;
+						if (!writed
+							|| !bdfiles1
+							|| !bdfiles2
+							|| !bdusers
+							|| !sessiond1
+							|| !sessiond2
+							|| !keysd
+							|| !fsok){
+							glocal.ret = -1;
+							ok = false;
+						}
+						glocal.out->push_back(string_f("%s%s: internal_error1=%d writed=%d bdfiles1=%d bdfiles2=%d bdusers=%d sessiond1=%d sessiond2=%d keysd=%d fsok=%d"
+							,ok ? ok_marker : err_marker
+							,glocal.path,internal_error1,writed,bdfiles1,bdfiles2,bdusers,sessiond1,sessiond2,keysd,fsok));
+					}
+				</f>
+				</call>
+			}
+		}else if (strstr(glocal.path,"web-80-")!=NULL || strstr(glocal.path,"web-fail-80-")!=NULL){
+			glocal bool okseen = false;
+			<call tcpconnect>("unix:",glocal.path,5);
+			<f init>
+				send ("GET /index.hc?test=1 HTTP/1.0\r\n\r\n");
+			</f>
+			<f oneline>
+				if (strcmp(line,"ok")==0){
+					glocal.out->push_back (string_f("%s%s: ok seen",ok_marker,glocal.path));
+					glocal.okseen = true;
+				}
+			</f>
+			<f fail>
+				glocal.out->push_back (string_f("%s%s: can't connect",err_marker,glocal.path));
+				glocal.ret = -1;
+			</f>
+			<f end>
+			</f>
+			</call>
+			if (!glocal.okseen){
+				glocal.out->push_back(string_f("%s%s: Ok not seen",err_marker,glocal.path));
+				glocal.ret = -1;
+			}
+		}else{
+			glocal.out->push_back(string_f("%sDon't know how to handle this socket; %s",err_marker,glocal.path));
+		}
+	}
+	return glocal.ret;
+}
+</mod>
+static void trli_mon_sendline (int fd, const string &s)
+{
+	write (fd,s.c_str(),s.size());
+	write (fd,"\n",1);
+}
+<mod>
+static int trli_mon_sendmail (
+	const char *mailserver,
+	const char *mailport,
+	const char *admins_conf,
+	const char *subject,
+	const vector<string> &out)
+{
+	glocal string admin;
+	<call loadfile>(admins_conf,true);
+	<f oneline>
+		if (strncmp(line,"ADMIN1=",7)==0){
+			glocal.admin = line+7;
+		}
+		return 0;
+	</f>
+	</call>
+	int ret = -1;
+	if (glocal.admin.size() > 0){
+		string body;
+		for (auto &s:out) body += string_f("%s\n",s.c_str());
+		ret = fdpass_sendmail (mailserver,mailport,"no-reply@bolixo.org",glocal.admin,subject,body);
+	}
+	return ret;
+}
+</mod>
+
+<mod>
+int main (int argc, char *argv[])
+{
+	glocal int ret = -1;
+	glocal const char *mailserver = "unix:";
+	glocal const char *mailport = "/dev/smtp.sock";
+	glocal const char *command = NULL;
+	glocal const char *admins_conf = "/etc/trli/admins.conf";
+	glocal const char *control = "/var/run/blackhole/trli-mon.sock";
+	glocal const char *sock_dir = NULL;
+	glocal const char *secret = NULL;
+	glocal bool verbose = false;
+	glocal bool daemon = false;
+	glocal const char *user = "trli";
+	glocal int sleepdelay=5;	// Wake up every N seconds
+	glocal int testdelay = 30;	// Executes test every 30 seconds
+	glocal const char *pidfile = "/var/run/trli-mon.pid";
+	glocal.ret = <call tlmpprogram>(argc,argv,"bolixo");
+	<f init>
+		setproginfo ("bo-mon",VERSION,MSG_U(I_BO_MON,"Monitoring service for bolixo"));
+		setarg ('d',"sock_dir","Directoy holding the unix socket to connect to all services",glocal.sock_dir,true);
+		setarg (' ',"secret","Secret needed to connect to bod",glocal.secret,true);
+		setarg ('v',"verbose","Display more information",glocal.verbose,false);
+		setarg (' ',"control","Unix socket path",glocal.control,false);
+		setarg (' ',"alarmcmd","Command used to send an alarm",glocal.command,false);
+		setgrouparg ("Daemon mode");
+		setarg (' ',"daemon","Runs in background",glocal.daemon,false);
+		setarg (' ',"user","Runs as this user",glocal.user,false);
+		setarg (' ',"pidfile","PID file",glocal.pidfile,false);
+		setgrouparg ("Misc.");
+		setarg (' ',"testdelay","Test every N seconds",glocal.testdelay,false);
+		setarg (' ',"wakeup","Wakeup every N seconds",glocal.sleepdelay,false);
+		setarg (' ',"mailserver","Mail relay to use",glocal.mailserver,false);
+		setarg (' ',"mailport","TCP port of the relay (or unix socket)",glocal.mailport,false);
+	</f>
+	<f showerror>
+		if (glocal.daemon){
+			syslog (LOG_ERR,"%s",msg);
+		}else{
+			fprintf (stderr,"%s",msg);
+		}
+	</f>
+	<f showwarn>
+		if (glocal.daemon){
+			syslog (LOG_WARNING,"%s",msg);
+		}else{
+			fprintf (stderr,"%s",msg);
+		}
+	</f>
+	<f main_noarg>
+		glocal int ret = 0;
+		glocal vector<string> socks;
+		signal (SIGCHLD,SIG_IGN);
+		<call walkfs>(glocal.sock_dir);
+		<f onefile>
+			glocal.socks.push_back(path);
+		</f>
+		</call>
+		sort (glocal.socks.begin(),glocal.socks.end());
+		if (glocal.socks.size()==0){
+			glocal.ret = -1;
+			tlmp_error ("No socket found in directory %s\n",glocal.sock_dir);
+		}else if (!glocal.daemon){
+			vector<string> out;
+			glocal.ret = test_loop (glocal.socks,glocal.secret,false,out);
+			if (glocal.verbose) for (auto &x:out) printf ("%s\n",x.c_str());
+		}else{
+			glocal unsigned long nbtest = 0;
+			glocal bool teston = true;
+			glocal bool allok = true;
+			glocal vector<string> testout;
+			glocal bool new_allok = true;		// Reception of current test
+			glocal vector<string> new_testout;
+			glocal pid_t new_testpid = (pid_t)-1;
+			glocal bool messagesent = false;
+			glocal time_t lastmsg = (time_t)0;
+			glocal time_t lasttest = time(NULL);
+			<obj TCPSERVER o>(string_f("unix:%s",glocal.control),5);
+			<f newclient>
+				HANDLE_INFO *n = new HANDLE_INFO;
+				n->type = TYPE_CONTROL;
+				info.data = n;
+			</f>
+			<f endclient>
+				HANDLE_INFO *n = (HANDLE_INFO*)info.data;
+				if (n->type == TYPE_PIPE){
+					glocal.allok = glocal.new_allok;
+					glocal.testout = glocal.new_testout;
+					if (!glocal.allok && !glocal.messagesent){
+						glocal.messagesent = true;
+						glocal.lastmsg = time(NULL);
+						if (glocal.command != NULL){
+							<call walkpopen>(glocal.command,10);
+							<f init>
+								for (auto &s:glocal.testout){
+									fprintf (fout,"%s\n",s.c_str());
+								}
+								end = true;
+							</f>
+							<f oneline>
+								return 0;
+							</f>
+							</call>
+						}
+						const char *subject = glocal.new_testpid == (pid_t)-1 ? "truelies monitoring failed" : "truelies monitoring";
+						trli_mon_sendmail(glocal.mailserver,glocal.mailport,glocal.admins_conf,subject,glocal.testout);
+					}
+					//tlmp_error ("endclient pid=%u start %lu now %lu\n",n->pid,n->start,time(NULL));
+					if (n->pid == glocal.new_testpid) glocal.new_testpid = (pid_t)-1;
+				}
+			</f>
+			<f receive>
+				HANDLE_INFO *c = (HANDLE_INFO*)info.data;
+				if (c->type == TYPE_CONTROL){
+					<call bo_mon_control>(this,c->req,line, info.linelen,endserver, endclient, no,c);
+					<f status>
+						vector<string> tb;
+						tb.push_back(string_f("Version %s",VERSION));
+						tb.push_back(string_f("autotest %s",glocal.teston ? "On" : "Off"));
+						tb.push_back(string_f("services %s",glocal.allok ? "OK" : "Fail"));
+						tb.push_back(string_f("nbtest %lu",glocal.nbtest));
+						tb.push_back(string_f("alarm command %s",glocal.command));
+						char date[20];
+						date[0] = '\0';
+						if (glocal.lastmsg != (time_t)0) fdpass_asctime(glocal.lastmsg,date);
+						tb.push_back(string_f("alarm sent %d %s",glocal.messagesent,date));
+				                fdpass_asctime (glocal.lasttest,date);
+						tb.push_back(string_f("last test %s",date));
+						for (auto &x:glocal.testout) tb.push_back(x);
+						rep_status(tb);
+					</f>
+					<f autotest>
+						glocal.teston = teston;
+					</f>
+					<f quit>
+						endserver = true;
+					</f>
+					<f test>
+						vector<string> out;
+						if (test_loop(glocal.socks,glocal.secret,debug,out)==-1){
+							rep_test (false,out);
+						}else{
+							rep_test (true,out);
+						}
+					</f>
+					<f testmail>
+						vector<string> out;
+						int ok = test_loop(glocal.socks,glocal.secret,false,out);
+						out.insert (out.begin(),string_f("ok=%d",ok == -1 ? 0 : 1));
+						int ret = trli_mon_sendmail (glocal.mailserver,glocal.mailport,glocal.admins_conf,"test email monitoring",out);
+						rep_testmail (ret == -1 ? false:true);
+					</f>
+					<f resetmsg>
+						glocal.messagesent = false;
+					</f>
+					<f debug>
+						if (on){
+							debug_seton();
+						}else{
+							debug_setoff();
+						}
+					</f>
+					<f debugfile>
+						debug_setfdebug (filename);
+					</f>
+					<f invalid>
+						endclient = true;
+					</f>
+					</call>
+				}else if (c->type == TYPE_IDLE){
+					time_t now = time(NULL);
+					if (glocal.teston && (now-glocal.lasttest) >= glocal.testdelay){
+						if (glocal.new_testpid != (pid_t)-1){
+							tlmp_error ("test_loop did not complete, pid=%u\n",glocal.new_testpid);
+							if (kill (glocal.new_testpid,SIGKILL)==-1){
+								tlmp_error ("Can't kill pid %u (%s)\n",glocal.new_testpid,strerror(errno));
+							}
+							glocal.new_testpid = (pid_t)-1;
+						}
+						glocal.nbtest++;
+						glocal.lasttest = now;
+						glocal.new_allok = false;
+						glocal.new_testout.clear();
+						int tb[2];
+						if (pipe(tb)==-1){
+							tlmp_error ("Can't setup pipe for test loop (%s)\n",strerror(errno));
+						}else{
+							pid_t pid = fork();
+							if (pid == (pid_t)0){
+								close (tb[0]);
+								vector<string> out;
+								int ok = test_loop(glocal.socks,glocal.secret,false,out);
+								trli_mon_sendline (tb[1],string_f("ok=%d",ok));
+								for (auto l:out) trli_mon_sendline(tb[1],l);
+								_exit (0);
+							}else if (pid == (pid_t)-1){
+								tlmp_error ("Can't fork for test loop (%s)\n",strerror(errno));
+								close (tb[1]);
+								close (tb[0]);
+							}else{
+								close (tb[1]);
+								HANDLE_INFO *n = new HANDLE_INFO;
+								n->type = TYPE_PIPE;
+								n->pid = pid;
+								inject (tb[0],n);
+								setrawmode(tb[0],false);
+								glocal.new_testpid = pid;
+							}
+						}
+					}
+				}else if (c->type == TYPE_PIPE){
+					if (strncmp(line,"ok=",3)==0){
+						int ok = atoi(line+3);
+						glocal.new_allok = ok == -1 ? false : true;
+					}else{
+						glocal.new_testout.push_back(line);
+					}
+				}
+			</f>
+			</obj>
+			if (o.is_ok()){
+				o.setrawmode(true);
+				int tb[2];
+				if (pipe(tb)==-1){
+					tlmp_error ("can't setup pipe (%s)\n",strerror(errno));
+				}else{
+					pid_t pid = fork();
+					if (pid == (pid_t)0){
+						close (tb[0]);
+						while (1){
+							sleep(glocal.sleepdelay);
+							if (write (tb[1]," ",1) != 1) break;
+						}
+						_exit (0);
+					}else if (pid == (pid_t)-1){
+						tlmp_error ("Can't fork (%s)\n",strerror(errno));
+					}else{
+						close (tb[1]);
+						HANDLE_INFO *n = new HANDLE_INFO;
+						n->type = TYPE_IDLE;
+						o.inject (tb[0],n);
+			
+						daemon_init (glocal.pidfile,glocal.user);
+						o.loop();
+					}
+				}
+			}
+		}
+		return glocal.ret;
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+
