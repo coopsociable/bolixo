@@ -71,7 +71,7 @@ mysql_restore(){
 	echo "test ! -d $DATA/mysql &&  echo \"$DATA/mysql directory does not exists, can't restore\" && exit 1" >>$REST
 	echo "rm -fr $ROOTFS/var/lib/mysql" >>$REST
 	echo "mv $DATA/mysql $ROOTFS/var/lib/mysql" >>$REST
-	echo "mv $DATA/mariadb.log $ROOTFS/var/log/mariadb/mariadb.log" >>$REST
+	echo "test -f $DATA/mariadb.log && mv $DATA/mariadb.log $ROOTFS/var/log/mariadb/mariadb.log" >>$REST
 	chmod +x $REST
 }
 exim_save(){

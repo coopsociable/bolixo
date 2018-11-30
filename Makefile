@@ -68,7 +68,7 @@ bo-log: bo-log.tlcc proto/bo-log.protoh proto/bo-log-control.protoh proto/bo-log
 bo-log-control: trli-log-control.tlcc proto/bo-log-control.protoh
 	cctlcc -Wall $(OPTIONS) bo-log-control.tlcc -o bo-log-control $(LIBS) 
 
-bo-manager: bo-manager.tlcc
+bo-manager: bo-manager.tlcc /usr/include/trlitool/manager.h
 	cctlcc -Wall $(OPTIONS) bo-manager.tlcc _dict.o /usr/lib64/trlitool/manager.o -o bo-manager $(LIBS)
 
 bo-mon: bo-mon.tlcc proto/bod_client.protoh proto/bo_mon_control.protoh \
