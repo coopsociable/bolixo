@@ -174,7 +174,7 @@ static const char *ip_proto = IP_PREFIX "7";
 static const char *ip0_webssl = IP_PREFIX "8";
 static const char *ip_webssl = IP_PREFIX "8";
 static const char *ip_webssl_fail = IP_PREFIX "18";
-static const char *ip_alpha = IP_PREFIX "21";
+static const char *ip_preprod = IP_PREFIX "21";
 static const char *ip_bosqlduser = IP_PREFIX "9";
 static const char *ip_bosqlddata = IP_PREFIX "10";
 static const char *ip_bosqldbolixo = IP_PREFIX "14";
@@ -1143,8 +1143,8 @@ static void print_configs (
 						if (glocal.devmode){
 							fprintf (fout,"echo %s test1.bolixo.org >>/var/lib/lxc/bolixod/rootfs/etc/hosts\n"
 								,ip_webssl);
-							fprintf (fout,"echo %s alpha.bolixo.org >>/var/lib/lxc/bolixod/rootfs/etc/hosts\n"
-								,ip_alpha);
+							fprintf (fout,"echo %s preprod.bolixo.org >>/var/lib/lxc/bolixod/rootfs/etc/hosts\n"
+								,ip_preprod);
 						}
 					</f>
 					</call>
@@ -1654,16 +1654,20 @@ static void print_configs (
 						fprintf (fout,"echo nameserver %s >/var/lib/lxc/exim/rootfs/etc/resolv.conf\n"
 							,horizon_ip);
 						fprintf (fout,"echo smtp 25/tcp mail >/var/lib/lxc/exim/rootfs/etc/services\n");
-						fprintf (fout,"echo 192.168.122.1 relay >>/var/lib/lxc/%s/rootfs/etc/hosts\n",name);
+						if (preprodmode){
+							fprintf (fout,"echo 192.168.124.1 relay >>/var/lib/lxc/%s/rootfs/etc/hosts\n",name);
+						}else{
+							fprintf (fout,"echo 192.168.122.1 relay >>/var/lib/lxc/%s/rootfs/etc/hosts\n",name);
+						}
 						fprintf (fout,"echo 192.168.4.1 norelay >>/var/lib/lxc/%s/rootfs/etc/hosts\n",name);
 						fprintf (fout,"echo root: /dev/null >/var/lib/lxc/%s/rootfs/etc/aliases\n",name);
 						fprintf (fout,"echo exim: /dev/null >>/var/lib/lxc/%s/rootfs/etc/aliases\n",name);
 						fprintf (fout,"echo no-reply: /dev/null >>/var/lib/lxc/%s/rootfs/etc/aliases\n",name);
-						fprintf (fout,"if [ -f /etc/trli/admins.conf ] ; then\n");
-						fprintf (fout,"\t. /etc/trli/admins.conf\n");
+						fprintf (fout,"if [ -f /etc/bolixo/admins.conf ] ; then\n");
+						fprintf (fout,"\t. /etc/bolixo/admins.conf\n");
 						fprintf (fout,"\techo info: $ADMIN1 >>/var/lib/lxc/%s/rootfs/etc/aliases\n",name);
 						fprintf (fout,"else\n");
-						fprintf (fout,"\techo No /etc/trli/admins.conf\n");
+						fprintf (fout,"\techo No /etc/bolixo/admins.conf\n");
 						fprintf (fout,"fi\n");
 						fprintf (fout,"cp -a /etc/pki /var/lib/lxc/%s/rootfs/etc/pki\n",name);
 						fprintf (fout,"DIRCERTS=/var/lib/lxc/%s/rootfs/etc/pki/tls/certs\n",name);

@@ -577,9 +577,10 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 		echo -n "Enter password: "	
 		read ADMINPASSWORD
 	fi
-	$0 bo-writed-control adduser admin admin@bolixo.org $ADMINPASSWORD eng
+	$0 bo-writed-control adduser admin admin@bolixo.org $ADMINPASSWORD eng && $0 bo-writed-control confirmuser admin
 	$0 bo-keysd-control genkey --system--
 	sleep 1
+	$0 bolixod-control deletenode $THISNODE
 	$BOFS bolixoapi registernode $THISNODE
 elif [ "$1" = "dropbolixodb" ] ; then # db: Drop databases
 	mysqladmin -uroot -S $SOCKB -f drop $DBNAMEBOLIXO

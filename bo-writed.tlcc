@@ -951,6 +951,36 @@ static void bo_writed_adduser (CONTEXT &ctx, const char *lang, const char *name,
 	msg = glocal.msg;
 }
 </mod>
+static int bo_writed_confirmuser (CONTEXT &ctx, unsigned userid, PARAM_STRING name, PARAM_STRING confirmid, string &msg)
+{
+	int ret = -1;
+	if (sql_action(*ctx.usq,"update users set confirmed=now() where userid=%u",userid)!=-1){
+		bo_log_confirmuser (ctx.flog,confirmid,time(NULL));
+		ret = 0;
+		/*
+			Create a project named "public"
+			Create a group named "contacts"
+			Make this group member of the project "public"
+			Create a group named "public"
+			Make this group member of project "public"
+			Make this user member of his group "public"
+		*/
+		bo_writed_create_group_list(userid,name,"public","Public view",msg);
+		bo_writed_create_group (userid,"contacts",false,"",msg);
+		bo_writed_set_group(userid,"public","contacts","R",msg);
+		int groupid = bo_writed_create_group (userid,"public",true,"Public view",msg);
+		if (groupid != -1){
+			bo_writed_set_group(userid,"public","public","R",msg);
+			if (sql_action("insert into group_members (groupid,userid,access,role) values (%u,%u,'W','')"
+				,groupid,userid)==-1){
+				tlmp_error ("Internal error setting user %s member of his group public",name.ptr);
+			}
+		}
+	}else{
+		msg = "Error, can't confirm new user";
+	}
+	return ret;
+}
 <mod>
 int main (int argc, char *argv[])
 {
@@ -1243,15 +1273,37 @@ int main (int argc, char *argv[])
 					string msg;
 					string id_str;
 					bo_writed_adduser (glocal.ctx,lang,name,email,password,id_str,msg);
-					if (msg.size() == 0){
-						if (sql_action(*glocal.usq,"update users set confirmed=now() where name='%s'",name)==-1){
-							msg = "Internal error: confirm failed";
-						}
-					}
 					if (msg.size() > 0){
 						rep_adduser (false,msg);
 					}else{
 						rep_adduser (true,"");
+					}
+				</f>
+				<f confirmuser>
+					glocal string msg;
+					glocal const char *name = name;
+					<call sql_query>(*glocal.usq,"select userid,confirmed,disabled from users where name='%s'"
+						,name);
+					<f onerow>
+						if (row[1] != NULL){
+							glocal.msg = "Account already confirmed";
+						}else if (row[2] != NULL){
+							glocal.msg = "Account disabled";
+						}else{
+							unsigned userid = atoi(row[0]);
+							if (bo_writed_confirmuser (glocal.ctx,userid,glocal.name,"",glocal.msg)==-1){
+								glocal.msg = "Can't confirm";
+							}
+						}
+					</f>
+					<f empty>
+						glocal.msg = "No user with that name";
+					</f>
+					</call>
+					if (glocal.msg.size() > 0){
+						rep_confirmuser (false,glocal.msg);
+					}else{
+						rep_confirmuser (true,"");
 					}
 				</f>
 				<f setpassword>
@@ -1282,45 +1334,30 @@ int main (int argc, char *argv[])
 					rep_adduser (id_str,msg);
 				</f>
 				<f confirmuser>
+					glocal string msg;
+					glocal string email;
+					glocal string name;
 					glocal const char *confirmid = confirmid;
 					<call sql_query>(*glocal.usq,"select userid,name,email from users where userid_str='%s' and confirmed is null and disabled is null"
 						,confirmid);
 					<f onerow>
 						unsigned userid = atoi(row[0]);
-						const char *name = row[1];
-						const char *email = row[2];
-						if (sql_action(*glocal.usq,"update users set confirmed=now() where userid=%u",userid)!=-1){
-							glocal.bo_writed_client.rep_confirmuser(true,"New user confirmed",email,name);
-							bo_log_confirmuser (glocal.ctx.flog,glocal.confirmid,time(NULL));
-							string msg;
-							/*
-								Create a project named "public"
-								Create a group named "contacts"
-								Make this group member of the project "public"
-								Create a group named "public"
-								Make this group member of project "public"
-								Make this user member of his group "public"
-							*/
-							bo_writed_create_group_list(userid,name,"public","Public view",msg);
-							bo_writed_create_group (userid,"contacts",false,"",msg);
-							bo_writed_set_group(userid,"public","contacts","R",msg);
-							int groupid = bo_writed_create_group (userid,"public",true,"Public view",msg);
-							if (groupid != -1){
-								bo_writed_set_group(userid,"public","public","R",msg);
-								if (sql_action("insert into group_members (groupid,userid,access,role) values (%u,%u,'W','')"
-									,groupid,userid)==-1){
-									tlmp_error ("Internal error setting user %s member of his group public",name);
-								}
-							}
-						}else{
-							glocal.bo_writed_client.rep_confirmuser(false,"Error, can't confirm new user","","");
+						glocal.name = row[1];
+						glocal.email = row[2];
+						if (bo_writed_confirmuser (glocal.ctx,userid,glocal.name,glocal.confirmid,glocal.msg)==-1){
+							glocal.msg = "Error, can't confirm new user";
 						}
 					</f>
 					<f empty>
 						tlmp_error ("Confirm unknown users: %s\n",glocal.confirmid);
-						glocal.bo_writed_client.rep_confirmuser(false,"Error, unknown confirmation ID","","");
+						glocal.msg = "Error, unknown confirmation ID";
 					</f>
 					</call>
+					if (glocal.msg.size() > 0){
+						rep_confirmuser (false,glocal.msg,"","");
+					}else{
+						rep_confirmuser (true,"",glocal.email,glocal.name);
+					}
 				</f>
 				<f deleteuser>
 					// User is deleting his own account

@@ -368,7 +368,7 @@ elif [ "$1" = "loadfail" ] ; then # prod: Switch web access (normal,backup,split
 			fi
 		done
 	fi
-elif [ "$1" = "calltest" ] ; then # A: Call /usr/lib/trli-test.sh
+elif [ "$1" = "calltest" ] ; then # A: Call /usr/lib/bolixo-test.sh
 	export LXCSOCK=on
 	shift
 	/usr/lib/bolixo-test.sh $*

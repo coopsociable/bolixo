@@ -27,46 +27,62 @@ int main (int argc, char *argv[])
 			 "\tdebug 0/1\n"
 			 "\tdebugfile filename\n"
 			 "\thelptest\n"
+			 "\tpublishemail nickname email\n"
 			 "\tquit\n"
 			 "\tstatus\n"));
 		setarg ('p',"control",MSG_U(I_BOD_SOCK,"Unix socket to reach bod"),glocal.control,false);
 	</f>
 	<f main>
-		int ret = -1;
+		glocal int ret = -1;
 		CONNECT_INFO con;
 		con.port = glocal.control;	
 		if (strcmp(argv[0],"status")==0 && argc==1){
 			<call bod_control_status>(con);
 			<f ok>
 				for (auto x:lines) printf ("%s\n",x);
+				if (lines.size() > 0) glocal.ret = 0;
 			</f>
 			</call>
 		}else if (strcmp(argv[0],"helptest")==0 && argc==1){
 			<call bod_control_helptest>(con,true,true);
 			<f ok>
 				for (auto x:lines) printf ("%s\n",x);
+				if (lines.size() > 0) glocal.ret = 0;
 			</f>
 			</call>
 		}else if (strcmp(argv[0],"quit")==0){
 			<call bod_control_quit>(con);
 			<f ok>
+				if (!internal_error) glocal.ret = 0;
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"publishemail")==0 && argc==3){
+			<call bod_control_publishemail>(con,argv[1],argv[2]);
+			<f ok>
+				if (success){
+					glocal.ret = 0;
+				}else{
+					tlmp_error ("publishemail: %s\n",msg);
+				}
 			</f>
 			</call>
 		}else if (strcmp(argv[0],"debug")==0 && argc==2){
 			<call bod_control_debug>(con,atoi(argv[1]));
 			<f ok>
+				if (!internal_error) glocal.ret = 0;
 			</f>
 			</call>
 		}else if (strcmp(argv[0],"debugfile")==0 && argc==2){
 			<call bod_control_debugfile>(con,argv[1]);
 			<f ok>
+				if (!internal_error) glocal.ret = 0;
 			</f>
 			</call>
 		}else{
 			tlmp_error (MSG_R(E_IVLDCOMMAND),argv[0]);
 			usage();
 		}
-		return ret;
+		return glocal.ret;
 	</f>
 	</call>
 	return glocal.ret;

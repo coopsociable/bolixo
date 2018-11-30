@@ -355,6 +355,24 @@ int main (int argc, char *argv[])
 				<f quit>
 					endserver = true;
 				</f>
+				<f deletenode>
+					glocal string msg;
+					<call sql_query>("select nodeid from nodes where nodename='%s'",nodename);
+					<f empty>
+						glocal.msg = "Nodename not found";
+					</f>
+					<f onerow>
+						if (sql_action("delete from nodes where nodeid=%s",row[0])==-1){
+							glocal.msg = "Internal error, can't delete node";
+						}
+					</f>
+					</call>
+					if (glocal.msg.size() > 0){
+						rep_deletenode (false,glocal.msg);
+					}else{
+						rep_deletenode (true,"");
+					}
+				</f>
 				<f debug>
 					if (on){
 						debug_seton();
