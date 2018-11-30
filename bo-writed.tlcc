@@ -874,6 +874,83 @@ static void bo_writed_update_interest(
 	}
 	bo_writed_update_interest_table (userid,dirid);
 }
+struct CONTEXT {
+	CONNECT_INFO con_keys;	// Connection to the bo-keysd server
+	const char *mailserver;
+	const char *mailport;
+	const char *mailfrom;
+	NSQL *usq;
+	bool mailon;	// Send confirmation mails (for testing)
+	FILE *flog;
+	CONTEXT(){
+		mailon = true;
+		mailserver = NULL;
+		mailfrom = NULL;
+		mailport = NULL;
+		usq = NULL;
+		flog = NULL;
+	}
+};
+<mod>
+static void bo_writed_adduser (CONTEXT &ctx, const char *lang, const char *name, const char *email, const char *password, string &id_str, string &msg)
+{
+	glocal CONTEXT *ctx = &ctx;
+	glocal const char *lang = lang;
+	glocal string msg;
+	glocal string id_str;
+	glocal const char *name = name;
+	glocal const char *email = email;
+	glocal const char *password = password;
+	if (bo_writed_lex_check(name,glocal.msg)){
+		<call sql_query>(*ctx.usq,"select email from users where email='%s'",email);
+		<f onerow>
+			// Email already exist
+			glocal.msg = MSG_U(E_ACCTEXIST,"An account using this email already exists");
+		</f>
+		<f empty>
+			<call sql_query>(*glocal.ctx->usq,"select name from users where name='%s'",glocal.name);
+			<f onerow>
+				glocal.msg = MSG_U(E_NICKEXIST,"An account already exist using this nickname");
+			</f>
+			<f empty>
+				glocal.id_str = fs_makeid ();
+				if (sql_action(*glocal.ctx->usq,"insert into users (name,email,password,userid_str) values ('%s','%s',password('%s'),'%s')"
+					,glocal.name,glocal.email,glocal.password,glocal.id_str.c_str())==-1){
+					glocal.msg = "Internal error: can't create";
+				}else{
+					int userid = glocal.ctx->usq->getlastid();
+					if (sql_action("insert into id2name (userid,name) values (%d,'%s')",userid,glocal.name)==-1){
+						glocal.msg = "Internal error: can't create2";
+					}else{
+						<call bo_keysd_control_genkey>(glocal.ctx->con_keys,glocal.id_str);
+						<f ok>
+						</f>
+						</call>
+						// Retrieve the password hashed by MySQL
+						<call sql_query>(*glocal.ctx->usq,"select password from users where email='%s'",glocal.email);
+						<f onerow>
+							bo_log_adduser (glocal.ctx->flog,glocal.id_str,glocal.name,glocal.email,row[0],time(NULL));
+						</f>
+						</call>
+						// Create a record in the config table
+						if (sql_action("insert into config (userid,lang) value (%d,'%s')",userid,glocal.lang)==-1){
+							glocal.msg = "Can't create3: table config";
+						}
+						if (glocal.ctx->mailon){
+							writed_mail_newaccount(glocal.ctx->mailserver,glocal.ctx->mailport,glocal.ctx->mailfrom
+								,glocal.name,glocal.email,glocal.id_str);
+						}
+					}
+				}
+			</f>
+			</call>
+		</f>
+		</call>
+	}
+	id_str = glocal.id_str;
+	msg = glocal.msg;
+}
+</mod>
 <mod>
 int main (int argc, char *argv[])
 {
@@ -972,15 +1049,15 @@ int main (int argc, char *argv[])
 		}
 	</f>
 	<f main_noarg>
-		glocal bool mailon = true;	// Send confirmation mails (for testing)
 		glocal unsigned long nbrequest_client = 0;
-		glocal FILE *flog = NULL;
 		glocal NSQL *usq;		// SQL handle for the users database
 		glocal CONNECT_INFO con;	// Connection to the session manager
-		glocal CONNECT_INFO con_comp;	// Connection to the bo-log compute server
-		glocal CONNECT_INFO con_keys;	// Connection to the bo-keysd server
+		glocal CONTEXT ctx;
 		glocal map<string,string> secrets;
 		const char *passwd = getenv("BO_WRITED_PWD");
+		glocal.ctx.mailserver = glocal.mailserver;
+		glocal.ctx.mailfrom = glocal.mailfrom;
+		glocal.ctx.mailport = glocal.mailport;
 		fs_set_noproc (glocal.noproc);
 		if (passwd == NULL){
 			tlmp_error ("Can't get database password from environment, aborting\n");
@@ -994,15 +1071,14 @@ int main (int argc, char *argv[])
 		nsql_sq.showerrormode (true);
 		nsql_sq.setunixpath ("/var/lib/mysql/mysql-users.sock");
 		glocal.usq = &nsql_sq;
+		glocal.ctx.usq = &nsql_sq;
 		fdpass_readsecrets (glocal.secretfile,glocal.secrets);
 		glocal.con.port = glocal.sessionport;
 		glocal.con.bind = glocal.sessionbind;
 		glocal.con.secret = glocal.mysecret;
-		glocal.con_comp.port = glocal.computeport;
-		glocal.con_comp.secret = glocal.mysecret;
 		glocal string clientport = string_f ("unix:/tmp/writed-%s.sock",glocal.port);
 		glocal string controlport = string_f ("unix:%s",glocal.control);
-		glocal.con_keys.port = glocal.keysdport;
+		glocal.ctx.con_keys.port = glocal.keysdport;
 		glocal.con.fd = -1;
 		int ret = -1;
 		<obj TCPSERVER s>(glocal.bind,glocal.clientport,5);
@@ -1041,7 +1117,7 @@ int main (int argc, char *argv[])
 					vector<string> tb;
 					tb.push_back(string_f("version %s",VERSION));	
 					tb.push_back(string_f("nbrequest %lu",glocal.nbrequest_client));
-					tb.push_back(string_f("mailctrl %d \"%s\"",glocal.mailon,fdpass_get_force_addr()));
+					tb.push_back(string_f("mailctrl %d \"%s\"",glocal.ctx.mailon,fdpass_get_force_addr()));
 					tb.push_back(string_f("filehandle %u",fs_getnbhandle()));
 					#ifdef INSTRUMENT
 						tb.push_back("intrument: on");
@@ -1080,7 +1156,7 @@ int main (int argc, char *argv[])
 								glocal.bo_writed_control.rep_makeadmin(false,"sql error");
 							}else{
 								glocal.bo_writed_control.rep_makeadmin(true,"");
-								bo_log_makeadmin (glocal.flog,glocal.email,glocal.on);
+								bo_log_makeadmin (glocal.ctx.flog,glocal.email,glocal.on);
 							}
 						}else if (glocal.on){
 							glocal.bo_writed_control.rep_makeadmin(false,"already admin");
@@ -1089,7 +1165,7 @@ int main (int argc, char *argv[])
 								glocal.bo_writed_control.rep_makeadmin(false,"sql error");
 							}else{
 								glocal.bo_writed_control.rep_makeadmin(true,"");
-								bo_log_makeadmin (glocal.flog,glocal.email,glocal.on);
+								bo_log_makeadmin (glocal.ctx.flog,glocal.email,glocal.on);
 							}
 						}
 					</f>
@@ -1100,9 +1176,9 @@ int main (int argc, char *argv[])
 				</f>
 				<f rotatelog>
 					bool success = false;
-					fclose (glocal.flog);
-					glocal.flog = fopen (glocal.logfile,"a");
-					if (glocal.flog == NULL){
+					fclose (glocal.ctx.flog);
+					glocal.ctx.flog = fopen (glocal.logfile,"a");
+					if (glocal.ctx.flog == NULL){
 						glocal.TCPSERVER.sendf ("Can't open logfile %s (%s)\n",glocal.logfile,strerror(errno));
 						tlmp_error ("Can't open logfile %s (%s)\n",glocal.logfile,strerror(errno));
 						exit (-1);
@@ -1113,9 +1189,9 @@ int main (int argc, char *argv[])
 				</f>
 				<f truncatelog>
 					bool success = false;
-					fclose (glocal.flog);
-					glocal.flog = fopen (glocal.logfile,"w");
-					if (glocal.flog == NULL){
+					fclose (glocal.ctx.flog);
+					glocal.ctx.flog = fopen (glocal.logfile,"w");
+					if (glocal.ctx.flog == NULL){
 						glocal.TCPSERVER.sendf ("Can't open logfile %s (%s)\n",glocal.logfile,strerror(errno));
 						tlmp_error ("Can't open logfile %s (%s)\n",glocal.logfile,strerror(errno));
 						exit (-1);
@@ -1135,7 +1211,7 @@ int main (int argc, char *argv[])
 					<call sql_query>(*glocal.usq,"select userid,userid_str,email from users where confirmed is null and created <= '%s'",date);
 					<f onerow>
 						if (sql_action(*glocal.usq,"delete from users where userid=%s",row[0])!=-1){
-							bo_log_del_incomplete(glocal.flog,row[1]);
+							bo_log_del_incomplete(glocal.ctx.flog,row[1]);
 							glocal.emails.push_back(row[2]);
 							
 						}
@@ -1160,8 +1236,34 @@ int main (int argc, char *argv[])
 					rep_newacctresend (glocal.success);
 				</f>
 				<f mailctrl>
-					glocal.mailon = on;
+					glocal.ctx.mailon = on;
 					if (strcmp(forceaddr,"keep")!=0) fdpass_set_force_addr (forceaddr);
+				</f>
+				<f adduser>
+					string msg;
+					string id_str;
+					bo_writed_adduser (glocal.ctx,lang,name,email,password,id_str,msg);
+					if (msg.size() == 0){
+						if (sql_action(*glocal.usq,"update users set confirmed=now() where name='%s'",name)==-1){
+							msg = "Internal error: confirm failed";
+						}
+					}
+					if (msg.size() > 0){
+						rep_adduser (false,msg);
+					}else{
+						rep_adduser (true,"");
+					}
+				</f>
+				<f setpassword>
+					string msg;
+					if (sql_action(*glocal.usq,"update users set password=password('%s') where name='%s'",password,name)==-1){
+						msg = "Can't set password";
+					}
+					if (msg.size() > 0){
+						rep_setpassword(false,msg);
+					}else{
+						rep_setpassword(true,"");
+					}
 				</f>
 				<f invalid>
 					tlmp_error ("Control: Invalid command: %s\n",line);
@@ -1174,59 +1276,10 @@ int main (int argc, char *argv[])
 				glocal.nbrequest_client++;
 				<call bo_writed_client>(this,c->req,line, info.linelen,endserver, endclient, no,c,c->host.c_str());
 				<f adduser>
-					glocal const char *lang = lang;
-					glocal string msg;
-					glocal string id_str;
-					glocal const char *name = name;
-					glocal const char *email = email;
-					glocal const char *password = password;
-					if (bo_writed_lex_check(name,glocal.msg)){
-						<call sql_query>(*glocal.usq,"select email from users where email='%s'",email);
-						<f onerow>
-							// Email already exist
-							glocal.msg = "An account using this email already exists";
-						</f>
-						<f empty>
-							<call sql_query>(*glocal.usq,"select name from users where name='%s'",glocal.name);
-							<f onerow>
-								glocal.msg = "An account is already using this nickname";
-							</f>
-							<f empty>
-								glocal.id_str = fs_makeid ();
-								if (sql_action(*glocal.usq,"insert into users (name,email,password,userid_str) values ('%s','%s',password('%s'),'%s')"
-									,glocal.name,glocal.email,glocal.password,glocal.id_str.c_str())==-1){
-									glocal.msg = "can't create";
-								}else{
-									int userid = glocal.usq->getlastid();
-									 if (sql_action("insert into id2name (userid,name) values (%d,'%s')",userid,glocal.name)==-1){
-										glocal.msg = "can't create2";
-									}else{
-										<call bo_keysd_control_genkey>(glocal.con_keys,glocal.id_str);
-										<f ok>
-										</f>
-										</call>
-										// Retrieve the password hashed by MySQL
-										<call sql_query>(*glocal.usq,"select password from users where email='%s'",glocal.email);
-										<f onerow>
-											bo_log_adduser (glocal.flog,glocal.id_str,glocal.name,glocal.email,row[0],time(NULL));
-										</f>
-										</call>
-										// Create a record in the config table
-										if (sql_action("insert into config (userid,lang) value (%d,'%s')",userid,glocal.lang)==-1){
-											glocal.msg = "Can't create3: table config";
-										}
-										if (glocal.mailon){
-											writed_mail_newaccount(glocal.mailserver,glocal.mailport,glocal.mailfrom
-												,glocal.name,glocal.email,glocal.id_str);
-										}
-									}
-								}
-							</f>
-							</call>
-						</f>
-						</call>
-					}
-					rep_adduser (glocal.id_str,glocal.msg);
+					string msg;
+					string id_str;
+					bo_writed_adduser (glocal.ctx,lang,name,email,password,id_str,msg);
+					rep_adduser (id_str,msg);
 				</f>
 				<f confirmuser>
 					glocal const char *confirmid = confirmid;
@@ -1238,7 +1291,7 @@ int main (int argc, char *argv[])
 						const char *email = row[2];
 						if (sql_action(*glocal.usq,"update users set confirmed=now() where userid=%u",userid)!=-1){
 							glocal.bo_writed_client.rep_confirmuser(true,"New user confirmed",email,name);
-							bo_log_confirmuser (glocal.flog,glocal.confirmid,time(NULL));
+							bo_log_confirmuser (glocal.ctx.flog,glocal.confirmid,time(NULL));
 							string msg;
 							/*
 								Create a project named "public"
@@ -1283,7 +1336,7 @@ int main (int argc, char *argv[])
 								glocal.bo_writed_client.rep_deleteuser (row[0],glocal.deleteid.c_str());
 							</f>
 							</call>
-							bo_log_deleteuser (glocal.flog,glocal.userid_str,glocal.deleteid);
+							bo_log_deleteuser (glocal.ctx.flog,glocal.userid_str,glocal.deleteid);
 						}
 					}
 				</f>
@@ -1300,7 +1353,7 @@ int main (int argc, char *argv[])
 							<f ok>
 							</f>
 							</call>
-							bo_log_confirmdelete (glocal.flog,userid_str,glocal.confirmid);
+							bo_log_confirmdelete (glocal.ctx.flog,userid_str,glocal.confirmid);
 							glocal.bo_writed_client.rep_confirmdelete (true,"");
 						}
 					</f>
@@ -1427,7 +1480,7 @@ int main (int argc, char *argv[])
 						if (fileid != -1){
 							char now[20];
 							fs_set_now(now);
-							string sign = bo_writed_sign (glocal.con_keys,entry.userid,content);
+							string sign = bo_writed_sign (glocal.ctx.con_keys,entry.userid,content);
 							if (fs_insert_file(entry.dirid,fileid,now,entry.basename)==-1){
 								entry.msg = "Internal error (dirs_files table)";
 							}else if (sql_action("insert into files (id,modified,filetype,content,signature) values (%d,'%s',%u,'%s','%s')"
@@ -1449,7 +1502,7 @@ int main (int argc, char *argv[])
 						string msg;
 						string handle;
 						string msgid;
-						bo_writed_addfile_bob (glocal.con_keys,sessionid,entry.basename,ENTRY_FILE,entry.dirid,entry.userid
+						bo_writed_addfile_bob (glocal.ctx.con_keys,sessionid,entry.basename,ENTRY_FILE,entry.dirid,entry.userid
 								,content,more
 								,msgid,msg,handle);
 						if (msg.size() > 0){
@@ -1538,7 +1591,7 @@ int main (int argc, char *argv[])
 						}else{
 							char now[20];
 							fs_set_now(now);
-							string sign = bo_writed_sign (glocal.con_keys,entry.userid,content);
+							string sign = bo_writed_sign (glocal.ctx.con_keys,entry.userid,content);
 							if (fs_insert_file (entry.dirid,entry.entryid,now,entry.basename)==-1){
 								rep_modifyfile (false,"Internal error (dirs_files table)");
 							}else if (sql_action("insert into files (id,modified,filetype,content,signature) values (%d,'%s',%u,'%s','%s')"
@@ -2007,7 +2060,7 @@ int main (int argc, char *argv[])
 				<f sendmsg> // sessionid owner recipients:v title content = success:b msg msgid
 					string msg;
 					string rep_msgid;
-					bo_writed_sendmsg (glocal.con,glocal.con_keys,sessionid,owner,recipients,NULL,title,content,msg,rep_msgid);
+					bo_writed_sendmsg (glocal.con,glocal.ctx.con_keys,sessionid,owner,recipients,NULL,title,content,msg,rep_msgid);
 					if (msg.size()==0){
 						rep_sendmsg (true,"",rep_msgid);
 					}else{
@@ -2017,7 +2070,7 @@ int main (int argc, char *argv[])
 				<f sendmsg_project> // sessionid owner manager project role title content = success:b msg msgid
 					string msg;
 					string rep_msgid;
-					if (bo_writed_project_msg(glocal.con,glocal.con_keys,sessionid,owner,manager,project,role,NULL,title,content,msg,rep_msgid)!=-1){
+					if (bo_writed_project_msg(glocal.con,glocal.ctx.con_keys,sessionid,owner,manager,project,role,NULL,title,content,msg,rep_msgid)!=-1){
 						rep_sendmsg_project (true,"",rep_msgid);
 					}else{
 						rep_sendmsg_project (false,msg,"");
@@ -2026,7 +2079,7 @@ int main (int argc, char *argv[])
 				<f replymsg> // sessionid owner msgid recipients:v title content = success:b msg replyid
 					string msg;
 					string rep_msgid;
-					bo_writed_sendmsg (glocal.con,glocal.con_keys,sessionid,owner,recipients,msgid,title,content,msg,rep_msgid);
+					bo_writed_sendmsg (glocal.con,glocal.ctx.con_keys,sessionid,owner,recipients,msgid,title,content,msg,rep_msgid);
 					if (msg.size()==0){
 						rep_replymsg (true,"",rep_msgid);
 					}else{
@@ -2036,7 +2089,7 @@ int main (int argc, char *argv[])
 				<f replymsg_project> // sessionid owner manager project role msgid title content = success:b msg replyid
 					string msg;
 					string rep_msgid;
-					if (bo_writed_project_msg(glocal.con,glocal.con_keys,sessionid,owner,manager,project,role,msgid,title,content,msg,rep_msgid)!=-1){
+					if (bo_writed_project_msg(glocal.con,glocal.ctx.con_keys,sessionid,owner,manager,project,role,msgid,title,content,msg,rep_msgid)!=-1){
 						rep_replymsg_project (true,"",rep_msgid);
 					}else{
 						rep_replymsg_project (false,msg,"");
@@ -2072,7 +2125,7 @@ int main (int argc, char *argv[])
 							unsigned ownerid = atoi(row[0]);
 							int dirid = fs_find_short_inbox (ownerid,glocal.groupowner,glocal.groupname,glocal.msg,true,created);
 							if (dirid != -1){
-								bo_writed_addfile_bob (glocal.con_keys,glocal.sessionid,NULL,ENTRY_MSG,dirid,glocal.userid
+								bo_writed_addfile_bob (glocal.ctx.con_keys,glocal.sessionid,NULL,ENTRY_MSG,dirid,glocal.userid
 									,*glocal.content,glocal.more
 									,glocal.msgid,glocal.msg,glocal.handle);
 								bo_writed_update_interest(created,glocal.groupname,ownerid,dirid);
@@ -2340,7 +2393,7 @@ int main (int argc, char *argv[])
 						if (success) glocal.sessiond = true;
 					</f>
 					</call>
-					<call bo_keysd_control_status>(glocal.con_keys);
+					<call bo_keysd_control_status>(glocal.ctx.con_keys);
 					<f ok>
 						glocal.keysd = lines.size() > 0;
 					</f>
@@ -2359,7 +2412,7 @@ int main (int argc, char *argv[])
 					glocal bool success;
 					glocal string msg;
 					glocal string sign;
-					<call bo_keysd_control_sign>(glocal.con_keys,-2,msg);
+					<call bo_keysd_control_sign>(glocal.ctx.con_keys,-2,msg);
 					<f ok>
 						glocal.success = status == ERR_CODE_NONE ? true : false;
 						glocal.msg = msg;
@@ -2404,7 +2457,7 @@ int main (int argc, char *argv[])
 					endclient = true;
 				</f>
 				</call>
-				fflush (glocal.flog);
+				fflush (glocal.ctx.flog);
 			}
 		</f>
 		</obj>
@@ -2419,15 +2472,15 @@ int main (int argc, char *argv[])
 			if (glocal.daemon){
 				daemon_init(glocal.pidfile,glocal.user);
 			}
-			glocal.flog = fopen (glocal.logfile,"a");
-			if (glocal.flog == NULL){
+			glocal.ctx.flog = fopen (glocal.logfile,"a");
+			if (glocal.ctx.flog == NULL){
 				tlmp_error ("Can't open logfile %s (%s)\n",glocal.logfile,strerror(errno));
 				exit (-1);
 			}
 			s.loop();
 			ret = 0;
 		}
-		fclose (glocal.flog);
+		fclose (glocal.ctx.flog);
 		return ret;
 	</f>
 	</call>

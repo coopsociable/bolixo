@@ -16,6 +16,10 @@ fi
 if [ "$BOLIXOLOG" = "" ] ; then
 	BOLIXOLOG=/tmp
 fi
+BOFS=bofs
+if [ -x ./bofs ] ; then
+	BOFS=./bofs
+fi
 INCLUDELANGS="-e /usr/lib/tlmp/help.eng/bolixo.eng -e /usr/lib/tlmp/help.fr/bolixo.fr"
 SOCKU=/var/lib/lxc/bosqlduser/rootfs/var/lib/mysql/mysql.sock
 SOCKN=/var/lib/lxc/bosqlddata/rootfs/var/lib/mysql/mysql.sock
@@ -568,9 +572,15 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 		)engine=$ENGINE;
 		create index formvars_id on formvars(id);
 	EOF
+	if [ "$ADMINPASSWORD" = "" ] ; then
+		echo ADMINPASSWORD is not defined in ~/bolixo.conf
+		echo -n "Enter password: "	
+		read ADMINPASSWORD
+	fi
+	$0 bo-writed-control adduser admin admin@bolixo.org $ADMINPASSWORD eng
 	$0 bo-keysd-control genkey --system--
 	sleep 1
-	./bofs bolixoapi registernode $THISNODE
+	$BOFS bolixoapi registernode $THISNODE
 elif [ "$1" = "dropbolixodb" ] ; then # db: Drop databases
 	mysqladmin -uroot -S $SOCKB -f drop $DBNAMEBOLIXO
 elif [ "$1" = "dropdb" ] ; then # db: Drop databases
@@ -581,7 +591,7 @@ elif [ "$1" = "dropdb" ] ; then # db: Drop databases
 elif [ "$1" = "filldb" ] ; then # db: Fill database (old)
 	$0 bo-writed-control mailctrl 0 keep
 	echo ==== Create some users
-	for user in admin A B C D E F G H I J K L M N O P Q R S T U V W X Y Z
+	for user in A B C D E F G H I J K L M N O P Q R S T U V W X Y Z
 	do
 		$0 test-adduser $user
 	done
@@ -827,12 +837,12 @@ elif [ "$1" = "test-verifysign" ] ; then # T: Verify the RSA signature of a mess
 	echo MSG=$MSG
 	echo Validate signature
 	./test.sh bod-client --testverifysign admin --extra "$MSG"
-	./bofs               misc --nbrep $NBREP --verifysign --nickname admin --message "$MSG"
-	./bofs -u hjacques-A misc --nbrep $HNBREP --verifysign --nickname admin --message "$MSG"
+	$BOFS               misc --nbrep $NBREP --verifysign --nickname admin --message "$MSG"
+	$BOFS -u hjacques-A misc --nbrep $HNBREP --verifysign --nickname admin --message "$MSG"
 	echo Validate signature for modified message
 	./test.sh bod-client --testverifysign admin --extra "a $MSG"
-	./bofs               misc --verifysign --nickname admin --message "a $MSG"
-	./bofs -u hjacques-A misc --verifysign --nickname admin --message "a $MSG"
+	$BOFS               misc --verifysign --nickname admin --message "a $MSG"
+	$BOFS -u hjacques-A misc --verifysign --nickname admin --message "a $MSG"
 elif [ "$1" = "createsqlusers" ] ; then # db: Generates SQL to create users
 	TRLISQL=/tmp/files.sql
 	USERSQL=/tmp/users.sql

@@ -42,30 +42,34 @@ if [ "$1" = "" ] ; then
 elif [ "$1" = "compute" ] ; then # prod: Update stats in news database
 	export LXCSOCK=on
 	$(TESTSH) compute
-elif [ "$1" = "trli" ] ; then	# db: Access trli database
-	mysql -S /var/lib/lxc/sqlddata/rootfs/var/lib/mysql/mysql.sock $DBNAME
-elif [ "$1" = "trliusers" ] ; then # db: Access trliusers database
-	mysql -S /var/lib/lxc/sqlduser/rootfs/var/lib/mysql/mysql.sock $DBNAMEU
+elif [ "$1" = "files" ] ; then	# db: Access files database
+	mysql -S /var/lib/lxc/bosqlddata/rootfs/var/lib/mysql/mysql.sock $DBNAME
+elif [ "$1" = "users" ] ; then # db: Access users database
+	mysql -S /var/lib/lxc/bosqlduser/rootfs/var/lib/mysql/mysql.sock $DBNAMEU
+elif [ "$1" = "bolixo" ] ; then # db: Access bolixo (directory) database
+	mysql -S /var/lib/lxc/bosqldbolixo/rootfs/var/lib/mysql/mysql.sock $DBNAMEU
 elif [ "$1" = "createdb" ] ; then # db: Access trliusers database
-	echo -n "mysql root password : "
-	read pass
-	export MYSQL_PWD=$pass
+	if [ "$MYSQL_PWD" = "" ] ; then
+		echo -n "mysql root password : "
+		read pass
+		export MYSQL_PWD=$pass
+	fi
 	/usr/lib/bolixo-test.sh createdb
 elif [ "$1" = "createsqluser" ] ; then # db: Configure sql user
-	echo -n "Enter new root password : "
-	read pass
+	unset MYSQL_PWD
 	/usr/lib/bolixo-test.sh createsqlusers
-	cat <<-EOF >/tmp/root.sql
-	delete from user where user='root' and host != 'localhost';
-	delete from user where user='';
-	update user set password=password('$pass') where user='root';
-	EOF
-	/var/lib/lxc/sqlddata/sqlddata.runsql mysql </tmp/root.sql
-	/var/lib/lxc/sqlddata/sqlddata.runsql mysql </tmp/trli.sql
-	/var/lib/lxc/sqlddata/sqlddata.admsql reload
-	/var/lib/lxc/sqlduser/sqlduser.runsql mysql </tmp/root.sql
-	/var/lib/lxc/sqlduser/sqlduser.runsql mysql </tmp/trliusers.sql
-	/var/lib/lxc/sqlduser/sqlduser.admsql reload
+	if [ -d /var/lib/lxc/bosqlddata/rootfs ] ; then
+		/var/lib/lxc/bosqlddata/bosqlddata.runsql mysql </tmp/files.sql
+		/var/lib/lxc/bosqlddata/bosqlddata.admsql reload
+	fi
+	if [ -d /var/lib/lxc/bosqlduser/rootfs ] ; then
+		/var/lib/lxc/bosqlduser/bosqlduser.runsql mysql </tmp/users.sql
+		/var/lib/lxc/bosqlduser/bosqlduser.admsql reload
+	fi
+	if [ -d /var/lib/lxc/bosqldbolixo/rootfs ] ; then
+		/var/lib/lxc/bosqlduser/bosqldbolixo.runsql mysql </tmp/bolixo.sql
+		/var/lib/lxc/bosqlduser/bosqldbolixo.admsql reload
+	fi
 elif [ "$1" = "test-system" ]; then # A: Checks components
 	time -p bo-mon-control test
 elif [ "$1" = "checks" ]; then # A: Sanity checks blackhole

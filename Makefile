@@ -52,7 +52,7 @@ bo-writed: bo-writed.tlcc filesystem.o proto/bo-writed_control.protoh proto/bo-w
 	proto/bo-sessiond_admin.protoh proto/bo-log.protoh proto/bo-keysd_control.protoh
 	cctlcc -Wall $(OPTIONS) bo-writed.tlcc filesystem.o _dict.o -o bo-writed $(LIBS) -ltlmpsql -L/usr/lib64/mysql -lmysqlclient
 
-bo-writed-control: bo-writed-control.tlcc
+bo-writed-control: bo-writed-control.tlcc proto/bo-writed_control.protoh
 	cctlcc -Wall $(OPTIONS) bo-writed-control.tlcc _dict.o -o bo-writed-control $(LIBS)
 
 bo-sessiond: bo-sessiond.tlcc proto/bo-sessiond_control.protoh \
