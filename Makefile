@@ -7,7 +7,6 @@ PROGS=_dict.o bod bod-client bod-control bo-writed bo-writed-control bo-sessiond
       bo-manager bofs ssltestsign bo-keysd bo-keysd-control bolixod bolixod-control perfsql \
       bo-mon bo-mon-control
 #bo-log bo-log-control \
-#      bo-mon bo-mon-control
 DOCS=
 OPTIONS=$(DINSTRUMENT) -funsigned-char -O2 -Wall -g -DVERSION=\"$(PACKAGE_REV)\" -I/usr/include/tlmp -I/usr/include/trlitool
 LIBS=/usr/lib64/trlitool/trlitool.a -ltlmp -lstdc++ -lcrypto
@@ -72,8 +71,8 @@ bo-log-control: trli-log-control.tlcc proto/bo-log-control.protoh
 bo-manager: bo-manager.tlcc /usr/include/trlitool/manager.h
 	cctlcc -Wall $(OPTIONS) bo-manager.tlcc _dict.o /usr/lib64/trlitool/manager.o -o bo-manager $(LIBS)
 
-bo-mon: bo-mon.tlcc proto/bod_client.protoh proto/bo-mon_control.protoh _dict.o
-	cctlcc -Wall $(OPTIONS) bo-mon.tlcc _dict.o -o bo-mon $(LIBS)
+bo-mon: bo-mon.tlcc proto/bod_client.protoh proto/bo-mon_control.protoh _dict.o /usr/lib64/trlitool/trlitool_mon.o
+	cctlcc -Wall $(OPTIONS) bo-mon.tlcc _dict.o /usr/lib64/trlitool/trlitool_mon.o -o bo-mon $(LIBS)
 
 bo-mon-control: bo-mon-control.tlcc proto/bo-mon_control.protoh _dict.o
 	cctlcc -Wall $(OPTIONS) bo-mon-control.tlcc _dict.o -o bo-mon-control $(LIBS)
@@ -222,8 +221,6 @@ install: msg.eng msg.fr
 #	install -m755 web/admin.hc $(RPM_BUILD_ROOT)/var/www/html/admin.hc
 #	install -m755 bo-log $(RPM_BUILD_ROOT)/usr/sbin/bo-log
 #	install -m755 bo-log-control $(RPM_BUILD_ROOT)/usr/sbin/bo-log-control
-#	install -m755 bo-mon $(RPM_BUILD_ROOT)/usr/sbin/bo-mon
-#	install -m755 bo-mon-control $(RPM_BUILD_ROOT)/usr/sbin/bo-mon-control
 
 msg.eng:
 	@mkdir -p $(TLMP_LIB)/help.eng
