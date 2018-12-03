@@ -668,7 +668,10 @@ static void webtabs(_F_webtabs &c,
 									nbprinted++;
 									split();
 									const char *name = t.title.c_str();
-									if (name[0] == '\0') name = t.tab.c_str();
+									if (name[0] == '\0'){
+										name = t.tab.c_str();
+									}
+									if (isdigit(name[0]) && name[1] == ':') name += 2;
 									int nodel = 0;
 									if (!t.locked && glocal.may_delete){
 										nodel = no+1;
@@ -4015,11 +4018,11 @@ extern "C" void webmain()
 		if (getrusage(RUSAGE_SELF,&u)==-1){
 			fprintf (fout,"syscall getrusage failed: %s\n",strerror(errno));
 		}
-		fprintf (fout,"%s?%s: %Ld.%06Ld [%lu.%06lu,%lu.%06lu]\n"
-			,tlmpweb_curpage(),getenv ("QUERY_STRING")
+		fprintf (fout,"%Ld.%06Ld [%lu.%06lu,%lu.%06lu] %s?%s\n"
 			,glocal.diff/1000000,glocal.diff%1000000
 			,u.ru_utime.tv_sec,u.ru_utime.tv_usec
-			,u.ru_stime.tv_sec,u.ru_stime.tv_usec);
+			,u.ru_stime.tv_sec,u.ru_stime.tv_usec
+			,tlmpweb_curpage(),getenv ("QUERY_STRING"));
 		return 0;
 	</f>
 	</call>

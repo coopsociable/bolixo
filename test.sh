@@ -1112,6 +1112,7 @@ elif [ "$1" = "lxc0-web" ]; then # prod:
 			-e /usr/lib/tlmp/help.fr/tlmpsql.fr \
 			-e /usr/lib/tlmp/help.fr/tlmpweb.fr \
 			-e /var/www/html/.tlmplibs \
+			-e /usr/share/fonts/dejavu/DejaVuSans.ttf \
 			-n $w -p /usr/sbin/httpd >/var/lib/lxc/$w/$w-lxc0.sh
 			chmod +x /var/lib/lxc/$w/$w-lxc0.sh
 	done
