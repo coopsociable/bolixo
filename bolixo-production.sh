@@ -245,7 +245,7 @@ elif [ "$1" = "restart" ] ; then # prod: restart some services (webs, internals,
 		echo "*** Try to restart anyway"
 		$0 stop-start
 	fi
-	trli-mon-control autotest 1
+	bo-mon-control autotest 1
 elif [ "$1" = "syslog-status" ] ; then # syslog: Status of the syslog daemon
 	trli-syslog-control status
 elif [ "$1" = "syslog-reset" ] ; then # syslog: Reset errors in syslog
@@ -313,7 +313,7 @@ elif [ "$1" = "checkupdates" ] ; then # prod: Check all containers are up to dat
 	done
 elif [ "$1" = "loadfail" ] ; then # prod: Switch web access (normal,backup,split)
 	if [ "$THISSERVER" = "" ] ;then
-		echo THISSERVER not defined in trli.conf
+		echo THISSERVER not defined in bolixo.conf
 		exit 1
 	fi
 	if [ "$2" = "normal" ] ; then
@@ -353,6 +353,7 @@ elif [ "$1" = "loadfail" ] ; then # prod: Switch web access (normal,backup,split
 	# Now we wait for the connections to vanish on the normal or backup side
 	if [ "$$1" != "" ] ; then
 		echo -n "Waiting for $WAIT connections to end : "
+		COUNT=0
 		while true
 		do
 			NB1=`blackhole-control connectload | fgrep "$S1" | (read a b c d e; echo $d)` 
@@ -362,9 +363,16 @@ elif [ "$1" = "loadfail" ] ; then # prod: Switch web access (normal,backup,split
 				echo
 				break
 			else
+				COUNT=`expr $COUNT + 1`
+				if [ "$COUNT" = "10" ] ; then
+					echo
+					echo $NB1 $S1
+					echo $NB2 $S2
+					echo $NB3 $S3
+					COUNT=0
+				fi
 				echo -n .
 				sleep 1
-				#echo $NB1 $NB2 $NB3
 			fi
 		done
 	fi
