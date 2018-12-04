@@ -60,6 +60,7 @@ make install
 /var/www/html/new.png
 /var/www/html/modified.png
 /var/www/html/seen.png
+/var/www/html/bolixo.png
 /usr/lib/bolixo-test.sh
 /usr/sbin/bolixo-production
 /etc/bolixo/http_check.conf

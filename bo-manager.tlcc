@@ -201,6 +201,7 @@ static const char *vs_sessiond = "sessiond";
 struct CONFIG {
 	string nodename;
 	string dirserver;
+	string org;
 	map<string,SERVER> servers;
 	vector<BLACKHOLE> blackholes;
 	vector<TRLID> bods;
@@ -222,6 +223,7 @@ struct CONFIG {
 	vector<BOLIXOD> bolixods;
 	CONFIG(){
 		dirserver = "https://bolixo.org";
+		org="Bolixo.org";
 	}
 };
 static bool preprodmode = false;
@@ -721,6 +723,7 @@ static void print_configs (
 	glocal string stopcompute;
 	glocal const char *dirserver = config.dirserver.c_str();
 	glocal const char *nodename = config.nodename.c_str();
+	glocal const char *org = config.org.c_str();
 	<call savefile>("/tmp/bkstart.sh",false);
 	<f dowrite>
 		glocal FILE *all_fout = fout;
@@ -1438,7 +1441,9 @@ static void print_configs (
 							fprintf (fout,"</html>\n");
 							fprintf (fout,"EOF\n");
 							fprintf (fout,"echo %s >/var/lib/lxc/%s/rootfs/etc/secret\n",glocal.secret,name);
-							fprintf (fout,"echo %s >/var/lib/lxc/%s/rootfs/etc/bolixonode.conf\n",glocal.nodename,name);
+							fprintf (fout,"echo node=%s >/var/lib/lxc/%s/rootfs/etc/bolixonode.conf\n",glocal.nodename,name);
+							fprintf (fout,"echo dirserver=%s/bolixo.hc >>/var/lib/lxc/%s/rootfs/etc/bolixonode.conf\n",glocal.dirserver,name);
+							fprintf (fout,"echo org=%s >>/var/lib/lxc/%s/rootfs/etc/bolixonode.conf\n",glocal.org,name);
 						</f>
 						</call>
 						fprintf (glocal.all_fout,"%s\n",startfile.c_str());
@@ -1926,6 +1931,8 @@ int main (int argc, char *argv[])
 						glocal.config.dirserver = tb[1];
 					}else if (strcmp(word,"nodename")==0 && n == 2){
 						glocal.config.nodename = tb[1];
+					}else if (strcmp(word,"org")==0 && n == 2){
+						glocal.config.org = tb[1];
 					}else{
 						tlmp_error ("Invalid line %d in configuration file %s\n",noline,info.filename);
 					}

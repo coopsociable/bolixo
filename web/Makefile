@@ -42,15 +42,20 @@ util.os: util.tlcc util.h /usr/include/tlmp/tlmpweb.h /usr/include/tlmp/tlmpweb.
 		--connect_info_obj CONNECT_HTTP_INFO --name webapi \
 		--protoch proto/webapi.protoch proto/webapi.proto >proto/webapi.protoh
 
-private.png: private.scad
+private.png: private.scad Makefile
 	openscad --imgsize 20,20 -oprivate.png --colorscheme=Nature --camera=0,0,50,0,0,0 private.scad
 	convert private.png -fuzz 20% -transparent white private.png 
 
-new.png: new.scad
+new.png: new.scad Makefile
 	openscad --imgsize 20,20 -onew.png -Dview=\"new\" --colorscheme=Nature --camera=0,0,50,0,0,0 new.scad
 	convert new.png -fuzz 20% -transparent white new.png 
 	openscad --imgsize 20,20 -omodified.png -Dview=\"modified\" --colorscheme=Nature --camera=0,0,50,0,0,0 new.scad
 	convert modified.png -fuzz 20% -transparent white modified.png 
 	openscad --imgsize 20,20 -oseen.png -Dview=\"seen\" --colorscheme=Nature --camera=0,0,50,0,0,0 new.scad
 	convert seen.png -fuzz 20% -transparent white seen.png 
+
+bolixo.png: bolixo.scad Makefile
+	openscad --imgsize 200,40 -obolixo.png --colorscheme=Nature --camera=70,20,110,70,20,0 bolixo.scad
+	convert bolixo.png -fuzz 20% -transparent white bolixo.png 
+
 

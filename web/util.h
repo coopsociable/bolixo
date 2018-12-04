@@ -106,3 +106,4 @@ void public_display (_F_public_page &c, CONNECT_INFO &con, PARAM_STRING user, bo
 std::string util_format_shortmsg (PARAM_STRING txt, unsigned nblines);
 std::string util_format_shortmsg (PARAM_STRING txt);
 std::string util_readsecret();
+void util_setdirserver(PARAM_STRING dir);
