@@ -615,7 +615,7 @@ elif [ "$1" = "resetdb" ] ; then # db: drops and creates databases
 elif [ "$1" = "listsessions" ] ; then # prod: Lists sessions
 	export LXCSOCK=on
 	$0 bo-sessiond-control listsessions 0 100
-elif [ "$1" = "test-system" ] ; then # T: Tests all trli components
+elif [ "$1" = "test-system" ] ; then # T: Tests all bolixo components
 	shift
 	NBREP=1
 	if [ "$1" != "" ] ; then
@@ -627,12 +627,15 @@ elif [ "$1" = "test-monitor" ] ; then # T: Tests all bods
 	if [ "$2" = verbose ] ; then
 		OPT=-v
 	fi
-	if $BOLIXOPATH/bo-mon-control -p /tmp/bo-mon.sock test
+	if $0 bo-mon-control test
 	then
 		echo ok
 	else
 		echo fail
 	fi
+elif [ "$1" = "bo-mon-control" ] ; then # A: Talks to bo-mon
+	shift
+	$BOLIXOPATH/bo-mon-control -p /tmp/bo-mon.sock $*
 elif [ "$1" = "test-createsessions" ] ; then # T: Creates many sessions
 	shift
 	NBREP=1

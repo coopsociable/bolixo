@@ -435,7 +435,7 @@ static void webtabs(_F_webtabs &c,
 	c.tabs = &ctrl.tabs;
 	glocal bool may_delete = may_delete;
 	c.maxsel = -1;
-	for (auto &t:*c.tabs){
+	for (auto &t:ctrl.tabs){
 		if (t.selorder > c.maxsel) c.maxsel = t.selorder;
 	}
 	c.selected_id = "";
@@ -495,14 +495,23 @@ static void webtabs(_F_webtabs &c,
 	glocal WEBTAB_CTRL *ctrl = &ctrl;
 	glocal vector<WEBTAB> *tabs = c.tabs;
 	glocal bool changed = false;
-	// w_webtab let the user select the active tab
+	// w_webtab let the user select the active tab, in any type
 	{
 		unsigned no = 1;
-		for (auto &t:*c.tabs){
+		int maxtabs[4]={0,0,0,0};
+		for (auto &t:ctrl.tabs){
+			int &maxt = maxtabs[t.type];
+			if (t.selorder > maxt) maxt = t.selorder;
+		}
+		for (auto &t:ctrl.tabs){
 			if (w_webtab == no){
-				t.selorder = ++c.maxsel;
-				c.selected_id = t.tab;
-				c.changed = true;
+				// Check if this is already the active tab
+				if (t.selorder != maxtabs[t.type]){
+					t.selorder = ++c.maxsel;
+					c.selected_id = t.tab;
+					c.changed = true;
+				}
+				break;
 			}
 			no+=2;
 		}
@@ -1129,6 +1138,7 @@ static void web_updateoffsets(CONNECT_INFO &con_sess)
 		val.sval = string_f ("%u",v.second);
 		var.vals.push_back(val);
 	}
+	//tlmp_error ("updateoffsets\n");
 	<call bo_sessiond_client_setvar>(con_sess,w_session.c_str(),var);
 	<f ok>
 		if (!success) tlmp_error ("Can't set variable offset: %s\n",msg);
@@ -1147,6 +1157,7 @@ static void web_updatecurrents(CONNECT_INFO &con_sess)
 		val.sval = string_f ("%u",v.second);
 		var.vals.push_back(val);
 	}
+	//tlmp_error ("updatecurrents\n");
 	<call bo_sessiond_client_setvar>(con_sess,w_session.c_str(),var);
 	<f ok>
 		if (!success) printf ("Can't set variable current: %s\n",msg);
@@ -1423,6 +1434,7 @@ static void index_setcopyitem(CONNECT_INFO &con_sess, PARAM_STRING path, PARAM_S
 	val.sname = "name";
 	val.sval = name.ptr;
 	var.vals.push_back(val);
+	//tlmp_error ("setcopyitem setvar\n");
 	<call bo_sessiond_client_setvar>(con_sess,w_session.c_str(),var);
 	<f ok>
 		if (!success) tlmp_error ("Can't set variable copy: %s\n",msg);
@@ -1899,6 +1911,7 @@ extern "C" void webmain_real()
 			val.sval = string_f("%u",v.width);
 			var.vals.push_back(val);
 		}
+		//tlmp_error ("savetablegeometry setvar\n");
 		<call bo_sessiond_client_setvar>(glocal.con_sess,w_session.c_str(),var);
 		<f ok>
 			if (!success) tlmp_error ("Can't set variable geometry: %s\n",msg);
@@ -1966,6 +1979,7 @@ extern "C" void webmain_real()
 		if (glocal.valid){
 			unsigned &cur = currents[tableid];
 			unsigned &off = offsets[tableid];
+			//tlmp_error ("settablecoor tableid=%s set=%d cur=%u current_row=%u\n",tableid,current_row_set,cur,current_row);
 			if (current_row_set && cur != current_row){
 				cur = current_row;
 				web_updatecurrents(glocal.con_sess);
@@ -1979,24 +1993,43 @@ extern "C" void webmain_real()
 		}
 	</f>
 	<f recordform>
-		VAR var;
-		var.name = "currentform";
-		for (auto &v:forms){
-			SNAMEVAL val;
-			val.sname = "id";
-			val.sval  = v.formid;
-			var.vals.push_back(val);
-			for (auto &vv:v.variables){
-				val.sname = "var";
-				val.sval = vv->getname();
-				var.vals.push_back(val);
+		bool update = false;
+		if (forms.size() != currentforms.size()){
+			update = true;
+		}else{
+			// Forms have fixed field definition. So we compare only
+			// to see if the same form IDs are in the list
+			for (auto &v:forms){
+				bool found = false;
+				for (auto &c:currentforms){
+					if (c.id == v.formid){
+						found = true;
+					}
+				}
+				if (!found) update = true;
 			}
 		}
-		<call bo_sessiond_client_setvar> (glocal.con_sess,w_session.c_str(),var);
-		<f ok>
-			if (!success) tlmp_error (MSG_U(E_SAVECURFORM,"Can't save active form state: %s\n"),msg);
-		</f>
-		</call>
+		if (update){
+			VAR var;
+			var.name = "currentform";
+			for (auto &v:forms){
+				SNAMEVAL val;
+				val.sname = "id";
+				val.sval  = v.formid;
+				var.vals.push_back(val);
+				for (auto &vv:v.variables){
+					val.sname = "var";
+					val.sval = vv->getname();
+					var.vals.push_back(val);
+				}
+			}
+			//tlmp_error ("recordform setvar\n");
+			<call bo_sessiond_client_setvar> (glocal.con_sess,w_session.c_str(),var);
+			<f ok>
+				if (!success) tlmp_error (MSG_U(E_SAVECURFORM,"Can't save active form state: %s\n"),msg);
+			</f>
+			</call>
+		}
 	</f>
 	<f restoreform>
 		glocal int ret = -1;
@@ -2101,6 +2134,7 @@ extern "C" void webmain_real()
 				var.vals.push_back(val);
 			}
 		}
+		//tlmp_error ("savetabs setvar\n");
 		<call bo_sessiond_client_setvar>(glocal.con_sess,w_session.c_str(),var);
 		<f ok>
 			if (!success) htmlprintf ("Can't set variable webtabs: %s\n",msg);
@@ -2140,6 +2174,7 @@ extern "C" void webmain_real()
 						var.vals.push_back(val);
 					}
 				}
+				//tlmp_error ("document setvar\n");
 				<call bo_sessiond_client_setvar>(glocal.con_sess,w_session.c_str(),var);
 				<f ok>
 					if (!success) htmlprintf ("Can't set variable document: %s\n",msg);
