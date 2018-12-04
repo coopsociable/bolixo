@@ -11,7 +11,7 @@ FLAGS=-Wall -Wno-unused-function
 	@echo $@
 	@g++ $(OPTIONS) -g -shared -Wl,-soname,test.so.1 -o \
 		$@ $< ../_dict.os /usr/lib64/trlitool/trlitool.pic.a util.os document.os document_fr.os \
-		/usr/lib/tlmp/lib/tlmpdoc.so /usr/lib/tlmp/lib/tlmpwebsql.so -lcrypto -lfreetype
+		/usr/lib/tlmp/lib/tlmpdoc.so /usr/lib/tlmp/lib/tlmpwebsql.so -lcrypto
 
 %.os: %.hcc /usr/include/tlmp/tlmpweb.h /usr/include/tlmp/tlmpweb.p \
 	 /usr/include/tlmp/tlmpdoc.h /usr/include/tlmp/tlmpdoc.p
@@ -34,7 +34,7 @@ clean:
 	rm -f *.hc *.o
 
 util.os: util.tlcc util.h /usr/include/tlmp/tlmpweb.h /usr/include/tlmp/tlmpweb.p
-	cctlcc -fPIC -Wall $(OPTIONS) `freetype-config --cflags` -c util.tlcc -o util.os
+	cctlcc -fPIC -Wall $(OPTIONS) -c util.tlcc -o util.os
 
 ../proto/webapi.protoh: ../proto/webapi.proto ../proto/bod_client.proto
 	cd .. && \

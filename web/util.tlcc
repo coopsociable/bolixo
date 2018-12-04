@@ -162,117 +162,6 @@ int util_getsessioninfo (CONNECT_INFO &con, CONNECT_INFO &con_sess,string &sessi
 }
 </mod>
 #endif
-#include <ft2build.h>
-#include FT_FREETYPE_H
-#define UTF8_ONE_BYTE_MASK 0b10000000
-#define UTF8_ONE_BYTE_COUNT 0
-
-#define UTF8_TWO_BYTE_MASK 0b11100000
-#define UTF8_TWO_BYTE_COUNT 0b11000000
-
-#define UTF8_THREE_BYTE_MASK 0b11110000
-#define UTF8_THREE_BYTE_COUNT 0b11100000
-
-#define UTF8_FOUR_BYTE_MASK 0b11111000
-#define UTF8_FOUR_BYTE_COUNT 0b11110000
-
-// This one could use a better name, I just don't know a better one (yet?)
-#define UTF8_OTHER_MASK 0b00111111
-
-static size_t utf8_codepoint_size(uint8_t text)
-{
-	if((text & UTF8_ONE_BYTE_MASK) == UTF8_ONE_BYTE_COUNT) {
-		return 1;
-	}
-
-	if((text & UTF8_TWO_BYTE_MASK) == UTF8_TWO_BYTE_COUNT) {
-		return 2;
-	}
-
-	if((text & UTF8_THREE_BYTE_MASK) == UTF8_THREE_BYTE_COUNT) {
-        	return 3;
-	}
-	return 4;
-}
-/*
-	Compute the width of the string using a font library.
-	For now, assumes the string is ASCII (UTF-8 will be supported).
-*/
-static unsigned util_displaylen (const char *title)
-{
-	unsigned ret = 0;
-	static bool some_errors = false;
-	static bool is_init = false;
-	static FT_Library  library;
-	static FT_Face     face;      /* handle to face object */
-	if (!is_init){
-		is_init = true;
-		some_errors = true;
-		int error = FT_Init_FreeType( &library );
-		if ( error ){
-			tlmp_error ("  ... an error occurred during library initialization ...\n");
-		}else{
-			error = FT_New_Face(library
-				,"/usr/share/fonts/dejavu/DejaVuSans.ttf"
-				,0,&face);
-			if ( error == FT_Err_Unknown_File_Format ){
-				tlmp_error ("... the font file could be opened and read, but it appears\n"
-					"... that its font format is unsupported\n");
-			}else if ( error ){
-				tlmp_error ("... another error code means that the font file could not\n"
-					"... be opened or read, or that it is broken...\n");
-			}else{
-				error = FT_Set_Char_Size(
-					face,    /* handle to face object           */
-					0,       /* char_width in 1/64th of points  */
-					tlmpweb_fontsize()*64,   /* char_height in 1/64th of points */
-					0,     /* horizontal device resolution    */
-					0 );   /* vertical device resolution      */
-				if (error){
-					tlmp_error ("Set_Char_Size error\n");
-				}else{
-					some_errors = false;
-				}
-			}
-		}
-
-	}
-	if (some_errors){
-		ret = strlen(title)*9;
-	}else{
-		const char *pt = title;
-		while (*pt != '\0'){
-			unsigned t = *pt++;
-			size_t charsize = utf8_codepoint_size(t);
-			switch(charsize){
-			case 1:
-				break;
-			case 2:
-				if (*pt == '\0') break;
-				t = (t<<8)+*pt++;
-				break;
-			case 3:
-				break;
-			case 4:
-				break;
-			}
-			unsigned glyph_index = FT_Get_Char_Index( face, t );
-
-			/* load glyph image into the slot (erase previous one) */
-			int error = FT_Load_Glyph( face, glyph_index, FT_LOAD_DEFAULT );
-			if ( error )   continue;  /* ignore errors */
-			/* convert to an anti-aliased bitmap */
-			error = FT_Render_Glyph( face->glyph, FT_RENDER_MODE_NORMAL );
-			if ( error ) continue;
-
-			//tlmp_error ("dislay_len: %c -> %u\n",t,(unsigned)(face->glyph->advance.x >> 6));
-			ret += face->glyph->advance.x >> 6;
-			ret += 1;	// On pixel between characters. advance takes care of that
-					// but for now, we are not using the same font as the browser
-		}
-	}
-	return ret;
-}
 unsigned draw_tab (
 	unsigned width,		// TAB width or 0 (computed from the title)
 	unsigned height,
@@ -287,7 +176,7 @@ unsigned draw_tab (
 	static STATIC_ID alloc_id;
 	unsigned id = alloc_id++;
 	if (width == 0){
-		width = util_displaylen(title);
+		width = tlmpweb_displaylen(title);
 		if (drawx){
 			width += 10+5+15;
 		}else{
