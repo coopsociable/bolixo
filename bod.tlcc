@@ -92,31 +92,76 @@ using namespace std;
 #define bo_sessiond_client_setvar_NOTNEED
 #include "proto/bo-sessiond_client.protoch"
 
+struct SESSION_CACHE{
+	time_t start;
+	string name;
+	unsigned userid;
+	bool is_admin;
+	string lang;
+	SESSION_CACHE(){
+		userid = 0;
+		is_admin = false;
+		start = 0;
+	}
+	SESSION_CACHE(const char *_name, unsigned _userid, bool _is_admin, const char *_lang){
+		start = time(NULL);
+		name = _name;
+		userid = _userid;
+		is_admin = _is_admin;
+		lang = _lang;
+	}
+};
+static map<string,SESSION_CACHE> sessions;
+
+static void bod_sessions_clean()
+{
+	time_t t = time(NULL)-10;
+	for (auto it=sessions.begin(); it != sessions.end();){
+		auto next = it;
+		next++;
+		if (it->second.start < t){
+			sessions.erase(it);
+		}
+		it = next;
+	}
+}
 /*
 	Get the userid associated with the sessionid
 */
 <mod>
 static unsigned trli_getsessionuser (CONNECT_INFO &con, const char *sessionid, bool &is_admin, string &name, string &msg)
 {
-	glocal unsigned userid = 0;
-	glocal bool is_admin = false;
-	glocal string *name = &name;
-	//long long start = fdpass_getnow();
-	//for (int i=0; i<10000; i++){
-	<call bo_sessiond_client_getsessioninfo>(con,sessionid);
-	<f ok>
-		glocal.userid = userid;
-		glocal.is_admin = admin;
-		(*glocal.name) = name;
-		translat_selectlang(lang);
-	</f>
-	</call>
-	//}
-	//long long end = fdpass_getnow();
-	//printf ("exec time = %lf\n",(end-start)/1000000.0);
-	is_admin = glocal.is_admin;
-	if (glocal.userid == 0) msg = MSG_U(E_IVLDSESSION,"Invalid session");
-	return glocal.userid;
+	unsigned userid;
+	auto s = sessions.find(sessionid);
+	if (s != sessions.end()){
+		userid = s->second.userid;
+		name = s->second.name;
+		is_admin = s->second.is_admin;
+		translat_selectlang(s->second.lang.c_str());
+	}else{
+		glocal const char *sessionid = sessionid;
+		glocal unsigned userid = 0;
+		glocal bool is_admin = false;
+		glocal string *name = &name;
+		//long long start = fdpass_getnow();
+		//for (int i=0; i<10000; i++){
+		<call bo_sessiond_client_getsessioninfo>(con,sessionid);
+		<f ok>
+			glocal.userid = userid;
+			glocal.is_admin = admin;
+			(*glocal.name) = name;
+			translat_selectlang(lang);
+			sessions[glocal.sessionid] = SESSION_CACHE(name,userid,admin,lang);
+		</f>
+		</call>
+		//}
+		//long long end = fdpass_getnow();
+		//printf ("exec time = %lf\n",(end-start)/1000000.0);
+		is_admin = glocal.is_admin;
+		if (glocal.userid == 0) msg = MSG_U(E_IVLDSESSION,"Invalid session");
+		userid = glocal.userid;
+	}
+	return userid;
 }
 </mod>
 static unsigned trli_getsessionuser (CONNECT_INFO &con, const char *sessionid, bool &is_admin, string &msg)
@@ -607,6 +652,15 @@ static int trlid_main (
 		glocal HANDLE_INFO *c = c;
 		glocal string userid = c->userid;
 		debug_printf (D_PROTO,"receive line[%d]: %s\n",info.linelen,line);
+		{
+			// Clean the session cache once in a while
+			static time_t last_clean=0;
+			time_t now = time(NULL);
+			if (now > last_clean+10){
+				last_clean = now;
+				bod_sessions_clean();
+			}
+		}
 		if (c->type == TYPE_CONTROL){
 			<call bod_control>(this,c->req,line,info.linelen, endserver, endclient, no,c,c->host.c_str());
 			<f status>
