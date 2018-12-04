@@ -200,14 +200,18 @@ elif [ "$1" = "restart" ] ; then # prod: restart some services (webs, internals,
 		for serv in $*
 		do
 			if [ "$serv" = "internals" ] ; then
-				SERVICES="$SERVICES bod writed sessiond keys bolixod protocheck bo-mon trli-syslog"
+				SERVICES="$SERVICES bod writed sessiond keysd protocheck bo-mon trli-syslog"
 			else
 				SERVICES="$SERVICES $serv"
 			fi
 		done
+		keysd_restarted=
 		for serv in $SERVICES
 		do
 			echo "   " $serv
+			if [ "$serv" = "keysd" ] ; then
+				keysd_restarted=true
+			fi
 			if [ "$serv" = "horizon" ] ; then
 				/etc/init.d/horizon restart
 				for file in /var/lib/lxc/*/horizon-start.sh
@@ -239,6 +243,10 @@ elif [ "$1" = "restart" ] ; then # prod: restart some services (webs, internals,
 				fi
 			fi
 		done
+		if [ "$keysd_restarted" != "" ] ; then
+			echo Service keysd was restarted
+			/usr/sbin/bo-keysd-control -p /var/lib/lxc/keysd/rootfs/var/run/blackhole/bo-keysd.sock setpassphrase
+		fi
 		$0 stop-start
 	else
 		echo "*** Can't stop the web"
