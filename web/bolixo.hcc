@@ -8,7 +8,10 @@
 #include <tlmp/translat.h>
 #include <tlmplib.h>
 #include "../bolixo.m"
+#include <tlmpdoc.h>
 
+extern void bolixo_doc (DOCUMENT_POINTER &, DOC_ID &jump, const char *username);
+extern void bolixo_doc_fr (DOCUMENT_POINTER &, DOC_ID &jump, const char *username);
 string util_readsecret();
 
 static W_SSTRING w_user("user");
@@ -46,13 +49,15 @@ static void bolixo_script()
 		};
 		function fitcol(divs){
 			var maxwidth = 0;
-			for (var i=0; i<divs.length; i++){
-				var b = divs[i].getBoundingClientRect();
-				if (maxwidth < b.width) maxwidth = b.width;
-			}
-			for (var i=0; i<divs.length; i++){
-				var d = divs[i];
-				d.style.width = maxwidth;
+			if (divs != null){
+				for (var i=0; i<divs.length; i++){
+					var b = divs[i].getBoundingClientRect();
+					if (maxwidth < b.width) maxwidth = b.width;
+				}
+				for (var i=0; i<divs.length; i++){
+					var d = divs[i];
+					d.style.width = maxwidth;
+				}
 			}
 			return maxwidth;
 		}
@@ -62,18 +67,28 @@ static void bolixo_script()
 			w += fitcol (document.getElementsByClassName('col2'));
 			w += fitcol (document.getElementsByClassName('col3'));
 			var tb = document.getElementById("tb");
-			var tb_b = tb.getBoundingClientRect();
-			var top = document.getElementById("topform");
-			var top_b = top.getBoundingClientRect();
-			if (tb_b.width > top_b.width) top.style.width = tb_b.width;
-			top = document.getElementById("top");
+			if (tb != null){
+				var tb_b = tb.getBoundingClientRect();
+				var top = document.getElementById("topform");
+				if (top != null){
+					var top_b = top.getBoundingClientRect();
+					if (tb_b.width > top_b.width) top.style.width = tb_b.width;
+				}
+			}
+			var top = document.getElementById("top");
 			var middle = document.getElementById("middle");
 			var search = document.getElementById("search");
 			if (top != null && middle != null && search != null){
 				top_b = top.getBoundingClientRect();
 				var middle_b = middle.getBoundingClientRect();
-				search.style.height = window.innerHeight-top_b.height-middle_b.height-20;
+				search.style.height = window.innerHeight-top_b.height-middle_b.height-30;
+			}else if (top != null && search != null){
+				top_b = top.getBoundingClientRect();
+				search.style.height = window.innerHeight-top_b.height-40;
 			}
+		}
+		function formsubmit(href){
+			window.location.href = href;
 		}
 	</script>
 	?>
@@ -139,7 +154,7 @@ static void bolixo_title(int called_from_step)
 	/- <br>
 	if (called_from_step != 4) htmlprintf ("<a href=%s?webstep=4>%s</a>\n",tlmpweb_curpage(),MSG_R(I_CREATEACCT));
 	/- <br>
-	if (called_from_step != 1) htmlprintf ("<a href=%s?webstep=1>%s</a>\n",tlmpweb_curpage(),MSG_U(I_BACKTOSEARCH,"Back to search"));
+	if (called_from_step != 1) htmlprintf ("<a href=%s?webstep=1>%s</a>\n",tlmpweb_curpage(),MSG_U(I_BACKTOSEARCH,"Search"));
 	/- <br>
 }
 
@@ -157,6 +172,7 @@ extern "C" void webmain()
 	</f>
 	<f step1>
 		tlmpweb_title (MSG_U(T_BOLIXO_ORG_DIR,"Bolixo.org directory"));
+		tlmpweb_body ("white",NULL,"background=background.png");
 		DIV v; v.dispflex().flowcol().print();
 		DIV b("","top"); b.print(); 
 		bolixo_title(1);
@@ -210,7 +226,7 @@ extern "C" void webmain()
 			if (!success){
 				htmlprintf ("<br><p><center>%s</center><br>\n",MSG_U(E_NOFILTER,"No filter specified"));
 			}else{
-				DIV d("","search"); d.autoscroll().print();
+				DIV d("","search"); d.w(90).vpaddings(5,5).vmargins(10,0).bg("white").border(1,"black").borderradius(5).autoscroll().print();
 				/- <table id=tb border=0>
 				bolixo_prevnext(users.size()==10);
 				for (auto &u:users){
@@ -274,9 +290,9 @@ extern "C" void webmain()
 	</f>
 	<f step3>
 		tlmpweb_title (MSG_R(T_BOLIXO_ORG_DIR));
-		tlmpweb_body ("white",NULL);
+		tlmpweb_body ("white",NULL,"background=background.png");
 		bolixo_title(3);
-		DIV d; d.w(50).marginauto().vmargins(30,0).vpaddings(10,10).paddings(10,10).border(1,"black").borderradius(5).print();
+		DIV d; d.w(50).marginauto().vmargins(30,0).vpaddings(10,10).paddings(10,10).border(1,"black").bg("white").borderradius(5).print();
 		<call form>("login");
 		<f setup>
 			/-#I_REDIRECT Enter your email and you will be redirected to the login page of your bolixo node.
@@ -311,8 +327,9 @@ extern "C" void webmain()
 	</f>
 	<f step4>
 		tlmpweb_title (MSG_R(T_BOLIXO_ORG_DIR));
+		tlmpweb_body ("white",NULL,"background=background.png");
 		bolixo_title(4);
-		DIV d; d.w(50).marginauto().vmargins(30,0).vpaddings(10,10).paddings(10,10).border(1,"black").borderradius(5).print();
+		DIV d; d.w(50).marginauto().vmargins(30,0).vpaddings(10,10).paddings(10,10).border(1,"black").borderradius(5).bg("white").print();
 		<call form>("create");
 		<f setup>
 			/-#I_SELECTNICKNAME Select a nickname you like and an available node will be found.
@@ -348,8 +365,9 @@ extern "C" void webmain()
 	</f>
 	<f step5>
 		tlmpweb_title (MSG_R(T_BOLIXO_ORG_DIR));
+		tlmpweb_body ("white",NULL,"background=background.png");
 		bolixo_title(5);
-		DIV d; d.w(50).marginauto().vmargins(30,0).vpaddings(10,10).paddings(10,10).border(1,"black").borderradius(5).print();
+		DIV d; d.w(50).marginauto().vmargins(30,0).vpaddings(10,10).paddings(10,10).border(1,"black").borderradius(5).bg("white").print();
 		<?#I_BOLIXO
 			Bolixo is a distributed social media. It is also free software.
 			<p>
@@ -365,6 +383,24 @@ extern "C" void webmain()
 			<li>Users can create their personnal web page.
 			</ul>
 		?>
+		/-<p>
+		htmlprintf ("<a href=%s?webstep=6>%s</a>\n",tlmpweb_curpage(),MSG_U(I_COMPLETEDOC,"Complete documentation"));
+	</f>
+	<f step6>
+		tlmpweb_title (MSG_R(T_BOLIXO_ORG_DIR));
+		tlmpweb_body ("white",NULL,"background=background.png");
+		DIV v; v.dispflex().flowcol().print();
+		DIV b("","top"); b.print(); 
+		bolixo_title(6);
+		b.end();
+		DIV d("","search"); d.w(90).marginauto().vmargins(10,0).vpaddings(10,10).paddings(10,10).border(1,"black").borderradius(5).bg("white").print();
+		DOCUMENT_POINTER pt;
+		DOC_ID jump;
+		if (strcmp(tlmpweb_getlang(),"eng")==0){
+			bolixo_doc (pt,jump,"");
+		}else{
+			bolixo_doc_fr(pt,jump,"");
+		}
 	</f>
 	</call>
 	

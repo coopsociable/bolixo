@@ -1,0 +1,95 @@
+/*
+	Generate a background image for bolixo.
+	It uses a random generator to create a mesh.
+	It generates openscad language used to render the mesh.
+*/
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <tlmplib.h>
+#include <string>
+#include <vector>
+
+using namespace std;
+
+struct POINT{
+	unsigned x;
+	unsigned y;
+	bool connected;
+	POINT(){
+		x=0;
+		y=0;
+		connected = false;
+	}
+	POINT (unsigned _x, unsigned _y){
+		x = _x;
+		y = _y;
+		connected = false;
+	}
+};
+<mod>
+int main (int argc, char *argv[])
+{
+	glocal int ret = -1;
+	glocal unsigned count = 50;
+	glocal.ret = <call tlmpprogram>(argc,argv);
+	<f init>
+		setproginfo ("","0.0","...");
+		setarg ('c',"count","Number of points",glocal.count,false);
+	</f>
+	<f main>
+		int ret = -1;
+		printf ("include <background.scad>\n");
+		FILE *fin = fopen ("/dev/urandom","r");
+		if (fin != NULL){
+			vector<POINT> points;
+			for (unsigned i=0; i<glocal.count; i++){
+				unsigned char buf[2];
+				if (fread (buf,2,1,fin)!=1){
+					tlmp_error ("Can't read /dev/urandom\n");
+					exit (-1);
+				}
+				points.emplace_back(buf[0],buf[1]);
+			}
+			for (unsigned i=0; i<glocal.count; i++){
+				POINT &pt = points[i];
+				// We will connect this point to 2 others
+				// Each one will be selected randomly.
+				// 3 points are picked and the closest is used
+				for (unsigned k=0; k<2; k++){
+					unsigned tb[3];
+					for (unsigned j=0; j<3; j++){
+						unsigned char buf[1];
+						if (fread (buf,1,1,fin)!=1){
+							tlmp_error ("Can't read /dev/urandom\n");
+							exit (-1);
+						}
+						tb[j] = buf[0] % glocal.count;
+					}
+					// Find the closest point
+					unsigned closest = 0;
+					unsigned long distance=(unsigned long)-1;
+					for (unsigned j=0; j<3; j++){
+						POINT &p = points[tb[j]];
+						int diffx = p.x - pt.x;
+						int diffy = p.y - pt.y;
+						unsigned long dist = diffx*diffx+diffy*diffy;
+						if (dist < distance){
+							closest = j;
+							distance = dist;
+						}
+					}
+					POINT &pt2 = points[closest];
+					printf ("line(%u,%u,%u,%u);\n",pt.x,pt.y,pt2.x,pt2.y);
+				}
+			}
+			fclose (fin);
+			ret = 0;
+		}
+		return ret;
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+

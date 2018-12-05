@@ -58,4 +58,11 @@ bolixo.png: bolixo.scad Makefile
 	openscad --imgsize 200,40 -obolixo.png --colorscheme=Nature --camera=70,20,110,70,20,0 bolixo.scad
 	convert bolixo.png -fuzz 20% -transparent white bolixo.png 
 
+genbackground: genbackground.tlcc
+	cctlcc -Wall genbackground.tlcc -o genbackground -lstdc++
 
+background: genbackground
+	cp background.scad /tmp
+	./genbackground a >/tmp/test.scad
+	openscad --autocenter --imgsize 2048,2048 -obackground.png --colorscheme=Nature --camera=125,125,600,125,125,0 /tmp/test.scad
+	convert background.png -fuzz 20% -transparent white background.png
