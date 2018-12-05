@@ -112,6 +112,7 @@ elif [ "$1" = "config" ] ; then # config: Generate config
 	/usr/lib/bolixo-test.sh prodconfig
 elif [ "$1" = "lxc0s" ] ; then # config: Produces the lxc0 scripts
 	export SILENT=on
+	export LXCSOCK=off
 	$0 checks
 	/usr/lib/bolixo-test.sh lxc0-web
 	/usr/lib/bolixo-test.sh lxc0-webssl
@@ -281,8 +282,14 @@ elif [ "$1" = "install-web" ] ; then # prod: Replace web parts in running lxcs
 		install -m755 $VHTML/bolixo.hc $VLXC/$w/rootfs/$VHTML/bolixo.hc
 		install -m755 $VHTML/webapi.hc $VLXC/$w/rootfs/$VHTML/webapi.hc
 		install -m755 $VHTML/bolixoapi.hc $VLXC/$w/rootfs/$VHTML/bolixoapi.hc
+		for dict in bolixo tlmpsql tlmpweb
+		do
+			install -m644 /usr/lib/tlmp/help.eng/$dict.eng $VLXC/$w/rootfs/usr/lib/tlmp/help.eng/$dict.eng
+			install -m644 /usr/lib/tlmp/help.fr/$dict.fr $VLXC/$w/rootfs/usr/lib/tlmp/help.fr/$dict.fr
+		done
 	done
-	for file in robots.txt about.html  favicon.ico terms-of-use.html
+	for file in robots.txt about.html  favicon.ico terms-of-use.html\
+	       bolixo.png background.png new.png modified.png seen.png private.png
 	do
 		install -m644 $VHTML/$file $VLXC/webssl/rootfs/$VHTML/$file
 	done
