@@ -8,7 +8,7 @@ Group: Networking/util
 Source0: bolixo-REV.src.tar.gz
 BuildRoot: /var/tmp/bolixo
 BuildRequires: tlmp-devel mariadb-devel trlitool tlmpsql tlmpweb
-Requires: mariadb-libs tlmp tlmpsql trlitool tlmpweb
+Requires: mariadb-connector-c tlmp tlmpsql trlitool tlmpweb
 
 %description
 Bolixo is a distributed social media. This package includes everything
@@ -33,6 +33,8 @@ make install
 /usr/share/bolixo/secrets.admin
 /usr/share/bolixo/secrets.client
 /usr/share/bolixo/manager.conf
+/usr/share/bolixo/bolixo.conf
+/usr/share/bolixo/bofs.conf
 /usr/sbin/bod
 /usr/sbin/bod-control
 /usr/sbin/bod-client
@@ -79,12 +81,12 @@ fi
 
 %post
 
-id bolixo >/dev/null 2>/dev/null || useradd -r bolixo
 chkconfig --add bolixoserv
 
 %postun
 
 %pre
+id bolixo >/dev/null 2>/dev/null || useradd -r bolixo
 
 %preun
 
