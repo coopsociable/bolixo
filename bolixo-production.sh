@@ -67,8 +67,8 @@ elif [ "$1" = "createsqluser" ] ; then # db: Configure sql user
 		/var/lib/lxc/bosqlduser/bosqlduser.admsql reload
 	fi
 	if [ -d /var/lib/lxc/bosqldbolixo/rootfs ] ; then
-		/var/lib/lxc/bosqlduser/bosqldbolixo.runsql mysql </tmp/bolixo.sql
-		/var/lib/lxc/bosqlduser/bosqldbolixo.admsql reload
+		/var/lib/lxc/bosqldbolixo/bosqldbolixo.runsql mysql </tmp/bolixo.sql
+		/var/lib/lxc/bosqldbolixo/bosqldbolixo.admsql reload
 	fi
 elif [ "$1" = "test-system" ]; then # A: Checks components
 	time -p bo-mon-control test
@@ -109,8 +109,22 @@ elif [ "$1" = "secrets" ] ; then # config: Generate secrets
 			| sed "s/testhost/localhost/" \
 			| sed "s/1.2.3.4/$MYIP/" >/root/data/manager.conf
 	fi
+	if [ ! -f /root/.bofs.conf ] ; then
+		echo Write /root/.bofs.conf
+		FOO=`head -1 /etc/bolixo/secrets.client | (read a b; echo $b)`
+		ADM=`head -1 /etc/bolixo/secrets.admin | (read a b; echo $b)`
+		sed "s/ foo/ $FOO/" </usr/share/bolixo/bofs.conf \
+			| sed "s/ adm/ $ADM/" \
+			>/root/.bofs.conf
+	fi
 elif [ "$1" = "config" ] ; then # config: Generate config
 	/usr/lib/bolixo-test.sh prodconfig
+elif [ "$1" = "make-mysql-log" ] ; then # config: mysql strace log for lxc0
+	/usr/lib/bolixo-test.sh make-mysql-log 
+elif [ "$1" = "make-httpd-log" ] ; then # config: httpd strace log for lxc0
+	/usr/lib/bolixo-test.sh make-httpd-log 
+elif [ "$1" = "make-exim-log" ] ; then # config: exim strace log for lxc0
+	/usr/lib/bolixo-test.sh make-exim-log 
 elif [ "$1" = "lxc0s" ] ; then # config: Produces the lxc0 scripts
 	export SILENT=on
 	export LXCSOCK=off
@@ -412,6 +426,17 @@ elif [ "$1" = "certificate-renew" ] ; then # prod: Renew the SSL certificate
 	else
         	echo test ou doit
 	fi
+elif [ "$1" = "keysd-pass" ] ; then # prod: set keys passphrase
+	/usr/sbin/bo-keysd-control -p /var/lib/lxc/keysd/rootfs/var/run/blackhole/bo-keysd.sock setpassphrase
+elif [ "$1" = "install-required" ] ; then # config: install required packages
+	dnf install lxc lxc-templates \
+		gd \
+		mariadb-server mariadb-connector-c boost-date-time \
+		httpd \
+		libvirt-daemon libvirt-daemon-driver-network \
+		libvirt-daemon-config-network libvirt-client \
+		libvirt-daemon-driver-qemu bridge-utils \
+		time strace exim vim-enhanced
 else
 	echo Invalid command
 fi

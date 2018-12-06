@@ -1070,6 +1070,10 @@ elif [ "$1" = "lxc0-proto" ]; then # prod:
 		$EXTRALXCPROG \
 		-i /usr/sbin/trli-init -l /tmp/log -n protocheck -p /usr/sbin/protocheck-2factors >/var/lib/lxc/protocheck/protocheck-lxc0.sh
 	chmod +x /var/lib/lxc/protocheck/protocheck-lxc0.sh
+elif [ "$1" = "make-httpd-log" ] ; then # config: httpd strace log for lxc0
+	echo  httpd is started. Wait and killall httpd in another console
+	strace -f -o /root/stracelogs/log.web /usr/sbin/httpd 
+	echo /root/stracelogs/log.web was produced
 elif [ "$1" = "lxc0-web" ]; then # prod:
 	#su - root -c "nohup strace -o /tmp/log.root -f /usr/sbin/httpd --daemon"
 	#su - root -c "killall httpd"
@@ -1166,7 +1170,11 @@ elif [ "$1" = "lxc0-webssl" ]; then # prod:
 			-n $w -p /usr/sbin/httpd >/var/lib/lxc/$w/$w-lxc0.sh
 		chmod +x /var/lib/lxc/$w/$w-lxc0.sh
 	done
-elif [ "$1" = "lxc0-mysql" ]; then # prod:
+elif [ "$1" = "make-mysql-log" ] ; then # config: mysql strace log for lxc0
+	echo "wait a bit and do 'mysqladmin shutdown' in another console"
+	strace -f -o /root/stracelogs/log.mysql /usr/libexec/mysqld --basedir=/usr --user=mysql
+	echo /root/stracelogs/log.mysql was produced
+elif [ "$1" = "lxc0-mysql" ]; then # config:
 	ROOTLOG=/root/stracelogs/log.mysql
 	LOG=/tmp/log.mysql
 	if [ -f $ROOTLOG ] ; then
@@ -1175,50 +1183,57 @@ elif [ "$1" = "lxc0-mysql" ]; then # prod:
 		echo $LOG missing
 		echo do strace -f -o $LOG /usr/libexec/mysqld --basedir=/usr --user=mysql
 		echo mysqladmin shutdown
+		echo
+		echo bolixo-production make-mysql-log
 		exit 1
 	fi
-	echo bosqlddata
-	mkdir -p /var/lib/lxc/bosqlddata
-	/usr/sbin/trli-lxc0 $LXC0USELINK \
-		$EXTRALXCPROG \
-		--filelist /var/lib/lxc/bosqlddata/bosqlddata.files \
-		-i /usr/sbin/trli-init \
-		-e /usr/bin/mysqladmin -e /usr/bin/mysql \
-		-d /var/lib/mysql \
-		-d /usr/lib64/mysql/plugin \
-		-l $LOG \
-		-n bosqlddata -p /usr/libexec/mysqld >/var/lib/lxc/bosqlddata/bosqlddata-lxc0.sh
-	chmod +x /var/lib/lxc/bosqlddata/bosqlddata-lxc0.sh
-	echo bosqlduser
-	mkdir -p /var/lib/lxc/bosqlduser
-	/usr/sbin/trli-lxc0 $LXC0USELINK \
-		$EXTRALXCPROG \
-		--filelist /var/lib/lxc/bosqlduser/bosqlduser.files \
-		-i /usr/sbin/trli-init \
-		-e /usr/bin/mysqladmin -e /usr/bin/mysql \
-		-d /var/lib/mysql \
-		-d /usr/lib64/mysql/plugin \
-		-l $LOG \
-		-n bosqlduser -p /usr/libexec/mysqld >/var/lib/lxc/bosqlduser/bosqlduser-lxc0.sh
-	chmod +x /var/lib/lxc/bosqlduser/bosqlduser-lxc0.sh
-	echo bosqldbolixo
-	mkdir -p /var/lib/lxc/bosqldbolixo
-	/usr/sbin/trli-lxc0 $LXC0USELINK \
-		$EXTRALXCPROG \
-		--filelist /var/lib/lxc/bosqldbolixo/bosqldbolixo.files \
-		-i /usr/sbin/trli-init \
-		-e /usr/bin/mysqladmin -e /usr/bin/mysql \
-		-d /var/lib/mysql \
-		-d /usr/lib64/mysql/plugin \
-		-l $LOG \
-		-n bosqldbolixo -p /usr/libexec/mysqld >/var/lib/lxc/bosqldbolixo/bosqldbolixo-lxc0.sh
-	chmod +x /var/lib/lxc/bosqldbolixo/bosqldbolixo-lxc0.sh
-	mysql_save bosqlddata
-	mysql_save bosqlduser
-	mysql_save bosqldbolixo
-	mysql_restore bosqlddata
-	mysql_restore bosqlduser
-	mysql_restore bosqldbolixo
+	if [ -d /var/lib/lxc/bosqlddata ] ; then
+		echo bosqlddata
+		/usr/sbin/trli-lxc0 $LXC0USELINK \
+			$EXTRALXCPROG \
+			--filelist /var/lib/lxc/bosqlddata/bosqlddata.files \
+			-i /usr/sbin/trli-init \
+			-e /usr/bin/mysqladmin -e /usr/bin/mysql \
+			-x /var/lib/mysql \
+			-l $LOG \
+			-n bosqlddata -p /usr/libexec/mysqld >/var/lib/lxc/bosqlddata/bosqlddata-lxc0.sh
+		chmod +x /var/lib/lxc/bosqlddata/bosqlddata-lxc0.sh
+		mysql_save bosqlddata
+		mysql_restore bosqlddata
+	fi
+	if [ -d /var/lib/lxc/bosqlduser ] ; then
+		echo bosqlduser
+		/usr/sbin/trli-lxc0 $LXC0USELINK \
+			$EXTRALXCPROG \
+			--filelist /var/lib/lxc/bosqlduser/bosqlduser.files \
+			-i /usr/sbin/trli-init \
+			-e /usr/bin/mysqladmin -e /usr/bin/mysql \
+			-x /var/lib/mysql \
+			-l $LOG \
+			-n bosqlduser -p /usr/libexec/mysqld >/var/lib/lxc/bosqlduser/bosqlduser-lxc0.sh
+		chmod +x /var/lib/lxc/bosqlduser/bosqlduser-lxc0.sh
+		mysql_save bosqlduser
+		mysql_restore bosqlduser
+	fi
+	if [ -d /var/lib/lxc/bosqldbolixo ] ; then
+		echo bosqldbolixo
+		/usr/sbin/trli-lxc0 $LXC0USELINK \
+			$EXTRALXCPROG \
+			--filelist /var/lib/lxc/bosqldbolixo/bosqldbolixo.files \
+			-i /usr/sbin/trli-init \
+			-e /usr/bin/mysqladmin -e /usr/bin/mysql \
+			-x /var/lib/mysql \
+			-l $LOG \
+			-n bosqldbolixo -p /usr/libexec/mysqld >/var/lib/lxc/bosqldbolixo/bosqldbolixo-lxc0.sh
+		chmod +x /var/lib/lxc/bosqldbolixo/bosqldbolixo-lxc0.sh
+		mysql_save bosqldbolixo
+		mysql_restore bosqldbolixo
+	fi
+elif [ "$1" = "make-exim-log" ] ; then # config: exim strace log for lxc0
+	strace -f -o /root/stracelogs/log.exim /usr/sbin/exim -bd -q1h
+	sleep 5
+	killall exim
+	echo /root/stracelogs/log.exim was produced
 elif [ "$1" = "lxc0-exim" ]; then # prod:
 	ROOTLOG=/root/stracelogs/log.exim
 	LOG=/tmp/log.exim

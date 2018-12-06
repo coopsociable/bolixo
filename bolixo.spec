@@ -30,6 +30,7 @@ make install
 
 %files
 %defattr(-,root,root)
+/usr/share/bolixo/README
 /usr/share/bolixo/secrets.admin
 /usr/share/bolixo/secrets.client
 /usr/share/bolixo/manager.conf

@@ -1,0 +1,61 @@
+Install steps
+
+Required standard packages
+==========================
+
+Required packages
+=================
+
+	tlmp
+	tlmpsql
+	tlmpweb tlmpweb-sql
+	trlitool
+	bolixo
+	blackhole blackhole-horizon blackhole-conproxy blackhole-misc
+
+Modifications
+=============
+
+Remove the nat from /etc/libvirt/qemu/networks/default.xml. Without doing that, firewalld is
+required and assume that all containers may go to the internet.
+
+To run the whole thing inside an LXC container (containers in a container), you
+must make /sys rw. libvirtd will fail to setup virbr0 otherwise.
+
+Setup
+=====
+
+	Copy/configure /usr/share/bolixo/bolixo.conf -> /root/bolixo.conf
+
+	bolixo-production secrets
+	edit/configure /root/data/manager.conf
+	edit/configure /root/.bofs.conf
+	bolixo-production config
+	systemctl start conproxy
+	systemctl start horizon 
+	systemctl start blackhole
+	/root/bolixostart.sh
+	bolixo-production createsqluser
+	bolixo-production createdb
+
+    and now, the following test should be all clear, almost, except for the syslog line
+
+	bolixo-production test-system
+
+    we can review the log, but most errors are normal during setup, so we reset everything
+
+	bolixo-production syslog-clear
+	bolixo-production syslog-reset
+
+    and now, the following test should be all clear
+
+	bolixo-production test-system
+
+    At this point, you have a running bolixo node, properly registered to bolixo.org.
+    Users can create accounts.
+
+Tests
+=====
+
+bolixo-production test-system
+

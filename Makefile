@@ -187,6 +187,7 @@ install: msg.eng msg.fr
 	install data/manager.conf $(RPM_BUILD_ROOT)/usr/share/bolixo/manager.conf
 	install data/bolixo.conf $(RPM_BUILD_ROOT)/usr/share/bolixo/bolixo.conf
 	install data/bofs.conf $(RPM_BUILD_ROOT)/usr/share/bolixo/bofs.conf
+	install README $(RPM_BUILD_ROOT)/usr/share/bolixo/README
 	install -m755 bolixo-production.sh $(RPM_BUILD_ROOT)/usr/sbin/bolixo-production
 	install -m755 test.sh $(RPM_BUILD_ROOT)/usr/lib/bolixo-test.sh
 	install -m755 bod $(RPM_BUILD_ROOT)/usr/sbin/bod
