@@ -50,6 +50,11 @@ make install
 /usr/sbin/bo-manager
 /usr/sbin/bo-mon
 /usr/sbin/bo-mon-control
+/usr/sbin/logssl
+/usr/sbin/logweb
+/usr/sbin/logexim
+/usr/sbin/eximrm
+/usr/lib/eximexec
 /usr/bin/bofs
 /usr/lib/tlmp/help.eng/bolixo.eng
 /usr/lib/tlmp/help.fr/bolixo.fr

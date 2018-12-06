@@ -5,7 +5,7 @@ INSTRUMENT:=$(shell test -f ../instrument && echo --instrument --getnow fdpass_g
 DINSTRUMENT:=$(shell test -f ../instrument && echo -DINSTRUMENT)
 PROGS=_dict.o bod bod-client bod-control bo-writed bo-writed-control bo-sessiond bo-sessiond-control \
       bo-manager bofs ssltestsign bo-keysd bo-keysd-control bolixod bolixod-control perfsql \
-      bo-mon bo-mon-control
+      bo-mon bo-mon-control utils/eximexec
 #bo-log bo-log-control \
 DOCS=
 OPTIONS=$(DINSTRUMENT) -funsigned-char -O2 -Wall -g -DVERSION=\"$(PACKAGE_REV)\" -I/usr/include/tlmp -I/usr/include/trlitool
@@ -85,6 +85,9 @@ bo-keysd-control: bo-keysd-control.tlcc proto/bo-keysd_control.protoh
 
 perfsql: perfsql.tlcc
 	cctlcc -Wall $(OPTIONS) perfsql.tlcc -o perfsql $(LIBS) -ltlmpsql -L/usr/lib64/mysql -lmysqlclient
+
+utils/eximexec: utils/eximexec.cc
+	g++ -Wall utils/eximexec.cc -o utils/eximexec
 
 proto/bo-log-control.protoh: proto/bo-log-control.proto
 	build-protocol --arg "int no" --arg "HANDLE_INFO *c" --name bo_log_control \
@@ -222,6 +225,11 @@ install: msg.eng msg.fr
 	install -m755 bo-mon $(RPM_BUILD_ROOT)/usr/sbin/bo-mon
 	install -m755 bo-mon-control $(RPM_BUILD_ROOT)/usr/sbin/bo-mon-control
 	install -m755 bofs $(RPM_BUILD_ROOT)/usr/bin/bofs
+	install -m755 utils/logssl $(RPM_BUILD_ROOT)/usr/sbin/logssl
+	install -m755 utils/logweb $(RPM_BUILD_ROOT)/usr/sbin/logweb
+	install -m755 utils/logexim $(RPM_BUILD_ROOT)/usr/sbin/logexim
+	install -m755 utils/eximrm $(RPM_BUILD_ROOT)/usr/sbin/eximrm
+	install -m755 utils/eximexec $(RPM_BUILD_ROOT)/usr/lib/eximexec
 
 #	install -m755 web/admin.hc $(RPM_BUILD_ROOT)/var/www/html/admin.hc
 #	install -m755 bo-log $(RPM_BUILD_ROOT)/usr/sbin/bo-log
