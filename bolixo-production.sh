@@ -99,6 +99,7 @@ elif [ "$1" = "secrets" ] ; then # config: Generate secrets
 		chmod 600 /etc/bolixo/secrets.client
 	fi
 	if [ ! -f /root/data/manager.conf ] ; then
+		mkdir -p /root/data
 		echo Write /root/data/manager.conf
 		FOO=`head -1 /etc/bolixo/secrets.client | (read a b; echo $b)`
 		ADM=`head -1 /etc/bolixo/secrets.admin | (read a b; echo $b)`
