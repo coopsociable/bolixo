@@ -112,10 +112,10 @@ writed_restore(){
 	REST=/var/lib/lxc/$1/$1.restore
 	DATA=/var/lib/lxc/$1/data
 	echo "#!/bin/sh" > $REST
-	echo "test ! -f $DATA/bo-writed.log &&  echo \"$DATA/bo-writed.log does not exists, can't restore\" && exit 1" >>$REST
-	echo "mv $DATA/bo-writed.log $ROOTFS/var/log/bolixo" >>$REST
 	echo "mkdir -p $ROOTFS/var/lib/bolixo" >>$REST
 	echo "mount --bind /var/lib/bolixo $ROOTFS/var/lib/bolixo" >>$REST
+	echo "test ! -f $DATA/bo-writed.log &&  echo \"$DATA/bo-writed.log does not exists, can't restore\" && exit 1" >>$REST
+	echo "mv $DATA/bo-writed.log $ROOTFS/var/log/bolixo" >>$REST
 	chmod +x $REST
 }
 bolixod_save(){
@@ -577,12 +577,20 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 		echo -n "Enter password: "	
 		read ADMINPASSWORD
 	fi
-	$0 bo-writed-control adduser admin admin@bolixo.org $ADMINPASSWORD eng && $0 bo-writed-control confirmuser admin
+	echo Generate --system-- crypto key
 	$0 bo-keysd-control genkey --system--
-	sleep 1
+	echo Create admin account
+	$0 bo-writed-control mailctrl 0 keep
+	$0 bo-writed-control adduser admin admin@bolixo.org $ADMINPASSWORD eng \
+		&& $0 bo-writed-control confirmuser admin \
+		&& $0 bo-writed-control makeadmin admin@bolixo.org 1
+	$0 bo-writed-control mailctrl 1 keep
+	sleep 5
 	if [ -s /var/lib/lxc/bolixod/rootfs/var/run/blackhole/bolixod-0.sock ]; then
 		$0 bolixod-control deletenode $THISNODE
 	fi
+	echo Register this node to the directory server
+	echo $BOFS bolixoapi registernode $THISNODE
 	$BOFS bolixoapi registernode $THISNODE
 elif [ "$1" = "dropbolixodb" ] ; then # db: Drop databases
 	mysqladmin -uroot -S $SOCKB -f drop $DBNAMEBOLIXO

@@ -129,16 +129,17 @@ elif [ "$1" = "lxc0s" ] ; then # config: Produces the lxc0 scripts
 	export SILENT=on
 	export LXCSOCK=off
 	$0 checks
-	/usr/lib/bolixo-test.sh lxc0-web
-	/usr/lib/bolixo-test.sh lxc0-webssl
+	test -d /var/lib/lxc/web && /usr/lib/bolixo-test.sh lxc0-web
+	test -d /var/lib/lxc/webssl && /usr/lib/bolixo-test.sh lxc0-webssl
+	# test.sh generates only the needed sql containers
 	/usr/lib/bolixo-test.sh lxc0-mysql
-	/usr/lib/bolixo-test.sh lxc0-exim
-	/usr/lib/bolixo-test.sh lxc0-bod
-	/usr/lib/bolixo-test.sh lxc0-writed
-	/usr/lib/bolixo-test.sh lxc0-sessiond
-	/usr/lib/bolixo-test.sh lxc0-keysd
-	/usr/lib/bolixo-test.sh lxc0-bolixod
-	/usr/lib/bolixo-test.sh lxc0-proto
+	test -d /var/lib/lxc/exim && /usr/lib/bolixo-test.sh lxc0-exim
+	test -d /var/lib/lxc/bod && /usr/lib/bolixo-test.sh lxc0-bod
+	test -d /var/lib/lxc/writed && /usr/lib/bolixo-test.sh lxc0-writed
+	test -d /var/lib/lxc/sessiond && /usr/lib/bolixo-test.sh lxc0-sessiond
+	test -d /var/lib/lxc/keysd && /usr/lib/bolixo-test.sh lxc0-keysd
+	test -d /var/lib/lxc/bolixod && /usr/lib/bolixo-test.sh lxc0-bolixod
+	test -d /var/lib/lxc/protocheck && /usr/lib/bolixo-test.sh lxc0-proto
 elif [ "$1" = "webtest" ] ; then # P:
 	shift
 	/usr/lib/bolixo-test.sh webtest $*
@@ -325,7 +326,14 @@ elif [ "$1" = "newacctresend" ] ; then # prod: Resend account confirmation mail 
 		echo newacctresend email [ to_stdout ]
 		exit 1
 	fi
-	bo-writed-control -p /var/lib/lxc/writed/rootfs/var/run/blackhole/bo-writed-0.sock newacctresend $2 $3
+	/usr/lib/bolixo-test.sh bo-writed-control newacctresend $2 $3
+elif [ "$1" = "confirmuser" ] ; then # prod: Confirm a new user account
+	if [ "$3" = "" ] ; then
+		echo confirmuser nickname email
+		exit 1
+	fi
+	/usr/lib/bolixo-test.sh bo-writed-control confirmuser $2
+	/usr/lib/bolixo-test.sh bod-control publishemail $2 $3
 elif [ "$1" = "status" ] ; then # prod: Status of one service
 	shift
 	while [ "$1" != "" ]
