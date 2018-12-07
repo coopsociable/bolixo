@@ -5,6 +5,12 @@ module logo(){
         translate([118,0,0]) text("o",font=fs,size=40);
     }
 }
+module favicon(){
+    color("black"){
+        fs="Liberation Sans:style=Italic";
+        text("Bo",font=fs,size=40);
+    }
+}
 module compass(){
     w=4;
     h=12;
@@ -53,7 +59,13 @@ module drawx(){
     rmark(x+1,-y,4);
     rmark(-x+1,-y,4);
 }
-
-logo();
-translate([133,15,0]) rotate([0,0,-20]) compass();
-translate([103,15,0]) drawx();
+view="favicon";
+if (view=="bolixo"){
+    logo();
+    translate([133,15,0]) rotate([0,0,-20]) compass();
+    translate([103,15,0]) drawx();
+}else if (view=="favicon"){
+    favicon();
+    translate([53,15,0]) rotate([0,0,-20]) compass();
+    translate([50,15,0]) drawx();
+}

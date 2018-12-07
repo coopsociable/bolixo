@@ -351,8 +351,7 @@ elif [ "$1" = "checkupdates" ] ; then # prod: Check all containers are up to dat
 	done
 elif [ "$1" = "loadfail" ] ; then # prod: Switch web access (normal,backup,split)
 	if [ "$THISSERVER" = "" ] ;then
-		echo THISSERVER not defined in bolixo.conf
-		exit 1
+		THISSERVER=localhost
 	fi
 	if [ "$2" = "normal" ] ; then
 		W1=100

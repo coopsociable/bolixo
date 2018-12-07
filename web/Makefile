@@ -55,8 +55,12 @@ new.png: new.scad Makefile
 	convert seen.png -fuzz 20% -transparent white seen.png 
 
 bolixo.png: bolixo.scad Makefile
-	openscad --imgsize 200,40 -obolixo.png --colorscheme=Nature --camera=70,20,110,70,20,0 bolixo.scad
+	openscad --imgsize 200,40 -obolixo.png -Dview=\"bolixo\" --colorscheme=Nature --camera=70,20,110,70,20,0 bolixo.scad
 	convert bolixo.png -fuzz 20% -transparent white bolixo.png 
+
+favicon.png: bolixo.scad Makefile
+	openscad --imgsize 60,40 -ofavicon.png -Dview=\"favicon\" --colorscheme=Nature --camera=35,20,110,35,20,0 bolixo.scad
+	convert favicon.png -fuzz 20% -transparent white favicon.png 
 
 genbackground: genbackground.tlcc
 	cctlcc -Wall genbackground.tlcc -o genbackground -lstdc++
