@@ -498,15 +498,29 @@ static void webtabs(_F_webtabs &c,
 	// w_webtab let the user select the active tab, in any type
 	{
 		unsigned no = 1;
-		int maxtabs[4]={0,0,0,0};
+		struct MAXTAB{
+			unsigned no;
+			int selorder;
+			MAXTAB(){
+				no = 0;
+				selorder = -1;
+			}
+		} maxtabs[4];
+			
 		for (auto &t:ctrl.tabs){
-			int &maxt = maxtabs[t.type];
-			if (t.selorder > maxt) maxt = t.selorder;
+			MAXTAB &maxt = maxtabs[t.type];
+			if (t.selorder > maxt.selorder){
+				maxt.no = no;
+				maxt.selorder = t.selorder;
+			}
+			no += 2;
 		}
+		no = 1;	
 		for (auto &t:ctrl.tabs){
 			if (w_webtab == no){
 				// Check if this is already the active tab
-				if (t.selorder != maxtabs[t.type]){
+				MAXTAB &maxt = maxtabs[t.type];
+				if (t.selorder != maxt.selorder || no != maxt.no){
 					t.selorder = ++c.maxsel;
 					c.selected_id = t.tab;
 					c.changed = true;
@@ -613,6 +627,8 @@ static void webtabs(_F_webtabs &c,
 				WEBID tabname(string_f("%s-tab%u",name,type));
 				unsigned tab_height=0;
 				tlmpweb_gettablegeometry(tabname,tab_height,glocal.tab_width);
+				if (glocal.tab_width == 0) glocal.tab_width = 2000;	// No need to correct TAB selection since
+											// we do not know the exact TAB width
 				DIV cc("tabs",tabname.c_str()); cc.dispflex().flowcol().bg(mcolor);
 				if (putborder){
 					cc.borderleft(1,"black");
