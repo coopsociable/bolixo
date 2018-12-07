@@ -185,12 +185,12 @@ install: msg.eng msg.fr
 	mkdir -p $(RPM_BUILD_ROOT)/var/lib/bolixo
 	mkdir -p $(RPM_BUILD_ROOT)/etc/init.d
 	mkdir -p $(RPM_BUILD_ROOT)/usr/share/bolixo
-	install data/secrets.admin $(RPM_BUILD_ROOT)/usr/share/bolixo/secrets.admin
-	install data/secrets.client $(RPM_BUILD_ROOT)/usr/share/bolixo/secrets.client
-	install data/manager.conf $(RPM_BUILD_ROOT)/usr/share/bolixo/manager.conf
-	install data/bolixo.conf $(RPM_BUILD_ROOT)/usr/share/bolixo/bolixo.conf
-	install data/bofs.conf $(RPM_BUILD_ROOT)/usr/share/bolixo/bofs.conf
-	install README $(RPM_BUILD_ROOT)/usr/share/bolixo/README
+	install -m644 data/secrets.admin $(RPM_BUILD_ROOT)/usr/share/bolixo/secrets.admin
+	install -m644 data/secrets.client $(RPM_BUILD_ROOT)/usr/share/bolixo/secrets.client
+	install -m644 data/manager.conf $(RPM_BUILD_ROOT)/usr/share/bolixo/manager.conf
+	install -m644 data/bolixo.conf $(RPM_BUILD_ROOT)/usr/share/bolixo/bolixo.conf
+	install -m644 data/bofs.conf $(RPM_BUILD_ROOT)/usr/share/bolixo/bofs.conf
+	install -m644 README $(RPM_BUILD_ROOT)/usr/share/bolixo/README
 	install -m755 bolixo-production.sh $(RPM_BUILD_ROOT)/usr/sbin/bolixo-production
 	install -m755 test.sh $(RPM_BUILD_ROOT)/usr/lib/bolixo-test.sh
 	install -m755 bod $(RPM_BUILD_ROOT)/usr/sbin/bod
