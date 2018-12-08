@@ -599,6 +599,7 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 	# Make the admin account visible (public page)
 	echo $BOFS -u admin misc -w -V 1
 	$BOFS -u admin misc -w -V 1
+	$BOFS -u admin cp /var/www/html/admin.jpg bo://projects/admin/public/mini-photo.jpg
 
 elif [ "$1" = "dropbolixodb" ] ; then # db: Drop databases
 	mysqladmin -uroot -S $SOCKB -f drop $DBNAMEBOLIXO
@@ -701,8 +702,8 @@ elif [ "$1" = "test-sequence" ] ; then # S: Reloads database (big,medium,real,no
 	done
 	$0 dropbolixodb
 	$0 createbolixodb
-	$0 resetdb 
 	rm -f /var/lib/bolixo/*
+	$0 resetdb 
 	$0 test-system
 	echo ==== admin
 	$0 test-deleteuser E

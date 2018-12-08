@@ -27,7 +27,7 @@ bolixoapi.os: bolixoapi.hcc ../proto/bolixoapi.protoh ../proto/bolixod_client.pr
 bolixo.os: bolixo.hcc ../proto/bolixod_client.protoh
 
 install: all
-	@cp *.png *.hc *.html robots.txt favicon.ico $(RPM_BUILD_ROOT)/var/www/html/.
+	@cp *.jpg *.png *.hc *.html robots.txt favicon.ico $(RPM_BUILD_ROOT)/var/www/html/.
 	@cp tlmplibs $(RPM_BUILD_ROOT)/var/www/html/.tlmplibs
 
 clean:
@@ -61,6 +61,11 @@ bolixo.png: bolixo.scad Makefile
 favicon.png: bolixo.scad Makefile
 	openscad --imgsize 60,40 -ofavicon.png -Dview=\"favicon\" --colorscheme=Nature --camera=35,20,110,35,20,0 bolixo.scad
 	convert favicon.png -fuzz 20% -transparent white favicon.png 
+
+admin.jpg: admin.scad Makefile
+	openscad --imgsize 40,40 -oadmin.png -Dview=\"gear\" --colorscheme=Nature --camera=0,0,60,0,0,0 admin.scad
+	convert admin.png admin.jpg
+	rm -f admin.png
 
 genbackground: genbackground.tlcc
 	cctlcc -Wall genbackground.tlcc -o genbackground -lstdc++

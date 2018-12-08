@@ -126,6 +126,8 @@ static bool bo_writed_fname_check(const char *name, string &msg)
 	return bo_writed_lex_check(name,msg,'\0');
 }
 
+static const char *nodename = NULL;
+
 static int writed_mail_newaccount(
 	const char *mailserver,
 	const char *mailport,
@@ -135,18 +137,15 @@ static int writed_mail_newaccount(
 	PARAM_STRING id_str)
 {
 	string tmp = string_f(
-		"Hello!\r\n"
+		MSG_U(I_CONFIRMMSG,"Hello!\r\n"
 		"\r\n"
 		"You just created an account using nickname %s on bolixo.org\r\n"
 		"Just click on the link below to confirm the account.\r\n"
-		"<a href=https://%s/index.hc?webstep=10&confirm=%s>confirm</a>\r\n"
+		"<a href=%s/index.hc?webstep=10&confirm=%s>confirm</a>\r\n"
 		"\r\n"
-		"Once done, you will be allowed to fully participate in the validation\r\n"
-		"of all the news out there.\r\n"
-		"\r\n"
-		"Thanks for joining!\r\n"
+		"Thanks for joining!\r\n")
 		,nickname
-		,"bolixo.org",id_str.ptr);
+		,nodename,id_str.ptr);
 	return fdpass_sendmail (mailserver,mailport,mailfrom,email
 		,"Account confirmation on bolixo.org"
 		,tmp);
@@ -950,6 +949,45 @@ static void bo_writed_adduser (CONTEXT &ctx, const char *lang, const char *name,
 	id_str = glocal.id_str;
 	msg = glocal.msg;
 }
+<mod>
+static void bo_writed_interest_set(unsigned userid, const char *user, string &msg)
+{
+	glocal unsigned userid = userid;
+	glocal const char *user = user;
+	glocal string *msg = &msg;
+	glocal int check_id = fs_rec_getid ("select userid from id2name where name='%s'",user);
+	if (glocal.check_id == -1){
+		*glocal.msg = MSG_U(E_IVLDUSER,"unknown user");
+	}else{
+		<call sql_query>("select public_view from config where userid=%d",glocal.check_id);
+		<f onerow>
+			glocal int dirid = -1;
+			if (atoi(row[0]) > 0){
+				glocal.dirid = fs_find_short_inbox(glocal.check_id,glocal.user,"public",*glocal.msg);
+				if (glocal.dirid == -1){
+					// No public short inbox for this user. We register the interest
+					// When the short inbox will be created, we will update the interest on the fly.
+					glocal.msg->clear();
+				}
+			}
+			<call sql_query>("select check_userid from interests where userid=%u and check_userid=%d",glocal.userid,glocal.check_id);
+			<f empty>
+				if (sql_action("insert into interests (userid,check_userid,dirid,since) values (%u,%d,%d,now())",glocal.userid,glocal.check_id,glocal.dirid)==-1){
+					*glocal.msg = "Internal error, interests table";
+				}
+			</f>
+			<f onerow>
+				*glocal.msg = MSG_U(E_ALREADYSET,"Already member of the interest set");
+			</f>
+			</call>
+		</f>
+		<f empty>
+			*glocal.msg = "Internal error, no configuration for user";
+		</f>
+		</call>	
+	}
+}
+</mod>
 </mod>
 static int bo_writed_confirmuser (CONTEXT &ctx, unsigned userid, PARAM_STRING name, PARAM_STRING confirmid, string &msg)
 {
@@ -964,6 +1002,7 @@ static int bo_writed_confirmuser (CONTEXT &ctx, unsigned userid, PARAM_STRING na
 			Create a group named "public"
 			Make this group member of project "public"
 			Make this user member of his group "public"
+			Add interest for user admin
 		*/
 		bo_writed_create_group_list(userid,name,"public","Public view",msg);
 		bo_writed_create_group (userid,"contacts",false,"",msg);
@@ -976,6 +1015,7 @@ static int bo_writed_confirmuser (CONTEXT &ctx, unsigned userid, PARAM_STRING na
 				tlmp_error ("Internal error setting user %s member of his group public",name.ptr);
 			}
 		}
+		bo_writed_interest_set (userid,"admin",msg);
 	}else{
 		msg = "Error, can't confirm new user";
 	}
@@ -1043,6 +1083,7 @@ int main (int argc, char *argv[])
 		setarg (' ',"noproc","Identity of this process (UUID)",glocal.noproc,false);
 		setarg (' ',"bob_dir","Binary file directory",glocal.bob_dir,false);
 		setarg (' ',"private_site","Local users may interact without doing contact request",glocal.private_site,false);
+		setarg (' ',"nodename",MSG_R(O_NODENAME),nodename,true);
 		setgrouparg ("Mail");
 		setarg (' ',"mailserver","Mail relay to use",glocal.mailserver,false);
 		setarg (' ',"mailport","TCP port of the relay (or unix socket)",glocal.mailport,false);
@@ -1149,6 +1190,7 @@ int main (int argc, char *argv[])
 					tb.push_back(string_f("nbrequest %lu",glocal.nbrequest_client));
 					tb.push_back(string_f("mailctrl %d \"%s\"",glocal.ctx.mailon,fdpass_get_force_addr()));
 					tb.push_back(string_f("filehandle %u",fs_getnbhandle()));
+					tb.push_back(string_f("nodename: %s",nodename));
 					#ifdef INSTRUMENT
 						tb.push_back("intrument: on");
 						fflush (f_instrument);
@@ -2339,47 +2381,16 @@ int main (int argc, char *argv[])
 					}
 				</f>
 				<f interest_set> // sessionid user owner = success:b msg
-					glocal const char *user = user;
-					glocal string msg;
+					string msg;
 					string username;
-					glocal unsigned userid = bo_writed_get_group_owner (glocal.con, sessionid, owner, username,glocal.msg);
-					if (glocal.userid > 0){
-						glocal int check_id = fs_rec_getid ("select userid from id2name where name='%s'",user);
-						if (glocal.check_id == -1){
-							glocal.msg = MSG_U(E_IVLDUSER,"unknown user");
-						}else{
-							<call sql_query>("select public_view from config where userid=%d",glocal.check_id);
-							<f onerow>
-								glocal int dirid = -1;
-								if (atoi(row[0]) > 0){
-									glocal.dirid = fs_find_short_inbox(glocal.check_id,glocal.user,"public",glocal.msg);
-									if (glocal.dirid == -1){
-										// No public short inbox for this user. We register the interest
-										// When the short inbox will be created, we will update the interest on the fly.
-										glocal.msg.clear();
-									}
-								}
-								<call sql_query>("select check_userid from interests where userid=%u and check_userid=%d",glocal.userid,glocal.check_id);
-								<f empty>
-									if (sql_action("insert into interests (userid,check_userid,dirid,since) values (%u,%d,%d,now())",glocal.userid,glocal.check_id,glocal.dirid)==-1){
-										glocal.msg = "Internal error, interests table";
-									}
-								</f>
-								<f onerow>
-									glocal.msg = MSG_U(E_ALREADYSET,"Already member of the interest set");
-								</f>
-								</call>
-							</f>
-							<f empty>
-								glocal.msg = "Internal error, no configuration for user";
-							</f>
-							</call>	
-						}
+					unsigned userid = bo_writed_get_group_owner (glocal.con, sessionid, owner, username,msg);
+					if (userid > 0){
+						bo_writed_interest_set (userid,user,msg);
 					}
-					if (glocal.msg.size() > 0){
-						rep_interest_set (false,glocal.msg);
+					if (msg.size() > 0){
+						rep_interest_set (false,msg);
 					}else{
-						rep_interest_set (true,glocal.msg);
+						rep_interest_set (true,msg);
 					}
 				</f>
 				<f interest_unset> // sessionid user owner = success:b msg
