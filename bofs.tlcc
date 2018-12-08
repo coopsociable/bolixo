@@ -2188,6 +2188,7 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 	glocal const char *lang = NULL;
 	glocal const char *public_view = NULL;
 	glocal const char *public_dir = NULL;
+	glocal const char *dateformat = NULL;
 	glocal.ret = <call tlmpprogram>(argc,argv);
 	<f init>
 		setproginfo ("bomisc",VERSION
@@ -2224,9 +2225,10 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 		setarg (' ',"nbrep","Number of repetition (performance test)",glocal.nbrep,false);
 	
 		setgrouparg (MSG_U(I_WRITECONFIG,"writeconfig options"));
-		setarg ('L',"lang","Language used in the UI",glocal.lang,false);
-		setarg ('V',"public_view","Enable public view (anonymous) 0 or 1",glocal.public_view,false);
-		setarg ('D',"public_dir","Select the sub-folder of the public project to display",glocal.public_dir,false);
+		setarg ('F',"dateformat",MSG_U(O_DATEFORMAT,"Date presentation 0 or 1"),glocal.dateformat,false);
+		setarg ('L',"lang",MSG_U(O_LANGUAGE,"Language used in the UI"),glocal.lang,false);
+		setarg ('V',"public_view",MSG_U(O_PUBLICVIEW,"Enable public view (anonymous) 0 or 1"),glocal.public_view,false);
+		setarg ('D',"public_dir",MSG_U(O_PUBLICDIR,"Select the sub-folder of the public project to display"),glocal.public_dir,false);
 	</f>
 	<f main>
 		glocal int ret = -1;
@@ -2425,11 +2427,13 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 					if (!success){
 						bofs_error ("config_read",internal_error,msg);
 					}else{
-						CONFIG config;
-						if (glocal.lang != NULL) config.lang = glocal.lang;
-						if (glocal.public_view != NULL) config.public_view = atoi(glocal.public_view);
-						if (glocal.public_dir != NULL) config.public_dir = glocal.public_dir;
-						<call bod_client_config_write>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner,config);
+						CONFIG newconfig;
+						newconfig = config;
+						if (glocal.dateformat != NULL) newconfig.dateformat = atoi(glocal.dateformat);
+						if (glocal.lang != NULL) newconfig.lang = glocal.lang;
+						if (glocal.public_view != NULL) newconfig.public_view = atoi(glocal.public_view);
+						if (glocal.public_dir != NULL) newconfig.public_dir = glocal.public_dir;
+						<call bod_client_config_write>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner,newconfig);
 						<f ok>
 							if (!success){
 								bofs_error ("config_write",internal_error,msg);

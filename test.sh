@@ -592,6 +592,14 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 	echo Register this node to the directory server
 	echo $BOFS bolixoapi registernode $THISNODE
 	$BOFS bolixoapi registernode $THISNODE
+	echo Make the admin account visible
+	# Register admin for this node in the directory
+	echo $BOFS bolixoapi recordemail $THISNODE admin admin@bolixo.org
+	$BOFS bolixoapi recordemail $THISNODE admin admin@bolixo.org
+	# Make the admin account visible (public page)
+	echo $BOFS -u admin misc -w -V 1
+	$BOFS -u admin misc -w -V 1
+
 elif [ "$1" = "dropbolixodb" ] ; then # db: Drop databases
 	mysqladmin -uroot -S $SOCKB -f drop $DBNAMEBOLIXO
 elif [ "$1" = "dropdb" ] ; then # db: Drop databases

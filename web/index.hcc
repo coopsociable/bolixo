@@ -1251,7 +1251,7 @@ static void index_format_large_text(const BOB_TYPE &content)
 	htmlwrite (tmp.c_str(),tmp.size());
 }
 <mod>
-static void index_popup (CONNECT_INFO &con, const char *content, FILE_TYPE file_type, PARAM_STRING modified, PARAM_STRING filepath)
+static void index_popup (CONNECT_INFO &con, int step, const char *content, FILE_TYPE file_type, PARAM_STRING modified, PARAM_STRING filepath)
 {
 	glocal CONNECT_INFO *con = &con;
 	const char *path = filepath.ptr;
@@ -1270,15 +1270,15 @@ static void index_popup (CONNECT_INFO &con, const char *content, FILE_TYPE file_
 		htmlprintf ("<audio controls>\n"
 			"<source src=\"%s?webstep=%u&image=%s\" type=\"audio/%s\">\n"
 			"</audio>"
-			,tlmpweb_curpage(),step_image,path,tbftype[file_type]);
+			,tlmpweb_curpage(),step,path,tbftype[file_type]);
 	}else if (file_is_video(file_type)){
 		htmlprintf ("<video width=\"800\" height=\"600\" controls>\n"
 			"<source src=\"%s?webstep=%u&image=%s\" type=\"video/mp4\">\n"
 			"Your browser does not support the video tag.\n"
 			"</video>\n"
-			,tlmpweb_curpage(),step_image,path);
+			,tlmpweb_curpage(),step,path);
 	}else if (file_is_image(file_type)){
-		string img = index_img (step_image,800,"",path,modified);
+		string img = index_img (step,800,"",path,modified);
 		htmlout (img);
 	}else if (file_is_text(file_type)){
 		<call bod_client_readfile_bob>(con,w_session.c_str(),path,"",false);
@@ -1302,6 +1302,10 @@ static void index_popup (CONNECT_INFO &con, const char *content, FILE_TYPE file_
 	}
 }
 </mod>
+static void index_popup (CONNECT_INFO &con, const char *content, FILE_TYPE file_type, PARAM_STRING modified, PARAM_STRING filepath)
+{
+	index_popup (con,step_image,content,file_type,modified,filepath);
+}
 <mod>
 static void index_markview (CONNECT_INFO &con, PARAM_STRING fname)
 {
@@ -1499,6 +1503,27 @@ static void index_download (CONNECT_INFO &con, FILE_TYPE file_type, PARAM_STRING
 	tlmpweb_header ("Content-Disposition"," attachment; filename=%s.%s",filename.c_str(),extension.c_str());
 	util_sendfile (con,w_session.c_str(),fname);
 }
+static void index_shortmsg_style()
+{
+	<?
+	<style>
+	.smsg {
+		display: block;
+		overflow-wrap: normal;
+		background-color: #F0F0F0;
+		border-radius: 10px;
+		padding-left: 5px;
+		padding-right: 5px;
+		padding-top: 5px;
+		padding-bottom: 5px;
+		width: 95%;
+	}
+	.webtable tr {
+		white-space: nowrap;
+	}
+	</style>
+	?>
+}
 
 <mod>
 static void index_show_shortmsg(
@@ -1566,24 +1591,7 @@ static void index_show_shortmsg(
 		}
 	</f>
 	<f load>
-		<?
-		<style>
-		.smsg {
-			display: block;
-			overflow-wrap: normal;
-			background-color: #F0F0F0;
-			border-radius: 10px;
-			padding-left: 5px;
-			padding-right: 5px;
-			padding-top: 5px;
-			padding-bottom: 5px;
-			width: 95%;
-		}
-		.webtable tr {
-			white-space: nowrap;
-		}
-		</style>
-		?>
+		index_shortmsg_style();
 		// Defines all posible options for dropdown
 		adddrop_opt (MENU_COPY,MSG_R(M_COPY));
 		index_setpastemenu(this,glocal.path);
@@ -1591,7 +1599,7 @@ static void index_show_shortmsg(
 		adddrop_opt (MENU_UNDELETE,MSG_R(M_UNDELETE));
 		adddrop_opt (MENU_DOWNLOAD,MSG_R(M_DOWNLOAD));
 		glocal unsigned rownum = nbskip;
-		sethead (MSG_U(H_TALK,"From\tSubmit\tMessage"));
+		sethead (MSG_U(H_TALK,"From\t\tSubmit\tMessage"));
 		<call bod_client_list_talk>(*glocal.con,w_session.c_str(),"",glocal.groupname,glocal.groupowner,nbskip,nblines);
 		<f ok>
 			glocal.webtable.setdrop_default({MENU_PASTE});
@@ -1608,7 +1616,7 @@ static void index_show_shortmsg(
 						day = now;
 						glocal.webtable.setclickopt (true,"","");
 						glocal.webtable.setdrop_visibles({MENU_PASTE});
-						glocal.webtable.setrow("hline",-1,"<font size=-1 color=white>%s</font>\a\a",format_date(userinfo.dateformat,day).c_str());
+						glocal.webtable.setrow("hline",-1,"<font size=-1 color=white>%s</font>\a\a\a",format_date(userinfo.dateformat,day).c_str());
 						glocal.webtable.resetdrop();
 						line_style=0;
 					}
@@ -1661,12 +1669,12 @@ static void index_show_shortmsg(
 					line_style++;
 					if (line_style == 2) line_style = 0;
 					if (strcmp(m.from,userinfo.name.c_str())==0){
-						glocal.webtable.setrow (style,glocal.rownum,"\t%s\t%s"
+						glocal.webtable.setrow (style,glocal.rownum,"\t\t%s\t%s"
 							,time.c_str(),content.c_str());
 					}else{
 						string dir = string_f("/projects/%s/public",m.from);
 						string img = index_img(step_image,30,dir,"mini-photo.jpg",m.submit);
-						glocal.webtable.setrow (style,glocal.rownum,"%s%s\t%s\t%s"
+						glocal.webtable.setrow (style,glocal.rownum,"%s\t%s\t%s\t%s"
 							,img.c_str(),m.from,time.c_str(),content.c_str());
 					}
 					glocal.rownum++;
@@ -1796,10 +1804,13 @@ static void index_script()
 		var diff = 0;
 		function allDescendants (node,total) {
 			//console.log ("Enter " + node.className + " " + node.id);
-			if (node.id == "tab"){
-				var bord=(node.offsetWidth-node.clientWidth);
-				total += bord;
-				console.log ("border node.id=" + node.id + " total="+total+" border="+bord);
+			if (node.className == "tabs"){
+				var bord=(node.offsetHeight-node.clientHeight);
+				var style = node.currentStyle || window.getComputedStyle(node);
+				var margins = parseInt(style.marginTop,10) + parseInt(style.marginBottom,10);
+				var paddings = parseInt(style.paddingTop,10) + parseInt(style.paddingBottom,10);
+				total += bord + margins + paddings;
+				console.log ("border node.id=" + node.id + " total="+total+" bord="+bord);
 			}
 			for (var i = 0; i < node.childNodes.length; i++) {
 				var child = node.childNodes[i];
@@ -1832,7 +1843,11 @@ static void index_script()
 			document.getElementById('main').style.height = window.innerHeight-1;
 			var tabs = document.getElementsByClassName("tabs");
 			for (var i=0; i<tabs.length; i++){
-				tabs[i].style.height = diff-2;
+				var node = tabs[i];
+				var style = node.currentStyle || window.getComputedStyle(node);
+				var margins = parseInt(style.marginTop,10);
+				margins += parseInt(style.marginBottom,10);
+				node.style.height = diff-2-margins;
 			}
 			console.log ("tabs.length=" + tabs.length);
 			var i;
@@ -2211,48 +2226,85 @@ extern "C" void webmain_real()
 			// Anonymous, present public news ?
 			// /- So far no public content
 		}else{
-			/- <table border=0 height=100% width=100%>
-			/- <tr><td valign=top>
-			glocal string prjdir = string_f ("/projects/%s/public/default",userinfo.name.c_str());
-			DIV d("tabs"); d.print();
-			<call vframe4>(30,20);
-			<f top_left>
-				htmlout (index_img(step_image,200,glocal.prjdir.c_str(),"image.jpg","date"));
-			</f>
-			<f top>
-				<call bod_client_readfile>(glocal.con,w_session.c_str(),string_f("%s/intro.html",glocal.prjdir.c_str()),"");
+			DIV d("tabs"); d.w(40).textalign("center").marginauto().border(1,"black").borderradius(5).vmargins(5,5).paddings(5,5).print();
+			string table = string("talk")+"public";
+			<call webtable>(ID_FOLLOW,table,"100%",currents[table],offsets[table],5);
+			<f click>
+				<call bod_client_interest_check>(glocal.con,w_session.c_str(),"",noline,1);
 				<f ok>
-					string tmp = util_format_shortmsg (content);
-					htmlout (tmp);
+					if (messages.size()!=1){
+						htmlprintf ("Internal error: %s\n",msg);
+					}else{
+						auto &m = messages[0];
+						index_popup (glocal.con,step_public,"",m.file_type,m.submit
+							,string_f("/%s/msg/%s",m.from,m.uuid));
+					}
 				</f>
 				</call>
 			</f>
-			<f body>
-				/- Documents
-			</f>
-			<f left>
-				string table = string("talk")+"public";
-				<call webtable>(ID_FOLLOW,table,"100%",currents[table],offsets[table],5);
-				<f load>
-					sethead  ("From\tWhen\tWhat");
-					glocal unsigned rownum = nbskip;
-					<call bod_client_interest_check>(glocal.con,w_session.c_str(),"",nbskip,nblines);
-					<f ok>
-						// success:b msg messages:U{SHORTMSG}v
-						for (auto &m:messages){
-							string img = index_img(step_public,30,m.from,"mini-photo.jpg",m.submit);
-							glocal.webtable.setrow ("white",glocal.rownum,"%s%s\t%s\t%s",img.c_str(),m.from
-								,format_date(userinfo.dateformat,m.submit).c_str(),m.content);
-							glocal.rownum++;
+			<f load>
+				sethead  (MSG_R(H_TALK));
+				glocal unsigned rownum = nbskip;
+				<call bod_client_interest_check>(glocal.con,w_session.c_str(),"",nbskip,nblines);
+				<f ok>
+					// success:b msg messages:U{SHORTMSG}v
+					static const char *func = "Popup";
+					string day;
+					static const char *line_styles[]={"sep","sep1"};
+					unsigned line_style = 0;
+					index_shortmsg_style();
+					for (auto &m:messages){
+						string now = string (m.submit,10);
+						if (now != day){
+							day = now;
+							glocal.webtable.setclickopt (true,"","");
+							glocal.webtable.setrow("hline",-1,"<font size=-1 color=white>%s</font>\a\a\a"
+								,format_date(userinfo.dateformat,day).c_str());
+							line_style=0;
 						}
-					</f>
-					</call>
-
+						const char *style = line_styles[line_style];
+						line_style++;
+						if (line_style == 2) line_style = 0;
+						if (file_is_sound(m.file_type)){
+							glocal.webtable.setclickopt (true,func,"400,100");
+						}else if (file_is_video(m.file_type)){
+							glocal.webtable.setclickopt (true,func,"800,800");
+						}else if (file_is_image(m.file_type)){
+							glocal.webtable.setclickopt (true,func,"800,800");
+						}else{
+							glocal.webtable.setclickopt (true,"","");
+						}
+						string time = string_f("<font size=-1>%s</font>",format_time(userinfo.dateformat,m.submit+11).c_str());
+						string img = index_img(step_public,30,m.from,"project/mini-photo.jpg",m.submit);
+						string path = string_f("%s/msg/%s",m.from,m.uuid);
+						string content;
+						if (m.content[0] != '\0'){
+							content = string_f("<div class=smsg>%s</div>",util_format_shortmsg (m.content,5).c_str());
+						}else if (file_is_sound(m.file_type)){
+							string tmp = util_flipspaces(m.submit);
+							content = string_f("<audio controls>\n"
+								"<source src=\"%s?webstep=%u&image=%s&mod=%s\" type=\"audio/%s\">\n"
+								"</audio>"
+								,tlmpweb_curpage(),step_public,path.c_str(),tmp.c_str(),tbftype[m.file_type]);
+						}else if (file_is_image(m.file_type)){
+							content = index_img (step_public,100,"",path,m.submit);
+						}else if (file_is_video(m.file_type)){
+							string tmp = util_flipspaces(m.submit);
+							content = string_f(
+								"<video width=\"200\" height=\"200\" controls>\n"
+								"<source src=\"%s?webstep=%u&image=%s&mod=%s\" type=\"video/mp4\">\n"
+								"Your browser does not support the video tag.\n"
+								"</video>"
+								,tlmpweb_curpage(),step_public,path.c_str(),tmp.c_str());
+						}
+						glocal.webtable.setrow (style,glocal.rownum,"%s\t%s\t%s\t%s",img.c_str(),m.from
+							,time.c_str(),content.c_str());
+						glocal.rownum++;
+					}
 				</f>
 				</call>
 			</f>
 			</call>
-			/- </table>
 		}
 	</f>
 	<f step2> // Login
@@ -3760,7 +3812,7 @@ tlmp_error ("sendfile %s\n",fname.c_str());
 								glocal.webtable.setclickopt (true,"",string_f("user=%u:%s",rownum,u.name));
 								string since = format_date(userinfo.dateformat,u.since);
 								if (u.visible){
-									glocal.webtable.setrow("white",rownum,"<img src=/public/%s/mini-photo.jpg>\t%s\t%s"
+									glocal.webtable.setrow("white",rownum,"<img src=/public/%s/project/mini-photo.jpg>\t%s\t%s"
 										,u.name,u.name,since.c_str());
 								}else{
 									glocal.webtable.setrow("white",rownum,"<img src=/private.png>\t%s\t%s"

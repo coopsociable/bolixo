@@ -50,12 +50,11 @@ elif [ "$1" = "sequence" ] ; then # test: Create some users from scratch
 	do
 		./bofs -u jacques-A misc -I --int_user jacques-$letter
 	done	
-	# The public project and public dir are created by default when the account are create
+	# The public project and public dir are created by default when the account are created
 	# So we just put a small and large photo in each public dir
 	# test-sequence removes user E and F
 	for letter in A B C D G H I J K L M N O P Q R S T U V W X Y Z
 	do
-		#./bofs -u jacques-$letter groups --create-project-dir -L public
 		if [ -x /usr/bin/convert ]; then
 			convert -font helvetica -size 40x40 xc:white -pointsize 37 -draw "text 5,32 '$letter'" /tmp/mini-photo.jpg
 			./bofs -u jacques-$letter cp /tmp/mini-photo.jpg bo://projects/jacques-$letter/public/mini-photo.jpg
@@ -67,11 +66,19 @@ elif [ "$1" = "sequence" ] ; then # test: Create some users from scratch
 			echo no convert utility, install ImangeMagick
 		fi
 	done
-	# We create a public project for user jacques-A allowing both jacques-A and jacques-B to contribute
-	#./bofs -u jacques-A groups --create-group -G public
-	#./bofs -u jacques-A groups --set-group-desc -D "public group for jacques-A" -G public 
-	#./bofs -u jacques-A groups --set-group -L public -G public -A R
-	#./bofs -u jacques-A groups --set-member -G public -U jacques-A -AW
+	# Enable public view for some users and write a short message
+	if [ -x /usr/bin/import ] ; then
+		import -window root /tmp/image.jpg
+	fi
+	for user in jacques-A jacques-B jacques-G jacques-H
+	do
+		./bofs -u $user misc -w -V 1
+		./bofs -u $user msgs -t --groupowner $user -G public -C "This is a message"
+		if [ -f /tmp/image.jpg ] ; then
+			./bofs -u $user msgs -t --groupowner $user -G public -F /tmp/image.jpg
+		fi
+	done
+	# Make jacques-B member of jacques-A public project
 	./bofs -u jacques-A groups --set-member -G public -U jacques-B -AW
 
 	./bofs -u jacques-A groups --create-group-list -L Alist1
@@ -104,12 +111,6 @@ elif [ "$1" = "sequence" ] ; then # test: Create some users from scratch
 	./bofs -u jacques-A groups --set-member -G common -U jacques-B -AW -Rdba
 	./bofs -u jacques-B groups --set-member -G common -U jacques-A -AW -Rdba
 	./bofs -u jacques-B groups --set-member -G common -U jacques-B -AW -Rdba
-	#for user in jacques-A jacques-B jacques-C
-	#do
-	#	echo "------- $user"
-	#	./bofs -u $user groups --print-lists
-	#	./bofs -u $user groups --print-groups
-	#done
 	$0 writemails $NB
 elif [ "$1" = "writemails" ] ; then
 	NB=$2
