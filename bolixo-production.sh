@@ -94,36 +94,60 @@ elif [ "$1" = "checks" ]; then # A: Sanity checks blackhole
 	else
 		echo "*** Horizon not connected"
 	fi
+elif [ "$1" = "blackhole-start" ]; then # config: Starts blackholes service or reload
+	if killall -0 conproxy
+	then
+		echo conproxy is running
+	else
+		echo Start conproxy
+		systemctl start conproxy
+	fi
+	if killall -0 horizon
+	then
+		echo Reload horizon
+		systemctl reload horizon
+	else
+		echo Start horizon
+		systemctl start horizon
+	fi
+	if killall -0 blackhole
+	then
+		echo Reload blackhole
+		systemctl reload blackhole
+	else
+		echo Start blackhole
+		systemctl start blackhole
+	fi
 elif [ "$1" = "secrets" ] ; then # config: Generate secrets
 	if [ ! -f /etc/bolixo/secrets.admin ] ; then
 		echo Write /etc/bolixo/secrets.admin
 		NANO=`date +%N`
-		sed "s/ adm/ $NANO/" </usr/share/bolixo/secrets.admin >/etc/bolixo/secrets.admin
+		sed "s/ #ADM/ $NANO/" </usr/share/bolixo/secrets.admin >/etc/bolixo/secrets.admin
 		chmod 600 /etc/bolixo/secrets.admin
 	fi
 	if [ ! -f /etc/bolixo/secrets.client ] ; then
 		echo Write /etc/bolixo/secrets.client
 		NANO=`date +%N`
-		sed "s/ foo/ $NANO/" </usr/share/bolixo/secrets.client >/etc/bolixo/secrets.client
+		sed "s/ #CLI/ $NANO/" </usr/share/bolixo/secrets.client >/etc/bolixo/secrets.client
 		chmod 600 /etc/bolixo/secrets.client
 	fi
 	if [ ! -f /root/data/manager.conf ] ; then
 		mkdir -p /root/data
 		echo Write /root/data/manager.conf
-		FOO=`head -1 /etc/bolixo/secrets.client | (read a b; echo $b)`
+		CLI=`head -1 /etc/bolixo/secrets.client | (read a b; echo $b)`
 		ADM=`head -1 /etc/bolixo/secrets.admin | (read a b; echo $b)`
 		MYIP=`ifconfig eth0 | grep "inet " | ( read a b c; echo $b)`
-		sed "s/ foo/ $FOO/" </usr/share/bolixo/manager.conf \
-			| sed "s/ adm/ $ADM/" \
+		sed "s/ #CLI/ $CLI/" </usr/share/bolixo/manager.conf \
+			| sed "s/ #ADM/ $ADM/" \
 			| sed "s/testhost/localhost/" \
-			| sed "s/1.2.3.4/$MYIP/" >/root/data/manager.conf
+			| sed "s/#MYIP/$MYIP/" >/root/data/manager.conf
 	fi
 	if [ ! -f /root/.bofs.conf ] ; then
 		echo Write /root/.bofs.conf
-		FOO=`head -1 /etc/bolixo/secrets.client | (read a b; echo $b)`
+		CLI=`head -1 /etc/bolixo/secrets.client | (read a b; echo $b)`
 		ADM=`head -1 /etc/bolixo/secrets.admin | (read a b; echo $b)`
-		sed "s/ foo/ $FOO/" </usr/share/bolixo/bofs.conf \
-			| sed "s/ adm/ $ADM/" \
+		sed "s/ #CLI/ $CLI/" </usr/share/bolixo/bofs.conf \
+			| sed "s/ #ADM/ $ADM/" \
 			>/root/.bofs.conf
 	fi
 elif [ "$1" = "config" ] ; then # config: Generate config
@@ -465,6 +489,7 @@ elif [ "$1" = "install-sequence" ] ; then # config: Interative sequence to start
 	step secrets
 	stepnote edit/configure /root/data/manager.conf /root/.bofs.conf
 	step config
+	step blackhole-start
 	step checks
 	step lxc0s
 	step start-everything

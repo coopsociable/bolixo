@@ -187,7 +187,7 @@ install: msg.eng msg.fr
 	mkdir -p $(RPM_BUILD_ROOT)/usr/share/bolixo
 	install -m644 data/secrets.admin $(RPM_BUILD_ROOT)/usr/share/bolixo/secrets.admin
 	install -m644 data/secrets.client $(RPM_BUILD_ROOT)/usr/share/bolixo/secrets.client
-	install -m644 data/manager.conf $(RPM_BUILD_ROOT)/usr/share/bolixo/manager.conf
+	install -m644 data/manager.conf.ref $(RPM_BUILD_ROOT)/usr/share/bolixo/manager.conf
 	install -m644 data/bolixo.conf $(RPM_BUILD_ROOT)/usr/share/bolixo/bolixo.conf
 	install -m644 data/bofs.conf $(RPM_BUILD_ROOT)/usr/share/bolixo/bofs.conf
 	install -m644 README $(RPM_BUILD_ROOT)/usr/share/bolixo/README
