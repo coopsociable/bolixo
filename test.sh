@@ -254,7 +254,7 @@ elif [ "$1" = "bo-writed" ] ; then # A: Runs writed
 	OPTIONS="--logfile $BOLIXOLOG/bo-writed.log --user $USER --secrets $BOLIXOCONF/secrets.client \
 		--mysecret adm --data_dbserv $BO_WRITED_DBSERV --data_dbuser $BO_WRITED_DBUSER --data_dbname $BO_WRITED_DBNAME \
 		--users_dbserv $BO_WRITED_DBSERV --users_dbuser $BO_WRITED_DBUSER --users_dbname $BO_WRITED_DBNAMEU \
-		--mailfrom no-reply@solucorp.qc.ca \
+		--mailfrom no-reply@solucorp.qc.ca --nodename $THISNODE \
 		--sessionhost $HORIZONIP1 --sqltcpport 3307"
 	shift
 	WORKERS=1
@@ -577,30 +577,30 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 		echo -n "Enter password: "	
 		read ADMINPASSWORD
 	fi
+elif [ "$1" = "generate-system-pubkey" ] ; then # config: Generate the system public key
 	echo Generate --system-- crypto key
 	$0 bo-keysd-control genkey --system--
+elif [ "$1" = "createadmin" ] ; then # config: Create the admin account
 	echo Create admin account
 	$0 bo-writed-control mailctrl 0 keep
 	$0 bo-writed-control adduser admin admin@bolixo.org $ADMINPASSWORD eng \
 		&& $0 bo-writed-control confirmuser admin \
 		&& $0 bo-writed-control makeadmin admin@bolixo.org 1
 	$0 bo-writed-control mailctrl 1 keep
-	sleep 5
+	# Make the admin account visible (public page)
+	echo $BOFS -u admin misc -w -V 1
+	$BOFS -u admin misc -w -V 1
+	$BOFS -u admin cp /var/www/html/admin.jpg bo://projects/admin/public/mini-photo.jpg
+	echo Register admin for this node in the directory
+	echo $BOFS bolixoapi recordemail $THISNODE admin admin@bolixo.org
+	$BOFS bolixoapi recordemail $THISNODE admin admin@bolixo.org
+elif [ "$1" = "registernode" ]; then # config: Register this node in bolixo.org
 	if [ -s /var/lib/lxc/bolixod/rootfs/var/run/blackhole/bolixod-0.sock ]; then
 		$0 bolixod-control deletenode $THISNODE
 	fi
 	echo Register this node to the directory server
 	echo $BOFS bolixoapi registernode $THISNODE
 	$BOFS bolixoapi registernode $THISNODE
-	echo Make the admin account visible
-	# Register admin for this node in the directory
-	echo $BOFS bolixoapi recordemail $THISNODE admin admin@bolixo.org
-	$BOFS bolixoapi recordemail $THISNODE admin admin@bolixo.org
-	# Make the admin account visible (public page)
-	echo $BOFS -u admin misc -w -V 1
-	$BOFS -u admin misc -w -V 1
-	$BOFS -u admin cp /var/www/html/admin.jpg bo://projects/admin/public/mini-photo.jpg
-
 elif [ "$1" = "dropbolixodb" ] ; then # db: Drop databases
 	mysqladmin -uroot -S $SOCKB -f drop $DBNAMEBOLIXO
 elif [ "$1" = "dropdb" ] ; then # db: Drop databases
@@ -615,8 +615,6 @@ elif [ "$1" = "filldb" ] ; then # db: Fill database (old)
 	do
 		$0 test-adduser $user
 	done
-	echo "Make user admin administrator"
-	$0 bo-writed-control makeadmin admin@bolixo.org 1
 	echo ==== Create filesystem
 	for dir in /msgs /msg-projects /projects /homes
 	do
@@ -628,7 +626,6 @@ elif [ "$1" = "resetdb" ] ; then # db: drops and creates databases
 	$0 dropdb
 	echo Create new ones
 	$0 createdb
-	$0 filldb
 elif [ "$1" = "listsessions" ] ; then # prod: Lists sessions
 	export LXCSOCK=on
 	$0 bo-sessiond-control listsessions 0 100
@@ -704,8 +701,11 @@ elif [ "$1" = "test-sequence" ] ; then # S: Reloads database (big,medium,real,no
 	$0 createbolixodb
 	rm -f /var/lib/bolixo/*
 	$0 resetdb 
+	$0 generate-system-pubkey
 	$0 test-system
-	echo ==== admin
+	$0 registernode
+	$0 createadmin
+	$0 filldb
 	$0 test-deleteuser E
 	$0 test-deleteuser F
 	#echo ==== sessions
@@ -1328,18 +1328,18 @@ elif [ "$1" = "webssltest-static" ] ; then # P:
 elif [ "$1" = "stop-status" ] ; then # P: status of trli-stop
 	echo "==== web ===="
 	/usr/sbin/trli-stop-control -p /var/lib/lxc/web/rootfs/tmp/trli-stop.sock status
-	echo "==== webadm ==="
-	/usr/sbin/trli-stop-control -p /var/lib/lxc/webadm/rootfs/tmp/trli-stop.sock status
+	#echo "==== webadm ==="
+	#/usr/sbin/trli-stop-control -p /var/lib/lxc/webadm/rootfs/tmp/trli-stop.sock status
 elif [ "$1" = "stop-stop" ] ; then # P: stop the web
 	echo web
 	/usr/sbin/trli-stop-control -p /var/lib/lxc/web/rootfs/tmp/trli-stop.sock stop
-	echo webadm
-	/usr/sbin/trli-stop-control -p /var/lib/lxc/webadm/rootfs/tmp/trli-stop.sock stop
+	#echo webadm
+	#/usr/sbin/trli-stop-control -p /var/lib/lxc/webadm/rootfs/tmp/trli-stop.sock stop
 elif [ "$1" = "stop-start" ] ; then # P: restart the web
 	echo web
 	/usr/sbin/trli-stop-control -p /var/lib/lxc/web/rootfs/tmp/trli-stop.sock start
-	echo webadm
-	/usr/sbin/trli-stop-control -p /var/lib/lxc/webadm/rootfs/tmp/trli-stop.sock start
+	#echo webadm
+	#/usr/sbin/trli-stop-control -p /var/lib/lxc/webadm/rootfs/tmp/trli-stop.sock start
 elif [ "$1" = "mailctrl" ] ; then # prod: Control writed sendmail
 	if [ $# != 3 ] ;then
 		echo "mailctrl 0|1 force_addr"
@@ -1355,7 +1355,9 @@ elif [ "$1" = "loadusers" ] ; then # prod: Load users from file
 elif [ "$1" = "checkupdates" ] ; then # prod: Check all containers are up to date
 	for lxc in bod writed sessiond protocheck exim web webadm webssl bosqlddata bosqlduser
 	do
-		/usr/sbin/trli-cmp --name $lxc /var/lib/lxc/$lxc/$lxc.files
+		if [ -d /var/lib/lxc/$lxc ] ; then
+			/usr/sbin/trli-cmp --name $lxc /var/lib/lxc/$lxc/$lxc.files
+		fi
 	done
 elif [ "$1" = "syslog-tail" ] ; then # syslog: show end of syslog
 	/usr/sbin/trli-syslog-control tail

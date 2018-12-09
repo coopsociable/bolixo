@@ -37,6 +37,15 @@ check_loadfail(){
 		echo "***" $1 $2 strange state
 	fi
 }
+step(){
+	echo -n bolixo-production $1
+	read line
+	bolixo-production $1
+}
+stepnote(){
+	echo -n "$*"
+	read line
+}
 if [ "$1" = "" ] ; then
 	menutest -s $0
 elif [ "$1" = "compute" ] ; then # prod: Update stats in news database
@@ -444,6 +453,29 @@ elif [ "$1" = "install-required" ] ; then # config: install required packages
 		libvirt-daemon-config-network libvirt-client \
 		libvirt-daemon-driver-qemu bridge-utils \
 		time strace exim vim-enhanced
+elif [ "$1" = "generate-system-pubkey" ] : then # config: Generate the node public key
+	/usr/lib/bolixo-test.sh generate-system-pubkey
+elif [ "$1" = "registernode" ] ; then # config: Register this node in the directory
+	/usr/lib/bolixo-test.sh registernode
+elif [ "$1" = "createadmin" ] ; then # config: Create the admin acccount
+	/usr/lib/bolixo-test.sh createadmin
+elif [ "$1" = "start-everything" ] ; then # config: Start all bolixo services
+	/root/bolixostart.sh
+elif [ "$1" = "install-sequence" ] ; then # config: Interative sequence to start a node from scratch
+	step secrets
+	stepnote edit/configure /root/data/manager.conf /root/.bofs.conf
+	step config
+	step lxc0s
+	step start-everything
+	step createsqluser
+	step createdb
+	step test-system
+	step generate-system-pubkey
+	step registernode
+	step createadmin
+	step syslog-clear
+	step syslog-reset
+	step test-system
 else
 	echo Invalid command
 fi

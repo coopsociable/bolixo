@@ -58,9 +58,26 @@ int main (int argc, char *argv[])
 			</f>
 			</call>
 		}else if (strcmp(argv[0],"genkey")==0 && argc == 2){
+			glocal CONNECT_INFO *con = &con;
 			<call bo_keysd_control_genkey>(con,argv[1]);
 			<f ok>
 				if (status == ERR_CODE_NONE){
+					// This is asynchronous. keysd is still working on it.
+					// So we wait until all accounts size goes to 0.
+					glocal bool done = false;
+					while (!glocal.done){
+						usleep(10000);
+						<call bo_keysd_control_status>(*glocal.con);
+						<f ok>
+							for (auto x:lines){
+								if (strcmp(x,"sub-process: not running")==0){
+									glocal.done = true;
+									break;
+								}
+							}
+						</f>
+						</call>
+					}
 					glocal.ret = 0;
 				}else{
 					tlmp_error ("status %d: %s\n",status,msg);
