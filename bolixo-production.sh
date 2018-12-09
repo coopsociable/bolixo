@@ -122,13 +122,13 @@ elif [ "$1" = "secrets" ] ; then # config: Generate secrets
 	if [ ! -f /etc/bolixo/secrets.admin ] ; then
 		echo Write /etc/bolixo/secrets.admin
 		NANO=`date +%N`
-		sed "s/ #ADM/ $NANO/" </usr/share/bolixo/secrets.admin >/etc/bolixo/secrets.admin
+		sed "s/ adm/ $NANO/" </usr/share/bolixo/secrets.admin >/etc/bolixo/secrets.admin
 		chmod 600 /etc/bolixo/secrets.admin
 	fi
 	if [ ! -f /etc/bolixo/secrets.client ] ; then
 		echo Write /etc/bolixo/secrets.client
 		NANO=`date +%N`
-		sed "s/ #CLI/ $NANO/" </usr/share/bolixo/secrets.client >/etc/bolixo/secrets.client
+		sed "s/ foo/ $NANO/" </usr/share/bolixo/secrets.client >/etc/bolixo/secrets.client
 		chmod 600 /etc/bolixo/secrets.client
 	fi
 	if [ ! -f /root/data/manager.conf ] ; then
