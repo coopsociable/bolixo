@@ -184,7 +184,7 @@ tlmp_error ("userid=%d expected=%d session=%s\n",userid,glocal.expected,glocal.s
 }
 </mod>
 // Check if the nodename is a valid server URL
-static int bolixod_validnode(const char *node)
+static int bolixod_parsenode(const char *node, string &name)
 {
 	int ret = 0;
 	if (strncasecmp(node,"http://",7)==0){
@@ -194,12 +194,47 @@ static int bolixod_validnode(const char *node)
 	}else{
 		ret = -1;
 	}
-	while (*node != '\0'){
-		if (*node == '/' || *node <= ' '){
-			ret = -1;
-			break;
+	if (ret != -1){
+		name = node;
+		while (*node != '\0'){
+			if (*node == '/' || *node <= ' '){
+				ret = -1;
+				break;
+			}
+			node++;
 		}
-		node++;
+	}
+	return ret;
+}
+static int bolixod_validnode(const char *node)
+{
+	string name;
+	return bolixod_parsenode (node,name);
+}
+// Check if the nodename is a valid server URL and belongs to a domain
+static int bolixod_validnode(const char *node, const char *domain)
+{
+	string name;
+	int ret = bolixod_parsenode (node,name);
+	if (ret != -1){
+		const char *start = name.c_str();
+		const char *pt = strchr(start,':');
+		if (pt != NULL){
+			name = string(start,pt-start);
+		}
+tlmp_error ("validnode name=:%s: domain=:%s:\n",name.c_str(),domain);
+		// The nodename must be a sub-domain of the domain. Not the domain itself.
+		start = name.c_str();
+		pt = strstr(start,domain);
+		if (pt == NULL){
+			ret = -1;
+		}else if (strcmp(pt,domain)!=0){
+			ret = -1;
+		}else if (pt == start){
+			ret = -1;
+		}else if (pt[-1] != '.'){
+			ret = -1;
+		}
 	}
 	return ret;
 }
@@ -272,6 +307,7 @@ int main (int argc, char *argv[])
 	glocal bool daemon = false;
 	glocal const char *pidfile = "/var/run/bolixod.pid";
 	glocal const char *client_secretfile = "/etc/bolixo/secrets.client";
+	glocal const char *domain = "bolixo.org";
 	static const char *tbdic[]={"tlmpsql","bolixo",NULL};
 	glocal.ret = <call tlmpprogram>(argc,argv,tbdic);
 	<f init>
@@ -290,6 +326,7 @@ int main (int argc, char *argv[])
 		setarg (' ',"user",MSG_U(I_RUNASUSER,"Run the program as this user"),glocal.user,false);
 		setarg (' ',"daemon",MSG_U(I_RUNBG,"Run in background"),glocal.daemon,false);
 		setarg (' ',"pidfile",MSG_U(I_PIDFILE,"File holding the PID of the process"),glocal.pidfile,false);
+		setarg (' ',"domain",MSG_U(O_DOMAIN,"Accept nodes only from this domain"),glocal.domain,false);
 	</f>
 	<f showerror>
 		if (glocal.daemon){
@@ -405,7 +442,7 @@ int main (int argc, char *argv[])
 						// nodename
 					glocal string msg;
 					glocal const char *nodename = nodename;
-					if (bolixod_validnode (nodename) == -1){
+					if (bolixod_validnode (nodename,glocal.domain) == -1){
 						glocal.msg = "Invalid nodename";
 					}else{
 						<call sql_query>("select pub_key from nodes where nodename='%s'",nodename);

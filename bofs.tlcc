@@ -2828,6 +2828,7 @@ static int bofs_bolixoapi (CONTEXT &ctx, int argc, char *argv[])
 				<f ok>
 					debug_printf ("publish: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
 					if (!success){
+						glocal.ret = -1;
 						bofs_error ("bolixoapi publish",internal_error,"success=%d msg=%s\n",success,msg);
 					}
 				</f>
@@ -2843,6 +2844,7 @@ static int bofs_bolixoapi (CONTEXT &ctx, int argc, char *argv[])
 				<f ok>
 					debug_printf ("remove: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
 					if (!success){
+						glocal.ret = -1;
 						bofs_error ("bolixoapi remove",internal_error,"success=%d msg=%s\n",success,msg);
 					}
 				</f>
@@ -2860,8 +2862,11 @@ static int bofs_bolixoapi (CONTEXT &ctx, int argc, char *argv[])
 				<call bod_client_info_read>(glocal.ctx->con,glocal.ctx->sessionid,"");
 				<f ok>
 					glocal.success = success;
-					printf ("info_read: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
-					glocal.info = info;
+					if (!success){
+						glocal.ret = -1;
+						tlmp_error ("info_read: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
+						glocal.info = info;
+					}
 				</f>
 				</call>
 				if (glocal.success){
@@ -2883,13 +2888,19 @@ static int bofs_bolixoapi (CONTEXT &ctx, int argc, char *argv[])
 						info.interest = glocal.info.interest;
 						<call bolixoapi_publish> (glocal.ctx->hcon,session,info);
 						<f ok>
-							printf ("publish: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
+							if (!success){
+								glocal.ret = -1;
+								tlmp_error ("publish: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
+							}
 						</f>
 						</call>
 					}else{
 						<call bolixoapi_remove> (glocal.ctx->hcon,session,glocal.ctx->user);
 						<f ok>
-							printf ("remove: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
+							if (!success){
+								glocal.ret = -1;
+								tlmp_error ("remove: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
+							}
 						</f>
 						</call>
 					}
@@ -2904,7 +2915,10 @@ static int bofs_bolixoapi (CONTEXT &ctx, int argc, char *argv[])
 			if (bofs_bolixoapi_login (glocal.ctx->hcon,glocal.ctx->con,nodename,session)!=-1){
 				<call bolixoapi_recordemail> (glocal.ctx->hcon,session,userid,email);
 				<f ok>
-					printf ("recordemail: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
+					if (!success){
+						glocal.ret = -1;
+						printf ("recordemail: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
+					}
 				</f>
 				</call>
 				bofs_bolixoapi_logout (glocal.ctx->hcon,session);
@@ -2933,7 +2947,10 @@ static int bofs_bolixoapi (CONTEXT &ctx, int argc, char *argv[])
 				}
 				<call bod_client_info_write>(glocal.ctx->con,glocal.ctx->sessionid,"",info);
 				<f ok>
-					printf ("infowrite: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
+					if (!success){
+						glocal.ret = -1;
+						tlmp_error ("infowrite: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
+					}
 				</f>
 				</call>
 			}
@@ -2943,10 +2960,14 @@ static int bofs_bolixoapi (CONTEXT &ctx, int argc, char *argv[])
 			}else{
 				<call bod_client_info_read>(glocal.ctx->con,glocal.ctx->sessionid,"");
 				<f ok>
-					printf ("inforead: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
-					printf ("fullname=%s\n",info.fullname);
-					printf ("address1=%s\n",info.address1);
-					printf ("address2=%s\n",info.address2);
+					if (!success){
+						glocal.ret = -1;
+						tlmp_error ("inforead: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
+					}else{
+						printf ("fullname=%s\n",info.fullname);
+						printf ("address1=%s\n",info.address1);
+						printf ("address2=%s\n",info.address2);
+					}
 				</f>
 				</call>
 			}

@@ -38,12 +38,12 @@ check_loadfail(){
 	fi
 }
 step(){
-	echo -n bolixo-production $1
+	echo -n bolixo-production $1" "
 	read line
 	bolixo-production $1
 }
 stepnote(){
-	echo -n "$*"
+	echo -n "$* "
 	read line
 }
 if [ "$1" = "" ] ; then
@@ -453,7 +453,7 @@ elif [ "$1" = "install-required" ] ; then # config: install required packages
 		libvirt-daemon-config-network libvirt-client \
 		libvirt-daemon-driver-qemu bridge-utils \
 		time strace exim vim-enhanced
-elif [ "$1" = "generate-system-pubkey" ] : then # config: Generate the node public key
+elif [ "$1" = "generate-system-pubkey" ] ; then # config: Generate the node public key
 	/usr/lib/bolixo-test.sh generate-system-pubkey
 elif [ "$1" = "registernode" ] ; then # config: Register this node in the directory
 	/usr/lib/bolixo-test.sh registernode
@@ -465,6 +465,7 @@ elif [ "$1" = "install-sequence" ] ; then # config: Interative sequence to start
 	step secrets
 	stepnote edit/configure /root/data/manager.conf /root/.bofs.conf
 	step config
+	step checks
 	step lxc0s
 	step start-everything
 	step createsqluser
