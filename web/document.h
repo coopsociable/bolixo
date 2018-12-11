@@ -13,6 +13,7 @@ EXTERN DOC_ID section_contact_req;
 EXTERN DOC_ID section_mails;
 EXTERN DOC_ID section_interests;
 EXTERN DOC_ID section_preview;
+EXTERN DOC_ID section_why;
 
 void jump2app (int step, const char *webtab_add);
 void jump2app (int step, int tab);

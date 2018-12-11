@@ -7,6 +7,10 @@
 
 static void jump2app (int step, int tab, const char *webtab_add)
 {
+	if (tab != 0){
+		tab = tab*2-1;	// Trick because webtab used even tab number to hit the X
+				// and odd to select the TAB.
+	}
 	const char *comma = ",";
 	if (webtab_add == NULL){
 		comma = "";
@@ -20,7 +24,7 @@ static void jump2app (int step, int tab, const char *webtab_add)
 	htmlout ("<svg width=100 height=40>\n");
 	htmlprintf ("<rect id='docrect%u' x=0 y=0 rx=4 ry=4 width=100 height=40 stroke=black fill=none />\n",rectno);
 	htmlout    ("<rect x=2 y=2 rx=4 ry=4 width=96 height=36 stroke=black fill=none />\n");
-	htmlprintf ("\t<text x=20 y=25 class=small>%s</text>\n","Allons y");
+	htmlprintf ("\t<text x=20 y=25 class=small>%s</text>\n",MSG_U(B_JUMP,"Go!"));
 	htmlout ("</svg>\n");
 	htmlout ("</a>\n");
 	rectno++;
@@ -39,6 +43,7 @@ void jump2app (int step, int tab)
 <mod>
 void bolixo_doc (DOCUMENT_POINTER &docpointer, DOC_ID &jump, const char *username)
 {
+	glocal const char *username = username;
 	<call document>("",docpointer,jump);
 	<f ref>
 	</f>
@@ -48,17 +53,145 @@ void bolixo_doc (DOCUMENT_POINTER &docpointer, DOC_ID &jump, const char *usernam
 		?>
 	</f>
 	<f body>
-		<call section>("What is Bolixo ?");
-		<f body>
-			<call section>("Social media and social responsabilities");
-			<f body>
-				<?
+		<- section("What is Bolixo ?");>
+			Bolixo is a social media site like many others. Unlike most, it is 100% built on free software
+			(and Bolixo itself is also free software). It is also distributed. The Bolixo network is
+			made of numerous nodes (or servers), each hosting users. But users on one node may interact
+			with users on any other bolixo node.
+			<p>
+			So what can you do on Bolixo ?
+			<ul>
+			<li>Setup private groups to share messages and documents.
+			<li>Setup one public channel and page allowing anyone to see what you are posting.
+			</ul>
+			<p>
+			See the section
+			/- tlmpdoc_link(section_why,"<em>Why Bolixo ?</em>");
+			at the end of this document.
+			
+		</->
+		<- section("Getting started");>
+			Ok, you just want to use Bolixo immediatly. Here is how.
+			<p>
+			In the following pages, you will often see a button to the right.
+			<p>
+			/- jump2app (step_doc,0);
+			<p>
+			It allows you to jump at the right place in the application, while this document follows you.
+			<p>
+			<- section("Publish short messages, images and videos");>
+				You would like to publish <em>to the world</em> short messages, images and videos.
+				<br>
+				Here are the steps:
+				/- DIV d;
+				<ul>
+				<li>
+					/- d.print();
+					Add your photo and your avatar in the <b>public</b> project. You must upload a 100x100 image file
+					named photo.jpg. You must also upload a 40x40 image file named mini-photo.jpg
+					with a 40 x 40 size.
+					/- d.end();
+					/- string tmp = string_f("1:%s/public",glocal.username);
+					/- jump2app (step_projects,tmp.c_str());
+					<br><br><br>
+				<li>
+					/- d.print();
+					Add messages in the <em>public</em> group. You can also add images, videos and sound files (mp3).
+					/- d.end();
+					/- tmp = string_f("1:%s:public",glocal.username);
+					/- jump2app (step_talks,tmp.c_str());
+					<br><br><br>
+				<li>
+					/- d.print();
+					Once done, you make the whole thing public. Just click the checkbox "enable public view" and submit. It will be visible here.<br> 
+					/- const char *host = getenv("HTTP_X_FORWARDED_HOST");
+					/- htmlprintf ("https://%s/public/%s<br>\n",host != NULL ? host : "bolixo.org" ,glocal.username);
+					/- d.end();
+					/- jump2app (step_profile,1);
+				</ul>
+			</->
+			<- section("Subscribe public messages");>
+				You may want to track the public messages of friends, organizations, etc... Instead of visiting all their public pages, you can register your interest and
+				you will get a summary in your main bolixo page.
+				<p>
+				Visit the <b>Interests</b> sub-tab of the <b>Profile</b> tab and select <em>Add interests</em>. Enter Bolixo nicknames and submit. You will see the
+				avatar of each nicknames you add. If you see this image <img src=/private.png>, it means the persons does not have a public page.
+				/- jump2app (step_profile,2);
+				
+			</->
+			<- section("Establish contacts");>
+				You wish to communicate with someone on Bolixo. By default, you can't. You must request permission. You visit the <b>Requests</b> sub-tab of the <b>Profile</b> tab.
+				You select <em>Send a contact request</em>. You enter the nickname of your new contact and a small introduction. Once your contact has accepted the requests, you can
+				add him to your projects and he can do the same with you.
+				/- jump2app (step_profile,4);
+			</->
+		</->
+		<- section("Fonctionalities overview");>
+			<- section("Groups and friends");>
+			</->
+			<- section("Messages",section_talk);>
+			</->
+			<- section("Projects",section_project);>
+			</->
+			<- section("Public preview",section_preview);>
+				You can see a preview of your public page. Select one folder in the public project
+				and use the context menu to preview its content.
+			</->
+			<- section("Public view");>
+			</->
+			<- section("Command line tool");>
+				A utility called bofs allows you to perform almost everything you can do from the UI. You can use
+				it to perform backups and restores of your content.
+			</->
+		</->
+		<- section("Operations");>
+			<- section("Configuration");>
+				<- section("Private site");>
+					A public Bolixo site is open to anyone. Anyone can create an account there. This means the site
+					users do not know each other.
+					<p>
+					A private Bolixo site manages its own accounts. A organisation, a company would normally create
+					their own private bolixo site. They will create accounts for their employees/members. Normally, all their users (co-workers)
+					know each other and are expect to interact with each other. So local user do not need a contact request prior to
+					communicate.
+				</->
+				<- section("Account",section_account);>
+					You manage the account preferences here.
+					This includes the access control/privacy of your public page.
+				</->
+				<- section("Contacts",section_contacts);>
+					This is where you manage your contacts (people you know).
+					In this page, you can see the contact requests other people have made to you.
+				</->
+				<- section("Contact requests",section_contact_req);>
+					This is where you manage your contacts (people you know).
+					In this page, you can see the contact requests you have made.
+				</->
+				<- section ("Interests",section_interests);>
+					This is where you manage the list of interesting people. Once set, the main
+					page will track the public messages written by all these persons.
+				</->
+				<- section("Projects",section_projects);>
+				</->
+				<- section("Groups",section_groups);>
+				</->
+			</->
+		</->
+		<- section("Why Bolixo ?", section_why);>
+			Bolixo has an interesting feature set. It makes it easy to create projects and invite
+			people to work.
+			<p>
+			But the real trick is its openess and distributed nature. On Bolixo, nobody is spying on you.
+			<- section("What's the deal with distributed nodes");>
+				Why not create a single large cluster of servers acting as a single entity ? There are many
+				reasons for that. But the main reason is simply because it is not possible. Anyone, any organization
+				may create their own Bolixo nodes. Yet, we want all the users on these nodes to exchange with
+				any users on any node.
+			</->
+			<- section("Social media and social responsabilities");>
 				Creating a social media site is fun and rewarding. Recent events
 				has shown that with <em>great powers comes great responsabilities</em>.
-				?>
-				<call section>("Separation of duties");
-				<f body>
-					<?
+				<- section("Separation of duties");>
 					Social media sites normally operate by providing a free
 					service to the community (free accounts) and earn
 					some money by displaying some publicity. In many ways
@@ -86,123 +219,21 @@ void bolixo_doc (DOCUMENT_POINTER &docpointer, DOC_ID &jump, const char *usernam
 					</ul>
 					<p>
 					This is what <strong>bolixo</strong> is all about.
-					?>
-				</f>
-				</call>
-			</f>
-			</call>
-			<call section>("Distributed");
-			<f body>
-				<call section>("APIs");
-				<f body>
-				</f>
-				</call>
-			</f>
-			</call>
-			<call section>("Free software");
-			<f body>
-			</f>
-			</call>
-		</f>
-		</call>
-		<call section>("Getting started");
-		<f body>
-			<?
-			This section shows quickly what you can do with bolixo.
-			?>
-			<call section>("Configuration and user profile");
-			<f body>
-			</f>
-			</call>
-		</f>
-		</call>
-		<call section>("Fonctionality overview");
-		<f body>
-			<call section>("Groups and friends");
-			<f body>
-			</f>
-			</call>
-			<call section>("Short messages",section_talk);
-			<f body>
-			</f>
-			</call>
-			<call section>("Mail",section_mails);
-			<f body>
-			</f>
-			</call>
-			<call section>("File system");
-			<f body>
-			</f>
-			</call>
-			<call section>("Projects",section_project);
-			<f body>
-			</f>
-			</call>
-			<- section("Public preview",section_preview);>
-				You can see a preview of your public page. Select one folder in the public project
-				and use the context menu to preview its content.
+				</->
 			</->
-			<call section>("Public view");
-			<f body>
-			</f>
-			</call>
-			<call section>("Command line tool");
-			<f body>
-			</f>
-			</call>
-		</f>
-		</call>
-		<call section>("Operations");
-		<f body>
-			<call section>("Configuration");
-			<f body>
-				<call section>("Private site");
-				<f body>
-					<?
-					A public Bolixo site is open to anyone. Anyone can create an account there. This means the site
-					users do not know each other.
-					<p>
-					A private Bolixo site manages its own accounts. A organisation, a company would normally create
-					their own private bolixo site. They will create accounts for their employees/members. Normally, all their users (co-workers)
-					know each other and are expect to interact with each other. So local user do not need a contact request prior to
-					communicate.
-					?>
-				</f>
-				</call>
-				<call section>("Account",section_account);
-				<f body>
-					<?
-					You manage the account preferences here.
-					This includes the access control/privacy of your public page.
-					?>
-				</f>
-				</call>
-				<- section("Contacts",section_contacts);>
-					This is where you manage your contacts (people you know).
-					In this page, you can see the contact requests other people have made to you.
-				</->
-				<- section("Contact requests",section_contact_req);>
-					This is where you manage your contacts (people you know).
-					In this page, you can see the contact requests you have made.
-				</->
-				<?
-				<- section ("Interests",section_interests);>
-					This is where you manage the list of interesting people. Once set, the main
-					page will track the public messages written by all these persons.
-				</->
-				?>
-				<call section>("Projects",section_projects);
-				<f body>
-				</f>
-				</call>
-				<call section>("Groups",section_groups);
-				<f body>
-				</f>
-				</call>
-			</f>
-			</call>
-		</f>
-		</call>
+			<- section("Free software");>
+				The Bolixo software is built using free software and is distributed using the
+				GNU Public License. Anyone can create his own Bolixo node.
+			</->
+			<- section("Distributed");>
+				Bolixo users on one node may interact with users on any Bolixo node. This includes:
+				<ul>
+				<li>Following the public messages of anyone on any node.
+				<li>Establish a relation with anyone on any node.
+				<li>Being a member of a project on any node.
+				</ul>
+			</->
+		</->
 	</f>
 	</call>
 }
