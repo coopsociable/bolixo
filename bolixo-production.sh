@@ -38,9 +38,13 @@ check_loadfail(){
 	fi
 }
 step(){
-	echo -n bolixo-production $1" "
+	echo -n bolixo-production $1" (n) "
 	read line
-	bolixo-production $1
+	if [ "$line" != "n" ] ; then
+		bolixo-production $1
+	else
+		echo skipped
+	fi
 }
 stepnote(){
 	echo -n "$* "
@@ -95,28 +99,28 @@ elif [ "$1" = "checks" ]; then # A: Sanity checks blackhole
 		echo "*** Horizon not connected"
 	fi
 elif [ "$1" = "blackhole-start" ]; then # config: Starts blackholes service or reload
-	if killall -0 conproxy
+	if killall -0 conproxy 2>/dev/null
 	then
 		echo conproxy is running
 	else
 		echo Start conproxy
-		systemctl start conproxy
+		/etc/init.d/conproxy start
 	fi
-	if killall -0 horizon
+	if killall -0 horizon 2>/dev/null
 	then
 		echo Reload horizon
-		systemctl reload horizon
+		/etc/init.d/horizon reload
 	else
 		echo Start horizon
-		systemctl start horizon
+		/etc/init.d/horizon start
 	fi
-	if killall -0 blackhole
+	if killall -0 blackhole 2>/dev/null
 	then
 		echo Reload blackhole
-		systemctl reload blackhole
+		/etc/init.d/blackhole reload
 	else
 		echo Start blackhole
-		systemctl start blackhole
+		/etc/init.d/blackhole start
 	fi
 elif [ "$1" = "secrets" ] ; then # config: Generate secrets
 	if [ ! -f /etc/bolixo/secrets.admin ] ; then
@@ -450,6 +454,10 @@ elif [ "$1" = "calltest" ] ; then # A: Call /usr/lib/bolixo-test.sh
 	export LXCSOCK=on
 	shift
 	/usr/lib/bolixo-test.sh $*
+elif [ "$1" = "certificate-install" ]; then # prod: Install the SSL certificate
+	# Make sure the special /root/bin/apachectl is used
+	export PATH=/root/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin
+	certbot --apache certonly
 elif [ "$1" = "certificate-renew" ] ; then # prod: Renew the SSL certificate
 	# Do a backup
 	cd /etc
@@ -469,14 +477,14 @@ elif [ "$1" = "certificate-renew" ] ; then # prod: Renew the SSL certificate
 elif [ "$1" = "keysd-pass" ] ; then # prod: set keys passphrase
 	/usr/sbin/bo-keysd-control -p /var/lib/lxc/keysd/rootfs/var/run/blackhole/bo-keysd.sock setpassphrase
 elif [ "$1" = "install-required" ] ; then # config: install required packages
-	dnf install lxc lxc-templates \
+	echo dnf install lxc lxc-templates \
 		gd \
 		mariadb-server mariadb-connector-c boost-date-time \
 		httpd \
 		libvirt-daemon libvirt-daemon-driver-network \
 		libvirt-daemon-config-network libvirt-client \
 		libvirt-daemon-driver-qemu bridge-utils \
-		time strace exim vim-enhanced
+		time strace exim vim-enhanced certbot python3-certbot-apache
 elif [ "$1" = "generate-system-pubkey" ] ; then # config: Generate the node public key
 	/usr/lib/bolixo-test.sh generate-system-pubkey
 elif [ "$1" = "registernode" ] ; then # config: Register this node in the directory
@@ -486,6 +494,14 @@ elif [ "$1" = "createadmin" ] ; then # config: Create the admin acccount
 elif [ "$1" = "start-everything" ] ; then # config: Start all bolixo services
 	/root/bolixostart.sh
 elif [ "$1" = "install-sequence" ] ; then # config: Interative sequence to start a node from scratch
+	if [ ! -f /root/stracelogs/log.web -o ! -f /root/stracelogs/log.exim -o ! -f /root/stracelogs/log.mysql ] ; then
+		echo lxc0 log files are missing in /root/stracelogs
+		echo execute
+		echo "    " bolixo-production make-httpd-log
+		echo "    " bolixo-production make-mysql-log
+		echo "    " bolixo-production make-exim-log
+		exit 1
+	fi
 	step secrets
 	stepnote edit/configure /root/data/manager.conf /root/.bofs.conf
 	step config
@@ -497,11 +513,16 @@ elif [ "$1" = "install-sequence" ] ; then # config: Interative sequence to start
 	step createdb
 	step test-system
 	step generate-system-pubkey
-	step registernode
 	step createadmin
 	step syslog-clear
 	step syslog-reset
 	step test-system
+elif [ "$1" = "install-sequence-publis" ] ; then # Config: Complete install-sequence once everything is running
+	step registernode
+	echo Register admin for this node in the directory
+	ADMINH=admin@`hostname`
+	echo $BOFS bolixoapi recordemail $THISNODE admin $ADMINH
+	$BOFS bolixoapi recordemail $THISNODE admin $ADMINH
 else
 	echo Invalid command
 fi

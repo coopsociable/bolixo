@@ -27,6 +27,29 @@ Setup
 
 	Copy/configure /usr/share/bolixo/bolixo.conf -> /root/bolixo.conf
 
+	if /root/stracelogs is empty
+		bolixo-production make-httpd-log
+		bolixo-production make-mysql-log
+		bolixo-production make-exim-log
+
+	bolixo-production install-sequence
+
+	Install your certificate
+	This installs a letsencrypt free (but valid) certificate
+	bolixo-production certificate-install
+	(
+		if localhost.crt is missing, no idea why
+		openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout /etc/pki/tls/private/localhost.key -out /etc/ssl/certs/localhost.crt
+	)
+
+	bolixo-production restart webs
+	bolixo-production restart exim
+	bolixo-production mon-sendmail
+	bolixo-production writed-sendmail
+
+	# Now that the node works in HTTPS, register to the directory bolixo.org
+	bolixo-production install-sequence-post
+
 	bolixo-production secrets
 	edit/configure /root/data/manager.conf
 	edit/configure /root/.bofs.conf

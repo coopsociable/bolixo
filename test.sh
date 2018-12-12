@@ -591,9 +591,6 @@ elif [ "$1" = "createadmin" ] ; then # config: Create the admin account
 	echo $BOFS -u admin misc -w -V 1
 	$BOFS -u admin misc -w -V 1
 	$BOFS -u admin cp /var/www/html/admin.jpg bo://projects/admin/public/mini-photo.jpg
-	echo Register admin for this node in the directory
-	echo $BOFS bolixoapi recordemail $THISNODE admin admin@bolixo.org
-	$BOFS bolixoapi recordemail $THISNODE admin admin@bolixo.org
 elif [ "$1" = "registernode" ]; then # config: Register this node in bolixo.org
 	if [ -s /var/lib/lxc/bolixod/rootfs/var/run/blackhole/bolixod-0.sock ]; then
 		$0 bolixod-control deletenode $THISNODE
@@ -1088,6 +1085,7 @@ elif [ "$1" = "lxc0-proto" ]; then # prod:
 		-i /usr/sbin/trli-init -l /tmp/log -n protocheck -p /usr/sbin/protocheck-2factors >/var/lib/lxc/protocheck/protocheck-lxc0.sh
 	chmod +x /var/lib/lxc/protocheck/protocheck-lxc0.sh
 elif [ "$1" = "make-httpd-log" ] ; then # config: httpd strace log for lxc0
+	mkdir -p /root/stracelogs
 	echo  httpd is started. Wait and killall httpd in another console
 	strace -f -o /root/stracelogs/log.web /usr/sbin/httpd 
 	echo /root/stracelogs/log.web was produced
@@ -1188,6 +1186,11 @@ elif [ "$1" = "lxc0-webssl" ]; then # prod:
 		chmod +x /var/lib/lxc/$w/$w-lxc0.sh
 	done
 elif [ "$1" = "make-mysql-log" ] ; then # config: mysql strace log for lxc0
+	mkdir -p /root/stracelogs
+	if [ ! -d /var/lib/mysql/mysql ] ; then
+		echo Initialize base mysql tables
+		mysql_install_db --user=mysql
+	fi
 	echo "wait a bit and do 'mysqladmin shutdown' in another console"
 	strace -f -o /root/stracelogs/log.mysql /usr/libexec/mysqld --basedir=/usr --user=mysql
 	echo /root/stracelogs/log.mysql was produced
@@ -1247,6 +1250,7 @@ elif [ "$1" = "lxc0-mysql" ]; then # config:
 		mysql_restore bosqldbolixo
 	fi
 elif [ "$1" = "make-exim-log" ] ; then # config: exim strace log for lxc0
+	mkdir -p /root/stracelogs
 	strace -f -o /root/stracelogs/log.exim /usr/sbin/exim -bd -q1h
 	sleep 5
 	killall exim
