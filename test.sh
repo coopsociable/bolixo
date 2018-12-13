@@ -583,9 +583,9 @@ elif [ "$1" = "generate-system-pubkey" ] ; then # config: Generate the system pu
 elif [ "$1" = "createadmin" ] ; then # config: Create the admin account
 	echo Create admin account
 	$0 bo-writed-control mailctrl 0 keep
-	$0 bo-writed-control adduser admin admin@bolixo.org $ADMINPASSWORD eng \
+	$0 bo-writed-control adduser admin admin@$HOSTNAME $ADMINPASSWORD eng \
 		&& $0 bo-writed-control confirmuser admin \
-		&& $0 bo-writed-control makeadmin admin@bolixo.org 1
+		&& $0 bo-writed-control makeadmin admin@$HOSTNAME 1
 	$0 bo-writed-control mailctrl 1 keep
 	# Make the admin account visible (public page)
 	echo $BOFS -u admin misc -w -V 1

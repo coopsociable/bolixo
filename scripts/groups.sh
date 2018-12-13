@@ -32,6 +32,7 @@ elif [ "$1" = "sequence" ] ; then # test: Create some users from scratch
 		NB=5
 	fi
 	#$0 reset
+	echo Contact requests
 	# Make sure user A B C are in contact list of each other
 	./bofs -u  jacques-A misc -r -u jacques-B
 	./bofs -u  jacques-A misc -r -u jacques-C
@@ -53,6 +54,7 @@ elif [ "$1" = "sequence" ] ; then # test: Create some users from scratch
 	# The public project and public dir are created by default when the account are created
 	# So we just put a small and large photo in each public dir
 	# test-sequence removes user E and F
+	echo Create mini-photo.jpg and photo.jpg for all users
 	for letter in A B C D G H I J K L M N O P Q R S T U V W X Y Z
 	do
 		if [ -x /usr/bin/convert ]; then
@@ -66,7 +68,7 @@ elif [ "$1" = "sequence" ] ; then # test: Create some users from scratch
 			echo no convert utility, install ImangeMagick
 		fi
 	done
-	# Enable public view for some users and write a short message
+	echo Enable public view for some users and write a short message
 	if [ -x /usr/bin/import ] ; then
 		import -window root /tmp/image.jpg
 	fi
@@ -78,9 +80,9 @@ elif [ "$1" = "sequence" ] ; then # test: Create some users from scratch
 			./bofs -u $user msgs -t --groupowner $user -G public -F /tmp/image.jpg
 		fi
 	done
-	# Make jacques-B member of jacques-A public project
+	echo Make jacques-B member of jacques-A public project
 	./bofs -u jacques-A groups --set-member -G public -U jacques-B -AW
-
+	echo Create a bunch of projects/groups for jacques-A
 	./bofs -u jacques-A groups --create-group-list -L Alist1
 	./bofs -u jacques-A groups --create-project-dir -L Alist1
 	./bofs -u admin     groups --create-group-list -L Alonglist2 --owner jacques-A
@@ -111,6 +113,7 @@ elif [ "$1" = "sequence" ] ; then # test: Create some users from scratch
 	./bofs -u jacques-A groups --set-member -G common -U jacques-B -AW -Rdba
 	./bofs -u jacques-B groups --set-member -G common -U jacques-A -AW -Rdba
 	./bofs -u jacques-B groups --set-member -G common -U jacques-B -AW -Rdba
+	echo Create mails and messages
 	$0 writemails $NB
 elif [ "$1" = "writemails" ] ; then
 	NB=$2

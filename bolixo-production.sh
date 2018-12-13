@@ -254,7 +254,12 @@ elif [ "$1" = "restart" ] ; then # prod: restart some services (webs, internals,
 		for serv in $*
 		do
 			if [ "$serv" = "internals" ] ; then
-				SERVICES="$SERVICES bod writed sessiond keysd protocheck bo-mon trli-syslog"
+				for std in bolixod bod writed sessiond keysd protocheck bo-mon trli-syslog
+				do
+					if [ -d /var/lib/lxc/$std/rootfs ] ; then
+						SERVICES="$SERVICES $std"
+					fi
+				done
 			else
 				SERVICES="$SERVICES $serv"
 			fi
@@ -308,6 +313,8 @@ elif [ "$1" = "restart" ] ; then # prod: restart some services (webs, internals,
 		$0 stop-start
 	fi
 	bo-mon-control autotest 1
+elif [ "$1" = "autotest" ] ; then # prod: turn bo-mon autotest on or off (1 o 0)
+	bo-mon-control autotest $2
 elif [ "$1" = "syslog-status" ] ; then # syslog: Status of the syslog daemon
 	trli-syslog-control status
 elif [ "$1" = "syslog-reset" ] ; then # syslog: Reset errors in syslog
@@ -534,8 +541,8 @@ elif [ "$1" = "install-sequence-publish" ] ; then # Config: Complete install-seq
 	step registernode
 	echo Register admin for this node in the directory
 	ADMINH=admin@`hostname`
-	echo $BOFS bolixoapi recordemail $THISNODE admin $ADMINH
-	$BOFS bolixoapi recordemail $THISNODE admin $ADMINH
+	echo bofs bolixoapi recordemail $THISNODE admin $ADMINH
+	bofs bolixoapi recordemail $THISNODE admin $ADMINH
 else
 	echo Invalid command
 fi

@@ -108,8 +108,9 @@ static void bolixod_test (CONNECT_INFO &con_sess, string &msg, bool &sessiond_ok
 }
 </mod>
 <mod>
-static void bolixod_getpubkey (bool use_ssl, const char *hostname, const char *nodename)
+static void bolixod_getpubkey (bool use_ssl, const char *hostname, const char *nodename, string &msg)
 {
+	glocal string *msg = &msg;
 	glocal const char *nodename = nodename;
 	CONNECT_HTTP_INFO con;
 	con.use_ssl = use_ssl;
@@ -123,25 +124,30 @@ static void bolixod_getpubkey (bool use_ssl, const char *hostname, const char *n
 	}
 	<call webapi_systempubkey>(con);
 	<f ok>
-		if (pubkey[0] != '\0'){
+		if (internal_error){
+			*glocal.msg = "internal_error webapi:systempubkey";
+		}else if (pubkey[0] != '\0'){
 			if (sql_action("update nodes set created=now(),pub_key='%s' where nodename='%s'"
 				,pubkey,glocal.nodename)==-1){
+				*glocal.msg = "Internal error, inserting node pubkey";
 				tlmp_error ("Internal error, inserting node pubkey\n");
 			}
 		}else{
+			*glocal.msg = string_f("No pubkey for nodename %s",glocal.nodename);
 			tlmp_error ("No pubkey for nodename %s\n",glocal.nodename);
 		}
 	</f>
 	</call>
 }
 </mod>
-static void bolixod_getpubkey (const char *nodename)
+static void bolixod_getpubkey (const char *nodename, string &msg)
 {
 	if (strncasecmp(nodename,"http://",7)==0){
-		bolixod_getpubkey(false,nodename+7,nodename);
+		bolixod_getpubkey(false,nodename+7,nodename,msg);
 	}else if (strncasecmp(nodename,"https://",8)==0){
-		bolixod_getpubkey(true,nodename+8,nodename);
+		bolixod_getpubkey(true,nodename+8,nodename,msg);
 	}else{
+		msg = string_f ("getpubkey invalid nodename: %s",nodename);
 		tlmp_error ("getpubkey invalid nodename: %s\n",nodename);
 	}
 }
@@ -222,7 +228,6 @@ static int bolixod_validnode(const char *node, const char *domain)
 		if (pt != NULL){
 			name = string(start,pt-start);
 		}
-tlmp_error ("validnode name=:%s: domain=:%s:\n",name.c_str(),domain);
 		// The nodename must be a sub-domain of the domain. Not the domain itself.
 		start = name.c_str();
 		pt = strstr(start,domain);
@@ -235,6 +240,7 @@ tlmp_error ("validnode name=:%s: domain=:%s:\n",name.c_str(),domain);
 		}else if (pt[-1] != '.'){
 			ret = -1;
 		}
+		//tlmp_error ("validnode name=:%s: domain=:%s: ret=%d\n",name.c_str(),domain,ret);
 	}
 	return ret;
 }
@@ -466,7 +472,7 @@ int main (int argc, char *argv[])
 						<call sql_query>("select pub_key from nodes where nodename='%s'",nodename);
 						<f onerow>
 							if (row[0] == NULL){
-								bolixod_getpubkey (glocal.nodename);	
+								bolixod_getpubkey (glocal.nodename,glocal.msg);	
 							}else{
 								glocal.msg = "Already registered";
 							}
@@ -475,7 +481,7 @@ int main (int argc, char *argv[])
 							if (sql_action("insert into nodes (nodename) value ('%s')",glocal.nodename)==-1){
 								glocal.msg = "Internal error (nodes table)";
 							}else{
-								bolixod_getpubkey (glocal.nodename);	
+								bolixod_getpubkey (glocal.nodename,glocal.msg);	
 							}
 						</f>
 						</call>
