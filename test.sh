@@ -993,6 +993,8 @@ elif [ "$1" = "lxc0-bolixod" ]; then # prod:
 	export LANG=eng
 	$0 bolixod lxc0 &
 	sleep 1
+	# Force bolixod to make a resolver request
+	$0 bolixod-control help_connect xxx.bolixo.org 25 quit >/dev/null
 	$0 bolixod-control quit
 	mkdir -p /var/lib/lxc/bolixod
 	trli-lxc0 $LXC0USELINK \
@@ -1010,6 +1012,8 @@ elif [ "$1" = "lxc0-bod" ]; then # prod:
 	export LANG=eng
 	$0 bod lxc0 &
 	sleep 1
+	# Force bod to make a resolver request
+	$0 bod-control help_connect xxx.bolixo.org 25 quit >/dev/null
 	$0 bod-control quit
 	mkdir -p /var/lib/lxc/bod
 	trli-lxc0 $LXC0USELINK \

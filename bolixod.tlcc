@@ -381,7 +381,8 @@ int main (int argc, char *argv[])
 		<f receive>
 			debug_printf (D_PROTO,"receive line: %s\n",line);
 			HANDLE_INFO *c = (HANDLE_INFO*)info.data;
-			ERROR_PREFIX prefix ("c->type %d:",c->type);
+			static const char *tbtype[]={"none","control request","client request"};
+			ERROR_PREFIX prefix ("%s:",tbtype[c->type]);
 			if (c->type == TYPE_CONTROL){
 				<call bolixod_control>(this,c->req,line, info.linelen,endserver, endclient, no,c);
 				<f status>
@@ -429,6 +430,23 @@ int main (int argc, char *argv[])
 					bolixod_test (glocal.con_sess,msg,sessiond,db);
 					rep_test(msg,sessiond,db);
 					tlmp_error ("One error\n");
+				</f>
+				<f help_connect> // connectto port send
+					glocal const char *send = send;
+					glocal vector<string> lines;
+					// We want to test bolixod connectivity to the outside
+					<call tcpconnect>(connectto,port,5);
+					<f init>
+						sendf ("%s\n",glocal.send);
+					</f>
+					<f oneline>
+						glocal.lines.push_back(line);
+					</f>
+					<f fail>
+						glocal.lines.emplace_back(string_f("fail: %s\n",strerror(errno)));
+					</f>
+					</call>
+					rep_help_connect (glocal.lines);
 				</f>
 				<f invalid>
 					tlmp_error ("Control: Invalid command: %s\n",line);

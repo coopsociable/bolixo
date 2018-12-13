@@ -199,6 +199,7 @@ static const char *vs_writed = "writed";
 static const char *vs_sessiond = "sessiond";
 
 struct CONFIG {
+	string hostname;
 	string nodename;
 	string dirserver;
 	string org;
@@ -296,6 +297,11 @@ static void generateconfig (
 				fprintf (fout,"%s %srule %s %s ip2 443 %s webssl-fail%s 443\n",bk_control,prefix,s.c_str(),list,t.server.c_str(),source);
 				fprintf (fout,"%s setweight %s webssl-fail%s 80 1\n",bk_control,t.server.c_str(),source);
 				fprintf (fout,"%s setweight %s webssl-fail%s 443 1\n",bk_control,t.server.c_str(),source);
+				// bolixod and bod connect to webssl when bolixo.org runs on the same host
+				fprintf (fout,"%s rule %s bod ip2 443 %s webssl%s 443\n",bk_control,s.c_str(),t.server.c_str(),source);
+				fprintf (fout,"%s rule %s bod ip2 443 %s webssl-fail%s 443\n",bk_control,s.c_str(),t.server.c_str(),source);
+				fprintf (fout,"%s rule %s bolixod ip2 443 %s webssl%s 443\n",bk_control,s.c_str(),t.server.c_str(),source);
+				fprintf (fout,"%s rule %s bolixod ip2 443 %s webssl-fail%s 443\n",bk_control,s.c_str(),t.server.c_str(),source);
 			}
 			prefix = "a";
 		}
@@ -434,7 +440,7 @@ static void generateconfig (
 		fprintf (fout,"%s rule %s root unix %s/C-exim-%s.sock %s exim 25\n"
 			,bk_control,rootserver,sock_tests_dir,server,server);
 	}
-	fprintf (fout,"# rules to connect to internet to exim\n");
+	fprintf (fout,"# rules to connect the internet to exim\n");
 	for (auto s:servers){
 		prefix = "";
 		for (auto t:config.exims){
@@ -723,6 +729,7 @@ static void print_configs (
 	glocal string stopcompute;
 	glocal const char *dirserver = config.dirserver.c_str();
 	glocal const char *nodename = config.nodename.c_str();
+	glocal const char *hostname = config.hostname.c_str();
 	glocal const char *org = config.org.c_str();
 	<call savefile>("/tmp/bkstart.sh",false);
 	<f dowrite>
@@ -1053,9 +1060,10 @@ static void print_configs (
 					fprintf (fout,"#iptables -t nat -A OUTPUT -s %s -p tcp -j REDIRECT --to-port 8080\n",ip_exim);
 					fprintf (fout,"iptables -t nat -A POSTROUTING -o eth0 -s %s -j MASQUERADE\n",ip_exim);
 					fprintf (fout,"iptables -t nat -A POSTROUTING -o eth0 -s %s -j MASQUERADE\n",ip_bod);
+					fprintf (fout,"iptables -t nat -A POSTROUTING -o eth0 -s %s -j MASQUERADE\n",ip_bolixod);
 
 					fprintf (fout,"iptables --flush -t mangle\n");
-					#if 0
+					#if 1
 						fprintf (fout,"iptables -t mangle -X DIVERT\n");
 						fprintf (fout,"iptables -t mangle -N DIVERT\n");
 						fprintf (fout,"iptables -t mangle -A PREROUTING -p tcp -m socket --transparent -j DIVERT\n");
@@ -1066,7 +1074,9 @@ static void print_configs (
 						fprintf (fout,"iptables -t mangle -A OUTPUT --src %s -p tcp -j MARK --set-xmark 0x1/0xffffffff\n",ip_exim);
 						fprintf (fout,"iptables -t mangle -A OUTPUT --src %s -p tcp -j MARK --set-xmark 0x1/0xffffffff\n",ip_webssl);
 					#endif
-					#if 0
+					#if 1
+						// Used by the horizon to connect to internal services while
+						// using the original source IP (form the internet)
 						fprintf (fout,"iptables -t mangle -A DIVERT -j MARK --set-mark 1\n");
 						fprintf (fout,"iptables -t mangle -A DIVERT -j ACCEPT\n");
 						fprintf (fout,"ip rule add fwmark 1 lookup 100\n");
@@ -1165,7 +1175,7 @@ static void print_configs (
 							,blackhole_path,sock_dir,name);
 					</f>
 					</call>
-					lxc_config ("bolixod",ip_bolixod);
+					lxc_config ("bolixod",ip_bolixod,true);
 					lxc_status (project_path,"bolixod","bolixod",glocal.workers);
 					lxc_debug (project_path,"bolixod","bolixod",glocal.workers);
 				}
@@ -1266,9 +1276,9 @@ static void print_configs (
 							fprintf (fout," --mailfrom no-reply@bolixo.org");
 							fprintf (fout," --nodename %s",glocal.nodename);
 							if (glocal.devmode){
-								fprintf (fout," --forceaddr jack@dns.solucorp.qc.ca");
+								fprintf (fout," --forceaddr info@alpha.bolixo,org");
 							}else if (closeweb){
-								fprintf (fout," --forceaddr jack@dns.solucorp.qc.ca");
+								fprintf (fout," --forceaddr info@alpha.bolixo.org");
 							}
 							fprintf (fout,"\n");
 						}
@@ -1516,7 +1526,7 @@ static void print_configs (
 			for (auto s:glocal.config->webssls){
 				if (s.server == glocal.server){
 					static const char *tb[]={"webssl","webssl-fail"};
-					const char *ip = ip_webssl;
+					glocal const char *ip = ip_webssl;
 					for (auto w:tb){
 						mkdir (string_f("/var/lib/lxc/%s",w).c_str(),0755);
 						<call savefile>(string_f("/var/lib/lxc/%s/%s.init",w,w),false);
@@ -1526,9 +1536,10 @@ static void print_configs (
 						</f>
 						</call>
 						string startfile;	
-						<call lxc_start> (w,ip,startfile,"apache",48);
+						<call lxc_start> (w,glocal.ip,startfile,"apache",48);
 						<f insert>
 							fprintf (fout,"#!/bin/sh\n");
+							fprintf (fout,"echo %s %s >>/var/lib/lxc/%s/rootfs/etc/hosts\n",glocal.ip,glocal.hostname,name);
 							fprintf (fout,"cat <<-EOF >/var/lib/lxc/%s/rootfs/etc/httpd/conf.d/proxy.conf\n",name);
 							fprintf (fout,"DirectoryIndex index.hc\n");
 							fprintf (fout,"ProxyPass \"/index.hc\" \"http://192.168.4.1:9080/index.hc\"\n");
@@ -1548,11 +1559,31 @@ static void print_configs (
 							fprintf (fout,"ProxyPass \"/static.html\" \"http://192.168.4.1:9080/static.html\"\n");
 							fprintf (fout,"EOF\n");
 							if (!glocal.devmode && !preprodmode){
+								fprintf (fout,"if [ -f /etc/letsencrypt/live/%s/fullchain.pem ]; then\n",glocal.hostname);
 								fprintf (fout,"cat <<-EOF >/var/lib/lxc/%s/rootfs/etc/httpd/conf.d/redirect.conf\n",name);
 								fprintf (fout,"<VirtualHost *:80>\n");
-								fprintf (fout,"Redirect permanent / %s/\n",glocal.nodename);
+								fprintf (fout,"RewriteEngine On\n");
+								fprintf (fout,"RewriteCond %%{HTTPS} !=on\n");
+								// This checks to make sure the connection is not already HTTPS
+								fprintf (fout,"RewriteRule ^/?(.*) https://%%{SERVER_NAME}/$1 [R,L]\n");
+								//fprintf (fout,"Redirect permanent / %s/\n",glocal.nodename);
 								fprintf (fout,"</VirtualHost>\n");
 								fprintf (fout,"EOF\n");
+								fprintf (fout,"cat <<-EOF >/var/lib/lxc/%s/rootfs/etc/httpd/conf.d/hostssl.conf\n",name);
+								fprintf (fout,"<VirtualHost %s:443>\n",glocal.hostname);
+								fprintf (fout,"ServerName %s\n",glocal.hostname);
+								fprintf (fout,"SSLCertificateFile /etc/letsencrypt/live/%s/fullchain.pem\n",glocal.hostname);
+								fprintf (fout,"SSLCertificateKeyFile /etc/letsencrypt/live/%s/privkey.pem\n",glocal.hostname);
+								fprintf (fout,"Include /etc/letsencrypt/options-ssl-apache.conf\n");
+								fprintf (fout,"</VirtualHost>\n");
+								fprintf (fout,"EOF\n");
+								fprintf (fout,"mkdir -p /var/lib/lxc/%s/rootfs/etc/letsencrypt/live/%s\n",name,glocal.hostname);
+								fprintf (fout,"cp /etc/letsencrypt/options-ssl-apache.conf /var/lib/lxc/%s/rootfs/etc/letsencrypt\n",name);
+								fprintf (fout,"cp /etc/letsencrypt/live/%s/fullchain.pem /var/lib/lxc/%s/rootfs/etc/letsencrypt/live/%s\n"
+									,glocal.hostname,name,glocal.hostname);
+								fprintf (fout,"cp /etc/letsencrypt/live/%s/privkey.pem /var/lib/lxc/%s/rootfs/etc/letsencrypt/live/%s\n"
+									,glocal.hostname,name,glocal.hostname);
+								fprintf (fout,"fi\n");
 							}
 							fprintf (fout,"FILE=/etc/httpd/conf.d/le_tls_sni_01_cert_challenge.conf\n");
 							fprintf (fout,"ROOT=/var/lib/lxc/%s/rootfs\n",name);
@@ -1569,8 +1600,8 @@ static void print_configs (
 						string stopcmd;
 						lxc_stop (w,NULL,NULL,-1,stopcmd);
 						glocal.stopwebssl += string_f("%s\n",stopcmd.c_str());
-						lxc_config (w,glocal.nodename,ip,true);
-						ip = ip_webssl_fail;
+						lxc_config (w,glocal.hostname,glocal.ip,true);
+						glocal.ip = ip_webssl_fail;
 					}
 				}
 			}
@@ -1685,9 +1716,9 @@ static void print_configs (
 						fprintf (fout,"DIRPRIVATE=/var/lib/lxc/%s/rootfs/etc/pki/tls/private\n",name);
 						fprintf (fout,"mkdir -p $DIRCERTS $DIRPRIVATE\n");
 						fprintf (fout,"test -f /etc/letsencrypt/live/%s/cert.pem && cp /etc/letsencrypt/live/%s/cert.pem $DIRCERTS/exim.pem\n"
-							,glocal.nodename,glocal.nodename);
+							,glocal.hostname,glocal.hostname);
 						fprintf (fout,"test -f /etc/letsencrypt/live/%s/privkey.pem && cp /etc/letsencrypt/live/%s/privkey.pem $DIRPRIVATE/exim.pem\n"
-							,glocal.nodename,glocal.nodename);
+							,glocal.hostname,glocal.hostname);
 					</f>
 					</call>
 					fprintf (glocal.all_fout,"%s\n",startfile.c_str());
@@ -1876,6 +1907,7 @@ int main (int argc, char *argv[])
 		}else{
 			char hostname[200];
 			if (gethostname(hostname,sizeof(hostname)-1)!=-1){
+				glocal.config.hostname = hostname;
 				glocal.config.nodename = string_f("http%s://%s",preprodmode || glocal.devmode ? "" : "s",hostname);
 			}else{
 				tlmp_error (MSG_U(E_HOSTNAME,"Can't get the this server hostname (%s)\n"),strerror(errno));
@@ -1936,6 +1968,8 @@ int main (int argc, char *argv[])
 						glocal.config.dirserver = tb[1];
 					}else if (strcmp(word,"nodename")==0 && n == 2){
 						glocal.config.nodename = tb[1];
+					}else if (strcmp(word,"hostname")==0 && n == 2){
+						glocal.config.hostname = tb[1];
 					}else if (strcmp(word,"org")==0 && n == 2){
 						glocal.config.org = tb[1];
 					}else{

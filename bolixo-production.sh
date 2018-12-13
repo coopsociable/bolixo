@@ -60,7 +60,7 @@ elif [ "$1" = "files" ] ; then	# db: Access files database
 elif [ "$1" = "users" ] ; then # db: Access users database
 	mysql -S /var/lib/lxc/bosqlduser/rootfs/var/lib/mysql/mysql.sock $DBNAMEU
 elif [ "$1" = "bolixo" ] ; then # db: Access bolixo (directory) database
-	mysql -S /var/lib/lxc/bosqldbolixo/rootfs/var/lib/mysql/mysql.sock $DBNAMEU
+	mysql -S /var/lib/lxc/bosqldbolixo/rootfs/var/lib/mysql/mysql.sock $DBNAMEBOLIXO
 elif [ "$1" = "createdb" ] ; then # db: Access trliusers database
 	if [ "$MYSQL_PWD" = "" ] ; then
 		echo -n "mysql root password : "
@@ -457,7 +457,20 @@ elif [ "$1" = "calltest" ] ; then # A: Call /usr/lib/bolixo-test.sh
 elif [ "$1" = "certificate-install" ]; then # prod: Install the SSL certificate
 	# Make sure the special /root/bin/apachectl is used
 	export PATH=/root/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin
+	NODENAME=$2
+	if [ "$NODENAME" = "" ] ; then
+		NODENAME=`echo $THISNODE | sed 's.//. .' | (read a b; echo $b)`
+	fi
+	ADD=/etc/httpd/conf.d/add.conf
+	cat <<-EOF >$ADD
+	<VirtualHost *:80>
+		ServerAdmin admin@bolixo.org
+		ServerName $NODENAME
+		DocumentRoot /var/lib/lxc/webssl/rootfs/var/www/html
+	</VirtualHost>
+	EOF
 	certbot --apache certonly
+	echo rm -f $ADD
 elif [ "$1" = "certificate-renew" ] ; then # prod: Renew the SSL certificate
 	# Do a backup
 	cd /etc
@@ -517,7 +530,7 @@ elif [ "$1" = "install-sequence" ] ; then # config: Interative sequence to start
 	step syslog-clear
 	step syslog-reset
 	step test-system
-elif [ "$1" = "install-sequence-publis" ] ; then # Config: Complete install-sequence once everything is running
+elif [ "$1" = "install-sequence-publish" ] ; then # Config: Complete install-sequence once everything is running
 	step registernode
 	echo Register admin for this node in the directory
 	ADMINH=admin@`hostname`
