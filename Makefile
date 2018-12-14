@@ -184,6 +184,7 @@ install: msg.eng msg.fr
 	mkdir -p $(RPM_BUILD_ROOT)/var/www/html
 	mkdir -p $(RPM_BUILD_ROOT)/var/log/bolixo
 	mkdir -p $(RPM_BUILD_ROOT)/var/lib/bolixo
+	mkdir -p $(RPM_BUILD_ROOT)/var/lib/bolixod
 	mkdir -p $(RPM_BUILD_ROOT)/etc/init.d
 	mkdir -p $(RPM_BUILD_ROOT)/usr/share/bolixo
 	install -m644 data/secrets.admin $(RPM_BUILD_ROOT)/usr/share/bolixo/secrets.admin
