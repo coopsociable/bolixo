@@ -68,6 +68,10 @@ elif [ "$1" = "createdb" ] ; then # db: Access trliusers database
 		export MYSQL_PWD=$pass
 	fi
 	/usr/lib/bolixo-test.sh createdb
+	if [ -d /var/lib/lxc/bosqldbolixo/rootfs ] ; then
+		echo createbolixodb
+		/usr/lib/bolixo-test.sh createbolixodb
+	fi
 elif [ "$1" = "createsqluser" ] ; then # db: Configure sql user
 	unset MYSQL_PWD
 	/usr/lib/bolixo-test.sh createsqlusers

@@ -15,6 +15,7 @@
 #include <trlitool.h>
 #include <trlitool_mon.h>
 #include "bolixo.m"
+#include "bolixo.h"
 #include "instrument.h"
 
 using namespace std;
@@ -40,6 +41,28 @@ struct HANDLE_INFO: public ARRAY_OBJ{
 #define bo_sessiond_client_getsessioninfovars_NOTNEED
 #define bo_sessiond_client_setvar_NOTNEED
 #include "proto/bo-sessiond_client.protoch"
+
+#define bolixod_client_registernode_NOTNEED
+#define bolixod_client_nodelogout_NOTNEED
+#define bolixod_client_nodelogin_NOTNEED
+#define bolixod_client_nodepass_NOTNEED
+#define bolixod_client_publish_NOTNEED
+#define bolixod_client_remove_NOTNEED
+#define bolixod_client_recordemail_NOTNEED
+#define bolixod_client_getnode_NOTNEED
+#define bolixod_client_newacct_findnode_NOTNEED
+#define bolixod_client_pub_search_NOTNEED
+#define bolixod_client_pub_list_NOTNEED
+#define bolixod_client_readfile_NOTNEED
+#include "proto/bolixod_client.protoch"
+
+#define bo_keysd_control_genkey_NOTNEED
+#define bo_keysd_control_setpassphrase_NOTNEED
+#define bo_keysd_control_sign_NOTNEED
+#define bo_keysd_control_quit_NOTNEED
+#define bo_keysd_control_debug_NOTNEED
+#define bo_keysd_control_debugfile_NOTNEED
+#include "proto/bo-keysd_control.protoch"
 
 #include "proto/bo-mon_control.protoh"
 
@@ -97,7 +120,7 @@ static int test_system(vector<string> &out)
 </mod>
 
 <mod>
-static int test_loop (const vector<string> &socks, const char *secret, bool debug, vector<string> &out)
+static int test_loop (const vector<string> &socks, const char *bod_secret, const char *bolixod_secret, bool debug, vector<string> &out)
 {
 	glocal int ret = 0;
 	glocal vector<string> *out = &out;
@@ -109,10 +132,10 @@ static int test_loop (const vector<string> &socks, const char *secret, bool debu
 		glocal const char *path = s.c_str();
 		CONNECT_INFO con;
 		con.port = glocal.path;
-		con.secret = secret;
 		//out.push_back(string_f("Try to connect to %s",glocal.path));
 		if (strstr(glocal.path,"-sessiond")!=NULL){
 			if (strstr(glocal.path,"-admin")!=NULL){
+				con.secret = bod_secret;
 				<call bo_sessiond_client_test>(con);
 				<f ok>
 					glocal.out->push_back(string_f("%s%s: internal_error=%d success=%d"
@@ -122,8 +145,47 @@ static int test_loop (const vector<string> &socks, const char *secret, bool debu
 				</f>
 				</call>
 			}
+		}else if (strstr(glocal.path,"-bolixod")!=NULL){
+			con.secret = bolixod_secret;
+			<call bolixod_client_test>(con);
+			<f ok>
+				const char *marker = ok_marker;
+				if (internal_error || !sessiond || !db){
+					glocal.ret = -1;
+					marker = err_marker;
+				}
+				glocal.out->emplace_back(string_f("%s%s: internal_error=%d sessiond=%d db=%d msg=%s"
+					,marker,glocal.path,internal_error,sessiond,db,msg));
+			</f>
+			</call>
+		}else if (strstr(glocal.path,"-keysd")!=NULL){
+			con.secret = "";
+			<call bo_keysd_control_status>(con);
+			<f ok>
+				const char *msg = "";
+				const char *marker = ok_marker;
+				bool found = false;
+				for (auto l:lines){
+					if (strcmp(l,"passphrase set")==0){
+						found = true;
+						break;
+					}
+				}
+				if (internal_error){
+					glocal.ret = -1;
+					marker = err_marker;
+				}else if (!found){
+					glocal.ret = -1;
+					marker = err_marker;
+					msg = "passphrase NOT set";
+				}
+				glocal.out->emplace_back(string_f("%s%s: internal_error=%d %s "
+					,marker,glocal.path,internal_error,msg));
+			</f>
+			</call>
 		}else if (strstr(glocal.path,"-bod")!=NULL){
 			if (strstr(glocal.path,"-admin")!=NULL){
+				con.secret = bod_secret;
 				<call bod_admin_test>(con);
 				<f ok>
 					if (internal_error){
@@ -228,7 +290,8 @@ int main (int argc, char *argv[])
 	glocal const char *admins_conf = "/etc/bolixo/admins.conf";
 	glocal const char *control = "/var/run/blackhole/bo-mon.sock";
 	glocal const char *sock_dir = NULL;
-	glocal const char *secret = NULL;
+	glocal const char *bod_secret = NULL;
+	glocal const char *bolixod_secret = NULL;
 	glocal bool verbose = false;
 	glocal bool daemon = false;
 	glocal const char *user = "trli";
@@ -239,7 +302,8 @@ int main (int argc, char *argv[])
 	<f init>
 		setproginfo ("bo-mon",VERSION,MSG_U(I_BO_MON,"Monitoring service for bolixo"));
 		setarg ('d',"sock_dir","Directoy holding the unix socket to connect to all services",glocal.sock_dir,true);
-		setarg (' ',"secret","Secret needed to connect to bod",glocal.secret,true);
+		setarg (' ',"bod-secret","Secret needed to connect to bod",glocal.bod_secret,true);
+		setarg (' ',"bolixod-secret","Secret needed to connect to bolixod",glocal.bolixod_secret,true);
 		setarg ('v',"verbose","Display more information",glocal.verbose,false);
 		setarg (' ',"control","Unix socket path",glocal.control,false);
 		setarg (' ',"alarmcmd","Command used to send an alarm",glocal.command,false);
@@ -282,7 +346,7 @@ int main (int argc, char *argv[])
 			tlmp_error ("No socket found in directory %s\n",glocal.sock_dir);
 		}else if (!glocal.daemon){
 			vector<string> out;
-			glocal.ret = test_loop (glocal.socks,glocal.secret,false,out);
+			glocal.ret = test_loop (glocal.socks,glocal.bod_secret,glocal.bolixod_secret,false,out);
 			if (glocal.verbose) for (auto &x:out) printf ("%s\n",x.c_str());
 		}else{
 			glocal unsigned long nbtest = 0;
@@ -358,7 +422,7 @@ int main (int argc, char *argv[])
 					</f>
 					<f test>
 						vector<string> out;
-						if (test_loop(glocal.socks,glocal.secret,debug,out)==-1){
+						if (test_loop(glocal.socks,glocal.bod_secret,glocal.bolixod_secret,debug,out)==-1){
 							rep_test (false,out);
 						}else{
 							rep_test (true,out);
@@ -366,7 +430,7 @@ int main (int argc, char *argv[])
 					</f>
 					<f testmail>
 						vector<string> out;
-						int ok = test_loop(glocal.socks,glocal.secret,false,out);
+						int ok = test_loop(glocal.socks,glocal.bod_secret,glocal.bolixod_secret,false,out);
 						out.insert (out.begin(),string_f("ok=%d",ok == -1 ? 0 : 1));
 						int ret = trli_mon_sendmail (glocal.mailserver,glocal.mailport,glocal.admins_conf,"test email monitoring",out);
 						rep_testmail (ret == -1 ? false:true);
@@ -410,7 +474,7 @@ int main (int argc, char *argv[])
 							if (pid == (pid_t)0){
 								close (tb[0]);
 								vector<string> out;
-								int ok = test_loop(glocal.socks,glocal.secret,false,out);
+								int ok = test_loop(glocal.socks,glocal.bod_secret,glocal.bolixod_secret,false,out);
 								trli_mon_sendline (tb[1],string_f("ok=%d",ok));
 								for (auto l:out) trli_mon_sendline(tb[1],l);
 								_exit (0);
