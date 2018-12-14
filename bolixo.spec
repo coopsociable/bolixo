@@ -73,6 +73,7 @@ make install
 /var/www/html/admin.jpg
 /usr/lib/bolixo-test.sh
 /usr/sbin/bolixo-production
+/usr/sbin/bo
 /etc/bolixo/http_check.conf
 /etc/init.d/bolixoserv
 /var/www/html/about.html

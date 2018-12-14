@@ -1078,6 +1078,7 @@ static void print_configs (
 				const char *iptables_sh = glocal.devmode ? "/tmp/iptables.sh" : "/root/iptables.sh";
 				<call savefile>(iptables_sh,false);
 				<f dowrite>
+					glocal FILE *fout = fout;
 					fprintf (fout,"#!/bin/sh\n");
 					fprintf (fout,"iptables --flush\n");
 					fprintf (fout,"iptables --flush -t nat\n");
@@ -1109,6 +1110,19 @@ static void print_configs (
 						fprintf (fout,"ip route add local 0.0.0.0/0 dev lo table 100\n");
 						fprintf (fout,"echo 0 >/proc/sys/net/ipv4/conf/lo/rp_filter\n");
 					#endif
+					glocal bool onerule = false;
+					<call loadfile>("/root/sshd.lst",true);
+					<f missing>
+					</f>
+					<f oneline>
+						glocal.onerule = true;
+						fprintf (glocal.fout,"iptables -A INPUT -s %s -p tcp --dport 22 -j ACCEPT\n",line);
+						return 0;
+					</f>
+					</call>
+					if (glocal.onerule){
+						fprintf (glocal.fout,"iptables -A INPUT -s 0.0.0.0/0 -p tcp --dport 22 -j REJECT\n");
+					}
 
 					return 0;
 				</f>
@@ -1588,11 +1602,17 @@ static void print_configs (
 								fprintf (fout,"if [ -f /etc/letsencrypt/live/%s/fullchain.pem ]; then\n",glocal.hostname);
 								fprintf (fout,"cat <<-EOF >/var/lib/lxc/%s/rootfs/etc/httpd/conf.d/redirect.conf\n",name);
 								fprintf (fout,"<VirtualHost *:80>\n");
-								fprintf (fout,"RewriteEngine On\n");
-								fprintf (fout,"RewriteCond %%{HTTPS} !=on\n");
-								// This checks to make sure the connection is not already HTTPS
-								fprintf (fout,"RewriteRule ^/?(.*) https://%%{SERVER_NAME}/$1 [R,L]\n");
-								//fprintf (fout,"Redirect permanent / %s/\n",glocal.nodename);
+								#if 1
+									fprintf (fout,"RewriteEngine On\n");
+									fprintf (fout,"RewriteCond %%{HTTPS} !=on\n");
+									// This checks to make sure the connection is not already HTTPS
+									fprintf (fout,"RewriteRule ^/?(.*) https://%%{SERVER_NAME}/$1 [R,L]\n");
+								#else
+									static const char *tb[]={"","index.hc","bolixoapi.hc","bolixo.hc","webapi.hc"};
+									for (auto f:tb){
+										fprintf (fout,"Redirect permanent /%s %s/%s\n",f,glocal.nodename,f);
+									}
+								#endif
 								fprintf (fout,"</VirtualHost>\n");
 								fprintf (fout,"EOF\n");
 								fprintf (fout,"cat <<-EOF >/var/lib/lxc/%s/rootfs/etc/httpd/conf.d/hostssl.conf\n",name);
@@ -1601,6 +1621,8 @@ static void print_configs (
 								fprintf (fout,"SSLCertificateFile /etc/letsencrypt/live/%s/fullchain.pem\n",glocal.hostname);
 								fprintf (fout,"SSLCertificateKeyFile /etc/letsencrypt/live/%s/privkey.pem\n",glocal.hostname);
 								fprintf (fout,"Include /etc/letsencrypt/options-ssl-apache.conf\n");
+								fprintf (fout,"ErrorLog logs/ssl_error_log\n");
+								fprintf (fout,"TransferLog logs/ssl_access_log\n");
 								fprintf (fout,"</VirtualHost>\n");
 								fprintf (fout,"EOF\n");
 								fprintf (fout,"mkdir -p /var/lib/lxc/%s/rootfs/etc/letsencrypt/live/%s\n",name,glocal.hostname);
