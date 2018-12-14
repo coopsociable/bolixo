@@ -83,11 +83,13 @@ struct HANDLE_INFO: public ARRAY_OBJ{
 
 // Some tests to show everyting is connected
 <mod>
-static void bolixod_test (CONNECT_INFO &con_sess, string &msg, bool &sessiond_ok, bool &db_ok)
+static void bolixod_test (CONNECT_INFO &con_sess, string &msg, bool &sessiond_ok, bool &db_ok, bool &fsok)
 {
 	glocal string msg;
 	glocal bool sessiond_ok = false;
 	glocal bool db_ok = false;
+	glocal bool fsok = false;
+
 	<call bo_sessiond_admin_test>(con_sess);
 	<f ok>
 		if (!success){
@@ -102,8 +104,17 @@ static void bolixod_test (CONNECT_INFO &con_sess, string &msg, bool &sessiond_ok
 		glocal.db_ok = true;
 	</f>
 	</call>
+	static const char *testfile = "/var/lib/bolixod/test";
+	<call savefile>(testfile,false);
+	<f dowrite>
+		glocal.fsok = true;
+		return 0;
+	</f>
+	</call>
+	unlink (testfile);
 	sessiond_ok = glocal.sessiond_ok;
 	db_ok = glocal.db_ok;
+	fsok = glocal.fsok;
 	msg = glocal.msg;
 }
 </mod>
@@ -432,9 +443,9 @@ int main (int argc, char *argv[])
 				</f>
 				<f test>
 					string msg;
-					bool sessiond,db;
-					bolixod_test (glocal.con_sess,msg,sessiond,db);
-					rep_test(msg,sessiond,db);
+					bool sessiond,db,fsok;
+					bolixod_test (glocal.con_sess,msg,sessiond,db,fsok);
+					rep_test(msg,sessiond,db,fsok);
 					tlmp_error ("One error\n");
 				</f>
 				<f help_connect> // connectto port send
@@ -924,9 +935,9 @@ int main (int argc, char *argv[])
 				</f>
 				<f test>
 					string msg;
-					bool sessiond,db;
-					bolixod_test (glocal.con_sess,msg,sessiond,db);
-					rep_test(msg,sessiond,db);
+					bool sessiond,db,fsok;
+					bolixod_test (glocal.con_sess,msg,sessiond,db,fsok);
+					rep_test(msg,sessiond,db,fsok);
 				</f>
 				<f invalid>
 					tlmp_error ("Client: Invalid command: %s\n",line);

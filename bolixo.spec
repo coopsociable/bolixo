@@ -80,6 +80,7 @@ make install
 /var/www/html/robots.txt
 /var/log/bolixo
 %attr(-,bolixo,bolixo)/var/lib/bolixo
+%attr(-,bolixo,bolixo)/var/lib/bolixod
 
 %clean
 if [ "$RPM_BUILD_ROOT" != "" ] ; then
