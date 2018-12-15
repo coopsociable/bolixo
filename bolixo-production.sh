@@ -504,7 +504,7 @@ elif [ "$1" = "install-required" ] ; then # config: install required packages
 	echo dnf install lxc lxc-templates \
 		gd \
 		mariadb-server mariadb-connector-c boost-date-time \
-		httpd \
+		httpd mod_ssl \
 		libvirt-daemon libvirt-daemon-driver-network \
 		libvirt-daemon-config-network libvirt-client \
 		libvirt-daemon-driver-qemu bridge-utils \
