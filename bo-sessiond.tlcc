@@ -67,13 +67,20 @@ struct SESSION_INFO{
 		stats.nbacc = 0;
 		admin = false;
 	}
-	SESSION_INFO (unsigned _userid, const string &_userid_str, const char *_name, const char *_email, const char *_lang, bool _admin){
+	SESSION_INFO (unsigned _userid,
+		const string &_userid_str,
+		const char *_name,
+		const char *_email,
+		const char *_lang,
+		bool _admin,
+		unsigned _dateformat){
 		userid = _userid;
 		userid_str = _userid_str;
 		name = _name;
 		email = _email;
 		lang = _lang;
 		admin = _admin;
+		dateformat = _dateformat;
 		stats.lastvisit = time(NULL);
 		stats.nbacc=1;
 	}
@@ -152,7 +159,7 @@ int main (int argc, char *argv[])
 			if (fin != NULL){
 				<call session_log>(fin);
 				<f session>
-					SESSION_INFO sess(userid, userid_str, name, email, lang, admin);
+					SESSION_INFO sess(userid, userid_str, name, email, lang, admin, dateformat);
 					sess.stats.lastvisit = lastvisit;
 					sess.stats.nbacc = nbacc;
 					for (auto &v:vars) sess.vars.push_back(v);
@@ -227,6 +234,7 @@ int main (int argc, char *argv[])
 						for (auto &s:glocal.sessions){
 							session_log_session(fout,s.first,s.second.userid,s.second.userid_str
 								,s.second.name,s.second.email,s.second.lang,s.second.admin
+								,s.second.dateformat
 								,s.second.stats.lastvisit,s.second.stats.nbacc,s.second.vars);
 						}
 						return 0;
@@ -417,7 +425,7 @@ int main (int argc, char *argv[])
 					if (it == glocal.sessions.end()){
 						tlmp_error ("setsession: %s does not exist\n",sessionid);
 					}else{
-						it->second = SESSION_INFO(userid,userid_str,name,email,lang,admin);
+						it->second = SESSION_INFO(userid,userid_str,name,email,lang,admin,dateformat);
 					}
 				</f>
 				<f setlang>
