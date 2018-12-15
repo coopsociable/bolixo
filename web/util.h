@@ -107,3 +107,4 @@ std::string util_format_shortmsg (PARAM_STRING txt, unsigned nblines);
 std::string util_format_shortmsg (PARAM_STRING txt);
 std::string util_readsecret();
 void util_setdirserver(PARAM_STRING dir);
+const char *util_getdirserver();
