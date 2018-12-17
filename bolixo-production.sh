@@ -508,7 +508,8 @@ elif [ "$1" = "install-required" ] ; then # config: install required packages
 		libvirt-daemon libvirt-daemon-driver-network \
 		libvirt-daemon-config-network libvirt-client \
 		libvirt-daemon-driver-qemu bridge-utils \
-		time strace exim vim-enhanced certbot python3-certbot-apache
+		time strace exim vim-enhanced certbot python3-certbot-apache \
+		bash-completion
 elif [ "$1" = "generate-system-pubkey" ] ; then # config: Generate the node public key
 	/usr/lib/bolixo-test.sh generate-system-pubkey
 elif [ "$1" = "registernode" ] ; then # config: Register this node in the directory
