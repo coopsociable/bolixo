@@ -187,6 +187,7 @@ install: msg.eng msg.fr
 	mkdir -p $(RPM_BUILD_ROOT)/var/lib/bolixod
 	mkdir -p $(RPM_BUILD_ROOT)/etc/init.d
 	mkdir -p $(RPM_BUILD_ROOT)/usr/share/bolixo
+	mkdir -p $(RPM_BUILD_ROOT)/etc/bash_completion.d
 	install -m644 data/secrets.admin $(RPM_BUILD_ROOT)/usr/share/bolixo/secrets.admin
 	install -m644 data/secrets.client $(RPM_BUILD_ROOT)/usr/share/bolixo/secrets.client
 	install -m644 data/manager.conf.ref $(RPM_BUILD_ROOT)/usr/share/bolixo/manager.conf
@@ -195,6 +196,8 @@ install: msg.eng msg.fr
 	install -m644 README $(RPM_BUILD_ROOT)/usr/share/bolixo/README
 	install -m755 bolixo-production.sh $(RPM_BUILD_ROOT)/usr/sbin/bolixo-production
 	ln -s bolixo-production $(RPM_BUILD_ROOT)/usr/sbin/bo
+	install -m755 bo-complete $(RPM_BUILD_ROOT)/usr/lib/bo-complete
+	install -m644 bash_complete $(RPM_BUILD_ROOT)/etc/bash_completion.d/bolixo
 	install -m755 test.sh $(RPM_BUILD_ROOT)/usr/lib/bolixo-test.sh
 	install -m755 bod $(RPM_BUILD_ROOT)/usr/sbin/bod
 	install -m755 bod-client $(RPM_BUILD_ROOT)/usr/sbin/bod-client

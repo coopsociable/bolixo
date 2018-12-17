@@ -80,6 +80,8 @@ make install
 /var/www/html/favicon.ico
 /var/www/html/robots.txt
 /var/log/bolixo
+/etc/bash_completion.d/bolixo
+/usr/lib/bo-complete
 %attr(-,bolixo,bolixo)/var/lib/bolixo
 %attr(-,bolixo,bolixo)/var/lib/bolixod
 

@@ -1270,6 +1270,7 @@ elif [ "$1" = "lxc0-exim" ]; then # prod:
 		echo killall exim
 		exit 1
 	fi
+	# /bin/bash is needed so lxc-attach works (eximrm and mailq)
 	echo exim
 	mkdir -p /var/lib/lxc/exim
 	/usr/sbin/trli-lxc0 $LXC0USELINK \
@@ -1277,6 +1278,7 @@ elif [ "$1" = "lxc0-exim" ]; then # prod:
 		--filelist /var/lib/lxc/exim/exim.files \
 		-i /usr/sbin/trli-init \
 		-l $LOG \
+		-e /bin/bash \
 		-d /var/spool/exim \
 		-d /usr/lib64/exim/*/lookups \
 		-n exim -p /usr/sbin/exim  >/var/lib/lxc/exim/exim-lxc0.sh
