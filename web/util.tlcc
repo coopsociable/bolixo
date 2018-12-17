@@ -162,9 +162,15 @@ int util_getsessioninfo (CONNECT_INFO &con, CONNECT_INFO &con_sess,string &sessi
 }
 </mod>
 #endif
+static float small_size=0.9;
+static unsigned draw_tab_height()
+{
+	unsigned height = tlmpweb_fontsize()*1.3*small_size;
+	if (height < 20) height = 20;
+	return height;
+}
 unsigned draw_tab (
 	unsigned width,		// TAB width or 0 (computed from the title)
-	unsigned height,
 	const char *fill,	// Fill color
 	const char *fill_in, 	// Fill color for mouseover
 	bool close,		// Close the path or not
@@ -173,10 +179,11 @@ unsigned draw_tab (
 	PARAM_STRING href,	// URL when the TAB is clicked
 	PARAM_STRING xref)	// URL when the X is clicked
 {
+	unsigned height = draw_tab_height();
 	static STATIC_ID alloc_id;
 	unsigned id = alloc_id++;
 	if (width == 0){
-		width = tlmpweb_displaylen(title);
+		width = tlmpweb_displaylen(title,small_size);	// See the .small css entry above
 		if (drawx){
 			width += 10+5+15;
 		}else{
@@ -200,65 +207,70 @@ unsigned draw_tab (
 	htmlprintf ("H%u\n",width);
 	if (close) htmlout ("z\n");
 	htmlout ("\"/>\n");
-	htmlprintf ("\t<text x=10 y=%u class=small>%s</text>\n",height-10,title);
+	htmlprintf ("\t<text x=10 y=%u class=small>%s</text>\n",height-tlmpweb_fontsize()/4,title);
 	htmlout ("</a>\n");
 	if (drawx){
 		unsigned x=width-20;
-		unsigned y=height-10;
 		htmlprintf ("<a href='#' onclick=formsubmit('%s') onmouseover=changefill('tabxrect%u','#D0D0D0') onmouseout=changefill('tabxrect%u','none')>\n",xref.ptr,id,id);
 		// First rect is there to make the a tag larger. fill=none does not work. So we have to give it the same color
 		// as the tab and changefill2 will change the color of the tab and this rect.
 		// The second rect is used to highlit the X
-		htmlprintf ("<rect id='tabsrect%u' x=%u y=%u width=18 height=25 fill=%s />\n",id,x-5,2,fill);
-		htmlprintf ("<rect id='tabxrect%u' x=%u y=%u rx=2 ry=2 width=14 height=14 fill=none />\n",id,x-3,y-11);
-		htmlprintf ("<path stroke=black stroke-width=1 d='M%u,%u l8,8 M%u,%u l8,-8'/>\n",x,y-8,x,y);
+		htmlprintf ("<rect id='tabsrect%u' x=%u y=%u width=18 height=%u fill=%s />\n",id,x-5,2,height-4,fill);
+		unsigned h14 = height-8;
+		unsigned h8=height/3;
+		htmlprintf ("<rect id='tabxrect%u' x=%u y=%u rx=2 ry=2 width=%u height=%u fill=none />\n",id,x-3,2,h14,height-4);
+		htmlprintf ("<path stroke=black stroke-width=1 d='M%u,%u l%u,%u M%u,%u l%u,-%u'/>\n",x,height/2-h8/2,h8,h8,x,height/2+h8/2,h8,h8);
 		htmlout ("</a>\n");
 	}
 	htmlout ("</svg>\n");
 	return width;
 }
 // Same thing with no X
-unsigned draw_tab (unsigned width, unsigned height, const char *fill, const char *fill_in, bool close, const char *title, PARAM_STRING href)
+unsigned draw_tab (unsigned width, const char *fill, const char *fill_in, bool close, const char *title, PARAM_STRING href)
 {
-	return draw_tab (width,height,fill,fill_in,close,title,false,href,"");
+	return draw_tab (width,fill,fill_in,close,title,false,href,"");
 }
 void draw_left_arrow(bool visible, PARAM_STRING xref)
 {
-	htmlout ("<svg width=20 height=30>\n");
+	unsigned height = draw_tab_height();
+	htmlprintf ("<svg width=20 height=%u>\n",height);
 	if (visible){
-		static unsigned id=0;
+		static STATIC_ID alloc_id;
+		unsigned id=alloc_id++;
 		htmlprintf ("<a href='#' onclick=formsubmit('%s') onmouseover=changefill('larrow%u','#D0D0D0') onmouseout=changefill('larrow%u','none')>\n",xref.ptr,id,id);
-		htmlprintf ("<rect id='larrow%u' x=2 y=2 rx=2 ry=2 width=16 height=26 fill=none />\n",id);
-		id++;
+		htmlprintf ("<rect id='larrow%u' x=2 y=2 rx=2 ry=2 width=16 height=%u fill=none />\n",id,height-4);
 	}
 	const char *color = visible ? "black" : "white";
-	htmlprintf ("<path fill=%s stroke=%s stroke-width=1 d='M4,15 L12,8 L12,22 z' />\n",color,color);
+	unsigned h2=height/2;
+	htmlprintf ("<path fill=%s stroke=%s stroke-width=1 d='M4,%u L12,%u L12,%u z' />\n",color,color,h2,h2-8,h2+8);
 	if (visible) htmlout ("</a>\n");
 	// Always put the underline
-	htmlout ("<path stroke=black stroke-width=1 d='M0,30 l20,0'/>\n");
+	htmlprintf ("<path stroke=black stroke-width=1 d='M0,%u l20,0'/>\n",height);
 	htmlout ("</svg>\n");	
 }
 void draw_right_arrow(bool visible, PARAM_STRING xref)
 {
-	htmlout ("<svg width=20 height=30>\n");
+	unsigned height = draw_tab_height();
+	htmlprintf ("<svg width=20 height=%u>\n",height);
 	if (visible){
-		static unsigned id=0;
+		static STATIC_ID alloc_id;
+		unsigned id=alloc_id++;
 		htmlprintf ("<a href='#' onclick=formsubmit('%s') onmouseover=changefill('rarrow%u','#D0D0D0') onmouseout=changefill('rarrow%u','none')>\n",xref.ptr,id,id);
-		htmlprintf ("<rect id='rarrow%u' x=2 y=2 rx=2 ry=2 width=16 height=26 fill=none />\n",id);
-		id++;
+		htmlprintf ("<rect id='rarrow%u' x=2 y=2 rx=2 ry=2 width=16 height=%u fill=none />\n",id,height-4);
 	}
 	const char *color = visible ? "black" : "white";
-	htmlprintf ("<path fill=%s stroke=%s stroke-width=1 d='M16,15 L8,8 L8,22 z' />\n",color,color);
+	unsigned h2=height/2;
+	htmlprintf ("<path fill=%s stroke=%s stroke-width=1 d='M16,%u L8,%u L8,%u z' />\n",color,color,h2,h2-8,h2+8);
 	if (visible) htmlout ("</a>\n");
 	// Always put the underline
-	htmlout ("<path stroke=black stroke-width=1 d='M0,30 l20,0'/>\n");
+	htmlprintf("<path stroke=black stroke-width=1 d='M0,%u l20,0'/>\n",height);
 	htmlout ("</svg>\n");	
 }
 
 static void print_href_c (const char *title, PARAM_STRING href, const char *color)
 {
 	bool close = strcmp(color,"white")==0 ? false : true;
-	draw_tab (0,30,color,color,close,title,href);
+	draw_tab (0,color,color,close,title,href);
 }
 void print_href (const char *title, PARAM_STRING href)
 {
@@ -477,28 +489,52 @@ void util_google_code()
 	htmlout ("</script>\n");
 	#endif
 }
+
 void util_defstyles()
 {
-	htmlout ("<style>\n"
-		"a{\n"
-		"   text-decoration: none;\n"
-		"}"
-		"table{\n"
-		"   border-radius: 5px;\n"
-		"   border-spacing : 0;\n"
-		"   border-collapse : collapse;\n"
-		" }\n"
-		"blockquote{\n"
-		"   font-style: italic;\n"
-		"   font-size: 18px;\n"
-		"   margin-left: 32px;\n"
-		"   font-family: Consolas, \"Times New Roman\", Verdana;\n"
-		"   border-left: 4px solid #CCC;\n"
-		"   padding-left: 8px;\n"
+	unsigned body_font_size=100;
+	if (tlmpweb_ismobile()){
+		body_font_size = 400;
+		small_size = 1.0;
+	}
+	htmlout ("<style>\n");
+	htmlprintf ("body{\n"
+		"	font-size: %u%%\n"
+		"}\n",body_font_size);
+	htmlout (
+		"table, tr, td {\n"
+		"	font-size: 1em;\n"
 		"}\n"
-		".small { font: normal 13px ; file: gray;}\n"
-		" </style>\n"
+		"a{\n"
+		"	text-decoration: none;\n"
+		"}\n"
+		"table{\n"
+		"	border-radius: 5px;\n"
+		"	border-spacing : 0;\n"
+		"	border-collapse : collapse;\n"
+		"}\n"
+		"blockquote{\n"
+		"	font-style: italic;\n"
+		"	font-size: 18px;\n"
+		"	margin-left: 32px;\n"
+		"	font-family: Consolas, \"Times New Roman\", Verdana;\n"
+		"	border-left: 4px solid #CCC;\n"
+		"	padding-left: 8px;\n"
+		"}\n"
+		"#date0_7b{\n"
+		"	font-size: 0.7em;\n"
+		"	color: white;\n"
+		"}\n"
+		"#date0_7{\n"
+		"	font-size: 0.7em;\n"
+		"}\n"
 		);
+	htmlprintf (
+		".small {\n"
+		"	font-size: %0.2fem;\n"
+		"	file: gray;\n"
+		"}\n",small_size);
+	htmlout("</style>\n");
 	tlmpweb_setscripts();
 }
 
@@ -609,13 +645,11 @@ void button_row(_F_button_row &c, int border, const char *bgcolor, bool alignlef
 				htmlout (left_lines);
 				htmlout ("</div>\n");
 			}
-			// Draw a line to the end. We draw a very long line since we do not
-			// know exactly the width of the TAB. The overflow hidden above hides
-			// this.
 			if (c.endline){
 				htmlout ("<div>\n");
-				htmlprintf ("<svg width=%u height=30>\n",c.endline_width);
-				htmlprintf ("<path stroke=black stroke-width=1 d='M0,30 h%u' />\n",c.endline_width);
+				unsigned height = draw_tab_height();
+				htmlprintf ("<svg width=%u height=%u>\n",c.endline_width,height);
+				htmlprintf ("<path stroke=black stroke-width=1 d='M0,%u h%u' />\n",height,c.endline_width);
 				htmlout ("</svg>\n");
 				htmlout ("</div>\n");
 			}
@@ -656,7 +690,6 @@ void _F_button_row::split()
 	if (spliton) htmlout ("</div>\n");
 	htmlout ("<div>\n");
 	spliton = true;
-	//	htmlprintf ("<td align=%s>\n",align);
 }
 void _F_button_row::drawendline(unsigned width)
 {

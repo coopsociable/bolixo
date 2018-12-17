@@ -38,8 +38,8 @@ void printhref_raw(const char *url, const char *text, bool largewindow);
 std::string format_date (unsigned format, PARAM_STRING date);
 std::string format_time (unsigned format, PARAM_STRING time);
 void util_formanchor();
-unsigned draw_tab (unsigned width, unsigned height, const char *fill, const char *fill_in, bool close, const char *title, bool drawx, PARAM_STRING href, PARAM_STRING xref);
-unsigned draw_tab (unsigned width, unsigned height, const char *fill, const char *fill_in, bool close, const char *title, PARAM_STRING href);
+unsigned draw_tab (unsigned width, const char *fill, const char *fill_in, bool close, const char *title, bool drawx, PARAM_STRING href, PARAM_STRING xref);
+unsigned draw_tab (unsigned width, const char *fill, const char *fill_in, bool close, const char *title, PARAM_STRING href);
 
 #define _TLMP_button_row
 struct _F_button_row{

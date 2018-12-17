@@ -270,49 +270,47 @@ static void sendfile_var(_F_sendfile_var &c, PARAM_STRING filepath, const W_SSTR
 	if (!c.success) fail = true;
 }
 	
+static bool is_mobile = false;
 
 static void show_buttons_right(_F_websteps *c)
 {
-	int step = c->getcurstep();
+	//int step = c->getcurstep();
 	/- <table border=0 cellspacing=0>
 	/- <tr>
 		
+	unsigned fontsize = is_mobile ? 1 : 1;	// size=+fontsize
 	bool is_user = userinfo.name.size() > 0;
 	if (!is_user){
-		if (step != step_login && step != step_adduser){
-			/- <td>
-			/- <font size=4 color=lightgray>
-			htmlprintf (MSG_U(I_ANONYMOUS,"Anonymous, for your eyes only"));
-			/- </font>
-			/- <td>&nbsp;
-			/- <td>
-			htmlprintf ("<a href=%s?webstep=%d>%s</a>\n",tlmpweb_curpage(),step_login,MSG_U(I_LOGIN,"Login"));
-			/- <td>&nbsp;
-			/- <td align=center>
-			htmlprintf ("<font size=4 color=black>%s</font>",MSG_U(I_OR,"or"));
-			/- <td>&nbsp;
-			/- <td>
-			htmlprintf ("<a href=%s?webstep=%d>%s</a>\n",tlmpweb_curpage(),step_adduser,MSG_U(I_CREATEACCT,"Create account"));
-		}
+		/- <td>&nbsp;
+		/- <td>
+		htmlprintf ("<a href=%s?webstep=%d><font size=+%u>%s</font></a>\n",tlmpweb_curpage(),step_login,fontsize,MSG_U(I_LOGIN,"Login"));
+		/- <td>&nbsp;
+		/- <td align=center>
+		htmlprintf ("<font size=+%u color=black>%s</font>",fontsize,MSG_U(I_OR,"or"));
+		/- <td>&nbsp;
+		/- <td>
+		htmlprintf ("<a href=%s?webstep=%d><font size=+%u>%s</font></a>\n",tlmpweb_curpage(),step_adduser,fontsize,MSG_U(I_CREATEACCT,"Create account"));
 	}
-	if (userinfo.is_admin){
+	if (0 && userinfo.is_admin){
 		/- <td>
 		string tmp = string_f ("href=%s/admin.hc",tlmpweb_curdir());
 		print_href("Admin menu",tmp);
 	}
 	if (is_user){
-		/- <td>
-		/- <font size=4 color=gray>
-		htmlprintf (MSG_U(I_WELCOME,"Welcome %s"),userinfo.name.c_str());
-		int nb = 40 - userinfo.name.size() - 8; 
-		for (int i=0; i<nb; i++){
-			htmlprintf ("&nbsp;");
+		if (!is_mobile){
+			/- <td>
+			htmlprintf ("<font size=+%u color=gray>\n",fontsize);
+			htmlprintf (MSG_U(I_WELCOME,"Welcome %s"),userinfo.name.c_str());
+			int nb = 40 - userinfo.name.size() - 8; 
+			for (int i=0; i<nb; i++){
+				htmlprintf ("&nbsp;");
+			}
+			/- </font>
+			/- <td>&nbsp;
 		}
-		/- </font>
-		/- <td>&nbsp;
 		/- <td>
 		// PATCH: The <br> is there to avoid a vertical scroll bar. No idea why
-		htmlprintf ("<a href=%s?webstep=%d>%s<br>&nbsp;</a>\n",tlmpweb_curpage(),step_logout,MSG_U(I_LOGOUT,"Logout"));
+		htmlprintf ("<a href=%s?webstep=%d><font size=+%u>%s</font><br>&nbsp;</a>\n",tlmpweb_curpage(),step_logout,fontsize,MSG_U(I_LOGOUT,"Logout"));
 	}
 	/- </table>
 }
@@ -349,8 +347,9 @@ static void bolixo_title (const char *title, _F_websteps *c)
 	
 	DIV main; main.id("main").h(100).w(100).dispflex().flowcol().print();
 	DIV head; head.id("head").flexfixe().print();
-	/- <table border=0 width=100% cellpadding=0 cellspacing=0><tr><td>
+	/- <table border=0 width=100% cellpadding=0 cellspacing=0>
 	htmlprintf ("<table border=0 width=100%% bgcolor=%s cellspacing=0 cellpadding=0><tr><td rowspan=2 align=left>\n",newscolor);
+	if (!is_mobile){
 		/- <table border=0><tr><td><img height=20 src=/favicon.ico></td><td align=left>
 		htmlprintf ("<a href=%s><font size=7 color=\"white\">%s</font></a>&nbsp;&nbsp;&nbsp;",util_getdirserver(),org.c_str());
 		/- <font color=gray>
@@ -358,10 +357,12 @@ static void bolixo_title (const char *title, _F_websteps *c)
 		/- </font>
 		/- <td>
 		if (userinfo.name.empty()) printhref ("/about.html",MSG_U(I_ABOUT,"<font color=white>A peer to peer open social media</font>"),true);
-		/- </td></tr></table>
-	/- </td><td align=right valign=top>
-	show_buttons_right (c);
-	/- </td></tr>
+		/- </table>
+		/- </td>
+		/- <td align=right valign=top>
+		show_buttons_right (c);
+		/- </td></tr>
+	}
 	/- <tr><td align=right valign=bottom>
 	if (w_robot == 0 && userinfo.name.size() > 0){
 		<call button_row>(0,newscolor,false);
@@ -378,8 +379,10 @@ static void bolixo_title (const char *title, _F_websteps *c)
 			print_button (MSG_U(M_PROJECTS,"Projects"),step_projects,glocal.step);
 			split();
 			print_button (MSG_U(M_PROFILE,"Profile"),step_profile,glocal.step);
-			split();
-			print_button (MSG_U(M_DOCUM,"Documentation"),step_doc,glocal.step);
+			if (!is_mobile){
+				split();
+				print_button (MSG_U(M_DOCUM,"Documentation"),step_doc,glocal.step);
+			}
 		</f>
 		</call>
 	}
@@ -586,7 +589,7 @@ static string index_img(unsigned step, unsigned width, PARAM_STRING dirpath, PAR
 static string index_img(unsigned step, const char *style, PARAM_STRING filepath, PARAM_STRING date)
 {
 	string tmp = util_flipspaces(date);
-	return string_f ("<img style='%s' src=%s?webstep=%u&image=%s&mod=%s>"
+	return string_f ("<img width=100%% style='%s' src=%s?webstep=%u&image=%s&mod=%s>"
 		,style,tlmpweb_curpage(),step,filepath.ptr,tmp.c_str());
 }
 
@@ -668,7 +671,7 @@ static void index_popup (CONNECT_INFO &con, int step, const char *content, FILE_
 			"</video>\n"
 			,tlmpweb_curpage(),step,path);
 	}else if (file_is_image(file_type)){
-		string img = index_img (step,800,"",path,modified);
+		string img = index_img (step,"",path,modified);
 		htmlout (img);
 	}else if (file_is_text(file_type)){
 		<call bod_client_readfile_bob>(con,w_session.c_str(),path,"",false);
@@ -1000,13 +1003,21 @@ static void index_show_shortmsg(
 				static const char *line_styles[]={"sep","sep1"};
 				unsigned line_style = 0;
 				if (!deletes) glocal.webtable.setdrop_disable(MENU_UNDELETE);
+				unsigned image_width = 200;
+				unsigned mini_image_width = 30;
+				unsigned video_size = 200;
+				if (is_mobile){
+					image_width = 300;
+					mini_image_width = 60;
+					video_size = 300;
+				}
 				for (auto &m:messages){
 					string now = string(m.submit,10);
 					if (now != day){
 						day = now;
 						glocal.webtable.setclickopt (true,"","");
 						glocal.webtable.setdrop_visibles({MENU_PASTE});
-						glocal.webtable.setrow("hline",-1,"<font size=-1 color=white>%s</font>\a\a\a",format_date(userinfo.dateformat,day).c_str());
+						glocal.webtable.setrow("hline",-1,"<div id=date0_7b>%s</div>\a\a\a",format_date(userinfo.dateformat,day).c_str());
 						glocal.webtable.resetdrop();
 						line_style=0;
 					}
@@ -1031,14 +1042,15 @@ static void index_show_shortmsg(
 							"</audio>"
 							,tlmpweb_curpage(),step_image,path.c_str(),tmp.c_str(),tbftype[m.file_type]);
 					}else if (file_is_image(m.file_type)){
-						content = index_img (step_image,100,"",path,m.submit);
+						content = index_img (step_image,image_width,"",path,m.submit);
 					}else if (file_is_video(m.file_type)){
 						string tmp = util_flipspaces(m.submit);
 						content = string_f(
-							"<video width=\"200\" height=\"200\" controls>\n"
+							"<video width=\"%u\" height=\"%u\" controls>\n"
 							"<source src=\"%s?webstep=%u&image=%s&mod=%s\" type=\"video/mp4\">\n"
 							"Your browser does not support the video tag.\n"
 							"</video>"
+							,video_size,video_size
 							,tlmpweb_curpage(),step_image,path.c_str(),tmp.c_str());
 					}else if (file_is_text(m.file_type)){
 						// Large text file
@@ -1054,7 +1066,7 @@ static void index_show_shortmsg(
 						</f>
 						</call>
 					}
-					string time = string_f("<font size=-1>%s</font>",format_time(userinfo.dateformat,m.submit+11).c_str());
+					string time = string_f("<div id=date0_7>%s</div>",format_time(userinfo.dateformat,m.submit+11).c_str());
 					const char *style = line_styles[line_style];
 					line_style++;
 					if (line_style == 2) line_style = 0;
@@ -1063,7 +1075,7 @@ static void index_show_shortmsg(
 							,time.c_str(),content.c_str());
 					}else{
 						string dir = string_f("/projects/%s/public",m.from);
-						string img = index_img(step_image,30,dir,"mini-photo.jpg",m.submit);
+						string img = index_img(step_image,mini_image_width,dir,"mini-photo.jpg",m.submit);
 						glocal.webtable.setrow (style,glocal.rownum,"%s\t%s\t%s\t%s"
 							,img.c_str(),m.from,time.c_str(),content.c_str());
 					}
@@ -1277,6 +1289,7 @@ extern "C" void webmain_real()
 	</f>
 	</call>
 	// debug
+	is_mobile = tlmpweb_ismobile();
 	if (0){
 		<call savefile>("/tmp/environ.log",false);
 		<f dowrite>
@@ -1616,7 +1629,19 @@ extern "C" void webmain_real()
 			// Anonymous, present public news ?
 			// /- So far no public content
 		}else{
-			DIV d("tabs"); d.w(40).textalign("center").marginauto().border(1,"black").borderradius(5).vmargins(5,5).paddings(5,5).print();
+			DIV d("tabs");
+			if (is_mobile){
+				d.w(100).border(1,"black").borderradius(5).vmargins(5,5).paddings(5,5).print();
+			}else{
+				unsigned w = tlmpweb_screenwidth();
+				unsigned dw = 50;
+				if (w > 0){
+					unsigned pixels = dw/100.0*1920;	// dw% of an HD screen
+					dw = pixels*100/w;
+					if (dw > 90) dw = 90;
+				} 
+				d.w(dw).textalign("center").marginauto().border(1,"black").borderradius(5).vmargins(5,5).paddings(5,5).print();
+			}
 			string table = string("talk")+"public";
 			<call webtable>(ID_FOLLOW,table,"100%",currents[table],offsets[table],5);
 			<f click>
@@ -1643,12 +1668,20 @@ extern "C" void webmain_real()
 					static const char *line_styles[]={"sep","sep1"};
 					unsigned line_style = 0;
 					index_shortmsg_style();
+					unsigned image_width = 200;
+					unsigned mini_image_width = 30;
+					unsigned video_size = 200;
+					if (is_mobile){
+						image_width = 300;
+						mini_image_width = 60;
+						video_size = 300;
+					}
 					for (auto &m:messages){
 						string now = string (m.submit,10);
 						if (now != day){
 							day = now;
 							glocal.webtable.setclickopt (true,"","");
-							glocal.webtable.setrow("hline",-1,"<font size=-1 color=white>%s</font>\a\a\a"
+							glocal.webtable.setrow("hline",-1,"<div id=date0_7b>%s</div>\a\a\a"
 								,format_date(userinfo.dateformat,day).c_str());
 							line_style=0;
 						}
@@ -1664,8 +1697,8 @@ extern "C" void webmain_real()
 						}else{
 							glocal.webtable.setclickopt (true,"","");
 						}
-						string time = string_f("<font size=-1>%s</font>",format_time(userinfo.dateformat,m.submit+11).c_str());
-						string img = index_img(step_public,30,m.from,"project/mini-photo.jpg",m.submit);
+						string time = string_f("<div id=date0_7>%s</div>",format_time(userinfo.dateformat,m.submit+11).c_str());
+						string img = index_img(step_public,mini_image_width,m.from,"project/mini-photo.jpg",m.submit);
 						string path = string_f("%s/msg/%s",m.from,m.uuid);
 						string content;
 						if (m.content[0] != '\0'){
@@ -1677,14 +1710,15 @@ extern "C" void webmain_real()
 								"</audio>"
 								,tlmpweb_curpage(),step_public,path.c_str(),tmp.c_str(),tbftype[m.file_type]);
 						}else if (file_is_image(m.file_type)){
-							content = index_img (step_public,100,"",path,m.submit);
+							content = index_img (step_public,image_width,"",path,m.submit);
 						}else if (file_is_video(m.file_type)){
 							string tmp = util_flipspaces(m.submit);
 							content = string_f(
-								"<video width=\"200\" height=\"200\" controls>\n"
+								"<video width=\"%u\" height=\"%u\" controls>\n"
 								"<source src=\"%s?webstep=%u&image=%s&mod=%s\" type=\"video/mp4\">\n"
 								"Your browser does not support the video tag.\n"
 								"</video>"
+								,video_size,video_size
 								,tlmpweb_curpage(),step_public,path.c_str(),tmp.c_str());
 						}
 						glocal.webtable.setrow (style,glocal.rownum,"%s\t%s\t%s\t%s",img.c_str(),m.from

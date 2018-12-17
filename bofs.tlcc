@@ -188,7 +188,7 @@ static int bofs_login (
 			if (success){
 				(*glocal.hsessionid) = sessionid;
 			}else{
-				bofs_error ("login",internal_error,MSG_U(E_HTTPLOGIN,"http login failed for %s success=%d"),glocal.email,success);
+				bofs_error ("webapi login",internal_error,MSG_U(E_HTTPLOGIN,"http login failed for %s success=%d"),glocal.email,success);
 				glocal.ret = -1;
 			}
 		</f>
@@ -243,7 +243,7 @@ struct CONTEXT{
 			if (ret == -1) tlmp_error ("bod_login failed\n");
 		}else{
 			ret = bofs_login (hcon,email,password,hsessionid);
-			if (ret == -1) tlmp_error ("bod_login failed\n");
+			if (ret == -1) tlmp_error ("htbod_login failed\n");
 		}
 		return ret;
 	}
@@ -1267,43 +1267,51 @@ static int bofs_print_groups (CONTEXT *ctx, const char *owner, const char *onegr
 	glocal int ret = -1;
 	glocal unsigned indent = indent;
 	glocal const char *onegroup = onegroup;
-	<call bod_client_list_groups> (ctx->con,ctx->sessionid,owner,only_owner);
-	<f ok>
-		if (success){
-			glocal.ret = 0;
-			unsigned max_owner = 0;
-			unsigned max_groupname = 0;
-			unsigned max_user = 0;
-			for (unsigned r=0; r<2; r++){
-				for (auto &g:groups){
-					const char *groupname = g.name;
-					const char *owner = g.owner;
-					if (glocal.onegroup != NULL && strcmp(glocal.onegroup,groupname)!=0) continue;
-					bofs_maxlen (owner,max_owner);
-					bofs_maxlen (groupname,max_groupname);
-					const vector<const char *> &us = g.users;
-					if (us.size() == 0){
-						if (r > 0) printf ("%-*s %-*s\n",max_owner,owner,max_groupname,groupname);
-					}else{
-						const vector<const char *> &as = g.access;
-						const vector<const char *> &rs = g.roles;
-						for (unsigned j=0; j<us.size(); j++){
-							bofs_maxlen (us[j],max_user); 
-							if (r > 0){
-								if (glocal.onegroup != NULL) groupname = "";
-								printf ("%*s%-*s %-*s\t%*s\t%s\t%s\n",glocal.indent,"",max_owner,owner,max_groupname,groupname,max_user,us[j],as[j],rs[j]);
-							}
-							groupname = "";
-							owner = "";
-						}
+	glocal vector<GROUP> groups;
+	if (ctx->is_internal()){
+		<call bod_client_list_groups> (ctx->con,ctx->sessionid,owner,only_owner);
+		<f ok>
+			if (success){
+				for (auto &g:groups) glocal.groups.push_back(g);
+			}else{
+				bofs_error ("groups",internal_error,"Can't list groups: %s",msg);
+			}
+		</f>
+		</call>
+	}else{
+		notdone();
+	}
+	glocal.ret = 0;
+	unsigned max_owner = 0;
+	unsigned max_groupname = 0;
+	unsigned max_user = 0;
+	for (unsigned r=0; r<2; r++){
+		for (auto &g:glocal.groups){
+			const char *groupname = g.name.c_str();
+			const char *owner = g.owner.c_str();
+			if (glocal.onegroup != NULL && strcmp(glocal.onegroup,groupname)!=0) continue;
+			bofs_maxlen (owner,max_owner);
+			bofs_maxlen (groupname,max_groupname);
+			const vector<string> &us = g.users;
+			if (us.size() == 0){
+				if (r > 0) printf ("%-*s %-*s\n",max_owner,owner,max_groupname,groupname);
+			}else{
+				const vector<string> &as = g.access;
+				const vector<string> &rs = g.roles;
+				for (unsigned j=0; j<us.size(); j++){
+					bofs_maxlen (us[j].c_str(),max_user); 
+					if (r > 0){
+						if (glocal.onegroup != NULL) groupname = "";
+						printf ("%*s%-*s %-*s\t%*s\t%s\t%s\n",glocal.indent,""
+							,max_owner,owner,max_groupname,groupname,max_user
+							,us[j].c_str(),as[j].c_str(),rs[j].c_str());
 					}
+					groupname = "";
+					owner = "";
 				}
 			}
-		}else{
-			bofs_error ("groups",internal_error,"Can't list groups: %s",msg);
 		}
-	</f>
-	</call>
+	}
 	return glocal.ret;
 }
 </mod>
@@ -1382,7 +1390,7 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 		}else if (glocal.create_group_list){
 			if (glocal.listname == NULL){
 				bofs_error ("groups",false,"You must specify the list name");
-			}else{
+			}else if (glocal.ctx->is_internal()){
 				<call bod_client_create_group_list> (glocal.ctx->con,glocal.ctx->sessionid,glocal.listname,glocal.owner);
 				<f ok>
 					if (success){
@@ -1392,11 +1400,13 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 					}
 				</f>
 				</call>
+			}else{
+				notdone();
 			}
 		}else if (glocal.create_group){
 			if (glocal.groupname == NULL){
 				bofs_error ("groups",false,"You must specify the group name");
-			}else{
+			}else if (glocal.ctx->is_internal()){
 				<call bod_client_create_group> (glocal.ctx->con,glocal.ctx->sessionid,glocal.groupname,glocal.owner);
 				<f ok>
 					if (success){
@@ -1406,13 +1416,15 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 					}
 				</f>
 				</call>
+			}else{
+				notdone();
 			}
 		}else if (glocal.set_list_desc){
 			if (glocal.listname == NULL){
 				bofs_error ("groups",false,"You must specify the list name");
 			}else if (glocal.description == NULL){
 				bofs_error ("groups",false,"You must specify the description");
-			}else{
+			}else if (glocal.ctx->is_internal()){
 				<call bod_client_set_list_desc> (glocal.ctx->con,glocal.ctx->sessionid,glocal.listname,glocal.description,glocal.owner);
 				<f ok>
 					if (success){
@@ -1422,13 +1434,15 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 					}
 				</f>
 				</call>
+			}else{
+				notdone();
 			}
 		}else if (glocal.set_group_desc){
 			if (glocal.groupname == NULL){
 				bofs_error ("groups",false,"You must specify the group name");
 			}else if (glocal.description == NULL){
 				bofs_error ("groups",false,"You must specify the description");
-			}else{
+			}else if (glocal.ctx->is_internal()){
 				<call bod_client_set_group_desc> (glocal.ctx->con,glocal.ctx->sessionid,glocal.groupname,glocal.description,glocal.owner);
 				<f ok>
 					if (success){
@@ -1438,13 +1452,15 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 					}
 				</f>
 				</call>
+			}else{
+				notdone();
 			}
 		}else if (glocal.set_group){
 			if (glocal.listname == NULL){
 				bofs_error ("groups",false,"You must specify the list name");
 			}else if (glocal.groupname == NULL){
 				bofs_error ("groups",false,"You must specify the group name");
-			}else{
+			}else if (glocal.ctx->is_internal()){
 				<call bod_client_set_group> (glocal.ctx->con,glocal.ctx->sessionid,glocal.listname,glocal.groupname,glocal.access,glocal.owner);
 				<f ok>
 					if (success){
@@ -1454,11 +1470,13 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 					}
 				</f>
 				</call>
+			}else{
+				notdone();
 			}
 		}else if (glocal.set_member){
 			if (glocal.groupname == NULL){
 				bofs_error ("groups",false,"You must specify the group name");
-			}else{
+			}else if (glocal.ctx->is_internal()){
 				<call bod_client_set_member> (glocal.ctx->con,glocal.ctx->sessionid,glocal.groupname,glocal.user,glocal.access,glocal.role,glocal.owner);
 				<f ok>
 					if (success){
@@ -1468,11 +1486,13 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 					}
 				</f>
 				</call>
+			}else{
+				notdone();
 			}
 		}else if (glocal.create_project_dir){
 			if (glocal.listname == NULL){
 				bofs_error ("groups",false,"You must specify the list name");
-			}else{
+			}else if (glocal.ctx->is_internal()){
 				<call bod_client_create_project_dir>(glocal.ctx->con,glocal.ctx->sessionid,glocal.listname,glocal.owner);
 				<f ok>
 					if (success){
@@ -1482,11 +1502,13 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 					}
 				</f>
 				</call>
+			}else{
+				notdone();
 			}
 		}else if (glocal.delete_list){
 			if (glocal.listname == NULL){
 				bofs_error ("groups",false,"You must specify the list name");
-			}else{
+			}else if (glocal.ctx->is_internal()){
 				<call bod_client_delete_list> (glocal.ctx->con,glocal.ctx->sessionid,glocal.listname,glocal.owner);
 				<f ok>
 					if (success){
@@ -1496,11 +1518,13 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 					}
 				</f>
 				</call>
+			}else{
+				notdone();
 			}
 		}else if (glocal.delete_group){
 			if (glocal.groupname == NULL){
 				bofs_error ("groups",false,"You must specify the group name");
-			}else{
+			}else if (glocal.ctx->is_internal()){
 				<call bod_client_delete_group> (glocal.ctx->con,glocal.ctx->sessionid,glocal.groupname,glocal.owner);
 				<f ok>
 					if (success){
@@ -1510,8 +1534,11 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 					}
 				</f>
 				</call>
+			}else{
+				notdone();
 			}
 		}else if (glocal.print_lists){
+			if (glocal.ctx->is_internal()){
 			<call bod_client_list_lists> (glocal.ctx->con,glocal.ctx->sessionid,glocal.owner);
 			<f ok>
 				if (success){
@@ -1548,6 +1575,9 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 				}
 			</f>
 			</call>
+			}else{
+				notdone();
+			}
 		}else if (glocal.print_groups){
 			glocal.ret = bofs_print_groups (glocal.ctx,glocal.owner,NULL,0,glocal.only_owner);
 		}else{
@@ -2160,6 +2190,37 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 }
 </mod>
 <mod>
+static int bofs_config_read (CONTEXT &ctx, CONFIG &config, const char *owner)
+{
+	glocal int ret = -1;
+	glocal CONFIG *config = &config;
+	if (ctx.is_internal()){
+		<call bod_client_config_read>(ctx.con,ctx.sessionid,owner);
+		<f ok>
+			if (!success){
+				bofs_error ("config_read",internal_error,msg);
+			}else{
+				*glocal.config = config;
+				glocal.ret = 0;
+			}
+		</f>
+		</call>
+	}else{
+		<call webapi_config_read>(ctx.hcon,ctx.hsessionid,owner);
+		<f ok>
+			if (!success){
+				bofs_error ("https config_read",internal_error,msg);
+			}else{
+				*glocal.config = config;
+				glocal.ret = 0;
+			}
+		</f>
+		</call>
+	}
+	return glocal.ret;
+}
+</mod>
+<mod>
 static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 {
 	glocal int ret = -1;
@@ -2294,14 +2355,18 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 					tlmp_error ("Invalid status: expect A or R\n");
 					exit (-1);
 				}
-				<call bod_client_contact_manage>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner,glocal.user,status);
-				<f ok>
-					if (!success){
-						bofs_error ("contact_manage",internal_error,msg);
-						glocal.ret = -1;
-					}
-				</f>
-				</call>
+				if (glocal.ctx->is_internal()){
+					<call bod_client_contact_manage>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner,glocal.user,status);
+					<f ok>
+						if (!success){
+							bofs_error ("contact_manage",internal_error,msg);
+							glocal.ret = -1;
+						}
+					</f>
+					</call>
+				}else{
+					notdone();
+				}
 			}
 		}else if (glocal.contact_request){
 			if (glocal.user == NULL){
@@ -2309,73 +2374,93 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 				exit (-1);
 			}
 			if (glocal.ctx->login()!=-1){
-				<call bod_client_contact_request>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner,glocal.user,glocal.intro);
-				<f ok>
-					if (!success){
-						bofs_error ("contact_request",internal_error,msg);
-						glocal.ret = -1;
-					}
-				</f>
-				</call>
+				if (glocal.ctx->is_internal()){
+					<call bod_client_contact_request>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner,glocal.user,glocal.intro);
+					<f ok>
+						if (!success){
+							bofs_error ("contact_request",internal_error,msg);
+							glocal.ret = -1;
+						}
+					</f>
+					</call>
+				}else{
+					notdone();
+				}
 			}
 		}else if (glocal.contact_list){
 			if (glocal.ctx->login()!=-1){
-				<call bod_client_contact_list>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner,!glocal.contact_request_by_me,0,1000);
-				<f ok>
-					if (!success){
-						bofs_error ("contact_list",internal_error,msg);
-						glocal.ret = -1;
-					}else{
-						static const char *tbstatus[]={"waiting","accepted","rejected"};
-						for (auto &c:contacts){
-							printf ("%s\t%s\t%s\t%s\n",c.user,c.reqdate,tbstatus[c.status],c.message);
+				if (glocal.ctx->is_internal()){
+					<call bod_client_contact_list>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner,!glocal.contact_request_by_me,0,1000);
+					<f ok>
+						if (!success){
+							bofs_error ("contact_list",internal_error,msg);
+							glocal.ret = -1;
+						}else{
+							static const char *tbstatus[]={"waiting","accepted","rejected"};
+							for (auto &c:contacts){
+								printf ("%s\t%s\t%s\t%s\n",c.user,c.reqdate,tbstatus[c.status],c.message);
+							}
 						}
-					}
-				</f>
-				</call>
+					</f>
+					</call>
+				}else{
+					notdone();
+				}
 			}
 		}else if (glocal.interest_set){
 			if (glocal.interest_user == NULL){
 				tlmp_error (MSG_U(E_INTUSER,"You must specify the user with --int_user\n"));
 				exit (-1);
 			}else if (glocal.ctx->login()!=-1){
-				<call bod_client_interest_set>(glocal.ctx->con,glocal.ctx->sessionid,glocal.interest_user,glocal.owner);
-				<f ok>
-					if (!success){
-						bofs_error ("interest_set",internal_error,msg);
-						glocal.ret = -1;
-					}
-				</f>
-				</call>
+				if (glocal.ctx->is_internal()){
+					<call bod_client_interest_set>(glocal.ctx->con,glocal.ctx->sessionid,glocal.interest_user,glocal.owner);
+					<f ok>
+						if (!success){
+							bofs_error ("interest_set",internal_error,msg);
+							glocal.ret = -1;
+						}
+					</f>
+					</call>
+				}else{
+					notdone();
+				}
 			}
 		}else if (glocal.interest_unset){
 			if (glocal.interest_user == NULL){
 				tlmp_error (MSG_R(E_INTUSER));
 				exit (-1);
 			}else if (glocal.ctx->login()!=-1){
-				<call bod_client_interest_unset>(glocal.ctx->con,glocal.ctx->sessionid,glocal.interest_user,glocal.owner);
-				<f ok>
-					if (!success){
-						bofs_error ("interest_unset",internal_error,msg);
-						glocal.ret = -1;
-					}
-				</f>
-				</call>
+				if (glocal.ctx->is_internal()){
+					<call bod_client_interest_unset>(glocal.ctx->con,glocal.ctx->sessionid,glocal.interest_user,glocal.owner);
+					<f ok>
+						if (!success){
+							bofs_error ("interest_unset",internal_error,msg);
+							glocal.ret = -1;
+						}
+					</f>
+					</call>
+				}else{
+					notdone();
+				}
 			}
 		}else if (glocal.interest_list){
 			if (glocal.ctx->login()!=-1){
-				<call bod_client_interest_list>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner);
-				<f ok>
-					if (!success){
-						bofs_error ("interest_list",internal_error,msg);
-						glocal.ret = -1;
-					}else{
-						for (auto u:users){
-							printf ("%s %s %d\n",u.name,u.since,u.visible);
+				if (glocal.ctx->is_internal()){
+					<call bod_client_interest_list>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner);
+					<f ok>
+						if (!success){
+							bofs_error ("interest_list",internal_error,msg);
+							glocal.ret = -1;
+						}else{
+							for (auto u:users){
+								printf ("%s %s %d\n",u.name,u.since,u.visible);
+							}
 						}
-					}
-				</f>
-				</call>
+					</f>
+					</call>
+				}else{
+					notdone();
+				}
 			}
 		}else if (glocal.interest_check){
 			if (glocal.ctx->login()!=-1){
@@ -2412,30 +2497,23 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 			}
 		}else if (glocal.showconfig){
 			if (glocal.ctx->login()!=-1){
-				<call bod_client_config_read>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner);
-				<f ok>
-					if (!success){
-						bofs_error ("config_read",internal_error,msg);
-					}else{
-						printf ("lang=%s dateformat=%u public_view=%d public_dir=%s\n"
-							,config.lang,config.dateformat,config.public_view,config.public_dir);
-					}
-				</f>
-				</call>
+				CONFIG config;
+				if (bofs_config_read (*glocal.ctx,config,glocal.owner)!=-1){
+					printf ("lang=%s dateformat=%u public_view=%d public_dir=%s\n"
+						,config.lang.c_str(),config.dateformat,config.public_view,config.public_dir.c_str());
+				}
 			}
 		}else if (glocal.writeconfig){
 			if (glocal.ctx->login()!=-1){
-				<call bod_client_config_read>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner);
-				<f ok>
-					if (!success){
-						bofs_error ("config_read",internal_error,msg);
-					}else{
-						CONFIG newconfig;
-						newconfig = config;
-						if (glocal.dateformat != NULL) newconfig.dateformat = atoi(glocal.dateformat);
-						if (glocal.lang != NULL) newconfig.lang = glocal.lang;
-						if (glocal.public_view != NULL) newconfig.public_view = atoi(glocal.public_view);
-						if (glocal.public_dir != NULL) newconfig.public_dir = glocal.public_dir;
+				CONFIG config;
+				if (bofs_config_read (*glocal.ctx,config,glocal.owner)!=-1){
+					CONFIG newconfig;
+					newconfig = config;
+					if (glocal.dateformat != NULL) newconfig.dateformat = atoi(glocal.dateformat);
+					if (glocal.lang != NULL) newconfig.lang = glocal.lang;
+					if (glocal.public_view != NULL) newconfig.public_view = atoi(glocal.public_view);
+					if (glocal.public_dir != NULL) newconfig.public_dir = glocal.public_dir;
+					if (glocal.ctx->is_internal()){
 						<call bod_client_config_write>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner,newconfig);
 						<f ok>
 							if (!success){
@@ -2443,9 +2521,16 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 							}
 						</f>
 						</call>
+					}else{
+						<call webapi_config_write>(glocal.ctx->hcon,glocal.ctx->hsessionid,glocal.owner,newconfig);
+						<f ok>
+							if (!success){
+								bofs_error ("https config_write",internal_error,msg);
+							}
+						</f>
+						</call>
 					}
-				</f>
-				</call>
+				}
 			}
 		}else{
 			usage();
@@ -3056,6 +3141,7 @@ int main (int argc, char *argv[])
 						glocal.ctx.hcon.host = tb[1];
 					}else if (strcmp(subject,"http_port")==0){
 						glocal.ctx.hcon.port = tb[1];
+						if (tb[1] == "443") glocal.ctx.hcon.use_ssl = true;
 					}else if (strcmp(subject,"bod_socket")==0){
 						glocal.ctx.con.port = tb[1];
 					}else if (strcmp(subject,"sess_socket")==0){
@@ -3091,6 +3177,7 @@ int main (int argc, char *argv[])
 			exit (-1);
 		}
 		{
+			//printf ("ctx.hcon.host=%s ctx.hcon.port=%s\n",glocal.ctx.hcon.host.c_str(),glocal.ctx.hcon.port.c_str());
 			for (int i=0; i<glocal.nbrep; i++){
 				if (strcmp(argv[0],"ls")==0){
 					ret = bofs_ls (glocal.ctx,argc,argv);
