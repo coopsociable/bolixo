@@ -50,6 +50,9 @@ make install
 /usr/sbin/bo-manager
 /usr/sbin/bo-mon
 /usr/sbin/bo-mon-control
+/usr/sbin/summary
+/usr/sbin/nbusers
+/usr/sbin/pendingusers
 /usr/sbin/logssl
 /usr/sbin/logweb
 /usr/sbin/logexim

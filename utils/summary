@@ -1,0 +1,23 @@
+#!/bin/sh
+echo ====== monitor ========
+bolixo-production monitor | grep services
+echo ====== protocheck =====
+/var/lib/lxc/protocheck/status.sh| grep rejected: | grep -v "rejected: 0"
+echo ====== syslog =========
+bolixo-production syslog-tail
+echo ====== pendings =======
+pendingusers
+echo ====== webssl =========
+logssl 10
+echo ====== exim ===========
+logexim 10
+echo ====== stats ==========
+NBHIT=`wc -l /var/lib/lxc/web/rootfs/tmp/agent.log`
+NBROB=`grep -c robot=1  /var/lib/lxc/web/rootfs/tmp/agent.log`
+TODAY=`date +%d/%b/%Y`
+echo    "Today      " `grep -c $TODAY /var/lib/lxc/webssl/rootfs/etc/httpd/logs/ssl_access_log`
+echo    "robots     " $NBROB/$NBHIT
+echo -n "nbusers     "
+nbusers
+blackhole-stats | grep " 443 "
+

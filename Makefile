@@ -238,6 +238,9 @@ install: msg.eng msg.fr
 	install -m755 utils/logexim $(RPM_BUILD_ROOT)/usr/sbin/logexim
 	install -m755 utils/eximrm $(RPM_BUILD_ROOT)/usr/sbin/eximrm
 	install -m755 utils/eximexec $(RPM_BUILD_ROOT)/usr/lib/eximexec
+	install -m755 utils/summary $(RPM_BUILD_ROOT)/usr/sbin/summary
+	install -m755 utils/nbusers $(RPM_BUILD_ROOT)/usr/sbin/nbusers
+	install -m755 utils/pendingusers $(RPM_BUILD_ROOT)/usr/sbin/pendingusers
 
 #	install -m755 web/admin.hc $(RPM_BUILD_ROOT)/var/www/html/admin.hc
 #	install -m755 bo-log $(RPM_BUILD_ROOT)/usr/sbin/bo-log
