@@ -241,6 +241,7 @@ install: msg.eng msg.fr
 	install -m755 utils/summary $(RPM_BUILD_ROOT)/usr/sbin/summary
 	install -m755 utils/nbusers $(RPM_BUILD_ROOT)/usr/sbin/nbusers
 	install -m755 utils/pendingusers $(RPM_BUILD_ROOT)/usr/sbin/pendingusers
+	install -m755 utils/listusers $(RPM_BUILD_ROOT)/usr/sbin/listusers
 
 #	install -m755 web/admin.hc $(RPM_BUILD_ROOT)/var/www/html/admin.hc
 #	install -m755 bo-log $(RPM_BUILD_ROOT)/usr/sbin/bo-log

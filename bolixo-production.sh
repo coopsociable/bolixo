@@ -56,11 +56,14 @@ elif [ "$1" = "compute" ] ; then # prod: Update stats in news database
 	export LXCSOCK=on
 	$(TESTSH) compute
 elif [ "$1" = "files" ] ; then	# db: Access files database
-	mysql -S /var/lib/lxc/bosqlddata/rootfs/var/lib/mysql/mysql.sock $DBNAME
+	shift
+	mysql -S /var/lib/lxc/bosqlddata/rootfs/var/lib/mysql/mysql.sock $DBNAME $*
 elif [ "$1" = "users" ] ; then # db: Access users database
-	mysql -S /var/lib/lxc/bosqlduser/rootfs/var/lib/mysql/mysql.sock $DBNAMEU
+	shift
+	mysql -S /var/lib/lxc/bosqlduser/rootfs/var/lib/mysql/mysql.sock $DBNAMEU $*
 elif [ "$1" = "bolixo" ] ; then # db: Access bolixo (directory) database
-	mysql -S /var/lib/lxc/bosqldbolixo/rootfs/var/lib/mysql/mysql.sock $DBNAMEBOLIXO
+	shift
+	mysql -S /var/lib/lxc/bosqldbolixo/rootfs/var/lib/mysql/mysql.sock $DBNAMEBOLIXO $*
 elif [ "$1" = "createdb" ] ; then # db: Access trliusers database
 	if [ "$MYSQL_PWD" = "" ] ; then
 		echo -n "mysql root password : "

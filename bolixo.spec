@@ -51,6 +51,7 @@ make install
 /usr/sbin/bo-mon
 /usr/sbin/bo-mon-control
 /usr/sbin/summary
+/usr/sbin/listusers
 /usr/sbin/nbusers
 /usr/sbin/pendingusers
 /usr/sbin/logssl
