@@ -591,6 +591,7 @@ elif [ "$1" = "createadmin" ] ; then # config: Create the admin account
 	echo $BOFS -u admin misc -w -V 1
 	$BOFS -u admin misc -w -V 1
 	$BOFS -u admin cp /var/www/html/admin.jpg bo://projects/admin/public/mini-photo.jpg
+	$BOFS -u admin cp /var/www/html/admin-photo.jpg bo://projects/admin/public/photo.jpg
 elif [ "$1" = "registernode" ]; then # config: Register this node in bolixo.org
 	if [ -s /var/lib/lxc/bolixod/rootfs/var/run/blackhole/bolixod-0.sock ]; then
 		$0 bolixod-control deletenode $THISNODE

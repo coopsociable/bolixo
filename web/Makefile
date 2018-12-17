@@ -70,6 +70,11 @@ admin.jpg: admin.scad Makefile
 	convert admin.png admin.jpg
 	rm -f admin.png
 
+admin-photo.jpg: admin.scad Makefile
+	openscad --imgsize 100,100 -oadmin-photo.png -Dview=\"juggler\" --colorscheme=Nature --camera=20,20,100,20,20,0 admin.scad
+	convert admin-photo.png admin-photo.jpg
+	rm -f admin-photo.png
+
 genbackground: genbackground.tlcc
 	cctlcc -Wall genbackground.tlcc -o genbackground -lstdc++
 

@@ -223,6 +223,7 @@ install: msg.eng msg.fr
 	install -m644 web/bolixo.png $(RPM_BUILD_ROOT)/var/www/html/bolixo.png
 	install -m644 web/background.png $(RPM_BUILD_ROOT)/var/www/html/background.png
 	install -m644 web/admin.jpg $(RPM_BUILD_ROOT)/var/www/html/admin.jpg
+	install -m644 web/admin-photo.jpg $(RPM_BUILD_ROOT)/var/www/html/admin-photo.jpg
 	install -m644 data/http_check.conf $(RPM_BUILD_ROOT)/etc/bolixo/http_check.conf
 	install -m755 bolixoserv.sysv $(RPM_BUILD_ROOT)/etc/init.d/bolixoserv
 	install -m755 bolixod $(RPM_BUILD_ROOT)/usr/sbin/bolixod

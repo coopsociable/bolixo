@@ -71,6 +71,7 @@ make install
 /var/www/html/bolixo.png
 /var/www/html/background.png
 /var/www/html/admin.jpg
+/var/www/html/admin-photo.jpg
 /usr/lib/bolixo-test.sh
 /usr/sbin/bolixo-production
 /usr/sbin/bo
