@@ -82,7 +82,6 @@ struct DIRENTRY{
 
 #define webapi_test_NOTNEED
 #define webapi_login_NOTNEED
-#define webapi_logout_NOTNEED
 #define webapi_addfile_NOTNEED
 #define webapi_addfile_bob_NOTNEED
 #define webapi_appendfile_NOTNEED
@@ -115,10 +114,8 @@ struct DIRENTRY{
 #define webapi_public_listdir_NOTNEED
 #define webapi_public_readfile_NOTNEED
 #define webapi_public_list_talk_NOTNEED
-#define webapi_systempubkey_NOTNEED
 #define webapi_config_read_NOTNEED
 #define webapi_config_write_NOTNEED
-#define webapi_registernode_NOTNEED
 #define webapi_remotelogin_NOTNEED
 #define webapi_remotepass_NOTNEED
 
@@ -472,7 +469,6 @@ static int bod_bolixoapi_login(
 		}else{
 			glocal string sign;
 			*glocal.session = session;
-			CONNECT_INFO con_key;
 			<call bo_writed_client_systemsign>(*glocal.con,session);
 			<f ok>
 				glocal.sign = sign;
@@ -622,9 +618,85 @@ static void bod_record_email(
 	}
 }
 </mod>
+<mod>
+static int bod_nodelogin(
+	CONNECT_HTTP_INFO &hcon,	// Connection info to the bolixo server 
+	CONNECT_INFO &con,		// Connection info to the writed
+	const char *nodename,
+	string &session)
+{
+	glocal string *session = &session;
+	glocal CONNECT_HTTP_INFO *hcon = &hcon;
+	glocal CONNECT_INFO *con = &con;
+	glocal int ret = -1;
+	<call webapi_nodelogin> (hcon,nodename);
+	<f ok>
+		if (!success){
+			tlmp_error ("nodelogin: internal_error=%d success=%d msg=%s session=%s\n",internal_error,success,msg,session);
+		}else{
+			glocal string sign;
+			*glocal.session = session;
+			<call bo_writed_client_systemsign>(*glocal.con,session);
+			<f ok>
+				glocal.sign = sign;
+			</f>
+			</call>
+			//tlmp_error ("session=%s sign=%s\n",session,glocal.sign.c_str());
+			<call webapi_nodepass> (*glocal.hcon,session,glocal.sign);
+			<f ok>
+				if (!success){
+					tlmp_error ("nodepass: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
+				}else{
+					glocal.ret = 0;
+				}
+			</f>
+			</call>
+		}
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+/*
+	Record user interest in another bolixo server
+*/
+<mod>
+static void bod_remote_interest_set(
+	CONNECT_INFO &con,
+	PARAM_STRING user,
+	PARAM_STRING server,
+	const char *nodename)
+{
+	CONNECT_HTTP_INFO hcon;
+	hcon.host = server.ptr;
+	hcon.port = "443";
+	hcon.use_ssl = true;
+	string session;
+	<call webapi_registernode>(hcon,nodename);
+	<f ok>
+	</f>
+	</call>
+	if (bod_nodelogin (hcon,con,nodename,session)!=-1){
+		<call webapi_remote_interest_set> (hcon,session,user);
+		<f ok>
+			if (!success) tlmp_error ("remote_interest_set: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
+		</f>
+		</call>
+		<call webapi_logout> (hcon,session);
+		<f ok>
+		</f>
+		</call>
+	}
+}
+</mod>
 // Parse a user[@nodename]
 // Strip the nodename if it is this node.
-static int bod_parse_user (const char *user, string &local_user, string &server, const char *our_nodename)
+static int bod_parse_user (
+	const char *user,
+	string &local_user,
+	string &remote_user,
+	string &server,
+	const char *our_nodename)
 {
 	int ret = -1;
 	local_user = user;
@@ -642,6 +714,7 @@ static int bod_parse_user (const char *user, string &local_user, string &server,
 			// Local user
 			local_user = string(user,pt-user);
 		}else{
+			remote_user = string(user,pt-user);
 			server = pt+1;
 		}
 		ret = 0;
@@ -649,7 +722,26 @@ static int bod_parse_user (const char *user, string &local_user, string &server,
 	return ret;
 }
 <mod>
-static int trlid_main (
+static int bod_getpubkey (const char *hostname, string &pubkey)
+{
+	glocal int ret = -1;
+	glocal string *pubkey = &pubkey;
+	CONNECT_HTTP_INFO con;
+	con.host = hostname;
+	con.use_ssl = true;
+	<call webapi_systempubkey>(con);
+	<f ok>
+		if (pubkey[0] != '\0'){
+			*glocal.pubkey = pubkey;
+			glocal.ret = 0;
+		}
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+<mod>
+static int bod_main (
 	const char *bind,
 	const char *portstr,
 	const char *control,	// Unix socket
@@ -1578,13 +1670,14 @@ static int trlid_main (
 				</call>
 			</f>
 			<f getpubkey>	// nickname = pubkey
+tlmp_error ("nickname=%s\n",nickname);
 				<call sql_query>("select pub_key from id2name where name='%s'",nickname);
 				<f empty>
-					glocal.bod_client.rep_getpubkey(false,"");
+					glocal.bod_client.rep_getpubkey(false,"user unknown");
 				</f>
 				<f onerow>
 					if (row[0] == NULL){
-						glocal.bod_client.rep_getpubkey(false,"");
+						glocal.bod_client.rep_getpubkey(false,"no public key");
 					}else{
 						glocal.bod_client.rep_getpubkey(true,row[0]);
 					}
@@ -1757,6 +1850,13 @@ static int trlid_main (
 					rep_config_read (true,glocal.msg,glocal.config);
 				}
 			</f>
+			<f remote_interest_set> // sessionid user = success:b msg
+				<call bo_writed_client_remote_interest_set>(glocal.con,sessionid,user);
+				<f ok>
+					glocal.bod_client.rep_remote_interest_set(success,msg);
+				</f>
+				</call>
+			</f>
 			<f interest_set> // sessionid user = success:b msg
 				glocal const char *owner = owner;
 				glocal const char *sessionid = sessionid;
@@ -1769,8 +1869,9 @@ static int trlid_main (
 				// if the remote user does not exist in this node (remote accounts),
 				// we tell bo-writed to create it.
 				glocal string remote;
+				glocal string remote_user;
 				string tmpuser;
-				if (bod_parse_user(user,tmpuser,glocal.remote,glocal.nodename)==-1){
+				if (bod_parse_user(user,tmpuser,glocal.remote_user,glocal.remote,glocal.nodename)==-1){
 					glocal.msg = MSG_R(E_IVLDUSER);
 				}else{
 					glocal.user = tmpuser.c_str();
@@ -1783,7 +1884,7 @@ static int trlid_main (
 							hcon.host = glocal.remote;
 							hcon.port = "443";
 							hcon.use_ssl = true;
-							<call webapi_getpubkey>(hcon,glocal.user);
+							<call webapi_getpubkey>(hcon,glocal.remote_user);
 							<f ok>
 								if (success){
 									<call bo_writed_client_addremoteuser>(glocal.con,glocal.user,pubkey);
@@ -1812,6 +1913,9 @@ static int trlid_main (
 					if (glocal.doit){
 						<call bo_writed_client_interest_set>(glocal.con,glocal.sessionid,glocal.user,glocal.owner);
 						<f ok>
+							if (success && glocal.remote.size() > 0){
+								bod_remote_interest_set (glocal.con,glocal.remote_user,glocal.remote,glocal.nodename);
+							}
 							glocal.success = success;
 							glocal.msg = msg;
 						</f>
@@ -1834,12 +1938,12 @@ static int trlid_main (
 				if (userid != 0){
 					<call sql_query>("select id2name.name,public_view,interests.since from interests"
 						" join id2name on id2name.userid = interests.check_userid"
-						" join config on config.userid = interests.check_userid"
+						" left join config on config.userid = interests.check_userid"
 						" where interests.userid=%u order by id2name.name",userid);
 					<f onerow>
 						INTUSER u;
 						u.name = row[0];
-						u.visible = atoi(row[1]) != 0;
+						u.visible = row[1] == NULL ? 1 : atoi(row[1]) != 0;
 						u.since = row[2];
 						glocal.users.push_back(u);
 					</f>
@@ -2199,11 +2303,21 @@ static int trlid_main (
 				rep_systempubkey (glocal.pubkey);
 			</f>
 			<f registernode>
-				<call bo_writed_client_registernode>(glocal.con,"","");
-				<f ok>
-				</f>
-				</call>
-				rep_registernode(false,"");
+				glocal string msg;
+				string pubkey;
+				if (bod_getpubkey(nodename,pubkey)==-1){
+					glocal.msg = "Can't get public key";
+				}else{
+					<call bo_writed_client_registernode>(glocal.con,nodename,pubkey);
+					<f ok>
+					</f>
+					</call>
+				}
+				if (glocal.msg.size() > 0){
+					rep_registernode(false,glocal.msg);
+				}else{
+					rep_registernode(true,"");
+				}
 			</f>
 			<f systemsign> // msg = sign
 				glocal string sign;
@@ -2217,6 +2331,20 @@ static int trlid_main (
 				</f>
 				</call>
 				rep_systemsign (glocal.success,glocal.msg, glocal.sign);
+			</f>
+			<f nodelogin>	// nodename = success:b msg session
+				<call bo_writed_client_nodelogin>(glocal.con,nodename);
+				<f ok>
+					glocal.bod_client.rep_nodelogin(success,msg,session);
+				</f>
+				</call>
+			</f>
+			<f nodepass>	// session sign = success:b msg
+				<call bo_writed_client_nodepass>(glocal.con,session,sign);
+				<f ok>
+					glocal.bod_client.rep_nodepass(success,msg);
+				</f>
+				</call>
 			</f>
 			<f remotelogin>	// user = success:b msg sessionid
 				// We simply create a session, but we check that the user do exist in id2name.
@@ -2495,7 +2623,7 @@ int main (int argc, char *argv[])
 
 		int ret = -1;
 		if (glocal.workers==1){
-			ret = trlid_main (glocal.bind,glocal.port,glocal.control
+			ret = bod_main (glocal.bind,glocal.port,glocal.control
 				,glocal.con,glocal.con_sess,glocal.user,glocal.pidfile,glocal.daemon
 				,glocal.admin_secrets,glocal.client_secrets,glocal.nodename,glocal.dirserver);
 		}else{
@@ -2506,7 +2634,7 @@ int main (int argc, char *argv[])
 				string control = string(glocal.control) + string_f("+%d",w);
 				pid_t pid = fork();
 				if (pid == (pid_t)0){
-					ret = trlid_main (glocal.bind,portstr,control.c_str()
+					ret = bod_main (glocal.bind,portstr,control.c_str()
 						,glocal.con,glocal.con_sess,glocal.user,glocal.pidfile,false
 						,glocal.admin_secrets,glocal.client_secrets,glocal.nodename,glocal.dirserver);
 				}else if (pid == (pid_t)-1){
