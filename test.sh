@@ -557,6 +557,7 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 		)engine=$ENGINE;
 		create unique index userinfo_userid on userinfo(userid);
 	EOF
+	$0 createdb-patch1
 	mysqladmin -uroot -S $SOCKN create $DBNAMET
 	mysql -uroot -S $SOCKN $DBNAMET <<-EOF
 		create table formids(
@@ -577,6 +578,23 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 		echo -n "Enter password: "	
 		read ADMINPASSWORD
 	fi
+elif [ "$1" = "createdb-patch1" ]; then # db: add nodes table to db files
+	ENGINE=myisam
+	mysql -uroot -S $SOCKN $DBNAME <<-EOF
+		create table nodes (
+			nodeid int primary key auto_increment,
+			nodename varchar(100),
+			created datetime default current_timestamp,
+			pub_key text default null
+		)engine=$ENGINE;
+		create unique index nodes_nodename on nodes (nodename);
+		create table interests_remote(
+			userid int,
+			nodename varchar(100),
+			created datetime default current_timestamp
+		)engine=$ENGINE;
+		create index interests_userid on interests_remote (userid);
+	EOF
 elif [ "$1" = "generate-system-pubkey" ] ; then # config: Generate the system public key
 	echo Generate --system-- crypto key
 	$0 bo-keysd-control genkey --system--

@@ -46,6 +46,9 @@ using namespace std;
 #define bod_client_form_deleteall_NOTNEED
 #define bod_client_public_checkuser_NOTNEED
 #define bod_client_systempubkey_NOTNEED
+#define bod_client_registernode_NOTNEED
+#define bod_client_remotelogin_NOTNEED
+#define bod_client_remotepass_NOTNEED
 
 #include "proto/bod_client.protoch"
 
@@ -62,6 +65,9 @@ using namespace std;
 #define webapi_set_access_NOTNEED
 #define webapi_markview_NOTNEED
 #define webapi_sendattach_NOTNEED
+#define webapi_registernode_NOTNEED
+#define webapi_remotelogin_NOTNEED
+#define webapi_remotepass_NOTNEED
 #include "proto/webapi.protoch"
 
 #include "proto/bolixod_client.protodef"
@@ -2227,6 +2233,7 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 	glocal CONTEXT *ctx = &ctx;
 	glocal bool markview = false;
 	glocal bool verifysign = false;
+	glocal bool getpubkey = false;
 	glocal const char *message = NULL;
 	glocal const char *nickname = NULL;
 	glocal unsigned nbrep=1;
@@ -2270,6 +2277,7 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 		setarg ('C',"interest_check","List members of your interest list with new activity",glocal.interest_check,false);
 
 		setarg ('v',"verifysign","Verify a message signature",glocal.verifysign,false);
+		setarg (' ',"getpubkey","Get the public key of a user",glocal.getpubkey,false);
 
 		setgrouparg (MSG_U(I_CONTACTMGMT,"contact management arguments"));
 		setarg ('i',"intro","Introduction message for contact request",glocal.intro,false);
@@ -2320,7 +2328,7 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 		glocal int ret = -1;
 		if (glocal.verifysign){
 			if (glocal.nickname == NULL){
-				tlmp_error ("You must provide the nickname\n");
+				tlmp_error (MSG_U(E_NEEDNICKNAME,"You must provide the nickname\n"));
 				exit (-1);
 			}
 			for (unsigned i=0; i<glocal.nbrep; i++){
@@ -2339,6 +2347,26 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 					</f>
 					</call>
 				}
+			}
+		}else if (glocal.getpubkey){
+			if (glocal.nickname == NULL){
+				tlmp_error (MSG_R(E_NEEDNICKNAME));
+				exit (-1);
+			}
+			if (glocal.ctx->is_internal()){
+				<call bod_client_getpubkey>(glocal.ctx->con,glocal.nickname);
+				<f ok>
+					if (success) glocal.ret = 0;
+					printf ("\tgetpubkey: success=%d %s\n",success,pubkey);
+				</f>
+				</call>
+			}else{
+				<call webapi_getpubkey>(glocal.ctx->hcon,glocal.nickname);
+				<f ok>
+					if (success) glocal.ret = 0;
+					printf ("\tgetpubkey: success=%d %s\n",success,pubkey);
+				</f>
+				</call>
 			}
 		}else if (glocal.contact_manage){
 			if (glocal.user == NULL){

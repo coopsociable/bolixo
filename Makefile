@@ -38,7 +38,7 @@ bolixod-control: bolixod-control.tlcc proto/bolixod_control.protoh
 
 bod: bod.tlcc filesystem.o proto/bod_control.protoh proto/bod_client.protoh proto/bod_admin.protoh \
 	proto/bo-writed_client.protoh proto/bo-sessiond_client.protoh proto/bolixod_client.protoh \
-	proto/bolixoapi.protoh _dict.o
+	proto/bolixoapi.protoh proto/webapi.protoh _dict.o
 	cctlcc -Wall $(OPTIONS) bod.tlcc filesystem.o _dict.o -o bod $(LIBS) -lssl -ltlmpsql -L/usr/lib64/mysql -lmysqlclient
 
 bod-client: bod-client.tlcc proto/bod_client.protoh proto/bod_admin.protoh \

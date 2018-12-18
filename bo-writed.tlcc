@@ -1376,6 +1376,64 @@ int main (int argc, char *argv[])
 					bo_writed_adduser (glocal.ctx,lang,name,email,password,id_str,msg);
 					rep_adduser (id_str,msg);
 				</f>
+				<f addremoteuser>
+					string msg;
+					if (sql_action(*glocal.usq,"insert into users (name,pub_key) values ('%s','%s')",user,pubkey)==-1){
+						msg = "Internal error, users table";
+					}else{
+						int userid = glocal.ctx.usq->getlastid();
+						if (sql_action("insert into id2name (userid,name,pub_key) values (%d,'%s','%s')",userid,user,pubkey)==-1){
+							msg = "Internal error, id2name table";
+						}
+					}
+					if (msg.size() > 0){
+						rep_addremoteuser (false,msg);
+					}else{
+						rep_addremoteuser (true,"");
+					}
+				</f>
+				<f remotelogin>	// sessionid user sign = success:b msg
+					glocal string msg;
+					glocal const char *user = user;
+					glocal const char *sign = sign;
+					glocal const char *sessionid = sessionid;
+					<call sql_query>(*glocal.usq,"select userid,pub_key from users where name='%s'",user);
+					<f empty>
+						glocal.msg = MSG_R(E_IVLDUSER);
+					</f>
+					<f onerow>
+						unsigned userid = atoi(row[0]);
+						if (row[1] == NULL){
+							glocal.msg = MSG_R(E_NOPUBKEY);
+						}else{
+							EVP_PKEY *p = fs_load_public (row[1]);
+							if (p != NULL){
+								string sig = glocal.sign;
+								strip_end (sig);
+								if (fs_verify(glocal.sessionid,p,sig)==-1){
+									glocal.msg = MSG_R(E_SIGNOMATCH);
+								}else{
+									<call bo_sessiond_admin_setsession>(glocal.con,glocal.sessionid,userid,"",glocal.user,"","eng",false,0);
+									<f ok>
+										if (internal_error){
+											glocal.msg = "Internal error";
+										}else{
+											sql_action (*glocal.usq,"update users set lastaccess=now() where name='%s'",glocal.user);
+										}
+									</f>
+									</call>
+								}
+								fs_free_public (p);
+							}
+						}
+					</f>
+					</call>
+					if (glocal.msg.size() > 0){
+						rep_remotelogin(false,glocal.msg);
+					}else{
+						rep_remotelogin (true,"");
+					}
+				</f>
 				<f confirmuser>
 					glocal string msg;
 					glocal string email;
@@ -2471,6 +2529,30 @@ int main (int argc, char *argv[])
 					</f>
 					</call>
 					rep_systemsign (glocal.success,glocal.msg,glocal.sign);
+				</f>
+				<f registernode> // nodename pubkey = success:b msg
+					glocal const char *pubkey = pubkey;
+					glocal const char *nodename = nodename;
+					glocal string msg;
+					<call sql_query>("select pubkey from nodes where nodename='%s'",nodename);
+					<f empty>
+						if (sql_action("insert into nodes (nodename,pub_key) values ('%s','%s')",glocal.nodename,glocal.pubkey)==-1){
+							glocal.msg = "Internal error, table nodes";
+						}
+					</f>
+					<f onerow>
+						if (row[0] != NULL){
+							glocal.msg = "Already registered";
+						}else if (sql_action("update table nodes set pub_key='%s' where nodename='%s'",glocal.pubkey,glocal.nodename)==-1){
+							glocal.msg = "Internal error, table nodes";
+						}
+					</f>
+					</call>
+					if (glocal.msg.size() > 0){
+						rep_registernode (false,glocal.msg);
+					}else{
+						rep_registernode (true,"");
+					}
 				</f>
 				<f info_write>	// sessionid user owner = success:b msg info:U{USERPUBLICINFO}
 					string msg;
