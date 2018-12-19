@@ -72,4 +72,5 @@ int fs_locate_dir (
 int fs_verify(PARAM_STRING msg, EVP_PKEY *key, PARAM_STRING sig64);
 EVP_PKEY *fs_load_public (PARAM_STRING p);
 void fs_free_public (EVP_PKEY *p);
+int fs_valid_pubkey(const char *pubkey);
 

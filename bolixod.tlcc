@@ -148,10 +148,15 @@ static void bolixod_getpubkey (bool use_ssl, const char *hostname, const char *n
 		if (internal_error){
 			*glocal.msg = "internal_error webapi:systempubkey";
 		}else if (pubkey[0] != '\0'){
-			if (sql_action("update nodes set created=now(),pub_key='%s' where nodename='%s'"
-				,pubkey,glocal.nodename)==-1){
-				*glocal.msg = "Internal error, inserting node pubkey";
-				tlmp_error ("Internal error, inserting node pubkey\n");
+			if (fs_valid_pubkey(pubkey)==-1){
+				*glocal.msg = string_f("Invalid pubkey for nodename %s",glocal.nodename);
+				tlmp_error ("Inalid pubkey for nodename %s\n",glocal.nodename);
+			}else{
+				if (sql_action("update nodes set created=now(),pub_key='%s' where nodename='%s'"
+					,pubkey,glocal.nodename)==-1){
+					*glocal.msg = "Internal error, inserting node pubkey";
+					tlmp_error ("Internal error, inserting node pubkey\n");
+				}
 			}
 		}else{
 			*glocal.msg = string_f("No pubkey for nodename %s",glocal.nodename);

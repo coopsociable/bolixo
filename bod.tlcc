@@ -708,25 +708,41 @@ static int bod_parse_user (
 	const char *our_nodename)
 {
 	int ret = -1;
-	local_user = user;
-	const char *pt = strchr(user,'@');
-	if (pt == NULL){
-		ret = 0;
-	}else{
-		// This is user@nodename
-		if (strncmp(our_nodename,"http://",7)==0){
-			our_nodename = our_nodename+7;
-		}else if (strncmp(our_nodename,"https://",7)==0){
-			our_nodename = our_nodename+8;
+	// Database use varchar(100)
+	if (strlen(user)<95){
+		local_user = user;
+		const char *pt = user;
+		bool bad = false;
+		while (*pt != '\0'){
+			// Better validation of hostname. More character are allowed
+			if (!isalpha(*pt) && !isdigit(*pt) && *pt != '.' && *pt != '-' && *pt != '@'){
+				bad = true;
+				break;
+			}
+			pt++;
 		}
-		if (strcasecmp(pt+1,our_nodename)==0){
-			// Local user
-			local_user = string(user,pt-user);
-		}else{
-			remote_user = string(user,pt-user);
-			server = pt+1;
+		if (!bad){
+			pt = strchr(user,'@');
+			if (pt == NULL){
+				ret = 0;
+			}else if (pt[1] != '-'){
+				// A hostname can't start with -
+				// This is user@nodename
+				if (strncmp(our_nodename,"http://",7)==0){
+					our_nodename = our_nodename+7;
+				}else if (strncmp(our_nodename,"https://",7)==0){
+					our_nodename = our_nodename+8;
+				}
+				if (strcasecmp(pt+1,our_nodename)==0){
+					// Local user
+					local_user = string(user,pt-user);
+				}else{
+					remote_user = string(user,pt-user);
+					server = pt+1;
+				}
+				ret = 0;
+			}
 		}
-		ret = 0;
 	}
 	return ret;
 }
@@ -734,13 +750,18 @@ static int bod_parse_user (
 static int bod_getpubkey (bool use_ssl,const char *hostname, string &pubkey)
 {
 	glocal int ret = -1;
+	glocal const char *hostname = hostname;
 	glocal string *pubkey = &pubkey;
 	CONNECT_HTTP_INFO con;
 	con.host = hostname;
 	con.use_ssl = use_ssl;
 	<call webapi_systempubkey>(con);
 	<f ok>
-		if (pubkey[0] != '\0'){
+		if (pubkey[0] == '\0'){
+			tlmp_error ("Enpty public key for host %s\n",glocal.hostname);
+		}else if (fs_valid_pubkey(pubkey)==-1){
+			tlmp_error ("Invalid public key for host %s\n",glocal.hostname);
+		}else{
 			*glocal.pubkey = pubkey;
 			glocal.ret = 0;
 		}
@@ -1914,15 +1935,19 @@ static int bod_main (
 							<call webapi_getpubkey>(hcon,glocal.remote_user);
 							<f ok>
 								if (success){
-									<call bo_writed_client_addremoteuser>(glocal.con,glocal.user,pubkey);
-									<f ok>
-										if (!success){
-											glocal.msg = msg;
-										}else{
-											glocal.doit = true;
-										}
-									</f>
-									</call>
+									if (fs_valid_pubkey(pubkey)==-1){
+										glocal.msg = MSG_U(E_IVLDPUBKEY,"Invalid public key for remote user");
+									}else{
+										<call bo_writed_client_addremoteuser>(glocal.con,glocal.user,pubkey);
+										<f ok>
+											if (!success){
+												glocal.msg = msg;
+											}else{
+												glocal.doit = true;
+											}
+										</f>
+										</call>
+									}
 								}else{
 									glocal.msg = MSG_U(E_CANTGETPUBKEY,"Can't get public key for remote user");
 								}
