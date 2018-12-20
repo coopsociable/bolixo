@@ -1,0 +1,86 @@
+/*
+	Command line tool to control publishd
+*/
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <termios.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <string.h>
+#include <tlmplib.h>
+#include <tlmpnet.h>
+#include <string>
+#include <trlitool.h>
+#include "bolixo.h"
+
+using namespace std;
+
+#include "proto/publishd_control.protoch"
+
+<mod>
+int main (int argc, char *argv[])
+{
+	glocal int ret = -1;
+	glocal const char *control = "/var/run/publishd.sock";
+	glocal.ret = <call tlmpprogram>(argc,argv);
+	<f init>
+		setproginfo ("publishd-control",VERSION
+			,"Command line tool to control publishd\n"
+			 "\n"
+			 "\tdebug 0/1\n"
+			 "\tdebugfile filename\n"
+			 "\thelp_connect host port message\n"
+			 "\tquit\n"
+			 "\tstatus\n"
+			);
+		setarg ('p',"control","Unix socket to reach publishd",glocal.control,false);
+	</f>
+	<f main>
+		glocal int ret = -1;
+		CONNECT_INFO con;
+		con.port = glocal.control;
+		if (strcmp(argv[0],"status")==0 && argc==1){
+			<call publishd_control_status>(con);
+			<f ok>
+				glocal.ret = internal_error ? -1 : 0;
+				for (auto x:lines) printf ("%s\n",x);
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"quit")==0 && argc==1){
+			<call publishd_control_quit>(con);
+			<f ok>
+				glocal.ret = internal_error ? -1 : 0;
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"debug")==0 && argc==2){
+			<call publishd_control_debug>(con,atoi(argv[1]));
+			<f ok>
+				glocal.ret = internal_error ? -1 : 0;
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"debugfile")==0 && argc==2){
+			<call publishd_control_debugfile>(con,argv[1]);
+			<f ok>
+				glocal.ret = internal_error ? -1 : 0;
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"help_connect")==0 && argc==4){
+			<call publishd_control_help_connect>(con,argv[1],argv[2],argv[3]);
+			<f ok>
+				for (auto l:lines){
+					printf ("%s\n",l);
+				}
+			</f>
+			</call>
+		}else{
+			tlmp_error ("Invalid command: %s\n",argv[0]);
+			usage();
+		}
+		return glocal.ret;
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+

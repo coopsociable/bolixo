@@ -435,15 +435,22 @@ struct HANDLE{
 	string modified;
 	FILE *f;
 	string sessionid;	// A handle may only be used by the same sessionid
+	// Extra information kept when talking to publishd
+	int ownerid;
+	int dirid;
 	HANDLE (int _fileid, PARAM_STRING _modified, FILE *_f, PARAM_STRING _sessionid){
 		fileid = _fileid;
 		modified = _modified.ptr;
 		f = _f;
 		sessionid = _sessionid.ptr;
+		dirid = -1;
+		ownerid = -1;
 	}
 	HANDLE(){
 		fileid = -1;
 		f = NULL;
+		dirid = -1;
+		ownerid = -1;
 	}
 	void close(){
 		if (f != NULL) fclose (f);
@@ -487,6 +494,29 @@ FILE *fs_alloc_file_handle (int fileid, PARAM_STRING modified, const char *mode,
 		handles[handle] = HANDLE(fileid,modified,ret,sessionid);
 	}else{
 		handle.clear();
+	}
+	return ret;
+}
+void fs_file_handle_addextra (PARAM_STRING handle, int ownerid, int dirid)
+{
+	auto h = handles.find(handle.ptr);
+	if (h != handles.end()){
+		h->second.ownerid = ownerid;
+		h->second.dirid = dirid;
+	}else{
+		tlmp_error ("Adding to unknown file handle\n");
+	}
+}
+int fs_file_handle_getextra (PARAM_STRING handle, int &ownerid, int &dirid, int &fileid, string &modified)
+{
+	int ret = -1;
+	auto h = handles.find(handle.ptr);
+	if (h != handles.end()){
+		ret = 0;
+		ownerid = h->second.ownerid;
+		dirid = h->second.dirid;
+		fileid = h->second.fileid;
+		modified = h->second.modified;
 	}
 	return ret;
 }

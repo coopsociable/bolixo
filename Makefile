@@ -5,7 +5,7 @@ INSTRUMENT:=$(shell test -f ../instrument && echo --instrument --getnow fdpass_g
 DINSTRUMENT:=$(shell test -f ../instrument && echo -DINSTRUMENT)
 PROGS=_dict.o bod bod-client bod-control bo-writed bo-writed-control bo-sessiond bo-sessiond-control \
       bo-manager bofs ssltestsign bo-keysd bo-keysd-control bolixod bolixod-control perfsql \
-      bo-mon bo-mon-control utils/eximexec
+      bo-mon bo-mon-control utils/eximexec publishd publishd-control
 #bo-log bo-log-control \
 DOCS=
 OPTIONS=$(DINSTRUMENT) -funsigned-char -O2 -Wall -g -DVERSION=\"$(PACKAGE_REV)\" -I/usr/include/tlmp -I/usr/include/trlitool
@@ -49,7 +49,8 @@ bod-control: bod-control.tlcc proto/bod_control.protoh
 	cctlcc -Wall $(OPTIONS) bod-control.tlcc _dict.o -o bod-control $(LIBS)
 
 bo-writed: bo-writed.tlcc filesystem.o proto/bo-writed_control.protoh proto/bo-writed_client.protoh \
-	proto/bo-sessiond_admin.protoh proto/bo-log.protoh proto/bo-keysd_control.protoh
+	proto/bo-sessiond_admin.protoh proto/bo-log.protoh proto/bo-keysd_control.protoh \
+	proto/publishd_client.protoh
 	cctlcc -Wall $(OPTIONS) bo-writed.tlcc filesystem.o _dict.o -o bo-writed $(LIBS) -ltlmpsql -L/usr/lib64/mysql -lmysqlclient
 
 bo-writed-control: bo-writed-control.tlcc proto/bo-writed_control.protoh
@@ -84,11 +85,25 @@ bo-keysd: bo-keysd.tlcc proto/bo-keysd_control.protoh
 bo-keysd-control: bo-keysd-control.tlcc proto/bo-keysd_control.protoh
 	cctlcc -Wall $(OPTIONS) bo-keysd-control.tlcc -o bo-keysd-control $(LIBS)
 
+publishd: publishd.tlcc proto/publishd_control.protoh proto/publishd_client.protoh _dict.o
+	cctlcc -Wall $(OPTIONS) publishd.tlcc _dict.o -o publishd $(LIBS) -lcrypto -ltlmpsql -L/usr/lib64/mysql -lmysqlclient
+
+publishd-control: publishd-control.tlcc proto/publishd_control.protoh
+	cctlcc -Wall $(OPTIONS) publishd-control.tlcc -o publishd-control $(LIBS)
+
 perfsql: perfsql.tlcc
 	cctlcc -Wall $(OPTIONS) perfsql.tlcc -o perfsql $(LIBS) -ltlmpsql -L/usr/lib64/mysql -lmysqlclient
 
 utils/eximexec: utils/eximexec.cc
 	g++ -Wall utils/eximexec.cc -o utils/eximexec
+
+proto/publishd_control.protoh: proto/publishd_control.proto
+	build-protocol --arg "int no" --arg "HANDLE_INFO *c" --name publishd_control \
+	       --protoch proto/publishd_control.protoch proto/publishd_control.proto >proto/publishd_control.protoh
+
+proto/publishd_client.protoh: proto/publishd_client.proto
+	build-protocol $(INSTRUMENT) --secretmode --arg "int no" --arg "HANDLE_INFO *c" --name publishd_client \
+	       --protoch proto/publishd_client.protoch proto/publishd_client.proto >proto/publishd_client.protoh
 
 proto/bo-log-control.protoh: proto/bo-log-control.proto
 	build-protocol --arg "int no" --arg "HANDLE_INFO *c" --name bo_log_control \
@@ -228,6 +243,8 @@ install: msg.eng msg.fr
 	install -m755 bolixoserv.sysv $(RPM_BUILD_ROOT)/etc/init.d/bolixoserv
 	install -m755 bolixod $(RPM_BUILD_ROOT)/usr/sbin/bolixod
 	install -m755 bolixod-control $(RPM_BUILD_ROOT)/usr/sbin/bolixod-control
+	install -m755 publishd $(RPM_BUILD_ROOT)/usr/sbin/publishd
+	install -m755 publishd-control $(RPM_BUILD_ROOT)/usr/sbin/publishd-control
 	install -m755 bo-keysd $(RPM_BUILD_ROOT)/usr/sbin/bo-keysd
 	install -m755 bo-keysd-control $(RPM_BUILD_ROOT)/usr/sbin/bo-keysd-control
 	install -m755 bo-mon $(RPM_BUILD_ROOT)/usr/sbin/bo-mon

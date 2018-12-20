@@ -183,6 +183,7 @@ elif [ "$1" = "lxc0s" ] ; then # config: Produces the lxc0 scripts
 	test -d /var/lib/lxc/sessiond && /usr/lib/bolixo-test.sh lxc0-sessiond
 	test -d /var/lib/lxc/keysd && /usr/lib/bolixo-test.sh lxc0-keysd
 	test -d /var/lib/lxc/bolixod && /usr/lib/bolixo-test.sh lxc0-bolixod
+	test -d /var/lib/lxc/publishd && /usr/lib/bolixo-test.sh lxc0-publishd
 	test -d /var/lib/lxc/protocheck && /usr/lib/bolixo-test.sh lxc0-proto
 elif [ "$1" = "webtest" ] ; then # P:
 	shift

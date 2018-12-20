@@ -54,6 +54,7 @@ using namespace std;
 #define bo_keysd_control_debugfile_NOTNEED
 #include "proto/bo-keysd_control.protoch"
 #include "proto/bo-log.protoch"
+#include "proto/publishd_client.protoch"
 //#include "proto/bo-log-admin.protoch"
 
 /*
@@ -67,6 +68,7 @@ static unsigned trli_getsessionuser (CONNECT_INFO &con, const char *sessionid, s
 	glocal bool is_admin = false;
 	<call bo_sessiond_admin_getsession>(con,sessionid);
 	<f ok>
+		if (userid == (unsigned)-1) userid = 0;	// session for nodes, not user
 		glocal.userid = userid;
 		(*glocal.userid_str) = userid_str;
 		glocal.is_admin = admin;
@@ -630,14 +632,15 @@ static int bo_writed_addfile_bob (
 	bool more,
 	string &fileuuid,
 	string &msg,
-	string &handle)
+	string &handle,
+	int &fileid,
+	char modified[20])
 {
-	int fileid = fs_newid (userid,0,'r',msg,fileuuid);
+	fileid = fs_newid (userid,0,'r',msg,fileuuid);
 	if (fileid != -1){
 		const char *basename = name.ptr;
 		if (basename == NULL) basename = fileuuid.c_str();
-		char now[20];
-		fs_set_now(now);
+		fs_set_now(modified);
 		FILE_TYPE file_type = bo_writed_file_type (basename,content,more);
 		const char *content_str = NULL;
 		string tmp;
@@ -647,14 +650,14 @@ static int bo_writed_addfile_bob (
 			sign = bo_writed_sign (con_keys,userid,tmp);
 			content_str = tmp.c_str();
 		}
-		if (fs_insert_entry(dirid,fileid,now,basename,type)==-1){
+		if (fs_insert_entry(dirid,fileid,modified,basename,type)==-1){
 			msg = "Internal error (dirs_files table)";
 		}else if (sql_action("insert into files (id,modified,filetype,content,signature) values (%d,'%s',%u,'%s','%s')"
-			,fileid,now,file_type,content_str,sign.c_str())==-1){
+			,fileid,modified,file_type,content_str,sign.c_str())==-1){
 			msg = "Internal error (files table)";
 		}else{
 			if (content_str == NULL){
-				FILE *fout = fs_alloc_file_handle (fileid,now,"w",handle,sessionid);
+				FILE *fout = fs_alloc_file_handle (fileid,modified,"w",handle,sessionid);
 				if (fout == NULL){
 					tlmp_error ("Can't open file (%s)\n",strerror(errno));
 					msg = "Internal error (1-writing data)";
@@ -885,6 +888,7 @@ static void bo_writed_update_interest(
 }
 struct CONTEXT {
 	CONNECT_INFO con_keys;	// Connection to the bo-keysd server
+	CONNECT_INFO con_publish;// Connection to the publishd server
 	const char *mailserver;
 	const char *mailport;
 	const char *mailfrom;
@@ -1097,6 +1101,7 @@ int main (int argc, char *argv[])
 	glocal const char *sessionbind = "";
 	glocal const char *computeport = "/dev/compute.sock";
 	glocal const char *keysdport = "/dev/keysd.sock";
+	glocal const char *publishdport = "/dev/publishd.sock";
 	glocal const char *sql_tcpport = NULL;
 	glocal const char *mailserver = "unix:";
 	glocal const char *mailport = "/dev/smtp.sock";
@@ -1127,6 +1132,8 @@ int main (int argc, char *argv[])
 		setarg (' ',"computeport","Port to reach the bo-log compute server",glocal.computeport,false);
 		setgrouparg ("RSA key server");
 		setarg (' ',"keysdport","Port to reach the bo-keysd server",glocal.keysdport,false);
+		setgrouparg ("Publish server");
+		setarg (' ',"publishdport","Port to reach the publishd server",glocal.publishdport,false);
 		setgrouparg ("Misc.");
 		setarg (' ',"secrets","File holding secrets for communication",glocal.secretfile,false);
 		setarg (' ',"user","Run the program as this user",glocal.user,false);
@@ -1203,6 +1210,8 @@ int main (int argc, char *argv[])
 		glocal string clientport = string_f ("unix:/tmp/writed-%s.sock",glocal.port);
 		glocal string controlport = string_f ("unix:%s",glocal.control);
 		glocal.ctx.con_keys.port = glocal.keysdport;
+		glocal.ctx.con_publish.port = glocal.publishdport;
+		glocal.ctx.con_publish.secret = glocal.mysecret;
 		glocal.con.fd = -1;
 		int ret = -1;
 		<obj TCPSERVER s>(glocal.bind,glocal.clientport,5);
@@ -1587,7 +1596,6 @@ int main (int argc, char *argv[])
 					glocal string msg;
 					glocal string nodename;
 					if (bod_sessionstate(glocal.con,sessionid,-1,glocal.nodename,glocal.msg) != -1){
-tlmp_error ("remote_interest_set nodename=%s\n",glocal.nodename.c_str());
 						glocal int userid = fs_rec_getid("select userid from id2name where name='%s'",user);
 						if (glocal.userid == -1){
 							glocal.msg = "Invalid user";
@@ -1617,7 +1625,6 @@ tlmp_error ("remote_interest_set nodename=%s\n",glocal.nodename.c_str());
 					glocal string msg;
 					glocal string nodename;
 					if (bod_sessionstate(glocal.con,sessionid,-1,glocal.nodename,glocal.msg) != -1){
-tlmp_error ("remote_interest_unset nodename=%s\n",glocal.nodename.c_str());
 						glocal int userid = fs_rec_getid("select userid from id2name where name='%s'",user);
 						if (glocal.userid == -1){
 							glocal.msg = "Invalid user";
@@ -1842,9 +1849,11 @@ tlmp_error ("remote_interest_unset nodename=%s\n",glocal.nodename.c_str());
 						string msg;
 						string handle;
 						string msgid;
+						int fileid;
+						char modified[20];
 						bo_writed_addfile_bob (glocal.ctx.con_keys,sessionid,entry.basename,ENTRY_FILE,entry.dirid,entry.userid
 								,content,more
-								,msgid,msg,handle);
+								,msgid,msg,handle,fileid,modified);
 						if (msg.size() > 0){
 							rep_addfile_bob (false,"",msg);
 							fs_delete_handle(handle);
@@ -1873,7 +1882,20 @@ tlmp_error ("remote_interest_unset nodename=%s\n",glocal.nodename.c_str());
 							}else{
 								rep_appendfile (true,"Ok");
 							}
-							if (!more) fs_delete_handle(handle);
+							if (!more){
+								int ownerid,dirid,fileid;
+								string modified;
+								if (fs_file_handle_getextra(handle,ownerid,dirid,fileid,modified)!=-1
+									&& ownerid != -1){ 
+									<call publishd_client_sendmessage>(glocal.ctx.con_publish,ownerid
+										,dirid,fileid,modified);
+									<f ok>
+										if (!success) tlmp_error ("publishd_client_sendmessage: %s\n",msg);
+									</f>
+									</call>
+								}
+								fs_delete_handle(handle);
+							}
 						}
 					}
 				</f>
@@ -2465,10 +2487,24 @@ tlmp_error ("remote_interest_unset nodename=%s\n",glocal.nodename.c_str());
 							unsigned ownerid = atoi(row[0]);
 							int dirid = fs_find_short_inbox (ownerid,glocal.groupowner,glocal.groupname,glocal.msg,true,created);
 							if (dirid != -1){
+								int fileid;
+								char modified[20];
 								bo_writed_addfile_bob (glocal.ctx.con_keys,glocal.sessionid,NULL,ENTRY_MSG,dirid,glocal.userid
 									,*glocal.content,glocal.more
-									,glocal.msgid,glocal.msg,glocal.handle);
+									,glocal.msgid,glocal.msg,glocal.handle,fileid,modified);
 								bo_writed_update_interest(created,glocal.groupname,ownerid,dirid);
+								if (strcmp(glocal.groupname,"public")==0){
+									if (!glocal.more){
+										<call publishd_client_sendmessage>(glocal.ctx.con_publish,ownerid
+											,dirid,fileid,modified);
+										<f ok>
+											if (!success) tlmp_error ("publishd_client_sendmessage: %s\n",msg);
+										</f>
+										</call>
+									}else{
+										fs_file_handle_addextra (glocal.handle,ownerid,dirid);
+									}
+								}
 							}
 							end = true;
 						</f>
@@ -2517,6 +2553,14 @@ tlmp_error ("remote_interest_unset nodename=%s\n",glocal.nodename.c_str());
 									bo_writed_update_dirdate(dirid);
 								}
 								bo_writed_update_interest(created,glocal.groupname,ownerid,dirid);
+								if (strcmp(glocal.groupname,"public")==0){
+									<call publishd_client_sendmessage>(glocal.ctx.con_publish,ownerid
+										,dirid,glocal.srcentry.entryid,glocal.srcentry.modified);
+									<f ok>
+										if (!success) tlmp_error ("publishd_client_sendmessage: %s\n",msg);
+									</f>
+									</call>
+								}
 							}
 							end = true;
 						</f>
@@ -2687,6 +2731,8 @@ tlmp_error ("remote_interest_unset nodename=%s\n",glocal.nodename.c_str());
 					glocal bool sessiond=false;
 					glocal bool keysd=false;
 					glocal bool fsok= false;
+					glocal bool publish_dbfiles = false;
+					glocal bool publish_fsok = false;
 					<call sql_query>(*glocal.usq,"select count(*) from users");
 					<f onerow>
 						glocal.bdusers=true;
@@ -2707,15 +2753,21 @@ tlmp_error ("remote_interest_unset nodename=%s\n",glocal.nodename.c_str());
 						glocal.keysd = lines.size() > 0;
 					</f>
 					</call>
-					static const char *testfile = "/var/lib/bolixo/test";
+					string testfile = string_f("/var/lib/bolixo/test-%ld",time(NULL));
 					<call savefile>(testfile,false);
 					<f dowrite>
 						glocal.fsok = true;
 						return 0;
 					</f>
 					</call>
-					unlink (testfile);
-					rep_test (glocal.bdtrli,glocal.bdusers,glocal.sessiond,glocal.keysd,glocal.fsok);
+					<call publishd_client_test>(glocal.ctx.con_publish,testfile);
+					<f ok>
+						glocal.publish_fsok = fsok;
+						glocal.publish_dbfiles = dbfiles;
+					</f>
+					</call>
+					unlink (testfile.c_str());
+					rep_test (glocal.bdtrli,glocal.bdusers,glocal.sessiond,glocal.keysd,glocal.fsok,glocal.publish_dbfiles,glocal.publish_fsok);
 				</f>
 				<f systemsign> // msg = sign
 					glocal bool success;

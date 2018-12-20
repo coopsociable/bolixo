@@ -40,6 +40,7 @@ if [ "$LXCSOCK" = "" ] ; then
 fi
 if [ "$LXCSOCK" == "on" ] ; then
 	BOLIXOD_SOCK=/var/lib/lxc/bolixod/rootfs/var/run/blackhole/bolixod-0.sock
+	PUBLISHD_SOCK=/var/lib/lxc/publishd/rootfs/var/run/blackhole/publishd.sock
 	BOD_SOCK=/var/lib/lxc/bod/rootfs/var/run/blackhole/bod-0.sock
 	WRITED_SOCK=/var/lib/lxc/writed/rootfs/var/run/blackhole/bo-writed-0.sock
 	SESSIOND_SOCK=/var/lib/lxc/sessiond/rootfs/var/run/blackhole/bo-sessiond.sock
@@ -47,6 +48,7 @@ if [ "$LXCSOCK" == "on" ] ; then
 	WRITEDLOG=/var/lib/lxc/writed/rootfs/var/log/bolixo/bo-writed.log
 elif [ "$BOD_SOCK" = "" ] ; then
 	BOLIXOD_SOCK=/tmp/bolixod.sock
+	PUBLISHD_SOCK=/tmp/publishd.sock
 	BOD_SOCK=/tmp/bod.sock
 	WRITED_SOCK=/tmp/bo-writed.sock
 	SESSIOND_SOCK=/tmp/bo-sessiond.sock
@@ -142,7 +144,7 @@ bod_save(){
 	DATA=/var/lib/lxc/$1/data
 	echo "#!/bin/sh" > $SAVE
 	echo "mkdir -p $DATA" >>$SAVE
-	echo "umount $ROOTFS/var/lib/bolixo" >>$SAVE
+	echo "umount $ROOTFS/var/lib/bolixo || true" >>$SAVE
 	chmod +x $SAVE
 }
 bod_restore(){
@@ -153,6 +155,12 @@ bod_restore(){
 	echo "mkdir -p $ROOTFS/var/lib/bolixo" >>$REST
 	echo "mount -oro --bind /var/lib/bolixo $ROOTFS/var/lib/bolixo" >>$REST
 	chmod +x $REST
+}
+publishd_save(){
+	bod_save $*
+}
+publishd_restore(){
+	bod_restore $*
 }
 if [ "$1" = "" ] ; then
 	if [ -x /usr/sbin/menutest ] ; then
@@ -216,6 +224,28 @@ elif [ "$1" = "bolixod" ] ; then # A: Runs bolixod
 			$BOLIXOPATH/bolixod $WOPTIONS
 		done
 	fi
+elif [ "$1" = "publishd" ] ; then # A: Runs bolixod
+	OPTIONS="--user $USER \
+		--admin_secrets $BOLIXOCONF/secrets.admin \
+		--dbserv $BOD_DBSERV --dbuser $BOD_DBUSER --dbname $BOD_DBNAME  \
+		"
+	shift
+	WORKERS=1
+	while [ $# -gt 0 ]; do
+		if [ "$1" = "debug" ] ; then
+			OPTIONS="--debug $OPTIONS"
+		elif [ "$1" = "lxc0" ] ; then
+			STRACE="strace -o /tmp/log -f"
+		fi
+		shift
+	done
+	OPTIONS="$OPTIONS --control $PUBLISHD_SOCK"
+	if [ "$SILENT" = "on" ] ; then
+		echo publishd
+	else
+		echo $BOLIXOPATH/publishd $OPTIONS
+	fi
+	$STRACE $BOLIXOPATH/publishd $OPTIONS
 elif [ "$1" = "bod" ] ; then # A: Runs bod
 	OPTIONS="--mysecret foo --admin_secrets $BOLIXOCONF/secrets.admin --client_secrets $BOLIXOCONF/secrets.client --user $USER \
 		--dbserv $BOD_DBSERV --dbuser $BOD_DBUSER --dbname $BOD_DBNAME --bindaddr 0.0.0.0 \
@@ -347,6 +377,9 @@ elif [ "$1" = "cmplxclog" ] ;then # S: Compares the lxc writed log with the refe
 elif [ "$1" = "bolixod-control" ] ; then # A: Talks to bolixod
 	shift
 	$BOLIXOPATH/bolixod-control --control $BOLIXOD_SOCK $*
+elif [ "$1" = "publishd-control" ] ; then # A: Talks to publishd
+	shift
+	$BOLIXOPATH/publishd-control --control $PUBLISHD_SOCK $*
 elif [ "$1" = "bod-control" ] ; then # A: Talks to bod
 	shift
 	$BOLIXOPATH/bod-control --control $BOD_SOCK $*
@@ -930,7 +963,23 @@ elif [ "$1" = "createsqlusers" ] ; then # db: Generates SQL to create users
 	echo "create user '$BOLIXOD_DBUSER'@'localhost' identified by '$BOLIXOD_PWD';"
 	echo "insert into db (host,db,user,select_priv,Insert_priv,Update_priv,Delete_priv) values ('localhost','$DBNAMEBOLIXO','$BOLIXOD_DBUSER','y','y','y','y');"
 	) >$BOLIXOSQL
+	$0 createsqlusers-patch1 /tmp/files.sql
 	echo $TRLISQL, $USERSQL and $BOLIXOSQL were produced
+elif [ "$1" = "createsqlusers-patch1" ] ; then # db: Add publishd to bd files
+	if [ "$2" != "" ] ; then
+		TRLISQL=$2
+	else
+		TRLISQL=/tmp/files-patch1.sql
+		rm -f $TRLISQL
+		echo "use mysql;" >$TRLISQL
+		echo "File $TRLISQL is produced"
+		echo "run bolixo-production files <$TRLISQL"
+		echo "/var/lib/lxc/bosqlddata/bosqlddata.admsql -pdb_root_password reload"
+	fi
+	(
+	echo "create user '$PUBLISHD_DBUSER'@'localhost' identified by '$PUBLISHD_PWD';"
+	echo "insert into db (host,db,user,select_priv) values ('localhost','$DBNAME','$PUBLISHD_DBUSER','y');"
+	) >>$TRLISQL
 elif [ "$1" = "printconfig" ] ; then # config:
 	./bo-manager -c data/manager.conf --devmode printconfig localhost
 elif [ "$1" = "infraconfig" ] ; then # config: minimal config for development
@@ -1027,6 +1076,25 @@ elif [ "$1" = "lxc0-bolixod" ]; then # prod:
 	chmod +x /var/lib/lxc/bolixod/bolixod-lxc0.sh
 	bolixod_save bolixod
 	bolixod_restore bolixod
+elif [ "$1" = "lxc0-publishd" ]; then # prod:
+	export LANG=eng
+	$0 publishd lxc0 &
+	sleep 1
+	# Force publishd to make a resolver request
+	$0 publishd-control help_connect xxx.bolixo.org 25 quit >/dev/null
+	$0 publishd-control quit
+	mkdir -p /var/lib/lxc/publishd
+	trli-lxc0 $LXC0USELINK \
+		--filelist /var/lib/lxc/publishd/publishd.files \
+		--savefile /var/lib/lxc/publishd/publishd.save \
+		--restorefile /var/lib/lxc/publishd/publishd.restore \
+		-e /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem \
+		$EXTRALXCPROG \
+		$INCLUDELANGS \
+		-i /usr/sbin/trli-init -l /tmp/log -n publishd -p $BOLIXOPATH/publishd >/var/lib/lxc/publishd/publishd-lxc0.sh
+	chmod +x /var/lib/lxc/publishd/publishd-lxc0.sh
+	publishd_save publishd
+	publishd_restore publishd
 elif [ "$1" = "lxc0-bod" ]; then # prod:
 	export LANG=eng
 	$0 bod lxc0 &
@@ -1312,6 +1380,7 @@ elif [ "$1" = "lxc0s" ] ; then # prod: generates lxc0 scripts for all components
 	$0 checks
 	export SILENT=on
 	$0 lxc0-bolixod
+	$0 lxc0-publishd
 	$0 lxc0-bod
 	$0 lxc0-writed
 	$0 lxc0-keysd

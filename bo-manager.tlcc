@@ -133,6 +133,14 @@ struct BOLIXOD {
 		workers = _workers;
 	}
 };
+struct PUBLISHD {
+	string server;
+	string secret;
+	PUBLISHD (const string &_server, const string &_secret){
+		server = _server;
+		secret = _secret;
+	}
+};
 static bool closeweb = false;
 static const char *config_dir = "/etc/bolixo";
 static const char *log_dir = "/var/log/bolixo";
@@ -152,6 +160,8 @@ static const char *sql_bod_pwd = "bod.1";
 static const char *sql_bod_user = "bod";
 static const char *sql_bo_writed_pwd = "bo_writed.1";
 static const char *sql_bo_writed_user = "bo_writed";
+static const char *sql_publishd_pwd = "publishd.1";
+static const char *sql_publishd_user = "publishd";
 static const char *trli_user = "bolixo";
 static int trli_userid = -1;
 static const char *blackhole_path = "/usr/sbin";
@@ -183,6 +193,7 @@ static const char *ip_bosqldbolixo = IP_PREFIX "14";
 static const char *ip_exim = IP_PREFIX "11";
 static const char *ip_keysd = IP_PREFIX "12";
 static const char *ip_bolixod = IP_PREFIX "13";
+static const char *ip_publishd = IP_PREFIX "16";
 
 #define IP_PREFIX_P "192.168.5."
 static const char *ip_sqld_p = IP_PREFIX_P "1";
@@ -199,8 +210,10 @@ static const char *vs_bod = "bod";
 static const char *vs_bolixod = "bolixod";
 static const char *vs_writed = "writed";
 static const char *vs_sessiond = "sessiond";
+static const char *vs_publishd = "publishd";
 
 struct CONFIG {
+	bool iptables;
 	string hostname;
 	string nodename;
 	string dirserver;
@@ -224,9 +237,11 @@ struct CONFIG {
 	vector<WEB> dnsproxys;
 	vector<MON> monitors;
 	vector<BOLIXOD> bolixods;
+	vector<PUBLISHD> publishds;
 	CONFIG(){
 		dirserver = "https://bolixo.org";
 		org="Bolixo.org";
+		iptables = false;
 	}
 };
 static bool preprodmode = false;
@@ -334,6 +349,9 @@ static void generateconfig (
 		for (auto t:config.bolixods){
 			fprintf (fout,"%s %srule %s bolixod unix /dev/log %s root %s\n",bk_control,prefix,t.server.c_str(),l.server.c_str(),devlog);
 		}
+		for (auto t:config.publishds){
+			fprintf (fout,"%s %srule %s publishd unix /dev/log %s root %s\n",bk_control,prefix,t.server.c_str(),l.server.c_str(),devlog);
+		}
 		for (auto t:config.bods){
 			fprintf (fout,"%s %srule %s bod unix /dev/log %s root %s\n",bk_control,prefix,t.server.c_str(),l.server.c_str(),devlog);
 		}
@@ -430,6 +448,12 @@ static void generateconfig (
 			fprintf (fout,"%s rule %s root unix %s/B-bolixod-%s-client-%u.sock %s bolixod /tmp/bolixod-client-%u.sock\n"
 				,bk_control,rootserver,sock_tests_dir,server,port,server,port);
 		}
+	}
+	fprintf (fout,"# rules to connect to publishd for monitoring\n");
+	for (auto t:config.bolixods){
+		const char *server = t.server.c_str();
+		fprintf (fout,"%s rule %s root unix %s/B-publishd-%s-control.sock %s publishd /var/run/blackhole/publishd.sock\n"
+			,bk_control,rootserver,sock_tests_dir,server,server);
 	}
 	fprintf (fout,"# rules to connect to bod for monitoring\n");
 	for (auto t:config.bods){
@@ -588,6 +612,15 @@ static void generateconfig (
 			prefix = "a";
 		}
 	}
+	fprintf (fout,"# rules to connect writed to publishd\n");
+	prefix = "";
+	for (auto w:config.writeds){
+		for (auto s:config.publishds){
+			fprintf (fout,"%s %srule %s writed unix /dev/publishd.sock %s %s /tmp/publishd_client.sock\n"
+				,bk_control,prefix,w.server.c_str(),s.server.c_str(),vs_publishd);
+			prefix = "a";
+		}
+	}
 	fprintf (fout,"# rules to connect writed to trli-log compute\n");
 	prefix = "";
 	for (auto w:config.writeds){
@@ -602,6 +635,24 @@ static void generateconfig (
 	for (auto w:config.writeds){
 		for (auto s:config.keysds){
 			fprintf (fout,"%s %srule %s writed unix /dev/keysd.sock %s keysd /var/run/blackhole/bo-keysd.sock\n"
+				,bk_control,prefix,w.server.c_str(),s.server.c_str());
+			prefix = "a";
+		}
+	}
+	fprintf (fout,"# rules to connect publishd to bo-keysd\n");
+	prefix = "";
+	for (auto w:config.publishds){
+		for (auto s:config.keysds){
+			fprintf (fout,"%s %srule %s publishd unix /dev/keysd.sock %s keysd /var/run/blackhole/bo-keysd.sock\n"
+				,bk_control,prefix,w.server.c_str(),s.server.c_str());
+			prefix = "a";
+		}
+	}
+	fprintf (fout,"# rules to connect publishd to data database\n");
+	prefix = "";
+	for (auto w:config.publishds){
+		for (auto s:config.bosqlddatas){
+			fprintf (fout,"%s %srule %s publishd unix /var/lib/mysql/mysql.sock %s bosqlddata /var/lib/mysql/mysql.sock\n"
 				,bk_control,prefix,w.server.c_str(),s.server.c_str());
 			prefix = "a";
 		}
@@ -721,6 +772,7 @@ static void print_configs (
 	glocal string server = server;
 	glocal string stopbod;
 	glocal string stopbolixod;
+	glocal string stoppublishd;
 	glocal string stopwrited;
 	glocal string stopkeysd;
 	glocal string stopsessiond;
@@ -739,6 +791,7 @@ static void print_configs (
 	glocal const char *nodename = config.nodename.c_str();
 	glocal const char *hostname = config.hostname.c_str();
 	glocal const char *org = config.org.c_str();
+	glocal bool iptables = config.iptables;
 	<call savefile>("/tmp/bkstart.sh",false);
 	<f dowrite>
 		glocal FILE *all_fout = fout;
@@ -861,6 +914,7 @@ static void print_configs (
 			fprintf (fout,"%s vserver sqlsource %s\n",hc,horizon_ip);
 			fprintf (fout,"%s vserver sqlsource2 %s\n",hc,horizon_ip2);
 			fprintf (fout,"%s vserver bolixod %s\n",hc,ip_bolixod);
+			fprintf (fout,"%s vserver publishd %s\n",hc,ip_publishd);
 			fprintf (fout,"%s vserver bod %s\n",hc,ip_bod);
 			fprintf (fout,"%s vserver bod_p %s\n",hc,ip_bod_p);
 			fprintf (fout,"%s vserver writed %s\n",hc,ip_writed);
@@ -913,6 +967,16 @@ static void print_configs (
 						,trli_user,sock_tests_dir,server,port);
 				}
 			}
+			#if 0
+			fprintf (fout,"# For publishd system tests\n");
+			for (auto t:glocal.config->publishds){
+				const char *server = t.server.c_str();
+				fprintf (fout,"%s --bind unix,%s/B-publishd-%s-client.sock,root\n"
+						,hc,sock_tests_dir,server);
+				fprintf (fout,"chown %s %s/B-publishd-%s-client.sock\n"
+						,trli_user,sock_tests_dir,server);
+			}
+			#endif
 			fprintf (fout,"# For bod system tests\n");
 			for (auto t:glocal.config->bods){
 				const char *server = t.server.c_str();
@@ -1074,7 +1138,7 @@ static void print_configs (
 		fprintf (fout,"#!/bin/sh\n");
 		{
 			// SERVICE iptables
-			if (!glocal.devmode){
+			if (!glocal.devmode && glocal.iptables){
 				const char *iptables_sh = glocal.devmode ? "/tmp/iptables.sh" : "/root/iptables.sh";
 				<call savefile>(iptables_sh,false);
 				<f dowrite>
@@ -1121,9 +1185,14 @@ static void print_configs (
 					</f>
 					</call>
 					if (glocal.onerule){
-						fprintf (glocal.fout,"iptables -A INPUT -s 0.0.0.0/0 -p tcp --dport 22 -j REJECT\n");
+						fprintf (fout,"iptables -A INPUT -s 0.0.0.0/0 -p tcp --dport 22 -j REJECT\n");
 					}
-
+					// Prevent any lxc0 container from talking to any other using IP. It has to go through blackhole
+					if (preprodmode){
+						fprintf (fout,"iptable -A FORWARD -s 192.168.124.0/24 -d 192.168.124.0/24 -J REJECT\n");
+					}else{
+						fprintf (fout,"iptable -A FORWARD -s 192.168.122.0/24 -d 192.168.122.0/24 -J REJECT\n");
+					}
 					return 0;
 				</f>
 				</call>
@@ -1223,6 +1292,68 @@ static void print_configs (
 					lxc_config ("bolixod",ip_bolixod,true);
 					lxc_status (project_path,"bolixod","bolixod",glocal.workers);
 					lxc_debug (project_path,"bolixod","bolixod",glocal.workers);
+				}
+			}
+			// SERVICE publishd
+			for (auto t:glocal.config->publishds){
+				if (t.server == glocal.server){
+					mkdir ("/var/lib/lxc/publishd",0755);
+					glocal const char *secret = t.secret.c_str();
+					<call savefile>("/var/lib/lxc/publishd/publishd.init",false);
+					<f dowrite>
+						fprintf (fout,"export PUBLISHD_PWD=%s\n",sql_publishd_pwd);
+						{
+							fprintf (fout,"%s/publishd ",project_path);
+							fprintf (fout,"--control %s/publishd.sock"
+								" --admin_secrets %s/secrets.admin"
+								" --dbserv %s --dbname files --dbuser %s"
+								" --user %s --daemon"
+								" --pidfile /tmp/publishd.pid\n"
+								,lxcsock_dir
+								,config_dir
+								,"localhost",sql_publishd_user
+								,trli_user
+								);
+						}
+						return 0;
+					</f>
+					</call>
+					string startfile;	
+					<call lxc_start> ("publishd",ip_publishd,startfile,trli_user,trli_userid);
+					<f horizon>
+						fprintf (fout,"mkdir -p /var/lib/lxc/%s/rootfs/var/lib/mysql\n",name);
+						fprintf (fout,"%s/horizon-control -p %s/horizon.sock --bind unix,/var/lib/mysql/mysql.sock:/var/lib/lxc/%s/rootfs/var/lib/mysql/mysql.sock,%s\n"
+							,blackhole_path,sock_dir,name,name);
+						fprintf (fout,"chown %s /var/lib/lxc/%s/rootfs/var/lib/mysql/mysql.sock\n",trli_user,name);
+					</f>
+					<f insert>
+						fprintf (fout,"echo nameserver %s >/var/lib/lxc/bolixod/rootfs/etc/resolv.conf\n"
+							,horizon_ip);
+						if (glocal.devmode){
+							fprintf (fout,"echo %s test1.bolixo.org >>/var/lib/lxc/bolixod/rootfs/etc/hosts\n"
+								,ip_webssl);
+							fprintf (fout,"echo %s alpha.bolixo.org >>/var/lib/lxc/bolixod/rootfs/etc/hosts\n"
+								,ip_preprod);
+						}else if (preprodmode){
+							fprintf (fout,"echo %s test1.bolixo.org >>/var/lib/lxc/bolixod/rootfs/etc/hosts\n"
+								,ip_webssl);
+							fprintf (fout,"echo %s alpha.bolixo.org >>/var/lib/lxc/bolixod/rootfs/etc/hosts\n"
+								,ip_preprod);
+							fprintf (fout,"echo %s bolixo.org >>/var/lib/lxc/bolixod/rootfs/etc/hosts\n"
+								,ip_preprod);
+						}
+					</f>
+					</call>
+					fprintf (glocal.all_fout,"%s\n",startfile.c_str());
+					<call lxc_stop> ("publishd","publishd",project_path,-1,glocal.stoppublishd);
+					<f horizon>
+						fprintf (fout,"%s/horizon-control -p %s/horizon.sock unbindfd unix /var/lib/mysql/mysql.sock %s\n"
+							,blackhole_path,sock_dir,name);
+					</f>
+					</call>
+					lxc_config ("publishd",ip_publishd,true);
+					lxc_status (project_path,"publishd","publishd",-1);
+					lxc_debug (project_path,"publishd","publishd",-1);
 				}
 			}
 			// SERVICE bod
@@ -1354,6 +1485,9 @@ static void print_configs (
 						fprintf (fout,"%s/horizon-control -p %s/horizon.sock --bind unix,/dev/keysd.sock:/var/lib/lxc/%s/rootfs/dev/keysd.sock,%s\n"
 							,blackhole_path,sock_dir,name,name);
 						fprintf (fout,"chown %s /var/lib/lxc/%s/rootfs/dev/keysd.sock\n",trli_user,name);
+						fprintf (fout,"%s/horizon-control -p %s/horizon.sock --bind unix,/dev/publishd.sock:/var/lib/lxc/%s/rootfs/dev/publishd.sock,%s\n"
+							,blackhole_path,sock_dir,name,name);
+						fprintf (fout,"chown %s /var/lib/lxc/%s/rootfs/dev/publishd.sock\n",trli_user,name);
 						// Sockets for both MySQL servers
 						fprintf (fout,"mkdir -p /var/lib/lxc/%s/rootfs/var/lib/mysql\n",name);
 						fprintf (fout,"%s/horizon-control -p %s/horizon.sock --bind unix,/var/lib/mysql/mysql.sock:/var/lib/lxc/%s/rootfs/var/lib/mysql/mysql.sock,%s\n"
@@ -1374,6 +1508,8 @@ static void print_configs (
 						fprintf (fout,"%s/horizon-control -p %s/horizon.sock unbindfd unix /dev/compute.sock %s\n"
 							,blackhole_path,sock_dir,name);
 						fprintf (fout,"%s/horizon-control -p %s/horizon.sock unbindfd unix /dev/sessiond.sock %s\n"
+							,blackhole_path,sock_dir,name);
+						fprintf (fout,"%s/horizon-control -p %s/horizon.sock unbindfd unix /dev/publishd.sock %s\n"
 							,blackhole_path,sock_dir,name);
 						fprintf (fout,"%s/horizon-control -p %s/horizon.sock unbindfd unix /dev/smtp.sock %s\n"
 							,blackhole_path,sock_dir,name);
@@ -1530,7 +1666,8 @@ static void print_configs (
 							fprintf (fout,"lxc-stop -n %s\n",name);
 						</f>
 						</call>
-						glocal.stopweb += string_f("%s\n",stopcmd.c_str());
+						if (glocal.stopweb.size() > 0) glocal.stopweb += "\n";
+						glocal.stopweb += stopcmd.c_str();
 						lxc_config (w,ip);
 						ip = ip_web_fail;
 					}
@@ -1686,7 +1823,8 @@ static void print_configs (
 						fprintf (glocal.all_fout,"%s\n",startfile.c_str());
 						string stopcmd;
 						lxc_stop (w,NULL,NULL,-1,stopcmd);
-						glocal.stopwebssl += string_f("%s\n",stopcmd.c_str());
+						if (glocal.stopwebssl.size() > 0) glocal.stopwebssl += "\n";
+						glocal.stopwebssl += stopcmd.c_str();
 						lxc_config (w,glocal.hostname,glocal.ip,true);
 						glocal.ip = ip_webssl_fail;
 					}
@@ -1905,6 +2043,7 @@ static void print_configs (
 		if (glocal.stoptrlimon.size() > 0) fprintf (fout,"%s\n",glocal.stoptrlimon.c_str());
 		if (glocal.stopbod.size() > 0) fprintf (fout,"%s\n",glocal.stopbod.c_str());
 		if (glocal.stopbolixod.size() > 0) fprintf (fout,"%s\n",glocal.stopbolixod.c_str());
+		if (glocal.stoppublishd.size() > 0) fprintf (fout,"%s\n",glocal.stoppublishd.c_str());
 		if (glocal.stopwrited.size() > 0) fprintf (fout,"%s\n",glocal.stopwrited.c_str());
 		if (glocal.stopkeysd.size() > 0) fprintf (fout,"%s\n",glocal.stopkeysd.c_str());
 		if (glocal.stopsessiond.size() > 0) fprintf (fout,"%s\n",glocal.stopsessiond.c_str());
@@ -1966,7 +2105,11 @@ int main (int argc, char *argv[])
 	glocal bool inframode = false;
 	glocal.ret = <call tlmpprogram>(argc,argv,"bolixo");
 	<f init>
-		setproginfo ("bo-manager",VERSION,MSG_U(I_BOMANAGER,"Configure the bolixo cluster"));
+		setproginfo ("bo-manager",VERSION,MSG_U(I_BOMANAGER
+			,"Configure the bolixo cluster"
+			 "\n"
+			 "bo-manager [ options ] printconfig host\n"
+			));
 		setarg ('c',"config","Config file",glocal.config_file,false);
 		setarg (' ',"dump","Dump config (debug)",glocal.dumpconfig,false);
 		setarg (' ',"devip","Use development IP (127.0.0.X) for a given service",glocal.devip,false);
@@ -1988,6 +2131,7 @@ int main (int argc, char *argv[])
 		glocal CONFIG config;
 		if (getenv("BOD_PWD")!=NULL) sql_bod_pwd = getenv("BOD_PWD");
 		if (getenv("BOLIXOD_PWD")!=NULL) sql_bolixod_pwd = getenv("BOLIXOD_PWD");
+		if (getenv("PUBLISHD_PWD")!=NULL) sql_publishd_pwd = getenv("PUBLISHD_PWD");
 		if (getenv("BO_WRITED_PWD")!=NULL) sql_bo_writed_pwd = getenv("BO_WRITED_PWD");
 		closeweb = file_exist("/root/closeweb");
 		if (glocal.devmode){
@@ -2013,7 +2157,7 @@ int main (int argc, char *argv[])
 			if (*pt != '#' && *pt != '\0'){
 				vector<string> tb;
 				int n = str_splitlineq(pt,tb);
-				if (n > 1){
+				if (n >= 1){
 					const char *word = tb[0].c_str();
 					if (strcmp(word,"server")==0 && n == 5){
 						glocal.config.servers[tb[1]] = SERVER(tb[2],tb[3],tb[4]);
@@ -2053,6 +2197,8 @@ int main (int argc, char *argv[])
 						glocal.config.monitors.push_back(MON(tb[1],tb[2],tb[3],tb[4]));
 					}else if (strcmp(word,"bolixod")==0 && n == 4){
 						glocal.config.bolixods.push_back(BOLIXOD(tb[1],tb[2],atoi(tb[3].c_str())));
+					}else if (strcmp(word,"publishd")==0 && n == 3){
+						glocal.config.publishds.push_back(PUBLISHD(tb[1],tb[2]));
 					}else if (strcmp(word,"dirserver")==0 && n == 2){
 						glocal.config.dirserver = tb[1];
 					}else if (strcmp(word,"nodename")==0 && n == 2){
@@ -2061,11 +2207,13 @@ int main (int argc, char *argv[])
 						glocal.config.hostname = tb[1];
 					}else if (strcmp(word,"org")==0 && n == 2){
 						glocal.config.org = tb[1];
+					}else if (strcmp(word,"iptables")==0 && n == 1){
+						glocal.config.iptables = true;
 					}else{
-						tlmp_error ("Invalid line %d in configuration file %s\n",noline,info.filename);
+						tlmp_error ("Invalid line %d in configuration file %s\n",noline+1,info.filename);
 					}
 				}else{
-					tlmp_error ("Invalid line %d in configuration file %s\n",noline,info.filename);
+					tlmp_error ("Invalid line %d in configuration file %s\n",noline+1,info.filename);
 				}
 			}
 			return 0;
@@ -2117,6 +2265,7 @@ int main (int argc, char *argv[])
 			ip_exim = PIP_PREFIX "11";
 			ip_keysd = PIP_PREFIX "12";
 			ip_bolixod = PIP_PREFIX "13";
+			ip_publishd = PIP_PREFIX "16";
 		}
 		if (glocal.devmode){
 			char path[PATH_MAX];
