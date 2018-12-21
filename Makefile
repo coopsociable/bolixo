@@ -85,8 +85,8 @@ bo-keysd: bo-keysd.tlcc proto/bo-keysd_control.protoh
 bo-keysd-control: bo-keysd-control.tlcc proto/bo-keysd_control.protoh
 	cctlcc -Wall $(OPTIONS) bo-keysd-control.tlcc -o bo-keysd-control $(LIBS)
 
-publishd: publishd.tlcc proto/publishd_control.protoh proto/publishd_client.protoh _dict.o
-	cctlcc -Wall $(OPTIONS) publishd.tlcc _dict.o -o publishd $(LIBS) -lssl \
+publishd: publishd.tlcc proto/publishd_control.protoh proto/publishd_client.protoh _dict.o filesystem.o
+	cctlcc -Wall $(OPTIONS) publishd.tlcc _dict.o filesystem.o -o publishd $(LIBS) -lssl \
 		-ltlmpsql -L/usr/lib64/mysql -lmysqlclient
 
 publishd-control: publishd-control.tlcc proto/publishd_control.protoh

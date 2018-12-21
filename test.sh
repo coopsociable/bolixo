@@ -226,7 +226,7 @@ elif [ "$1" = "bolixod" ] ; then # A: Runs bolixod
 	fi
 elif [ "$1" = "publishd" ] ; then # A: Runs bolixod
 	OPTIONS="--user $USER \
-		--admin_secrets $BOLIXOCONF/secrets.admin \
+		--hostname test1.bolixo.org --admin_secrets $BOLIXOCONF/secrets.admin \
 		--dbserv $BOD_DBSERV --dbuser $BOD_DBUSER --dbname $BOD_DBNAME  \
 		"
 	shift
