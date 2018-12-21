@@ -34,20 +34,73 @@ struct HANDLE_INFO: public ARRAY_OBJ{
 #include "proto/publishd_control.protoh"
 #include "proto/publishd_client.protoh"
 
-struct MESSAGE{
+#include "proto/bod_client.protodef"
+#define webapi_test_NOTNEED
+#define webapi_login_NOTNEED
+#define webapi_addfile_NOTNEED
+#define webapi_addfile_bob_NOTNEED
+#define webapi_appendfile_NOTNEED
+#define webapi_delfile_NOTNEED
+#define webapi_undelete_NOTNEED
+#define webapi_modifyfile_NOTNEED
+#define webapi_modifyfile_bob_NOTNEED
+#define webapi_rename_NOTNEED
+#define webapi_copy_NOTNEED
+#define webapi_readfile_NOTNEED
+#define webapi_readfile_bob_NOTNEED
+#define webapi_readmore_NOTNEED
+#define webapi_mkdir_NOTNEED
+#define webapi_rmdir_NOTNEED
+#define webapi_listdir_NOTNEED
+#define webapi_stat_NOTNEED
+#define webapi_set_access_NOTNEED
+#define webapi_markview_NOTNEED
+#define webapi_list_inboxes_NOTNEED
+#define webapi_list_msgs_NOTNEED
+#define webapi_sendmsg_NOTNEED
+#define webapi_sendmsg_project_NOTNEED
+#define webapi_replymsg_NOTNEED
+#define webapi_replymsg_project_NOTNEED
+#define webapi_sendattach_NOTNEED
+#define webapi_sendtalk_file_NOTNEED
+#define webapi_list_talk_NOTNEED
+#define webapi_public_listdir_NOTNEED
+#define webapi_public_readfile_NOTNEED
+#define webapi_public_list_talk_NOTNEED
+#define webapi_systempubkey_NOTNEED
+#define webapi_verifysign_NOTNEED
+#define webapi_getpubkey_NOTNEED
+#define webapi_registernode_NOTNEED
+#define webapi_remote_interest_set_NOTNEED
+#define webapi_remote_interest_unset_NOTNEED
+#define webapi_nodelogin_NOTNEED
+#define webapi_nodepass_NOTNEED
+#define webapi_config_read_NOTNEED
+#define webapi_config_write_NOTNEED
+#include "proto/webapi.protoch"
+
+
+#define bo_keysd_control_genkey_NOTNEED
+#define bo_keysd_control_setpassphrase_NOTNEED
+#define bo_keysd_control_quit_NOTNEED
+#define bo_keysd_control_debug_NOTNEED
+#define bo_keysd_control_debugfile_NOTNEED
+#include "proto/bo-keysd_control.protoch"
+
+struct PUBLISH_MESSAGE{
 	string user;
 	unsigned userid;
 	unsigned dirid;
 	unsigned fileid;
 	string modified;
-	MESSAGE(const char *_user, unsigned _userid, unsigned _dirid, unsigned _fileid, const char *_modified){
+	PUBLISH_MESSAGE(const char *_user, unsigned _userid, unsigned _dirid, unsigned _fileid, const char *_modified){
 		user = _user;
 		userid = _userid;
 		dirid = _dirid;
 		fileid = _fileid;
 		modified = _modified;
 	}
-	MESSAGE(){
+	PUBLISH_MESSAGE(){
 		userid = (unsigned)-1;
 		dirid  = (unsigned)-1;
 		fileid = (unsigned)-1;
@@ -55,17 +108,64 @@ struct MESSAGE{
 };
 
 <mod>
+static int publishd_remotelogin (
+	CONNECT_HTTP_INFO &hcon,
+	PARAM_STRING remote_user,
+	const char *keysdsock,
+	unsigned userid,
+	string &sessionid)
+{
+	glocal int ret = -1;
+	glocal string *sessionid = &sessionid;
+	glocal CONNECT_HTTP_INFO *hcon = &hcon;
+	glocal const char *keysdsock = keysdsock;
+	glocal const char *remote_user = remote_user.ptr;
+	glocal unsigned userid = userid;
+	<call webapi_remotelogin>(hcon,remote_user);
+	<f ok>
+		if (!success){
+			tlmp_error ("remotelogin failed for %s: %s\n"
+				,glocal.remote_user,msg);
+		}else{
+			CONNECT_INFO con;
+			con.port = glocal.keysdsock;
+			glocal string sign;
+			*glocal.sessionid = sessionid;
+			<call bo_keysd_control_sign>(con,glocal.userid,sessionid);
+			<f ok>
+				if (status == ERR_CODE_NONE) glocal.sign = sign;
+			</f>
+			</call>
+			if (glocal.sign.size() > 0){
+				<call webapi_remotepass>(*glocal.hcon,sessionid,glocal.remote_user,glocal.sign);
+				<f ok>
+					if (success) glocal.ret = 0;
+				</f>
+				</call>
+			}
+		}
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+
+<mod>
 static void publishd_doone (
 	_F_TCPSERVER_V1 &c,
 	pid_t &pid,
-	deque<MESSAGE> &messages)
+	deque<PUBLISH_MESSAGE> &messages,
+	const char *our_node,
+	const char *keysdsock)
 {
+	glocal const char *our_node = our_node;
+	glocal const char *keysdsock = keysdsock;
 	if (messages.size() > 0){
 		int tb[2];
 		if (pipe(tb)==-1){
 			tlmp_error ("Can't setup pipe (%s)\n",strerror(errno));
 		}else{
-			glocal MESSAGE todo = messages.front();
+			glocal PUBLISH_MESSAGE todo = messages.front();
 			messages.pop_front();
 			pid = fork();
 			if (pid == (pid_t)0){
@@ -74,6 +174,22 @@ static void publishd_doone (
 				<call sql_query>("select nodename from interests_remote where userid=%u",glocal.todo.userid);
 				<f onerow>
 					tlmp_error ("nodename=%s\n",row[0]);
+					CONNECT_HTTP_INFO hcon;
+					string remote_user = string_f("%s@%s",glocal.todo.user.c_str(),glocal.our_node);
+					if (hcon.init (row[0]) != -1){
+						string sessionid;
+						if (publishd_remotelogin(hcon,remote_user,glocal.keysdsock,glocal.todo.userid,sessionid)!=-1){
+							BOB_TYPE content((const void*)"allo",4,false);
+							<call webapi_sendtalk>(hcon,sessionid,"","public",glocal.todo.user,content,false);
+							<f ok>
+							</f>
+							</call>
+							<call webapi_logout>(hcon,sessionid);
+							<f ok>
+							</f>
+							</call>
+						}
+					}
 				</f>
 				</call>
 				_exit (0);
@@ -102,6 +218,9 @@ int main (int argc, char *argv[])
 	glocal bool daemon = false;
 	glocal const char *admin_secretfile = "/etc/bolixo/secrets.admin";
 	glocal const char *pidfile = "/var/run/publishd.pid";
+	glocal const char *hostname = NULL;
+	glocal const char *keysdsock = "/dev/keysd.sock";
+
 	static const char *tbdic[]={"bolixo","tlmpsql",NULL};
 	glocal.ret = <call tlmpprogram>(argc,argv,tbdic);
 	<f init>
@@ -114,6 +233,8 @@ int main (int argc, char *argv[])
 		setarg (' ',"dbname","Database name",glocal.data_dbname,false);
 		setarg (' ',"dbuser","Database user",glocal.data_dbuser,true);
 		setgrouparg ("Misc.");
+		setarg (' ',"hostname",MSG_U(O_HOSTNAME,"Host name"),glocal.hostname,true);
+		setarg (' ',"keysdsock","Port to reach the bo-keysd server",glocal.keysdsock,false);
 		setarg (' ',"admin_secrets",MSG_R(O_ADMINSECRETS),glocal.admin_secretfile,false);
 		setarg (' ',"user","Run the program as this user",glocal.user,false);
 		setarg (' ',"daemon","Run in background",glocal.daemon,false);
@@ -137,7 +258,7 @@ int main (int argc, char *argv[])
 		int ret = -1;
 		glocal string controlport = string_f("unix:%s",glocal.control);
 		glocal string clientport = string_f("unix:%s",glocal.clientsock);
-		glocal deque<MESSAGE> messages;
+		glocal deque<PUBLISH_MESSAGE> messages;
 		glocal map<string,string> admin_secrets;
 		glocal pid_t pid = (pid_t)-1;
 		const char *passwd = getenv("PUBLISHD_PWD");
@@ -164,7 +285,7 @@ int main (int argc, char *argv[])
 			HANDLE_INFO *n = (HANDLE_INFO*)info.data;
 			if (n->type == TYPE_WORKER){
 				glocal.pid = (pid_t)-1;
-				publishd_doone(*this,glocal.pid,glocal.messages);
+				publishd_doone(*this,glocal.pid,glocal.messages,glocal.hostname,glocal.keysdsock);
 			}
 		</f>
 		<f receive>
@@ -179,6 +300,7 @@ int main (int argc, char *argv[])
 					tb.push_back(string_f ("Version %s",VERSION));
 					tb.push_back(string_f("messages size: %lu",glocal.messages.size()));
 					tb.push_back(string_f("sub-process: %s",glocal.pid == (pid_t)-1 ? "not running" : "running"));
+					tb.push_back(string_f("hostname: %s",glocal.hostname));
 					rep_status(tb);
 				</f>
 				<f quit>
@@ -213,6 +335,23 @@ int main (int argc, char *argv[])
 					</f>
 					</call>
 					rep_help_connect (glocal.lines);
+				</f>
+				<f test>
+					glocal bool dbfiles=false;
+					glocal bool keysd=false;
+					<call sql_query>("select count(*) from id2name");
+					<f onerow>
+						glocal.dbfiles=true;
+					</f>
+					</call>
+					CONNECT_INFO con;
+					con.port = glocal.keysdsock;
+					<call bo_keysd_control_status>(con);
+					<f ok>
+						glocal.keysd = lines.size() > 0;
+					</f>
+					</call>
+					rep_test (glocal.dbfiles,glocal.keysd);
 				</f>
 				<f invalid>
 					tlmp_error ("Invalid command: %s\n",line);
@@ -250,9 +389,9 @@ int main (int argc, char *argv[])
 						if (glocal.user.size()==0){
 							tlmp_error ("No user for userid=%u\n",userid);
 						}else{
-							glocal.messages.emplace_back(MESSAGE(glocal.user.c_str(),userid,dirid,fileid,modified));
+							glocal.messages.emplace_back(PUBLISH_MESSAGE(glocal.user.c_str(),userid,dirid,fileid,modified));
 							if (glocal.pid == (pid_t)-1){
-								publishd_doone (glocal.TCPSERVER,glocal.pid,glocal.messages);
+								publishd_doone (glocal.TCPSERVER,glocal.pid,glocal.messages,glocal.hostname,glocal.keysdsock);
 							}
 						}
 					}	

@@ -1305,11 +1305,13 @@ static void print_configs (
 						{
 							fprintf (fout,"%s/publishd ",project_path);
 							fprintf (fout,"--control %s/publishd.sock"
+								" --hostname %s"
 								" --admin_secrets %s/secrets.admin"
 								" --dbserv %s --dbname files --dbuser %s"
 								" --user %s --daemon"
 								" --pidfile /tmp/publishd.pid\n"
 								,lxcsock_dir
+								,glocal.hostname
 								,config_dir
 								,"localhost",sql_publishd_user
 								,trli_user
@@ -1325,6 +1327,9 @@ static void print_configs (
 						fprintf (fout,"%s/horizon-control -p %s/horizon.sock --bind unix,/var/lib/mysql/mysql.sock:/var/lib/lxc/%s/rootfs/var/lib/mysql/mysql.sock,%s\n"
 							,blackhole_path,sock_dir,name,name);
 						fprintf (fout,"chown %s /var/lib/lxc/%s/rootfs/var/lib/mysql/mysql.sock\n",trli_user,name);
+						fprintf (fout,"%s/horizon-control -p %s/horizon.sock --bind unix,/dev/keysd.sock:/var/lib/lxc/%s/rootfs/dev/keysd.sock,%s\n"
+							,blackhole_path,sock_dir,name,name);
+						fprintf (fout,"chown %s /var/lib/lxc/%s/rootfs/dev/keysd.sock\n",trli_user,name);
 					</f>
 					<f insert>
 						fprintf (fout,"echo nameserver %s >/var/lib/lxc/bolixod/rootfs/etc/resolv.conf\n"
@@ -2136,6 +2141,7 @@ int main (int argc, char *argv[])
 		closeweb = file_exist("/root/closeweb");
 		if (glocal.devmode){
 			glocal.config.nodename = "http://test1.bolixo.org";
+			glocal.config.hostname = "test1.bolixo.org";
 			glocal.config.dirserver = "http://test1.bolixo.org";
 		}else{
 			char hostname[200];
