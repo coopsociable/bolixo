@@ -136,6 +136,7 @@ static int publishd_remotelogin (
 				if (status == ERR_CODE_NONE) glocal.sign = sign;
 			</f>
 			</call>
+tlmp_error ("sign=%s\n",glocal.sign.c_str());
 			if (glocal.sign.size() > 0){
 				<call webapi_remotepass>(*glocal.hcon,sessionid,glocal.remote_user,glocal.sign);
 				<f ok>
@@ -146,6 +147,7 @@ static int publishd_remotelogin (
 		}
 	</f>
 	</call>
+	tlmp_error ("remotelogin ret=%d\n",glocal.ret);
 	return glocal.ret;
 }
 </mod>
@@ -180,8 +182,9 @@ static void publishd_doone (
 						string sessionid;
 						if (publishd_remotelogin(hcon,remote_user,glocal.keysdsock,glocal.todo.userid,sessionid)!=-1){
 							BOB_TYPE content((const void*)"allo",4,false);
-							<call webapi_sendtalk>(hcon,sessionid,"","public",glocal.todo.user,content,false);
+							<call webapi_sendtalk>(hcon,sessionid,"","public",remote_user,content,false);
 							<f ok>
+								tlmp_error ("internal=%d success=%d msg=%s\n",internal_error,success,msg);
 							</f>
 							</call>
 							<call webapi_logout>(hcon,sessionid);

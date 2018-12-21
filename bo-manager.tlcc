@@ -1152,6 +1152,7 @@ static void print_configs (
 					fprintf (fout,"iptables -t nat -A POSTROUTING -o eth0 -s %s -j MASQUERADE\n",ip_exim);
 					fprintf (fout,"iptables -t nat -A POSTROUTING -o eth0 -s %s -j MASQUERADE\n",ip_bod);
 					fprintf (fout,"iptables -t nat -A POSTROUTING -o eth0 -s %s -j MASQUERADE\n",ip_bolixod);
+					fprintf (fout,"iptables -t nat -A POSTROUTING -o eth0 -s %s -j MASQUERADE\n",ip_publishd);
 
 					fprintf (fout,"iptables --flush -t mangle\n");
 					#if 1
@@ -1189,9 +1190,9 @@ static void print_configs (
 					}
 					// Prevent any lxc0 container from talking to any other using IP. It has to go through blackhole
 					if (preprodmode){
-						fprintf (fout,"iptable -A FORWARD -s 192.168.124.0/24 -d 192.168.124.0/24 -J REJECT\n");
+						fprintf (fout,"iptables -A FORWARD -s 192.168.124.0/24 -d 192.168.124.0/24 -j REJECT\n");
 					}else{
-						fprintf (fout,"iptable -A FORWARD -s 192.168.122.0/24 -d 192.168.122.0/24 -J REJECT\n");
+						fprintf (fout,"iptables -A FORWARD -s 192.168.122.0/24 -d 192.168.122.0/24 -j REJECT\n");
 					}
 					return 0;
 				</f>
@@ -1265,18 +1266,18 @@ static void print_configs (
 						fprintf (fout,"chown %s /var/lib/lxc/%s/rootfs/dev/sessiond.sock\n",trli_user,name);
 					</f>
 					<f insert>
-						fprintf (fout,"echo nameserver %s >/var/lib/lxc/bolixod/rootfs/etc/resolv.conf\n"
-							,horizon_ip);
+						fprintf (fout,"echo nameserver %s >/var/lib/lxc/%s/rootfs/etc/resolv.conf\n"
+							,horizon_ip,name);
 						if (glocal.devmode){
-							fprintf (fout,"echo %s test1.bolixo.org >>/var/lib/lxc/bolixod/rootfs/etc/hosts\n"
-								,ip_webssl);
-							fprintf (fout,"echo %s alpha.bolixo.org >>/var/lib/lxc/bolixod/rootfs/etc/hosts\n"
-								,ip_preprod);
+							fprintf (fout,"echo %s test1.bolixo.org >>/var/lib/lxc/%s/rootfs/etc/hosts\n"
+								,ip_webssl,name);
+							fprintf (fout,"echo %s alpha.bolixo.org >>/var/lib/lxc/%s/rootfs/etc/hosts\n"
+								,ip_preprod,name);
 						}else if (preprodmode){
-							fprintf (fout,"echo %s alpha.bolixo.org >>/var/lib/lxc/bolixod/rootfs/etc/hosts\n"
-								,ip_preprod);
-							fprintf (fout,"echo %s bolixo.org >>/var/lib/lxc/bolixod/rootfs/etc/hosts\n"
-								,ip_preprod);
+							fprintf (fout,"echo %s alpha.bolixo.org >>/var/lib/lxc/%s/rootfs/etc/hosts\n"
+								,ip_preprod,name);
+							fprintf (fout,"echo %s bolixo.org >>/var/lib/lxc/%s/rootfs/etc/hosts\n"
+								,ip_preprod,name);
 						}
 					</f>
 					</call>
@@ -1311,7 +1312,7 @@ static void print_configs (
 								" --user %s --daemon"
 								" --pidfile /tmp/publishd.pid\n"
 								,lxcsock_dir
-								,glocal.hostname
+								,preprodmode ? "preprod.bolixo.org" : glocal.hostname
 								,config_dir
 								,"localhost",sql_publishd_user
 								,trli_user
@@ -1332,20 +1333,20 @@ static void print_configs (
 						fprintf (fout,"chown %s /var/lib/lxc/%s/rootfs/dev/keysd.sock\n",trli_user,name);
 					</f>
 					<f insert>
-						fprintf (fout,"echo nameserver %s >/var/lib/lxc/bolixod/rootfs/etc/resolv.conf\n"
-							,horizon_ip);
+						fprintf (fout,"echo nameserver %s >/var/lib/lxc/%s/rootfs/etc/resolv.conf\n"
+							,horizon_ip,name);
 						if (glocal.devmode){
-							fprintf (fout,"echo %s test1.bolixo.org >>/var/lib/lxc/bolixod/rootfs/etc/hosts\n"
-								,ip_webssl);
-							fprintf (fout,"echo %s alpha.bolixo.org >>/var/lib/lxc/bolixod/rootfs/etc/hosts\n"
-								,ip_preprod);
+							fprintf (fout,"echo %s test1.bolixo.org >>/var/lib/lxc/%s/rootfs/etc/hosts\n"
+								,ip0_webssl,name);
+							fprintf (fout,"echo %s alpha.bolixo.org >>/var/lib/lxc/%s/rootfs/etc/hosts\n"
+								,ip_preprod,name);
 						}else if (preprodmode){
-							fprintf (fout,"echo %s test1.bolixo.org >>/var/lib/lxc/bolixod/rootfs/etc/hosts\n"
-								,ip_webssl);
-							fprintf (fout,"echo %s alpha.bolixo.org >>/var/lib/lxc/bolixod/rootfs/etc/hosts\n"
-								,ip_preprod);
-							fprintf (fout,"echo %s bolixo.org >>/var/lib/lxc/bolixod/rootfs/etc/hosts\n"
-								,ip_preprod);
+							fprintf (fout,"echo %s test1.bolixo.org >>/var/lib/lxc/%s/rootfs/etc/hosts\n"
+								,ip0_webssl,name);
+							fprintf (fout,"echo %s alpha.bolixo.org >>/var/lib/lxc/%s/rootfs/etc/hosts\n"
+								,ip_preprod,name);
+							fprintf (fout,"echo %s bolixo.org >>/var/lib/lxc/%s/rootfs/etc/hosts\n"
+								,ip_preprod,name);
 						}
 					</f>
 					</call>
@@ -1353,6 +1354,8 @@ static void print_configs (
 					<call lxc_stop> ("publishd","publishd",project_path,-1,glocal.stoppublishd);
 					<f horizon>
 						fprintf (fout,"%s/horizon-control -p %s/horizon.sock unbindfd unix /var/lib/mysql/mysql.sock %s\n"
+							,blackhole_path,sock_dir,name);
+						fprintf (fout,"%s/horizon-control -p %s/horizon.sock unbindfd unix /dev/keysd.sock %s\n"
 							,blackhole_path,sock_dir,name);
 					</f>
 					</call>

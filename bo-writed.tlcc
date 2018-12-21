@@ -2492,17 +2492,24 @@ int main (int argc, char *argv[])
 								bo_writed_addfile_bob (glocal.ctx.con_keys,glocal.sessionid,NULL,ENTRY_MSG,dirid,glocal.userid
 									,*glocal.content,glocal.more
 									,glocal.msgid,glocal.msg,glocal.handle,fileid,modified);
-								bo_writed_update_interest(created,glocal.groupname,ownerid,dirid);
-								if (strcmp(glocal.groupname,"public")==0){
-									if (!glocal.more){
-										<call publishd_client_sendmessage>(glocal.ctx.con_publish,ownerid
-											,dirid,fileid,modified);
-										<f ok>
-											if (!success) tlmp_error ("publishd_client_sendmessage: %s\n",msg);
-										</f>
-										</call>
-									}else{
-										fs_file_handle_addextra (glocal.handle,ownerid,dirid);
+								bool remote_user = strchr(glocal.username.c_str(),'@')!=NULL;
+								if (remote_user){
+									if (created){
+										bo_writed_update_interest_table(ownerid,dirid);
+									}
+								}else{
+									bo_writed_update_interest(created,glocal.groupname,ownerid,dirid);
+									if (strcmp(glocal.groupname,"public")==0){
+										if (!glocal.more){
+											<call publishd_client_sendmessage>(glocal.ctx.con_publish,ownerid
+												,dirid,fileid,modified);
+											<f ok>
+												if (!success) tlmp_error ("publishd_client_sendmessage: %s\n",msg);
+											</f>
+											</call>
+										}else{
+											fs_file_handle_addextra (glocal.handle,ownerid,dirid);
+										}
 									}
 								}
 							}
