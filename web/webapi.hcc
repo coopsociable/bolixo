@@ -8,6 +8,7 @@
 #include "../proto/webapi.protoh"
 #include <tlmp/translat.h>
 #include <tlmplib.h>
+#include <tlmpnet.h>
 #include "util.h"
 
 extern "C" void tlmp_initmod()
@@ -16,7 +17,7 @@ extern "C" void tlmp_initmod()
 }
 
 <mod>
-extern "C" void webmain()
+static void webmain_real()
 {
 	glocal CONNECT_INFO con;
 	glocal CONNECT_INFO con_sess;
@@ -509,6 +510,24 @@ extern "C" void webmain()
 	</f>
 	<f invalid>
 		htmlprintf ("Invalid request\n");
+	</f>
+	</call>
+}
+</mod>
+<mod>
+extern "C" void webmain()
+{
+	<call tcpconnect>("unix:","/tmp/stop.sock",1);
+	<f init>
+	</f>
+	<f oneline>
+		webmain_real();
+		end=true;
+	</f>
+	<f fail>
+		webmain_real();
+	</f>
+	<f end>
 	</f>
 	</call>
 }

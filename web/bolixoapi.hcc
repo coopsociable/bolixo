@@ -9,6 +9,7 @@
 #include "../proto/bolixoapi.protoh"
 #include <tlmp/translat.h>
 #include <tlmplib.h>
+#include <tlmpnet.h>
 
 string util_readsecret();
 
@@ -18,7 +19,7 @@ extern "C" void tlmp_initmod()
 }
 
 <mod>
-extern "C" void webmain()
+static void webmain_real()
 {
 	glocal CONNECT_INFO con;
 	glocal.con.port = "/dev/bolixod.sock";
@@ -87,6 +88,24 @@ extern "C" void webmain()
 	</f>
 	<f invalid>
 		htmlprintf ("Invalid request\n");
+	</f>
+	</call>
+}
+</mod>
+<mod>
+extern "C" void webmain()
+{
+	<call tcpconnect>("unix:","/tmp/stop.sock",1);
+	<f init>
+	</f>
+	<f oneline>
+		webmain_real();
+		end=true;
+	</f>
+	<f fail>
+		webmain_real();
+	</f>
+	<f end>
 	</f>
 	</call>
 }

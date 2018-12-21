@@ -7,6 +7,7 @@
 #include "../proto/bolixod_client.protoch"
 #include <tlmp/translat.h>
 #include <tlmplib.h>
+#include <tlmpnet.h>
 #include "../bolixo.m"
 #include <tlmpdoc.h>
 
@@ -159,7 +160,7 @@ static void bolixo_title(int called_from_step)
 }
 
 <mod>
-extern "C" void webmain()
+static void webmain_real()
 {
 	glocal CONNECT_INFO con;
 	glocal.con.port = "/dev/bolixod.sock";
@@ -406,5 +407,23 @@ extern "C" void webmain()
 	</f>
 	</call>
 	
+}
+</mod>
+<mod>
+extern "C" void webmain()
+{
+	<call tcpconnect>("unix:","/tmp/stop.sock",1);
+	<f init>
+	</f>
+	<f oneline>
+		webmain_real();
+		end=true;
+	</f>
+	<f fail>
+		webmain_real();
+	</f>
+	<f end>
+	</f>
+	</call>
 }
 </mod>
