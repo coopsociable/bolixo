@@ -262,7 +262,8 @@ elif [ "$1" = "restart" ] ; then # prod: restart some services (webs, internals,
 		for serv in $*
 		do
 			if [ "$serv" = "internals" ] ; then
-				for std in bolixod bod writed sessiond keysd publishd protocheck bo-mon trli-syslog
+				SERVICES="bo-mon trli-syslog"
+				for std in bolixod bod writed sessiond keysd publishd protocheck
 				do
 					if [ -d /var/lib/lxc/$std/rootfs ] ; then
 						SERVICES="$SERVICES $std"
