@@ -271,6 +271,7 @@ static void sendfile_var(_F_sendfile_var &c, PARAM_STRING filepath, const W_SSTR
 }
 	
 static bool is_mobile = false;
+static bool private_site = false;
 
 static void show_buttons_right(_F_websteps *c)
 {
@@ -284,12 +285,14 @@ static void show_buttons_right(_F_websteps *c)
 		/- <td>&nbsp;
 		/- <td>
 		htmlprintf ("<a href=%s?webstep=%d><font size=+%u>%s</font></a>\n",tlmpweb_curpage(),step_login,fontsize,MSG_U(I_LOGIN,"Login"));
-		/- <td>&nbsp;
-		/- <td align=center>
-		htmlprintf ("<font size=+%u color=black>%s</font>",fontsize,MSG_U(I_OR,"or"));
-		/- <td>&nbsp;
-		/- <td>
-		htmlprintf ("<a href=%s?webstep=%d><font size=+%u>%s</font></a>\n",tlmpweb_curpage(),step_adduser,fontsize,MSG_U(I_CREATEACCT,"Create account"));
+		if (!private_site){
+			/- <td>&nbsp;
+			/- <td align=center>
+			htmlprintf ("<font size=+%u color=black>%s</font>",fontsize,MSG_U(I_OR,"or"));
+			/- <td>&nbsp;
+			/- <td>
+			htmlprintf ("<a href=%s?webstep=%d><font size=+%u>%s</font></a>\n",tlmpweb_curpage(),step_adduser,fontsize,MSG_U(I_CREATEACCT,"Create account"));
+		}
 	}
 	if (0 && userinfo.is_admin){
 		/- <td>
@@ -1263,6 +1266,7 @@ extern "C" void webmain_real()
 		if (strncmp(line,"node=",5)==0) nodename = line+5;
 		if (strncmp(line,"dirserver=",10)==0) util_setdirserver(line+10);
 		if (strncmp(line,"org=",4)==0) org = line+4;
+		if (strcmp(line,"private_site")==0) private_site = true;
 		return 0;
 	</f>
 	</call>
@@ -1781,6 +1785,7 @@ extern "C" void webmain_real()
 		</call>
 	</f>
 	<f step3> // Account creation
+		if (private_site) return;
 		glocal bool account_created = false;
 		<call form>("createaccount");
 		<f top>

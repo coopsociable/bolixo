@@ -214,6 +214,7 @@ static const char *vs_publishd = "publishd";
 
 struct CONFIG {
 	bool iptables;
+	bool private_site;
 	string hostname;
 	string nodename;
 	string dirserver;
@@ -792,6 +793,7 @@ static void print_configs (
 	glocal const char *hostname = config.hostname.c_str();
 	glocal const char *org = config.org.c_str();
 	glocal bool iptables = config.iptables;
+	glocal bool private_site = config.private_site;
 	<call savefile>("/tmp/bkstart.sh",false);
 	<f dowrite>
 		glocal FILE *all_fout = fout;
@@ -1468,6 +1470,7 @@ static void print_configs (
 								,i,i);
 							fprintf (fout," --mailfrom no-reply@bolixo.org");
 							fprintf (fout," --nodename %s",glocal.nodename);
+							if (glocal.private_site) fprintf (fout," --private_site");
 							if (glocal.devmode){
 								fprintf (fout," --forceaddr info@alpha.bolixo,org");
 							}else if (closeweb){
@@ -1657,6 +1660,9 @@ static void print_configs (
 							fprintf (fout,"echo node=%s >/var/lib/lxc/%s/rootfs/etc/bolixonode.conf\n",glocal.nodename,name);
 							fprintf (fout,"echo dirserver=%s/bolixo.hc >>/var/lib/lxc/%s/rootfs/etc/bolixonode.conf\n",glocal.dirserver,name);
 							fprintf (fout,"echo org=%s >>/var/lib/lxc/%s/rootfs/etc/bolixonode.conf\n",glocal.org,name);
+							if (glocal.private_site){
+								fprintf (fout,"echo private_site >>/var/lib/lxc/%s/rootfs/etc/bolixonode.conf\n",name);
+							}
 						</f>
 						</call>
 						fprintf (glocal.all_fout,"%s\n",startfile.c_str());
@@ -2218,6 +2224,8 @@ int main (int argc, char *argv[])
 						glocal.config.org = tb[1];
 					}else if (strcmp(word,"iptables")==0 && n == 1){
 						glocal.config.iptables = true;
+					}else if (strcmp(word,"private")==0 && n == 1){
+						glocal.config.private_site = true;
 					}else{
 						tlmp_error ("Invalid line %d in configuration file %s\n",noline+1,info.filename);
 					}
