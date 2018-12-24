@@ -50,6 +50,8 @@ void jump2app (int step, int tab)
 void bolixo_doc (DOCUMENT_POINTER &docpointer, DOC_ID &jump, const char *username, bool display_full)
 {
 	glocal const char *username = username;
+	glocal const char *host = getenv("HTTP_X_FORWARDED_HOST");
+	if (glocal.host == NULL) glocal.host = "bolixo.org";
 	document_button_display_only = username[0] == '\0';
 	<call document>("",docpointer,jump,display_full);
 	<f ref>
@@ -86,6 +88,13 @@ void bolixo_doc (DOCUMENT_POINTER &docpointer, DOC_ID &jump, const char *usernam
 			<p>
 			It allows you to jump at the right place in the application, while this document follows you.
 			<p>
+			The links presented in this document are generally directly usable. They are formatted using
+			Your nickname
+			/- htmlprintf ("(%s) ",glocal.username);
+			and your bolixo server
+			/- htmlprintf ("(%s) ",glocal.host);
+			. The document is dynamic.
+
 			<- section("Publish short messages, images and videos");>
 				You would like to publish <em>to the world</em> short messages, images and videos.
 				<br>
@@ -111,8 +120,7 @@ void bolixo_doc (DOCUMENT_POINTER &docpointer, DOC_ID &jump, const char *usernam
 				<li>
 					/- d.print();
 					Once done, you make the whole thing public. Just click the checkbox "enable public view" and submit. It will be visible here.<br> 
-					/- const char *host = getenv("HTTP_X_FORWARDED_HOST");
-					/- htmlprintf ("https://%s/public/%s<br>\n",host != NULL ? host : "bolixo.org" ,glocal.username);
+					/- htmlprintf ("https://%s/public/%s<br>\n",glocal.host,glocal.username);
 					/- d.end();
 					/- jump2app (step_profile,1);
 				</ul>
@@ -149,7 +157,18 @@ void bolixo_doc (DOCUMENT_POINTER &docpointer, DOC_ID &jump, const char *usernam
 			</->
 			<- section("Command line tool");>
 				A utility called bofs allows you to perform almost everything you can do from the UI. You can use
-				it to perform backups and restores of your content.
+				it to perform backups and restores of your content. Here are few examples:
+				<p>
+				<ul>
+				<li>Backup the content of your public folder<br>
+				<- pre();>
+					/- htmlprintf ("bofs cp https://%s/projects/%s/public /tmp/public<br>\n",glocal.host,glocal.username);
+				</->
+				<li>Send a message to the public project<br>
+				<- pre();>
+					/- htmlprintf ("bofs msgs -t --groupname public --groupowner %s -C \"This is a message\"<br>\n",glocal.username);
+				</->
+				</ul>
 			</->
 		</->
 		<- section("Operations");>
@@ -163,8 +182,19 @@ void bolixo_doc (DOCUMENT_POINTER &docpointer, DOC_ID &jump, const char *usernam
 					take effect at the next screen update. No need to logout/login.
 					<p>
 					If you enable public view, the following page will become active:
-					/- const char *host = getenv("HTTP_X_FORWARDED_HOST");
-					/- htmlprintf ("https://%s/public/%s<br>\n",host != NULL ? host : "bolixo.org" ,glocal.username);
+					/- string url = string_f ("https://%s/public/%s",glocal.host,glocal.username);
+					/- htmlprintf ("<a href=%s>%s</a>.\n",url.c_str(),url.c_str());
+					This page will present your mini-photo, photo and messages sent to the public group, by you and members
+					of the group (By default, only you).
+					<p>
+					The next field tells if the content of the public project is displayed. By default, nothing is present.
+					You can display the content of the public project or any sub-folder of the project. In the public project
+					you can preview your public page before it is made public.
+					<p>
+					The next section control what information is published on bolixo.org directory. By default, nothing is
+					publish. Enable the check-box <em>Publish to bolixo.org directory</em>, and fill the fields you
+					wish to make public. This information will be sent to bolixo.org and will become searchable. <b>All fields
+					are optionals</b>.
 				</->
 				<- section ("Interests",section_interests);>
 					This is where you manage your list of interesting people. Once set, the main
