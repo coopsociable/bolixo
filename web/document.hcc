@@ -49,10 +49,16 @@ void jump2app (int step, int tab)
 <mod>
 void bolixo_doc (DOCUMENT_POINTER &docpointer, DOC_ID &jump, const char *username, bool display_full)
 {
+	glocal bool unknown_user = false;
 	glocal const char *username = username;
 	glocal const char *host = getenv("HTTP_X_FORWARDED_HOST");
 	if (glocal.host == NULL) glocal.host = "bolixo.org";
-	document_button_display_only = username[0] == '\0';
+	document_button_display_only = false;
+	if (username[0] == '\0'){
+		glocal.unknown_user = true;
+		glocal.username = "some_user";
+		document_button_display_only = true;
+	}
 	<call document>("",docpointer,jump,display_full);
 	<f ref>
 	</f>
@@ -88,12 +94,14 @@ void bolixo_doc (DOCUMENT_POINTER &docpointer, DOC_ID &jump, const char *usernam
 			<p>
 			It allows you to jump at the right place in the application, while this document follows you.
 			<p>
+			/- if (!glocal.unknown_user){
 			The links presented in this document are generally directly usable. They are formatted using
 			Your nickname
 			/- htmlprintf ("(%s) ",glocal.username);
 			and your bolixo server
 			/- htmlprintf ("(%s) ",glocal.host);
 			. The document is dynamic.
+			/- }
 
 			<- section("Publish short messages, images and videos");>
 				You would like to publish <em>to the world</em> short messages, images and videos.
@@ -164,9 +172,15 @@ void bolixo_doc (DOCUMENT_POINTER &docpointer, DOC_ID &jump, const char *usernam
 				<- pre();>
 					/- htmlprintf ("bofs cp https://%s/projects/%s/public /tmp/public<br>\n",glocal.host,glocal.username);
 				</->
-				<li>Send a message to the public project<br>
+				<li>Send a message and an image to the public project<br>
 				<- pre();>
 					/- htmlprintf ("bofs msgs -t --groupname public --groupowner %s -C \"This is a message\"<br>\n",glocal.username);
+					/- htmlprintf ("bofs msgs -t --groupname public --groupowner %s -F /tmp/image.png<br>\n",glocal.username);
+				</->
+				<li>List messages in your public group, either using the msgs or ls command<br>
+				<- pre();>
+					/- htmlprintf ("bofs msgs --listshortmsgs --groupowner %s --groupname public<br>\n",glocal.username);
+					/- htmlprintf ("bofs ls -l https://%s/msgs/%s/short-inbox/public<br>\n",glocal.host,glocal.username);
 				</->
 				</ul>
 			</->

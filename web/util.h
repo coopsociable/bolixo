@@ -93,7 +93,7 @@ struct _F_public_page{
 	virtual _F_public_page_readfile( )=0;
 	#define _F_public_page_process(x) void x process()
 	virtual _F_public_page_process( )=0;
-	#define _F_public_page_projecturl(x) std::string x projecturl(PARAM_STRING name, PARAM_STRING modified)
+	#define _F_public_page_projecturl(x) std::string x projecturl(PARAM_STRING name, PARAM_STRING modified, bool is_image)
 	virtual _F_public_page_projecturl( )=0;
 	#define _F_public_page_msgurl(x) std::string x msgurl(PARAM_STRING name, PARAM_STRING modified)
 	virtual _F_public_page_msgurl( )=0;

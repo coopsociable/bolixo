@@ -74,6 +74,7 @@ make install
 /var/www/html/new.png
 /var/www/html/modified.png
 /var/www/html/seen.png
+/var/www/html/back.png
 /var/www/html/bolixo.png
 /var/www/html/background.png
 /var/www/html/admin.jpg

@@ -1271,6 +1271,7 @@ elif [ "$1" = "lxc0-webssl" ]; then # prod:
 			-e /var/www/html/new.png \
 			-e /var/www/html/modified.png \
 			-e /var/www/html/seen.png \
+			-e /var/www/html/back.png \
 			-e /var/www/html/terms-of-use.html \
 			-e /var/www/html/conditions-d-utilisation.html \
 			-i /usr/sbin/trli-init \

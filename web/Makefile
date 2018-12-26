@@ -54,6 +54,8 @@ private.png: private.scad Makefile
 new.png: new.scad Makefile
 	openscad --imgsize 20,20 -onew.png -Dview=\"new\" --colorscheme=Nature --camera=0,0,50,0,0,0 new.scad
 	convert new.png -fuzz 20% -transparent white new.png 
+	openscad --imgsize 20,20 -oback.png -Dview=\"back\" --colorscheme=Nature --camera=0,0,50,0,0,0 new.scad
+	convert back.png -fuzz 20% -transparent white back.png 
 	openscad --imgsize 20,20 -omodified.png -Dview=\"modified\" --colorscheme=Nature --camera=0,0,50,0,0,0 new.scad
 	convert modified.png -fuzz 20% -transparent white modified.png 
 	openscad --imgsize 20,20 -oseen.png -Dview=\"seen\" --colorscheme=Nature --camera=0,0,50,0,0,0 new.scad
