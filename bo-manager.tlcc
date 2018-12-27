@@ -50,16 +50,18 @@ struct BLACKHOLE {
 	}
 };
 
-struct TRLID {
+struct BOD {
 	string server;
 	unsigned port;
 	unsigned workers;
 	string secret;
-	TRLID (const string &_server, unsigned _port, unsigned _workers, const string &_secret){
+	unsigned maxaccts;
+	BOD (const string &_server, unsigned _port, unsigned _workers, const string &_secret, unsigned _maxaccts){
 		server = _server;
 		port = _port;
 		workers = _workers;
 		secret = _secret;
+		maxaccts = _maxaccts;
 	}
 };
 struct WRITED {
@@ -127,10 +129,12 @@ struct BOLIXOD {
 	string server;
 	string secret;
 	unsigned workers;
-	BOLIXOD (const string &_server, const string &_secret, unsigned _workers){
+	unsigned maxaccts;
+	BOLIXOD (const string &_server, const string &_secret, unsigned _workers, unsigned _maxaccts){
 		server = _server;
 		secret = _secret;
 		workers = _workers;
+		maxaccts = _maxaccts;
 	}
 };
 struct PUBLISHD {
@@ -221,7 +225,7 @@ struct CONFIG {
 	string org;
 	map<string,SERVER> servers;
 	vector<BLACKHOLE> blackholes;
-	vector<TRLID> bods;
+	vector<BOD> bods;
 	vector<WRITED> writeds;
 	vector<WEB> keysds;
 	vector<SESSIOND> sessionds;
@@ -1237,17 +1241,20 @@ static void print_configs (
 					mkdir ("/var/lib/lxc/bolixod",0755);
 					glocal const char *secret = t.secret.c_str();
 					glocal int workers = t.workers;
+					glocal unsigned maxaccts = t.maxaccts;
 					<call savefile>("/var/lib/lxc/bolixod/bolixod.init",false);
 					<f dowrite>
 						fprintf (fout,"export BOLIXOD_PWD=%s\n",sql_bolixod_pwd);
 						for (int i=0; i<glocal.workers; i++){
 							fprintf (fout,"%s/bolixod ",project_path);
 							fprintf (fout,"--clientport %d --control %s/bolixod-%d.sock"
+								" --maxaccts %u"
 								" --dbserv %s --dbname bolixo --dbuser %s"
 								" --client_secrets %s/secrets.client"
 								" --mysecret %s --user %s --daemon"
 								" --pidfile /tmp/bolixod-%d.pid\n"
 								,i,lxcsock_dir,i
+								,glocal.maxaccts
 								,"localhost",sql_bolixod_user
 								,config_dir
 								,glocal.secret,trli_user
@@ -1372,18 +1379,21 @@ static void print_configs (
 					mkdir ("/var/lib/lxc/bod",0755);
 					glocal const char *secret = t.secret.c_str();
 					glocal int workers = t.workers;
+					glocal unsigned maxaccts = t.maxaccts;
 					<call savefile>("/var/lib/lxc/bod/bod.init",false);
 					<f dowrite>
 						fprintf (fout,"export BOD_PWD=%s\n",sql_bod_pwd);
 						for (int i=0; i<glocal.workers; i++){
 							fprintf (fout,"%s/bod ",project_path);
 							fprintf (fout,"--tcpport %d --control %s/bod-%d.sock"
+								" --maxaccts %u"
 								" --adminhost %s --adminport /dev/writed.sock --sesshost %s --sessport /dev/sessiond.sock"
 								" --dbserv %s --dbname files --dbuser %s"
 								" --admin_secrets %s/secrets.admin --client_secrets %s/secrets.client"
 								" --mysecret %s --user %s --sqltcpport 3307 --daemon"
 								" --pidfile /tmp/bod-%d.pid"
 								,9000+i,lxcsock_dir,i
+								,glocal.maxaccts
 								,horizon_ip,horizon_ip
 								,"localhost",sql_bod_user
 								,config_dir,config_dir
@@ -2178,8 +2188,8 @@ int main (int argc, char *argv[])
 						glocal.config.servers[tb[1]] = SERVER(tb[2],tb[3],tb[4]);
 					}else if (strcmp(word,"blackhole")==0 && n == 4){
 						glocal.config.blackholes.push_back(BLACKHOLE(tb[1],tb[2],trli_atou(tb[3])));
-					}else if (strcmp(word,"bod")==0 && n == 5){
-						glocal.config.bods.push_back(TRLID(tb[1],trli_atou(tb[2]),trli_atou(tb[3]),tb[4]));
+					}else if (strcmp(word,"bod")==0 && n == 6){
+						glocal.config.bods.push_back(BOD(tb[1],trli_atou(tb[2]),trli_atou(tb[3]),tb[4],trli_atou(tb[5])));
 					}else if (strcmp(word,"writed")==0 && n == 5){
 						glocal.config.writeds.push_back(WRITED(tb[1],trli_atou(tb[2]),trli_atou(tb[3]),tb[4]));
 					}else if (strcmp(word,"keysd")==0 && n == 2){
@@ -2210,8 +2220,8 @@ int main (int argc, char *argv[])
 						glocal.config.dnsproxys.push_back(WEB(tb[1]));
 					}else if (strcmp(word,"monitor")==0 && n == 5){
 						glocal.config.monitors.push_back(MON(tb[1],tb[2],tb[3],tb[4]));
-					}else if (strcmp(word,"bolixod")==0 && n == 4){
-						glocal.config.bolixods.push_back(BOLIXOD(tb[1],tb[2],atoi(tb[3].c_str())));
+					}else if (strcmp(word,"bolixod")==0 && n == 5){
+						glocal.config.bolixods.push_back(BOLIXOD(tb[1],tb[2],atoi(tb[3].c_str()),atoi(tb[4].c_str())));
 					}else if (strcmp(word,"publishd")==0 && n == 3){
 						glocal.config.publishds.push_back(PUBLISHD(tb[1],tb[2]));
 					}else if (strcmp(word,"dirserver")==0 && n == 2){

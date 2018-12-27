@@ -340,6 +340,7 @@ int main (int argc, char *argv[])
 	glocal const char *pidfile = "/var/run/bolixod.pid";
 	glocal const char *client_secretfile = "/etc/bolixo/secrets.client";
 	glocal const char *domain = "bolixo.org";
+	glocal unsigned maxaccts = 200;
 	static const char *tbdic[]={"tlmpsql","bolixo",NULL};
 	glocal.ret = <call tlmpprogram>(argc,argv,tbdic);
 	<f init>
@@ -359,6 +360,7 @@ int main (int argc, char *argv[])
 		setarg (' ',"daemon",MSG_U(I_RUNBG,"Run in background"),glocal.daemon,false);
 		setarg (' ',"pidfile",MSG_U(I_PIDFILE,"File holding the PID of the process"),glocal.pidfile,false);
 		setarg (' ',"domain",MSG_U(O_DOMAIN,"Accept nodes only from this domain"),glocal.domain,false);
+		setarg (' ',"maxaccts",MSG_U(O_MAXACCOUNTSPER,"Maximum accounts per servers"),glocal.maxaccts,false);
 	</f>
 	<f showerror>
 		if (glocal.daemon){
@@ -419,8 +421,9 @@ int main (int argc, char *argv[])
 				<call bolixod_control>(this,c->req,line, info.linelen,endserver, endclient, no,c);
 				<f status>
 					vector<string> tb;
-					tb.push_back(string_f ("Version %s",VERSION));
-					tb.push_back(string_f ("nbrequest %u",glocal.nbrequest));
+					tb.push_back(string_f ("Version: %s",VERSION));
+					tb.push_back(string_f ("maxaccts: %u",glocal.maxaccts));
+					tb.push_back(string_f ("nbrequest: %u",glocal.nbrequest));
 					rep_status(tb);
 				</f>
 				<f quit>
@@ -933,9 +936,9 @@ int main (int argc, char *argv[])
 					glocal string nodename;
 					<call sql_query>("select distinct nodes.nodename,nodes.nbuser from nodes"
 						" left join emails on emails.nodeid=nodes.nodeid"
-						" where nodes.nodeid not in (select nodeid from emails where userid='%s')"
+						" where nodes.nbuser < %u and nodes.nodeid not in (select nodeid from emails where userid='%s')"
 						" order by nodes.nbuser asc limit 1"
-						,userid);
+						,glocal.maxaccts,userid);
 					<f onerow>
 						glocal.nodename = row[0];
 					</f>

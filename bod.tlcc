@@ -795,7 +795,8 @@ static int bod_main (
 	const map<string,string> &admin_secrets,
 	const map<string,string> &client_secrets,
 	const char *nodename,
-	const char *dirserver)
+	const char *dirserver,
+	unsigned maxaccts)
 {
 	int ret = -1;
 	glocal const char *nodename = nodename;
@@ -808,6 +809,7 @@ static int bod_main (
 	glocal unsigned long nbrequest_admin = 0;
 	glocal string unixportclient = string_f("unix:/tmp/bod-client-%s.sock",portstr);
 	glocal string unixportadmin = string_f("unix:/tmp/bod-admin-%s.sock",portstr);
+	glocal unsigned maxaccts = maxaccts;
 	<obj TCPSERVER s>(bind,glocal.unixportclient,5);
 	<f newclient>
 		HANDLE_INFO *n = new HANDLE_INFO;
@@ -872,6 +874,7 @@ static int bod_main (
 				tb.push_back(string_f("Version %s",VERSION));
 				tb.push_back(string_f("dirserver: %s",glocal.dirserver));
 				tb.push_back(string_f("nodename: %s",glocal.nodename));
+				tb.push_back(string_f("maxaccts: %u",glocal.maxaccts));
 				tb.push_back(string_f ("nbrequest_admin=%lu",glocal.nbrequest_admin));
 				tb.push_back(string_f ("nbrequest_client=%lu",glocal.nbrequest_client));
 				tb.push_back(string_f("filehandle %u",fs_getnbhandle()));
@@ -991,11 +994,25 @@ static int bod_main (
 				</call>
 			</f>
 			<f adduser>
-				<call bo_writed_client_adduser>(glocal.con,name,email,password,lang);
-				<f ok>
-					glocal.bod_client.rep_adduser (confirmid,msg);
+				glocal string confirmid;
+				glocal string msg;
+				<call sql_query>("select count(*) from id2name where name not like '%%@%%'");
+				<f onerow>
+					unsigned nb = atoi(row[0]);
+					if (nb >= glocal.maxaccts){
+						glocal.msg = MSG_U(E_MAXACCOUNTS,"Maximum account number reach on this server");
+					}
 				</f>
 				</call>
+				if (glocal.msg.size() == 0){
+					<call bo_writed_client_adduser>(glocal.con,name,email,password,lang);
+					<f ok>
+						glocal.msg = msg;
+						glocal.confirmid = confirmid;
+					</f>
+					</call>
+				}
+				rep_adduser (glocal.confirmid,glocal.msg);
 			</f>
 			<f confirmuser>
 				<call bo_writed_client_confirmuser>(glocal.con,id);
@@ -2621,6 +2638,7 @@ int main (int argc, char *argv[])
 	glocal const char *dbuser = NULL;
 	glocal const char *sql_tcpport = NULL;
 	glocal bool daemon = false;
+	glocal unsigned maxaccts = 200;
 	glocal int workers = 1;
 	glocal const char *pidfile = "/var/run/bod.pid";
 	glocal const char *nodename = NULL;	// Who am I
@@ -2651,6 +2669,7 @@ int main (int argc, char *argv[])
 		setarg (' ',"pidfile","FIle holding the PID of the process",glocal.pidfile,false);
 		setarg (' ',"nodename",MSG_U(O_NODENAME,"My node name (URL)"),glocal.nodename,true);
 		setarg (' ',"dirserver",MSG_U(O_DIRSERVE,"Directory server"),glocal.dirserver,false);
+		setarg (' ',"maxaccts",MSG_U(O_MAXACCOUNTS,"Maximum accounts on this server"),glocal.maxaccts,false);
 		setgrouparg ("Database");
 		setarg (' ',"dbserv","Database server",glocal.dbserv,false);
 		setarg (' ',"dbname","Database name",glocal.dbname,false);
@@ -2707,7 +2726,8 @@ int main (int argc, char *argv[])
 		if (glocal.workers==1){
 			ret = bod_main (glocal.bind,glocal.port,glocal.control
 				,glocal.con,glocal.con_sess,glocal.user,glocal.pidfile,glocal.daemon
-				,glocal.admin_secrets,glocal.client_secrets,glocal.nodename,glocal.dirserver);
+				,glocal.admin_secrets,glocal.client_secrets,glocal.nodename,glocal.dirserver
+				,glocal.maxaccts);
 		}else{
 			int port = atoi(glocal.port);
 			for (int w=0; w<glocal.workers; w++){
@@ -2718,7 +2738,8 @@ int main (int argc, char *argv[])
 				if (pid == (pid_t)0){
 					ret = bod_main (glocal.bind,portstr,control.c_str()
 						,glocal.con,glocal.con_sess,glocal.user,glocal.pidfile,false
-						,glocal.admin_secrets,glocal.client_secrets,glocal.nodename,glocal.dirserver);
+						,glocal.admin_secrets,glocal.client_secrets,glocal.nodename,glocal.dirserver
+						,glocal.maxaccts);
 				}else if (pid == (pid_t)-1){
 					tlmp_error("Can't fork (%s), aborting\n",strerror(errno));
 					exit (-1);
