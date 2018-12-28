@@ -261,7 +261,65 @@ static void webtabs(_F_webtabs &c,
 	// the content of the tab
 	vector<GRABLINE> lines[4];
 	c.added_tab = -1;
-	deque<int> typeorder={3,2,1,0};
+	/*
+		This is a little magic thing here... The typeorder variable below.
+
+		(little note. When the webtabs system was designed, we tought that 4 areas could be needed. It never happened.
+		 We use 2 or 3 area:
+		 Area 0 generally holds a list (groups, projects).
+		 Area 1 holds tabs of the viewed items in area 0.
+		 Area 2 holds tabs of viewed document in area 1.
+		 Area 3, so far has not been used.
+		)
+
+		Normally, the tab area are processed in reverse order. The idea is that some event in one area (say the rightmost)
+		might influence the presentation of the documents on the left. For example, in one project tab, you create a
+		document. After entering some content, you hit save. Now 2 things happen. The document is created in the proper
+		folder and the tab name changes.
+
+		Since the folder content will be printed after the document event happen (save), it will properly show the new document name.
+		This is what the typeorder does.
+
+		Now, what about the dropdown menus. Without the reordering below for dropdown (webtable_is_dropdown()),
+		something spectacular goes on.
+		Here is an example. Go in the public project and create a document and save it. Now while the document is
+		displayed, use the right click to bring the dropdown menu. Select the "preview help". Now click back on your
+		document. Oops!!! The document is empty. It is still there in the database, but on the screen, it is empty.
+		Close the tab and click on the document in the folder and it will appear normally.
+
+		What is going on ?
+
+		Here is how documents/forms are preserved while you navigate in bolixo. Each time you click on something, all
+		forms are submitted silently (see the formsubmit javascript function). Once received, they are stored in the
+		temp database uinsg each active form id and the sessionid.
+
+		After every action, (once all HTML has been sent) the list of active forms are stored in the session manager. This list
+		is used for the next "formsubmit".
+
+		During the HTML production (server side), each visited form register itself as an active form. So here is the sequence
+		with the dropdown example below with order 3,2,1,0.
+
+		1-formsubmit is executed on the browser. It sends all active form, including the content of the document.
+		2-Since the document is visible in the right section, it is displayed first (the HTML is produced) and
+		  it register itself as one active form.
+		3-Later the dropdown action is perform. It request to create a new tab in the right section, hiding
+		  the tab of the document. The HTML associated with the document form is simply discared.
+		4-The new page appears with the help tab.
+		5-You click back on the document. formsubmit is executed and nothing is sent back from the browser
+		  about this document, since it is not visible (the browser has no clue it even exists).
+		6-The forms are received on the server side and saved to the temp database. At step 2, the document
+		  has registered itself as one active form, so the system save the content in the database. Empty
+		  content.
+
+		So by changing the evaluation order when a dropdown is used, we evaluate the dropdown before the
+		right section is evaluated. so the document form is never registered as active.
+	*/
+	deque<int> typeorder;
+	if (webtable_is_dropdown()){
+		typeorder={0,1,2,3};
+	}else{
+		typeorder={3,2,1,0};
+	}
 	while (typeorder.size() > 0){
 		int type = typeorder.front();
 		typeorder.pop_front();	
