@@ -119,9 +119,19 @@ static bool bo_writed_lex_check(const char *groupname, string &msg, const char s
 	}
 	return ret;
 }
-static bool bo_writed_lex_check(const char *groupname, string &msg)
+static bool bo_writed_lex_check(const char *name, string &msg)
 {
-	return bo_writed_lex_check (groupname,msg,'/');
+	return bo_writed_lex_check (name,msg,'/');
+}
+static bool bo_writed_group_check(const char *groupname, string &msg)
+{
+	bool ret = false;
+	if (strcasecmp(groupname,"inbox")==0 || strcasecmp(groupname,"anonymous")==0){
+		ret = false;
+	}else{
+		ret = bo_writed_lex_check (groupname,msg,'/');
+	}
+	return ret;
 }
 static bool bo_writed_fname_check(const char *name, string &msg)
 {
@@ -440,6 +450,79 @@ static int bo_writed_project_msg(
 </mod>
 
 
+/*
+	Check that all recipients do exist and are member of the sender contact list.
+	For private site, all local users are accepted. Remote user have to be member of the contact list.
+***	private site NOT done
+*/
+<mod>
+static int bo_writed_check_recipients(
+	unsigned userid,	// All recipients must be member of this user contact group
+	const vector<const char*> &recipients,
+	vector<pair<string,unsigned>> &userids,
+	string &msg)
+{
+	int ret = -1;
+	if (recipients.size() == 0){
+		ret = 0;
+	}else{
+		glocal vector<pair<string,unsigned>> *r_userids = &userids;
+		/*
+			recipients may be specified with just the nickname or nickname@nodename.
+			We remove the nodename when it is this node.
+		*/
+		vector<string> tos;
+		const char *our_node = strstr(nodename,"//");
+		if (our_node != NULL){
+			our_node += 2;
+		}else{
+			tlmp_error ("Can't parse our nodename %s, no //\n",nodename);
+			our_node = "";
+		}
+		for (auto r:recipients){
+			const char *pt = strchr(r,'@');
+			if (pt == NULL){
+				tos.push_back(r);
+			}else if (strcmp(our_node,pt+1)==0){
+				tos.push_back(string(r,pt-r));
+			}
+		}
+		string req = string_f("select id2name.name,id2name.userid from groups"
+			" join group_members on group_members.groupid = groups.id"
+			" join id2name on id2name.userid=group_members.userid"
+			" where groups.name='contacts' and groups.ownerid=%u and (",userid);
+		const char *sep = "";
+		NSQL_ENCODE enc;
+		for (auto &r:tos){
+			req += string_f(" %s id2name.name='%s'",sep,enc.enc(r));
+			sep = "or";
+		}
+		req += ")";
+		<call sql_query>(req.c_str());
+		<f onerow>
+			glocal.r_userids->push_back(pair<string,unsigned>(row[0],atoi(row[1])));
+		</f>
+		</call>
+		if (userids.size() != recipients.size()){
+			msg = MSG_U(E_BADDEST,"Some recipient(s) invalid:");
+			for (auto r:recipients){
+				bool found = false;
+				for (auto &i:userids){
+					if (strcmp(r,i.first.c_str())==0){
+						found = true;
+						break;
+					}
+				}
+				if (!found) msg += string(" ") + r;
+			}
+		}else{
+			ret = 0;
+		}
+	}
+	return ret;
+}
+</mod>
+
 <mod>
 static void bo_writed_sendmsg (
 	CONNECT_INFO &con,
@@ -457,42 +540,18 @@ static void bo_writed_sendmsg (
 	string username;
 	glocal unsigned userid = bo_writed_get_group_owner (con, sessionid, owner, username, msg);
 	if (recipients.size() == 0){
-		msg = "No recipient";
+		msg = MSG_U(E_NORECIPIENT,"No recipient specified");
 	}else if (glocal.userid != 0){
 		// Check that all recipients do exist
 		glocal vector<pair<string,unsigned>> r_userids;
-		string req = "select name,userid from id2name";
-		const char *sep = "where";
-		NSQL_ENCODE enc;
-		for (auto r:recipients){
-			req += string_f(" %s name='%s'",sep,enc.enc(r));
-			sep = "or";
-		}
-		<call sql_query>(req.c_str());
-		<f onerow>
-			glocal.r_userids.push_back(pair<string,unsigned>(row[0],atoi(row[1])));
-		</f>
-		</call>
-		if (glocal.r_userids.size() != recipients.size()){
-			msg = "Some recipient(s) invalid:";
-			for (auto r:recipients){
-				bool found = false;
-				for (auto &i:glocal.r_userids){
-					if (strcmp(r,i.first.c_str())==0){
-						found = true;
-						break;
-					}
-				}
-				if (!found) msg += string(" ") + r;
-			}
-		}else{
+		if (bo_writed_check_recipients(glocal.userid,recipients,glocal.r_userids,msg)!=-1){
 			msg = "";
 			if (replyto != NULL){
 				int inbox_id = fs_find_inbox(glocal.userid,username,false,msg);
 				if (inbox_id == -1
 					|| fs_rec_getid ("select itemid from dirs_content where dirid=%d and name='%s'"
 						,inbox_id,replyto)==-1){
-					msg = "replyto: Unknown message";
+					msg = MSG_U(E_UNKNOWNMSG,"replyto: Unknown message");
 				}
 					
 			}
@@ -645,7 +704,7 @@ static int bo_writed_addfile_bob (
 		const char *content_str = NULL;
 		string tmp;
 		string sign;
-		if (!more && file_type == FILE_TEXT){
+		if (!more && file_type == FILE_TEXT && sessionid != NULL){
 			tmp = string((const char *) content.getbuffer(),content.getsize());
 			sign = bo_writed_sign (con_keys,userid,tmp);
 			content_str = tmp.c_str();
@@ -727,7 +786,7 @@ static int bo_writed_create_group (unsigned userid, const char *groupname, bool 
 	if (sql_action("insert into groups (ownerid,name,description) values (%u,'%s','%s')",userid,groupname,description)==-1){
 		msg = "Internal error (group_lists table)";
 	}else{
-		glocal.ret = 0;
+		glocal.ret = query_getdefaultdb()->getlastid();
 		if (create_dash_list){
 			glocal.ret = -1;
 			if (sql_action("insert into group_lists (ownerid,name) values (%u,'#%s')"
@@ -1008,11 +1067,27 @@ static void bo_writed_interest_set(unsigned userid, const char *user, string &ms
 	}
 }
 </mod>
+static int bo_writed_set_member (int groupid, const char *groupname, unsigned userid, PARAM_STRING username)
+{
+	int ret = 0;
+	if (sql_action("insert into group_members (groupid,userid,access,role) values (%u,%u,'W','')"
+		,groupid,userid)==-1){
+		tlmp_error ("Internal error setting user %s member of his group %s",username.ptr,groupname);
+		ret = -1;
+	}
+	return ret;
+}
 </mod>
+<mod>
 static int bo_writed_confirmuser (CONTEXT &ctx, unsigned userid, PARAM_STRING name, PARAM_STRING confirmid, string &msg)
 {
 	int ret = -1;
 	if (sql_action(*ctx.usq,"update users set confirmed=now() where userid=%u",userid)!=-1){
+		<call sql_query>("select lang from config where userid=%u",userid);
+		<f onerow>
+			translat_selectlang(row[0]);
+		</f>
+		</call>
 		bo_log_confirmuser (ctx.flog,confirmid,time(NULL));
 		ret = 0;
 		/*
@@ -1024,24 +1099,30 @@ static int bo_writed_confirmuser (CONTEXT &ctx, unsigned userid, PARAM_STRING na
 			Make this user member of his group "public"
 			Add interest for user admin
 		*/
-		bo_writed_create_group_list(userid,name,"public","Public view",msg);
+		bo_writed_create_group_list(userid,name,"public",MSG_U(I_PUBLICVIEW,"Public view"),msg);
 		bo_writed_create_group (userid,"contacts",false,"",msg);
 		bo_writed_set_group(userid,"public","contacts","R",msg);
-		int groupid = bo_writed_create_group (userid,"public",true,"Public view",msg);
+		int groupid = bo_writed_create_group (userid,"public",true,MSG_R(I_PUBLICVIEW),msg);
 		if (groupid != -1){
 			bo_writed_set_group(userid,"public","public","R",msg);
-			if (sql_action("insert into group_members (groupid,userid,access,role) values (%u,%u,'W','')"
-				,groupid,userid)==-1){
-				tlmp_error ("Internal error setting user %s member of his group public",name.ptr);
-			}
+			bo_writed_set_member (groupid,"public",userid,name);
 		}
 		bo_writed_interest_set (userid,"admin",msg);
+		groupid = bo_writed_create_group (userid,"inbox",true,MSG_U(I_PRIVINBOX,"Private inbox"),msg);
+		if (groupid != -1){
+			bo_writed_set_member (groupid,"inbox",userid,name);
+		}
+		groupid = bo_writed_create_group (userid,"anonymous",true,MSG_U(I_PUBLICINBOX,"Public inbox"),msg);
+		if (groupid != -1){
+			bo_writed_set_member (groupid,"anonymous",userid,name);
+		}
 	}else{
 		msg = "Error, can't confirm new user";
 	}
 	return ret;
 }
-// Get the information of this session.
+</mod>
+// Get the information of this session. (Used for node operation)
 // Return 0 if the expected_state was seen.
 // Return -1 for any error.
 static int bod_sessionstate(
@@ -1062,14 +1143,14 @@ static int bod_sessionstate(
 		if (internal_error){
 			*glocal.msg = "Internal error";
 		}else if (userid != glocal.expected){
-tlmp_error ("userid=%d expected=%d session=%s\n",userid,glocal.expected,glocal.session);
+			//tlmp_error ("userid=%d expected=%d session=%s\n",userid,glocal.expected,glocal.session);
 			*glocal.msg = "Invalid session";
 			<call bo_sessiond_admin_deletesession>(*glocal.con_sess,glocal.session);
 			<f ok>
 			</f>
 			</call>
 		}else{
-tlmp_error ("sessionstate ok expect %d\n",glocal.expected);
+			//tlmp_error ("sessionstate ok expect %d\n",glocal.expected);
 			glocal.ret = 0;
 			*glocal.nodename = userid_str;
 		}
@@ -1436,6 +1517,7 @@ int main (int argc, char *argv[])
 				<f adduser>
 					string msg;
 					string id_str;
+					translat_selectlang (lang);
 					bo_writed_adduser (glocal.ctx,lang,name,email,password,id_str,msg);
 					rep_adduser (id_str,msg);
 				</f>
@@ -2154,7 +2236,7 @@ int main (int argc, char *argv[])
 					glocal string username;
 					glocal unsigned userid = bo_writed_get_group_owner (glocal.con, sessionid, owner, glocal.username,glocal.msg);
 					if (glocal.userid != 0){
-						if (bo_writed_lex_check(listname,glocal.msg)){
+						if (bo_writed_group_check(listname,glocal.msg)){
 							<call sql_query>("select id from group_lists where ownerid=%u and name='%s'"
 								,glocal.userid,listname);
 							<f onerow>
@@ -2181,7 +2263,7 @@ int main (int argc, char *argv[])
 					glocal const char *groupname = groupname;
 					glocal unsigned userid = bo_writed_get_group_owner (glocal.con, sessionid, owner, glocal.msg);
 					if (glocal.userid != 0){
-						if (bo_writed_lex_check(groupname,glocal.msg)){
+						if (bo_writed_group_check(groupname,glocal.msg)){
 							<call sql_query>("select id from groups where ownerid=%u and name='%s'"
 								,glocal.userid,groupname);
 							<f onerow>
@@ -2461,63 +2543,154 @@ int main (int argc, char *argv[])
 				</f>
 				<f sendattach> // sessionid owner msgid content:o more:b = success:b msg handle
 				</f>
-				<f sendtalk>	// sessionid owner groupname groupowner content:o more:b = success:b msg handle
+				<f sendtalk_anon>	// sessionid to content:o = success:b msg handle
+					glocal const char *sessionid = sessionid;
+					glocal const char *to = to;
+					glocal string msg;
+					glocal string handle;
+					glocal const BOB_TYPE *content = &content;
+					glocal bool more = more;
+					<call sql_query>("select id2name.userid,anon_messages from id2name join config on config.userid=id2name.userid"
+						" where id2name.name='%s'",to);
+					<f empty>
+						glocal.msg = MSG_R(E_IVLDUSER);
+					</f>
+					<f onerow>
+						unsigned userid = atoi(row[0]);
+						unsigned anon_messages = atoi(row[1]);
+						if (!anon_messages){
+							glocal.msg = MSG_U(E_ANON_MESSAGES,"This user do not accept anonymous messages");
+						}else{
+							bool created;
+							int dirid = fs_find_short_inbox (userid,glocal.to,"anonymous",glocal.msg,true,created);
+							if (dirid != -1){
+								int fileid;
+								string msgid;
+								char modified[20];
+								bo_writed_addfile_bob (glocal.ctx.con_keys,glocal.sessionid,NULL,ENTRY_MSG,dirid,userid
+									,*glocal.content,glocal.more
+									,msgid,glocal.msg,glocal.handle,fileid,modified);
+							}
+						}
+					</f>
+					</call>
+					if (glocal.msg.size() > 0){
+						rep_sendtalk_anon (false,glocal.msg,"");
+						fs_delete_handle(glocal.handle);
+					}else{
+						if (!more){
+							fs_delete_handle(glocal.handle);
+							glocal.handle.clear();
+						}
+						rep_sendtalk_anon (true,glocal.msg,glocal.handle);
+					}
+				</f>
+				<f sendtalk>	// sessionid owner to:v groupname groupowner content:o more:b = success:b msg handle
 					glocal const char *sessionid = sessionid;
 					glocal const BOB_TYPE *content = &content;
 					glocal bool more = more;
 					glocal string username;
 					glocal string handle;
 					glocal string msg;
-					glocal string msgid;
 					glocal const char *groupname = groupname;
 					glocal const char *groupowner = groupowner;
 					glocal unsigned userid = bo_writed_get_group_owner (glocal.con, sessionid, owner, glocal.username, glocal.msg);
 					if (glocal.userid > 0){
-						// We store the message in the short inbox of the group owner (like mail sent to the project) 
-						// The query is to check if the user posting the message is a member of the group
-						// and to validate the group exist
-						<call sql_query>("select groups.ownerid from groups"
-							" join id2name on id2name.userid=groups.ownerid"
-							" join group_members on group_members.groupid = groups.id"
-							" where id2name.name='%s' and groups.name='%s' and group_members.userid=%u"
-							,groupowner,groupname,glocal.userid);
-						<f empty>
-							glocal.msg = MSG_U(E_UNKNOWNGROUP,"Unknown group name, empty group, or user not a member");
-						</f>
-						<f onerow>
-							bool created;
-							unsigned ownerid = atoi(row[0]);
-							int dirid = fs_find_short_inbox (ownerid,glocal.groupowner,glocal.groupname,glocal.msg,true,created);
-							if (dirid != -1){
-								int fileid;
-								char modified[20];
-								bo_writed_addfile_bob (glocal.ctx.con_keys,glocal.sessionid,NULL,ENTRY_MSG,dirid,glocal.userid
-									,*glocal.content,glocal.more
-									,glocal.msgid,glocal.msg,glocal.handle,fileid,modified);
-								bool remote_user = strchr(glocal.username.c_str(),'@')!=NULL;
-								if (remote_user){
-									if (created){
-										bo_writed_update_interest_table(ownerid,dirid);
-									}
-								}else{
-									bo_writed_update_interest(created,glocal.groupname,ownerid,dirid);
-									if (strcmp(glocal.groupname,"public")==0){
-										if (!glocal.more){
-											<call publishd_client_sendmessage>(glocal.ctx.con_publish,ownerid
-												,dirid,fileid,modified);
-											<f ok>
-												if (!success) tlmp_error ("publishd_client_sendmessage: %s\n",msg);
-											</f>
-											</call>
+						// sendtalk (and sendtalk_file) may send to a group, to a list of users, or both.
+						// so to[] may be empty and the groupnname may be empty. Not both.
+						glocal vector<pair<string,unsigned>> uids;
+						bo_writed_check_recipients(glocal.userid,to,glocal.uids,glocal.msg);
+						if (to.size() == 0 && groupname[0] == '\0'){
+							glocal.msg = MSG_U(E_NODEST,"No recipient specified (users or group)");
+						}else if (glocal.msg.size() == 0){
+							if (groupname[0] != '\0'){
+								// We store the message in the short inbox of the group owner (like mail sent to the project) 
+								// The query is to check if the user posting the message is a member of the group
+								// and to validate the group exist
+								<call sql_query>("select groups.ownerid from groups"
+									" join id2name on id2name.userid=groups.ownerid"
+									" join group_members on group_members.groupid = groups.id"
+									" where id2name.name='%s' and groups.name='%s' and group_members.userid=%u"
+									,groupowner,groupname,glocal.userid);
+								<f empty>
+									glocal.msg = MSG_U(E_UNKNOWNGROUP,"Unknown group name, empty group, or user not a member");
+								</f>
+								<f onerow>
+									bool created;
+									unsigned ownerid = atoi(row[0]);
+									int dirid = fs_find_short_inbox (ownerid,glocal.groupowner,glocal.groupname,glocal.msg,true,created);
+									if (dirid != -1){
+										int fileid;
+										string msgid;
+										char modified[20];
+										bo_writed_addfile_bob (glocal.ctx.con_keys,glocal.sessionid,NULL,ENTRY_MSG,dirid,glocal.userid
+											,*glocal.content,glocal.more
+											,msgid,glocal.msg,glocal.handle,fileid,modified);
+										bool remote_user = strchr(glocal.username.c_str(),'@')!=NULL;
+										if (remote_user){
+											if (created){
+												bo_writed_update_interest_table(ownerid,dirid);
+											}
 										}else{
-											fs_file_handle_addextra (glocal.handle,ownerid,dirid);
+											bo_writed_update_interest(created,glocal.groupname,ownerid,dirid);
+											if (strcmp(glocal.groupname,"public")==0){
+												if (!glocal.more){
+													<call publishd_client_sendmessage>(glocal.ctx.con_publish,ownerid
+														,dirid,fileid,modified);
+													<f ok>
+														if (!success) tlmp_error ("publishd_client_sendmessage: %s\n",msg);
+													</f>
+													</call>
+												}else{
+													fs_file_handle_addextra (glocal.handle,ownerid,dirid);
+												}
+											}
+										}
+										for (auto &u:glocal.uids){
+											bool created;
+											int udirid = fs_find_short_inbox (u.second,u.first,"inbox",glocal.msg,true,created);
+											if (udirid != -1){
+												if (fs_insert_entry(udirid,fileid,modified,msgid,ENTRY_MSG,ownerid)==-1){
+													tlmp_error ("Insert in short user inbox, internal error %s\n",u.first.c_str());
+													break;
+												}
+											}else{
+												tlmp_error ("Insert in short user inbox, missing inbox, internal error %s\n",u.first.c_str());
+												break;
+											}
+										}
+									}
+									end = true;
+								</f>
+								</call>
+							}else if (to.size() > 0){
+								bool created;
+								auto &uid0 = glocal.uids[0];
+								int dirid = fs_find_short_inbox (uid0.second,uid0.first,"inbox",glocal.msg,true,created);
+								if (dirid != -1){
+									int fileid;
+									string msgid;
+									char modified[20];
+									bo_writed_addfile_bob (glocal.ctx.con_keys,glocal.sessionid,NULL,ENTRY_MSG,dirid,glocal.userid
+										,*glocal.content,glocal.more
+										,msgid,glocal.msg,glocal.handle,fileid,modified);
+									glocal.uids.erase(glocal.uids.begin());
+									for (auto &u:glocal.uids){
+										bool created;
+										int udirid = fs_find_short_inbox (u.second,u.first,"inbox",glocal.msg,true,created);
+										if (udirid != -1){
+											if (fs_insert_entry(udirid,fileid,modified,msgid,ENTRY_MSG,glocal.userid)==-1){
+												tlmp_error ("Insert in short user inbox, internal error %s\n",u.first.c_str());
+												break;
+											}
+										}else{
+											tlmp_error ("Insert in short user inbox, missing inbox, internal error %s\n",u.first.c_str());
+											break;
 										}
 									}
 								}
 							}
-							end = true;
-						</f>
-						</call>
+						}
 					}
 					if (glocal.msg.size() > 0){
 						rep_sendtalk (false,glocal.msg,"");
@@ -2530,7 +2703,7 @@ int main (int argc, char *argv[])
 						rep_sendtalk (true,glocal.msg,glocal.handle);
 					}
 				</f>
-				<f sendtalk_file>	// sessionid owner groupname groupowner filename = success:b msg
+				<f sendtalk_file>	// sessionid owner to:v groupname groupowner filename = success:b msg
 					glocal string msg;
 					glocal const char *groupname = groupname;
 					glocal const char *groupowner = groupowner;
@@ -2676,8 +2849,9 @@ int main (int argc, char *argv[])
 							}
 						}
 						if (glocal.msg.size() == 0){
-							if (sql_action("update config set lang='%s',dateformat=%u,public_view=%d,public_dir='%s' where userid=%u"
-								,config.lang,config.dateformat,config.public_view,config.public_dir,glocal.userid)==-1){
+							if (sql_action("update config set lang='%s',dateformat=%u,public_view=%d,public_dir='%s',anon_messages=%u where userid=%u"
+								,config.lang,config.dateformat,config.public_view,config.public_dir
+								,config.anon_messages,glocal.userid)==-1){
 								glocal.msg = "Internal error, config table";
 							}else{
 								<call bo_sessiond_admin_setlang>(glocal.con,sessionid,config.lang,config.dateformat);

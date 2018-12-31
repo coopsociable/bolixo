@@ -77,6 +77,7 @@ static W_SSTRING w_lang("lang");
 static W_SSTRING w_public_dir("public_dir");
 static W_UNSIGNED w_public_view("public_view");
 static W_SSTRING w_dateformat("dateformat");
+static W_UNSIGNED w_anon_messages("anonmsgs");
 
 static W_SSTRING w_folder("folder");
 static W_SSTRING w_upload("upload");
@@ -795,7 +796,8 @@ static void index_paste(CONNECT_INFO &con, PARAM_STRING path, PARAM_STRING group
 	if (fcopy.path.size()==0){
 		htmlprintf (MSG_R(E_NOTHINGTOPASTE),fcopy.path.c_str());
 	}else{
-		<call bod_client_sendtalk_file> (con,w_session.c_str(),"",group,groupowner,fcopy.path,fcopy.date);
+		static vector<string> empty;
+		<call bod_client_sendtalk_file> (con,w_session.c_str(),"",empty,group,groupowner,fcopy.path,fcopy.date);
 		<f ok>
 			if (!success) htmlprintf (MSG_R(E_CANTPASTEENTRY),msg);
 		</f>
@@ -2576,7 +2578,8 @@ extern "C" void webmain_real()
 				if (w_content.size() > 0){
 					BOB_TYPE bob;
 					bob.setbuffer (w_content.c_str(),w_content.size(),false);
-					<call bod_client_sendtalk>(glocal.con,w_session.c_str(),"",glocal.groupname,glocal.groupowner,bob,false);
+					static vector<string> empty;
+					<call bod_client_sendtalk>(glocal.con,w_session.c_str(),"",empty,glocal.groupname,glocal.groupowner,bob,false);
 					<f ok>
 						if (!success){
 							htmlprintf (MSG_U(E_CANTSEND,"Can't send: %s<br>\n"),msg);
@@ -2590,7 +2593,8 @@ extern "C" void webmain_real()
 					const char *tempname = tlmpweb_getfilename(w_upload);
 					<call sendfile>("",tempname,glocal.fail);
 					<f start>
-						<call bod_client_sendtalk>(glocal.con,w_session.c_str(),"",glocal.groupname,glocal.groupowner
+						static vector<string> empty;
+						<call bod_client_sendtalk>(glocal.con,w_session.c_str(),"",empty,glocal.groupname,glocal.groupowner
 							,content,more);
 						<f ok>
 							glocal.sendfile.sethandle (handle);
@@ -3353,6 +3357,7 @@ extern "C" void webmain_real()
 						w_dateformat = string_f("%u",config.dateformat);
 						w_public_view = config.public_view;
 						w_public_dir = config.public_dir;
+						w_anon_messages = config.anon_messages;
 					</f>
 					</call>
 					<call bod_client_info_read>(glocal.con,w_session.c_str(),"");
@@ -3410,6 +3415,8 @@ extern "C" void webmain_real()
 						}
 					</f>
 					</call>
+					/-#I_ACCEPTANON <tr><td>Accept anonymous messages<td>
+					field_checkbox (w_anon_messages,"");
 					/- </table>
 					}
 					{
@@ -3469,6 +3476,7 @@ extern "C" void webmain_real()
 					config.dateformat = atoi(w_dateformat.c_str());
 					config.public_view = w_public_view;
 					config.public_dir = w_public_dir.c_str();
+					config.anon_messages = w_anon_messages;
 					<call bod_client_config_write>(glocal.con,w_session.c_str(),"",config);
 					<f ok>
 						if (!success){

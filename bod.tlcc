@@ -1778,17 +1778,24 @@ static int bod_main (
 				</call> 
 				rep_verifysign (glocal.status,glocal.msg);
 			</f>
-			<f sendtalk>	// sessionid owner groupname groupowner content:o = success:b msg handle
-				<call bo_writed_client_sendtalk>(glocal.con,sessionid,owner,groupname,groupowner,content,more);
+			<f sendtalk>	// sessionid owner to:v groupname groupowner content:o = success:b msg handle
+				<call bo_writed_client_sendtalk>(glocal.con,sessionid,owner,to,groupname,groupowner,content,more);
 				<f ok>
 					glocal.bod_client.rep_sendtalk(success,msg,handle);
 				</f>
 				</call>
 			</f>
-			<f sendtalk_file>	// sessionid owner groupname groupowner filename filedate = success:b msg handle
-				<call bo_writed_client_sendtalk_file>(glocal.con,sessionid,owner,groupname,groupowner,filename,filedate);
+			<f sendtalk_file>	// sessionid owner to:v groupname groupowner filename filedate = success:b msg handle
+				<call bo_writed_client_sendtalk_file>(glocal.con,sessionid,owner,to,groupname,groupowner,filename,filedate);
 				<f ok>
 					glocal.bod_client.rep_sendtalk_file(success,msg);
+				</f>
+				</call>
+			</f>
+			<f sendtalk_anon>	// to content:o = success:b msg handle
+				<call bo_writed_client_sendtalk_anon>(glocal.con,sessionid,to,content,more);
+				<f ok>
+					glocal.bod_client.rep_sendtalk_anon(success,msg,handle);
 				</f>
 				</call>
 			</f>
@@ -1890,7 +1897,7 @@ static int bod_main (
 				glocal CONFIG config;
 				unsigned userid = bo_writed_get_group_owner (glocal.con_sess, sessionid, owner, glocal.msg);
 				if (userid != 0){
-					<call sql_query>("select lang,dateformat,public_view,public_dir from config where userid=%u",userid);
+					<call sql_query>("select lang,dateformat,public_view,public_dir,anon_messages from config where userid=%u",userid);
 					<f empty>
 						glocal.msg = "Internal error, no configuration for user";
 					</f>
@@ -1899,6 +1906,7 @@ static int bod_main (
 						glocal.config.dateformat = atoi(row[1]);
 						glocal.config.public_view = atoi(row[2]);
 						glocal.config.public_dir = row[3];
+						glocal.config.anon_messages = atoi(row[4]);
 					</f>
 					</call>
 				}	

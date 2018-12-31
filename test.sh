@@ -591,6 +591,7 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 		create unique index userinfo_userid on userinfo(userid);
 	EOF
 	$0 createdb-patch1
+	$0 createdb-patch2
 	mysqladmin -uroot -S $SOCKN create $DBNAMET
 	mysql -uroot -S $SOCKN $DBNAMET <<-EOF
 		create table formids(
@@ -627,6 +628,11 @@ elif [ "$1" = "createdb-patch1" ]; then # db: add nodes table to db files
 			created datetime default current_timestamp
 		)engine=$ENGINE;
 		create index interests_userid on interests_remote (userid);
+	EOF
+elif [ "$1" = "createdb-patch2" ]; then # db: add anonymous messages
+	ENGINE=myisam
+	mysql -uroot -S $SOCKN $DBNAME <<-EOF
+		alter table config add anon_messages tinyint unsigned default 0;
 	EOF
 elif [ "$1" = "generate-system-pubkey" ] ; then # config: Generate the system public key
 	echo Generate --system-- crypto key

@@ -2,7 +2,7 @@ extern const char **_dictionary_bolixo;
 #ifndef DICTIONARY_REQUEST
 	#define DICTIONARY_REQUEST \
 	const char **_dictionary_bolixo;\
-	TRANSLATE_SYSTEM_REQ _dictionary_req_bolixo("bolixo",_dictionary_bolixo,364,9);\
+	TRANSLATE_SYSTEM_REQ _dictionary_req_bolixo("bolixo",_dictionary_bolixo,379,9);\
 	void dummy_dict_bolixo(){}
 #endif
 #ifndef MSG_U
@@ -377,3 +377,18 @@ extern const char **_dictionary_bolixo;
 #define E_MAXACCOUNTS	361
 #define O_MAXACCOUNTS	362
 #define O_MAXACCOUNTSPER	363
+#define O_USER	364
+#define I_ACCEPTANON	365
+#define O_ANONMSGS	366
+#define E_NODEST	367
+#define E_BADDEST	368
+#define E_NORECIPIENT	369
+#define E_UNKNOWNMSG	370
+#define E_NOGROUPORUSERS	371
+#define E_GROUPOWNER	372
+#define E_GROUPNAME	373
+#define E_CONTENT	374
+#define I_PUBLICVIEW	375
+#define I_PRIVINBOX	376
+#define I_PUBLICINBOX	377
+#define E_ANON_MESSAGES	378
