@@ -704,10 +704,12 @@ static int bo_writed_addfile_bob (
 		const char *content_str = NULL;
 		string tmp;
 		string sign;
-		if (!more && file_type == FILE_TEXT && sessionid != NULL){
+		if (!more && file_type == FILE_TEXT){
 			tmp = string((const char *) content.getbuffer(),content.getsize());
-			sign = bo_writed_sign (con_keys,userid,tmp);
 			content_str = tmp.c_str();
+			if (sessionid != NULL){
+				sign = bo_writed_sign (con_keys,userid,tmp);
+			}
 		}
 		if (fs_insert_entry(dirid,fileid,modified,basename,type)==-1){
 			msg = "Internal error (dirs_files table)";
@@ -1159,6 +1161,33 @@ static int bod_sessionstate(
 	return glocal.ret;
 }
 </mod>
+/*
+	Send a message to a user from the admin
+*/
+static void bo_writed_send_admin_msg (
+	unsigned userid,
+	PARAM_STRING username,
+	PARAM_STRING message)
+{
+	bool created;
+	string msg;
+	int dirid = fs_find_short_inbox (userid,username,"inbox",msg,true,created);
+	if (dirid != -1){
+		int adminid = fs_rec_getid("select userid from id2name where name='admin'");
+		if (adminid == -1){
+			tlmp_error ("Can't get admin userid\n");
+		}else{
+			int fileid;
+			string msgid,handle;
+			char modified[20];
+			BOB_TYPE content(message.ptr,strlen(message.ptr),false);
+			CONNECT_INFO con_keys;
+			bo_writed_addfile_bob (con_keys,NULL,NULL,ENTRY_MSG,dirid,adminid
+				,content,false,msgid,msg,handle,fileid,modified);
+		}
+	}
+}
+
 <mod>
 int main (int argc, char *argv[])
 {
@@ -2799,6 +2828,7 @@ int main (int argc, char *argv[])
 					glocal string msg;
 					glocal unsigned userid = bo_writed_get_group_owner (glocal.con, sessionid, owner, glocal.username, glocal.msg);
 					if (glocal.userid > 0){
+						glocal const char *target_user = user;
 						glocal int target_userid = fs_rec_getid ("select userid from id2name where name='%s'",user);
 						if (glocal.target_userid == -1){
 							glocal.msg = MSG_R(E_UNKNOWNUSER);
@@ -2820,6 +2850,16 @@ int main (int argc, char *argv[])
 									// We put or remove users from each other contacts group
 									bo_writed_group_member(glocal.userid,"contacts",glocal.target_userid,"R",add,glocal.msg);
 									bo_writed_group_member(glocal.target_userid,"contacts",glocal.userid,"R",add,glocal.msg);
+									// Send a message to the user about his request
+									string message;
+									if (add){
+										message = string_f(MSG_U(I_CONTACTREQACCEPTED,"Your contact request sent to %s was accepted")
+											,glocal.username.c_str());
+									}else{
+										message = string_f(MSG_U(I_CONTACTREQREFUSED,"Your contact request sent to %s was rejected")
+											,glocal.username.c_str());
+									}
+									bo_writed_send_admin_msg (glocal.target_userid,glocal.target_user,message);
 								}
 							</f>
 							</call>
