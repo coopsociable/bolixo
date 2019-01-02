@@ -79,6 +79,7 @@ static W_UNSIGNED w_public_view("public_view");
 static W_SSTRING w_dateformat("dateformat");
 static W_UNSIGNED w_anon_messages("anonmsgs");
 
+static W_SSTRING w_recipients("recipients");
 static W_SSTRING w_folder("folder");
 static W_SSTRING w_upload("upload");
 static W_SSTRING w_accept("accept");
@@ -2174,11 +2175,17 @@ extern "C" void webmain_real()
 						if (glocal.webtabs.selected(path)) glocal.webtable.setcurrent(glocal.rownum);
 						//static TRANS_NOTLOAD *tbviewed[]={P_MSG_U(I_NEW,"new"),P_MSG_U(I_BLK,"&nbsp;&nbsp;&nbsp;"),P_MSG_U(I_MOD,"mod")};
 						static const char *tbviewed[]={"new.png","seen.png","modified.png"};
-						glocal.webtable.setrow ("white",glocal.rownum,"<img width=20 src=/%s>\t%s%s\t%s\t%s/%s:%s\t%u"
+						char sizestr[20];
+						if (bolixo_isdir(f.type)){
+							sizestr[0] = '\0';
+						}else{
+							snprintf (sizestr,sizeof(sizestr)-1,"%u",f.size);
+						}
+						glocal.webtable.setrow ("white",glocal.rownum,"<img width=20 src=/%s>\t%s%s\t%s\t%s/%s:%s\t%s"
 							,tbviewed[f.viewed]
 							,f.name,bolixo_isdir(f.type) ? "/" : ""
 							,format_date(userinfo.dateformat,f.modified).c_str()
-							,f.owner,f.listname,f.listmode,f.size);
+							,f.owner,f.listname,f.listmode,sizestr);
 						glocal.rownum++;
 					}
 				</f>
@@ -2539,14 +2546,32 @@ extern "C" void webmain_real()
 				sethead (MSG_U(H_TALKS,"Owner\tGroup"));
 				<call bod_client_list_groups>(glocal.con,w_session.c_str(),"",false);
 				<f ok>
+					// Make sure the inbox and public inbox (anonymous) appears at the
+					// top
 					unsigned rownum = 0;
+					const char *username = userinfo.name.c_str();
+					string id = string_f("%s:inbox",username);
+					string add = string_f("webtab_add=1:%s:inbox~%s",username,MSG_U(I_SHORTINBOX,"Inbox"));
+					if (glocal.webtabs.selected(id)) glocal.webtable.setcurrent(rownum);
+					glocal.webtable.setclickopt (true,"",add);
+					glocal.webtable.setrow ("white",rownum,"\t%s",MSG_R(I_SHORTINBOX));
+					rownum++;
+					id = string_f("%s:anonymous",username);
+					add = string_f("webtab_add=1:%s:anonymous~%s",username,MSG_U(I_ANONINBOX,"Public-inbox"));
+					if (glocal.webtabs.selected(id)) glocal.webtable.setcurrent(rownum);
+					glocal.webtable.setclickopt (true,"",add);
+					glocal.webtable.setrow ("white",rownum,"\t%s",MSG_R(I_ANONINBOX));
+					rownum++;
 					for (auto &g:groups){
-						string id = string_f("%s:%s",g.owner,g.name);
-						string add = string_f("webtab_add=1:%s:%s",g.owner,g.name);
-						if (glocal.webtabs.selected(id)) glocal.webtable.setcurrent(rownum);
-						glocal.webtable.setclickopt (true,"",add);
-						glocal.webtable.setrow ("white",rownum,"%s\t%s",g.owner,g.name);
-						rownum++;
+						if (userinfo.name != g.owner
+							|| (strcmp(g.name,"inbox")!=0 && strcmp(g.name,"anonymous")!=0)){
+							id = string_f("%s:%s",g.owner,g.name);
+							add = string_f("webtab_add=1:%s:%s",g.owner,g.name);
+							if (glocal.webtabs.selected(id)) glocal.webtable.setcurrent(rownum);
+							glocal.webtable.setclickopt (true,"",add);
+							glocal.webtable.setrow ("white",rownum,"%s\t%s",g.owner,g.name);
+							rownum++;
+						}
 					}
 				</f>
 				</call>
