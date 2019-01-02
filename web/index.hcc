@@ -2584,69 +2584,92 @@ extern "C" void webmain_real()
 			if (n != 2) return;
 			glocal string groupowner = tb[0];
 			glocal string groupname = tb[1];
-			{
-			DIV f; f.id(TAB_FORM).print();
-			<call form>(formid);
-			<f top>
-				/- <table border=0>
-			</f>
-			<f bottom>
-				/- </table>
-			</f>
-			<f setup>
-				/- <tr><td height=1% colspan=3>
-				field_textarea (w_content,5,60,"");
-				/- <tr><td height=1%>
-				field_file (w_upload);
-				/- <td>
-				button_submit (MSG_U(B_SEND,"Send"));
-			</f>
-			<f validate>
-				return true;
-			</f>
-			<f process>
-				glocal bool fail = false;
-				if (w_content.size() > 0){
-					BOB_TYPE bob;
-					bob.setbuffer (w_content.c_str(),w_content.size(),false);
-					static vector<string> empty;
-					<call bod_client_sendtalk>(glocal.con,w_session.c_str(),"",empty,glocal.groupname,glocal.groupowner,bob,false);
-					<f ok>
-						if (!success){
-							htmlprintf (MSG_U(E_CANTSEND,"Can't send: %s<br>\n"),msg);
-							glocal.fail = true;
-						}
-					</f>
-					</call>
-					w_content.setempty();
-				}
-				if (strcmp(w_upload.c_str(),"")!=0){
-					const char *tempname = tlmpweb_getfilename(w_upload);
-					<call sendfile>("",tempname,glocal.fail);
-					<f start>
+			if (glocal.groupname != "anonymous"){
+				glocal bool private_inbox = glocal.groupname == "inbox";
+				DIV f; f.id(TAB_FORM).print();
+				<call form>(formid);
+				<f top>
+					/- <table border=0 width=100%>
+				</f>
+				<f bottom>
+					/- </table>
+				</f>
+				<f setup>
+					if (glocal.private_inbox){
+						/- <tr><td>
+						/-#F_RECIPIENTS Recipients
+						/- <td colspan=2>
+						field_string(w_recipients,"size=60");
+					}
+					/- <tr><td height=1% colspan=3>
+					field_textarea (w_content,5,-100,"");
+					/- <tr><td height=1% colspan=3>
+					field_file (w_upload);
+					/- &nbsp;&nbsp;&nbsp;&nbsp;
+					button_submit (MSG_U(B_SEND,"Send"));
+					if (!glocal.private_inbox){
+						/- <tr><td>
+						/-#F_EXTRARECIPIENTS Extra recipients(opt)
+						/- <td colspan=2>
+						field_string(w_recipients,"size=60");
+					}
+				</f>
+				<f validate>
+					bool ret = true;
+					if (glocal.private_inbox && w_recipients.size()==0){
+						/-#E_ONERECIPIENT You must specify at least one recipient
+						ret = false;
+					}
+					return ret;
+				</f>
+				<f process>
+					glocal bool fail = false;
+					glocal vector<string> recipients;
+					str_splitline(w_recipients.c_str(),' ',glocal.recipients);
+					if (w_content.size() > 0){
+						BOB_TYPE bob;
+						bob.setbuffer (w_content.c_str(),w_content.size(),false);
 						static vector<string> empty;
-						<call bod_client_sendtalk>(glocal.con,w_session.c_str(),"",empty,glocal.groupname,glocal.groupowner
-							,content,more);
+						<call bod_client_sendtalk>(glocal.con,w_session.c_str(),"",glocal.recipients,glocal.groupname,glocal.groupowner,bob,false);
 						<f ok>
-							glocal.sendfile.sethandle (handle);
-							glocal.sendfile.setresult (success,msg);
+							if (!success){
+								htmlprintf (MSG_U(E_CANTSEND,"Can't send: %s<br>\n"),msg);
+								glocal.fail = true;
+							}
 						</f>
 						</call>
-					</f>
-					<f rest>
-						<call bod_client_appendfile>(glocal.con,w_session.c_str(),handle,content,more);
-						<f ok>
-							glocal.sendfile.setresult (success,msg);
+					}
+					if (strcmp(w_upload.c_str(),"")!=0){
+						const char *tempname = tlmpweb_getfilename(w_upload);
+						<call sendfile>("",tempname,glocal.fail);
+						<f start>
+							static vector<string> empty;
+							<call bod_client_sendtalk>(glocal.con,w_session.c_str(),"",glocal.recipients,glocal.groupname,glocal.groupowner
+								,content,more);
+							<f ok>
+								glocal.sendfile.sethandle (handle);
+								glocal.sendfile.setresult (success,msg);
+							</f>
+							</call>
+						</f>
+						<f rest>
+							<call bod_client_appendfile>(glocal.con,w_session.c_str(),handle,content,more);
+							<f ok>
+								glocal.sendfile.setresult (success,msg);
+							</f>
+							</call>
 						</f>
 						</call>
-					</f>
-					</call>
-					if (!fail) w_upload.setempty();
-				}
-				fail = glocal.fail;
-				keepediting = true;
-			</f>
-			</call>
+					}
+					fail = glocal.fail;
+					if (!fail){
+						w_recipients.setempty();
+						w_content.setempty();
+						w_upload.setempty();
+					}
+					keepediting = true;
+				</f>
+				</call>
 			}
 			string table = string("talk")+id;
 			index_show_shortmsg (glocal.con,glocal.con_sess,table,glocal.groupname,glocal.groupowner);
