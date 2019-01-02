@@ -3,9 +3,16 @@
 module gear(){
     color("black"){
         circle(r=10);
-        g=8;
+        g=12;
+        w1=3/2;
+        w2=w1-0.4;
+        l1=20/2;
+        l2=24/2;
         translate([0,0,0]) for (i=[1:g]){
-            rotate([0,0,360/g*i]) square([24,3],center=true);
+            rotate([0,0,360/g*i]) 
+                polygon(points=[[-w1,0],[-w1,l1],[w2,l2],[w1,l1]
+                    ,[w1,-l1],[w2,-l2],[-w2,-l2],[-w1,-l1],[-w1,0]]);
+            //square([24,3],center=true);
         }
     }
     translate([0,0,1]){
@@ -62,7 +69,7 @@ module juggler(){
     
 }
 
-view="juggler";
+view="gear";
 if (view=="gear"){
     gear();
 }else if (view=="juggler"){
