@@ -2054,8 +2054,15 @@ static void print_configs (
 			trli_chmod (glocal.stopcompute,0755);
 		}
 		// In production mode, the passphrase has to be entered by the operator.
-		const char *passphrase = glocal.devmode ? " toto" : ""; 
-		fprintf (glocal.all_fout,"%s/bo-keysd-control -p /var/lib/lxc/keysd/rootfs/var/run/blackhole/bo-keysd.sock setpassphrase%s\n",project_path,passphrase);
+		if (glocal.devmode){
+			fprintf (glocal.all_fout,"export KEYSDPASS=toto\n");
+		}else{
+			fprintf (glocal.all_fout,"if [ -f /root/keysd.pass ]; then\n");
+			fprintf (glocal.all_fout,"\texport KEYSDPASS=`cat /root/keysd.pass`\n");
+			fprintf (glocal.all_fout,"\trm -f /root/keysd.pass\n");
+			fprintf (glocal.all_fout,"fi\n");
+		}
+		fprintf (glocal.all_fout,"%s/bo-keysd-control -p /var/lib/lxc/keysd/rootfs/var/run/blackhole/bo-keysd.sock setpassphrase\n",project_path);
 		return 0;
 	</f>
 	</call>
