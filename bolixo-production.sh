@@ -9,6 +9,22 @@
 ## T: Individual tests
 export LANG=eng
 TESTSH=/usr/lib/bolixo-test.sh
+if [ ! -f $HOME/bolixo.conf ] ; then
+	ROOTPASS=root`date +%N`
+	BODPASS=bod`date +%N`
+	WRITEDPASS=write`date +%N`
+	BOLIXODPASS=bolixod`date +%N`
+	ADMINPASS=admin`date +%N`
+	HOSTNAME=`hostname`
+	cat /usr/share/bolixo/bolixo.conf | \
+		sed "s/rootpass/$ROOTPASS/" | \
+		sed "s/bodpass/$BODPASS/" | \
+		sed "s/writedpass/$WRITEDPASS/" | \
+		sed "s/bolixodpass/$BOLIXODPASS/" | \
+		sed "s/adminpass/$ADMINPASS/" | \
+		sed "s/_HOSTNAME_/$HOSTNAME/" \
+		>/root/bolixo.conf
+fi
 . ~/bolixo.conf
 BOD_SOCK=/var/lib/lxc/bod/rootfs/tmp/bod-0.sock
 WRITED_SOCK=/var/lib/lxc/writed/rootfs/tmp/bo-writed-0.sock
@@ -130,6 +146,7 @@ elif [ "$1" = "blackhole-start" ]; then # config: Starts blackholes service or r
 		/etc/init.d/blackhole start
 	fi
 elif [ "$1" = "secrets" ] ; then # config: Generate secrets
+	HOSTNAME=`hostname`
 	if [ ! -f /etc/bolixo/secrets.admin ] ; then
 		echo Write /etc/bolixo/secrets.admin
 		NANO=`date +%N`
@@ -159,6 +176,8 @@ elif [ "$1" = "secrets" ] ; then # config: Generate secrets
 		ADM=`head -1 /etc/bolixo/secrets.admin | (read a b; echo $b)`
 		sed "s/ #CLI/ $CLI/" </usr/share/bolixo/bofs.conf \
 			| sed "s/ #ADM/ $ADM/" \
+			| sed "s/_HOSTNAME_/$HOSTNAME/" \
+			| sed "s/adminpass/$ADMINPASSWORD/" \
 			>/root/.bofs.conf
 	fi
 elif [ "$1" = "config" ] ; then # config: Generate config
@@ -547,7 +566,7 @@ elif [ "$1" = "install-sequence" ] ; then # config: Interative sequence to start
 	step syslog-clear
 	step syslog-reset
 	step test-system
-elif [ "$1" = "install-sequence-publish" ] ; then # Config: Complete install-sequence once everything is running
+elif [ "$1" = "install-sequence-publish" ] ; then # config: Complete install-sequence once everything is running
 	step registernode
 	echo Register admin for this node in the directory
 	ADMINH=admin@`hostname`
