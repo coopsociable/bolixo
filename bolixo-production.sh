@@ -228,9 +228,6 @@ elif [ "$1" = "stop-status" ] ; then # prod: status of trli-stop
 	/usr/lib/bolixo-test.sh stop-status
 elif [ "$1" = "stop-start" ] ; then # prod: Restart the web
 	/usr/lib/bolixo-test.sh stop-start
-elif [ "$1" = "record-keysd-pass" ] ; then # prod: Record the keysd passphrase for next reboot
-	read -s -p "Enter keysd pass-phrasse : " pass
-	echo $pass >/root/keysd.pass
 elif [ "$1" = "eraseanon" ] ; then # prod: [nbsec default 1 day]
 	NBSEC=`expr 60 \* 60 \* 24`
 	if [ "$2" != "" ] ; then
@@ -527,6 +524,17 @@ elif [ "$1" = "certificate-renew" ] ; then # prod: Renew the SSL certificate
 	fi
 elif [ "$1" = "keysd-pass" ] ; then # prod: set keys passphrase
 	/usr/sbin/bo-keysd-control -p /var/lib/lxc/keysd/rootfs/var/run/blackhole/bo-keysd.sock setpassphrase
+elif [ "$1" = "record-keysd-pass" ] ; then # prod: Record the keysd passphrase for next reboot
+	read -s -p "Enter keysd pass-phrase : " pass
+	export KEYSDPASS="$pass"
+	echo
+	if bo-keysd-control -p /var/lib/lxc/keysd/rootfs/var/run/blackhole/bo-keysd.sock checkpassphrase
+	then
+		echo $pass >/root/keysd.pass
+		echo Pass phrase recorded
+	else
+		echo "***" Pass phrase not recorded
+	fi
 elif [ "$1" = "install-required" ] ; then # config: install required packages
 	echo dnf install lxc lxc-templates \
 		gd \
