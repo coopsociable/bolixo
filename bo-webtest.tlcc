@@ -1,0 +1,213 @@
+#include <stdio.h>
+#include <string.h>
+#include <errno.h>
+#include <unistd.h>
+#include <sys/wait.h>
+#include <tlmplib.h>
+#include <tlmpnet.h>
+#include <string>
+#include <trlitool.h>
+
+using namespace std;
+
+static DEBUG_KEY D_HEADER("header","Print request header");
+
+static void sendheader (_F_tcpconnect *c, bool reuseconnection, const string &session, const char *file, const char *hostname)
+{
+	string buf;
+	if (reuseconnection){
+		buf = string_f ("GET %s HTTP/1.1\r\nhost: %s\r\nUser-Agent: bo-webtest\r\n",file,hostname);
+	}else{
+		buf = string_f ("GET %s HTTP/1.0\r\nhost: %s\r\nUser-Agent: bo-webtest\r\n",file,hostname);
+	}
+	if (session.size() > 0){
+		buf += string_f ("cookie: session=%s;\r\n",session.c_str());
+	}
+	buf += string_f ("Content-Type: text/html; charset=UTF-8\r\n\r\n");
+	c->send (buf.c_str());
+	debug_printf (D_HEADER,"%s-----\n",buf.c_str());
+}
+
+struct RESULT{
+	unsigned long nb;		// Number of requests done
+	unsigned long nbok;	// Number of successful request
+	RESULT(unsigned long _nb, unsigned long _nbok){
+		nb = _nb;
+		nbok = _nbok;
+	}
+	RESULT(){
+		nb = 0;
+		nbok = 0;
+	}
+};
+static void printrate (long long start, const vector<RESULT> &tbnb)
+{
+	unsigned long total =0;
+	unsigned long total_ok = 0;
+	for (auto n:tbnb){
+		total += n.nb;
+		total_ok += n.nbok;
+	}
+	long long duration = fdpass_getnow()-start;
+	double rate = total/(duration/1000000.0);
+	printf ("connections=%lu rate=%lf/s",total,rate);
+	if (total_ok != total){
+		printf ("   *** total_ok = %lu",total_ok);
+	}
+	printf ("\n");
+}
+
+<mod>
+int main (int argc, char *argv[])
+{
+	glocal int ret = -1;
+	glocal const char *bindaddr = "0.0.0.0";
+	glocal const char *host = "test1.bolixo.org";
+	glocal const char *port = "80";
+	glocal const char *file = "/index.hc";
+	glocal int nbproc = 1;
+	glocal int nbrep=1;
+	glocal bool keepcookie = false;
+	glocal bool reuseconnection = false;
+	glocal bool verbose = false;
+	glocal bool stats = false;
+	glocal bool endless = false;
+	glocal.ret = <call tlmpprogram>(argc,argv,"bolixo");
+	<f init>
+		setproginfo ("bo-webtest",VERSION,"Web performance test");
+		setgrouparg ("Connection");
+		setarg ('h',"host","Web server",glocal.host,false);
+		setarg ('p',"port","TCP port",glocal.port,false);
+		setgrouparg ("Tuning");
+		setarg ('n',"nbrep","Number of iteration",glocal.nbrep,false);
+		setarg ('N',"nbproc","Process number",glocal.nbproc,false);
+		setarg ('k',"keepsession","Keep the session cookie from next request",glocal.keepcookie,false);
+		setarg ('r',"reusecon","Reuse HTTP connection",glocal.reuseconnection, false);
+		setarg ('e',"endless","Runs forever and print stats",glocal.endless,false);
+		setgrouparg ("Misc.");
+		setarg ('f',"file","File to request from web server",glocal.file,false);
+		setarg ('v',"verbose","Print the result",glocal.verbose,false);
+		setarg ('s',"stats","Print some stats at the end",glocal.stats,false);
+	</f>
+	<f main_noarg>
+		glocal long long start = fdpass_getnow();
+		glocal vector<RESULT> tbnb;
+		glocal unsigned chunk=0;
+		<obj TCPSERVER o>();
+		<f newclient>
+		</f>
+		<f endclient>
+			if (getnbclients() <= 1){
+				endserver = true;
+				printrate (glocal.start,glocal.tbnb);
+			}
+		</f>
+		<f receive>
+			//printf ("rec: no=%d %s\n",no,line);
+			int nb = atoi(line);
+			const char *pt = str_skip(str_skipdig(line));
+			int nbok = atoi(pt);
+			if (nbok != nb) printf ("no=%d %d <> %d\n",no,nb,nbok);
+			while (glocal.tbnb.size() <= (unsigned)no) glocal.tbnb.push_back(RESULT());
+			glocal.tbnb[no] = RESULT(nb,nbok);
+			if (glocal.endless){
+				unsigned long total = 0;
+				for (auto n:glocal.tbnb) total += n.nb;
+				unsigned chunk = total/1000;
+				if (chunk > glocal.chunk){
+					glocal.chunk=chunk;
+					printrate(glocal.start,glocal.tbnb);
+				}
+			}
+			
+		</f>
+		</obj>
+		fprintf (stderr,"Connecting to %s %s, getting file %s, doing %d process X %d request\n"
+			,glocal.host,glocal.port,glocal.file
+			,glocal.nbproc,glocal.nbrep);
+		for (int p=0; p<glocal.nbproc; p++){
+			int tbfd[2];
+			if (pipe(tbfd)==-1){
+				tlmp_error ("Can't setup pipe (%s)\n",strerror(errno));
+				exit (-1);
+			}else{
+				pid_t pid = fork();
+				if (pid == (pid_t)0){
+					glocal int nbok = 0;
+					glocal int nblines = 0;
+					glocal string session;
+					glocal int i;
+					glocal int fdout = tbfd[1];
+					close (tbfd[0]);
+					for (glocal.i=0; glocal.endless || glocal.i<glocal.nbrep; glocal.i++){
+						glocal int starti = glocal.i;	// For reusecon
+						<call tcpconnect>(glocal.bindaddr,glocal.host,glocal.port,1);
+						<f init>
+							sendheader (this,glocal.reuseconnection,glocal.session,glocal.file,glocal.host);
+						</f>
+						<f oneline>
+							glocal.nblines++;
+							if(glocal.verbose) printf ("%s\n",line);
+							// Set-Cookie: session=d8c3a6227a4e4f8159f48c050009a27e-0; 
+							static const char *setcookie = "Set-Cookie: session=";
+							static const int len = strlen(setcookie);
+							if (0 && glocal.keepcookie && glocal.session.size()==0 && strncmp(line,setcookie,len)==0){
+								const char *start = line+len;
+								const char *pt = start;
+								while (*pt != ';' && *pt != ';') pt++;
+								glocal.session = string(start,pt-start);
+							}else if (strcmp(line,"</html>")==0){
+								glocal.nbok++;
+								if (glocal.i > glocal.starti+50){
+									// We are in reuseconnection mode, probably endless mode
+									// Every 50 connection we quit. The httpd seems to disconnect
+									// anyway after some amount of request
+									end = true;
+								}else if (glocal.reuseconnection){
+									glocal.i++;
+									if (glocal.i%30 == 1){
+										string tmp = string_f("%d %d\n",glocal.i,glocal.nbok);
+										write (glocal.fdout,tmp.c_str(),tmp.size());
+									}
+									if (glocal.endless || glocal.i < glocal.nbrep){
+										sendheader (this,glocal.reuseconnection,glocal.session,glocal.file,glocal.host);
+									}else{
+										glocal.i--;	// So the count is good, as the for loop will increment it
+										end = true;
+									}
+								}
+							}
+						</f>
+						<f end>
+						</f>
+						</call>
+						//printf ("apres call %d %d\n",glocal.i,glocal.nbok);
+						if (glocal.i%30 == 1){
+							string tmp = string_f("%d %d\n",glocal.i+1,glocal.nbok);
+							write (glocal.fdout,tmp.c_str(),tmp.size());
+						}
+					}
+					{
+						string tmp = string_f("%d %d\n",glocal.i,glocal.nbok);
+						write (glocal.fdout,tmp.c_str(),tmp.size());
+					}
+					if (glocal.stats) printf ("nblines=%d\n",glocal.nblines);
+					if (glocal.nbok != glocal.nbrep) tlmp_error ("nbrep=%d nbok=%d\n",glocal.nbrep,glocal.nbok);
+					_exit (0);
+				}else if (pid == (pid_t)-1){
+					tlmp_error ("Can't fork (%s)\n",strerror(errno));
+					exit (-1);
+				}else{
+					close (tbfd[1]);
+					o.inject(tbfd[0]);
+				}
+			}
+		}
+		o.loop();
+		return 0;
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+

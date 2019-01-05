@@ -5,7 +5,7 @@ INSTRUMENT:=$(shell test -f ../instrument && echo --instrument --getnow fdpass_g
 DINSTRUMENT:=$(shell test -f ../instrument && echo -DINSTRUMENT)
 PROGS=_dict.o bod bod-client bod-control bo-writed bo-writed-control bo-sessiond bo-sessiond-control \
       bo-manager bofs ssltestsign bo-keysd bo-keysd-control bolixod bolixod-control perfsql \
-      bo-mon bo-mon-control utils/eximexec publishd publishd-control
+      bo-mon bo-mon-control utils/eximexec publishd publishd-control bo-webtest
 #bo-log bo-log-control \
 DOCS=
 OPTIONS=$(DINSTRUMENT) -funsigned-char -O2 -Wall -g -DVERSION=\"$(PACKAGE_REV)\" -I/usr/include/tlmp -I/usr/include/trlitool
@@ -22,6 +22,9 @@ msg:
 
 compile: $(PROGS)
 	make -Cweb 
+
+bo-webtest: bo-webtest.tlcc
+	cctlcc -Wall $(OPTIONS) bo-webtest.tlcc _dict.o -o bo-webtest $(LIBS) -lssl
 
 bofs: bofs.tlcc proto/bod_client.protoh proto/webapi.protoh proto/bolixoapi.protoh filesystem.h 
 	cctlcc -Wall $(OPTIONS) bofs.tlcc _dict.o -o bofs $(LIBS) -lssl
