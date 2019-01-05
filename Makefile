@@ -210,6 +210,7 @@ install: msg.eng msg.fr
 	install -m644 data/bolixo.conf $(RPM_BUILD_ROOT)/usr/share/bolixo/bolixo.conf
 	install -m644 data/bofs.conf $(RPM_BUILD_ROOT)/usr/share/bolixo/bofs.conf
 	install -m644 README $(RPM_BUILD_ROOT)/usr/share/bolixo/README
+	install -m644 COPYING $(RPM_BUILD_ROOT)/usr/share/bolixo/COPYING
 	install -m755 bolixo-production.sh $(RPM_BUILD_ROOT)/usr/sbin/bolixo-production
 	ln -s bolixo-production $(RPM_BUILD_ROOT)/usr/sbin/bo
 	install -m755 bo-complete $(RPM_BUILD_ROOT)/usr/lib/bo-complete
