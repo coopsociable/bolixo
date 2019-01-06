@@ -23,6 +23,7 @@
 #include <string.h>
 #include <errno.h>
 #include <syslog.h>
+#include <signal.h>
 #include <unistd.h>
 #include <tlmpsql.h>
 #include <tlmplib.h>
@@ -103,10 +104,12 @@ static void bo_keysd_doone (
 	pid_t &pid,
 	deque<string> &accounts,
 	PARAM_STRING passphrase,
-	NSQL &usq)
+	NSQL &usq,	// Access to the users database
+	NSQL &fsq)	// Access to the files database
 {
-	glocal const char *passphrase = passphrase.ptr;
 	glocal NSQL *usq = &usq;
+	glocal NSQL *fsq = &fsq;
+	glocal const char *passphrase = passphrase.ptr;
 	if (accounts.size() > 0){
 		int tb[2];
 		if (pipe(tb)==-1){
@@ -129,7 +132,7 @@ static void bo_keysd_doone (
 							if (sql_action(*glocal.usq,"update users set priv_key='%s',pub_key='%s' where userid=%d"
 								,privkey.c_str(),pubkey.c_str(),userid)==-1){
 								tlmp_error ("Update users failed\n");
-							}else if (sql_action("update id2name set pub_key='%s' where userid=%d",pubkey.c_str(),userid)==-1){
+							}else if (sql_action(*glocal.fsq,"update id2name set pub_key='%s' where userid=%d",pubkey.c_str(),userid)==-1){
 								tlmp_error ("update id2name failed\n");
 							}
 						}
@@ -277,17 +280,27 @@ int main (int argc, char *argv[])
 		glocal deque<string> accounts;
 		glocal pid_t pid = (pid_t)-1;
 		glocal NSQL *usq;		// SQL handle for the users database
-		const char *passwd = getenv("BO_WRITED_PWD");
-		if (passwd == NULL){
+		glocal NSQL *worker_usq;	// SQL handle for the doone process
+		glocal NSQL *worker_fsq;	// SQL handle for the doone process
+		glocal const char *passwd = getenv("BO_WRITED_PWD");
+		if (glocal.passwd == NULL){
 			tlmp_error ("Can't get database password from environment, aborting\n");
 			exit (-1);
 		} 
-		query_setdefaultdb (glocal.data_dbserv,glocal.data_dbname,glocal.data_dbuser,passwd);
+		query_setdefaultdb (glocal.data_dbserv,glocal.data_dbname,glocal.data_dbuser,glocal.passwd);
 		query_getdefaultdb()->showerrormode(true);
-		NSQL nsql_sq (glocal.users_dbserv,glocal.users_dbname,glocal.users_dbuser,passwd);
+		NSQL nsql_sq (glocal.users_dbserv,glocal.users_dbname,glocal.users_dbuser,glocal.passwd);
 		nsql_sq.showerrormode (true);
 		nsql_sq.setunixpath ("/var/lib/mysql/mysql-users.sock");
+		NSQL worker_nsql_usq (glocal.users_dbserv,glocal.users_dbname,glocal.users_dbuser,glocal.passwd);
+		worker_nsql_usq.showerrormode (true);
+		worker_nsql_usq.setunixpath ("/var/lib/mysql/mysql-users.sock");
+		NSQL worker_nsql_fsq (glocal.data_dbserv,glocal.data_dbname,glocal.data_dbuser,glocal.passwd);
+		worker_nsql_fsq.showerrormode (true);
 		glocal.usq = &nsql_sq;
+		glocal.worker_usq = &worker_nsql_usq;
+		glocal.worker_fsq = &worker_nsql_fsq;
+		signal (SIGCHLD,SIG_IGN);
 		<obj TCPSERVER s>();
 		<f newclient>
 			HANDLE_INFO *n = new HANDLE_INFO;
@@ -300,7 +313,8 @@ int main (int argc, char *argv[])
 			HANDLE_INFO *n = (HANDLE_INFO*)info.data;
 			if (n->type == TYPE_WORKER){
 				glocal.pid = (pid_t)-1;
-				bo_keysd_doone(*this,glocal.pid,glocal.accounts,glocal.passphrase,*glocal.usq);
+				bo_keysd_doone(*this,glocal.pid,glocal.accounts,glocal.passphrase
+					,*glocal.worker_usq,*glocal.worker_fsq);
 			}
 		</f>
 		<f receive>
@@ -368,7 +382,8 @@ int main (int argc, char *argv[])
 						glocal.accounts.push_back(account);
 						rep_genkey(ERR_CODE_NONE,"");
 						if (glocal.pid == (pid_t)-1){
-							bo_keysd_doone(glocal.TCPSERVER,glocal.pid,glocal.accounts,glocal.passphrase,*glocal.usq);
+							bo_keysd_doone(glocal.TCPSERVER,glocal.pid,glocal.accounts,glocal.passphrase
+								,*glocal.worker_usq,*glocal.worker_fsq);
 						}
 					}
 				</f>
@@ -376,6 +391,7 @@ int main (int argc, char *argv[])
 					if (glocal.passphrase.size()==0){
 						rep_sign(ERR_CODE_NOPASSPHRASE,"Pass phrase not set","");
 					}else{
+						glocal int userid = userid;
 						glocal const char *text = text;
 						glocal ERR_CODE status = ERR_CODE_FAIL;
 						glocal string msg;
@@ -387,6 +403,10 @@ int main (int argc, char *argv[])
 								glocal.msg = "No private key for this account, can't sign";
 							}else{
 								EVP_PKEY *p = bo_keysd_load_private (row[0],glocal.passphrase);
+if (p==NULL){
+	tlmp_error ("load_private %s userid=%d %s\n",glocal.passphrase.c_str(),glocal.userid,row[0]);
+	p = bo_keysd_load_private (row[0],glocal.passphrase);
+}
 								if (p != NULL){
 									if (bo_keysd_sign(glocal.text,p,glocal.result) != -1){
 										glocal.status = ERR_CODE_NONE;
@@ -397,7 +417,8 @@ int main (int argc, char *argv[])
 									EVP_PKEY_free (p);
 								}else{
 									glocal.status = ERR_CODE_INVALID;
-									glocal.msg = "Can't decipher private key of userid 1, invalid passphrase";
+									glocal.msg = string_f("Can't decipher private key of userid %d, invalid passphrase"
+										,glocal.userid);
 								}
 							}
 						</f>

@@ -219,6 +219,7 @@ install: msg.eng msg.fr
 	install -m755 bo-complete $(RPM_BUILD_ROOT)/usr/lib/bo-complete
 	install -m644 bash_complete $(RPM_BUILD_ROOT)/etc/bash_completion.d/bolixo
 	install -m755 test.sh $(RPM_BUILD_ROOT)/usr/lib/bolixo-test.sh
+	install -m755 bo-webtest $(RPM_BUILD_ROOT)/usr/sbin/bo-webtest
 	install -m755 bod $(RPM_BUILD_ROOT)/usr/sbin/bod
 	install -m755 bod-client $(RPM_BUILD_ROOT)/usr/sbin/bod-client
 	install -m755 bod-control $(RPM_BUILD_ROOT)/usr/sbin/bod-control

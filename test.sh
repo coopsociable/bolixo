@@ -459,7 +459,7 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 		)engine=$ENGINE;
 		create index users_email on users (email);
 		create index users_idstr on users (userid_str);
-		insert into users (userid,userid_str) values (-2,"--system--");
+		insert into users (userid,userid_str,name) values (-2,"--system--","--system--");
 		create table user_interest (
 			userid int,
 			subjectid int
@@ -670,6 +670,13 @@ elif [ "$1" = "filldb" ] ; then # db: Fill database (old)
 	do
 		$0 test-adduser $user
 	done
+	for ((i=0; i<10; i++))
+	do
+		for user in A B C D E F G H I J K L M N O P Q R S T U V W X Y Z
+		do
+			$0 test-adduser $user$i
+		done
+	done
 	echo ==== Create filesystem
 	for dir in /msgs /msg-projects /projects /homes
 	do
@@ -736,6 +743,7 @@ elif [ "$1" = "test-rotatelog" ] ; then # prod: Rotate writed log
 	$0 bo-writed-control rotatelog
 elif [ "$1" = "test-sequence" ] ; then # S: Reloads database (big,medium,real,nomail)
 	rm -f $WRITEDLOG
+	$0 syslog-clear
 	$0 bo-writed-control truncatelog	
 	ALL=
 	shift
@@ -757,6 +765,8 @@ elif [ "$1" = "test-sequence" ] ; then # S: Reloads database (big,medium,real,no
 	rm -f /var/lib/bolixo/*
 	$0 resetdb 
 	$0 generate-system-pubkey
+	>/tmp/zero
+	$0 bo-keysd-control status | grep -q "accounts size: 0" || echo pas zero >/tmp/zero
 	$0 test-system
 	$0 registernode
 	$0 createadmin
@@ -769,6 +779,8 @@ elif [ "$1" = "test-sequence" ] ; then # S: Reloads database (big,medium,real,no
 	if [ "$ALL" = 1 ] ; then
 		./scripts/groups.sh sequence
 	fi
+	echo "======= logs ====="
+	$0 syslog-logs
 elif [ "$1" = "test-sendmail" ] ;then # prod: ask writed to send one email
 	./bo-writed-control -p /var/lib/lxc/writed/rootfs/tmp/bo-writed-0.sock sendmail jack@dns.solucorp.qc.ca test body1
 elif [ "$1" = "eraseanon-lxc" ] ; then # prod:

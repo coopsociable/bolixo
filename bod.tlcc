@@ -487,19 +487,24 @@ static int bod_bolixoapi_login(
 			*glocal.session = session;
 			<call bo_writed_client_systemsign>(*glocal.con,session);
 			<f ok>
+				if (!success) tlmp_error ("nodepass: systemsign internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
 				glocal.sign = sign;
 			</f>
 			</call>
-			//tlmp_error ("session=%s sign=%s\n",session,glocal.sign.c_str());
-			<call bolixoapi_nodepass> (*glocal.hcon,session,glocal.sign);
-			<f ok>
-				if (!success){
-					tlmp_error ("nodepass: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
-				}else{
-					glocal.ret = 0;
-				}
-			</f>
-			</call>
+			if (glocal.sign.size()==0){
+				tlmp_error ("nodepass: empty signature\n");
+			}else{
+				//tlmp_error ("session=%s sign=%s\n",session,glocal.sign.c_str());
+				<call bolixoapi_nodepass> (*glocal.hcon,session,glocal.sign);
+				<f ok>
+					if (!success){
+						tlmp_error ("nodepass: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
+					}else{
+						glocal.ret = 0;
+					}
+				</f>
+				</call>
+			}
 		}
 	</f>
 	</call>

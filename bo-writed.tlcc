@@ -443,15 +443,15 @@ static int bo_writed_project_msg(
 					string sign = bo_writed_sign (con_keys,glocal.userid,content);
 					int fileid = fs_newid (glocal.userid,listid,'r',msg,msgid);
 					if (fileid != -1){
-						char now[20];
+						DATEASC now;
 						fs_set_now(now);
 						bo_writed_set_msgid (msgid,replyto);
-						if (fs_insert_file(outbox_id,fileid,now,msgid)==-1){
+						if (fs_insert_file(outbox_id,fileid,now.buf,msgid)==-1){
 							msg = "Outbox internal error (dirs_content table)";
 						}else if (sql_action("insert into files (id,modified,title,content,filetype,signature) values (%d,'%s','%s','%s',%u,'%s')"
-							,fileid,now,title,content,FILE_TEXT,sign.c_str())==-1){
+							,fileid,now.buf,title,content,FILE_TEXT,sign.c_str())==-1){
 							msg = "Internal error (files table)";
-						}else if (fs_insert_entry(dirid,fileid,now,msgid,ENTRY_MSG)==-1){
+						}else if (fs_insert_entry(dirid,fileid,now.buf,msgid,ENTRY_MSG)==-1){
 							msg = "Project inbox internal error (dirs_content table)";
 						}else{
 							msg = "";
@@ -580,14 +580,14 @@ static void bo_writed_sendmsg (
 					// But access is controlled by the parent directory
 					int fileid = fs_newid (glocal.userid,0,'r',msg,msgid);
 					if (fileid != -1){
-						char now[20];
+						DATEASC now;
 						fs_set_now(now);
 						bo_writed_set_msgid (msgid,replyto);
-						if (fs_insert_file(outbox_id,fileid,now,msgid)==-1){
+						if (fs_insert_file(outbox_id,fileid,now.buf,msgid)==-1){
 							msg = "Internal error (dirs_content table)";
 						}else if (sql_action("insert into files (id,modified,filetype,title,content,signature)"
 							" values (%d,'%s',%u,'%s','%s','%s')"
-							,fileid,now,FILE_TEXT,title,content,sign.c_str())==-1){
+							,fileid,now.buf,FILE_TEXT,title,content,sign.c_str())==-1){
 							msg = "Internal error (files table)";
 						}else{
 							for (unsigned i=0; i<glocal.r_userids.size(); i++){
@@ -595,7 +595,7 @@ static void bo_writed_sendmsg (
 								unsigned r_id = glocal.r_userids[i].second;
 								int inbox_id = fs_find_inbox (r_id,r,true,msg);
 								if (inbox_id == -1) break;
-								if (fs_insert_entry(inbox_id,fileid,now,msgid,ENTRY_MSG)==-1){
+								if (fs_insert_entry(inbox_id,fileid,now.buf,msgid,ENTRY_MSG)==-1){
 									msg = string_f ("Can't write to user %s inbox",r);
 									break;
 								}
@@ -710,7 +710,7 @@ static int bo_writed_addfile_bob (
 	string &msg,
 	string &handle,
 	int &fileid,
-	char modified[20])
+	DATEASC &modified)
 {
 	fileid = fs_newid (userid,0,'r',msg,fileuuid);
 	if (fileid != -1){
@@ -728,14 +728,14 @@ static int bo_writed_addfile_bob (
 				sign = bo_writed_sign (con_keys,userid,tmp);
 			}
 		}
-		if (fs_insert_entry(dirid,fileid,modified,basename,type)==-1){
+		if (fs_insert_entry(dirid,fileid,modified.buf,basename,type)==-1){
 			msg = "Internal error (dirs_files table)";
 		}else if (sql_action("insert into files (id,modified,filetype,content,signature) values (%d,'%s',%u,'%s','%s')"
-			,fileid,modified,file_type,content_str,sign.c_str())==-1){
+			,fileid,modified.buf,file_type,content_str,sign.c_str())==-1){
 			msg = "Internal error (files table)";
 		}else{
 			if (content_str == NULL){
-				FILE *fout = fs_alloc_file_handle (fileid,modified,"w",handle,sessionid);
+				FILE *fout = fs_alloc_file_handle (fileid,modified.buf,"w",handle,sessionid);
 				if (fout == NULL){
 					tlmp_error ("Can't open file (%s)\n",strerror(errno));
 					msg = "Internal error (1-writing data)";
@@ -1196,7 +1196,7 @@ static void bo_writed_send_admin_msg (
 		}else{
 			int fileid;
 			string msgid,handle;
-			char modified[20];
+			DATEASC modified;
 			BOB_TYPE content(message.ptr,strlen(message.ptr),false);
 			CONNECT_INFO con_keys;
 			bo_writed_addfile_bob (con_keys,NULL,NULL,ENTRY_MSG,dirid,adminid
@@ -1955,13 +1955,13 @@ int main (int argc, char *argv[])
 						&& bo_writed_fname_check(name,entry.msg)){
 						int fileid = fs_newid (entry.userid,entry.msg);
 						if (fileid != -1){
-							char now[20];
+							DATEASC now;
 							fs_set_now(now);
 							string sign = bo_writed_sign (glocal.ctx.con_keys,entry.userid,content);
-							if (fs_insert_file(entry.dirid,fileid,now,entry.basename)==-1){
+							if (fs_insert_file(entry.dirid,fileid,now.buf,entry.basename)==-1){
 								entry.msg = "Internal error (dirs_files table)";
 							}else if (sql_action("insert into files (id,modified,filetype,content,signature) values (%d,'%s',%u,'%s','%s')"
-								,fileid,now,FILE_TEXT,content,sign.c_str())==-1){
+								,fileid,now.buf,FILE_TEXT,content,sign.c_str())==-1){
 								entry.msg = "Internal error (files table)";
 							}else{
 								bo_writed_update_dirdate(entry.dirid);
@@ -1980,7 +1980,7 @@ int main (int argc, char *argv[])
 						string handle;
 						string msgid;
 						int fileid;
-						char modified[20];
+						DATEASC modified;
 						bo_writed_addfile_bob (glocal.ctx.con_keys,sessionid,entry.basename,ENTRY_FILE,entry.dirid,entry.userid
 								,content,more
 								,msgid,msg,handle,fileid,modified);
@@ -2081,13 +2081,13 @@ int main (int argc, char *argv[])
 						if (!bolixo_isfile(entry.type)){
 							rep_modifyfile (false,"Not a file, can't modify");
 						}else{
-							char now[20];
+							DATEASC now;
 							fs_set_now(now);
 							string sign = bo_writed_sign (glocal.ctx.con_keys,entry.userid,content);
-							if (fs_insert_file (entry.dirid,entry.entryid,now,entry.basename)==-1){
+							if (fs_insert_file (entry.dirid,entry.entryid,now.buf,entry.basename)==-1){
 								rep_modifyfile (false,"Internal error (dirs_files table)");
 							}else if (sql_action("insert into files (id,modified,filetype,content,signature) values (%d,'%s',%u,'%s','%s')"
-								,entry.entryid,now,FILE_TEXT,content,sign.c_str())==-1){
+								,entry.entryid,now.buf,FILE_TEXT,content,sign.c_str())==-1){
 								rep_modifyfile (false,"Internal error (files table)");
 							}else{
 								rep_modifyfile (true,"Ok");
@@ -2172,16 +2172,16 @@ int main (int argc, char *argv[])
 						if (!bolixo_isfile(entry.type)){
 							msg = "Not a file, can't modify";
 						}else{
-							char now[20];
+							DATEASC now;
 							fs_set_now(now);
 							FILE_TYPE file_type = bo_writed_file_type (entry.basename,content,more);
-							if (fs_insert_file (entry.dirid,entry.entryid,now,entry.basename)==-1){
+							if (fs_insert_file (entry.dirid,entry.entryid,now.buf,entry.basename)==-1){
 								msg = "Internal error (dirs_files table)";
 							}else if (sql_action("insert into files (id,modified,filetype,content) values (%d,'%s',%u,NULL)"
-								,entry.entryid,now,file_type)==-1){
+								,entry.entryid,now.buf,file_type)==-1){
 								msg = "Internal error (files table)";
 							}else{
-								FILE *fout = fs_alloc_file_handle (entry.entryid,now,"w",handle,sessionid);
+								FILE *fout = fs_alloc_file_handle (entry.entryid,now.buf,"w",handle,sessionid);
 								if (fout == NULL){
 									tlmp_error ("Can't open file (%s)\n",strerror(errno));
 									msg = "Internal error (1-writing data)";
@@ -2213,12 +2213,12 @@ int main (int argc, char *argv[])
 					}else if (bo_writed_findentry (glocal.con,sessionid,newname,newentry,false)==-1){
 						rep_rename (false,newentry.msg);
 					}else{
-						char now[20];
+						DATEASC now;
 						fs_set_now(now);
 						// We insert a deletion of the oldname, followed by a creation of the newname with the same
 						// modified date (pointing to the same data)
 						if (sql_action("insert into dirs_content (dirid,itemid,modified,type,name) values (%d,%d,'%s',%u,'%s'), (%d,%d,'%s',%u,'%s')"
-							,oldentry.dirid,oldentry.entryid,now,ENTRY_DELETED,oldentry.basename.c_str()
+							,oldentry.dirid,oldentry.entryid,now.buf,ENTRY_DELETED,oldentry.basename.c_str()
 							,newentry.dirid,oldentry.entryid,oldentry.modified.c_str(),oldentry.type,newentry.basename.c_str())==-1){
 							rep_rename (false,"Internal error (dirs_content table)");
 						}else{
@@ -2612,7 +2612,7 @@ int main (int argc, char *argv[])
 							if (dirid != -1){
 								int fileid;
 								string msgid;
-								char modified[20];
+								DATEASC modified;
 								bo_writed_addfile_bob (glocal.ctx.con_keys,glocal.sessionid,NULL,ENTRY_MSG,dirid,userid
 									,*glocal.content,glocal.more
 									,msgid,glocal.msg,glocal.handle,fileid,modified);
@@ -2668,7 +2668,7 @@ int main (int argc, char *argv[])
 									if (dirid != -1){
 										int fileid;
 										string msgid;
-										char modified[20];
+										DATEASC modified;
 										bo_writed_addfile_bob (glocal.ctx.con_keys,glocal.sessionid,NULL,ENTRY_MSG,dirid,glocal.userid
 											,*glocal.content,glocal.more
 											,msgid,glocal.msg,glocal.handle,fileid,modified);
@@ -2682,7 +2682,7 @@ int main (int argc, char *argv[])
 											if (strcmp(glocal.groupname,"public")==0){
 												if (!glocal.more){
 													<call publishd_client_sendmessage>(glocal.ctx.con_publish,ownerid
-														,dirid,fileid,modified);
+														,dirid,fileid,modified.buf);
 													<f ok>
 														if (!success) tlmp_error ("publishd_client_sendmessage: %s\n",msg);
 													</f>
@@ -2696,7 +2696,7 @@ int main (int argc, char *argv[])
 											bool created;
 											int udirid = fs_find_short_inbox (u.second,u.first,"inbox",glocal.msg,true,created);
 											if (udirid != -1){
-												if (fs_insert_entry(udirid,fileid,modified,msgid,ENTRY_MSG,ownerid)==-1){
+												if (fs_insert_entry(udirid,fileid,modified.buf,msgid,ENTRY_MSG,ownerid)==-1){
 													tlmp_error ("Insert in short user inbox, internal error %s\n",u.first.c_str());
 													break;
 												}
@@ -2716,7 +2716,7 @@ int main (int argc, char *argv[])
 								if (dirid != -1){
 									int fileid;
 									string msgid;
-									char modified[20];
+									DATEASC modified;
 									bo_writed_addfile_bob (glocal.ctx.con_keys,glocal.sessionid,NULL,ENTRY_MSG,dirid,glocal.userid
 										,*glocal.content,glocal.more
 										,msgid,glocal.msg,glocal.handle,fileid,modified);
@@ -2725,7 +2725,7 @@ int main (int argc, char *argv[])
 										bool created;
 										int udirid = fs_find_short_inbox (u.second,u.first,"inbox",glocal.msg,true,created);
 										if (udirid != -1){
-											if (fs_insert_entry(udirid,fileid,modified,msgid,ENTRY_MSG,glocal.userid)==-1){
+											if (fs_insert_entry(udirid,fileid,modified.buf,msgid,ENTRY_MSG,glocal.userid)==-1){
 												tlmp_error ("Insert in short user inbox, internal error %s\n",u.first.c_str());
 												break;
 											}

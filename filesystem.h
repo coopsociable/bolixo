@@ -48,7 +48,7 @@ unsigned fs_find_short_inbox (unsigned ownerid, PARAM_STRING username, PARAM_STR
 unsigned fs_find_short_inbox (unsigned ownerid, PARAM_STRING username, PARAM_STRING groupname, std::string &msg);
 unsigned fs_find_outbox (unsigned ownerid, PARAM_STRING name, std::string &msg);
 unsigned fs_find_project_inbox (unsigned ownerid, unsigned listid, const char *name, const char *project, const char *role, bool create, std::string &msg);
-void fs_set_now (char now[20]);
+void fs_set_now (DATEASC &now);
 int fs_newid (unsigned userid, unsigned listid, char listmode, std::string &msg, std::string &uuid);
 int fs_newid (unsigned userid, unsigned listid, char listmode, std::string &msg);
 int fs_newid (unsigned userid, std::string &msg, std::string &uuid);

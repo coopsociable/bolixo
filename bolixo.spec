@@ -37,6 +37,7 @@ make install
 /usr/share/bolixo/manager.conf
 /usr/share/bolixo/bolixo.conf
 /usr/share/bolixo/bofs.conf
+/usr/sbin/bo-webtest
 /usr/sbin/bod
 /usr/sbin/bod-control
 /usr/sbin/bod-client
