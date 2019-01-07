@@ -135,7 +135,8 @@ static string bod_login (CONNECT_INFO &con, const char *user_suffix)
 		tlmp_error ("bod_login user_suffix=NULL\n");
 		exit (-1);
 	}else if (strcmp(user_suffix,"admin")==0){
-		glocal.ret = bod_login(con,"admin@bolixo.org","admin");
+		string email = string_f("admin@%s",getenv("HOSTNAME"));
+		glocal.ret = bod_login(con,email,"admin");
 	}else{
 		glocal const char *user_suffix = user_suffix;
 		string email=string("jacques-")+user_suffix+string("@bolixo.org");
@@ -357,7 +358,7 @@ int main (int argc, char *argv[])
 			string password=string("pass-")+glocal.testadduser;
 			if (strcmp(glocal.testadduser,"admin")==0){
 				name="admin";
-				email="admin@bolixo.org";
+				string email = string_f("admin@%s",getenv("HOSTNAME"));
 				password="admin";
 			}
 			printf ("testadduser email=%s\n",email.c_str());
@@ -365,13 +366,13 @@ int main (int argc, char *argv[])
 			if (sessionid.size() > 0){
 				<call bod_client_adduser>(glocal.con_cli,sessionid,name,email,password,tlmp_getlang());
 				<f ok>
-					printf ("\tid=%s msg=%s\n",confirmid,msg);
+					//printf ("\tid=%s msg=%s\n",confirmid,msg);
 					if (confirmid[0] == '\0'){
-						printf ("\tEmpty confirmid\n");
+						printf ("\tEmpty confirmid: msg=%s\n",msg);
 					}else{
 						<call bod_client_confirmuser>(glocal.con_cli,confirmid);
 						<f ok>
-							printf ("\tsuccess=%d %s\n",success,msg);
+							if (!success) printf ("\tsuccess=%d %s\n",success,msg);
 						</f>
 						</call>
 					}
@@ -420,7 +421,7 @@ int main (int argc, char *argv[])
 			glocal string password=string("pass-")+glocal.testdeleteuser;
 			glocal string sessionid1 = bod_createsession(glocal.con_cli);
 			if (strcmp(glocal.testdeleteuser,"admin")==0){
-				glocal.email="admin@bolixo.org";
+				glocal.email=string_f("admin@%s",getenv("HOSTNAME"));
 				glocal.password="admin";
 			}
 			// We start with a login to get a session id

@@ -1912,19 +1912,30 @@ int main (int argc, char *argv[])
 						if (!glocal.entry.may_add){
 							glocal.entry.msg = MSG_U(E_NOTALLOWED,"Not allowed");
 						}else if (bo_writed_fname_check(name,glocal.entry.msg)){
-							<call sql_query>("select group_list_id,listmode from ids where id=%u",glocal.entry.dirid);
-							<f empty>
-								glocal.entry.msg = "Internal error (no group_list_id";
-							</f>
-							<f onerow>
-								int subdirid = fs_newid (glocal.entry.userid,atoi(row[0]),row[1][0],glocal.entry.msg);
+							glocal int listid = -1;
+							glocal char listmode = 'p';
+							if (glocal.entry.dirid == 0){
+								// root dir
+								glocal.listid = 0;
+							}else{
+								<call sql_query>("select group_list_id,listmode from ids where id=%u",glocal.entry.dirid);
+								<f empty>
+									glocal.entry.msg = MSG_U(E_NOGROUPLISTID,"Internal error (no group_list_id)");
+								</f>
+								<f onerow>
+									glocal.listid = atoi(row[0]);
+									glocal.listmode = row[1][0];
+								</f>
+								</call>
+							}
+							if (glocal.listid != -1){
+								int subdirid = fs_newid (glocal.entry.userid,glocal.listid,glocal.listmode,glocal.entry.msg);
 								if (subdirid != -1){
 									if (fs_insert_dir (glocal.entry.dirid,subdirid,glocal.entry.basename)==-1){
-										glocal.entry.msg = "Internal error (dirs_subdirs table)";
+										glocal.entry.msg = MSG_U(E_DIR_SUBDIRS,"Internal error (dirs_subdirs table)");
 									}
 								}
-							</f>
-							</call>
+							}
 						}
 					}
 					if (glocal.entry.msg.size() > 0){

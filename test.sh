@@ -663,26 +663,31 @@ elif [ "$1" = "dropdb" ] ; then # db: Drop databases
 	mysqladmin -uroot -S $SOCKU -f drop $DBNAMEU
 	mysqladmin -uroot -S $SOCKN -f drop $DBNAMET
 	rm -fr /var/lib/bolixo/*
-elif [ "$1" = "filldb" ] ; then # db: Fill database (old)
+elif [ "$1" = "filldb" ] ; then # db: Fill database with test accounts (many)
 	$0 bo-writed-control mailctrl 0 keep
 	echo ==== Create some users
 	for user in A B C D E F G H I J K L M N O P Q R S T U V W X Y Z
 	do
 		$0 test-adduser $user
 	done
-	for ((i=0; i<10; i++))
-	do
-		for user in A B C D E F G H I J K L M N O P Q R S T U V W X Y Z
+	if [ "$2" = "many" ] ; then
+		for ((i=0; i<10; i++))
 		do
-			$0 test-adduser $user$i
+			for user in A B C D E F G H I J K L M N O P Q R S T U V W X Y Z
+			do
+				$0 test-adduser $user$i
+			done
 		done
-	done
-	echo ==== Create filesystem
-	for dir in /msgs /msg-projects /projects /homes
-	do
-		$0 test-mkdir admin $dir
-		$0 test-set_access admin $dir "" "#all" p
-	done
+	fi
+	if false
+	then
+		echo ==== Create filesystem
+		for dir in /msgs /msg-projects /projects /homes
+		do
+			$0 test-mkdir admin $dir
+			$0 test-set_access admin $dir "" "#all" p
+		done
+	fi
 elif [ "$1" = "resetdb" ] ; then # db: drops and creates databases
 	echo Erase $DBNAME and $DBNAMEU database
 	$0 dropdb
@@ -746,6 +751,7 @@ elif [ "$1" = "test-sequence" ] ; then # S: Reloads database (big,medium,real,no
 	$0 syslog-clear
 	$0 bo-writed-control truncatelog	
 	ALL=
+	MANY=
 	shift
 	$0 bo-writed-control mailctrl 0 keep
 	while [ "$1" != "" ]
@@ -754,6 +760,8 @@ elif [ "$1" = "test-sequence" ] ; then # S: Reloads database (big,medium,real,no
 			$0 bo-writed-control mailctrl 1 keep
 		elif [ "$1" = "all" ]; then
 			ALL=1
+		elif [ "$1" = "many" ]; then
+			MANY=many
 		else
 			echo unknown keyword $1: mail
 			exit 1
@@ -765,12 +773,10 @@ elif [ "$1" = "test-sequence" ] ; then # S: Reloads database (big,medium,real,no
 	rm -f /var/lib/bolixo/*
 	$0 resetdb 
 	$0 generate-system-pubkey
-	>/tmp/zero
-	$0 bo-keysd-control status | grep -q "accounts size: 0" || echo pas zero >/tmp/zero
 	$0 test-system
 	$0 registernode
 	$0 createadmin
-	$0 filldb
+	$0 filldb $MANY
 	$0 test-deleteuser E
 	$0 test-deleteuser F
 	#echo ==== sessions
@@ -779,6 +785,16 @@ elif [ "$1" = "test-sequence" ] ; then # S: Reloads database (big,medium,real,no
 	if [ "$ALL" = 1 ] ; then
 		./scripts/groups.sh sequence
 	fi
+	echo ======= wait for keysd ====
+	while true
+	do
+		LINE=`$0 bo-keysd-control status | grep "accounts size"`
+		echo $LINE
+		if [ "$LINE" = "accounts size: 0" ] ; then
+			break
+		fi
+		sleep 1
+	done
 	echo "======= logs ====="
 	$0 syslog-logs
 elif [ "$1" = "test-sendmail" ] ;then # prod: ask writed to send one email
