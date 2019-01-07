@@ -9,6 +9,11 @@
 ## T: Individual tests
 export LANG=eng
 TESTSH=/usr/lib/bolixo-test.sh
+if ! id $USER 2>/dev/null >/dev/null
+then
+	echo USER variable wrongly set, ending
+	exit 1
+fi
 if [ ! -f $HOME/bolixo.conf ] ; then
 	ROOTPASS=root`date +%N`
 	BODPASS=bod`date +%N`

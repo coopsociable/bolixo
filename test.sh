@@ -749,6 +749,7 @@ elif [ "$1" = "test-rotatelog" ] ; then # prod: Rotate writed log
 elif [ "$1" = "test-sequence" ] ; then # S: Reloads database (big,medium,real,nomail)
 	rm -f $WRITEDLOG
 	$0 syslog-clear
+	$0 syslog-reset
 	$0 bo-writed-control truncatelog	
 	ALL=
 	MANY=
