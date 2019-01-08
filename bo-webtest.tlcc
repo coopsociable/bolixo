@@ -10,11 +10,63 @@
 
 using namespace std;
 
-static DEBUG_KEY D_HEADER("header","Print request header");
+#define webapi_test_NOTNEED
+#define webapi_addfile_NOTNEED
+#define webapi_addfile_bob_NOTNEED
+#define webapi_appendfile_NOTNEED
+#define webapi_delfile_NOTNEED
+#define webapi_undelete_NOTNEED
+#define webapi_modifyfile_NOTNEED
+#define webapi_modifyfile_bob_NOTNEED
+#define webapi_rename_NOTNEED
+#define webapi_copy_NOTNEED
+#define webapi_readfile_NOTNEED
+#define webapi_readfile_bob_NOTNEED
+#define webapi_readmore_NOTNEED
+#define webapi_mkdir_NOTNEED
+#define webapi_rmdir_NOTNEED
+#define webapi_listdir_NOTNEED
+#define webapi_stat_NOTNEED
+#define webapi_set_access_NOTNEED
+#define webapi_markview_NOTNEED
+#define webapi_list_inboxes_NOTNEED
+#define webapi_list_msgs_NOTNEED
+#define webapi_sendmsg_NOTNEED
+#define webapi_sendmsg_project_NOTNEED
+#define webapi_replymsg_NOTNEED
+#define webapi_replymsg_project_NOTNEED
+#define webapi_sendattach_NOTNEED
+#define webapi_sendtalk_NOTNEED
+#define webapi_sendtalk_file_NOTNEED
+#define webapi_list_talk_NOTNEED
+#define webapi_public_listdir_NOTNEED
+#define webapi_public_readfile_NOTNEED
+#define webapi_public_list_talk_NOTNEED
+#define webapi_systempubkey_NOTNEED
+#define webapi_verifysign_NOTNEED
+#define webapi_getpubkey_NOTNEED
+#define webapi_registernode_NOTNEED
+#define webapi_remotelogin_NOTNEED
+#define webapi_remotepass_NOTNEED
+#define webapi_remote_interest_set_NOTNEED
+#define webapi_remote_interest_unset_NOTNEED
+#define webapi_nodelogin_NOTNEED
+#define webapi_nodepass_NOTNEED
+#define webapi_config_read_NOTNEED
+#define webapi_config_write_NOTNEED
+#include "proto/webapi.protoch"
 
-static void sendheader (_F_tcpconnect *c, bool reuseconnection, const string &session, const char *file, const char *hostname)
+static DEBUG_KEY D_HEADER("header","Print request header");
+static DEBUG_KEY D_PROTO("proto","HTTP protocol");
+
+static void sendheader (CONNECT_HTTP_INFO &con, bool reuseconnection, const string &session, const char *file, const char *hostname)
 {
 	string buf;
+	if (strncmp(hostname,"http://",7)==0){
+		hostname += 7;
+	}else if (strncmp(hostname,"https://",8)==0){
+		hostname += 8;
+	}
 	if (reuseconnection){
 		buf = string_f ("GET %s HTTP/1.1\r\nhost: %s\r\nUser-Agent: bo-webtest\r\n",file,hostname);
 	}else{
@@ -24,7 +76,7 @@ static void sendheader (_F_tcpconnect *c, bool reuseconnection, const string &se
 		buf += string_f ("cookie: session=%s;\r\n",session.c_str());
 	}
 	buf += string_f ("Content-Type: text/html; charset=UTF-8\r\n\r\n");
-	c->send (buf.c_str());
+	con.send (buf.c_str());
 	debug_printf (D_HEADER,"%s-----\n",buf.c_str());
 }
 
@@ -62,8 +114,7 @@ int main (int argc, char *argv[])
 {
 	glocal int ret = -1;
 	glocal const char *bindaddr = "0.0.0.0";
-	glocal const char *host = "test1.bolixo.org";
-	glocal const char *port = "80";
+	glocal const char *host = "http://test1.bolixo.org";
 	glocal const char *file = "/index.hc";
 	glocal int nbproc = 1;
 	glocal int nbrep=1;
@@ -72,12 +123,15 @@ int main (int argc, char *argv[])
 	glocal bool verbose = false;
 	glocal bool stats = false;
 	glocal bool endless = false;
+	glocal const char *email = "jacques-A@bolixo.org";
+	glocal const char *passwd = "pass-A";
 	glocal.ret = <call tlmpprogram>(argc,argv,"bolixo");
 	<f init>
 		setproginfo ("bo-webtest",VERSION,"Web performance test");
 		setgrouparg ("Connection");
-		setarg ('h',"host","Web server",glocal.host,false);
-		setarg ('p',"port","TCP port",glocal.port,false);
+		setarg ('h',"host","Web server url )(https://...)",glocal.host,false);
+		setarg ('E',"email","Email for login",glocal.email,false);
+		setarg ('P',"password","Password for login",glocal.passwd,false);
 		setgrouparg ("Tuning");
 		setarg ('n',"nbrep","Number of iteration",glocal.nbrep,false);
 		setarg ('N',"nbproc","Process number",glocal.nbproc,false);
@@ -93,6 +147,8 @@ int main (int argc, char *argv[])
 		glocal long long start = fdpass_getnow();
 		glocal vector<RESULT> tbnb;
 		glocal unsigned chunk=0;
+		glocal CONNECT_HTTP_INFO con;
+		// Used to receive the stats of the child processes
 		<obj TCPSERVER o>();
 		<f newclient>
 		</f>
@@ -122,9 +178,14 @@ int main (int argc, char *argv[])
 			
 		</f>
 		</obj>
-		fprintf (stderr,"Connecting to %s %s, getting file %s, doing %d process X %d request\n"
-			,glocal.host,glocal.port,glocal.file
-			,glocal.nbproc,glocal.nbrep);
+		fprintf (stderr,"Connecting to %s, getting file %s, doing %d process%s X %d request%s\n"
+			,glocal.host,glocal.file
+			,glocal.nbproc,glocal.nbproc > 1 ? "es" : ""
+			,glocal.nbrep,glocal.nbrep > 1 ? "s" : "");
+		if (glocal.con.init (glocal.host)==-1){
+			tlmp_error ("Invalid host url: %s\n",glocal.host);
+			exit(-1);
+		}
 		for (int p=0; p<glocal.nbproc; p++){
 			int tbfd[2];
 			if (pipe(tbfd)==-1){
@@ -139,46 +200,66 @@ int main (int argc, char *argv[])
 					glocal int i;
 					glocal int fdout = tbfd[1];
 					close (tbfd[0]);
+					if (glocal.email[0] != '\0'){
+						<call webapi_login>(glocal.con,glocal.email,glocal.passwd);
+						<f ok>
+							if (!success){
+								tlmp_error ("login failed\n");
+								exit (-1);
+							}else{
+								glocal.session = sessionid;
+							}
+						</f>
+						</call>
+					}
 					for (glocal.i=0; glocal.endless || glocal.i<glocal.nbrep; glocal.i++){
 						glocal int starti = glocal.i;	// For reusecon
-						<call tcpconnect>(glocal.bindaddr,glocal.host,glocal.port,1);
-						<f init>
-							sendheader (this,glocal.reuseconnection,glocal.session,glocal.file,glocal.host);
+						if (!glocal.reuseconnection) glocal.con.reconnect();
+						sendheader (glocal.con,glocal.reuseconnection,glocal.session,glocal.file,glocal.host);
+						<call streamp>();
+						<f fill>
+							int ret = glocal.con.receive (buf,size);
+							debug_printf (D_PROTO,"fill ret=%d size=%u\n",ret,size);
+							return ret; 
 						</f>
-						<f oneline>
-							glocal.nblines++;
-							if(glocal.verbose) printf ("%s\n",line);
-							// Set-Cookie: session=d8c3a6227a4e4f8159f48c050009a27e-0; 
-							static const char *setcookie = "Set-Cookie: session=";
-							static const int len = strlen(setcookie);
-							if (0 && glocal.keepcookie && glocal.session.size()==0 && strncmp(line,setcookie,len)==0){
-								const char *start = line+len;
-								const char *pt = start;
-								while (*pt != ';' && *pt != ';') pt++;
-								glocal.session = string(start,pt-start);
-							}else if (strcmp(line,"</html>")==0){
-								glocal.nbok++;
-								if (glocal.i > glocal.starti+50){
-									// We are in reuseconnection mode, probably endless mode
-									// Every 50 connection we quit. The httpd seems to disconnect
-									// anyway after some amount of request
-									end = true;
-								}else if (glocal.reuseconnection){
-									glocal.i++;
-									if (glocal.i%30 == 1){
-										string tmp = string_f("%d %d\n",glocal.i,glocal.nbok);
-										write (glocal.fdout,tmp.c_str(),tmp.size());
-									}
-									if (glocal.endless || glocal.i < glocal.nbrep){
-										sendheader (this,glocal.reuseconnection,glocal.session,glocal.file,glocal.host);
+						<f process>
+							int ret = 0;
+							const char *line = (const char *)buf;
+							const char *endbuf = line+len;
+							const char *pt = line;
+							while (pt < endbuf && *pt != '\n') pt++;
+							debug_printf (D_PROTO,"process len=%u %lu %d\n",len,pt-line,pt<endbuf);
+							if (pt < endbuf){
+								ret = (pt-line)+1;
+								string tmp = string(line,pt-line);
+								line = tmp.c_str();
+								glocal.nblines++;
+								if(glocal.verbose) printf ("%s\n",line);
+								if (strcmp(line,"</html>")==0){
+									glocal.nbok++;
+									if (glocal.i > glocal.starti+50){
+										// We are in reuseconnection mode, probably endless mode
+										// Every 50 connection we quit. The httpd seems to disconnect
+										// anyway after some amount of request
+										end = true;
+									}else if (glocal.reuseconnection){
+										glocal.i++;
+										if (glocal.i%30 == 1){
+											string tmp = string_f("%d %d\n",glocal.i,glocal.nbok);
+											write (glocal.fdout,tmp.c_str(),tmp.size());
+										}
+										if (glocal.endless || glocal.i < glocal.nbrep){
+											sendheader (glocal.con,glocal.reuseconnection,glocal.session,glocal.file,glocal.host);
+										}else{
+											glocal.i--;	// So the count is good, as the for loop will increment it
+											end = true;
+										}
 									}else{
-										glocal.i--;	// So the count is good, as the for loop will increment it
 										end = true;
 									}
 								}
 							}
-						</f>
-						<f end>
+							return ret;
 						</f>
 						</call>
 						//printf ("apres call %d %d\n",glocal.i,glocal.nbok);
@@ -193,6 +274,12 @@ int main (int argc, char *argv[])
 					}
 					if (glocal.stats) printf ("nblines=%d\n",glocal.nblines);
 					if (glocal.nbok != glocal.nbrep) tlmp_error ("nbrep=%d nbok=%d\n",glocal.nbrep,glocal.nbok);
+					if (glocal.session.size() > 0){
+						<call webapi_logout>(glocal.con,glocal.session);
+						<f ok>
+						</f>
+						</call>
+					}
 					_exit (0);
 				}else if (pid == (pid_t)-1){
 					tlmp_error ("Can't fork (%s)\n",strerror(errno));
