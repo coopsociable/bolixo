@@ -125,6 +125,7 @@ int main (int argc, char *argv[])
 	glocal bool endless = false;
 	glocal const char *email = "jacques-A@bolixo.org";
 	glocal const char *passwd = "pass-A";
+	glocal bool nonstrict = false;
 	glocal.ret = <call tlmpprogram>(argc,argv,"bolixo");
 	<f init>
 		setproginfo ("bo-webtest",VERSION,"Web performance test");
@@ -132,6 +133,7 @@ int main (int argc, char *argv[])
 		setarg ('h',"host","Web server url )(https://...)",glocal.host,false);
 		setarg ('E',"email","Email for login",glocal.email,false);
 		setarg ('P',"password","Password for login",glocal.passwd,false);
+		setarg (' ',"nonstrict","Relaxed rules for SSL connections (certificate and hostname validation)",glocal.nonstrict,false);
 		setgrouparg ("Tuning");
 		setarg ('n',"nbrep","Number of iteration",glocal.nbrep,false);
 		setarg ('N',"nbproc","Process number",glocal.nbproc,false);
@@ -148,6 +150,7 @@ int main (int argc, char *argv[])
 		glocal vector<RESULT> tbnb;
 		glocal unsigned chunk=0;
 		glocal CONNECT_HTTP_INFO con;
+		if (glocal.nonstrict) glocal.con.setnonstrictmode();
 		// Used to receive the stats of the child processes
 		<obj TCPSERVER o>();
 		<f newclient>
@@ -280,6 +283,7 @@ int main (int argc, char *argv[])
 						</f>
 						</call>
 					}
+					fflush (stdout);
 					_exit (0);
 				}else if (pid == (pid_t)-1){
 					tlmp_error ("Can't fork (%s)\n",strerror(errno));

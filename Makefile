@@ -23,7 +23,7 @@ msg:
 compile: $(PROGS)
 	make -Cweb 
 
-bo-webtest: bo-webtest.tlcc proto/webapi.protoh
+bo-webtest: bo-webtest.tlcc proto/webapi.protoh /usr/include/trlitool/trlitool.h
 	cctlcc -Wall $(OPTIONS) bo-webtest.tlcc _dict.o -o bo-webtest $(LIBS) -lssl
 
 bofs: bofs.tlcc proto/bod_client.protoh proto/webapi.protoh proto/bolixoapi.protoh filesystem.h 

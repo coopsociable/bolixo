@@ -54,6 +54,11 @@ elif [ "$BOD_SOCK" = "" ] ; then
 	SESSIOND_SOCK=/tmp/bo-sessiond.sock
 	KEYSD_SOCK=/tmp/bo-keysd.sock
 fi
+if [ -x bo-webtest ] ; then
+	BOWEBTEST=./bo-webtest
+else
+	BOWEBTEST=/usr/sbin/bo-webtest
+fi
 mysql_save(){
 	ROOTFS=/var/lib/lxc/$1/rootfs
 	SAVE=/var/lib/lxc/$1/$1.save
@@ -1429,38 +1434,55 @@ elif [ "$1" = "lxc0s" ] ; then # prod: generates lxc0 scripts for all components
 	$0 lxc0-mysql
 	$0 lxc0-exim
 elif [ "$1" = "webprodtest" ] ; then # P: Webtest on production
-	time -p /usr/sbin/trli-webtest -h $PRODIP -p 443 -n 50 -N 20 >/dev/null
+	time -p $BOWEBTEST -h https://$PRODIP -n 50 -N 20
 elif [ "$1" = "webtest" ] ; then # P:
-	$0 test-system
+	#$0 test-system
 	shift
-	time -p /usr/sbin/trli-webtest -h 192.168.4.1 -p 9080 -n 50 -N 20 $*
+	time -p $BOWEBTEST -h http://192.168.4.1:9080 -n 50 -N 20 $*
 elif [ "$1" = "webtest-static" ] ; then # P:
-	$0 test-system
+	#$0 test-system
 	shift
-	time -p /usr/sbin/trli-webtest -f /static.html -h 192.168.4.1 -p 9080 -n 50 -N 20 $*
+	time -p $BOWEBTEST -f /static.html -h http://192.168.4.1:9080 -n 50 -N 20 $*
 elif [ "$1" = "webtest-direct" ] ; then # P:
-	$0 test-system
+	#$0 test-system
 	shift
-	time -p /usr/sbin/trli-webtest -h 192.168.122.5 -p 80 -n 50 -N 20 $*
+	if [ "$PREPRODOPTION" != "" ] ; then
+		IP=192.168.124.5
+	else
+		IP=192.168.122.5
+	fi
+	time -p $BOWEBTEST -h http://$IP -n 50 -N 20 $*
 elif [ "$1" = "webtest-direct-static" ] ; then # P:
-	$0 test-system
+	#$0 test-system
 	shift
-	time -p /usr/sbin/trli-webtest -f /static.html -h 192.168.122.5 -p 80 -n 50 -N 20 $*
+	if [ "$PREPRODOPTION" != "" ] ; then
+		IP=192.168.124.5
+	else
+		IP=192.168.122.5
+	fi
+	time -p $BOWEBTEST -f /static.html -h http://$IP -n 50 -N 20 $*
 elif [ "$1" = "webssltest" ] ; then # P: (bk)
-	$0 test-system
+	#$0 test-system
 	shift
-	IP=192.168.122.8
-	PORT=80
+	if [ "$PREPRODOPTION" != "" ] ; then
+		IP=192.168.124.8
+	else
+		IP=192.168.122.8
+	fi
 	if [ "$1" = "bk" ] ; then
-		IP=192.168.4.2
-		PORT=9080
+		IP=192.168.4.2:9080
 		shift
 	fi
-	time -p /usr/sbin/trli-webtest -h $IP -p $PORT -n 50 -N 20 $*
+	time -p $BOWEBTEST -h http://$IP -n 50 -N 20 $*
 elif [ "$1" = "webssltest-static" ] ; then # P:
-	$0 test-system
+	#$0 test-system
 	shift
-	time -p /usr/sbin/trli-webtest -f /static.html -h 192.168.122.8 -p 80 -n 50 -N 20 $*
+	if [ "$PREPRODOPTION" != "" ] ; then
+		IP=192.168.124.8
+	else
+		IP=192.168.122.8
+	fi
+	time -p $BOWEBTEST -f /static.html -h http://$IP -n 50 -N 20 $*
 elif [ "$1" = "stop-status" ] ; then # P: status of trli-stop
 	echo "==== web ===="
 	/usr/sbin/trli-stop-control -p /var/lib/lxc/web/rootfs/tmp/trli-stop.sock status
