@@ -59,6 +59,37 @@ if [ -x bo-webtest ] ; then
 else
 	BOWEBTEST=/usr/sbin/bo-webtest
 fi
+webtest(){
+	#$0 test-system
+	page=$1
+	url=$2
+	shift; shift
+	OPTS=
+	n=-n50
+	N=-N20
+	while [ $# != 0 ]
+	do
+		case $1 in
+		-n*)
+			n=$1
+			;;
+		-N*)
+			N=$1
+			;;
+		*)
+			OPTS="$OPTS $1"
+			;;
+		esac
+		shift
+	done
+	if [ "$WEBTEST_EMAIL" != "" ] ; then
+		OPTS="$OPTS --email $WEBTEST_EMAIL"
+	fi
+	if [ "$WEBTEST_PASSWORD" != "" ] ; then
+		OPTS="$OPTS --password $WEBTEST_PASSWORD"
+	fi
+	time -p $BOWEBTEST -f $page -h $url $n $N $OPTS
+}
 mysql_save(){
 	ROOTFS=/var/lib/lxc/$1/rootfs
 	SAVE=/var/lib/lxc/$1/$1.save
@@ -1436,22 +1467,19 @@ elif [ "$1" = "lxc0s" ] ; then # prod: generates lxc0 scripts for all components
 elif [ "$1" = "webprodtest" ] ; then # P: Webtest on production
 	time -p $BOWEBTEST -h https://$PRODIP -n 50 -N 20
 elif [ "$1" = "webtest" ] ; then # P:
-	#$0 test-system
 	shift
-	time -p $BOWEBTEST -h http://192.168.4.1:9080 -n 50 -N 20 $*
+	webtest /index.hc http://192.168.4.1:9080 $*
 elif [ "$1" = "webtest-static" ] ; then # P:
-	#$0 test-system
 	shift
-	time -p $BOWEBTEST -f /static.html -h http://192.168.4.1:9080 -n 50 -N 20 $*
+	webtest /static.html http://192.168.4.1:9080 $*
 elif [ "$1" = "webtest-direct" ] ; then # P:
-	#$0 test-system
-	shift
 	if [ "$PREPRODOPTION" != "" ] ; then
 		IP=192.168.124.5
 	else
 		IP=192.168.122.5
 	fi
-	time -p $BOWEBTEST -h http://$IP -n 50 -N 20 $*
+	shift
+	webtest /index.hc http://$IP $*
 elif [ "$1" = "webtest-direct-static" ] ; then # P:
 	#$0 test-system
 	shift
@@ -1462,7 +1490,6 @@ elif [ "$1" = "webtest-direct-static" ] ; then # P:
 	fi
 	time -p $BOWEBTEST -f /static.html -h http://$IP -n 50 -N 20 $*
 elif [ "$1" = "webssltest" ] ; then # P: (bk)
-	#$0 test-system
 	shift
 	if [ "$PREPRODOPTION" != "" ] ; then
 		IP=192.168.124.8
@@ -1473,16 +1500,15 @@ elif [ "$1" = "webssltest" ] ; then # P: (bk)
 		IP=192.168.4.2:9080
 		shift
 	fi
-	time -p $BOWEBTEST -h http://$IP -n 50 -N 20 $*
+	webtest /index.hc http://$IP $*
 elif [ "$1" = "webssltest-static" ] ; then # P:
-	#$0 test-system
 	shift
 	if [ "$PREPRODOPTION" != "" ] ; then
 		IP=192.168.124.8
 	else
 		IP=192.168.122.8
 	fi
-	time -p $BOWEBTEST -f /static.html -h http://$IP -n 50 -N 20 $*
+	webtest /static.html http://$IP $*
 elif [ "$1" = "stop-status" ] ; then # P: status of trli-stop
 	echo "==== web ===="
 	/usr/sbin/trli-stop-control -p /var/lib/lxc/web/rootfs/tmp/trli-stop.sock status

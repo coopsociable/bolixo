@@ -211,22 +211,22 @@ elif [ "$1" = "lxc0s" ] ; then # config: Produces the lxc0 scripts
 	test -d /var/lib/lxc/protocheck && /usr/lib/bolixo-test.sh lxc0-proto
 elif [ "$1" = "webtest" ] ; then # P:
 	shift
-	/usr/lib/bolixo-test.sh webtest $*
+	/usr/lib/bolixo-test.sh webtest `bofs --printcred` $*
 elif [ "$1" = "webtest-static" ] ; then # P:
 	shift
-	/usr/lib/bolixo-test.sh webtest-static $*
+	/usr/lib/bolixo-test.sh webtest-static `bofs --printcred` $*
 elif [ "$1" = "webtest-direct" ] ; then # P:
 	shift
-	/usr/lib/bolixo-test.sh webtest-direct $*
+	/usr/lib/bolixo-test.sh webtest-direct `bofs --printcred` $*
 elif [ "$1" = "webtest-direct-static" ] ; then # P:
 	shift
-	/usr/lib/bolixo-test.sh webtest-direct-static $*
+	/usr/lib/bolixo-test.sh webtest-direct-static `bofs --printcred` $*
 elif [ "$1" = "webssltest" ] ; then # P:
 	shift
-	/usr/lib/bolixo-test.sh webssltest $*
+	/usr/lib/bolixo-test.sh webssltest `bofs --printcred` $*
 elif [ "$1" = "webssltest-static" ] ; then # P:
 	shift
-	/usr/lib/bolixo-test.sh webssltest-static $*
+	/usr/lib/bolixo-test.sh webssltest-static `bofs --printcred` $*
 elif [ "$1" = "stop-stop" ] ; then # prod: Stop the web
 	/usr/lib/bolixo-test.sh stop-stop
 elif [ "$1" = "stop-status" ] ; then # prod: status of trli-stop

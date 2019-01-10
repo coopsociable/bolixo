@@ -151,6 +151,8 @@ int main (int argc, char *argv[])
 		glocal unsigned chunk=0;
 		glocal CONNECT_HTTP_INFO con;
 		if (glocal.nonstrict) glocal.con.setnonstrictmode();
+		signal(SIGPIPE,SIG_IGN);
+		signal(SIGCHLD,SIG_IGN);
 		// Used to receive the stats of the child processes
 		<obj TCPSERVER o>();
 		<f newclient>
@@ -181,10 +183,11 @@ int main (int argc, char *argv[])
 			
 		</f>
 		</obj>
-		fprintf (stderr,"Connecting to %s, getting file %s, doing %d process%s X %d request%s\n"
+		fprintf (stderr,"Connecting to %s, getting file %s, doing %d process%s X %d request%s reusecon=%d\n"
 			,glocal.host,glocal.file
 			,glocal.nbproc,glocal.nbproc > 1 ? "es" : ""
-			,glocal.nbrep,glocal.nbrep > 1 ? "s" : "");
+			,glocal.nbrep,glocal.nbrep > 1 ? "s" : ""
+			,glocal.reuseconnection);
 		if (glocal.con.init (glocal.host)==-1){
 			tlmp_error ("Invalid host url: %s\n",glocal.host);
 			exit(-1);
@@ -217,12 +220,18 @@ int main (int argc, char *argv[])
 					}
 					for (glocal.i=0; glocal.endless || glocal.i<glocal.nbrep; glocal.i++){
 						glocal int starti = glocal.i;	// For reusecon
+						glocal unsigned received = 0;
 						if (!glocal.reuseconnection) glocal.con.reconnect();
 						sendheader (glocal.con,glocal.reuseconnection,glocal.session,glocal.file,glocal.host);
 						<call streamp>();
 						<f fill>
 							int ret = glocal.con.receive (buf,size);
-							debug_printf (D_PROTO,"fill ret=%d size=%u\n",ret,size);
+							if (ret <= 0){
+								debug_printf (D_PROTO,"fill i=%d received=%u ret=%d size=%u %d(%s)\n",glocal.i,glocal.received,ret,size,errno,strerror(errno));
+								ret = 0;
+							}else{
+								glocal.received += ret;
+							}
 							return ret; 
 						</f>
 						<f process>
@@ -231,7 +240,7 @@ int main (int argc, char *argv[])
 							const char *endbuf = line+len;
 							const char *pt = line;
 							while (pt < endbuf && *pt != '\n') pt++;
-							debug_printf (D_PROTO,"process len=%u %lu %d\n",len,pt-line,pt<endbuf);
+							//debug_printf (D_PROTO,"process len=%u %lu %d\n",len,pt-line,pt<endbuf);
 							if (pt < endbuf){
 								ret = (pt-line)+1;
 								string tmp = string(line,pt-line);
