@@ -357,6 +357,7 @@ int main (int argc, char *argv[])
 	glocal const char *client_secretfile = "/etc/bolixo/secrets.client";
 	glocal const char *domain = "bolixo.org";
 	glocal unsigned maxaccts = 200;
+	glocal bool devmode = false;
 	static const char *tbdic[]={"tlmpsql","bolixo",NULL};
 	glocal.ret = <call tlmpprogram>(argc,argv,tbdic);
 	<f init>
@@ -377,6 +378,7 @@ int main (int argc, char *argv[])
 		setarg (' ',"pidfile",MSG_U(I_PIDFILE,"File holding the PID of the process"),glocal.pidfile,false);
 		setarg (' ',"domain",MSG_U(O_DOMAIN,"Accept nodes only from this domain"),glocal.domain,false);
 		setarg (' ',"maxaccts",MSG_U(O_MAXACCOUNTSPER,"Maximum accounts per servers"),glocal.maxaccts,false);
+		setarg (' ',"devmode",MSG_U(O_DEVMODE,"Relax rule for registernode api"),glocal.devmode,false);
 	</f>
 	<f showerror>
 		if (glocal.daemon){
@@ -440,6 +442,7 @@ int main (int argc, char *argv[])
 					tb.push_back(string_f ("Version: %s",VERSION));
 					tb.push_back(string_f ("maxaccts: %u",glocal.maxaccts));
 					tb.push_back(string_f ("nbrequest: %u",glocal.nbrequest));
+					tb.push_back(string_f ("devmode: %d",glocal.devmode));
 					rep_status(tb);
 				</f>
 				<f quit>
@@ -514,7 +517,9 @@ int main (int argc, char *argv[])
 						// nodename
 					glocal string msg;
 					glocal const char *nodename = nodename;
-					if (bolixod_validnode (nodename,glocal.domain) == -1){
+					if (!glocal.devmode && strncasecmp(nodename,"https://",8) != 0){
+						glocal.msg = "Invalid nodename, only https node accepted";
+					}else if (bolixod_validnode (nodename,glocal.domain) == -1){
 						glocal.msg = "Invalid nodename";
 					}else{
 						<call sql_query>("select pub_key from nodes where nodename='%s'",nodename);
