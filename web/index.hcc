@@ -453,7 +453,11 @@ static void trli_getsessioninfo(CONNECT_INFO &con, CONNECT_INFO &con_sess, vecto
 	<f ok>
 		if (success){
 			userinfo.lang = lang;
-			if (lang[0] != '\0') translat_selectlang (lang);
+			if (lang[0] != '\0'){
+				translat_selectlang (lang);
+			}else{
+				userinfo.lang = tlmpweb_getlang();
+			}
 			userinfo.name = name;
 			userinfo.dateformat = dateformat;
 			userinfo.is_admin = admin;
@@ -545,10 +549,10 @@ static void trli_getsessioninfo(CONNECT_INFO &con, CONNECT_INFO &con_sess, vecto
 </mod>
 static void index_doc (DOCUMENT_POINTER &pt, DOC_ID &jump)
 {
-	if (userinfo.lang == "eng"){
-		bolixo_doc (pt,jump,userinfo.name.c_str(),w_robot);
-	}else{
+	if (userinfo.lang == "fr"){
 		bolixo_doc_fr(pt,jump,userinfo.name.c_str(),w_robot);
+	}else{
+		bolixo_doc (pt,jump,userinfo.name.c_str(),w_robot);
 	}
 }
 
@@ -1595,7 +1599,7 @@ extern "C" void webmain_real()
 			step = step_doc;
 		}else if (w_session.empty() && step > 2){
 			step = 1;
-		}else if (userinfo.name.empty() && step != 2 && step != 3 && step != 10){
+		}else if (userinfo.name.empty() && step != 2 && step != 3 && step != 10 && step != 12){
 			step = 1;
 		}
 	</f>
@@ -1637,6 +1641,10 @@ extern "C" void webmain_real()
 		if (userinfo.name.size() == 0){
 			// Anonymous, present public news ?
 			// /- So far no public content
+			DIV d; d.w(50).marginauto().vmargins(30,0).vpaddings(10,10).paddings(10,10).border(1,"black").borderradius(5).bg("white").print();
+			htmlout (MSG_R(I_BOLIXO));
+			/-<p>
+			htmlprintf ("<a href=%s?webstep=12>%s</a>\n",tlmpweb_curpage(),MSG_R(I_COMPLETEDOC));
 		}else{
 			DIV d("tabs");
 			if (is_mobile){
