@@ -211,19 +211,19 @@ elif [ "$1" = "lxc0s" ] ; then # config: Produces the lxc0 scripts
 	test -d /var/lib/lxc/protocheck && /usr/lib/bolixo-test.sh lxc0-proto
 elif [ "$1" = "webtest" ] ; then # P:
 	shift
-	/usr/lib/bolixo-test.sh webtest `bofs --printcred` $*
+	/usr/lib/bolixo-test.sh webtest $*
 elif [ "$1" = "webtest-static" ] ; then # P:
 	shift
-	/usr/lib/bolixo-test.sh webtest-static `bofs --printcred` $*
+	/usr/lib/bolixo-test.sh webtest-static $*
 elif [ "$1" = "webtest-direct" ] ; then # P:
 	shift
-	/usr/lib/bolixo-test.sh webtest-direct `bofs --printcred` $*
+	/usr/lib/bolixo-test.sh webtest-direct $*
 elif [ "$1" = "webtest-direct-static" ] ; then # P:
 	shift
-	/usr/lib/bolixo-test.sh webtest-direct-static `bofs --printcred` $*
+	/usr/lib/bolixo-test.sh webtest-direct-static $*
 elif [ "$1" = "webssltest" ] ; then # P:
 	shift
-	/usr/lib/bolixo-test.sh webssltest `bofs --printcred` $*
+	/usr/lib/bolixo-test.sh webssltest $*
 elif [ "$1" = "webssltest-static" ] ; then # P:
 	shift
 	/usr/lib/bolixo-test.sh webssltest-static `bofs --printcred` $*

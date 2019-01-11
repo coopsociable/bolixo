@@ -67,9 +67,15 @@ webtest(){
 	OPTS=
 	n=-n50
 	N=-N20
+	USEEN=
 	while [ $# != 0 ]
 	do
 		case $1 in
+		-u)
+			shift
+			eval `$BOFS -u $1 --printcred`
+			USEEN=1
+			;;
 		-n*)
 			n=$1
 			;;
@@ -82,11 +88,8 @@ webtest(){
 		esac
 		shift
 	done
-	if [ "$WEBTEST_EMAIL" != "" ] ; then
-		OPTS="$OPTS --email $WEBTEST_EMAIL"
-	fi
-	if [ "$WEBTEST_PASSWORD" != "" ] ; then
-		OPTS="$OPTS --password $WEBTEST_PASSWORD"
+	if [ "$USEEN" = "" ] ; then
+		eval `$BOFS --printcred`
 	fi
 	time -p $BOWEBTEST -f $page -h $url $n $N $OPTS
 }
@@ -1488,27 +1491,17 @@ elif [ "$1" = "webtest-direct-static" ] ; then # P:
 	else
 		IP=192.168.122.5
 	fi
-	time -p $BOWEBTEST -f /static.html -h http://$IP -n 50 -N 20 $*
+	webtest /static.html http://$IP $*
 elif [ "$1" = "webssltest" ] ; then # P: (bk)
 	shift
-	if [ "$PREPRODOPTION" != "" ] ; then
-		IP=192.168.124.8
-	else
-		IP=192.168.122.8
-	fi
 	if [ "$1" = "bk" ] ; then
 		IP=192.168.4.2:9080
 		shift
 	fi
-	webtest /index.hc http://$IP $*
+	webtest /index.hc $THISNODE $*
 elif [ "$1" = "webssltest-static" ] ; then # P:
 	shift
-	if [ "$PREPRODOPTION" != "" ] ; then
-		IP=192.168.124.8
-	else
-		IP=192.168.122.8
-	fi
-	webtest /static.html http://$IP $*
+	webtest /static.html $THISNODE $*
 elif [ "$1" = "stop-status" ] ; then # P: status of trli-stop
 	echo "==== web ===="
 	/usr/sbin/trli-stop-control -p /var/lib/lxc/web/rootfs/tmp/trli-stop.sock status

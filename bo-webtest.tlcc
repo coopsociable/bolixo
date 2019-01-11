@@ -123,8 +123,8 @@ int main (int argc, char *argv[])
 	glocal bool verbose = false;
 	glocal bool stats = false;
 	glocal bool endless = false;
-	glocal const char *email = "jacques-A@bolixo.org";
-	glocal const char *passwd = "pass-A";
+	glocal const char *email = NULL;
+	glocal const char *passwd = NULL;
 	glocal bool nonstrict = false;
 	glocal.ret = <call tlmpprogram>(argc,argv,"bolixo");
 	<f init>
@@ -153,6 +153,12 @@ int main (int argc, char *argv[])
 		if (glocal.nonstrict) glocal.con.setnonstrictmode();
 		signal(SIGPIPE,SIG_IGN);
 		signal(SIGCHLD,SIG_IGN);
+		if (glocal.email == NULL) glocal.email = getenv("WEBTEST_EMAIL");
+		if (glocal.passwd == NULL) glocal.passwd = getenv("WEBTEST_PASSWORD");
+		if (glocal.email == NULL || glocal.passwd == NULL){
+			tlmp_error ("missing email and/or password, can't continue\n");
+			exit (-1);
+		}
 		// Used to receive the stats of the child processes
 		<obj TCPSERVER o>();
 		<f newclient>
@@ -183,11 +189,11 @@ int main (int argc, char *argv[])
 			
 		</f>
 		</obj>
-		fprintf (stderr,"Connecting to %s, getting file %s, doing %d process%s X %d request%s reusecon=%d\n"
+		fprintf (stderr,"Connecting to %s, getting file %s, doing %d process%s X %d request%s reusecon=%d email=%s\n"
 			,glocal.host,glocal.file
 			,glocal.nbproc,glocal.nbproc > 1 ? "es" : ""
 			,glocal.nbrep,glocal.nbrep > 1 ? "s" : ""
-			,glocal.reuseconnection);
+			,glocal.reuseconnection,glocal.email);
 		if (glocal.con.init (glocal.host)==-1){
 			tlmp_error ("Invalid host url: %s\n",glocal.host);
 			exit(-1);
