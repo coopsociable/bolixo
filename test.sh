@@ -1508,12 +1508,12 @@ elif [ "$1" = "stop-status" ] ; then # P: status of trli-stop
 	#echo "==== webadm ==="
 	#/usr/sbin/trli-stop-control -p /var/lib/lxc/webadm/rootfs/tmp/trli-stop.sock status
 elif [ "$1" = "stop-stop" ] ; then # P: stop the web
-	echo web
+	echo stop-stop
 	/usr/sbin/trli-stop-control -p /var/lib/lxc/web/rootfs/tmp/trli-stop.sock stop
 	#echo webadm
 	#/usr/sbin/trli-stop-control -p /var/lib/lxc/webadm/rootfs/tmp/trli-stop.sock stop
 elif [ "$1" = "stop-start" ] ; then # P: restart the web
-	echo web
+	echo stop-start
 	/usr/sbin/trli-stop-control -p /var/lib/lxc/web/rootfs/tmp/trli-stop.sock start
 	#echo webadm
 	#/usr/sbin/trli-stop-control -p /var/lib/lxc/webadm/rootfs/tmp/trli-stop.sock start

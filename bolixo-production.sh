@@ -259,7 +259,19 @@ elif [ "$1" = "resetmsg" ] ; then # prod: Reset alarm
 elif [ "$1" = "restart" ] ; then # prod: restart some services (webs, internals, ...)
 	shift
 	bo-mon-control autotest 0
-	if [ "$1" = "webs" ] ; then
+	if [ "$1" = "" ] ; then
+		echo bolixo-production restart service ...
+		echo All services may be restarted any time except horizon
+		echo services are:
+		echo
+		echo "    " internals "(restart everything except the databases, web and exim)"
+		echo "    " webs "(All four web... services)"
+		echo "    " horizon "(may loose few connections)"
+		echo "    " bo-mon bod bolixod keysd protocheck publishd sessiond trli-syslog writed
+		echo "    " exim
+		echo "    " bosqlddata bosqlduser bosqldbolixo
+		echo
+	elif [ "$1" = "webs" ] ; then
 		$0 loadfail normal
 		echo Restarting webssl-fail and web-fail
 		/var/lib/lxc/webssl-fail/webssl-fail.stop
