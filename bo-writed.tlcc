@@ -701,7 +701,7 @@ static void bo_writed_update_dirdate(unsigned dirid)
 		tlmp_error (MSG_U(E_CANTUPDDATEDIR,"Can't update directory modification date\n"));
 	}
 }
-
+<mod>
 static int bo_writed_addfile_bob (
 	CONNECT_INFO &con_keys,
 	const char *sessionid,
@@ -734,35 +734,51 @@ static int bo_writed_addfile_bob (
 				content_str = tmp.c_str();
 			}
 			if (presign[0] != '\0'){
+				glocal string pubkey;
+				<call sql_query>("select pub_key from id2name where userid=%u",userid);
+				<f onerow>
+					if (row[0] != NULL) glocal.pubkey = row[0];
+				</f>
+				</call>
+				if (glocal.pubkey.size()==0){
+					msg = string_f("No public key for userid=%u",userid);
+					tlmp_error ("%s\n",msg.c_str());
+				}else if (fs_verify(glocal.pubkey,content,presign)==-1){
+					msg = string_f ("Signature do not match for pre-signed file %s",basename);
+					tlmp_error ("%s\n",msg.c_str());
+				}
 			}else if (sessionid != NULL){
 				sign = bo_writed_sign (con_keys,userid,content);
 			}
 		}
-		if (fs_insert_entry(dirid,fileid,modified.buf,basename,type)==-1){
-			msg = "Internal error (dirs_files table)";
-		}else if (sql_action("insert into files (id,modified,filetype,content,signature) values (%d,'%s',%u,'%s','%s')"
-			,fileid,modified.buf,file_type,content_str,sign.c_str())==-1){
-			msg = "Internal error (files table)";
-		}else{
-			if (content_str == NULL){
-				FILE *fout = fs_alloc_file_handle (fileid,modified.buf,"w",handle,sessionid);
-				if (fout == NULL){
-					tlmp_error ("Can't open file (%s)\n",strerror(errno));
-					msg = "Internal error (1-writing data)";
-				}else{
-					size_t size = content.getsize();
-					if (fwrite (content.getbuffer(),1,size,fout)!=size){
-						msg = "Internal error (2-writing data)";
+		if (msg.size()==0){
+			if (fs_insert_entry(dirid,fileid,modified.buf,basename,type)==-1){
+				msg = "Internal error (dirs_files table)";
+			}else if (sql_action("insert into files (id,modified,filetype,content,signature) values (%d,'%s',%u,'%s','%s')"
+				,fileid,modified.buf,file_type,content_str,sign.c_str())==-1){
+				msg = "Internal error (files table)";
+			}else{
+				if (content_str == NULL){
+					FILE *fout = fs_alloc_file_handle (fileid,modified.buf,"w",handle,sessionid);
+					if (fout == NULL){
+						tlmp_error ("Can't open file (%s)\n",strerror(errno));
+						msg = "Internal error (1-writing data)";
 					}else{
-						msg.clear();
+						size_t size = content.getsize();
+						if (fwrite (content.getbuffer(),1,size,fout)!=size){
+							msg = "Internal error (2-writing data)";
+						}else{
+							msg.clear();
+						}
 					}
 				}
+				bo_writed_update_dirdate(dirid);
 			}
-			bo_writed_update_dirdate(dirid);
 		}
 	}
 	return fileid;
 }
+</mod>
 /*
 	Create the directory for a project
 */

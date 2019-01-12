@@ -46,6 +46,8 @@
 #include "filesystem.h"
 #include "instrument.h"
 
+static DEBUG_KEY D_SIGN("sign","Signature validation");
+
 using namespace std;
 
 #define bod_client_adduser_NOTNEED
@@ -681,14 +683,13 @@ static int bofs_cat_bofile (CONTEXT &ctx, const char *path, FILE *fout)
 					}
 				</f>
 				</call>
+				debug_printf (D_SIGN,"public key = %s\n",glocal.pubkey.c_str());
 				if (glocal.pubkey.size() > 0){
-					EVP_PKEY *p = fs_load_public (glocal.pubkey);
-					if (p != NULL){
-						if (fs_verify(content,p,info.signature)==-1){
-							tlmp_error (MSG_U(E_FILESIGNOMATCH,"Signature does not match for file %s, owner %s\n")
-								,glocal.path,info.owner);
-						}
-						fs_free_public (p);
+					if (fs_verify (glocal.pubkey,content,info.signature)==-1){
+						tlmp_error (MSG_U(E_FILESIGNOMATCH,"Signature does not match for file %s, owner %s\n")
+							,glocal.path,info.owner);
+					}else{
+						debug_printf (D_SIGN,"File %s, signature valid\n",glocal.path);
 					}
 				}
 			}
