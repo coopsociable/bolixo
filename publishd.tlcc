@@ -169,14 +169,25 @@ static int publishd_remotelogin (
 }
 </mod>
 
+struct STATS{
+	unsigned nbcopied;
+	unsigned nbfailed;
+	unsigned nbtried;
+	STATS(){
+		nbcopied = nbfailed = nbtried = 0;
+	}
+};
+
 <mod>
 static void publishd_doone (
 	_F_TCPSERVER_V1 &c,
 	pid_t &pid,
 	deque<PUBLISH_MESSAGE> &messages,
+	NSQL &sq,
 	const char *our_node,
 	const char *keysdsock)
 {
+	glocal NSQL *sq = &sq;
 	glocal const char *our_node = our_node;
 	glocal const char *keysdsock = keysdsock;
 	if (messages.size() > 0){
@@ -184,6 +195,7 @@ static void publishd_doone (
 		if (pipe(tb)==-1){
 			tlmp_error ("Can't setup pipe (%s)\n",strerror(errno));
 		}else{
+			glocal STATS stats;
 			glocal PUBLISH_MESSAGE todo = messages.front();
 			messages.pop_front();
 			pid = fork();
@@ -194,13 +206,13 @@ static void publishd_doone (
 				glocal FILE *fin = NULL;
 				glocal bool data_loaded=false;
 				glocal bool some_errors = false;
-				<call sql_query>("select nodename from interests_remote where userid=%u",glocal.todo.userid);
+				<call sql_query>(*glocal.sq,"select nodename from interests_remote where userid=%u",glocal.todo.userid);
 				<f onerow>
 					//tlmp_error ("nodename=%s\n",row[0]);
 					glocal CONNECT_HTTP_INFO hcon;
 					// Load the data only once since it is copied to potentially more than one node
 					if (!glocal.data_loaded){
-						<call sql_query>("select content from files where id=%u and modified='%s'"
+						<call sql_query>(*glocal.sq,"select content from files where id=%u and modified='%s'"
 							,glocal.todo.fileid,glocal.todo.modified.c_str());
 						<f onerow>
 							if (row[0] != NULL){
@@ -227,12 +239,18 @@ static void publishd_doone (
 					if (!glocal.some_errors && glocal.hcon.init (row[0]) != -1){
 						glocal string remote_user = string_f("%s@%s",glocal.todo.user.c_str(),glocal.our_node);
 						glocal string sessionid;
+						glocal.stats.nbtried++;
 						if (publishd_remotelogin(glocal.hcon,glocal.remote_user,glocal.keysdsock,glocal.todo.userid,glocal.sessionid)!=-1){
+							glocal bool error = false;
 							static vector<string> empty;
 							if (glocal.fin == NULL){
 								<call webapi_sendtalk>(glocal.hcon,glocal.sessionid,"",empty,"public",glocal.remote_user,glocal.content,false);
 								<f ok>
-									//tlmp_error ("internal=%d success=%d msg=%s\n",internal_error,success,msg);
+									if (!success){
+										tlmp_error ("message to %s internal=%d success=%d msg=%s\n"
+											,glocal.remote_user.c_str(),internal_error,success,msg);
+										glocal.error = true;
+									}
 								</f>
 								</call>
 							}else{
@@ -242,20 +260,28 @@ static void publishd_doone (
 								int n;
 								bool more = false;
 								rewind(glocal.fin);
-								while ((n=fread(buf,1,sizeof(buf),glocal.fin))>0){
+								while (!glocal.error && (n=fread(buf,1,sizeof(buf),glocal.fin))>0){
 									more = n==sizeof(buf);
 									BOB_TYPE content((const void*)buf,n,false);
 									if (glocal.handle.size() == 0){
 										<call webapi_sendtalk>(glocal.hcon,glocal.sessionid,"",empty,"public",glocal.remote_user,content,more);
 										<f ok>
 											glocal.handle = handle;
-											//tlmp_error ("internal=%d success=%d msg=%s\n",internal_error,success,msg);
+											if(!success){
+												glocal.error = true;
+												tlmp_error ("copying to %s internal=%d success=%d msg=%s\n"
+													,glocal.remote_user.c_str(),internal_error,success,msg);
+											}
 										</f>
 										</call>
 									}else{
 										<call webapi_appendfile>(glocal.hcon,glocal.sessionid,glocal.handle,content,more);
 										<f ok>
-											//tlmp_error ("internal=%d success=%d msg=%s\n",internal_error,success,msg);
+											if(!success){
+												glocal.error = true;
+												tlmp_error ("appending to %s internal=%d success=%d msg=%s\n"
+													,glocal.remote_user.c_str(),internal_error,success,msg);
+											}
 										</f>
 										</call>
 									}
@@ -269,6 +295,11 @@ static void publishd_doone (
 									</call>
 								}
 							}
+							if (glocal.error){
+								glocal.stats.nbfailed++;
+							}else{
+								glocal.stats.nbcopied++;
+							}
 							<call webapi_logout>(glocal.hcon,glocal.sessionid);
 							<f ok>
 							</f>
@@ -279,6 +310,7 @@ static void publishd_doone (
 				</f>
 				</call>
 				if (glocal.fin != NULL) fclose (glocal.fin);
+				write (tb[1],&glocal.stats,sizeof(glocal.stats));	
 				_exit (0);
 			}else if (pid == (pid_t)-1){
 				tlmp_error ("Can't fork (%s)\n",strerror(errno));
@@ -286,6 +318,7 @@ static void publishd_doone (
 				HANDLE_INFO *n = new HANDLE_INFO;
 				n->type = TYPE_WORKER;
 				c.inject (tb[0],n);
+				c.setrawmode(tb[0],true);
 				close (tb[1]);
 			}
 		}
@@ -343,11 +376,14 @@ int main (int argc, char *argv[])
 	</f>
 	<f main_noarg>
 		int ret = -1;
+		glocal STATS stats;
+		glocal unsigned messages_sent = 0;
 		glocal string controlport = string_f("unix:%s",glocal.control);
 		glocal string clientport = string_f("unix:%s",glocal.clientsock);
 		glocal deque<PUBLISH_MESSAGE> messages;
 		glocal map<string,string> admin_secrets;
 		glocal pid_t pid = (pid_t)-1;
+		glocal NSQL *sub_sq = NULL;
 		const char *passwd = getenv("PUBLISHD_PWD");
 		if (passwd == NULL){
 			tlmp_error ("Can't get database password from environment, aborting\n");
@@ -356,6 +392,10 @@ int main (int argc, char *argv[])
 		fdpass_readsecrets (glocal.admin_secretfile,glocal.admin_secrets);
 		query_setdefaultdb (glocal.data_dbserv,glocal.data_dbname,glocal.data_dbuser,passwd);
 		query_getdefaultdb()->showerrormode(true);
+		// Connection for the sub-process
+		NSQL sub_sq (glocal.data_dbserv,glocal.data_dbname,glocal.data_dbuser,passwd);
+		sub_sq.showerrormode(true);
+		glocal.sub_sq = &sub_sq;
 		signal (SIGCHLD,SIG_IGN);
 		<obj TCPSERVER s>(glocal.clientport,5);
 		<f newclient>
@@ -373,7 +413,7 @@ int main (int argc, char *argv[])
 			HANDLE_INFO *n = (HANDLE_INFO*)info.data;
 			if (n->type == TYPE_WORKER){
 				glocal.pid = (pid_t)-1;
-				publishd_doone(*this,glocal.pid,glocal.messages,glocal.hostname,glocal.keysdsock);
+				publishd_doone(*this,glocal.pid,glocal.messages,*glocal.sub_sq,glocal.hostname,glocal.keysdsock);
 			}
 		</f>
 		<f receive>
@@ -389,6 +429,9 @@ int main (int argc, char *argv[])
 					tb.push_back(string_f("messages size: %lu",glocal.messages.size()));
 					tb.push_back(string_f("sub-process: %s",glocal.pid == (pid_t)-1 ? "not running" : "running"));
 					tb.push_back(string_f("hostname: %s",glocal.hostname));
+					tb.push_back(string_f("messages_sent: %u",glocal.messages_sent));
+					tb.push_back(string_f("stats: nbtried %u nbcopied %u nbfailed %u"
+						,glocal.stats.nbtried,glocal.stats.nbcopied,glocal.stats.nbfailed));
 					rep_status(tb);
 				</f>
 				<f quit>
@@ -446,6 +489,13 @@ int main (int argc, char *argv[])
 					endclient = true;
 				</f>
 				</call>
+			}else if (c->type == TYPE_WORKER){
+				if (info.linelen == sizeof(STATS)){
+					const STATS *st = (const STATS *)line;
+					glocal.stats.nbtried += st->nbtried;
+					glocal.stats.nbfailed += st->nbfailed;
+					glocal.stats.nbcopied += st->nbcopied;
+				}
 			}else if (c->type == TYPE_CLIENT){
 				<call publishd_client>(this,c->req,line,info.linelen, endserver, endclient,no,c);
 				<f test>
@@ -479,9 +529,11 @@ int main (int argc, char *argv[])
 							glocal.msg = string_f("No user for userid=%u",userid);
 							tlmp_error ("No user for userid=%u\n",userid);
 						}else{
+							glocal.messages_sent++;
 							glocal.messages.emplace_back(PUBLISH_MESSAGE(glocal.user.c_str(),userid,dirid,fileid,modified));
 							if (glocal.pid == (pid_t)-1){
-								publishd_doone (glocal.TCPSERVER,glocal.pid,glocal.messages,glocal.hostname,glocal.keysdsock);
+								publishd_doone (glocal.TCPSERVER,glocal.pid,glocal.messages
+									,*glocal.sub_sq,glocal.hostname,glocal.keysdsock);
 							}
 						}
 					}	

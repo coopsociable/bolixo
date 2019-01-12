@@ -467,6 +467,7 @@ static void bod_list_talk (
 	deletes = glocal.deletes;
 }
 </mod>
+static bool nonstrict = false;
 <mod>
 static int bod_bolixoapi_login(
 	CONNECT_HTTP_INFO &hcon,	// Connection info to the bolixo directory
@@ -562,6 +563,7 @@ static void bod_publish(
 	const char *nodename)
 {
 	CONNECT_HTTP_INFO hcon;
+	if (nonstrict) hcon.setnonstrictmode();
 	if (hcon.init(dirserver)==-1){
 		tlmp_error ("bod_publish: CONNECT_HTTP_INFO::init failed: dirserver=%s\n",dirserver);
 	}else{
@@ -619,6 +621,7 @@ static void bod_record_email(
 	const char *nodename)
 {
 	CONNECT_HTTP_INFO hcon;
+	if (nonstrict) hcon.setnonstrictmode();
 	if (hcon.init(dirserver)==-1){
 		tlmp_error ("bod_publish: CONNECT_HTTP_INFO::init failed: dirserver=%s\n",dirserver);
 	}else{
@@ -690,6 +693,7 @@ static void bod_remote_interest_set(
 	const char *nodename)
 {
 	CONNECT_HTTP_INFO hcon;
+	if (nonstrict) hcon.setnonstrictmode();
 	hcon.host = server.ptr;
 	hcon.port = "443";
 	hcon.use_ssl = true;
@@ -774,6 +778,7 @@ static int bod_getpubkey (bool use_ssl,const char *hostname, string &pubkey)
 	glocal const char *hostname = hostname;
 	glocal string *pubkey = &pubkey;
 	CONNECT_HTTP_INFO con;
+	if (nonstrict) con.setnonstrictmode();
 	con.host = hostname;
 	con.use_ssl = use_ssl;
 	<call webapi_systempubkey>(con);
@@ -1975,6 +1980,7 @@ static int bod_main (
 						if (glocal.remote.size() > 0){
 							// Check if this user exists on the remote node
 							CONNECT_HTTP_INFO hcon;
+							if (nonstrict) hcon.setnonstrictmode();
 							hcon.host = glocal.remote;
 							hcon.port = "443";
 							hcon.use_ssl = true;
@@ -2699,6 +2705,7 @@ int main (int argc, char *argv[])
 		setarg (' ',"nodename",MSG_U(O_NODENAME,"My node name (URL)"),glocal.nodename,true);
 		setarg (' ',"dirserver",MSG_U(O_DIRSERVE,"Directory server"),glocal.dirserver,false);
 		setarg (' ',"maxaccts",MSG_U(O_MAXACCOUNTS,"Maximum accounts on this server"),glocal.maxaccts,false);
+		setarg (' ',"nonstrict",MSG_R(O_NONSTRICT),nonstrict,false);
 		setgrouparg ("Database");
 		setarg (' ',"dbserv","Database server",glocal.dbserv,false);
 		setarg (' ',"dbname","Database name",glocal.dbname,false);
