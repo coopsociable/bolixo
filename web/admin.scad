@@ -69,9 +69,25 @@ module juggler(){
     
 }
 
-view="gear";
+view="news";
 if (view=="gear"){
     gear();
 }else if (view=="juggler"){
     juggler();
+}else if (view=="dev"){
+    rotate([0,0,-20]){
+        gear();
+        translate([15.5,15.5,0]) rotate([0,0,15]) gear();
+        translate([-15.5,15.5,0]) rotate([0,0,15]) gear();
+    }
+}else if (view=="news"){
+    {
+        color("black") text(text="N",font="Heuristica:style=Bold Italic");
+        for (i=[1:4]){
+            color("gray") translate([i*2,i*2,-i]) scale([i/10,i/10,1])
+                text (text="N",font="Heuristica:style=Italic");
+            color("gray") translate([-i*2,i*2,-i]) scale([i/10,i/10,1])
+                text (text="N",font="Heuristica:style=Italic");
+        }
+    }
 }

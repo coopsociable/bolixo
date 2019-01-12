@@ -53,6 +53,7 @@ int main (int argc, char *argv[])
 			 "\tsetpassphrase pass-phrase\n"
 			 "\tsign usernum message\n"
 			 "\tstatus\n"
+			 "\twaitidle\n"
 			);
 		setarg ('p',"control","Unix socket to reach keysd",glocal.control,false);
 		setgrouparg("tests");
@@ -69,6 +70,20 @@ int main (int argc, char *argv[])
 				for (auto x:lines) printf ("%s\n",x);
 			</f>
 			</call>
+		}else if (strcmp(argv[0],"waitidle")==0 && argc==1){
+			glocal bool done = false;
+			while (!glocal.done){
+				<call bo_keysd_control_runstatus>(con);
+				<f ok>
+					if (queuesize==0 && !running){
+						glocal.done = true;
+					}else{
+						printf ("\tqueue size: %u\n",queuesize);
+						sleep (1);
+					}
+				</f>
+				</call>
+			}
 		}else if (strcmp(argv[0],"quit")==0 && argc==1){
 			<call bo_keysd_control_quit>(con);
 			<f ok>
@@ -109,7 +124,8 @@ int main (int argc, char *argv[])
 				if (glocal.content[last] != '\n') glocal.content += '\n';
 			}
 			for (unsigned i=0; i<glocal.nbrep; i++){
-				<call bo_keysd_control_sign>(con,atoi(argv[1]),glocal.content);
+				<call bo_keysd_control_sign>(con,atoi(argv[1])
+					,BOB_TYPE(glocal.content.c_str(),glocal.content.size(),false));
 				<f ok>
 					if (status == ERR_CODE_NONE){
 						glocal.ret = 0;

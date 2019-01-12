@@ -72,6 +72,7 @@ int fs_locate_dir (
 	const std::vector<unsigned> *listids,
 	const std::vector<char> *listmodes);
 
+int fs_verify(const BOB_TYPE &msg, EVP_PKEY *key, PARAM_STRING sig64);
 int fs_verify(PARAM_STRING msg, EVP_PKEY *key, PARAM_STRING sig64);
 EVP_PKEY *fs_load_public (PARAM_STRING p);
 void fs_free_public (EVP_PKEY *p);

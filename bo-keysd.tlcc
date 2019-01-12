@@ -181,7 +181,7 @@ std::string Base64Encode(unsigned char *sig, size_t sig_len)
 
 
 static int bo_keysd_sign(
-	const char *msg,
+	const BOB_TYPE &content,
 	EVP_PKEY *key,
 	string &result)	// Signature base64
 {
@@ -193,7 +193,7 @@ static int bo_keysd_sign(
 		/* Initialise the DigestSign operation - SHA-256 has been selected as the message digest function in this example */
 		if(EVP_DigestSignInit(mdctx, NULL, EVP_sha256(), NULL, key) == 1){
 			/* Call update with the message */
-			if(EVP_DigestSignUpdate(mdctx, msg, strlen(msg)) == 1){
+			if(EVP_DigestSignUpdate(mdctx, content.getbuffer(),content.getsize()) == 1){
 				// Finalise the DigestSign operation
 				// First call EVP_DigestSignFinal with a NULL sig parameter to obtain the length of the
 				// signature. Length is returned in slen */
@@ -332,6 +332,9 @@ int main (int argc, char *argv[])
 					tb.push_back(string_f("sub-process: %s",glocal.pid == (pid_t)-1 ? "not running" : "running"));
 					rep_status(tb);
 				</f>
+				<f runstatus>
+					rep_runstatus (glocal.accounts.size(),glocal.pid != (pid_t)-1);
+				</f>
 				<f quit>
 					endserver = true;
 				</f>
@@ -392,23 +395,19 @@ int main (int argc, char *argv[])
 						rep_sign(ERR_CODE_NOPASSPHRASE,"Pass phrase not set","");
 					}else{
 						glocal int userid = userid;
-						glocal const char *text = text;
+						glocal const BOB_TYPE *content = &content;
 						glocal ERR_CODE status = ERR_CODE_FAIL;
 						glocal string msg;
 						glocal string result;
-						<call sql_query>(*glocal.usq,"select priv_key from users where userid=%d",userid);
+						<call sql_query>(*glocal.usq,"select priv_key,name from users where userid=%d",userid);
 						<f onerow>
 							if (row[0] == NULL){
 								glocal.status = ERR_CODE_CANTSIGN;
-								glocal.msg = "No private key for this account, can't sign";
+								glocal.msg = string_f("No private key for account %s, can't sign",row[1]);
 							}else{
 								EVP_PKEY *p = bo_keysd_load_private (row[0],glocal.passphrase);
-if (p==NULL){
-	tlmp_error ("load_private %s userid=%d %s\n",glocal.passphrase.c_str(),glocal.userid,row[0]);
-	p = bo_keysd_load_private (row[0],glocal.passphrase);
-}
 								if (p != NULL){
-									if (bo_keysd_sign(glocal.text,p,glocal.result) != -1){
+									if (bo_keysd_sign(*glocal.content,p,glocal.result) != -1){
 										glocal.status = ERR_CODE_NONE;
 									}else{
 										glocal.status = ERR_CODE_FAIL;

@@ -809,6 +809,19 @@ static int bod_getpubkey (const char *nodename, string &pubkey)
 }
 </mod>
 <mod>
+// Get the name associated with a userid
+static string bod_getname(unsigned userid)
+{
+	glocal string ret;
+	<call sql_query>("select name from id2name where userid=%u",userid);
+	<f onerow>
+		glocal.ret = row[0];
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+<mod>
 static int bod_main (
 	const char *bind,
 	const char *portstr,
@@ -1159,6 +1172,7 @@ static int bod_main (
 								glocal.info.file_type = (FILE_TYPE)atoi(row[4]);
 								glocal.info.size = strlen(row[0]); 
 								glocal.bod_client.rep_readfile (true,"",row[0],glocal.info);
+								glocal.info.owner = bod_getname (glocal.entry.ownerid);
 							}else{
 								glocal.entry.msg = MSG_U(E_USEREADBOB,"Internal error, must use readfile_bob for large content");
 							}
@@ -1189,6 +1203,7 @@ static int bod_main (
 							glocal.info.signature = row[2] != NULL ? row[2] : "";
 							glocal.info.modified = glocal.entry.modified;
 							glocal.info.file_type = (FILE_TYPE)atoi(row[3]);
+							glocal.info.owner = bod_getname (glocal.entry.ownerid);
 							if (row[0] != NULL){
 								unsigned len = strlen(row[0]);
 								glocal.info.size = len;
@@ -1804,8 +1819,8 @@ static int bod_main (
 				</call> 
 				rep_verifysign (glocal.status,glocal.msg);
 			</f>
-			<f sendtalk>	// sessionid owner to:v groupname groupowner content:o = success:b msg handle
-				<call bo_writed_client_sendtalk>(glocal.con,sessionid,owner,to,groupname,groupowner,content,more);
+			<f sendtalk>	// sessionid owner to:v groupname groupowner content:o sign createdby = success:b msg handle
+				<call bo_writed_client_sendtalk>(glocal.con,sessionid,owner,to,groupname,groupowner,content,more,sign);
 				<f ok>
 					glocal.bod_client.rep_sendtalk(success,msg,handle);
 				</f>

@@ -683,6 +683,7 @@ elif [ "$1" = "createadmin" ] ; then # config: Create the admin account
 		&& $0 bo-writed-control confirmuser admin \
 		&& $0 bo-writed-control makeadmin admin@$HOSTNAME 1
 	$0 bo-writed-control mailctrl 1 keep
+	$0 wait-for-keysd
 	# Make the admin account visible (public page)
 	echo $BOFS -u admin misc -w -V 1
 	$BOFS -u admin misc -w -V 1
@@ -825,18 +826,12 @@ elif [ "$1" = "test-sequence" ] ; then # S: Reloads database (big,medium,real,no
 	if [ "$ALL" = 1 ] ; then
 		./scripts/groups.sh sequence
 	fi
-	echo ======= wait for keysd ====
-	while true
-	do
-		LINE=`$0 bo-keysd-control status | grep "accounts size"`
-		echo $LINE
-		if [ "$LINE" = "accounts size: 0" ] ; then
-			break
-		fi
-		sleep 1
-	done
+	$0 wait-for-keysd
 	echo "======= logs ====="
 	$0 syslog-logs
+elif [ "$1" = "wait-for-keysd" ] ; then # S: wait until keysd has generated all keys
+	echo ======= wait for keysd ====
+	$0 bo-keysd-control waitidle
 elif [ "$1" = "test-sendmail" ] ;then # prod: ask writed to send one email
 	./bo-writed-control -p /var/lib/lxc/writed/rootfs/tmp/bo-writed-0.sock sendmail jack@dns.solucorp.qc.ca test body1
 elif [ "$1" = "eraseanon-lxc" ] ; then # prod:

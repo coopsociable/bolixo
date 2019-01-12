@@ -90,6 +90,9 @@ make install
 /etc/init.d/bolixoserv
 /var/www/html/about.html
 /var/www/html/favicon.ico
+/var/www/html/favicon.jpg
+/var/www/html/dev-photo.jpg
+/var/www/html/news-photo.jpg
 /var/www/html/robots.txt
 /var/log/bolixo
 /etc/bash_completion.d/bolixo

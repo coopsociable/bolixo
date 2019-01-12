@@ -26,23 +26,23 @@ compile: $(PROGS)
 bo-webtest: bo-webtest.tlcc proto/webapi.protoh /usr/include/trlitool/trlitool.h
 	cctlcc -Wall $(OPTIONS) bo-webtest.tlcc _dict.o -o bo-webtest $(LIBS) -lssl
 
-bofs: bofs.tlcc proto/bod_client.protoh proto/webapi.protoh proto/bolixoapi.protoh filesystem.h 
-	cctlcc -Wall $(OPTIONS) bofs.tlcc _dict.o -o bofs $(LIBS) -lssl
+bofs: bofs.tlcc proto/bod_client.protoh proto/webapi.protoh proto/bolixoapi.protoh verify.o 
+	cctlcc -Wall $(OPTIONS) bofs.tlcc verify.o _dict.o -o bofs $(LIBS) -lssl 
 
 _dict.o: _dict.cc bolixo.m
 	gcc -Wall -c _dict.cc -o _dict.o
 	gcc -Wall -fPIC -c _dict.cc -o _dict.os
 
-bolixod: bolixod.tlcc proto/bolixod_control.protoh proto/bolixod_client.protoh filesystem.o
-	cctlcc -Wall $(OPTIONS) bolixod.tlcc filesystem.o _dict.o -o bolixod $(LIBS) -lssl -ltlmpsql -L/usr/lib64/mysql -lmysqlclient
+bolixod: bolixod.tlcc proto/bolixod_control.protoh proto/bolixod_client.protoh filesystem.o verify.o
+	cctlcc -Wall $(OPTIONS) bolixod.tlcc filesystem.o verify.o _dict.o -o bolixod $(LIBS) -lssl -ltlmpsql -L/usr/lib64/mysql -lmysqlclient
 
 bolixod-control: bolixod-control.tlcc proto/bolixod_control.protoh
 	cctlcc -Wall $(OPTIONS) bolixod-control.tlcc _dict.o -o bolixod-control $(LIBS) 
 
 bod: bod.tlcc filesystem.o proto/bod_control.protoh proto/bod_client.protoh proto/bod_admin.protoh \
 	proto/bo-writed_client.protoh proto/bo-sessiond_client.protoh proto/bolixod_client.protoh \
-	proto/bolixoapi.protoh proto/webapi.protoh _dict.o
-	cctlcc -Wall $(OPTIONS) bod.tlcc filesystem.o _dict.o -o bod $(LIBS) -lssl -ltlmpsql -L/usr/lib64/mysql -lmysqlclient
+	proto/bolixoapi.protoh proto/webapi.protoh _dict.o filesystem.o verify.o
+	cctlcc -Wall $(OPTIONS) bod.tlcc filesystem.o verify.o _dict.o -o bod $(LIBS) -lssl -ltlmpsql -L/usr/lib64/mysql -lmysqlclient
 
 bod-client: bod-client.tlcc proto/bod_client.protoh proto/bod_admin.protoh \
 	proto/bo-sessiond_admin.protoh
@@ -53,8 +53,8 @@ bod-control: bod-control.tlcc proto/bod_control.protoh
 
 bo-writed: bo-writed.tlcc filesystem.o proto/bo-writed_control.protoh proto/bo-writed_client.protoh \
 	proto/bo-sessiond_admin.protoh proto/bo-log.protoh proto/bo-keysd_control.protoh \
-	proto/publishd_client.protoh
-	cctlcc -Wall $(OPTIONS) bo-writed.tlcc filesystem.o _dict.o -o bo-writed $(LIBS) -ltlmpsql -L/usr/lib64/mysql -lmysqlclient
+	proto/publishd_client.protoh verify.o filesystem.o
+	cctlcc -Wall $(OPTIONS) bo-writed.tlcc filesystem.o verify.o _dict.o -o bo-writed $(LIBS) -ltlmpsql -L/usr/lib64/mysql -lmysqlclient
 
 bo-writed-control: bo-writed-control.tlcc proto/bo-writed_control.protoh
 	cctlcc -Wall $(OPTIONS) bo-writed-control.tlcc _dict.o -o bo-writed-control $(LIBS)
@@ -191,6 +191,9 @@ ssltestsign: ssltestsign.tlcc
 filesystem.o: filesystem.tlcc filesystem.h proto/bod_client.protoh
 	cctlcc -Wall $(OPTIONS) -c filesystem.tlcc -o filesystem.o
 
+verify.o: verify.tlcc filesystem.h
+	cctlcc -Wall $(OPTIONS) -c verify.tlcc -o verify.o
+
 clean:
 	rm -f $(PROGS) *.o *.os proto/*.protoh proto/*.protoch proto/*.protodef web/*.hc web/*.os
 
@@ -235,6 +238,9 @@ install: msg.eng msg.fr
 	install -m755 web/webapi.hc $(RPM_BUILD_ROOT)/var/www/html/webapi.hc
 	install -m755 web/bolixoapi.hc $(RPM_BUILD_ROOT)/var/www/html/bolixoapi.hc
 	install -m644 web/favicon.ico $(RPM_BUILD_ROOT)/var/www/html/favicon.ico
+	install -m644 web/favicon.jpg $(RPM_BUILD_ROOT)/var/www/html/favicon.jpg
+	install -m644 web/dev-photo.jpg $(RPM_BUILD_ROOT)/var/www/html/dev-photo.jpg
+	install -m644 web/news-photo.jpg $(RPM_BUILD_ROOT)/var/www/html/news-photo.jpg
 	install -m644 web/about.html $(RPM_BUILD_ROOT)/var/www/html/about.html
 	install -m644 web/robots.txt $(RPM_BUILD_ROOT)/var/www/html/robots.txt
 	install -m644 web/private.png $(RPM_BUILD_ROOT)/var/www/html/private.png

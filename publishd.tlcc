@@ -103,6 +103,7 @@ struct HANDLE_INFO: public ARRAY_OBJ{
 #define bo_keysd_control_quit_NOTNEED
 #define bo_keysd_control_debug_NOTNEED
 #define bo_keysd_control_debugfile_NOTNEED
+#define bo_keysd_control_runstatus_NOTNEED
 #include "proto/bo-keysd_control.protoch"
 
 struct PUBLISH_MESSAGE{
@@ -149,7 +150,7 @@ static int publishd_remotelogin (
 			con.port = glocal.keysdsock;
 			glocal string sign;
 			*glocal.sessionid = sessionid;
-			<call bo_keysd_control_sign>(con,glocal.userid,sessionid);
+			<call bo_keysd_control_sign>(con,glocal.userid,BOB_TYPE(sessionid,strlen(sessionid),false));
 			<f ok>
 				if (status == ERR_CODE_NONE) glocal.sign = sign;
 			</f>
@@ -203,6 +204,7 @@ static void publishd_doone (
 				// Do the job
 				close (tb[0]);
 				glocal BOB_TYPE content;
+				glocal string sign;
 				glocal FILE *fin = NULL;
 				glocal bool data_loaded=false;
 				glocal bool some_errors = false;
@@ -212,9 +214,10 @@ static void publishd_doone (
 					glocal CONNECT_HTTP_INFO hcon;
 					// Load the data only once since it is copied to potentially more than one node
 					if (!glocal.data_loaded){
-						<call sql_query>(*glocal.sq,"select content from files where id=%u and modified='%s'"
+						<call sql_query>(*glocal.sq,"select content,signature from files where id=%u and modified='%s'"
 							,glocal.todo.fileid,glocal.todo.modified.c_str());
 						<f onerow>
+							if (row[1] != NULL) glocal.sign = row[1];
 							if (row[0] != NULL){
 								glocal.content.setbuffer((const void*)row[0],strlen(row[0]),true);
 							}else{
@@ -244,7 +247,7 @@ static void publishd_doone (
 							glocal bool error = false;
 							static vector<string> empty;
 							if (glocal.fin == NULL){
-								<call webapi_sendtalk>(glocal.hcon,glocal.sessionid,"",empty,"public",glocal.remote_user,glocal.content,false);
+								<call webapi_sendtalk>(glocal.hcon,glocal.sessionid,"",empty,"public",glocal.remote_user,glocal.content,false,glocal.sign,"");
 								<f ok>
 									if (!success){
 										tlmp_error ("message to %s internal=%d success=%d msg=%s\n"
@@ -264,7 +267,7 @@ static void publishd_doone (
 									more = n==sizeof(buf);
 									BOB_TYPE content((const void*)buf,n,false);
 									if (glocal.handle.size() == 0){
-										<call webapi_sendtalk>(glocal.hcon,glocal.sessionid,"",empty,"public",glocal.remote_user,content,more);
+										<call webapi_sendtalk>(glocal.hcon,glocal.sessionid,"",empty,"public",glocal.remote_user,content,more,glocal.sign,"");
 										<f ok>
 											glocal.handle = handle;
 											if(!success){

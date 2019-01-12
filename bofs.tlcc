@@ -43,6 +43,7 @@
 #include "bolixo.h"
 #include "bolixo.m"
 #include <translat.h>
+#include "filesystem.h"
 #include "instrument.h"
 
 using namespace std;
@@ -655,6 +656,7 @@ static int bofs_cat_rest (CONTEXT &ctx, const char *handle, FILE *fin, bool is_h
 static int bofs_cat_bofile (CONTEXT &ctx, const char *path, FILE *fout)
 {
 	glocal int ret = 0;
+	glocal const char *path = path;
 	glocal FILE *fout = fout;
 	glocal CONTEXT *ctx = &ctx;
 	<call bod_client_readfile_bob> (ctx.con,ctx.sessionid,path,ctx.threshold,false);
@@ -663,6 +665,33 @@ static int bofs_cat_bofile (CONTEXT &ctx, const char *path, FILE *fout)
 			bofs_error ("cat",internal_error,msg);
 			glocal.ret = -1;
 		}else{
+			if (info.signature[0] == '\0'){
+				tlmp_error (MSG_U(E_NOSIGFORFILE,"No signature for file %s, owner %s\n")
+					,glocal.path,info.owner);
+			}else if (!more){
+				// For now, we check signature of small files.
+				glocal string pubkey;
+				glocal const char *owner = info.owner;
+				<call bod_client_getpubkey>(glocal.ctx->con,info.owner);
+				<f ok>
+					if (!success){
+						tlmp_error (MSG_U(E_CANTGETOWNERPUBKEY,"Can't get public key for user %s\n"),glocal.owner);
+					}else{
+						glocal.pubkey = pubkey;
+					}
+				</f>
+				</call>
+				if (glocal.pubkey.size() > 0){
+					EVP_PKEY *p = fs_load_public (glocal.pubkey);
+					if (p != NULL){
+						if (fs_verify(content,p,info.signature)==-1){
+							tlmp_error (MSG_U(E_FILESIGNOMATCH,"Signature does not match for file %s, owner %s\n")
+								,glocal.path,info.owner);
+						}
+						fs_free_public (p);
+					}
+				}
+			}
 			fwrite (content.getbuffer(),1,content.getsize(),glocal.fout);
 			glocal bool more = more;
 			while (glocal.more){
@@ -1710,7 +1739,7 @@ static int bofs_send_talk (
 				</f>
 				</call>
 			}else{
-				<call bod_client_sendtalk>(ctx.con,ctx.sessionid,owner,users,groupname,groupowner,content,more);
+				<call bod_client_sendtalk>(ctx.con,ctx.sessionid,owner,users,groupname,groupowner,content,more,"","");
 				<f ok>
 					if (!success){
 						bofs_error ("msgs",internal_error,msg);
@@ -1725,7 +1754,7 @@ static int bofs_send_talk (
 				</call>
 			}
 		}else{
-			<call webapi_sendtalk>(ctx.hcon,ctx.hsessionid,owner,users,groupname,groupowner,content,more);
+			<call webapi_sendtalk>(ctx.hcon,ctx.hsessionid,owner,users,groupname,groupowner,content,more,"","");
 			<f ok>
 				if (!success){
 					bofs_error ("msgs",internal_error,msg);

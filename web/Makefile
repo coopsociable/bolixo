@@ -33,7 +33,7 @@ install: all
 
 
 clean:
-	rm -f *.hc *.o
+	rm -f *.hc *.o *.os
 
 util.os: util.tlcc util.h /usr/include/tlmp/tlmpweb.h /usr/include/tlmp/tlmpweb.p
 	cctlcc -fPIC -Wall $(OPTIONS) -c util.tlcc -o util.os
@@ -65,9 +65,9 @@ bolixo.png: bolixo.scad Makefile
 	openscad --imgsize 200,40 -obolixo.png -Dview=\"bolixo\" --colorscheme=Nature --camera=70,20,110,70,20,0 bolixo.scad
 	convert bolixo.png -fuzz 20% -transparent white bolixo.png 
 
-favicon.png: bolixo.scad Makefile
-	openscad --imgsize 60,40 -ofavicon.png -Dview=\"favicon\" --colorscheme=Nature --camera=35,20,110,35,20,0 bolixo.scad
-	convert favicon.png -fuzz 20% -transparent white favicon.png 
+favicon.jpg: bolixo.scad Makefile
+	openscad --imgsize 40,40 -ofavicon.png -Dview=\"favicon\" --colorscheme=Nature --camera=35,20,160,35,20,0 bolixo.scad
+	convert favicon.png -fuzz 20% -transparent white favicon.jpg 
 
 admin.jpg: admin.scad Makefile
 	openscad --imgsize 40,40 -oadmin.png -Dview=\"gear\" --colorscheme=Nature --camera=0,0,60,0,0,0 admin.scad
@@ -78,6 +78,16 @@ admin-photo.jpg: admin.scad Makefile
 	openscad --imgsize 100,100 -oadmin-photo.png -Dview=\"juggler\" --colorscheme=Nature --camera=20,20,100,20,20,0 admin.scad
 	convert admin-photo.png admin-photo.jpg
 	rm -f admin-photo.png
+
+dev-photo.jpg: admin.scad Makefile
+	openscad --imgsize 100,100 -odev-photo.png -Dview=\"dev\" --colorscheme=Nature --camera=5,10,120,5,10,0 admin.scad
+	convert dev-photo.png dev-photo.jpg
+	rm -f dev-photo.png
+
+news-photo.jpg: admin.scad Makefile
+	openscad --imgsize 100,100 -onews-photo.png -Dview=\"news\" --colorscheme=Nature --camera=5,5,60,5,5,0 admin.scad
+	convert news-photo.png news-photo.jpg
+	rm -f news-photo.png
 
 genbackground: genbackground.tlcc
 	cctlcc -Wall genbackground.tlcc -o genbackground -lstdc++

@@ -69,6 +69,7 @@ using namespace std;
 #define bo_keysd_control_debug_NOTNEED
 #define bo_keysd_control_debugfile_NOTNEED
 #define bo_keysd_control_checkpassphrase_NOTNEED
+#define bo_keysd_control_runstatus_NOTNEED
 #include "proto/bo-keysd_control.protoch"
 #include "proto/bo-log.protoch"
 #include "proto/publishd_client.protoch"
@@ -328,7 +329,7 @@ static void bo_writed_set_msgid(string &msgid, const char *replyto)
 }
 
 <mod>
-static string bo_writed_sign (CONNECT_INFO &con_keys, unsigned userid, PARAM_STRING content)
+static string bo_writed_sign (CONNECT_INFO &con_keys, unsigned userid, const BOB_TYPE &content)
 {
 	glocal string ret;
 	// Sign the message
@@ -344,6 +345,10 @@ static string bo_writed_sign (CONNECT_INFO &con_keys, unsigned userid, PARAM_STR
 	return glocal.ret;
 }
 </mod>
+static string bo_writed_sign (CONNECT_INFO &con_keys, unsigned userid, PARAM_STRING content)
+{
+	return bo_writed_sign (con_keys,userid,BOB_TYPE(content.ptr,strlen(content.ptr),false));
+}
 
 /*
 	Send a message to a project or reply to a message of a project
@@ -706,6 +711,7 @@ static int bo_writed_addfile_bob (
 	unsigned userid,
 	const BOB_TYPE &content,
 	bool more,
+	const char *presign,	// Pre-signed content
 	string &fileuuid,
 	string &msg,
 	string &handle,
@@ -721,11 +727,15 @@ static int bo_writed_addfile_bob (
 		const char *content_str = NULL;
 		string tmp;
 		string sign;
-		if (!more && file_type == FILE_TEXT){
-			tmp = string((const char *) content.getbuffer(),content.getsize());
-			content_str = tmp.c_str();
-			if (sessionid != NULL){
-				sign = bo_writed_sign (con_keys,userid,tmp);
+		if (presign[0] != '\0') sign = presign;
+		if (!more){
+			if (file_type == FILE_TEXT){
+				tmp = string((const char *) content.getbuffer(),content.getsize());
+				content_str = tmp.c_str();
+			}
+			if (presign[0] != '\0'){
+			}else if (sessionid != NULL){
+				sign = bo_writed_sign (con_keys,userid,content);
 			}
 		}
 		if (fs_insert_entry(dirid,fileid,modified.buf,basename,type)==-1){
@@ -1200,7 +1210,7 @@ static void bo_writed_send_admin_msg (
 			BOB_TYPE content(message.ptr,strlen(message.ptr),false);
 			CONNECT_INFO con_keys;
 			bo_writed_addfile_bob (con_keys,NULL,NULL,ENTRY_MSG,dirid,adminid
-				,content,false,msgid,msg,handle,fileid,modified);
+				,content,false,"",msgid,msg,handle,fileid,modified);
 		}
 	}
 }
@@ -1993,7 +2003,7 @@ int main (int argc, char *argv[])
 						int fileid;
 						DATEASC modified;
 						bo_writed_addfile_bob (glocal.ctx.con_keys,sessionid,entry.basename,ENTRY_FILE,entry.dirid,entry.userid
-								,content,more
+								,content,more,""
 								,msgid,msg,handle,fileid,modified);
 						if (msg.size() > 0){
 							rep_addfile_bob (false,"",msg);
@@ -2625,7 +2635,7 @@ int main (int argc, char *argv[])
 								string msgid;
 								DATEASC modified;
 								bo_writed_addfile_bob (glocal.ctx.con_keys,glocal.sessionid,NULL,ENTRY_MSG,dirid,userid
-									,*glocal.content,glocal.more
+									,*glocal.content,glocal.more,""
 									,msgid,glocal.msg,glocal.handle,fileid,modified);
 							}
 						}
@@ -2642,7 +2652,7 @@ int main (int argc, char *argv[])
 						rep_sendtalk_anon (true,glocal.msg,glocal.handle);
 					}
 				</f>
-				<f sendtalk>	// sessionid owner to:v groupname groupowner content:o more:b = success:b msg handle
+				<f sendtalk>	// sessionid owner to:v groupname groupowner content:o more:b sign = success:b msg handle
 					glocal const char *sessionid = sessionid;
 					glocal const BOB_TYPE *content = &content;
 					glocal bool more = more;
@@ -2651,6 +2661,7 @@ int main (int argc, char *argv[])
 					glocal string msg;
 					glocal const char *groupname = groupname;
 					glocal const char *groupowner = groupowner;
+					glocal const char *sign = sign;
 					glocal unsigned userid = bo_writed_get_group_owner (glocal.con, sessionid, owner, glocal.username, glocal.msg);
 					if (glocal.userid > 0){
 						// sendtalk (and sendtalk_file) may send to a group, to a list of users, or both.
@@ -2681,7 +2692,7 @@ int main (int argc, char *argv[])
 										string msgid;
 										DATEASC modified;
 										bo_writed_addfile_bob (glocal.ctx.con_keys,glocal.sessionid,NULL,ENTRY_MSG,dirid,glocal.userid
-											,*glocal.content,glocal.more
+											,*glocal.content,glocal.more,glocal.sign
 											,msgid,glocal.msg,glocal.handle,fileid,modified);
 										bool remote_user = strchr(glocal.username.c_str(),'@')!=NULL;
 										if (remote_user){
@@ -2729,7 +2740,7 @@ int main (int argc, char *argv[])
 									string msgid;
 									DATEASC modified;
 									bo_writed_addfile_bob (glocal.ctx.con_keys,glocal.sessionid,NULL,ENTRY_MSG,dirid,glocal.userid
-										,*glocal.content,glocal.more
+										,*glocal.content,glocal.more,glocal.sign
 										,msgid,glocal.msg,glocal.handle,fileid,modified);
 									glocal.uids.erase(glocal.uids.begin());
 									for (auto &u:glocal.uids){
@@ -3024,7 +3035,7 @@ int main (int argc, char *argv[])
 					glocal bool success;
 					glocal string msg;
 					glocal string sign;
-					<call bo_keysd_control_sign>(glocal.ctx.con_keys,-2,msg);
+					<call bo_keysd_control_sign>(glocal.ctx.con_keys,-2,BOB_TYPE(msg,strlen(msg),false));
 					<f ok>
 						glocal.success = status == ERR_CODE_NONE ? true : false;
 						glocal.msg = msg;
