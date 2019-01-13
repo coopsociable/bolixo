@@ -454,6 +454,7 @@ struct HANDLE{
 	// Extra information kept when talking to publishd
 	int ownerid;
 	int dirid;
+	string name;
 	HANDLE (int _fileid, PARAM_STRING _modified, FILE *_f, PARAM_STRING _sessionid){
 		fileid = _fileid;
 		modified = _modified.ptr;
@@ -513,17 +514,18 @@ FILE *fs_alloc_file_handle (int fileid, PARAM_STRING modified, const char *mode,
 	}
 	return ret;
 }
-void fs_file_handle_addextra (PARAM_STRING handle, int ownerid, int dirid)
+void fs_file_handle_addextra (PARAM_STRING handle, int ownerid, int dirid, PARAM_STRING name)
 {
 	auto h = handles.find(handle.ptr);
 	if (h != handles.end()){
 		h->second.ownerid = ownerid;
 		h->second.dirid = dirid;
+		h->second.name = name.ptr;
 	}else{
 		tlmp_error ("Adding to unknown file handle\n");
 	}
 }
-int fs_file_handle_getextra (PARAM_STRING handle, int &ownerid, int &dirid, int &fileid, string &modified)
+int fs_file_handle_getextra (PARAM_STRING handle, int &ownerid, int &dirid, int &fileid, string &modified, string &name)
 {
 	int ret = -1;
 	auto h = handles.find(handle.ptr);
@@ -533,6 +535,7 @@ int fs_file_handle_getextra (PARAM_STRING handle, int &ownerid, int &dirid, int 
 		dirid = h->second.dirid;
 		fileid = h->second.fileid;
 		modified = h->second.modified;
+		name = h->second.name;
 	}
 	return ret;
 }

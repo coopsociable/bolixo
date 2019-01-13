@@ -2051,11 +2051,11 @@ int main (int argc, char *argv[])
 							}
 							if (!more){
 								int ownerid,dirid,fileid;
-								string modified;
-								if (fs_file_handle_getextra(handle,ownerid,dirid,fileid,modified)!=-1
+								string modified,name;
+								if (fs_file_handle_getextra(handle,ownerid,dirid,fileid,modified,name)!=-1
 									&& ownerid != -1){ 
 									<call publishd_client_sendmessage>(glocal.ctx.con_publish,ownerid
-										,dirid,fileid,modified);
+										,dirid,fileid,modified,name);
 									<f ok>
 										if (!success) tlmp_error ("publishd_client_sendmessage: %s\n",msg);
 									</f>
@@ -2668,7 +2668,7 @@ int main (int argc, char *argv[])
 						rep_sendtalk_anon (true,glocal.msg,glocal.handle);
 					}
 				</f>
-				<f sendtalk>	// sessionid owner to:v groupname groupowner content:o more:b sign = success:b msg handle
+				<f sendtalk>	// sessionid owner to:v groupname groupowner content:o more:b name sign = success:b msg handle
 					glocal const char *sessionid = sessionid;
 					glocal const BOB_TYPE *content = &content;
 					glocal bool more = more;
@@ -2677,6 +2677,7 @@ int main (int argc, char *argv[])
 					glocal string msg;
 					glocal const char *groupname = groupname;
 					glocal const char *groupowner = groupowner;
+					glocal const char *name = name;
 					glocal const char *sign = sign;
 					glocal unsigned userid = bo_writed_get_group_owner (glocal.con, sessionid, owner, glocal.username, glocal.msg);
 					if (glocal.userid > 0){
@@ -2707,7 +2708,8 @@ int main (int argc, char *argv[])
 										int fileid;
 										string msgid;
 										DATEASC modified;
-										bo_writed_addfile_bob (glocal.ctx.con_keys,glocal.sessionid,NULL,ENTRY_MSG,dirid,glocal.userid
+										const char *ptr_name = glocal.name[0] != '\0' ? glocal.name : NULL;
+										bo_writed_addfile_bob (glocal.ctx.con_keys,glocal.sessionid,ptr_name,ENTRY_MSG,dirid,glocal.userid
 											,*glocal.content,glocal.more,glocal.sign
 											,msgid,glocal.msg,glocal.handle,fileid,modified);
 										bool remote_user = strchr(glocal.username.c_str(),'@')!=NULL;
@@ -2720,13 +2722,13 @@ int main (int argc, char *argv[])
 											if (strcmp(glocal.groupname,"public")==0){
 												if (!glocal.more){
 													<call publishd_client_sendmessage>(glocal.ctx.con_publish,ownerid
-														,dirid,fileid,modified.buf);
+														,dirid,fileid,modified.buf,msgid);
 													<f ok>
 														if (!success) tlmp_error ("publishd_client_sendmessage: %s\n",msg);
 													</f>
 													</call>
 												}else{
-													fs_file_handle_addextra (glocal.handle,ownerid,dirid);
+													fs_file_handle_addextra (glocal.handle,ownerid,dirid,msgid);
 												}
 											}
 										}
@@ -2821,7 +2823,7 @@ int main (int argc, char *argv[])
 								bo_writed_update_interest(created,glocal.groupname,ownerid,dirid);
 								if (strcmp(glocal.groupname,"public")==0){
 									<call publishd_client_sendmessage>(glocal.ctx.con_publish,ownerid
-										,dirid,glocal.srcentry.entryid,glocal.srcentry.modified);
+										,dirid,glocal.srcentry.entryid,glocal.srcentry.modified,newname);
 									<f ok>
 										if (!success) tlmp_error ("publishd_client_sendmessage: %s\n",msg);
 									</f>

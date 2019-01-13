@@ -108,16 +108,18 @@ struct HANDLE_INFO: public ARRAY_OBJ{
 
 struct PUBLISH_MESSAGE{
 	string user;
+	string name;
 	unsigned userid;
 	unsigned dirid;
 	unsigned fileid;
 	string modified;
-	PUBLISH_MESSAGE(const char *_user, unsigned _userid, unsigned _dirid, unsigned _fileid, const char *_modified){
+	PUBLISH_MESSAGE(const char *_user, unsigned _userid, unsigned _dirid, unsigned _fileid, const char *_modified, const char *_name){
 		user = _user;
 		userid = _userid;
 		dirid = _dirid;
 		fileid = _fileid;
 		modified = _modified;
+		name = _name;
 	}
 	PUBLISH_MESSAGE(){
 		userid = (unsigned)-1;
@@ -247,7 +249,8 @@ static void publishd_doone (
 							glocal bool error = false;
 							static vector<string> empty;
 							if (glocal.fin == NULL){
-								<call webapi_sendtalk>(glocal.hcon,glocal.sessionid,"",empty,"public",glocal.remote_user,glocal.content,false,glocal.sign,"");
+								<call webapi_sendtalk>(glocal.hcon,glocal.sessionid,"",empty,"public",glocal.remote_user
+									,glocal.content,false,glocal.todo.name,glocal.sign,"");
 								<f ok>
 									if (!success){
 										tlmp_error ("message to %s internal=%d success=%d msg=%s\n"
@@ -267,7 +270,8 @@ static void publishd_doone (
 									more = n==sizeof(buf);
 									BOB_TYPE content((const void*)buf,n,false);
 									if (glocal.handle.size() == 0){
-										<call webapi_sendtalk>(glocal.hcon,glocal.sessionid,"",empty,"public",glocal.remote_user,content,more,glocal.sign,"");
+										<call webapi_sendtalk>(glocal.hcon,glocal.sessionid,"",empty,"public",glocal.remote_user
+											,content,more,glocal.todo.name,glocal.sign,"");
 										<f ok>
 											glocal.handle = handle;
 											if(!success){
@@ -533,7 +537,7 @@ int main (int argc, char *argv[])
 							tlmp_error ("No user for userid=%u\n",userid);
 						}else{
 							glocal.messages_sent++;
-							glocal.messages.emplace_back(PUBLISH_MESSAGE(glocal.user.c_str(),userid,dirid,fileid,modified));
+							glocal.messages.emplace_back(PUBLISH_MESSAGE(glocal.user.c_str(),userid,dirid,fileid,modified,name));
 							if (glocal.pid == (pid_t)-1){
 								publishd_doone (glocal.TCPSERVER,glocal.pid,glocal.messages
 									,*glocal.sub_sq,glocal.hostname,glocal.keysdsock);
