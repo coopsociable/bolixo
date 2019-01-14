@@ -265,6 +265,7 @@ elif [ "$1" = "restart" ] ; then # prod: restart some services (webs, internals,
 		echo services are:
 		echo
 		echo "    " internals "(restart everything except the databases, web and exim)"
+		echo "    " sqls "(restart all databases)"
 		echo "    " webs "(All four web... services)"
 		echo "    " horizon "(may loose few connections)"
 		echo "    " bo-mon bod bolixod keysd protocheck publishd sessiond trli-syslog writed
@@ -298,11 +299,18 @@ elif [ "$1" = "restart" ] ; then # prod: restart some services (webs, internals,
 		for serv in $*
 		do
 			if [ "$serv" = "internals" ] ; then
-				SERVICES="bo-mon trli-syslog"
+				SERVICES="$SERVICES bo-mon trli-syslog"
 				for std in bolixod bod writed sessiond keysd publishd protocheck
 				do
 					if [ -d /var/lib/lxc/$std/rootfs ] ; then
 						SERVICES="$SERVICES $std"
+					fi
+				done
+			elif [ "$serv" = "sqls" ] ; then
+				for db in bosqlddata bosqlduser bosqldbolixo
+				do
+					if [ -d /var/lib/lxc/$db/rootfs ] ; then
+						SERVICES="$SERVICES $db"
 					fi
 				done
 			else
