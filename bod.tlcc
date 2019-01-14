@@ -2103,16 +2103,16 @@ static int bod_main (
 			<f interest_check> // sessionid owner offset:u nb:u = success:b msg messages:U{SHORTMSG}v
 				glocal unsigned nb = nb;
 				glocal string msg;
-				glocal vector<SHORTMSG> messages;
+				glocal map<string,SHORTMSG> mp;
 				unsigned userid = bo_writed_get_group_owner (glocal.con_sess, sessionid, owner, glocal.msg);
 				if (userid != 0){
-					<call sql_query>("select id2name.name,dirs2.name,dirs2.modified,files.filetype,dirs2.itemid,files.content from interests"
+					<call sql_query>("select id2name.name,dirs2.name,dirs2.modified,files.filetype,dirs2.itemid,files.content,dirs2.type from interests"
 						" join id2name on id2name.userid = interests.check_userid"
 						" left join dirs_content on interests.dirid=dirs_content.itemid"
 						" left join marks on marks.userid=%u and marks.itemid=interests.dirid"
 						" left join dirs_content dirs2 on interests.dirid = dirs2.dirid and (marks.modified is null or dirs2.modified > marks.modified)"
 						" join files on dirs2.itemid = files.id"
-						" where interests.userid=%u order by dirs2.modified desc limit %u,%u",userid,userid,offset,nb);
+						" where interests.userid=%u order by dirs2.eventtime",userid,userid);
 					<f onerow>
 						// If the dirid is -1 in interests, there nothing to show
 						// row[1] is null
@@ -2122,7 +2122,12 @@ static int bod_main (
 							msg.uuid = row[1];
 							const char *modified = row[2];
 							msg.submit = modified;
-							msg.file_type = row[3] == NULL ? FILE_UNKNOWN : (FILE_TYPE)atoi(row[3]);
+							ENTRY_TYPE type = row[6] == NULL ? ENTRY_DELETED : (ENTRY_TYPE)atoi(row[6]);
+							if (type == ENTRY_DELETED){
+								msg.file_type = FILE_UNKNOWN;
+							}else{
+								msg.file_type = row[3] == NULL ? FILE_UNKNOWN : (FILE_TYPE)atoi(row[3]);
+							}
 							if (row[5] != NULL){
 								// Limit the number of lines if more than one message was requested
 								if (glocal.nb == 1){
@@ -2134,16 +2139,23 @@ static int bod_main (
 							}else{
 								msg.size = fs_get_filesize(atoi(row[4]),modified);
 							}
-							glocal.messages.push_back(msg);
+							glocal.mp[msg.uuid] = msg;
 						}
 					</f>
 					</call>
 				}	
+				vector<SHORTMSG> msgs;
 				if (glocal.msg.size() > 0){
-					glocal.messages.clear();
-					rep_interest_check (false,glocal.msg,glocal.messages);
+					rep_interest_check (false,glocal.msg,msgs);
 				}else{
-					rep_interest_check (true,glocal.msg,glocal.messages);
+					for (auto &m:glocal.mp){
+						if (m.second.file_type != FILE_UNKNOWN){
+							msgs.push_back(m.second);
+						}
+					}
+					sort (msgs.begin(),msgs.end(),msg_compare);
+					bod_trim (msgs,offset,nb);
+					rep_interest_check (true,glocal.msg,msgs);
 				}
 			</f>
 			<f config_write>// sessionid owner config:U{CONFIG} = success:b msg
