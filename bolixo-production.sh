@@ -233,13 +233,14 @@ elif [ "$1" = "stop-status" ] ; then # prod: status of trli-stop
 	/usr/lib/bolixo-test.sh stop-status
 elif [ "$1" = "stop-start" ] ; then # prod: Restart the web
 	/usr/lib/bolixo-test.sh stop-start
-elif [ "$1" = "eraseanon" ] ; then # prod: [nbsec default 1 day]
+elif [ "$1" = "eraseanon" ] ; then # prod: [nbsec (default 1 day) anonymous normal admin]
 	NBSEC=`expr 60 \* 60 \* 24`
 	if [ "$2" != "" ] ; then
 		NBSEC=$2
+		shift
 	fi
 	echo Erase anonymous session older than $NBSEC seconds
-	/usr/lib/bolixo-test.sh eraseanon-lxc $NBSEC
+	/usr/lib/bolixo-test.sh eraseanon-lxc $NBSEC $*
 elif [ "$1" = "listsessions" ] ; then # prod: list web sessions (offset)
 	OFF=0
 	if [ "$2" != "" ] ; then
