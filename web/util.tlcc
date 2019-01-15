@@ -835,6 +835,8 @@ string util_flipspaces(PARAM_STRING src)
 }
 /*
 	Format a short message, remove the signature
+	Escapes < and >
+	Supports ? for URL
 */
 string util_format_shortmsg (PARAM_STRING msg, unsigned nblines)
 {
@@ -844,25 +846,33 @@ string util_format_shortmsg (PARAM_STRING msg, unsigned nblines)
 	unsigned noline=0;
 	if (nblines == 0) nblines=(unsigned)-1;
 	while (*txt != '\0' && noline < nblines){
-		if (strncmp(txt,"------\n",7)==0){
-			break;
-		}else if (*txt == '<'){
-			ret += "&lt;";
-		}else if (*txt == '>'){
-			ret += "&gt;";
-		}else if (*txt == '\n'){
+		if (*txt == '\n'){
 			ret += "<br>\n";
 			pos=0;
 			noline++;
-		}else if (*txt == '\t'){
-			unsigned nb = 4 - (pos%4);
-			for (unsigned i=0; i<nb; i++) ret += "&nbsp;";
 		}else{
-			ret += *txt;
-			pos++;
+			if (*txt == '?' && pos==0){
+				noline++;
+				txt++;
+				const char *start = txt;
+				while (*txt != '\0' && *txt != '\n') txt++;
+				ret += "<a href=" + string(start,txt-start) + ">" + string(start,txt-start) + "</a><br>\n";
+				if (*txt == '\0') break;
+			}else if (*txt == '<'){
+				ret += "&lt;";
+			}else if (*txt == '>'){
+				ret += "&gt;";
+			}else if (*txt == '\t'){
+				unsigned nb = 4 - (pos%4);
+				for (unsigned i=0; i<nb; i++) ret += "&nbsp;";
+			}else{
+				ret += *txt;
+				pos++;
+			}
 		}
 		txt++;
 	}
+	if (*txt != '\0') ret += "...";
 	return ret;
 }
 string util_format_shortmsg (PARAM_STRING txt)

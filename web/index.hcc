@@ -675,15 +675,7 @@ static void index_popup (CONNECT_INFO &con, int step, const char *content, FILE_
 	const char *path = filepath.ptr;
 	tlmpweb_body("white",NULL);
 	if (content[0] != '\0'){
-		//tlmpweb_doctype ("text/html",0);
-		const char *pt = content;
-		while (*pt != '\0'){
-			pt = format_line (pt);
-			if (*pt == '\n'){
-				htmlout ("<br>\n");
-				pt++;
-			}
-		}
+		htmlout (util_format_shortmsg (content,10000).c_str());
 	}else if (file_is_sound(file_type)){
 		htmlprintf ("<audio controls>\n"
 			"<source src=\"%s?webstep=%u&image=%s\" type=\"audio/%s\">\n"
@@ -927,10 +919,12 @@ static void index_download (CONNECT_INFO &con, FILE_TYPE file_type, PARAM_STRING
 static void index_show_shortmsg(
 	CONNECT_INFO &con,
 	CONNECT_INFO &con_sess,
+	_F_webtabs &webtabs,
 	const string &table,
 	PARAM_STRING groupname,
 	PARAM_STRING groupowner)
 {
+	glocal _F_webtabs *webtabs = &webtabs;
 	glocal CONNECT_INFO *con = &con;
 	glocal CONNECT_INFO *con_sess = &con_sess;
 	glocal const char *groupname = groupname.ptr;
@@ -1027,6 +1021,7 @@ static void index_show_shortmsg(
 					}
 					const char *func = "Popup";
 					string path = string_f("/msgs/%s/short-inbox/%s/%s",glocal.groupowner,glocal.groupname,m.uuid);
+					if (glocal.webtabs->selected(path)) glocal.webtable.setcurrent(glocal.rownum);
 					if (file_is_sound(m.file_type)){
 						glocal.webtable.setclickopt (true,func,"400,100");
 					}else if (file_is_video(m.file_type)){
@@ -1668,7 +1663,7 @@ extern "C" void webmain_real()
 						htmlprintf ("Internal error: %s\n",msg);
 					}else{
 						auto &m = messages[0];
-						index_popup (glocal.con,step_public,"",m.file_type,m.submit
+						index_popup (glocal.con,step_public,m.content,m.file_type,m.submit
 							,string_f("/%s/msg/%s",m.from,m.uuid));
 					}
 				</f>
@@ -1711,7 +1706,7 @@ extern "C" void webmain_real()
 						}else if (file_is_image(m.file_type)){
 							glocal.webtable.setclickopt (true,func,"800,800");
 						}else{
-							glocal.webtable.setclickopt (true,"","");
+							glocal.webtable.setclickopt (true,func,"400,200");
 						}
 						string time = string_f("<div id=date0_7>%s</div>",format_time(userinfo.dateformat,m.submit+11).c_str());
 						string img;
@@ -2696,21 +2691,24 @@ extern "C" void webmain_real()
 				</call>
 			}
 			string table = string("talk")+id;
-			index_show_shortmsg (glocal.con,glocal.con_sess,table,glocal.groupname,glocal.groupowner);
+			index_show_shortmsg (glocal.con,glocal.con_sess,glocal.webtabs,table,glocal.groupname,glocal.groupowner);
 		</f>
 		<f doctype2>
 			FILEINFO info;
 			index_entrytype(glocal.con,id,info);
-			DIV d("webtable"); d.print();
 			if (strcmp(id,"help")==0){
+				DIV d("webtable"); d.print();
 				index_doc(glocal.docpointers[SECTION_TALK],section_talk);
 			}else if (strcmp(id,"helpmain")==0){
+				DIV d("webtable"); d.print();
 				index_doc(glocal.docpointers[SECTION_NONE],section_none);
 			}else if (file_is_image(info.file_type)){
+				DIV d("webtable"); d.print();
 				string img = index_img(step_image,"max-width:100%; max-height:100%;",id,info.modified);
 				/- <br>
 				htmlout (img);
 			}else if (file_is_text(info.file_type)){
+				DIV d("",TAB_FORM); d.print();
 				/- <table border=0>
 				vector<string> tb;
 				int n=str_splitline(id,'/',tb);
@@ -2719,7 +2717,9 @@ extern "C" void webmain_real()
 						,tb[2].c_str(),tb[4].c_str());
 				}
 				htmlprintf ("<tr><td><b>%s</b><td>%s\n",MSG_U(I_TALKFROM,"From"),info.owner.c_str());
-				/- </table><p>
+				/- </table>
+				d.end();
+				DIV dd("webtable","text"); dd.autoscroll().w(100).bordertop(1,"black").print();
 				<call bod_client_readfile>(glocal.con,w_session.c_str(),id,"");
 				<f ok>
 					string tmp = util_format_shortmsg (content);
