@@ -178,8 +178,8 @@ void bolixo_doc (DOCUMENT_POINTER &docpointer, DOC_ID &jump, const char *usernam
 				visible so friends may find you. This is what the bolixo.org directory is all about.
 				<p>
 				Visit the account sub tab of the profile tab and look at the <em>Public information</em> section. Decide what you want to publish. All fields are optionals.
-				Click on the <em>Publish to bolixo.org directory</em> checkbox and submit. Go on <a href=https://bolixo.org>Bolixo.org</a> and search. Uncheck the checkbox and
-				submit again. Visit bolixo.org and you are gone. You have the control.
+				Click on the <em>Publish to bolixo.org directory</em> checkbox and submit. Go to <a href=https://bolixo.org>Bolixo.org</a> and search. Uncheck the checkbox and
+				submit again. Visit bolixo.org and your information is gone. You have the control.
 				/- jump2app (step_profile,1);
 			</->
 			<- section("Establish contacts");>
@@ -193,17 +193,51 @@ void bolixo_doc (DOCUMENT_POINTER &docpointer, DOC_ID &jump, const char *usernam
 		</->
 		<- section("Fonctionalities overview");>
 			<- section("Groups and friends");>
+				Groups are used to communicate with other people. They are also used for access control. Only members of your
+				contact list may be members of groups you created.
+				<p>
+				Member of a group may write messages to the group shared inbox. Depending on their access right, they may either
+				view or modify files in the projects  (see below)
+			</->
+			<- section("Projects",section_project);>
+				You can create projects. A project have a name, a description and a list of groups.
+				/- jump2app (step_profile,5);
+				Normally, you must be a member of one of the groups
 			</->
 			<- section("Messages",section_talk);>
 			</->
-			<- section("Projects",section_project);>
+			<- section("Public view");>
+				Each user may have a public page. It has to be enabled in the account configuration.
+				/- if (!glocal.unknown_user){
+					For example, here is the link to see your public page:
+					<pre>
+					/- htmlprintf ("<a href=https://%s/public/%s>https://%s/public/%s</a>",glocal.host,glocal.username,glocal.host,glocal.username);
+					</pre>
+				/- }
+				<p>
+				When you enable public view and the public folder field is set to "none", your public page displays:
+				<ul>
+				<li>your photo and mini-photo, uploaded by you in your public folder.
+				<li>Your nickname and the server name.
+				<li>The messages you posted in your public group.
+				</ul>
+				<p>
+				When the public folder field is set to "root", the same information is displayed plus the content of the
+				public folder. If you have created sub-folders in the public folder, you can select one. Its content
+				will be used. By default, Bolixo will throw everything it finds in the selected folder: text, images, ...
+				This is probably not what you want. If there is a document called index.html in the folder, it will be displayed.
+				This document should reference the rest of the folder. Here are the rules for index.html:
+				<p>
+				<ul>
+				<li>It is normal HTML.
+				<li>You can't write javascript. &ltscript&gt; sections will appear verbatim.
+				<li>Relative and site absolute (no host specified) hyperlinks are mapped to the select folder.
+				</ul>
 			</->
 			<- section("Public preview",section_preview);>
 				You can see a preview of your public page. Select one folder in the public project
 				and use the context menu to preview its content. You can use this even if you have no
 				public page yet.
-			</->
-			<- section("Public view");>
 			</->
 			<- section("Command line tool");>
 				A utility called bofs allows you to perform almost everything you can do from the UI. You can use
@@ -225,6 +259,24 @@ void bolixo_doc (DOCUMENT_POINTER &docpointer, DOC_ID &jump, const char *usernam
 					/- htmlprintf ("bofs ls -l https://%s/msgs/%s/short-inbox/public<br>\n",glocal.host,glocal.username);
 				</->
 				</ul>
+			</->
+			<- section("Digital signature");>
+				(You can find an explanation of digital signature <a href=https://en.wikipedia.org/wiki/Digital_signature>here on wikipedia</a>)
+				<p>
+				Every user has a 2048 bits digital key. This key is made of a public and private part. The private part is used to sign
+				documents and messages. The public part is used to validate the document signature.
+				Every document produced or uploaded by a user is signed (using his private key). This also applies to messages.
+				<p>
+				Without access to the private part, it is
+				impossible to create a valid signature for a document. Said differently, no one can create a document and pretend it was
+				written by you.
+				<p>
+				There is a public API allowing anyone to download the public key of a user. Currently, the <em>bofs</em> command line utility
+				is making use of that and validate every document it downloads.
+				<p>
+				<em>Bolixo</em> is a distributed system where nodes are controlled by various individuals. When you write a public message, it is copied
+				from node to node, along with its digital signature. Digital signatures allow one to make sure that messages from you are actually exactly what
+				you wrote.
 			</->
 		</->
 		<- section("Operations");>
@@ -292,12 +344,12 @@ void bolixo_doc (DOCUMENT_POINTER &docpointer, DOC_ID &jump, const char *usernam
 					you can enable public view and its content becomes visible to all.
 					/- jump2app (step_profile,5);
 					<p>
-					When you add groups to a project, you must specify its access right. A group may have read-only,
+					When you add a group to a project, you must specify its access right. A group may have read-only,
 					read-write or inherit access. When you define a group, you can grant access right to each member
-					separatly. The inherit access right defines that the access right set in the group definition are used.
+					separatly. The inherit access right indicates that the access right set in the group definition are used.
 					The read-only and read-write access right override the group members access right.
 					<p>
-					Access rights are used to access content in the project folder. Access right do not apply to messages. Every
+					Access rights are used to control access to content in the project folder. Access right do not apply to messages. Every
 					member is allowed to post messages in the groups he belongs, no matter what access right he owns.
 				</->
 				<- section("Groups",section_groups);>
