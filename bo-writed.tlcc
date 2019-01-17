@@ -514,22 +514,24 @@ static int bo_writed_check_recipients(
 				}
 			}
 		}
-		string req = string_f("select id2name.name,id2name.userid from groups"
-			" join group_members on group_members.groupid = groups.id"
-			" join id2name on id2name.userid=group_members.userid"
-			" where groups.name='contacts' and groups.ownerid=%u and (",userid);
-		const char *sep = "";
-		NSQL_ENCODE enc;
-		for (auto &r:tos){
-			req += string_f(" %s id2name.name='%s'",sep,enc.enc(r));
-			sep = "or";
+		if (tos.size() > 0){
+			string req = string_f("select id2name.name,id2name.userid from groups"
+				" join group_members on group_members.groupid = groups.id"
+				" join id2name on id2name.userid=group_members.userid"
+				" where groups.name='contacts' and groups.ownerid=%u and (",userid);
+			const char *sep = "";
+			NSQL_ENCODE enc;
+			for (auto &r:tos){
+				req += string_f(" %s id2name.name='%s'",sep,enc.enc(r));
+				sep = "or";
+			}
+			req += ")";
+			<call sql_query>(req.c_str());
+			<f onerow>
+				glocal.r_userids->push_back(pair<string,unsigned>(row[0],atoi(row[1])));
+				</f>
+			</call>
 		}
-		req += ")";
-		<call sql_query>(req.c_str());
-		<f onerow>
-			glocal.r_userids->push_back(pair<string,unsigned>(row[0],atoi(row[1])));
-		</f>
-		</call>
 		if (userids.size() != recipients.size()){
 			msg = MSG_U(E_BADDEST,"Some recipient(s) invalid:");
 			for (auto r:recipients){
