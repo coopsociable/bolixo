@@ -150,9 +150,9 @@ static unsigned normalize_size (unsigned size)
 	return ret;
 }
 
-static void bofs_maxlen (const char *s, unsigned &max_s)
+static void bofs_maxlen (PARAM_STRING s, unsigned &max_s)
 {
-	unsigned len = strlen(s);
+	unsigned len = strlen(s.ptr);
 	if (len > max_s) max_s = len;
 }
 <mod>
@@ -489,7 +489,13 @@ static void bofs_printdir (bool opt_long, const vector<FILEINFO_receive> &files)
 		}
 		for (int r=0; r<2; r++){
 			for (auto &f:files){
-				bofs_maxlen (f.owner,max_owner);
+				string owner;
+				if (f.modifiedby[0] != '\0'){
+					owner = string_f("%s->%s",f.owner,f.modifiedby);
+				}else{
+					owner = f.owner;
+				}
+				bofs_maxlen (owner,max_owner);
 				bofs_maxlen (f.listname,max_members);
 				bofs_maxlen (f.listmode,max_modes);
 				bofs_maxlen (f.name,max_name);
@@ -503,7 +509,8 @@ static void bofs_printdir (bool opt_long, const vector<FILEINFO_receive> &files)
 						,max_viewed,tbviewed[f.viewed]->get()
 						,tbtype[f.type],tbftype[f.file_type]
 						,normalize_date(f.eventdate),normalize_date(f.modified)
-						,max_owner,f.owner,max_members+max_modes+1,member_mode.c_str(),max_size,normalize_size(f.size)
+						,max_owner,owner.c_str()
+						,max_members+max_modes+1,member_mode.c_str(),max_size,normalize_size(f.size)
 						,max_name,f.name,f.title);
 				}
 			}
@@ -674,7 +681,8 @@ static int bofs_cat_bofile (CONTEXT &ctx, const char *path, FILE *fout)
 				// For now, we check signature of small files.
 				glocal string pubkey;
 				glocal const char *owner = info.owner;
-				<call bod_client_getpubkey>(glocal.ctx->con,info.owner);
+				if (info.modifiedby[0] != '\0') glocal.owner = info.modifiedby;
+				<call bod_client_getpubkey>(glocal.ctx->con,glocal.owner);
 				<f ok>
 					if (!success){
 						tlmp_error (MSG_U(E_CANTGETOWNERPUBKEY,"Can't get public key for user %s\n"),glocal.owner);
@@ -683,11 +691,11 @@ static int bofs_cat_bofile (CONTEXT &ctx, const char *path, FILE *fout)
 					}
 				</f>
 				</call>
-				debug_printf (D_SIGN,"user %s public key = %s\n",info.owner,glocal.pubkey.c_str());
+				debug_printf (D_SIGN,"user %s->%s public key = %s\n",info.owner,info.modifiedby,glocal.pubkey.c_str());
 				if (glocal.pubkey.size() > 0){
 					if (fs_verify (glocal.pubkey,content,info.signature)==-1){
-						tlmp_error (MSG_U(E_FILESIGNOMATCH,"Signature does not match for file %s, owner %s\n")
-							,glocal.path,info.owner);
+						tlmp_error (MSG_U(E_FILESIGNOMATCH,"Signature does not match for file %s, author %s\n")
+							,glocal.path,glocal.owner);
 					}else{
 						debug_printf (D_SIGN,"File %s, signature valid\n",glocal.path);
 					}

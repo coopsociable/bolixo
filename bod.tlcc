@@ -67,12 +67,14 @@ struct DIRENTRY{
 	ENTRY_TYPE type;
 	FILE_TYPE file_type;
 	std::string owner;
+	std::string modifiedby;
 	std::string members;
 	std::string listmode;
 	std::string title;
 	unsigned size;
 	bool islarge;
 	DIRENTRY (const char *_eventdate, const char *_modified, ENTRY_TYPE _type, FILE_TYPE _file_type, bool _islarge, const char *_owner,
+		const char *_modifiedby,
 		const char *_members, const char *_listmode, unsigned _size, const char *_title, VIEWED_STATUS _viewed){
 		eventdate = _eventdate;
 		modified = _modified;
@@ -80,6 +82,7 @@ struct DIRENTRY{
 		islarge = _islarge;
 		file_type = _file_type;
 		owner = _owner;
+		modifiedby = _modifiedby;
 		members = _members;
 		listmode = _listmode;
 		size = _size;
@@ -1162,17 +1165,19 @@ static int bod_main (
 					if (!bolixo_isfile(glocal.entry.type)){
 						glocal.entry.msg = MSG_U(E_NOTAFILE,"Entry is not a file");
 					}else{
-						<call sql_query>("select content,title,signature,modified,filetype from files where id=%d and modified='%s'"
+						<call sql_query>("select content,title,signature,filetype,modifiedby from files where id=%d and modified='%s'"
 							,glocal.entry.entryid,glocal.entry.modified.c_str());
 						<f onerow>
 							if (row[0] != NULL){
 								glocal.info.title = row[1] != NULL ? row[1] : "";
 								glocal.info.signature = row[2] != NULL ? row[2] : "";
-								glocal.info.modified = row[3];
-								glocal.info.file_type = (FILE_TYPE)atoi(row[4]);
+								glocal.info.modified = glocal.entry.modified;
+								glocal.info.file_type = (FILE_TYPE)atoi(row[3]);
 								glocal.info.size = strlen(row[0]); 
 								glocal.bod_client.rep_readfile (true,"",row[0],glocal.info);
 								glocal.info.owner = bod_getname (glocal.entry.ownerid);
+								unsigned ownerid = atoi(row[4]);
+								glocal.info.modifiedby = bod_getname (ownerid);
 							}else{
 								glocal.entry.msg = MSG_U(E_USEREADBOB,"Internal error, must use readfile_bob for large content");
 							}
@@ -1196,7 +1201,7 @@ static int bod_main (
 					if (!bolixo_isfile(glocal.entry.type)){
 						glocal.entry.msg = MSG_R(E_NOTAFILE);
 					}else{
-						<call sql_query>("select content,title,signature,filetype from files where id=%d and modified='%s'"
+						<call sql_query>("select content,title,signature,filetype,modifiedby from files where id=%d and modified='%s'"
 							,glocal.entry.entryid,glocal.entry.modified.c_str());
 						<f onerow>
 							glocal.info.title = row[1] != NULL ? row[1] : "";
@@ -1204,6 +1209,8 @@ static int bod_main (
 							glocal.info.modified = glocal.entry.modified;
 							glocal.info.file_type = (FILE_TYPE)atoi(row[3]);
 							glocal.info.owner = bod_getname (glocal.entry.ownerid);
+							unsigned ownerid = atoi(row[4]);
+							glocal.info.modifiedby = bod_getname (ownerid);
 							if (row[0] != NULL){
 								unsigned len = strlen(row[0]);
 								glocal.info.size = len;
@@ -1371,12 +1378,13 @@ static int bod_main (
 						<call sql_query>("select dirs_content.name,dirs_content.modified,type,id2name.name"
 							",group_list_id,group_lists.name,ids.listmode"
 							",length(files.content),dirs_content.itemid,files.title,dirs_content.eventtime"
-							",files.filetype,files.content is null,marks.modified"
+							",files.filetype,files.content is null,marks.modified,id2name2.name"
 							" from dirs_content"
 							" join ids on dirs_content.itemid=ids.id"
 							" join id2name on ids.ownerid=id2name.userid"
 							" left join group_lists on ids.group_list_id=group_lists.id"
 							" left join files on dirs_content.itemid=files.id and dirs_content.modified=files.modified"
+							" left join id2name id2name2 on files.modifiedby=id2name2.userid"
 							" left join marks on marks.itemid=dirs_content.itemid and marks.userid=%u"
 							" where dirid=%d and dirs_content.eventtime <= '%s' order by eventtime"
 							,entry.userid,entry.entryid,threshold);
@@ -1415,6 +1423,7 @@ static int bod_main (
 							FILE_TYPE file_type = row[11] == NULL ? FILE_UNKNOWN : (FILE_TYPE)atoi(row[11]);
 							bool islarge = atoi(row[12])!=0;
 							VIEWED_STATUS viewed = bod_readviewed(row[13],modified);
+							const char *modifiedby = row[14] != NULL ? row[14] : "";
 							if (glocal.history){
 								FILEINFO info;
 								info.name = name;
@@ -1423,6 +1432,7 @@ static int bod_main (
 								info.type = type;
 								info.file_type = file_type;
 								info.owner = owner;
+								info.modifiedby = modifiedby;
 								info.listname = listname;
 								info.listmode = listmode;
 								info.size = size;
@@ -1431,7 +1441,8 @@ static int bod_main (
 								info.islarge = islarge;
 								glocal.files.push_back(info);
 							}else{
-								glocal.mp[name] = DIRENTRY(eventdate,modified,type,file_type,islarge,owner,listname,listmode,size,title,viewed);
+								glocal.mp[name] = DIRENTRY(eventdate,modified,type,file_type,islarge
+									,owner,modifiedby,listname,listmode,size,title,viewed);
 							}
 						</f>
 						</call>
@@ -1452,6 +1463,7 @@ static int bod_main (
 									info.eventdate = x.second.eventdate;
 									info.modified = x.second.modified;
 									info.owner = x.second.owner;
+									info.modifiedby = x.second.modifiedby;
 									info.listname = x.second.members;
 									info.listmode = x.second.listmode;
 									info.size = x.second.size;
@@ -2229,7 +2241,9 @@ static int bod_main (
 							const char *eventdate = row[10];
 							FILE_TYPE file_type = row[11] == NULL ? FILE_UNKNOWN : (FILE_TYPE)atoi(row[11]);
 							bool islarge = atoi(row[12])!=0;
-							glocal.mp[name] = DIRENTRY(eventdate,modified,type,file_type,islarge,owner,listname,listmode,size,title,VIEWED_NEW);
+							const char *modifiedby = "";
+							glocal.mp[name] = DIRENTRY(eventdate,modified,type,file_type,islarge
+								,owner,modifiedby,listname,listmode,size,title,VIEWED_NEW);
 						</f>
 						</call>
 						for (auto &x:glocal.mp){
@@ -2241,6 +2255,7 @@ static int bod_main (
 								info.eventdate = x.second.eventdate;
 								info.modified = x.second.modified;
 								info.owner = x.second.owner;
+								info.modifiedby = x.second.modifiedby;
 								info.listname = x.second.members;
 								info.listmode = x.second.listmode;
 								info.size = x.second.size;
