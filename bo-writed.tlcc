@@ -473,8 +473,9 @@ static int bo_writed_project_msg(
 
 
 /*
-	Check that all recipients do exist and are member of the sender contact list.
+	Check that all recipients do exist and are members of the sender contact list.
 	For private site, all local users are accepted. Remote user have to be member of the contact list.
+	admin is always valid.
 ***	private site NOT done
 */
 <mod>
@@ -502,11 +503,15 @@ static int bo_writed_check_recipients(
 			our_node = "";
 		}
 		for (auto r:recipients){
-			const char *pt = strchr(r,'@');
-			if (pt == NULL){
-				tos.push_back(r);
-			}else if (strcmp(our_node,pt+1)==0){
-				tos.push_back(string(r,pt-r));
+			if (strcmp(r,"admin")==0){
+				userids.push_back(pair<string,unsigned>("admin",1));
+			}else{
+				const char *pt = strchr(r,'@');
+				if (pt == NULL){
+					tos.push_back(r);
+				}else if (strcmp(our_node,pt+1)==0){
+					tos.push_back(string(r,pt-r));
+				}
 			}
 		}
 		string req = string_f("select id2name.name,id2name.userid from groups"
