@@ -168,10 +168,10 @@ static void bod_client_copyrest (CONNECT_INFO &con, const char *sessionid, const
 {
 	glocal bool stop = false;
 	int len;
-	char buf[50000];
-	while (!glocal.stop && (len=fread(buf,1,50000,fin))>0){
+	char buf[REQ_CONTENT_CHUNK];
+	while (!glocal.stop && (len=fread(buf,1,sizeof(buf),fin))>0){
 		BOB_TYPE bob (buf,len,false);
-		<call bod_client_appendfile>(con,sessionid,handle,bob,len==50000);
+		<call bod_client_appendfile>(con,sessionid,handle,bob,len==REQ_CONTENT_CHUNK);
 		<f ok>
 			printf ("\tAppendfile tsuccess=%d msg=%s\n",success,msg);
 			if (!success) glocal.stop = true;
@@ -504,11 +504,11 @@ int main (int argc, char *argv[])
 					if (glocal.fin == NULL){
 						tlmp_error ("Can't read file %s (%s)\n",glocal.extra2,strerror(errno));
 					}else{
-						char buf[50000];
+						char buf[REQ_CONTENT_CHUNK];
 						int len;
-						len=fread (buf,1,50000,glocal.fin);
+						len=fread (buf,1,sizeof(buf),glocal.fin);
 						BOB_TYPE bob (buf,len,false);
-						<call bod_client_addfile_bob> (glocal.con_cli,glocal.sessionid,name,bob,len==50000);
+						<call bod_client_addfile_bob> (glocal.con_cli,glocal.sessionid,name,bob,len==REQ_CONTENT_CHUNK);
 						<f ok>
 							printf ("\tsuccess=%d handle=%s msg=%s\n",success,handle,msg);
 							if (success){
@@ -550,11 +550,11 @@ int main (int argc, char *argv[])
 					if (glocal.fin == NULL){
 						tlmp_error ("Can't read file %s (%s)\n",glocal.extra2,strerror(errno));
 					}else{
-						char buf[50000];
+						char buf[REQ_CONTENT_CHUNK];
 						int len;
-						len=fread (buf,1,50000,glocal.fin);
+						len=fread (buf,1,REQ_CONTENT_CHUNK,glocal.fin);
 						BOB_TYPE bob (buf,len,false);
-						<call bod_client_modifyfile_bob> (glocal.con_cli,glocal.sessionid,name,bob,len==50000);
+						<call bod_client_modifyfile_bob> (glocal.con_cli,glocal.sessionid,name,bob,len==REQ_CONTENT_CHUNK);
 						<f ok>
 							printf ("\tsuccess=%d handle=%s msg=%s\n",success,handle,msg);
 							if (success){

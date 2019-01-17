@@ -26,7 +26,7 @@ compile: $(PROGS)
 bo-webtest: bo-webtest.tlcc proto/webapi.protoh /usr/include/trlitool/trlitool.h
 	cctlcc -Wall $(OPTIONS) bo-webtest.tlcc _dict.o -o bo-webtest $(LIBS) -lssl
 
-bofs: bofs.tlcc proto/bod_client.protoh proto/webapi.protoh proto/bolixoapi.protoh verify.o 
+bofs: bofs.tlcc proto/bod_client.protoh proto/webapi.protoh proto/bolixoapi.protoh proto/webapi.protoh verify.o 
 	cctlcc -Wall $(OPTIONS) bofs.tlcc verify.o _dict.o -o bofs $(LIBS) -lssl 
 
 _dict.o: _dict.cc bolixo.m
@@ -176,12 +176,12 @@ proto/bo-keysd_control.protoh: proto/bo-keysd_control.proto
 		--protoch proto/bo-keysd_control.protoch proto/bo-keysd_control.proto >proto/bo-keysd_control.protoh
 
 proto/webapi.protoh: proto/webapi.proto
-	build-protocol --request_obj REQUEST_JSON --request_info_obj REQUEST_JSON_INFO \
+	build-protocol $(INSTRUMENT) --request_obj REQUEST_JSON --request_info_obj REQUEST_JSON_INFO \
 		--connect_info_obj CONNECT_HTTP_INFO --name webapi \
 		--protoch proto/webapi.protoch proto/webapi.proto >proto/webapi.protoh
 
 proto/bolixoapi.protoh: proto/bolixoapi.proto proto/bolixod_client.protoh
-	build-protocol --request_obj REQUEST_JSON --request_info_obj REQUEST_JSON_INFO \
+	build-protocol $(INSTRUMENT) --request_obj REQUEST_JSON --request_info_obj REQUEST_JSON_INFO \
 		--connect_info_obj CONNECT_HTTP_INFO --name bolixoapi \
 		--protoch proto/bolixoapi.protoch proto/bolixoapi.proto >proto/bolixoapi.protoh
 

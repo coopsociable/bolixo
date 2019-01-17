@@ -540,8 +540,8 @@ static void bod_loadphoto (BOB_TYPE &img, const char *user, const char *filename
 					if (fstat64(fileno(fin),&st)==-1){
 						tlmp_error ("bod_loadphoto: Internal error, getting file size\n");
 					}else{
-						char buf[50000];
-						int len = fread (buf,1,50000,fin);
+						char buf[REQ_CONTENT_CHUNK];
+						int len = fread (buf,1,sizeof(buf),fin);
 						if (len > 0){
 							glocal.img->setbuffer (buf,len,true);
 						}
@@ -1228,10 +1228,10 @@ static int bod_main (
 										glocal.entry.msg = "Internal error, getting file size";
 										fs_delete_handle (handle);
 									}else{
-										char buf[50000];
-										int len = fread (buf,1,50000,fin);
+										char buf[REQ_CONTENT_CHUNK];
+										int len = fread (buf,1,sizeof(buf),fin);
 										BOB_TYPE bob (buf,len,false);
-										bool more = len==50000;
+										bool more = len==REQ_CONTENT_CHUNK;
 										if (!more || glocal.nomore){
 											fs_delete_handle(handle);
 											handle.clear();
@@ -1259,10 +1259,10 @@ static int bod_main (
 					rep_readmore (false,"Internal error, reading content file",BOB_TYPE(),false);
 					fs_delete_handle (handle);
 				}else{
-					char buf[50000];
-					int len = fread (buf,1,50000,fin);
+					char buf[REQ_CONTENT_CHUNK];
+					int len = fread (buf,1,sizeof(buf),fin);
 					BOB_TYPE bob (buf,len,false);
-					bool more = len == 50000;
+					bool more = len == REQ_CONTENT_CHUNK;
 					rep_readmore (true,"Ok",bob,more);
 					if (!more){
 						fs_delete_handle(handle);
@@ -2314,10 +2314,10 @@ static int bod_main (
 									}else if (fseek(fin,glocal.offset,SEEK_SET)==-1){
 										glocal.msg = MSG_U(E_SEEKFAIL,"Seek failed");
 									}else{
-										char buf[50000];
-										int len = fread (buf,1,50000,fin);
+										char buf[REQ_CONTENT_CHUNK];
+										int len = fread (buf,1,sizeof(buf),fin);
 										BOB_TYPE bob (buf,len,false);
-										bool more = len==50000;
+										bool more = len==REQ_CONTENT_CHUNK;
 										if (!more){
 											fs_delete_handle(glocal.handle);
 											glocal.handle.clear();
