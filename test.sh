@@ -834,6 +834,17 @@ elif [ "$1" = "wait-for-keysd" ] ; then # S: wait until keysd has generated all 
 	$0 bo-keysd-control waitidle
 elif [ "$1" = "test-sendmail" ] ;then # prod: ask writed to send one email
 	./bo-writed-control -p /var/lib/lxc/writed/rootfs/tmp/bo-writed-0.sock sendmail jack@dns.solucorp.qc.ca test body1
+elif [ "$1" = "cmp-sequence" ] ; then # S: Execute QA tests
+	rm -f /tmp/bofs.testuuids
+	unset LANG
+	CMPDIR=/tmp/cmp-sequence
+	rm -fr $CMPDIR
+	mkdir $CMPDIR
+	for test in directory createsubdir projects
+	do
+		./scripts/access.sh $test >$CMPDIR/$test.out 2>$CMPDIR/$test.err
+	done
+	./scripts/access.sh public jacques-A >$CMPDIR/public.out 2>$CMPDIR/public.err
 elif [ "$1" = "eraseanon-lxc" ] ; then # prod:
 	export LXCSOCK=on
 	NBSEC=0

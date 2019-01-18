@@ -79,7 +79,6 @@ using namespace std;
 #define webapi_addfile_NOTNEED
 #define webapi_modifyfile_NOTNEED
 #define webapi_rename_NOTNEED
-#define webapi_copy_NOTNEED
 #define webapi_readfile_NOTNEED
 #define webapi_set_access_NOTNEED
 #define webapi_markview_NOTNEED
@@ -145,6 +144,43 @@ static unsigned normalize_size (unsigned size)
 	}
 	return ret;
 }
+static map<string,unsigned> uuids;
+<mod>
+static void load_normalize_uuids(const char *fname)
+{
+	<call loadfile>(fname,true);
+	<f missing>
+	</f>
+	<f oneline>
+		vector<string> tb;
+		if (str_splitline(line,' ',tb)==2){
+			uuids[tb[0]] = atoi(tb[1].c_str());
+		}
+		return 0;
+	</f>
+	</call>
+}
+</mod>
+
+static string normalize_uuid(const char *s)
+{
+	if (*s == '\0'){
+		return string();
+	}else if (testmode){
+		unsigned num = 0;
+		auto uu = uuids.find(s);
+		if (uu == uuids.end()){
+			num = uuids.size();
+			uuids[s] = num;
+		}else{
+			num = uu->second;
+		}
+		return string_f ("uuid-%04u",num);
+	}else{
+		return string(s);
+	}
+}
+
 
 static void bofs_maxlen (PARAM_STRING s, unsigned &max_s)
 {
@@ -293,6 +329,30 @@ struct CONTEXT{
 	}
 	
 };
+#define _TLMP_bofs_listdir
+struct _F_bofs_listdir {
+	#define _F_bofs_listdir_ok(x) void x ok(bool internal_error, bool success, const char *msg, const vector<FILEINFO_receive> &files)
+	virtual _F_bofs_listdir_ok( )=0;
+};
+<mod>
+static void bofs_listdir(_F_bofs_listdir &c, CONTEXT &ctx, PARAM_STRING name, PARAM_STRING threshold, bool history, unsigned offset, unsigned chunk)
+{
+	glocal _F_bofs_listdir *c = &c;
+	if (ctx.is_internal()){
+		<call bod_client_listdir>(ctx.con,ctx.sessionid,name,threshold,history,offset,chunk);
+		<f ok>
+			glocal.c->ok(internal_error,success,msg,files);
+		</f>
+		</call>
+	}else{
+		<call webapi_listdir>(ctx.hcon,ctx.hsessionid,name,threshold,history,offset,chunk);
+		<f ok>
+			glocal.c->ok(internal_error,success,msg,files);
+		</f>
+		</call>
+	}
+}
+</mod>
 #define _TLMP_bofs_readfile_bob
 struct _F_bofs_readfile_bob {
 	#define _F_bofs_readfile_bob_ok(x) void x ok(bool internal_error, bool success, const char *msg, const BOB_TYPE &content, const READINFO_receive &info, const char *handle, bool more)
@@ -900,8 +960,7 @@ static int bofs_cat (CONTEXT &ctx, int argc, char *argv[])
 				return bofs_write_bofile (*glocal.ctx,path,stdin,"cat");
 			</f>
 			<f https_file>
-				notdone();
-				return -1;
+				return bofs_write_bofile (*glocal.ctx,path,stdin,"cat");
 			</f>
 			<f local_file>
 				return system (string_f("cat >%s",path).c_str());
@@ -989,7 +1048,7 @@ static int bofs_copy_file(CONTEXT &ctx, PARAM_STRING path0, BO_SOURCE src0, PARA
 			</f>
 			</call>
 		}else if (src1 == HTTPS_ENTRY){
-			notdone();
+			notdone();	// bolixo 2 bolixo
 		}
 	}else if (src0 == HTTPS_ENTRY){
 		if (src1 == LOCAL_ENTRY){
@@ -1001,9 +1060,9 @@ static int bofs_copy_file(CONTEXT &ctx, PARAM_STRING path0, BO_SOURCE src0, PARA
 			</f>
 			</call>
 		}else if (src1 == BO_ENTRY){
-			notdone();
+			notdone();	// bolixo 2 bolixo
 		}else if (src1 == HTTPS_ENTRY){
-			notdone();
+			notdone();	// bolixo 2 bolixo
 		}
 	}
 	return glocal.ret;
@@ -1014,15 +1073,27 @@ static int bofs_mkdir (CONTEXT &ctx, PARAM_STRING path)
 {
 	glocal int ret = -1;
 	glocal const char *path = path.ptr;
-	<call bod_client_mkdir> (ctx.con,ctx.sessionid,path);
-	<f ok>
-		if (success){
-			glocal.ret = 0;
-		}else{
-			bofs_error ("mkdir",internal_error,MSG_U(E_MKDIR,"Can't create directory %s: %s"),glocal.path,msg);
-		}
-	</f>
-	</call>
+	if (ctx.is_internal()){
+		<call bod_client_mkdir> (ctx.con,ctx.sessionid,path);
+		<f ok>
+			if (success){
+				glocal.ret = 0;
+			}else{
+				bofs_error ("mkdir",internal_error,MSG_U(E_MKDIR,"Can't create directory %s: %s"),glocal.path,msg);
+			}
+		</f>
+		</call>
+	}else{
+		<call webapi_mkdir> (ctx.hcon,ctx.hsessionid,path);
+		<f ok>
+			if (success){
+				glocal.ret = 0;
+			}else{
+				bofs_error ("mkdir",internal_error,MSG_R(E_MKDIR),glocal.path,msg);
+			}
+		</f>
+		</call>
+	}
 	return glocal.ret;
 }
 </mod>
@@ -1035,7 +1106,7 @@ static int bofs_copy_dir(CONTEXT &ctx, PARAM_STRING path0, BO_SOURCE src0, PARAM
 		if (src1 == LOCAL_ENTRY){
 			// Copying two local directories
 			glocal.ret = system (string_f ("cp -r %s %s %s",verbose ? "-v" : "",path0.ptr,path1.ptr).c_str());
-		}else if (src1 == BO_ENTRY){
+		}else if (src1 == BO_ENTRY || src1 == HTTPS_ENTRY){
 			glocal string path1 = path1.ptr;
 			if (bofs_mkdir(ctx,path1)!=-1){
 				<call walkfs>(path0);
@@ -1059,10 +1130,8 @@ static int bofs_copy_dir(CONTEXT &ctx, PARAM_STRING path0, BO_SOURCE src0, PARAM
 				</f>
 				</call>
 			}
-		}else if (src1 == HTTPS_ENTRY){
-			notdone();
 		}
-	}else if (src0 == BO_ENTRY){
+	}else if (src0 == BO_ENTRY || src0 == HTTPS_ENTRY){
 		if (src1 == LOCAL_ENTRY){
 			glocal deque<string> todo;
 			glocal.todo.push_back(path0.ptr);
@@ -1086,7 +1155,7 @@ static int bofs_copy_dir(CONTEXT &ctx, PARAM_STRING path0, BO_SOURCE src0, PARAM
 				}
 				unsigned offset = 0;
 				while (!glocal.stop && glocal.ret != -1){
-					<call bod_client_listdir> (ctx.con,ctx.sessionid,glocal.dir,"",false,offset,500);
+					<call bofs_listdir> (ctx,glocal.dir,"",false,offset,500);
 					<f ok>
 						for (auto &f:files){
 							string path = string_f("%s/%s",glocal.dir.c_str(),f.name);
@@ -1104,7 +1173,7 @@ static int bofs_copy_dir(CONTEXT &ctx, PARAM_STRING path0, BO_SOURCE src0, PARAM
 					offset += 500;
 				}
 			}
-		}else if (src1 == BO_ENTRY){
+		}else if (src0 == src1 && src1 == BO_ENTRY){
 			<call bod_client_copy>(ctx.con,ctx.sessionid,path0,"",path1);
 			<f ok>
 				if (!success){
@@ -1113,11 +1182,18 @@ static int bofs_copy_dir(CONTEXT &ctx, PARAM_STRING path0, BO_SOURCE src0, PARAM
 				}
 			</f>
 			</call>
+		}else if (src0 == src1 && src1 == HTTPS_ENTRY){
+			<call webapi_copy>(ctx.hcon,ctx.hsessionid,path0,"",path1);
+			<f ok>
+				if (!success){
+					glocal.ret = -1;
+					bofs_error ("cp",internal_error,msg);
+				}
+			</f>
+			</call>
 		}else if (src1 == HTTPS_ENTRY){
-			notdone();
+			notdone();	// bolixo 2 bolixo
 		}
-	}else if (src0 == HTTPS_ENTRY){
-		notdone();
 	}
 	return glocal.ret;
 }
@@ -1476,7 +1552,7 @@ static int bofs_print_groups (CONTEXT *ctx, const char *owner, const char *onegr
 		</f>
 		</call>
 	}else{
-		notdone();
+		notdone();	// print_groups
 	}
 	glocal.ret = 0;
 	unsigned max_owner = 0;
@@ -1598,7 +1674,7 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 				</f>
 				</call>
 			}else{
-				notdone();
+				notdone();	// create_group_list
 			}
 		}else if (glocal.create_group){
 			if (glocal.groupname == NULL){
@@ -1614,7 +1690,7 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 				</f>
 				</call>
 			}else{
-				notdone();
+				notdone();	// create_group
 			}
 		}else if (glocal.set_list_desc){
 			if (glocal.listname == NULL){
@@ -1632,7 +1708,7 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 				</f>
 				</call>
 			}else{
-				notdone();
+				notdone();	// set_list_desc
 			}
 		}else if (glocal.set_group_desc){
 			if (glocal.groupname == NULL){
@@ -1650,7 +1726,7 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 				</f>
 				</call>
 			}else{
-				notdone();
+				notdone();	// set_group_desc
 			}
 		}else if (glocal.set_group){
 			if (glocal.listname == NULL){
@@ -1668,7 +1744,7 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 				</f>
 				</call>
 			}else{
-				notdone();
+				notdone();	// set_group
 			}
 		}else if (glocal.set_member){
 			if (glocal.groupname == NULL){
@@ -1684,7 +1760,7 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 				</f>
 				</call>
 			}else{
-				notdone();
+				notdone();	// set_member
 			}
 		}else if (glocal.create_project_dir){
 			if (glocal.listname == NULL){
@@ -1700,7 +1776,7 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 				</f>
 				</call>
 			}else{
-				notdone();
+				notdone();	// create_project_dir
 			}
 		}else if (glocal.delete_list){
 			if (glocal.listname == NULL){
@@ -1716,7 +1792,7 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 				</f>
 				</call>
 			}else{
-				notdone();
+				notdone();	// delete_list
 			}
 		}else if (glocal.delete_group){
 			if (glocal.groupname == NULL){
@@ -1732,7 +1808,7 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 				</f>
 				</call>
 			}else{
-				notdone();
+				notdone();	// delete_group
 			}
 		}else if (glocal.print_lists){
 			if (glocal.ctx->is_internal()){
@@ -1773,7 +1849,7 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 			</f>
 			</call>
 			}else{
-				notdone();
+				notdone();	// print_lists
 			}
 		}else if (glocal.print_groups){
 			glocal.ret = bofs_print_groups (glocal.ctx,glocal.owner,NULL,0,glocal.only_owner);
@@ -2175,7 +2251,9 @@ static void bofs_listshortmsgs(const vector<SHORTMSG_receive> &messages)
 				linelen = strlen(m.content);
 			}
 		}
-		printf ("%s %-10s %-30s %-20s %7u %*.*s\n",tbftype[m.file_type],m.from,m.uuid,m.submit,m.size
+		printf ("%s %-10s %-30s %-20s %7u %*.*s\n",tbftype[m.file_type],m.from
+			,normalize_uuid(m.uuid).c_str()
+			,normalize_date(m.submit),normalize_size(m.size)
 			,linelen,linelen,m.content);
 	}
 }
@@ -2613,7 +2691,7 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 					</f>
 					</call>
 				}else{
-					notdone();
+					notdone();	// contact_manage
 				}
 			}
 		}else if (glocal.contact_request){
@@ -2632,7 +2710,7 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 					</f>
 					</call>
 				}else{
-					notdone();
+					notdone();	// contact_request
 				}
 			}
 		}else if (glocal.contact_list){
@@ -2652,7 +2730,7 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 					</f>
 					</call>
 				}else{
-					notdone();
+					notdone();	// contact_list
 				}
 			}
 		}else if (glocal.interest_set){
@@ -2670,7 +2748,7 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 					</f>
 					</call>
 				}else{
-					notdone();
+					notdone();	// interest_set
 				}
 			}
 		}else if (glocal.interest_unset){
@@ -2688,7 +2766,7 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 					</f>
 					</call>
 				}else{
-					notdone();
+					notdone();	// interest_unset
 				}
 			}
 		}else if (glocal.interest_list){
@@ -2707,7 +2785,7 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 					</f>
 					</call>
 				}else{
-					notdone();
+					notdone();	// interest_list
 				}
 			}
 		}else if (glocal.interest_check){
@@ -3409,6 +3487,7 @@ int main (int argc, char *argv[])
 	glocal const char *user = NULL;
 	glocal bool printcred = false;
 	glocal int nbrep=1;
+	glocal const char *uuidfile = "/tmp/bofs.testuuids";
 	glocal.ret = <call tlmpprogram>(argc,argv,"bolixo");
 	<f init>
 		setproginfo ("bofs",VERSION
@@ -3431,6 +3510,7 @@ int main (int argc, char *argv[])
 		setarg ('u',"user",MSG_U(O_SELECT,"Select one user from .bofs.conf"),glocal.user,false);
 		setarg (' ',"repeat",MSG_U(O_REPEAT,"Repeat the operation N time (speed test)"),glocal.nbrep,false);
 		setarg ('t',"testmode",MSG_U(O_TESTMODE,"Test mode, normalize output"),testmode,false);
+		setarg (' ',"uuidfile",MSG_U(O_UUIDFILE,"File holding collected uuids for testmode"),glocal.uuidfile,false);
 		setarg (' ',"nonstrict",MSG_U(O_NONSTRICT,"Allow SSL connection to self-sign certificate"),nonstrict,false);
 		setarg (' ',"printcred",MSG_U(O_PRINTCRED,"Print email and password of the user from .bofs.conf"),glocal.printcred,false);
 	</f>
@@ -3449,6 +3529,7 @@ int main (int argc, char *argv[])
 	<f main>
 		int ret = -1;
 		glocal CONTEXT ctx;
+		if (testmode) load_normalize_uuids(glocal.uuidfile);
 		bofs_loadconf(glocal.ctx,glocal.user);
 		if (glocal.printcred){
 			printf ("export WEBTEST_EMAIL=%s\nexport WEBTEST_PASSWORD=%s\n",glocal.ctx.email.c_str(),glocal.ctx.password.c_str());
@@ -3487,6 +3568,16 @@ int main (int argc, char *argv[])
 					exit (-1);
 				}
 			}
+		}
+		if (testmode){
+			<call savefile>(glocal.uuidfile,false);
+			<f dowrite>
+				for (auto &u:uuids){
+					fprintf (fout,"%s %u\n",u.first.c_str(),u.second);
+				}
+				return 0;
+			</f>
+			</call>
 		}
 		return ret;
 	</f>
