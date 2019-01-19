@@ -887,32 +887,46 @@ void _F_public_page::sendhtml (const BOB_TYPE &content)
 	const char *txt = tmp.c_str();
 	const char *tosend = txt;
 	while (*txt != '\0'){
-		bool is_href = strncmp(txt,"href=",5)==0;
-		if (strncmp(txt,"src=",4)==0 || is_href){
-			if (is_href){
-				txt += 5;
-			}else{
-				txt += 4;
-			}
-			char space = ' ';	// Spaces are not part of the URL unless there is a quote
-			if (*txt == '"' || *txt == '\''){
-				txt++;
-				space = '\0';
-			}
-			if (strncasecmp(txt,"http:",5)==0 || strncasecmp(txt,"https:",6)==0 || *txt == '/'){
-				txt++;
-			}else{
-				const char *pt = txt;
-				while (*pt != '\0' && *pt > space && *pt != '"' && *pt != '\'' && *pt != '>') pt++;
-				string url(txt,pt-txt);
-				string newurl = projecturl (url,"",!is_href);
+		if (*txt == '<'){
+			// Check if this is  <script>
+			const char *pt = txt+1;
+			while (isspace(*pt)) pt++;
+			if (strncasecmp(pt,"script",6)==0){
 				if (tosend < txt) htmlout (tosend,txt-tosend);
-				htmlout (newurl);
-				txt = pt;
-				tosend = txt;
+				htmlout ("&lt;");
+				txt++;
+				tosend = txt;	
+			}else{
+				txt++;
 			}
 		}else{
-			txt++;
+			bool is_href = strncmp(txt,"href=",5)==0;
+			if (strncmp(txt,"src=",4)==0 || is_href){
+				if (is_href){
+					txt += 5;
+				}else{
+					txt += 4;
+				}
+				char space = ' ';	// Spaces are not part of the URL unless there is a quote
+				if (*txt == '"' || *txt == '\''){
+					txt++;
+					space = '\0';
+				}
+				if (strncasecmp(txt,"http:",5)==0 || strncasecmp(txt,"https:",6)==0 || *txt == '/'){
+					txt++;
+				}else{
+					const char *pt = txt;
+					while (*pt != '\0' && *pt > space && *pt != '"' && *pt != '\'' && *pt != '>') pt++;
+					string url(txt,pt-txt);
+					string newurl = projecturl (url,"",!is_href);
+					if (tosend < txt) htmlout (tosend,txt-tosend);
+					htmlout (newurl);
+					txt = pt;
+					tosend = txt;
+				}
+			}else{
+				txt++;
+			}
 		}
 	}
 	if (tosend < txt) htmlout (tosend,txt-tosend);
