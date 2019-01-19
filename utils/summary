@@ -1,4 +1,5 @@
 #!/bin/sh
+IP=`ifconfig eth0 | grep inet | (read a b c; echo $b)`
 echo ====== monitor ========
 bolixo-production monitor | grep services
 echo ====== protocheck =====
@@ -8,14 +9,14 @@ bolixo-production syslog-tail
 echo ====== pendings =======
 pendingusers
 echo ====== webssl =========
-logssl 10
+logssl
 echo ====== exim ===========
 logexim 10
 echo ====== stats ==========
-NBHIT=`wc -l /var/lib/lxc/web/rootfs/tmp/agent.log`
-NBROB=`grep -c robot=1  /var/lib/lxc/web/rootfs/tmp/agent.log`
+NBHIT=`fgrep -v bo-webtest /var/lib/lxc/web/rootfs/tmp/agent.log | wc -l`
+NBROB=`fgrep -v bo-webtest /var/lib/lxc/web/rootfs/tmp/agent.log | grep -c robot=1`
 TODAY=`date +%d/%b/%Y`
-echo    "Today      " `grep -c $TODAY /var/lib/lxc/webssl/rootfs/etc/httpd/logs/ssl_access_log`
+echo    "Today      " `fgrep -v $IP /var/lib/lxc/webssl/rootfs/etc/httpd/logs/ssl_access_log | grep -c $TODAY`
 echo    "robots     " $NBROB/$NBHIT
 echo -n "nbusers     "
 nbusers

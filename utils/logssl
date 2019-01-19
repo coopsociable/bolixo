@@ -1,11 +1,19 @@
-#!/bin/sh
-CMD="tail -20"
+#!/usr/bin/sh
+IP=`ifconfig eth0 | grep inet | (read a b c; echo $b)`
+TODAY=`date +%d/%b/%Y`
+FILE=/var/lib/lxc/webssl/rootfs/etc/httpd/logs/ssl_access_log
+CMD="fgrep -v $IP $FILE"
+CMD1="fgrep $TODAY"
+CMD2="tail -20"
 if [ "$1" = "all" ] ;then
-	CMD=cat
+	CMD="cat $FILE"
+	CMD1=cat
+	CMD2=cat
 elif [ "$1" != "" ] ;then
-	CMD="tail -$1"
+	CMD1=cat
+	CMD2="tail -$1"
 fi
-$CMD /var/lib/lxc/webssl/rootfs/etc/httpd/logs/ssl_access_log | while read line
+$CMD | $CMD1 | while read line
 do
 	case $line in
 	*GET\ /index.hc?webstep=12*)
@@ -57,5 +65,5 @@ do
 		echo "Other        " $line
 		;;
 	esac
-done
+done | $CMD2
 
