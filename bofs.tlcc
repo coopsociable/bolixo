@@ -294,12 +294,19 @@ struct CONTEXT{
 	string sessionid;	// Session ID for the internal protocol
 	string hsessionid;	// Session ID for the https protocol
 	string threshold;	// Date to filter in the history of a directory or files
+	bool preset_session;	// We received the session id from the command line
+				// so logout is not needed.
 	CONNECT_INFO con;
 	CONNECT_INFO con_sess;
 	CONNECT_HTTP_INFO hcon;
+	CONTEXT(){
+		preset_session = false;
+	}
 	~CONTEXT(){
-		if (sessionid.size()>0) bofs_logout(con,sessionid);
-		if (hsessionid.size()>0) bofs_logout(hcon,hsessionid);
+		if (!preset_session){
+			if (sessionid.size()>0) bofs_logout(con,sessionid);
+			if (hsessionid.size()>0) bofs_logout(hcon,hsessionid);
+		}
 	}
 	int login(){
 		int ret = -1;
@@ -604,7 +611,7 @@ static int bofs_stat (
 		}
 		parent = dir;
 		file.name = filename;
-		//tlmp_error ("bofs_stat: dir=%s file=%s\n",glocal.dir.c_str(),glocal.file.c_str());
+		//tlmp_error ("bofs_stat: path=%s\n",path);
 		glocal.ret = -1;
 		if (!ctx.is_internal()){
 			<call webapi_stat> (ctx.hcon,ctx.hsessionid,path,ctx.threshold);
@@ -699,7 +706,7 @@ static int bofs_printonefile (CONTEXT &ctx, bool opt_long, const char *path)
 	FILEINFO file;
 	string parent;
 	if (bofs_stat(ctx,path,parent,file)==-1){
-		bofs_error ("ls",false,"Can't stat file %s",path);
+		bofs_error ("ls",false,MSG_U(E_STAT,"Can't stat file %s"),path);
 		ret = -1;
 	}else{
 		if (opt_long){
@@ -3488,6 +3495,9 @@ int main (int argc, char *argv[])
 	glocal bool printcred = false;
 	glocal int nbrep=1;
 	glocal const char *uuidfile = "/tmp/bofs.testuuids";
+	glocal const char *session = NULL;
+	glocal bool login = false;
+	glocal bool logout = false;
 	glocal.ret = <call tlmpprogram>(argc,argv,"bolixo");
 	<f init>
 		setproginfo ("bofs",VERSION
@@ -3508,11 +3518,15 @@ int main (int argc, char *argv[])
 			 "\tbofs undelete dir\n")
 			);
 		setarg ('u',"user",MSG_U(O_SELECT,"Select one user from .bofs.conf"),glocal.user,false);
+		setarg (' ',"nonstrict",MSG_U(O_NONSTRICT,"Allow SSL connection to self-sign certificate"),nonstrict,false);
+		setgrouparg (MSG_U(H_TESTS,"Tests"));
 		setarg (' ',"repeat",MSG_U(O_REPEAT,"Repeat the operation N time (speed test)"),glocal.nbrep,false);
 		setarg ('t',"testmode",MSG_U(O_TESTMODE,"Test mode, normalize output"),testmode,false);
 		setarg (' ',"uuidfile",MSG_U(O_UUIDFILE,"File holding collected uuids for testmode"),glocal.uuidfile,false);
-		setarg (' ',"nonstrict",MSG_U(O_NONSTRICT,"Allow SSL connection to self-sign certificate"),nonstrict,false);
 		setarg (' ',"printcred",MSG_U(O_PRINTCRED,"Print email and password of the user from .bofs.conf"),glocal.printcred,false);
+		setarg (' ',"login",MSG_U(O_LOGIN,"Just do a login and print the session id"),glocal.login,false);
+		setarg (' ',"logout",MSG_U(O_LOGOUT,"Logout the supplied session id"),glocal.logout,false);
+		setarg (' ',"session",MSG_U(O_SESSION,"Session id obtained from --login"),glocal.session,false);
 	</f>
 	<f main_noarg>
 		int ret = -1;
@@ -3521,6 +3535,31 @@ int main (int argc, char *argv[])
 			bofs_loadconf(ctx,glocal.user);
 			printf ("export WEBTEST_EMAIL=%s\nexport WEBTEST_PASSWORD=%s\n",ctx.email.c_str(),ctx.password.c_str());
 			ret = 0;
+		}else if (glocal.login){
+			CONTEXT ctx;
+			bofs_loadconf(ctx,glocal.user);
+			if (ctx.login()!=-1){
+				if (ctx.sessionid.size() > 0){
+					printf ("%s\n",ctx.sessionid.c_str());
+				}else{
+					printf ("%s\n",ctx.hsessionid.c_str());
+				}
+				// Prevent the logout by CONTEXT destructor
+				ctx.hsessionid.clear();
+				ctx.sessionid.clear();
+				ret = 0;
+			}
+		}else if (glocal.logout){
+			CONTEXT ctx;
+			bofs_loadconf(ctx,glocal.user);
+			if (glocal.session == NULL){
+				tlmp_error (MSG_U(E_NEEDSESSIONID,"You must provide the session id (got using --login)\n"));
+			}else if (ctx.is_internal()){
+				ctx.sessionid = glocal.session;
+			}else{
+				ctx.hsessionid = glocal.session;
+			}
+			// CONTEXT destructor will perform the logout
 		}else{
 			usage();
 		}
@@ -3534,6 +3573,14 @@ int main (int argc, char *argv[])
 		if (glocal.printcred){
 			printf ("export WEBTEST_EMAIL=%s\nexport WEBTEST_PASSWORD=%s\n",glocal.ctx.email.c_str(),glocal.ctx.password.c_str());
 		}else{
+			if (glocal.session != NULL){				
+				if (glocal.ctx.is_internal()){
+					glocal.ctx.sessionid = glocal.session;
+				}else{
+					glocal.ctx.hsessionid = glocal.session;
+				}
+				glocal.ctx.preset_session = true;
+			}
 			//printf ("ctx.hcon.host=%s ctx.hcon.port=%s\n",glocal.ctx.hcon.host.c_str(),glocal.ctx.hcon.port.c_str());
 			for (int i=0; i<glocal.nbrep; i++){
 				if (strcmp(argv[0],"ls")==0){

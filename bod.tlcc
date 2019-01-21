@@ -211,16 +211,16 @@ static unsigned trli_getsessionuser (CONNECT_INFO &con, const char *sessionid, b
 			glocal.is_admin = admin;
 			(*glocal.name) = name;
 			translat_selectlang(lang);
-			sessions[glocal.sessionid] = SESSION_CACHE(name,userid,admin,lang);
+			if (userid != 0) sessions[glocal.sessionid] = SESSION_CACHE(name,userid,admin,lang);
 		</f>
 		</call>
 		//}
 		//long long end = fdpass_getnow();
 		//printf ("exec time = %lf\n",(end-start)/1000000.0);
 		is_admin = glocal.is_admin;
-		if (glocal.userid == 0) msg = MSG_U(E_IVLDSESSION,"Invalid session");
 		userid = glocal.userid;
 	}
+	if (userid == 0) msg = MSG_U(E_IVLDSESSION,"Invalid session");
 	return userid;
 }
 </mod>
@@ -920,6 +920,7 @@ static int bod_main (
 				tb.push_back(string_f ("nbrequest_admin=%lu",glocal.nbrequest_admin));
 				tb.push_back(string_f ("nbrequest_client=%lu",glocal.nbrequest_client));
 				tb.push_back(string_f("filehandle %u",fs_getnbhandle()));
+				tb.push_back(string_f("sessions %lu",sessions.size()));
 				#ifdef INSTRUMENT
 					tb.push_back("intrument: on");
 					fflush (f_instrument);

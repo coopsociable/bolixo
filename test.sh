@@ -845,17 +845,26 @@ elif [ "$1" = "cmp-sequence" ] ; then # S: Execute QA tests
 		./scripts/access.sh $test >$CMPDIR/$test.out 2>$CMPDIR/$test.err
 	done
 	./scripts/access.sh public jacques-A >$CMPDIR/public.out 2>$CMPDIR/public.err
-elif [ "$1" = "eraseanon-lxc" ] ; then # prod:
+elif [ "$1" = "eraseanon-lxc" ] ; then # prod: [ nbseconds anonymous normal admin ]
 	export LXCSOCK=on
 	NBSEC=0
-	FILTER="1 0 0"
+	ANONYMOUS=1
+	NORMAL=0
+	ADMIN=0
 	if [ "$2" != "" ] ; then
 		NBSEC=$2
 	fi
 	if [ "$3" != "" ] ; then
-		FILTER="$3"
+		ANONYMOUS="$3"
 	fi
-	$0 bo-sessiond-control eraseold $NBSEC $FILTER
+	if [ "$4" != "" ] ; then
+		NORMAL="$4"
+	fi
+	if [ "$5" != "" ] ; then
+		ADMIN="$5"
+	fi
+	echo eraseold $NBSEC $ANONYMOUS $NORMAL $ADMIN
+	$0 bo-sessiond-control eraseold $NBSEC $ANONYMOUS $NORMAL $ADMIN
 elif [ "$1" = "test-sequence-lxc" ] ; then # S: Reloads and fills database lxc mode
 	export LXCSOCK=on
 	shift
