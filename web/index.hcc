@@ -1486,30 +1486,36 @@ extern "C" void webmain_real()
 	</f>
 	<f restoreform>
 		glocal int ret = -1;
-		glocal const char *formid = formid;
-		<call bod_client_form_readvar>(glocal.con,w_session.c_str(),formid);
-		<f ok>
-			if (!success){
-				tlmp_error (MSG_U(E_RESTOREFORM,"Can't restore active form state %s: %s\n"),glocal.formid,msg);
-			}else{
-				if (vars.size() > 0){
-					glocal.ret = 0;
-					for (auto &v:vars){
-						tlmpweb_setvar (v.name,v.val);
-					}
-				}	
-			}
-		</f>
-		</call>
+		if (userinfo.name.size()==0){
+			glocal.ret = 0;
+		}else{
+			glocal const char *formid = formid;
+			<call bod_client_form_readvar>(glocal.con,w_session.c_str(),formid);
+			<f ok>
+				if (!success){
+					tlmp_error (MSG_U(E_RESTOREFORM,"Can't restore active form state %s: %s\n"),glocal.formid,msg);
+				}else{
+					if (vars.size() > 0){
+						glocal.ret = 0;
+						for (auto &v:vars){
+							tlmpweb_setvar (v.name,v.val);
+						}
+					}	
+				}
+			</f>
+			</call>
+		}
 		return glocal.ret;
 	</f>
 	<f deleteform>
-		glocal const char *formid = formid;
-		<call bod_client_form_deletevar>(glocal.con,w_session.c_str(),formid);
-		<f ok>
-			if (!success) tlmp_error ("deleteform %s: %s\n",glocal.formid,msg);
-		</f>
-		</call>
+		if (userinfo.name.size() > 0){
+			glocal const char *formid = formid;
+			<call bod_client_form_deletevar>(glocal.con,w_session.c_str(),formid);
+			<f ok>
+				if (!success) tlmp_error ("deleteform %s: %s\n",glocal.formid,msg);
+			</f>
+			</call>
+		}
 	</f>
 	<f deleteallform>
 		<call bod_client_form_deleteall>(glocal.con,w_session.c_str());
