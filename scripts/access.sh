@@ -62,6 +62,37 @@ elif [ "$1" = "public" ] ; then # test: Make the content of one user public, pos
 	done
 	./bofs -t public -s --user $2
 	./bofs -t ls -l bo://projects/$2/public/version1
+elif [ "$1" = "ivldsession" ] ; then # test: Test access with invalid session (and node session)
+	DIR=bo://projects/jacques-A
+	bofs(){
+		session=$1
+		shift
+		echo "##" ./bofs $*
+		./bofs -t --session $session $* 2>&1
+	}
+	testseq(){
+		if [ "$1" = "" ] ; then
+			echo empty session
+		fi
+		sdir=$2
+		bofs $1 ls -l $DIR 
+		bofs $1 mkdir $DIR/$sdir 
+		ls -l | bofs $1 cat --pipeto $DIR/$sdir/file 
+		bofs $1 ls -l $DIR/$sdir 
+		bofs $1 rm $DIR/$sdir/file
+		bofs $1 ls -l $DIR/$sdir 
+		bofs $1 rmdir $DIR/$sdir 
+	}
+	echo ===== Using jacques-A valid session
+	SESSION=`./bofs --login`
+	testseq $SESSION dir1
+	./bofs --logout --session $SESSION
+	echo ===== Using a bad session id
+	testseq badsession dir1
+	echo ===== Using node session
+	SESSION=`./test.sh bod-control nodelogin http://test1.bolixo.org`
+	testseq $SESSION dir1
+	./test.sh bod-control nodelogout http://test1.bolixo.org $SESSION
 else
 	echo command
 fi

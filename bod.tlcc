@@ -207,11 +207,14 @@ static unsigned trli_getsessionuser (CONNECT_INFO &con, const char *sessionid, b
 		//for (int i=0; i<10000; i++){
 		<call bo_sessiond_client_getsessioninfo>(con,sessionid);
 		<f ok>
-			glocal.userid = userid;
-			glocal.is_admin = admin;
-			(*glocal.name) = name;
-			translat_selectlang(lang);
-			if (userid != 0) sessions[glocal.sessionid] = SESSION_CACHE(name,userid,admin,lang);
+			// Node session are invalid here
+			if (success && userid != (unsigned)-1){
+				glocal.userid = userid;
+				glocal.is_admin = admin;
+				(*glocal.name) = name;
+				translat_selectlang(lang);
+				sessions[glocal.sessionid] = SESSION_CACHE(name,userid,admin,lang);
+			}
 		</f>
 		</call>
 		//}
@@ -647,7 +650,7 @@ static void bod_record_email(
 </mod>
 <mod>
 static int bod_nodelogin(
-	CONNECT_HTTP_INFO &hcon,	// Connection info to the bolixo server 
+	CONNECT_HTTP_INFO &hcon,	// Connection info to the bolixo server (node)
 	CONNECT_INFO &con,		// Connection info to the writed
 	const char *nodename,
 	string &session)
@@ -656,8 +659,10 @@ static int bod_nodelogin(
 	glocal CONNECT_HTTP_INFO *hcon = &hcon;
 	glocal CONNECT_INFO *con = &con;
 	glocal int ret = -1;
+	if (nonstrict) hcon.setnonstrictmode();
 	<call webapi_nodelogin> (hcon,nodename);
 	<f ok>
+		// tlmp_error ("login1 success=%d msg=%s session=%s\n",success,msg,session);
 		if (!success){
 			tlmp_error ("nodelogin: internal_error=%d success=%d msg=%s session=%s\n",internal_error,success,msg,session);
 		}else{
@@ -668,7 +673,7 @@ static int bod_nodelogin(
 				glocal.sign = sign;
 			</f>
 			</call>
-			//tlmp_error ("session=%s sign=%s\n",session,glocal.sign.c_str());
+			// tlmp_error ("session=%s sign=%s\n",session,glocal.sign.c_str());
 			<call webapi_nodepass> (*glocal.hcon,session,glocal.sign);
 			<f ok>
 				if (!success){
@@ -682,6 +687,16 @@ static int bod_nodelogin(
 	</f>
 	</call>
 	return glocal.ret;
+}
+</mod>
+<mod>
+static void bod_nodelogout(CONNECT_HTTP_INFO &hcon, PARAM_STRING session)
+{
+	if (nonstrict) hcon.setnonstrictmode();
+	<call webapi_logout> (hcon,session);
+	<f ok>
+	</f>
+	</call>
 }
 </mod>
 /*
@@ -719,10 +734,7 @@ static void bod_remote_interest_set(
 			</f>
 			</call>
 		}
-		<call webapi_logout> (hcon,session);
-		<f ok>
-		</f>
-		</call>
+		bod_nodelogout(hcon,session);
 	}
 }
 </mod>
@@ -998,6 +1010,27 @@ static int bod_main (
 				}else{
 					rep_publishemail (true,"");
 				}
+			</f>
+			<f nodelogin>	// node = success:b msg session
+				CONNECT_HTTP_INFO hcon;
+				hcon.init (node);
+				string session;
+				bool success = false;
+				if (nonstrict) hcon.setnonstrictmode();
+				<call webapi_registernode>(hcon,glocal.nodename);
+				<f ok>
+				</f>
+				</call>
+				if (bod_nodelogin(hcon,glocal.con,glocal.nodename,session)!=-1){
+					success = true;
+				}
+				rep_nodelogin (success,"",session);
+			</f>
+			<f nodelogout>	// node session = success:b msg
+				CONNECT_HTTP_INFO hcon;
+				hcon.init (node);
+				bod_nodelogout(hcon,session);
+				rep_nodelogout (true);
 			</f>
 			<f debug>
 				if (on){

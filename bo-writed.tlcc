@@ -79,39 +79,46 @@ using namespace std;
 	Get the userid associated with the sessionid
 */
 <mod>
-static unsigned trli_getsessionuser (CONNECT_INFO &con, const char *sessionid, string &userid_str, bool &is_admin)
+static unsigned trli_getsessionuser (CONNECT_INFO &con, const char *sessionid, string &userid_str, bool &is_admin, bool &is_node)
 {
 	glocal unsigned userid = 0;
 	glocal string *userid_str = &userid_str;
 	glocal bool is_admin = false;
+	is_node = false;
 	<call bo_sessiond_admin_getsession>(con,sessionid);
 	<f ok>
-		if (userid == (unsigned)-1) userid = 0;	// session for nodes, not user
-		glocal.userid = userid;
-		(*glocal.userid_str) = userid_str;
-		glocal.is_admin = admin;
-		translat_selectlang (lang);
+		if (success){
+			glocal.userid = userid;
+			(*glocal.userid_str) = userid_str;
+			glocal.is_admin = admin;
+			translat_selectlang (lang);
+		}
 	</f>
 	</call>
 	is_admin = glocal.is_admin;
+	if (glocal.userid == (unsigned)-1){
+		glocal.userid = 0;	// session for nodes, not user
+		is_node = true;
+	}
 	return glocal.userid;
 }
 </mod>
 static unsigned trli_getsessionuser (CONNECT_INFO &con, const char *sessionid, bool &is_admin)
 {
+	bool is_node;
 	string tmp;
-	return trli_getsessionuser (con,sessionid,tmp,is_admin);
+	return trli_getsessionuser (con,sessionid,tmp,is_admin,is_node);
 }
 static unsigned trli_getsessionuser (CONNECT_INFO &con, const char *sessionid, string &userid_str)
 {
-	bool is_admin;
-	return trli_getsessionuser (con,sessionid,userid_str,is_admin);
+	bool is_admin,is_node;
+	return trli_getsessionuser (con,sessionid,userid_str,is_admin,is_node);
 }
 static unsigned trli_getsessionuser (CONNECT_INFO &con, const char *sessionid)
 {
 	string tmp;
-	bool is_admin;
-	return trli_getsessionuser (con,sessionid,tmp,is_admin);
+	bool is_admin,is_node;
+	return trli_getsessionuser (con,sessionid,tmp,is_admin,is_node);
 }
 /*
 	Check if a name only use accepted characters
@@ -1188,6 +1195,8 @@ static int bod_sessionstate(
 	<f ok>
 		if (internal_error){
 			*glocal.msg = "Internal error";
+		}else if (!success){
+			*glocal.msg = "Invalid session";
 		}else if (userid != glocal.expected){
 			//tlmp_error ("userid=%d expected=%d session=%s\n",userid,glocal.expected,glocal.session);
 			*glocal.msg = "Invalid session";
@@ -1911,8 +1920,10 @@ int main (int argc, char *argv[])
 				</f>
 				<f logout>
 					glocal const char *sessionid=sessionid;
-					glocal unsigned userid = trli_getsessionuser(glocal.con,sessionid);
-					if (glocal.userid != 0){
+					string tmp;
+					bool is_admin,is_node;
+					glocal unsigned userid = trli_getsessionuser(glocal.con,sessionid,tmp,is_admin,is_node);
+					if (glocal.userid != 0 || is_node){
 						<call bo_sessiond_admin_deletesession>(glocal.con,glocal.sessionid);
 						<f ok>
 						</f>

@@ -41,7 +41,7 @@ fi
 if [ "$LXCSOCK" == "on" ] ; then
 	BOLIXOD_SOCK=/var/lib/lxc/bolixod/rootfs/var/run/blackhole/bolixod-0.sock
 	PUBLISHD_SOCK=/var/lib/lxc/publishd/rootfs/var/run/blackhole/publishd.sock
-	BOD_SOCK=/var/lib/lxc/bod/rootfs/var/run/blackhole/bod-0.sock
+	BOD_SOCK=/var/lib/lxc/bod/rootfs/var/run/blackhole/bod-2.sock
 	WRITED_SOCK=/var/lib/lxc/writed/rootfs/var/run/blackhole/bo-writed-0.sock
 	SESSIOND_SOCK=/var/lib/lxc/sessiond/rootfs/var/run/blackhole/bo-sessiond.sock
 	KEYSD_SOCK=/var/lib/lxc/keysd/rootfs/var/run/blackhole/bo-keysd.sock
@@ -840,11 +840,22 @@ elif [ "$1" = "cmp-sequence" ] ; then # S: Execute QA tests
 	CMPDIR=/tmp/cmp-sequence
 	rm -fr $CMPDIR
 	mkdir $CMPDIR
-	for test in directory createsubdir projects
+	for test in directory createsubdir projects ivldsession
 	do
 		./scripts/access.sh $test >$CMPDIR/$test.out 2>$CMPDIR/$test.err
 	done
 	./scripts/access.sh public jacques-A >$CMPDIR/public.out 2>$CMPDIR/public.err
+	cd ../cmp-sequence
+	NBREF=`ls | wc -l`
+	NBTST=`cd /tmp/cmp-sequence && ls | wc -l`
+	if [ "$NBREF" != "$NBTST" ] ; then
+		echo NBREF=$NBREF NBTST=$NBTST
+	else
+		for file in *
+		do
+			diff -c $file /tmp/cmp-sequence/$file
+		done
+	fi
 elif [ "$1" = "eraseanon-lxc" ] ; then # prod: [ nbseconds anonymous normal admin ]
 	export LXCSOCK=on
 	NBSEC=0

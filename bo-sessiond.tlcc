@@ -271,7 +271,19 @@ int main (int argc, char *argv[])
 							DATEASC datetime;
 							fdpass_asctime (it.second.stats.lastvisit,datetime);
 							string tmp;
-							if (it.second.userid==(unsigned)-1){
+							if (strncasecmp(it.second.userid_str.c_str(),"http://",7)==0
+								|| strncasecmp(it.second.userid_str.c_str(),"https://",8)==0){
+								const char *status = "unknown";
+								if (it.second.userid == (unsigned)-1){
+									status = "logged";
+								}else if (it.second.userid == (unsigned)-2){
+									status = "login";
+								}
+								tmp = string_f ("%07u: %s %s-%s %s %s %s %u %u %d %s",pos,it.first.c_str()
+									,status,it.second.userid_str.c_str(),it.second.name.c_str(),it.second.email.c_str()
+									,datetime.buf,it.second.stats.nbacc
+									,it.second.userid,it.second.admin,it.second.lang.c_str());
+							}else if (it.second.userid==(unsigned)-1){
 								tmp = string_f ("%07u: %s anonymous %s %u",pos,it.first.c_str()
 									,datetime.buf,it.second.stats.nbacc);
 							}else{
@@ -432,9 +444,9 @@ int main (int argc, char *argv[])
 				<f getsession>
 					auto it = glocal.sessions.find(sessionid);
 					if (it != glocal.sessions.end()){
-						rep_getsession(it->second.userid,it->second.userid_str.c_str(),it->second.admin,it->second.lang);
+						rep_getsession(true,it->second.userid,it->second.userid_str.c_str(),it->second.admin,it->second.lang);
 					}else{
-						rep_getsession(0,"",false,"");
+						rep_getsession(false,0,"",false,"");
 					}
 				</f>
 				<f setsession>
