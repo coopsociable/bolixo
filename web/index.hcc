@@ -369,20 +369,24 @@ static void bolixo_title (const char *title, _F_websteps *c)
 	DIV head; head.id("head").flexfixe().print();
 	/- <table border=0 width=100% cellpadding=0 cellspacing=0>
 	htmlprintf ("<table border=0 width=100%% bgcolor=%s cellspacing=0 cellpadding=0><tr><td rowspan=2 align=left>\n",newscolor);
-	if (!is_mobile){
+	if (is_mobile){
+		/- <font color=gray>
+		htmlprintf (MSG_U(I_NODENAME,"Node %s"),util_getnodename());
+		/- </font>
+	}else{
 		/- <table border=0><tr><td><img height=20 src=/favicon.ico></td><td align=left>
 		htmlprintf ("<a href=%s><font size=7 color=\"white\">%s</font></a>&nbsp;&nbsp;&nbsp;",util_getdirserver(),org.c_str());
 		/- <font color=gray>
-		htmlprintf (MSG_U(I_NODENAME,"Node %s"),util_getnodename());
+		htmlprintf (MSG_R(I_NODENAME),util_getnodename());
 		/- </font>
 		/- <td>
 		if (userinfo.name.empty()) htmlout (MSG_U(I_ABOUT,"<font color=white>A peer to peer open social media</font>"));
 		/- </table>
 		/- </td>
-		/- <td align=right valign=top>
-		show_buttons_right (c);
-		/- </td></tr>
 	}
+	/- <td align=right valign=top>
+	show_buttons_right (c);
+	/- </td></tr>
 	/- <tr><td align=right valign=bottom>
 	if (w_robot == 0 && userinfo.name.size() > 0){
 		<call button_row>(0,newscolor,false);
@@ -1649,10 +1653,12 @@ extern "C" void webmain_real()
 		if (userinfo.name.size() == 0){
 			// Anonymous, present public news ?
 			// /- So far no public content
-			DIV d; d.w(50).marginauto().vmargins(30,0).vpaddings(10,10).paddings(10,10).border(1,"black").borderradius(5).bg("white").print();
-			htmlout (MSG_R(I_BOLIXO));
-			/-<p>
-			htmlprintf ("<a href=%s?webstep=12>%s</a>\n",tlmpweb_curpage(),MSG_R(I_COMPLETEDOC));
+			if (!is_mobile){
+				DIV d; d.w(50).marginauto().vmargins(30,0).vpaddings(10,10).paddings(10,10).border(1,"black").borderradius(5).bg("white").print();
+				htmlout (MSG_R(I_BOLIXO));
+				/-<p>
+				htmlprintf ("<a href=%s?webstep=12>%s</a>\n",tlmpweb_curpage(),MSG_R(I_COMPLETEDOC));
+			}
 		}else{
 			DIV d("tabs");
 			if (is_mobile){
@@ -1768,7 +1774,7 @@ extern "C" void webmain_real()
 		<f top>
 			bolixo_title (MSG_U(T_LOGIN,"Login"),&glocal.websteps);
 			/- <p>
-			DIV d; d.w(50).marginauto().paddings(10,10).vpaddings(10,10).borderradius(5).border(1,"black").print();
+			DIV d; d.w(is_mobile ? 80 : 50).marginauto().paddings(10,10).vpaddings(10,10).borderradius(5).border(1,"black").print();
 			d.donotend();
 			if (glocal.account_confirmed){
 				<?#I_ACCTCONFIRM Welcome
@@ -1786,10 +1792,14 @@ extern "C" void webmain_real()
 			/- </div>
 		</f>
 		<f setup>
-			/- <table border=0 align=center>
-			/-#I_EMAIL <tr><td>Enter your email<td>
-			field_string (w_email,"size=60");
-			/-#I_PASSWORD <tr><td>Password<td>
+			/- <table border=0 align=center width=100%>
+			/- <tr><td>
+			/-#I_EMAIL Enter your email
+			/- <td style=width:80%>
+			field_string (w_email,"style=width:100%");
+			/- <tr><td>
+			/-#I_PASSWORD Password
+			/- <td style=width:80%>
 			field_password (w_password,"");
 			/- <tr><td>
 			button_submit (MSG_U(B_LOGIN,"Login"));
@@ -1831,7 +1841,7 @@ extern "C" void webmain_real()
 		<call form>("createaccount");
 		<f top>
 			bolixo_title (MSG_U(T_CREATEACC,"Account creation"),&glocal.websteps);
-			DIV d; d.border(1,"black").borderradius(5).paddings(5,5).vpaddings(5,5).marginauto().vmargins(30,30).w(50).print();
+			DIV d; d.border(1,"black").borderradius(5).paddings(5,5).vpaddings(5,5).marginauto().vmargins(30,30).w(is_mobile ? 80 : 50).print();
 			/- <center><font size=+2>
 			htmlprintf (MSG_R(I_NODENAME),util_getnodename());
 			/- </font></center><p>
