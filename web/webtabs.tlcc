@@ -26,6 +26,7 @@
 using namespace std;
 
 static W_UNSIGNED w_webtab("webtab");
+static W_UNSIGNED w_subtab("subtab");
 static W_SSTRING  w_webtab_add("webtab_add");
 
 bool _F_webtabs::selected(PARAM_STRING id)
@@ -81,6 +82,7 @@ void _F_webtabs::addtab (PARAM_STRING id, PARAM_STRING title_txt)
 		pt+=2;
 		ptid = pt;
 	}
+	w_subtab=type+1;
 	string title;
 	if (title_txt.ptr[0] == '\0'){
 		title = ptid;
@@ -363,7 +365,6 @@ static void webtabs(_F_webtabs &c,
 					if (&t == ptt) w_webtab = no;
 					no += 2;
 				}
-				//FORM_HIDDEN t(w_webtab);
 				const char *id = ptt->tab.c_str();
 				const char *formid = id;
 				const char *end = strchr(id,WEBTAB_MARK);
@@ -399,6 +400,7 @@ static void webtabs(_F_webtabs &c,
 		} 
 	}
 	if (draw_ok){
+		bool mobile_view = is_mobile || tlmpweb_screenwidth() < 900;
 		DIV sc; sc.w(100).dispflex().flowrow().align("stetch").bg("white").print();
 		vector<GRABLINE> docs;
 		tlmpweb_pushgrab(docs);
@@ -407,14 +409,49 @@ static void webtabs(_F_webtabs &c,
 		const unsigned margin = 5;
 		static const char *mcolor = "white";	//"#F3F3F3";
 		if (docs.size() > 0){
-			DIV d("tabs","tabdoc"); d.flexfixe().bg(mcolor).align("stretch").w(size[0]).h(60).margins(margin,margin).print();
-			htmlout(docs);
+			if (!mobile_view || w_subtab==0){
+				unsigned sz = mobile_view ? 50 : size[0];
+				DIV d("tabs","tabdoc"); d.flexfixe().bg(mcolor).align("stretch").w(sz).h(60).margins(margin,margin).print();
+				htmlout(docs);
+			}
 		}
 		glocal const char *help_id = c.help_id.c_str();
 		glocal const char *help_title = c.help_title.c_str();
 		bool putborder = true;	// On each side of the first tab only
+		const unsigned side=1;
+		static const char *nbspline = "&nbsp;<br>&nbsp;<br>&nbsp;<br>&nbsp;<br>&nbsp;<br>&nbsp;<br>&nbsp;<br>&nbsp;<br>&nbsp;<br>&nbsp;<br>&nbsp;<br>&nbsp;";
+		if (mobile_view && w_subtab > 0){
+			string hidden;
+			form_gethidden(hidden);
+			const char *sep = hidden.size() > 0 ? "&" : "";
+			string href = string_f ("%s?%s%ssubtab=%u",tlmpweb_curpage(),hidden.c_str(),sep,w_subtab-1);
+			if (is_mobile){
+				htmlprintf ("<script>\n"
+					"swipelefthref=\"%s\";\n"
+					"</script>\n",href.c_str());
+			}else{
+				DIV dc("tabs"); dc.flexfixe().w(side).align("stretch").bg("white").print();
+				htmlprintf ("<a href=%s style=\"width:100%%; height:100%%; background-color:lightgray;\">%s</a>\n"
+					,href.c_str(),nbspline);
+			}
+		}
+		FORM_HIDDEN t(w_subtab);
 		for (unsigned type=0; type <4; type++){
 			unsigned sz = size[type+1];
+			if (mobile_view){
+				if (type == w_subtab-1){
+					if (is_mobile){
+						sz = 100;
+					}else if (w_subtab == 1){
+						sz = 100-side-side;
+					}else{
+						sz = 100-side;
+					}
+				}else{
+					sz = 0;
+				}
+			}
+			//tlmp_error ("type=%u sz=%u subtab=%u\n",type,sz,w_subtab.getval());
 			if (sz != 0){
 				glocal unsigned tab_width = 0;
 				DIV dc; dc.flexfixe().w(sz).align("stretch").bg("white").print();
@@ -536,6 +573,21 @@ static void webtabs(_F_webtabs &c,
 				DIV mi; mi.bg("white").align("flex-start").flexgrow().print();
 				htmlout (lines[type]);
 				glocal.help_id = "";
+			}
+		}
+		if (mobile_view && w_subtab < 2){
+			string hidden;
+			form_gethidden(hidden);
+			const char *sep = hidden.size() > 0 ? "&" : "";
+			string href = string_f ("%s?%s%ssubtab=%u",tlmpweb_curpage(),hidden.c_str(),sep,w_subtab+1);
+			if (is_mobile){
+				htmlprintf ("<script>\n"
+					"swiperighthref=\"%s\";\n"
+					"</script>\n",href.c_str());
+			}else{
+				DIV dc("tabs"); dc.flexfixe().w(side).align("stretch").bg("white").print();
+				htmlprintf ("<a href=%s style=\"width:100%%; height:100%%; background-color:lightgray;\">%s</a>\n"
+					,href.c_str(),nbspline);
 			}
 		}
 	}
