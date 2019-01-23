@@ -1,3 +1,4 @@
+#ifdef DEFINE_USERINFO
 struct USERINFO{
 	std::string name;
 	bool is_admin;
@@ -13,6 +14,7 @@ struct USERINFO{
 		reset();
 	}
 };
+#endif
 
 int util_getsessioninfo (CONNECT_INFO &con, CONNECT_INFO &con_sess, std::string &session, const char *varname, unsigned &varval);
 void print_href (const char *title, PARAM_STRING href);
