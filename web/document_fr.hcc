@@ -26,8 +26,16 @@ using namespace std;
 <mod>
 void bolixo_doc_fr (DOCUMENT_POINTER &docpointer, DOC_ID &jump, const char *username, bool display_full)
 {
+	glocal bool unknown_user = false;
 	glocal const char *username = username;
-	document_button_display_only = username[0] == '\0';
+	glocal const char *host = getenv("HTTP_X_FORWARDED_HOST");
+	if (glocal.host == NULL) glocal.host = "bolixo.org";
+	document_button_display_only = false;
+	if (username[0] == '\0'){
+		glocal.unknown_user = true;
+		glocal.username = "some_user";
+		document_button_display_only = true;
+	}
 	<call document>("",docpointer,jump,display_full);
 	<f ref>
 	</f>
@@ -37,6 +45,25 @@ void bolixo_doc_fr (DOCUMENT_POINTER &docpointer, DOC_ID &jump, const char *user
 		?>
 	</f>
 	<f body>
+		<- section("Qu'est-ce que Bolixo ?");>
+			Bolixo est un réseau social comme bien d'autres. Mais contrairement à la majorité, il est
+			assemblé avec des logigiels libres à 100%. Bolixo est lui-même un logiciel libre.
+			C'est aussi un réseau distribué. Le réseau Bolixo est composé d'un grand nombre de serveurs
+			chacun hébergeant ses utilisateurs. Mais un utilisateur sur un serveur peut interagir
+			avec des utilisateurs sur n'importe quel autres serveurs.
+			<p>
+			Que pouvez vous faire avec Bolixo ?
+			<ul>
+			<li>Créer des groupes publiques pour échanger des messages et documents.
+			<li>Créer une page publique permettant à tous de lire les messages et documents que vous y placerez. Vous pouvez même
+				inviter des amis pour aider à l'entretien de votre page publique.
+			<li>Installer un serveur Bolixo pour votre organisation.
+			</ul>
+			<p>
+			Voir la section
+			/- tlmpdoc_link(section_why,"<em>Pourquoi Bolixo ?</em>");
+			à la fin de ce document.
+		</->
 		<- section("Commençons");>
 			Bon! Vous souhaitez utiliser Bolixo rapidement. Voici ce qu'il faut faire.
 			<p>
@@ -64,24 +91,237 @@ void bolixo_doc_fr (DOCUMENT_POINTER &docpointer, DOC_ID &jump, const char *user
 				<li>
 					/- d.print();
 					Ajouter des messages dans le groupe <b>public</b>. Vous pouvez ajouter des images,
-					des vidéos et des trames sonores (mp3).
+					des vidéos et des trames sonores (mp3,ogg).
 					/- d.end();
 					/- tmp = string_f("1:%s:public",glocal.username);
 					/- jump2app (step_talks,tmp.c_str());
 					<br><br><br>
 				<li>
 					/- d.print();
-					Rendre le contenu public. Il sera disponible ici.<br> 
+					À ce stade, tout ce vous avez fait reste privé. Il faut le rendre public.
+					En visitant le formulaire de gestion de compte, vous devez activer l'option
+					<em>Autoriser l'accès public</em>.
+					Votre page publique sera disponible ici.<br> 
 					/- const char *host = getenv("HTTP_X_FORWARDED_HOST");
 					/- htmlprintf ("https://%s/public/%s<br>\n",host != NULL ? host : "bolixo.org" ,glocal.username);
 					/- d.end();
 					/- jump2app (step_profile,1);
 				</ul>
 			</->
+			<- section("Suivre des messages publics");>
+				Vous souhaitez suivre plus facilement les messages publics de vos amis, organisations, etc.
+				Au lieu de visiter chacune de leur page publique une à une, vous pouvez enregistrer
+				votre intérêt. Vous obtiendrez un sommaire dans votre page <em>Vigie</em>.
+				<p>
+				Visitez l'onglet <b>Intérêts</b> de la section <b>Configuration</b> et sélectionnez <em>Ajout d'intérêts</em>.
+				Saisissez des codes utilisateurs Bolixo et validez. Vous verez l'avatar pour chaque code.
+				Si vous voyez l'image suivante <img src=/private.png>, cela indique que la personne n'a pas de page publique.
+				/- jump2app (step_profile,2);
+				<p>
+				Tant qu'à être là, you souhaiterez ajouter les intérêts suivant:
+				<ul>
+				<li>bolixonouvelles@alpha.bolixo.org: Ce qui se passe avec Bolixo.
+					<br>
+					La page publique est <a href=https://alpha.bolixo.org/public/bolixonouvelles>https://alpha.bolixo.org/public/bolixonouvelles</a>.
+				<li>bolixodev@alpha.bolixo.org: Developpement et nouvelles versions (En anglais).
+					<br>
+					La page publique est <a href=https://alpha.bolixo.org/public/bolixodev>https://alpha.bolixo.org/public/bolixodev</a>.
+
+				</ul>
+				<p>
+				Notez que tous les utilisateurs ont un intérêt pré-programmé pour le compte <em>admin</em> de leur serveur.
+				C'est ainsi qu'ils apprennent ce qui se passe sur leur serveur, incluant les coupures de service pour entretien.
+			</->
+			<- section("Devenir visible");>
+				Par défaut, votre compte Bolixo est invisible. À moins que vous ne fournissiez votre code utilisateur et votre nom de serveur à quelqu'un,
+				il ne pourra pas vous trouver. Il n'y a pas de mécanismes pour vous trouver. Il n'y a pas d'API permettant
+				d'énumérer les utilisateurs sur un serveur Bolixo. Il n'y a pas d'API non plus pour énumérer les serveurs.
+				C'est peut-être ce que vous voulez ... ou pas. Vous souhaitez peut-être être visible
+				pour que vos amis puissent vous trouver. C'est ce que l'annuaire <a href=https://bolixo.org>bolixo.org</a>
+				solutionne.
+				<p>
+				Visitez l'onglet <em>Compte</em> de la section <em>Configuration</em> et regardez la section <em>Information publiques</em>.
+				Décidez ce que vous souhaitez publier. Tous les champs sont optionnels.
+				Activez l'option <em>Publier dans l'annuaire bolixo.org</em> et valider. Visitez <a href=https://bolixo.org>Bolixo.org</a> et cherchez.
+				Vous trouverez uniquement les champs que vous avez rempli. Désactivez l'option et valider. Refaites votre recherche. Vous avez
+				disparu. Vous avez le contrôle.
+				/- jump2app (step_profile,1);
+			</->
 			<- section("Établir des contacts");>
+				Vous souhaitez communiquer avec quelqu'un via Bolixo. Par défaut, vous ne pouvez pas. Vous devez demander la permission.
+				Visitez l'onglet <em>Requêtes</em> de la section <em>Configuration</em>.
+				Sélectionnez <em>Établir une relation</em>. Vous entrez le code utilisateur de votre contact et une petite introduction.
+				Lorsque votre contact acceptera la requête, vous pourrez l'inclure dans vos projets et il pourra faire de même
+				(vous inclure dans ses projets).
+				Si cette personne est dans un serveur bolixo différent du votre, inscrivez "code-utilisateur@nom-de-serveur".
+				/- jump2app (step_profile,4);
+				<p>
+				Vous pouvez visiter <a href=https://bolixo.org>Bolixo.org</a> pour chercher des individus et des organisations.
+			</->
+			<- section("Demander de l'aide");>
+				Vous pouvez demander de l'aide en envoyant un message à l'administrateur (admin) de votre serveur bolixo.
+				Simplement aller à l'onglet <em>Messages</em> et ensuite sélectionner <em>Réception</em>.
+				Inscriver <em>admin</em> dans le champ <em>destinataires</em> puis inscrivez votre demande.
+                                /- string tmp = string_f("1:%s:inbox~Réception",glocal.username);
+                                /- jump2app (step_talks,tmp.c_str());
 			</->
 		</->
-		<- section("Qu'est-ce que Bolixo ?");>
+		<- section("Survol des fonctionalités");>
+			<- section("Groupes et amis");>
+				Les groupes sont utilisés pour établir un canal de communication privé. Ils sont aussi utilisés pour le contrôle d'accès.
+				Seul les membres de votre liste de contacts peuvent être membre d'un de vos groupe. Votre liste de contacts
+				est composée de gens avec qui vous avez établi une relation ou qui ont établi une relation avec vous.
+				<p>
+				Les membres d'un groupe peuvent ajouter des messages à la boîte de réception partagée du groupe. Si on vous ajoute
+				dans un groupe, vous aurez accès à tous les messages, incluant les anciens messages.
+				<p>
+				Dans la section <em>Messages</em>, vous pouvez voir à gauche la liste de tous les groupes auquels vous appartenez.
+			</->
+			<- section("Projets");>
+				Vous pouvez créer des projets. Un projet a un nom, une description et une liste de groupes.
+                                /- jump2app (step_profile,5);
+                                Normalement, vous êtez membre d'un des groupes associés à ce projet, mais ce n'est pas essentiel. Vous pourriez
+				simplement agir comme gestionnaire du projet sans véritablement participer à son contenu.
+				<p>
+				Un dossier est créé pour chaque projet. Dans ce dossier, vous pouvez créer des documents et des sous-dossiers. Vous
+				pouvez importer des documents.
+			</->
+			<- section("Messages");>
+				Vous pouvez transmettre de cours messages, des images, des vidéos et des bandes sonores aux membres d'un groupe.
+				Il n'y a pas de véritable limite à la taille d'un message, mais l'interface est plus adapté pour de cours messages.
+				Seul les cinq premières lignes d'un message sont affichées dans la liste. Lorsque vous sélectionnez un message
+				son contenu complet est affiché dans le panneau de droite. Les bandes sonores et fichiers vidéos sont présentés
+				dans une fenêtre jaillissante.
+				<p>
+				Les balises HTML ne sont pas supportées. Si vous en inscrivez une, elle apparaîtra tel quel.
+				Si vous inscrivez un hyper-lien (commençant par http:// ou https://), il sera traduit et deviendra
+				sélectionnable.
+				<p>
+				Les messages ne sont pas conservés indéfiniment. La règle peut varier d'un serveur bolixo à l'autre. La norme
+				est une semaine.
+			</->
+			<- section("Page publique");>
+				Chaque utilisateur peut avoir une page publique. Elle est activée dans l'écran de configuration du compte.
+				/- if (!glocal.unknown_user){
+					Par exemple, voici le lien de votre page publique:
+					<pre>
+					/- htmlprintf ("<a href=https://%s/public/%s>https://%s/public/%s</a>",glocal.host,glocal.username,glocal.host,glocal.username);
+					</pre>
+				/- }
+				<p>
+				Lorsque vous autorisez l'accès public et que le dossier public est positionné à "aucun", votre page publique présentera:
+				<ul>
+				<li>Vos deux photos (petite et large), que vous avez téléversé dans votre projet <em>public</em>.
+				<li>Votre code utilisateur ainsi que le nom du serveur.
+				<li>Les messages de votre groupe public. Ces messages peuvent être inscrit par vous ou par n'importe quel
+					membre de votre groupe public.
+				</ul>
+				<p>
+				Lorsque le dossier public est positionné à "racine", la même information apparait plus le contenu du dossier
+				public. Si vous avez créé des sous-dossiers dans le dossier public, vous pouvez en sélectionner un.
+				Son contenu sera utilisé plutôt que celui du dossier public.
+				Par défaut, Bolixo va présenter tout ce qu'il va trouver dans le dossier sélectionné: Textes, images, ...
+				Ce n'est probablement pas ce que vous souhaitez. S'il y a un document appelé <b>index.html</b> dans le dossier sélectionné
+				il sera présenté. Ce document devra référencer le reste du dossier. Voici les règles pour la rédaction du fichier index.html.
+				<p>
+				<ul>
+				<li>Il contient du HTML normal.
+				<li>Vous ne pouvez pas écrire de JavaScript. Les sections &ltscript&gt; apparaitront tel quel.
+				<li>Les liens relatifs et absolue pour ce site (pas de serveur spécifié) seront ré-écrits pour pointer dans le dossier sélectioné.
+				</ul>
+				<p>
+				Il peut être intéressant d'inclure temporairement un ami dans votre groupe <em>public</em>. Il pourra vous aider à rédiger le contenu
+				de votre page publique.
+			</->
+			<- section("Aperçu publique",section_preview);>
+				Vous pouvez visualisez un aperçu de votre page publique. Choisissez un dossier du projet <em>public</em>. À l'aide du menu
+				contextuel, sélectionez <em>Aperçu public</em>. Cela vous permet de pré-visualiser votre future page publique. Cela permet aussi
+				de visualiser une nouvelle version. Cela fonctionne même si vous n'avez pas <em>autorisé l'accés public</em>.
+				<p>
+				Cette fonctionnalité est disponible pour tous les membres de votre groupe public.
+			</->
+			<- section("Outil ligne de commande");>
+				Un utilitaire appelé <b>bofs</b> vous permet de réaliser à peu près tout ce que vous pouvez faire à partir de l'interface web.. Vous pouvez
+				l'utiliser pour réaliser des sauvegardes ou pour importer rapidement du contenu. Voici quelques exemples:
+				<p>
+				<ul>
+				<li>Sauvegarde de votre dossier public<br>
+				<- pre();>
+					/- htmlprintf ("bofs cp https://%s/projects/%s/public /tmp/public<br>\n",glocal.host,glocal.username);
+				</->
+				<li>Envoyer un message et une image dans le groupe public<br>
+				<- pre();>
+					/- htmlprintf ("bofs msgs -t --groupname public --groupowner %s -C \"Ceci est une message\"<br>\n",glocal.username);
+					/- htmlprintf ("bofs msgs -t --groupname public --groupowner %s -F /tmp/image.png<br>\n",glocal.username);
+				</->
+				<li>Afficher les messages de votre groupe public, soit avec la commande <em>msgs</em> ou la commande <em>ls</em><br>
+				<- pre();>
+					/- htmlprintf ("bofs msgs --listshortmsgs --groupowner %s --groupname public<br>\n",glocal.username);
+					/- htmlprintf ("bofs ls -l https://%s/msgs/%s/short-inbox/public<br>\n",glocal.host,glocal.username);
+				</->
+				</ul>
+			</->
+			<- section("Signature numérique");>
+				(Vous trouverez une explication des signatures numériques <a href=https://fr.wikipedia.org/wiki/Signature_numérique>sur Wikipedia</a>)
+				<p>
+				Chaque utilisateur possède une clé numérique de 2048 bits. Cette clé est composé d'une partie publique et une partie privée.
+				La partie privée est utilisée pour signer les documents et les messages.
+				La partie publique est utilisée pour valider la signature des documents.
+				Chaque document produit ou téléversé par un utilisateur est signé en utilisant sa clé privée. Cela s'applique aussi aux messages.
+				<p>
+				Sans avoir accès à la clé privée, il est impossible de créer une signature valide pour un document.
+				Dit autrement, personne ne peut écrire un document et prétendre qu'il a été écrit par vous.
+				<p>
+				Il y a un service public (API) permettant à tous d'obtenir la clé publique d'un utilisateur. Présentement, l'utilitaire <em>bofs</em> 
+				utilise ce service pour s'assurer de l'authenticité des documents qu'il récupère.
+				<p>
+				<em>Bolixo</em> est un système distribué où les serveurs sont contrôlés par différents individus. Lorsque vous écrivez un message public, il
+				est copié de serveur en serveur, accompagné de sa signature numérique. Ce message permet à quiconque de s'assurer que le message
+				provient bien de vous et qu'il n'a pas été altéré.
+			</->
+		</->
+		<- section("Operations");>
+			<- section("Configuration");>
+				<- section("Compte",section_account);>
+					You manage the account preferences here.
+					This includes the access control/privacy of your public page.
+				</->
+				<- section ("Intérêts",section_interests);>
+					This is where you manage the list of interesting people. Once set, the main
+					page will track the public messages written by all these persons.
+				</->
+				<- section("Relations",section_contacts);>
+					This is where you manage your contacts (people you know).
+					In this page, you can see the contact requests they sent you.
+				</->
+				<- section("Demande de relation",section_contact_req);>
+					This is where you manage your contacts (people you know).
+					In this page, you can see the contact requests you sent.
+				</->
+				<- section("Projets",section_projects);>
+				</->
+				<- section("Groupes",section_groups);>
+				</->
+			</->
+			<- section("Messages",section_talk);>
+			</->
+			<- section("Projets",section_project);>
+			</->
+			<- section("Installer votre proper serveur Bolixo");>
+				<- section("Installing packages");>
+				</->
+				<- section("Private site");>
+					A public Bolixo site is open to anyone. Anyone can create an account there. This means the site
+					users do not know each other.
+					<p>
+					A private Bolixo site manages its own accounts. A organisation, a company would normally create
+					their own private bolixo site. They will create accounts for their employees/members. Normally, all their users (co-workers)
+					know each other and are expect to interact with each other. So local user do not need a contact request prior to
+					communicate.
+				</->
+			</->
+		</->
+		<- section("Pourquoi Bolixo ?",section_why);>
 			<- section("Les réseaux sociaux et la responsabilité sociale");>
 				Creating a social media site is fun and rewarding. Recent events
 				has shown that with <em>great powers comes great responsabilities</em>.
@@ -121,65 +361,6 @@ void bolixo_doc_fr (DOCUMENT_POINTER &docpointer, DOC_ID &jump, const char *user
 				</->
 			</->
 			<- section("Logiciels libres");>
-			</->
-		</->
-		<- section("Getting started");>
-			This section shows quickly what you can do with bolixo.
-
-			<- section("Configuration and user profile");>
-			</->
-		</->
-		<- section("Fonctionality overview");>
-			<- section("Groups and friends");>
-			</->
-			<- section("Short messages",section_talk);>
-			</->
-			<- section("Mail",section_mails);>
-			</->
-			<- section("File system");>
-			</->
-			<- section("Projects",section_project);>
-			</->
-			<- section("Public preview",section_preview);>
-				You can see a preview of your public page. Select one folder in the public project
-				and use the context menu to preview its content.
-			</->
-			<- section("Public view");>
-			</->
-			<- section("Command line tool");>
-			</->
-		</->
-		<- section("Operations");>
-			<- section("Configuration");>
-				<- section("Private site");>
-					A public Bolixo site is open to anyone. Anyone can create an account there. This means the site
-					users do not know each other.
-					<p>
-					A private Bolixo site manages its own accounts. A organisation, a company would normally create
-					their own private bolixo site. They will create accounts for their employees/members. Normally, all their users (co-workers)
-					know each other and are expect to interact with each other. So local user do not need a contact request prior to
-					communicate.
-				</->
-				<- section("Compte",section_account);>
-					You manage the account preferences here.
-					This includes the access control/privacy of your public page.
-				</->
-				<- section("Relations",section_contacts);>
-					This is where you manage your contacts (people you know).
-					In this page, you can see the contact requests they sent you.
-				</->
-				<- section("Demande de relation",section_contact_req);>
-					This is where you manage your contacts (people you know).
-					In this page, you can see the contact requests you sent.
-				</->
-				<- section ("Intérêts",section_interests);>
-					This is where you manage the list of interesting people. Once set, the main
-					page will track the public messages written by all these persons.
-				</->
-				<- section("Projets",section_projects);>
-				</->
-				<- section("Groupes",section_groups);>
-				</->
 			</->
 		</->
 	</f>
