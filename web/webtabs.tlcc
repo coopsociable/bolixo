@@ -221,7 +221,7 @@ static void webtabs(_F_webtabs &c,
 			c.changed = true;
 		}
 	}
-	// Manage the left and right arrows
+	// Manage the left and right arrows and small swipe (mobile)
 	if (w_webtab >= 1000 && w_webtab < 1004){
 		unsigned &v = ctrl.offsets[w_webtab-1000];
 		if (v > 0) v--;
@@ -229,6 +229,34 @@ static void webtabs(_F_webtabs &c,
 	}else if (w_webtab >= 2000 && w_webtab < 2004){
 		ctrl.offsets[w_webtab-2000]++;
 		c.changed = true;
+	}else if ((w_webtab == 3000  || w_webtab == 4000) && w_subtab.getval() > 0){
+		// Small swipe for the mobile version
+		unsigned type = w_subtab-1;
+		vector<WEBTAB*> prec;
+		int maxorder = 0;
+		unsigned maxpos = 0;
+		for (auto &t:ctrl.tabs){
+			if (t.type == type){
+				prec.push_back(&t);
+				if (t.selorder > maxorder){
+					maxorder = t.selorder;
+					maxpos = prec.size()-1;
+				}
+			}
+		}
+		if (w_webtab == 3000){
+			if (maxpos > 0){
+				if (ctrl.offsets[type] == maxpos) ctrl.offsets[type]--;
+				prec[maxpos-1]->selorder=maxorder+1;
+				c.changed = true;
+			}
+		}else if (w_webtab == 4000){
+			if (maxpos < prec.size()-1){
+				if (ctrl.offsets[type] == maxpos) ctrl.offsets[type]++;
+				prec[maxpos+1]->selorder=maxorder+1;
+				c.changed = true;
+			}
+		}
 	}
 	glocal WEBTAB_CTRL *ctrl = &ctrl;
 	glocal vector<WEBTAB> *tabs = c.tabs;
@@ -340,6 +368,7 @@ static void webtabs(_F_webtabs &c,
 		typeorder={3,2,1,0};
 	}
 	while (typeorder.size() > 0){
+		FORM_HIDDEN t(w_subtab);
 		int type = typeorder.front();
 		typeorder.pop_front();	
 		WEBTAB *ptt = NULL;
@@ -426,9 +455,11 @@ static void webtabs(_F_webtabs &c,
 			const char *sep = hidden.size() > 0 ? "&" : "";
 			string href = string_f ("%s?%s%ssubtab=%u",tlmpweb_curpage(),hidden.c_str(),sep,w_subtab-1);
 			if (is_mobile){
+				string href1 = string_f ("%s?%s%swebtab=3000&subtab=%u",tlmpweb_curpage(),hidden.c_str(),sep,w_subtab.getval());
 				htmlprintf ("<script>\n"
 					"swipelefthref=\"%s\";\n"
-					"</script>\n",href.c_str());
+					"smallswipelefthref=\"%s\";\n"
+					"</script>\n",href.c_str(),href1.c_str());
 			}else{
 				DIV dc("tabs"); dc.flexfixe().w(side).align("stretch").bg("white").print();
 				htmlprintf ("<a href=%s style=\"width:100%%; height:100%%; background-color:lightgray;\">%s</a>\n"
@@ -575,19 +606,31 @@ static void webtabs(_F_webtabs &c,
 				glocal.help_id = "";
 			}
 		}
-		if (mobile_view && w_subtab < 2){
+		if (mobile_view){
 			string hidden;
 			form_gethidden(hidden);
 			const char *sep = hidden.size() > 0 ? "&" : "";
-			string href = string_f ("%s?%s%ssubtab=%u",tlmpweb_curpage(),hidden.c_str(),sep,w_subtab+1);
-			if (is_mobile){
-				htmlprintf ("<script>\n"
-					"swiperighthref=\"%s\";\n"
-					"</script>\n",href.c_str());
+			if (w_subtab == 2){
+				// On the last TAB, only small right swipe are meaningfull
+				if (is_mobile){
+					string href1 = string_f ("%s?%s%swebtab=4000&subtab=%u",tlmpweb_curpage(),hidden.c_str(),sep,w_subtab.getval());
+					htmlprintf ("<script>\n"
+						"smallswiperighthref=\"%s\";\n"
+						"</script>\n",href1.c_str());
+				}
 			}else{
-				DIV dc("tabs"); dc.flexfixe().w(side).align("stretch").bg("white").print();
-				htmlprintf ("<a href=%s style=\"width:100%%; height:100%%; background-color:lightgray;\">%s</a>\n"
-					,href.c_str(),nbspline);
+				string href = string_f ("%s?%s%ssubtab=%u",tlmpweb_curpage(),hidden.c_str(),sep,w_subtab+1);
+				if (is_mobile){
+					string href1 = string_f ("%s?%s%swebtab=4000&subtab=%u",tlmpweb_curpage(),hidden.c_str(),sep,w_subtab.getval());
+					htmlprintf ("<script>\n"
+						"swiperighthref=\"%s\";\n"
+						"smallswiperighthref=\"%s\";\n"
+						"</script>\n",href.c_str(),href1.c_str());
+				}else{
+					DIV dc("tabs"); dc.flexfixe().w(side).align("stretch").bg("white").print();
+					htmlprintf ("<a href=%s style=\"width:100%%; height:100%%; background-color:lightgray;\">%s</a>\n"
+						,href.c_str(),nbspline);
+				}
 			}
 		}
 	}
