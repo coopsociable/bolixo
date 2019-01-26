@@ -191,7 +191,8 @@ int util_getsessioninfo (CONNECT_INFO &con, CONNECT_INFO &con_sess,string &sessi
 static float small_size=0.9;
 static unsigned draw_tab_height()
 {
-	unsigned height = tlmpweb_fontsize()*1.3*small_size;
+	unsigned fontsize = tlmpweb_fontsize();
+	unsigned height = fontsize*1.3*small_size;
 	if (height < 20) height = 20;
 	return height;
 }
@@ -219,9 +220,18 @@ unsigned draw_tab (
 	}
 	htmlprintf ("<svg width=%u height=%u>\n",width,height);
 	htmlprintf ("<a href='#' onclick=formsubmit('%s') onmouseover=changefill2('tabrect%u','tabsrect%u','%s')"
-		" onmouseout=changefill2('tabrect%u','tabsrect%u','%s')>\n"
+		" onmouseout=changefill2('tabrect%u','tabsrect%u','%s')"
 		,href.ptr,id,id,fill_in,id,id,fill);
-	htmlprintf ("<path id=tabrect%u fill='%s' stroke=black stroke-width=1\n",id,fill);
+	if (drawx){
+		// For mobile, it is difficult (impossible) to reach the X to close a tab. So we do not even try to draw it.
+		// But we use a trick. We use the oncontextmenu, normally used to popup a ... context menu.
+		// But this menu would only hold one option: close tab.
+		// To activate a context menu, you have to put your finger on the tab and wait. The single
+		// line menu appears below, hidden by your finger.
+		// On instead of poping a menu, we execute the action
+		htmlprintf (" oncontextmenu='formsubmit(\"%s\"); return false;'",xref.ptr);
+	}
+	htmlprintf (">\n<path id=tabrect%u fill='%s' stroke=black stroke-width=1\n",id,fill);
 	htmlout ("d=\"\n");
 	htmlprintf ("M0,%u\n",height);
 	htmlout ("H1\n");
@@ -235,7 +245,7 @@ unsigned draw_tab (
 	htmlout ("\"/>\n");
 	htmlprintf ("\t<text x=10 y=%u class=small>%s</text>\n",height-tlmpweb_fontsize()/4,title);
 	htmlout ("</a>\n");
-	if (drawx){
+	if (drawx && !tlmpweb_ismobile()){
 		unsigned x=width-20;
 		htmlprintf ("<a href='#' onclick=formsubmit('%s') onmouseover=changefill('tabxrect%u','#D0D0D0') onmouseout=changefill('tabxrect%u','none')>\n",xref.ptr,id,id);
 		// First rect is there to make the a tag larger. fill=none does not work. So we have to give it the same color
@@ -515,14 +525,22 @@ void util_google_code()
 	htmlout ("</script>\n");
 	#endif
 }
+static unsigned mobile_body_font_size=300;
+static unsigned mobile_input_font_size=80;
+
+void util_setmobilespecs (unsigned body_font_size, unsigned input_font_size)
+{
+	mobile_body_font_size = body_font_size;
+	mobile_input_font_size = input_font_size;
+}
 
 void util_defstyles()
 {
 	unsigned body_font_size=100;
 	unsigned input_font_size=100;
 	if (tlmpweb_ismobile()){
-		body_font_size = 200;
-		input_font_size = 125;
+		body_font_size = mobile_body_font_size;
+		input_font_size = mobile_input_font_size;
 		small_size = 1.0;
 	}
 	htmlout ("<style>\n");
@@ -582,65 +600,121 @@ void util_defstyles()
 		"}\n",small_size);
 	htmlout("</style>\n");
 	tlmpweb_setscripts();
-	htmlout ("<script>\n"
-		"document.addEventListener('touchstart', handleTouchStart, false);\n"
-		"document.addEventListener('touchmove', handleTouchMove, false);\n"
-		"document.addEventListener('touchend', handleTouchEnd, false);\n"
-		"\n"
-		"var swipelefthref = null;\n"
-		"var swiperighthref = null;\n"
-		"var smallswipelefthref = null;\n"
-		"var smallswiperighthref = null;\n"
-		"var xDown = null;\n"
-		"var xDiff = null;\n"
-		"var yDown = null;\n"
-		"var yDiff = null;\n"
-		"\n"
-		"function getTouches(evt) {\n"
-		"	return evt.touches ||\n"		// browser API
-		"		evt.originalEvent.touches;\n"	// jQuery
-		"}\n"
-		"\n"
-		"function handleTouchStart(evt) {\n"
-		"	const firstTouch = getTouches(evt)[0];\n"
-		"	xDown = firstTouch.clientX;\n"
-		"	yDown = firstTouch.clientY;\n"
-		"}\n"                                                
-		"function handleTouchEnd(evt) {\n"
-		//"	console.log ('END xDiff = ' + xDiff);\n"
-		"	if (xDiff > 400){\n"
-				// right swipe
-		"		if (swiperighthref) formsubmit(swiperighthref);\n"
-		"	}else if (xDiff < -400){\n"
-				// left swipe
-		"		if (swipelefthref) formsubmit(swipelefthref);\n"
-		"	}else if (xDiff > 0){\n"
-				// small right swipe
-		"		if (smallswiperighthref) formsubmit(smallswiperighthref);\n"
-		"	}else if (xDiff < 0){\n"
-				// small left swipe
-		"		if (smallswipelefthref) formsubmit(smallswipelefthref);\n"
+	htmlout ("<script>\n");
+	if (tlmpweb_ismobile()){
+		htmlout (
+			"document.addEventListener('touchstart', handleTouchStart, false);\n"
+			"document.addEventListener('touchmove', handleTouchMove, false);\n"
+			"document.addEventListener('touchend', handleTouchEnd, false);\n"
+			"\n"
+			"var swipelefthref = null;\n"
+			"var swiperighthref = null;\n"
+			"var smallswipelefthref = null;\n"
+			"var smallswiperighthref = null;\n"
+			"var xDown = null;\n"
+			"var xDiff = null;\n"
+			"var yDown = null;\n"
+			"var yDiff = null;\n"
+			"\n"
+			"function getTouches(evt) {\n"
+			"	return evt.touches ||\n"		// browser API
+			"		evt.originalEvent.touches;\n"	// jQuery
+			"}\n"
+			"\n"
+			"function handleTouchStart(evt) {\n"
+			"	const firstTouch = getTouches(evt)[0];\n"
+			"	xDown = firstTouch.clientX;\n"
+			"	yDown = firstTouch.clientY;\n"
+			"}\n"                                                
+			"function handleTouchEnd(evt) {\n"
+			//"	console.log ('END xDiff = ' + xDiff);\n"
+			"	if (xDiff > 400){\n"
+					// right swipe
+			"		if (swiperighthref) formsubmit(swiperighthref);\n"
+			"	}else if (xDiff < -400){\n"
+					// left swipe
+			"		if (swipelefthref) formsubmit(swipelefthref);\n"
+			"	}else if (Math.abs(yDiff) < 200){\n"
+			"		if (xDiff > 0){\n"
+						// small right swipe
+			"			if (smallswiperighthref) formsubmit(smallswiperighthref);\n"
+			"		}else if (xDiff < 0){\n"
+						// small left swipe
+			"			if (smallswipelefthref) formsubmit(smallswipelefthref);\n"
+			"		}\n"
+			"	}\n"
+			"	xDown = null;\n"
+			"	yDown = null;\n"
+			"}\n"                                                
+			"\n"
+			"function handleTouchMove(evt) {\n"
+			"	if ( ! xDown || ! yDown ) {\n"
+			"		return;\n"
+			"	}\n"
+			"\n"
+			"	var last = evt.touches.length-1;\n"
+			"	var xUp = evt.touches[last].clientX;\n"
+			"	var yUp = evt.touches[last].clientY;\n"
+			"\n"
+			"	xDiff = xDown - xUp;\n"
+			"	yDiff = yDown - yUp;\n"
+			//"	console.log ('xd '+xDown + ' ' + xUp + ' ' + xDiff+ ' ' + last);\n"
+			"\n"
+			"}\n"
+			);
+	}
+	htmlout (
+		"function dropmenu(dropdown,menu){\n"
+		"	var drop = document.getElementById(dropdown);\n"
+		"	var dot = document.getElementById(menu);\n"
+		"	var atags = drop.getElementsByTagName('a');\n"
+		"	for (var i = 0; i < atags.length; i++) {\n"
+		"		var child = atags[i];\n"
+		"		child.classList.remove ('hide');\n"
+		"		child.classList.add ('show');\n"
+		"		child.style.color = 'black';\n"
 		"	}\n"
-		"	xDown = null;\n"
-		"	yDown = null;\n"
-		"}\n"                                                
-		"\n"
-		"function handleTouchMove(evt) {\n"
-		"	if ( ! xDown || ! yDown ) {\n"
-		"		return;\n"
-		"	}\n"
-		"\n"
-		"	var last = evt.touches.length-1;\n"
-		"	var xUp = evt.touches[last].clientX;\n"
-		"	var yUp = evt.touches[last].clientY;\n"
-		"\n"
-		"	xDiff = xDown - xUp;\n"
-		"	yDiff = yDown - yUp;\n"
-		//"	console.log ('xd '+xDown + ' ' + xUp + ' ' + xDiff+ ' ' + last);\n"
-		"\n"
+		"	var rect = dot.getBoundingClientRect();\n"
+		"	drop.style.left = rect.right - 160;\n"
+		"	drop.style.top = rect.bottom;\n"
+		"	drop.classList.toggle('show');\n"
+		"	//dropdown_rect = drop.getBoundingClientRect();\n"
+		"	return false;"
 		"}\n"
 		"</script>\n"
-	);
+		);
+	htmlout ("</script>\n");
+}
+
+/*
+	Draw a 3 dots menu and the associated popup.
+*/
+void util_dotmenu (const vector<DOTMENU> &menu)
+{
+	static const char *id_dropdown = "dropdown-dot";
+	static const char *id_menu = "dotmenu";
+	{
+		DIV d("dropdown"); d.print();
+		DIV dd("dropdown-content",id_dropdown); dd.print();
+		for (auto &m:menu){
+			htmlprintf ("<a href='#' onclick=formsubmit('%s?webstep=%u')>%s</a>\n",tlmpweb_curpage(),m.step,m.menu);
+		}
+	}
+
+	DIV d; d.id(id_menu).print();
+	unsigned height = draw_tab_height();
+	unsigned width = height;
+	if (tlmpweb_ismobile()) width *= 2;
+	unsigned w2 = width/2;
+	unsigned ray=tlmpweb_ismobile() ? 2 : 1;
+	htmlprintf ("<a href=# onclick='return dropmenu(\"%s\",\"%s\");'>",id_dropdown,id_menu);
+	htmlprintf ("<svg width=%u height=%u>",width,height);
+	htmlprintf ("<circle cx=%u cy=%u r=%u stroke=black stroke-width=1 fill=black />",w2,height/4,ray);
+	htmlprintf ("<circle cx=%u cy=%u r=%u stroke=black stroke-width=1 fill=black />",w2,height/2,ray);
+	htmlprintf ("<circle cx=%u cy=%u r=%u stroke=black stroke-width=1 fill=black />",w2,height*3/4,ray);
+	htmlprintf ("<path stroke=black stroke-width=1 d='M0,%u h%u' />",height,width);
+	htmlout ("</svg>");
+	htmlout ("</a>\n");
 }
 
 void printhref(const char *url, const char *text)

@@ -16,6 +16,15 @@ struct USERINFO{
 };
 #endif
 
+struct DOTMENU{
+	const char *menu;
+	unsigned step;
+	DOTMENU(const char *_menu, unsigned _step){
+		menu = _menu;
+		step = _step;
+	}
+};
+void util_dotmenu(const std::vector<DOTMENU> &menu);
 int util_getsessioninfo (CONNECT_INFO &con, CONNECT_INFO &con_sess, std::string &session, const char *varname, unsigned &varval);
 void print_href (const char *title, PARAM_STRING href);
 void print_aref (const char *title, int step);
@@ -33,6 +42,7 @@ void format_content (const char *s);
 void format_content (const char *s, int nbline, bool &more);
 void formatting_tips();
 void util_google_code();
+void util_setmobilespecs (unsigned body_font_size, unsigned input_font_size);
 void util_defstyles();
 void printhref(const char *url, const char *text);
 void printhref(const char *url, const char *text, bool largewindow);

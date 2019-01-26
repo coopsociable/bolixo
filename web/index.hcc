@@ -49,8 +49,8 @@
 #define SECTION_CONTACT_REQ 9
 #define SECTION_PREVIEW 10
 #define SECTION_NBSECTIONS 11
-extern void bolixo_doc (DOCUMENT_POINTER &, DOC_ID &jump, const char *username, bool display_full);
-extern void bolixo_doc_fr (DOCUMENT_POINTER &, DOC_ID &jump, const char *username, bool display_full);
+extern void bolixo_doc (DOCUMENT_POINTER &, DOC_ID &jump, const char *username, bool display_full, bool index);
+extern void bolixo_doc_fr (DOCUMENT_POINTER &, DOC_ID &jump, const char *username, bool display_full, bool index);
 
 static WEBID ID_TALK("talk");
 static WEBID ID_MAIL("mail");
@@ -320,19 +320,11 @@ static void show_buttons_right(_F_websteps *c)
 	}
 	if (is_user){
 		if (!is_mobile){
-			/- <td>
+			/- <td align=right>
 			htmlprintf ("<font size=+%u color=gray>\n",fontsize);
 			htmlprintf (MSG_U(I_WELCOME,"Welcome %s"),userinfo.name.c_str());
-			int nb = 40 - userinfo.name.size() - 8; 
-			for (int i=0; i<nb; i++){
-				htmlprintf ("&nbsp;");
-			}
-			/- </font>
-			/- <td>&nbsp;
+			/- </font>&nbsp;&nbsp;
 		}
-		/- <td>
-		// PATCH: The <br> is there to avoid a vertical scroll bar. No idea why
-		htmlprintf ("<a href=%s?webstep=%d><font size=+%u>%s</font><br>&nbsp;</a>\n",tlmpweb_curpage(),step_logout,fontsize,MSG_U(I_LOGOUT,"Logout"));
 	}
 	/- </table>
 }
@@ -371,9 +363,9 @@ static void bolixo_title (const char *title, _F_websteps *c)
 	/- <table border=0 width=100% cellpadding=0 cellspacing=0>
 	htmlprintf ("<table border=0 width=100%% bgcolor=%s cellspacing=0 cellpadding=0><tr><td rowspan=2 align=left>\n",newscolor);
 	if (is_mobile){
-		/- <font color=gray>
-		htmlprintf (MSG_U(I_NODENAME,"Node %s"),util_getnodename());
-		/- </font>
+		// /- <font color=gray>
+		// htmlprintf (MSG_U(I_NODENAME,"Node %s"),util_getnodename());
+		// /- </font>
 	}else{
 		/- <table border=0><tr><td><img height=20 src=/favicon.ico></td><td align=left>
 		htmlprintf ("<a href=%s><font size=7 color=\"white\">%s</font></a>&nbsp;&nbsp;&nbsp;",util_getdirserver(),org.c_str());
@@ -402,17 +394,12 @@ static void bolixo_title (const char *title, _F_websteps *c)
 			#endif
 			split();
 			print_button (MSG_U(M_PROJECTS,"Projects"),step_projects,glocal.step);
-			if (is_mobile){
-				split();
-				print_button ("Config.",step_profile,glocal.step);
-				split();
-				print_button ("Docum.",step_doc,glocal.step);
-			}else{
-				split();
-				print_button (MSG_U(M_PROFILE,"Profile"),step_profile,glocal.step);
-				split();
-				print_button (MSG_U(M_DOCUM,"Documentation"),step_doc,glocal.step);
-			}
+			split();
+			vector<DOTMENU> menu;
+			menu.emplace_back(DOTMENU(MSG_U(M_PROFILE,"Profile"),step_profile));
+			menu.emplace_back(DOTMENU(MSG_U(M_DOCUM,"Documentation"),step_doc));
+			menu.emplace_back(DOTMENU(MSG_U(I_LOGOUT,"Logout"),step_logout));
+			util_dotmenu(menu);
 		</f>
 		</call>
 	}
@@ -556,13 +543,18 @@ static void trli_getsessioninfo(CONNECT_INFO &con, CONNECT_INFO &con_sess, vecto
 	</call>
 }
 </mod>
+static void index_doc (DOCUMENT_POINTER &pt, DOC_ID &jump, bool index)
+{
+	if (tlmpweb_ismobile()) index = false;
+	if (userinfo.lang == "fr"){
+		bolixo_doc_fr(pt,jump,userinfo.name.c_str(),w_robot,index);
+	}else{
+		bolixo_doc (pt,jump,userinfo.name.c_str(),w_robot,index);
+	}
+}
 static void index_doc (DOCUMENT_POINTER &pt, DOC_ID &jump)
 {
-	if (userinfo.lang == "fr"){
-		bolixo_doc_fr(pt,jump,userinfo.name.c_str(),w_robot);
-	}else{
-		bolixo_doc (pt,jump,userinfo.name.c_str(),w_robot);
-	}
+	index_doc (pt,jump,false);
 }
 
 static void button_validate(int step)
@@ -1308,6 +1300,13 @@ extern "C" void webmain_real()
 		if (strncmp(line,"dirserver=",10)==0) util_setdirserver(line+10);
 		if (strncmp(line,"org=",4)==0) org = line+4;
 		if (strcmp(line,"private_site")==0) private_site = true;
+		if (strcmp(line,"mobile")==0) tlmpweb_forcemobile();
+		if (strncmp(line,"mobilespecs",11)==0){
+			unsigned u1=100,u2=100;
+			if (sscanf(line+11,"%u %u",&u1,&u2)==2){
+				util_setmobilespecs(u1,u2);
+			}
+		}
 		return 0;
 	</f>
 	</call>
@@ -2634,28 +2633,50 @@ extern "C" void webmain_real()
 				DIV f; f.id(TAB_FORM).print();
 				<call form>(formid);
 				<f top>
-					/- <table border=0 width=100%>
+					// /- <table border=0 width=100%>
 				</f>
 				<f bottom>
-					/- </table>
+					// /- </table>
 				</f>
 				<f setup>
+					DIV d; d.dispflex().flowcol().print();
+					const unsigned vspace=3;
+					const unsigned hspace=3;
 					if (glocal.private_inbox){
-						/- <tr><td>
+						DIV dd; dd.w(100).flexfixe().vmargins(vspace,0).print();
+						DIV ddd; ddd.dispflex().flowrow().print();
+						DIV dddd; dddd.flexfixe().margins(0,hspace).print();
 						/-#F_RECIPIENTS Recipients
-						/- <td style=width:99%>
+						dddd.end();
+						dddd.flexgrow().print();
+						// /- <td style=width:99%>
 						field_string(w_recipients,"style=width:100%");
 					}
-					/- <tr><td colspan=2>
-					field_textarea (w_content,5,-100,"");
-					/- <tr><td>
-					field_file (w_upload);
-					/- <td align=right>
-					button_submit (MSG_U(B_SEND,"Send"));
+					{
+						// /- <tr><td colspan=2>
+						DIV dd; d.w(100).flexfixe().vmargins(vspace,vspace).print();
+						field_textarea (w_content,5,-100,"");
+					}
+					{
+						// /- <tr><td>
+						DIV dd; d.w(100).flexfixe().print();
+						DIV ddd; d.dispflex().flowrow().print();
+						DIV dddd; d.flexfixe().print();
+						field_file (w_upload);
+						// /- <td align=right>
+						dddd.end();
+						dddd.sfloatright().print();
+						button_submit (MSG_U(B_SEND,"Send"));
+					}
 					if (!glocal.private_inbox){
-						/- <tr><td>
-						/-#F_EXTRARECIPIENTS Extra recipients(opt)
-						/- <td style=width:99%>
+						// /- <tr><td>
+						DIV dd; dd.w(100).flexfixe().vmargins(vspace,0).print();
+						DIV ddd; ddd.dispflex().flowrow().print();
+						DIV dddd; dddd.flexfixe().margins(0,hspace).print();
+						/-#F_EXTRARECIPIENTS Recipients(opt)
+						dddd.end();
+						// /- <td style=width:99%>
+						dddd.flexgrow().print();
 						field_string(w_recipients,"style=width:100%");
 					}
 				</f>
@@ -3629,7 +3650,7 @@ extern "C" void webmain_real()
 	<f step12> // Documentation
 		bolixo_title (MSG_R(M_DOCUM),this);
 		DIV d("tabs","tab"); d.w(100).print();
-		index_doc(glocal.docpointers[SECTION_NONE],section_none);
+		index_doc(glocal.docpointers[SECTION_NONE],section_none,true);
 	</f>
 	<f step13>
 	</f>
