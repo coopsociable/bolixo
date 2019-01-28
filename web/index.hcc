@@ -2005,24 +2005,33 @@ extern "C" void webmain_real()
 			{
 			DIV f; f.id(TAB_FORM).print();
 			<call form>(formid);
-			<f top>
-				/- <table border=0 width=100%>
-			</f>
-			<f bottom>
-				/- </table>
-			</f>
 			<f setup>
-				/- <tr><td>
-				/-#I_NEW_FOLDER New folder
-				/- <td colspan=2>
-				field_string (w_folder,"style=width:100%");
-				/- <tr><td colspan=3>
-				url_self (string_f("webtab_add=2:%s%c%ld~%s",glocal.id,WEBTAB_MARK,time(NULL),MSG_U(I_NEWDOC,"New_document"))
-					,MSG_U(I_CREATENEWDOC,"Create a new document"));
-				/- <tr><td>
-				field_file (w_upload);
-				/- <td align=right>
-				button_submit();
+				DIV d; d.dispflex().flowcol().print();
+				const unsigned vspace=3;
+				const unsigned hspace=3;
+				{
+					DIV dd; dd.w(100).flexfixe().vmargins(vspace,0).print();
+					DIV ddd; ddd.dispflex().flowrow().print();
+					DIV dddd; dddd.flexfixe().margins(0,hspace).print();
+					/-#I_NEW_FOLDER New folder
+					dddd.end();
+					dddd.flexgrow().print();
+					field_string (w_folder,"style=width:100%");
+				}
+				{
+					DIV dd; dd.w(100).flexfixe().vmargins(vspace,vspace).print();
+					url_self (string_f("webtab_add=2:%s%c%ld~%s",glocal.id,WEBTAB_MARK,time(NULL),MSG_U(I_NEWDOC,"New_document"))
+						,MSG_U(I_CREATENEWDOC,"Create a new document"));
+				}
+				{
+					DIV dd; d.w(100).flexfixe().print();
+					DIV ddd; d.dispflex().flowrow().print();
+					DIV dddd; d.flexfixe().print();
+					field_file (w_upload);
+					dddd.end();
+					dddd.sfloatright().print();
+					button_submit();
+				}
 			</f>
 			<f validate>
 				return true;
@@ -2380,7 +2389,10 @@ extern "C" void webmain_real()
 							/-#I_NEWDOCNAME New document name&nbsp;
 							field_string (w_filename,"size=30");	
 						}else{
-							htmlprintf (MSG_U(I_DOCNAME,"Document name:&nbsp;<font size=+1>%s</font>"),glocal.filename);
+							const char *filename = glocal.filename;
+							const char *pt = strrchr(filename,'/');
+							if (pt != NULL) filename = pt+1;
+							htmlprintf (MSG_U(I_DOCNAME,"Document name:&nbsp;%s"),filename);
 						}
 						/- <td valign=top align=right>
 						button_submit(MSG_U(B_SAVE,"Save"));
@@ -2632,12 +2644,6 @@ extern "C" void webmain_real()
 				glocal bool private_inbox = glocal.groupname == "inbox";
 				DIV f; f.id(TAB_FORM).print();
 				<call form>(formid);
-				<f top>
-					// /- <table border=0 width=100%>
-				</f>
-				<f bottom>
-					// /- </table>
-				</f>
 				<f setup>
 					DIV d; d.dispflex().flowcol().print();
 					const unsigned vspace=3;
@@ -2649,33 +2655,27 @@ extern "C" void webmain_real()
 						/-#F_RECIPIENTS Recipients
 						dddd.end();
 						dddd.flexgrow().print();
-						// /- <td style=width:99%>
 						field_string(w_recipients,"style=width:100%");
 					}
 					{
-						// /- <tr><td colspan=2>
 						DIV dd; d.w(100).flexfixe().vmargins(vspace,vspace).print();
 						field_textarea (w_content,5,-100,"");
 					}
 					{
-						// /- <tr><td>
 						DIV dd; d.w(100).flexfixe().print();
 						DIV ddd; d.dispflex().flowrow().print();
 						DIV dddd; d.flexfixe().print();
 						field_file (w_upload);
-						// /- <td align=right>
 						dddd.end();
 						dddd.sfloatright().print();
 						button_submit (MSG_U(B_SEND,"Send"));
 					}
 					if (!glocal.private_inbox){
-						// /- <tr><td>
 						DIV dd; dd.w(100).flexfixe().vmargins(vspace,0).print();
 						DIV ddd; ddd.dispflex().flowrow().print();
 						DIV dddd; dddd.flexfixe().margins(0,hspace).print();
 						/-#F_EXTRARECIPIENTS Recipients(opt)
 						dddd.end();
-						// /- <td style=width:99%>
 						dddd.flexgrow().print();
 						field_string(w_recipients,"style=width:100%");
 					}
