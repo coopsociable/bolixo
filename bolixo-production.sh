@@ -532,23 +532,42 @@ elif [ "$1" = "certificate-install" ]; then # prod: Install the SSL certificate
 	</VirtualHost>
 	EOF
 	certbot --apache certonly
-	echo rm -f $ADD
+	rm -f $ADD
 elif [ "$1" = "certificate-renew" ] ; then # prod: Renew the SSL certificate
 	# Do a backup
 	cd /etc
 	tar zcf /tmp/letsencrypt-`date +%Y-%m-%d_%H:%M:%S`.tar.gz letsencrypt
 	# Make sure the special /root/bin/apachectl is used
 	export PATH=/root/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin
+	NODENAME=$3
+	if [ "$NODENAME" = "" ] ; then
+		NODENAME=`echo $THISNODE | sed 's.//. .' | (read a b; echo $b)`
+	fi
+	ADD=/etc/httpd/conf.d/add.conf
+	cat <<-EOF >$ADD
+	<VirtualHost *:80>
+		ServerAdmin admin@bolixo.org
+		ServerName $NODENAME
+		DocumentRoot /var/lib/lxc/webssl/rootfs/var/www/html
+	</VirtualHost>
+	EOF
+	echo ================ $ADD =======
+	cat $ADD
+	echo ================
 	if [ "$2" = "test" ]; then
-	        certbot renew --dry-run
+	        certbot certonly --apache -d $NODENAME --dry-run
 	elif [ "$2" = "doit" ] ; then
-        	if certbot renew
+        	if certbot certonly --apache -d $NODENAME
 		then
 			$0 restart exim
 		fi
 	else
         	echo test ou doit
+		rm -f $ADD
+		exit 1
 	fi
+	rm -f $ADD
+	$0 restart webs
 elif [ "$1" = "keysd-pass" ] ; then # prod: set keys passphrase
 	/usr/sbin/bo-keysd-control -p /var/lib/lxc/keysd/rootfs/var/run/blackhole/bo-keysd.sock setpassphrase
 elif [ "$1" = "record-keysd-pass" ] ; then # prod: Record the keysd passphrase for next reboot
