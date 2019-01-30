@@ -408,6 +408,40 @@ static void bofs_readmore(_F_bofs_readmore &c, CONTEXT &ctx, PARAM_STRING handle
 	}
 }
 </mod>
+static map<string,string> pubkeys;
+
+static string bofs_pubcachefile()
+{
+	return string_f("%s/.bofs.pubcache",getenv("HOME"));
+}
+
+<mod>
+static void bofs_loadpubcache()
+{
+	static bool is_init = false;
+	if (!is_init){
+		is_init = true;
+		glocal string user;
+		glocal string pubkey;
+		<call loadfile>(bofs_pubcachefile(),true);
+		<f oneline>
+			if (line[0] == '#'){
+				if (glocal.user.size() > 0) pubkeys[glocal.user] = glocal.pubkey;
+				glocal.pubkey.clear();
+				glocal.user = line+1;
+			}else{
+				glocal.pubkey += string(line) + "\n";
+			}
+			return 0;
+		</f>
+		<f missing>
+		</f>
+		</call>
+		if (glocal.user.size() > 0) pubkeys[glocal.user] = glocal.pubkey;
+	}
+}
+</mod>
+
 #define _TLMP_bofs_getpubkey
 struct _F_bofs_getpubkey {
 	#define _F_bofs_getpubkey_ok(x) void x ok(bool internal_error, bool success, const char *pubkey)
@@ -424,11 +458,35 @@ static void bofs_getpubkey(_F_bofs_getpubkey &c, CONTEXT &ctx, PARAM_STRING nick
 		</f>
 		</call>
 	}else{
-		<call webapi_getpubkey>(ctx.hcon,nickname);
-		<f ok>
-			glocal.c->ok(internal_error,success,pubkey);
-		</f>
-		</call>
+		bofs_loadpubcache();
+		glocal string user = string_f("%s@%s",nickname.ptr,ctx.hcon.host.c_str());
+		auto p = pubkeys.find(glocal.user);
+		if (p != pubkeys.end()){
+			debug_printf (D_SIGN,"Pubkey for user %s found in cache\n",glocal.user.c_str());
+			c.ok(false,true,p->second.c_str());
+		}else{
+			<call savefile>("/dev/tty",false);
+			<f dowrite>
+				fprintf (fout,MSG_U(I_GETPUBKEY,"Retrieve public key for user %s\n"),glocal.user.c_str());
+				return 0;
+			</f>
+			</call>
+			<call webapi_getpubkey>(ctx.hcon,nickname);
+			<f ok>
+				if (success){
+					glocal const char *pubkey = pubkey;
+					pubkeys[glocal.user] = pubkey;
+					<call savefile>(bofs_pubcachefile(),true);
+					<f dowrite>
+						fprintf (fout,"#%s\n%s\n",glocal.user.c_str(),glocal.pubkey);
+						return 0;
+					</f>
+					</call>
+				}
+				glocal.c->ok(internal_error,success,pubkey);
+			</f>
+			</call>
+		}
 	}
 }
 </mod>
@@ -863,6 +921,7 @@ static int bofs_cat_bofile (CONTEXT &ctx, const char *path, FILE *fout)
 				glocal string pubkey;
 				glocal const char *owner = info.owner;
 				if (info.modifiedby[0] != '\0') glocal.owner = info.modifiedby;
+				
 				<call bofs_getpubkey>(*glocal.ctx,glocal.owner);
 				<f ok>
 					if (!success){
@@ -3498,6 +3557,10 @@ int main (int argc, char *argv[])
 	glocal const char *session = NULL;
 	glocal bool login = false;
 	glocal bool logout = false;
+	glocal bool clearpubcache = false;
+	glocal bool listpubcache = false;
+	glocal const char *pubsite = NULL;
+	glocal const char *pubuser = NULL;
 	glocal.ret = <call tlmpprogram>(argc,argv,"bolixo");
 	<f init>
 		setproginfo ("bofs",VERSION
@@ -3527,6 +3590,11 @@ int main (int argc, char *argv[])
 		setarg (' ',"login",MSG_U(O_LOGIN,"Just do a login and print the session id"),glocal.login,false);
 		setarg (' ',"logout",MSG_U(O_LOGOUT,"Logout the supplied session id"),glocal.logout,false);
 		setarg (' ',"session",MSG_U(O_SESSION,"Session id obtained from --login"),glocal.session,false);
+		setgrouparg (MSG_U(O_PUBKEYCACHE,"Public key cache"));
+		setarg (' ',"clearpubcache",MSG_U(O_CLEARPUBCACHE,"Erase parts of the public key cache"),glocal.clearpubcache,false);
+		setarg (' ',"listpubcache",MSG_U(O_LISTPUBCACHE,"List parts of the public key cache"),glocal.listpubcache,false);
+		setarg (' ',"pubsite",MSG_U(O_PUBSITE,"Clear/List for this site\n(use 'all' to match all sites)"),glocal.pubsite,false);
+		setarg (' ',"pubuser",MSG_U(O_PUBUSER,"Clear/List for this user"),glocal.pubuser,false);
 	</f>
 	<f main_noarg>
 		int ret = -1;
@@ -3560,6 +3628,53 @@ int main (int argc, char *argv[])
 				ctx.hsessionid = glocal.session;
 			}
 			// CONTEXT destructor will perform the logout
+		}else if (glocal.clearpubcache || glocal.listpubcache){
+			if (glocal.pubuser == NULL && glocal.pubsite == NULL){
+				tlmp_error (MSG_U(E_PUBACTION,"You must specify one of the following option: --pubsite or --pubuser\n"));
+			}else{
+				bofs_loadpubcache();
+				bool modified = false;
+				if (glocal.pubuser != NULL){
+					auto p = pubkeys.find(glocal.pubuser);
+					if (p == pubkeys.end()){
+						tlmp_error (MSG_U(E_NOCACHEPUBKEY,"No public key found in cache for user %s\n"),glocal.user);
+					}else if (glocal.listpubcache){
+						printf ("%s\n",p->second.c_str());
+					}else if (glocal.clearpubcache){
+						pubkeys.erase(p);
+						modified = true;
+					}
+				}
+				if (glocal.pubsite){
+					for (auto p=pubkeys.begin(); p != pubkeys.end(); ){
+						auto next = p;
+						next++;
+						const char *user = p->first.c_str();
+						const char *pt = strchr(user,'@');
+						if (pt == NULL){
+							tlmp_error (MSG_U(E_IVLDPUBUSER,"Invalid user entry in public key cache: %s\n"),user);
+						}else if (strcmp(glocal.pubsite,"all")==0 || strcasecmp(pt+1,glocal.pubsite)==0){
+							if (glocal.listpubcache){
+								printf ("%s\n",user);
+							}else if (glocal.clearpubcache){
+								pubkeys.erase (p);
+								modified = true;
+							}
+						}
+						p=next;
+					}
+				}
+				if (modified){
+					<call savefile>(bofs_pubcachefile(),false);
+					<f dowrite>
+						for (auto p:pubkeys){
+							fprintf (fout,"#%s\n%s",p.first.c_str(),p.second.c_str());
+						}
+						return 0;
+					</f>
+					</call>
+				}
+			}
 		}else{
 			usage();
 		}
