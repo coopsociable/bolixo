@@ -676,7 +676,7 @@ void util_defstyles()
 			);
 	}
 	htmlout (
-		"function dropmenu(dropdown,menu){\n"
+		"function dropmenu(dropdown,menu,width){\n"
 		"	var drop = document.getElementById(dropdown);\n"
 		"	var dot = document.getElementById(menu);\n"
 		"	var atags = drop.getElementsByTagName('a');\n"
@@ -686,11 +686,11 @@ void util_defstyles()
 		"		child.classList.add ('show');\n"
 		"		child.style.color = 'black';\n"
 		"	}\n"
+		"	drop.style.minWidth = width;\n"
 		"	var rect = dot.getBoundingClientRect();\n"
-		"	drop.style.left = rect.right - 160;\n"
+		"	drop.style.left = rect.right - width - 10;\n"
 		"	drop.style.top = rect.bottom;\n"
 		"	drop.classList.toggle('show');\n"
-		"	//dropdown_rect = drop.getBoundingClientRect();\n"
 		"	return false;"
 		"}\n"
 		"</script>\n"
@@ -705,11 +705,14 @@ void util_dotmenu (const vector<DOTMENU> &menu)
 {
 	static const char *id_dropdown = "dropdown-dot";
 	static const char *id_menu = "dotmenu";
+	unsigned popup_width = 0;
 	{
 		DIV d("dropdown"); d.print();
 		DIV dd("dropdown-content",id_dropdown); dd.print();
 		for (auto &m:menu){
 			htmlprintf ("<a href='#' onclick=formsubmit('%s?webstep=%u')>%s</a>\n",tlmpweb_curpage(),m.step,m.menu);
+			unsigned menu_width = tlmpweb_displaylen(m.menu);
+			if (menu_width > popup_width) popup_width = menu_width;
 		}
 	}
 
@@ -719,7 +722,7 @@ void util_dotmenu (const vector<DOTMENU> &menu)
 	if (tlmpweb_ismobile()) width *= 2;
 	unsigned w2 = width/2;
 	unsigned ray=tlmpweb_ismobile() ? 2 : 1;
-	htmlprintf ("<a href=# onclick='return dropmenu(\"%s\",\"%s\");'>",id_dropdown,id_menu);
+	htmlprintf ("<a href=# onclick='return dropmenu(\"%s\",\"%s\",%u);'>",id_dropdown,id_menu,popup_width);
 	htmlprintf ("<svg width=%u height=%u>",width,height);
 	htmlprintf ("<circle cx=%u cy=%u r=%u stroke=black stroke-width=1 fill=black />",w2,height/4,ray);
 	htmlprintf ("<circle cx=%u cy=%u r=%u stroke=black stroke-width=1 fill=black />",w2,height/2,ray);
