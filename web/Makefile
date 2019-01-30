@@ -1,16 +1,24 @@
 DINSTRUMENT:=$(shell test -f ../../instrument && echo -DINSTRUMENT)
 OPTIONS=$(DINSTRUMENT) -funsigned-char -O2 -Wall -g -DVERSION=\"$(PACKAGE_REV)\" -I/usr/include/tlmp -I/usr/include/trlitool
 all: webtabs.os util.os document.os document_fr.os index.os bolixoapi.os webapi.os public.os journey.os bolixo.os  \
-	index.hc webapi.hc public.hc journey.hc bolixoapi.hc bolixo.hc
+	config.os index.hc webapi.hc public.hc journey.hc bolixoapi.hc bolixo.hc
 .suffixes: .hcc .hc
 FLAGS=-Wall -Wno-unused-function
+
+index.hc: index.os /usr/lib64/trlitool/trlitool.pic.a util.os webtabs.os document.os document_fr.os \
+	config.os ../proto/webapi.protoh ../proto/bolixoapi.protoh \
+	/usr/include/tlmp/tlmpweb.h /usr/include/tlmp/tlmpweb.p
+	@echo $@
+	@g++ $(OPTIONS) -g -shared -Wl,-soname,test.so.1 -o \
+		$@ $< ../_dict.os /usr/lib64/trlitool/trlitool.pic.a util.os webtabs.os document.os document_fr.os \
+		config.os /usr/lib/tlmp/lib/tlmpdoc.so /usr/lib/tlmp/lib/tlmpwebsql.so -lcrypto
 
 %.hc: %.os /usr/lib64/trlitool/trlitool.pic.a util.os webtabs.os document.os document_fr.os \
 	../proto/webapi.protoh ../proto/bolixoapi.protoh \
 	/usr/include/tlmp/tlmpweb.h /usr/include/tlmp/tlmpweb.p
 	@echo $@
 	@g++ $(OPTIONS) -g -shared -Wl,-soname,test.so.1 -o \
-		$@ $< ../_dict.os /usr/lib64/trlitool/trlitool.pic.a util.os webtabs.os document.os document_fr.os \
+		$@ $< ../_dict.os /usr/lib64/trlitool/trlitool.pic.a util.os document.os document_fr.os \
 		/usr/lib/tlmp/lib/tlmpdoc.so /usr/lib/tlmp/lib/tlmpwebsql.so -lcrypto
 
 %.os: %.hcc /usr/include/tlmp/tlmpweb.h /usr/include/tlmp/tlmpweb.p \

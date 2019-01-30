@@ -122,3 +122,4 @@ void util_setnodename(PARAM_STRING name);
 const char *util_getnodename();
 void util_setdirserver(PARAM_STRING dir);
 const char *util_getdirserver();
+string toupper (PARAM_STRING s);
