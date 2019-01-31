@@ -641,11 +641,19 @@ static void index_format_large_text(const BOB_TYPE &content)
 	htmlwrite (tmp.c_str(),tmp.size());
 }
 <mod>
-static void index_popup (CONNECT_INFO &con, int step, const char *content, FILE_TYPE file_type, PARAM_STRING modified, PARAM_STRING filepath)
+static void index_popup (CONNECT_INFO &con, int step, const char *content, FILE_TYPE file_type, PARAM_STRING modified, PARAM_STRING from, PARAM_STRING filepath)
 {
 	glocal CONNECT_INFO *con = &con;
 	const char *path = filepath.ptr;
+	util_defstyles();
 	tlmpweb_body("white",NULL);
+	DIV d; d.w(100).h(100).dispflex().flowcol().print();
+	DIV dd; dd.flexfixe().w(100).print();
+	htmlprintf ("%s: %s<br>\n",MSG_R(I_FROM),from.ptr);
+	htmlprintf ("%s: %s<br>\n",MSG_R(I_DATE),modified.ptr);
+	dd.end();
+	dd.flexfixe().w(100).h(95).vpaddings(5,5).bordertop(1,"black").print();	
+	DIV ddd; ddd.marginauto().w(99).print();	
 	if (content[0] != '\0'){
 		htmlout (util_format_shortmsg (content,10000).c_str());
 	}else if (file_is_sound(file_type)){
@@ -684,9 +692,9 @@ static void index_popup (CONNECT_INFO &con, int step, const char *content, FILE_
 	}
 }
 </mod>
-static void index_popup (CONNECT_INFO &con, const char *content, FILE_TYPE file_type, PARAM_STRING modified, PARAM_STRING filepath)
+static void index_popup (CONNECT_INFO &con, const char *content, FILE_TYPE file_type, PARAM_STRING modified, PARAM_STRING from, PARAM_STRING filepath)
 {
-	index_popup (con,step_image,content,file_type,modified,filepath);
+	index_popup (con,step_image,content,file_type,modified,from,filepath);
 }
 <mod>
 static void index_markview (CONNECT_INFO &con, PARAM_STRING fname)
@@ -945,7 +953,7 @@ static void index_show_shortmsg(
 						index_download (*glocal.con,m.file_type,glocal.fname);
 					}else{
 						//htmlprintf ("uuid=%s<p>\n",m.uuid);
-						index_popup (*glocal.con,m.content,m.file_type,m.submit
+						index_popup (*glocal.con,m.content,m.file_type,m.submit,m.from
 							,string_f("/msgs/%s/short-inbox/%s/%s"
 							,glocal.groupowner,glocal.groupname,m.uuid));
 					}
@@ -1572,7 +1580,7 @@ extern "C" void webmain_real()
 						htmlprintf ("Internal error: %s\n",msg);
 					}else{
 						auto &m = messages[0];
-						index_popup (glocal.con,step_public,m.content,m.file_type,m.submit
+						index_popup (glocal.con,step_public,m.content,m.file_type,m.submit,m.from
 							,string_f("/%s/msg/%s",m.from,m.uuid));
 					}
 				</f>
@@ -2056,16 +2064,16 @@ extern "C" void webmain_real()
 										<call bod_client_readfile>(glocal.con,w_session.c_str(),glocal.fname,"");
 										<f ok>
 											if (!success){
-												index_popup (glocal.con,msg,glocal.file_type,info.modified,glocal.fname);
+												index_popup (glocal.con,msg,glocal.file_type,info.modified,info.owner,glocal.fname);
 											}else{
-												index_popup (glocal.con,content,glocal.file_type,info.modified,glocal.fname);
+												index_popup (glocal.con,content,glocal.file_type,info.modified,info.owner,glocal.fname);
 											}
 										</f>
 										</call>
 									}
 								}
 							}else{
-								index_popup (glocal.con,"",f.file_type,f.modified,glocal.fname);
+								index_popup (glocal.con,"",f.file_type,f.modified,f.owner,glocal.fname);
 							}
 						}
 					</f>
