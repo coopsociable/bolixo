@@ -1354,13 +1354,6 @@ elif [ "$1" = "lxc0-webssl" ]; then # prod:
 		exit 1
 	fi
 	echo webssl
-	IMGDOC=
-	cd web/images-doc
-	for file in *.jpg
-	do
-		IMGDOC="$IMGDOC -e /var/www/html/$file"
-	done
-	cd ../..
 	for w in webssl webssl-fail
 	do
 		mkdir -p /var/lib/lxc/$w
@@ -1381,9 +1374,22 @@ elif [ "$1" = "lxc0-webssl" ]; then # prod:
 			-e /var/www/html/back.png \
 			-e /var/www/html/terms-of-use.html \
 			-e /var/www/html/conditions-d-utilisation.html \
+			-e /var/www/html/dot3-fr.jpg \
+			-e /var/www/html/dot3.jpg \
+			-e /var/www/html/main-fr.jpg \
+			-e /var/www/html/main.jpg \
+			-e /var/www/html/project-fr.jpg \
+			-e /var/www/html/project.jpg \
+			-e /var/www/html/talk1-fr.jpg \
+			-e /var/www/html/talk1.jpg \
+			-e /var/www/html/talk2-fr.jpg \
+			-e /var/www/html/talk2.jpg \
+			-e /var/www/html/talk3-fr.jpg \
+			-e /var/www/html/talk3.jpg \
+			-e /var/www/html/talk-fr.jpg \
+			-e /var/www/html/talk.jpg \
 			-i /usr/sbin/trli-init \
 			-l $LOG \
-			$IMGDOC \
 			-n $w -p /usr/sbin/httpd >/var/lib/lxc/$w/$w-lxc0.sh
 		chmod +x /var/lib/lxc/$w/$w-lxc0.sh
 	done
