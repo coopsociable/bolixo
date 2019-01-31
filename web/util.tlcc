@@ -21,6 +21,7 @@
 #include <trlitool.h>
 #include <string>
 #include <tlmpweb.h>
+#define DEFINE_USERINFO
 #include "util.h"
 #define DEFINE_TBFTYPE
 #include "../bolixo.h"
@@ -114,6 +115,7 @@ using namespace std;
 #define bo_sessiond_client_setvar_NOTNEED
 #include "../proto/bo-sessiond_client.protoch"
 
+extern USERINFO userinfo;
 
 W_UNSIGNED w_robot ("robot");
 static W_SSTRING w_file("file");
@@ -545,6 +547,7 @@ void util_defstyles()
 		small_size = 1.0;
 		input_checkbox = 3;
 	}
+	htmlout ("<meta name=\"mobile-web-app-capable\" content=\"yes\">\n");
 	htmlout ("<style>\n");
 	htmlprintf ("body{\n"
 		"	font-size: %u%%\n"
@@ -1403,5 +1406,20 @@ string toupper (PARAM_STRING ss)
 		s++;
 	}
 	return ret;
+}
+/*
+	Format the path of a mail
+*/
+string index_format_mail_fname(const MESSAGE_receive &m)
+{
+	string fname;
+	if (m.role[0] != '\0'){
+		fname = string_f ("/msg-projects/%s/%s/%s/%s",m.manager,m.project,m.role,m.uuid);
+	}else if (m.manager[0] != '\0'){
+		fname = string_f ("/msg-projects/%s/%s/%s",m.manager,m.project,m.uuid);
+	}else{
+		fname = string_f ("/msgs/%s/inbox/%s",userinfo.name.c_str(),m.uuid);
+	}	
+	return fname;
 }
 

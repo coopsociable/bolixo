@@ -123,3 +123,5 @@ const char *util_getnodename();
 void util_setdirserver(PARAM_STRING dir);
 const char *util_getdirserver();
 string toupper (PARAM_STRING s);
+class MESSAGE_receive;
+string index_format_mail_fname(const MESSAGE_receive &m);

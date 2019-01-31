@@ -41,13 +41,12 @@
 extern void bolixo_doc (DOCUMENT_POINTER &, DOC_ID &jump, const char *username, bool display_full, bool index);
 extern void bolixo_doc_fr (DOCUMENT_POINTER &, DOC_ID &jump, const char *username, bool display_full, bool index);
 extern void profile(CONNECT_INFO &con, vector<DOCUMENT_POINTER> &docpointers);
+extern void mail(CONNECT_INFO &con, vector<DOCUMENT_POINTER> &docpointers);
 
 static WEBID ID_TALK("talk");
 static WEBID ID_MAIL("mail");
 static WEBID ID_PROJECT("project");
-static WEBID ID_CONTACT("contact");
 static WEBID ID_PRJTEXT("prjtext");
-static WEBID ID_INTERESTS("interests");
 static WEBID ID_FOLLOW("follow");
 
 using namespace std;
@@ -1074,21 +1073,6 @@ static void index_show_shortmsg(
 }
 </mod>
 
-/*
-	Format the path of a mail
-*/
-static string index_format_mail_fname(const MESSAGE_receive &m)
-{
-	string fname;
-	if (m.role[0] != '\0'){
-		fname = string_f ("/msg-projects/%s/%s/%s/%s",m.manager,m.project,m.role,m.uuid);
-	}else if (m.manager[0] != '\0'){
-		fname = string_f ("/msg-projects/%s/%s/%s",m.manager,m.project,m.uuid);
-	}else{
-		fname = string_f ("/msgs/%s/inbox/%s",userinfo.name.c_str(),m.uuid);
-	}	
-	return fname;
-}
 static void index_script()
 {
 	// Script to make sure the webtabs tabs use the full height of the screen
@@ -2359,133 +2343,7 @@ extern "C" void webmain_real()
 	</f>
 	<f step8> // TAB Mails
 		bolixo_title (MSG_U(T_MAILS,"Mails"),this);
-		static unsigned size[5]={15,45,40,0,0};
-		<call webtabs>("mails",tabs,size);
-		<f documents>
-			sethelp();
-			static const char *id = "tab:mails";
-			<call webtable>(id,"100%",currents[id]);
-			<f load>
-				sethead (MSG_U(H_INBOXES,"Owner\tProject"));
-				setclickopt (true,"",string_f("webtab_add=1:INBOX~%s",MSG_R(I_INBOX)));
-				if (glocal.webtabs.selected("INBOX")) setcurrent(0);
-				setrow ("white",0,"\t%s",MSG_U(I_INBOX,"INBOX"));
-				<call bod_client_list_inboxes>(glocal.con,w_session.c_str(),"",true);
-				<f ok>
-					unsigned rownum=1;
-					for (auto s:inboxes){
-						string add = string_f("webtab_add=1:%s",s.project);
-						//url_self (add.c_str(),"%s",s.role);
-						if (glocal.webtabs.selected(s.project)) glocal.webtable.setcurrent(rownum);
-						glocal.webtable.setclickopt (true,"",add);
-						glocal.webtable.setrow("white",rownum,"%s\t%s",s.manager,s.project);
-						rownum++;
-					}
-				</f>
-				</call>
-			</f>
-			</call>
-		</f>
-		<f docmain>
-			glocal const char *project = id;
-			if (strcmp(id,"INBOX")==0) glocal.project = "";
-			string inbox = string("inbox") + id;
-			<call webtable>(ID_MAIL,inbox,"100%",currents[inbox],offsets[inbox],5);
-			<f click>
-				// This code is never called
-				tlmpweb_flushheader();
-				<call bod_client_list_msgs>(glocal.con,w_session.c_str(),"",glocal.project,false,noline,1);
-				<f ok>
-					if (messages.size()!=1){
-						htmlprintf ("Internal error: %s\n",msg);
-					}else{
-						htmlprintf ("title=%s<p>\n",messages[0].title);
-						string path = index_format_mail_fname(messages[0]);
-						<call bod_client_readfile>(glocal.con,w_session.c_str(),path,"");
-						<f ok>
-							const char *pt = content;
-							while (*pt != '\0'){
-								const char *start = pt;
-								while (*pt != '\0' && *pt != '\n') pt++;
-								htmlwrite (start,pt-start);
-								htmlout ("<br>\n");
-								if (*pt == '\n') pt++;
-							}
-						</f>
-						</call>
-					}
-				</f>
-				</call>
-			</f>
-			<f load>
-				glocal unsigned rownum = nbskip;
-				sethead (MSG_U(H_MAILS,"From\tManager\tProject\tRole\tSubmit\tTitle"));
-				<call bod_client_list_msgs>(glocal.con,w_session.c_str(),"",glocal.project,false,nbskip,nblines);
-				<f ok>
-					if (!success){
-						//htmlprintf ("Error: %d %s<br>",internal_error,msg);
-					}else{
-						for (auto &m:messages){
-							string path = index_format_mail_fname(m);
-							glocal.webtable.setclickopt (true,"",string_f("webtab_add=2:%s~%s"
-								,path.c_str(),m.from));
-							if (glocal.webtabs.selected(path)) glocal.webtable.setcurrent(glocal.rownum);
-							const char *style = m.viewed != VIEWED_OK ? "whitebold" : "white";
-							glocal.webtable.setrow (style,glocal.rownum,"%s\t%s\t%s\t%s\t%s\t%s"
-								,m.from
-								,m.manager
-								,m.project
-								,m.role
-								,format_date(userinfo.dateformat,m.submit).c_str()
-								,m.title);
-							glocal.rownum++;
-						}
-					}
-				</f>
-				</call>
-			</f>
-			</call>
-		</f>
-		<f doctype2>
-			DIV d("webtable"); d.print();
-			if (strcmp(id,"help")==0){
-				index_doc(glocal.docpointers[SECTION_MAILS],section_mails);
-			}else if (strcmp(id,"helpmain")==0){
-				index_doc(glocal.docpointers[SECTION_NONE],section_none);
-			}else{
-				glocal const char *id = id;
-				glocal const char *from = title;
-				<call bod_client_readfile>(glocal.con,w_session.c_str(),id,"");
-				<f ok>
-					vector<string> tb;
-					int n = str_splitline (glocal.id,'/',tb);
-					/- <table border=0>
-					if (n >= 5 && strcmp(tb[3].c_str(),"inbox")!=0){
-						if (n >= 6){
-							htmlprintf ("<tr><td><b>%s</b><td>%s<td>/<td>%s<td>/<td>%s\n",MSG_U(I_PROJECT,"Project"),tb[2].c_str(),tb[3].c_str(),tb[4].c_str());
-						}else{
-							htmlprintf ("<tr><td><b>%s</b><td>%s<td>/<td>%s\n",MSG_R(I_PROJECT),tb[2].c_str(),tb[3].c_str());
-						}
-					}
-					htmlprintf ("<tr><td><b>%s</b><td colspan=6>%s\n",MSG_U(I_FROM,"From"),glocal.from);
-					htmlprintf ("<tr><td><b>%s</b><td colspan=6>%s\n",MSG_U(I_TITLE,"Title"),info.title);
-					htmlprintf ("<tr><td><b>%s</b><td colspan=6>%s\n",MSG_U(I_DATE,"Date"),info.modified);
-					/- </table>
-					/- <p>
-					const char *pt = content;
-					while (*pt != '\0'){
-						const char *start = pt;
-						while (*pt != '\0' && *pt != '\n') pt++;
-						htmlout (start,pt-start);
-						htmlout ("<br>\n");
-						if (*pt == '\n') pt++;
-					}
-				</f>
-				</call>
-			}
-		</f>
-		</call>
-		///- </table>
+		mail (glocal.con,glocal.docpointers);
 	</f>
 	<f step9>	// TAB Talks
 		bolixo_title (MSG_U(T_TALKS,"Talks"),this);

@@ -793,6 +793,7 @@ elif [ "$1" = "test-sequence" ] ; then # S: Reloads database (big,medium,real,no
 	$0 bo-writed-control truncatelog	
 	ALL=
 	MANY=
+	CMP=
 	shift
 	$0 bo-writed-control mailctrl 0 keep
 	while [ "$1" != "" ]
@@ -801,6 +802,8 @@ elif [ "$1" = "test-sequence" ] ; then # S: Reloads database (big,medium,real,no
 			$0 bo-writed-control mailctrl 1 keep
 		elif [ "$1" = "all" ]; then
 			ALL=1
+		elif [ "$1" = "cmp" ]; then
+			CMP=1
 		elif [ "$1" = "many" ]; then
 			MANY=many
 		else
@@ -829,6 +832,10 @@ elif [ "$1" = "test-sequence" ] ; then # S: Reloads database (big,medium,real,no
 	$0 wait-for-keysd
 	echo "======= logs ====="
 	$0 syslog-logs
+	if [ "$CMP" = 1 ] ; then
+		echo ======= cmp ======
+		$0 cmp-sequence
+	fi
 elif [ "$1" = "wait-for-keysd" ] ; then # S: wait until keysd has generated all keys
 	echo ======= wait for keysd ====
 	$0 bo-keysd-control waitidle
