@@ -14,6 +14,7 @@ EXTERN DOC_ID section_mails;
 EXTERN DOC_ID section_interests;
 EXTERN DOC_ID section_preview;
 EXTERN DOC_ID section_why;
+EXTERN DOC_ID section_profile;
 
 #define SECTION_NONE 0
 #define SECTION_TALK 1
