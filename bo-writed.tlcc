@@ -887,12 +887,13 @@ static void bo_writed_set_group (
 	string &msg)
 {
 	glocal unsigned userid = userid;
+	glocal const char *listname = listname;
 	glocal const char *groupname = groupname;
 	glocal const char *access = access;
 	glocal string *msg = &msg;
 	<call sql_query>("select id from group_lists where ownerid=%u and name='%s'",userid,listname);
 	<f empty>
-		(*glocal.msg) = "Group list does not exist";
+		(*glocal.msg) = string_f(MSG_U(E_PRJNOTEXIST,"Project %s does not exist"),glocal.listname);
 	</f>
 	<f onerow>
 		glocal unsigned group_list_id = atoi(row[0]);
@@ -2382,7 +2383,7 @@ int main (int argc, char *argv[])
 							<call sql_query>("select id from group_lists where ownerid=%u and name='%s'"
 								,glocal.userid,listname);
 							<f onerow>
-								glocal.msg = "Group list alreay exist";
+								glocal.msg = string_f(MSG_U(E_PRJEXIST,"Project %s already exist"),glocal.listname);
 							</f>
 							<f empty>
 								if (bo_writed_create_group_list(glocal.userid,glocal.username,glocal.listname,"",glocal.msg)==-1){

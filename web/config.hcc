@@ -75,11 +75,11 @@ static void index_field_group (_F_form *c, W_VAR &var, const vector<string> &gro
 	Update a group definition in a list
 */
 <mod>
-static void index_set_group (CONNECT_INFO &con, W_SSTRING &list, const char *group, const char *access, bool &fail)
+static void index_set_group (CONNECT_INFO &con, const char *list, const char *group, const char *access, bool &fail)
 {
 	glocal bool fail = false;
 	glocal const char *groupname = group;
-	<call bod_client_set_group>(con,w_session.c_str(),list.c_str(),glocal.groupname,access,"");
+	<call bod_client_set_group>(con,w_session.c_str(),list,glocal.groupname,access,"");
 	<f ok>
 		if (!success){
 			htmlprintf (MSG_U(E_UPDGROUP,"Failure to update group %s: %s<br>\n"),glocal.groupname,msg);
@@ -90,7 +90,7 @@ static void index_set_group (CONNECT_INFO &con, W_SSTRING &list, const char *gro
 	if (glocal.fail) fail = true;
 }
 </mod>
-static void index_set_group (CONNECT_INFO &con, W_SSTRING &list, W_SSTRING &group, W_SSTRING &access, vector<string> &groups, bool &fail)
+static void index_set_group (CONNECT_INFO &con, const char *list, W_SSTRING &group, W_SSTRING &access, vector<string> &groups, bool &fail)
 {
 	const char *groupname = group.c_str();
 	if (groupname[0] != '\0'){
@@ -144,854 +144,847 @@ void profile(CONNECT_INFO &con, vector<DOCUMENT_POINTER> &docpointers)
 {
 	glocal CONNECT_INFO con = con;
 	glocal vector<DOCUMENT_POINTER> *docpointers = &docpointers;
-		vector<string> t={
-			string_f("Account~%s",MSG_U(T_ACCOUNT,"Account")),
-			string_f("Interests~%s",MSG_U(T_INTERESTS,"Interests")),
-			string_f("Contacts~%s",MSG_U(T_CONTACTS,"Contacts")),
-			string_f("Contact-req~%s",MSG_U(T_CONTACT_REQS,"Requests")),
-			string_f("Projects~%s",MSG_U(T_PROJECTS,"Projects")),
-			string_f("Groups~%s",MSG_U(T_GROUPS,"Groups"))};
-		static unsigned size[5]={0,60,40,0,0};
-		<call webtabs>("profile",t,tabs,size);
-		<f doctype2>
-			DIV f("webtable"); f.print();
-			if (strcmp(id,"helpgroups")==0){
-				index_doc((*glocal.docpointers)[SECTION_GROUPS],section_groups);
-			}else if (strcmp(id,"helpprojects")==0){
-				index_doc((*glocal.docpointers)[SECTION_PROJECTS],section_projects);
-			}else if (strcmp(id,"helpcontacts")==0){
-				index_doc((*glocal.docpointers)[SECTION_CONTACTS],section_contacts);
-			}else if (strcmp(id,"helpcontact-req")==0){
-				index_doc((*glocal.docpointers)[SECTION_CONTACT_REQ],section_contact_req);
-			}else if (strcmp(id,"helpaccount")==0){
-				index_doc((*glocal.docpointers)[SECTION_ACCOUNT],section_account);
-			}else if (strcmp(id,"helpinterests")==0){
-				index_doc((*glocal.docpointers)[SECTION_INTERESTS],section_interests);
-			}else if (strcmp(id,"helpmain")==0){
-				index_doc((*glocal.docpointers)[SECTION_NONE],section_none);
-			}
-		</f>
-		<f docmain>
-			sethelp("helpprojects",MSG_U(I_HELPPROJECTS,"Projects"));
-			if (strcmp(id,"Projects")==0){	// CONF projects
-				<call vframe2h>(40);
-				<f left>
-					{
-						DIV t; t.id(TAB_FORM).print();
-						url_self ("add=1",MSG_U(I_CREATELIST,"Create a new project"));
-						/- <br>&nbsp;<br>
-					}
-					<call webtable>("list:projects","100%",currents["list:projects"]);
-					<f load>
-						sethead (MSG_U(H_PROF_PROJECTS,"Project\tMembers\tAccess"));
-						<call bod_client_list_lists>(glocal.con,w_session.c_str(),"");
-						<f ok>
-							unsigned rownum=0;
-							for (auto &l:lists){
-								if (l.name[0] != '#'){
-									string add = string_f("list=%s",l.name);
-									glocal.webtable.setclickopt (true,"",add);
-									glocal.webtable.setrow ("sep",rownum,"%s\t%s\a",l.name,l.description);
-									glocal.webtable.setclickopt (false,"","");
-									for (unsigned i=0; i<l.groups.size(); i++){
-										glocal.webtable.setrow("white",-1,"\t%s\t%s",l.groups[i],l.access[i]);
-									}
-								}
-								rownum++;
-							}
-							
-						</f>
-						</call>
-					</f>
-					</call>
-				</f>
-				<f right>
-					if (profile_formactive (glocal.webtabs,w_list)){
-						<call form>(string_f("project:%s",w_add==1 ? "" : w_list.c_str()));
-						<f top>
-							/- <table border=0><tr><td>&nbsp;&nbsp;&nbsp;<td><table border=0>
-							if (w_add != 1) htmlprintf (MSG_U(T_PROJECT,"<tr><td>Project<td><font size=+2>%s</font><p>\n"),w_list.c_str());
-						</f>
-						<f bottom>
-							/- </table></table>
-						</f>
-						<f load>
-							<call bod_client_list_lists>(glocal.con,w_session.c_str(),"");
-							<f ok>
-								for (auto &l:lists){
-									if (strcmp(l.name,w_list.c_str())==0){
-										w_desc = l.description;
-										for (unsigned i=0; i<l.groups.size(); i++){
-											const char *group = l.groups[i];
-											string access = toupper(l.access[i]);
-											if (i==0){
-												w_group1 = group;
-												w_access1 = access;
-											}else if (i==1){
-												w_group2 = group;
-												w_access2 = access;
-											}else if (i==2){
-												w_group3 = group;
-												w_access3 = access;
-											}else if (i==3){
-												w_group4 = group;
-												w_access4 = access;
-											}
-										}
-										break;
-									}
-								}
-							</f>
-							</call>
-						</f>
-						<f setup>
-							glocal vector<string> groups;
-							// PATCH: Group contacts is not returned by list_groups
-							// For the public group, it is necessary. Maybe other projects would
-							// need access to special group contact...
-							if (strcmp(w_list.c_str(),"public")==0) glocal.groups.push_back("contacts");
-							<call bod_client_list_groups>(glocal.con,w_session.c_str(),"",true);
-							<f ok>
-								for (auto &g:groups) glocal.groups.push_back(g.name);
-							</f>
-							</call>
-							if (w_add == 1){
-								/-#I_PRJ_PROJECT <tr><td>Project&nbsp;<td>
-								field_string (w_list,"size=30");
-								field_hidden(w_add);
-							}else{
-								field_hidden(w_list);
-							}
-							/-#I_PRJ_DESCRIPTION <tr><td>Description&nbsp;<td>
-							field_string (w_desc,"size=60");
-							/- <tr><td>&nbsp;
-							/-#I_PRJ_MEMBERS <tr><td valign=top>Members<td><table border=0>
-							/-#I_PRJ_GROUP <tr><th>Group<th>Access
-							/- <tr><td>
-							index_field_group (this,w_group1,glocal.groups);
-							/- <td>
-							index_field_access (this,w_access1);
-							/- <tr><td>
-							index_field_group (this,w_group2,glocal.groups);
-							/- <td>
-							index_field_access (this,w_access2);
-							/- <tr><td>
-							index_field_group (this,w_group3,glocal.groups);
-							/- <td>
-							index_field_access (this,w_access3);
-							/- <tr><td>
-							index_field_group (this,w_group4,glocal.groups);
-							/- <td>
-							index_field_access (this,w_access4);
-							/- </table>
-							/- <tr><td>
-							button_submit();
-						</f>
-						<f validate>
-							bool ret = true;
-							if (strcmp(w_desc.c_str(),"a")==0){
-								ret = false;
-								/- <font color=red>a is not allowed</font>
-								/- <br>
-							}
-							return ret;
-						</f>
-						<f process>
-							glocal bool fail = false;
-							if (w_add == 1){
-								<call bod_client_create_group_list>(glocal.con,w_session.c_str(),w_list.c_str(),"");
-								<f ok>
-									if (!success){
-										glocal.fail = true;
-										htmlprintf ("Can't create list: %s\n",msg);
-									}
-								</f>
-								</call>
-							}
-							if (!glocal.fail){
-								glocal vector<string> oldgroups;
-								<call bod_client_list_lists>(glocal.con,w_session.c_str(),"");
-								<f ok>
-									for (auto &l:lists){
-										if (strcmp(l.name,w_list.c_str())==0){
-											for (auto g:l.groups) glocal.oldgroups.push_back(g);
-											break;
-										}
-									}
-								</f>
-								</call>
-								<call bod_client_set_list_desc>(glocal.con,w_session.c_str(),w_list.c_str(),w_desc.c_str(),"");
-								<f ok>
-									if (!success){
-										/- error
-										glocal.fail = true;
-									}
-								</f>
-								</call>
-								vector<string> newgroups;
-								index_set_group (glocal.con,w_list,w_group1,w_access1,newgroups,glocal.fail);
-								index_set_group (glocal.con,w_list,w_group2,w_access2,newgroups,glocal.fail);
-								index_set_group (glocal.con,w_list,w_group3,w_access3,newgroups,glocal.fail);
-								index_set_group (glocal.con,w_list,w_group4,w_access4,newgroups,glocal.fail);
-								if (!glocal.fail){
-									// We have to remove the groups that are gone
-									index_delete_new_from_old(newgroups,glocal.oldgroups);
-									// what remains in oldgroups have to be deleted (setting access to - does this)
-									for (auto &g:glocal.oldgroups) index_set_group (glocal.con,w_list,g.c_str(),"-",glocal.fail);
-								}
-							}
-							fail = glocal.fail;
-							if (!fail){
-								if (w_add == 0){
-									keepediting = true;
-									reload();
-								}
-								w_add = 0;
-							}
-						</f>
-						</call>
-					}
-				</f>
-				</call>
-			}else if (strcmp(id,"Groups")==0){	// CONF groups
-				sethelp("helpgroups",MSG_U(I_HELPGROUPS,"Groups"));
-				<call vframe2h>(40);
-				<f left>
-					{
-						DIV t; t.id(TAB_FORM).print();
-						url_self ("add=1",MSG_U(I_CREATEGROUP,"Create a new group"));
-						/- <br>&nbsp;<br>
-					}
-					<call webtable>("list:groups","100%",currents["list:groups"]);
-					<f load>
-						sethead (MSG_U(H_GROUPS,"Group\tMembers\tAccess\tRole"));
-						<call bod_client_list_groups>(glocal.con,w_session.c_str(),"",true);
-						<f ok>
-							unsigned rownum=0;
-							for (auto &g:groups){
-								string add = string_f("group=%s",g.name);
-								glocal.webtable.setclickopt (true,"",add);
-								glocal.webtable.setrow ("sep",rownum,"%s\t%s\a\a",g.name,g.description);
-								glocal.webtable.setclickopt (false,"","");
-								for (unsigned i=0; i<g.users.size(); i++){
-									glocal.webtable.setrow("white",-1,"\t%s\t%s\t%s",g.users[i],g.access[i],g.roles[i]);
-								}
-								rownum++;
-							}
-						</f>
-						</call>
-					</f>
-					</call>
-				</f>
-				<f right>
-					if (profile_formactive (glocal.webtabs,w_group)){
-						<call form>(string_f("group:%s",w_add==1 ? "" : w_group.c_str()));
-						<f top>
-							/- <table border=0><tr><td>&nbsp;&nbsp;&nbsp;<td><table border=0>
-							if (w_add != 1) htmlprintf ("<tr><td>Group<td><font size=+2>%s</font><p>\n",w_group.c_str());
-						</f>
-						<f bottom>
-							/- </table></table>
-						</f>
-						<f load>
-							<call bod_client_list_groups>(glocal.con,w_session.c_str(),"",true);
-							<f ok>
-								for (auto &g:groups){
-									if (strcmp(g.name,w_group.c_str())==0){
-										w_desc = g.description;
-										w_content = "";
-										for (unsigned i=0; i<g.users.size(); i++){
-											w_content.appendf ("%s:%s:%s\n",g.users[i],g.access[i],g.roles[i]);
-										}
-										break;
-									}
-								}
-							</f>
-							</call>
-						</f>
-						<f setup>
-							if (w_add == 1){
-								/-#I_GROUP <tr><td>Group&nbsp;<td>
-								field_string (w_group,"size=30");
-								field_hidden(w_add);
-							}else{
-								field_hidden(w_group);
-							}
-							/-#I_DESCRIPTION <tr><td>Description&nbsp;<td>
-							field_string (w_desc,"size=60");
-							/- <tr><td>&nbsp;
-							/-#I_MEMBERS <tr><td valign=top>Members<td>
-							field_textarea (w_content,20,60,"");
-							/- <tr><td>
-							button_submit();
-						</f>
-						<f validate>
-							bool ret = true;
-							return ret;
-						</f>
-						<f process>
-							glocal bool fail = false;
-							if (w_add == 1){
-								<call bod_client_create_group>(glocal.con,w_session.c_str(),w_group.c_str(),"");
-								<f ok>
-									if (!success){
-										glocal.fail = true;
-										htmlprintf (MSG_U(E_CANTCREATEGROUP,"Can't create group: %s<br>\n"),msg);
-									}
-								</f>
-								</call>
-							}
-							if (!glocal.fail){
-								glocal vector<string> oldusers;
-								<call bod_client_list_groups>(glocal.con,w_session.c_str(),"",true);
-								<f ok>
-									for (auto &g:groups){
-										if (strcmp(g.name,w_group.c_str())==0){
-											for (auto u:g.users) glocal.oldusers.push_back(u);
-											break;
-										}
-									}
-								</f>
-								</call>
-								<call bod_client_set_group_desc>(glocal.con,w_session.c_str(),w_group.c_str(),w_desc.c_str(),"");
-								<f ok>
-									if (!success){
-										htmlprintf (MSG_U(E_CANTSETGROUPDESC,"Can't set group description: %s<br>\n"),msg);
-										glocal.fail = true;
-									}
-								</f>
-								</call>
-								vector<string> newusers,newaccesses,newroles;
-								const char *pt = w_content.c_str();
-								while (*pt != '\0'){
-									string word;
-									pt = str_copyword(word,pt);
-									vector<string> tb;
-									int n = str_splitline(word.c_str(),':',tb);
-									if (n > 0){
-										while (tb.size() < 3) tb.push_back("");
-										newusers.push_back (tb[0]);
-										newaccesses.push_back(tb[1]);
-										newroles.push_back(tb[2]);
-									}
-								}
-								for (unsigned i=0; !glocal.fail && i<newusers.size(); i++){
-									glocal const char *user = newusers[i].c_str();
-									<call bod_client_set_member>(glocal.con,w_session.c_str(),w_group.c_str()
-										,glocal.user,newaccesses[i].c_str(),newroles[i].c_str(),"");
-									<f ok>
-										if (!success){
-											glocal.fail = true;
-											htmlprintf (MSG_U(E_CANTSETMEMBER,"Can't set member %s: %s\n"),glocal.user,msg);
-										}
-									</f>
-									</call>
-								}
-								if (!glocal.fail){
-									// We have to remove the groups that are gone
-									index_delete_new_from_old(newusers,glocal.oldusers);
-									// what remains in oldusers have to be deleted (setting access to - does this)
-									for (auto &g:glocal.oldusers){
-										glocal const char *user = g.c_str();
-										<call bod_client_set_member>(glocal.con,w_session.c_str(),w_group.c_str()
-											,glocal.user,"-","","");
-										<f ok>
-											if (!success){
-												glocal.fail = true;
-												htmlprintf (MSG_U(E_CANTDELMEMBER,"Can't delete member %s: %s\n"),glocal.user,msg);
-											}
-										</f>
-										</call>
-									}
-								}
-							}
-							fail = glocal.fail;
-							if (!fail){
-								if (w_add == 0){
-									keepediting = true;
-									reload();
-								}
-								w_add = 0;
-							}
-						</f>
-						</call>
-					}
-				</f>
-				</call>
-			}else if (strcmp(id,"Contacts")==0 || strcmp(id,"Contact-req")==0){	// CONF contacts
-				glocal bool to_me = strcmp(id,"Contacts")==0;
-				if (glocal.to_me){
-					sethelp("helpcontacts",MSG_U(I_HELPCONTACTS,"Contacts"));
-				}else{
-					sethelp("helpcontact-req",MSG_U(I_HELPCONTACT_REQ,"Requests"));
-				}
-				<call vframe2h>(40);
-				<f left>
-					if (!glocal.to_me){
-						DIV f; f.id(TAB_FORM).print();
-						url_self ("add=1",MSG_U(I_NEWCONTACT,"Send a contact request"));
-						/- <br>&nbsp;<br>
-					}
-					static const string id = "list:contacts";
-					<call webtable>(ID_CONTACT,id,"100%",currents[id],offsets[id],10);
-					<f load>
-						sethead (MSG_U(H_CONTACTS,"User\tDate\tStatus"));
-						<call bod_client_contact_list>(glocal.con,w_session.c_str(),"",glocal.to_me,nbskip,nblines);
-						<f ok>
-							static const char *tbstatus[]={MSG_U(I_WAITING,"waiting"),MSG_U(I_ACCEPTED,"accepted"),MSG_U(I_REJECTED,"rejected")};
-							unsigned rownum = 0;
-							for (auto &c:contacts){
-								glocal.webtable.setclickopt (true,"",string_f("user=%u:%s",rownum,c.user));
-								glocal.webtable.setrow("white",rownum,"%s\t%s\t%s",c.user
-									,format_date(userinfo.dateformat,c.reqdate).c_str(),tbstatus[c.status]);
-								rownum++;
-							}
-						</f>
-						</call>
-					</f>
-					</call>
-				</f>
-				<f right>
-					if (profile_formactive (glocal.webtabs,w_user)){
-						if (w_add.isset()){
-							glocal bool done = false;
-							<call form>("contact");
-							<f top>
-								/- <table border=0><tr><td>&nbsp;&nbsp;&nbsp;<td><table border=0>
-								/- <table border=0>
-								/- <tr><td><td>
-								/-#I_SENDCONTACT <h2>Send a contact request</h2>
-							</f>
-							<f bottom>
-								/- </table></table>
-							</f>
-							<f setup>
-								field_hidden (w_add);
-								/-#I_TOCONTACT <tr><td>Person to contact<td>
-								field_string (w_user,"size=30");
-								/-#I_MESSAGE <tr><td valign=top>Message<td>
-								field_textarea (w_content,10,60,"");
-								/- <tr><td>
-								button_submit();
-							</f>
-							<f validate>
-								return true;
-							</f>
-							<f process>
-								glocal bool fail = false;
-								<call bod_client_contact_request>(glocal.con,w_session.c_str(),"",w_user.c_str(),w_content.c_str());
-								<f ok>
-									if (!success){
-										glocal.fail = true;
-										htmlprintf (MSG_U(E_CONTACTFAIL,"Contact request failed: %s<br>\n"),msg);
-									}else{
-										glocal.done = true;
-									}
-								</f>
-								</call>
-								fail = glocal.fail;
-							</f>
-							</call>
-							if (glocal.done){
-								/-#I_CONTACTSENT Contact request sent!
-							}
-						}else if (glocal.to_me && w_user.isset()){
-							glocal bool done = false;
-							glocal CONTACT_STATUS status = CONTACT_WAITING;
-							glocal string user;
-							const char *pt = strchr(w_user.c_str(),':');
-							if (pt != NULL) glocal.user = pt+1;
-							<call form>(string_f("managecontact:%s",w_user.c_str()));
-							<f top>
-								/- <table border=0><tr><td>&nbsp;&nbsp;&nbsp;<td><table border=0>
-								/- <tr><td><td>
-								/-#I_MANAGECONTACT <h2>Manage a contact</h2>
-							</f>
-							<f bottom>
-								/- </table></table>
-							</f>
-							<f load>
-								unsigned rownum = atoi(w_user.c_str());
-								<call bod_client_contact_list>(glocal.con,w_session.c_str(),"",glocal.to_me,rownum,1);
-								<f ok>
-									if (contacts.size() == 1){
-										auto &c = contacts[0];
-										w_content = c.message;
-									}
-								</f>
-								</call>
-							</f>
-							<f setup>
-								field_hidden(w_user);
-								/- <tr><td>
-								/-#I_REQUESTFROM Request from
-								/- <td>
-								htmlout (glocal.user);
-								htmlout (MSG_R(I_MESSAGE));
-								field_textarea(w_content,5,55,"readonly");
-								/- <tr><td>
-								/-#I_ACCEPTREQ Accept request
-								/- <td>
-								field_radio(w_accept,"accept",true,"");
-								/- <tr><td>
-								/-#I_REFUSEREQ Refuse request
-								/- <td>
-								field_radio(w_accept,"reject",false,"");
-								/- <tr><td>
-								button_submit();
-							</f>
-							<f validate>
-								return true;
-							</f>
-							<f process>
-								glocal bool fail = false;
-								if (strcmp(w_accept.c_str(),"accept")==0){
-									glocal.status = CONTACT_ACCEPTED;
-								}else if (strcmp(w_accept.c_str(),"reject")==0){
-									glocal.status = CONTACT_REJECTED;
-								}else{
-									glocal.fail = true;
-									/- Invalid input ???
-								}
-								if (!glocal.fail){
-									<call bod_client_contact_manage>(glocal.con,w_session.c_str(),"",glocal.user.c_str(),glocal.status);
-									<f ok>
-										if (!success){
-											glocal.fail = true;
-											htmlprintf ("operation failed: %s<br>\n",msg);
-										}else{
-											glocal.done = true;
-										}
-									</f>
-									</call>
-								}
-								fail = glocal.fail;
-							</f>
-							</call>
-							if (glocal.done){
-								/- <table border=0><tr><td>&nbsp;&nbsp;&nbsp;<td><table border=0><tr><td>
-								/-#I_CONTACTDONE Contact request processed!
-								/- <p>
-								if (glocal.status == CONTACT_ACCEPTED){
-									htmlprintf (MSG_U(I_FROMNOWON,"From now on, you can communicate with user %s<br>\n"),glocal.user.c_str());
-									htmlprintf (MSG_U(I_MAKEMEMBER,"You can make user %s member of your groups<br>\n"),glocal.user.c_str());
-									/-#I_HEMAKEMEMBER and he can make you member of his groups.
-								}
-								/- </table></table>
-								glocal.webtabs.setstate("");
-							}
-						}
-					}
-				</f>
-				</call>
-			}else if (strcmp(id,"Interests")==0){	// CONF interests
-				sethelp("helpinterests",MSG_U(I_HELPINTERESTS,"Interests"));
-				<call vframe2h>(40);
-				<f left>
-					{
-						DIV f; f.id(TAB_FORM).print();
-						url_self ("add=1",MSG_U(I_NEWINTEREST,"Add interests"));
-						/- <br>&nbsp;<br>
-					}
-					static const string id = "list:interests";
-					<call webtable>(ID_INTERESTS,id,"100%",currents[id]);
-					<f click>
-						glocal unsigned dropmenu = dropmenu;
-						glocal unsigned noline = noline;
-						<call bod_client_interest_list>(glocal.con,w_session.c_str(),"");
-						<f ok>
-							if (glocal.noline < users.size() && glocal.dropmenu == MENU_DELETE){
-								<call bod_client_interest_unset>(glocal.con,w_session.c_str()
-									,users[glocal.noline].name,"");
-								<f ok>
-								</f>
-								</call>
-							}
-						</f>
-						</call>
-					</f>
-					<f load>
-						adddrop_opt (MENU_DELETE,MSG_R(M_DELETE));
-						sethead (MSG_U(H_INTEREST,"\tPerson\tSince"));
-						<call bod_client_interest_list>(glocal.con,w_session.c_str(),"");
-						<f ok>
-							unsigned rownum=0;
-							for (auto &u:users){
-								glocal.webtable.setclickopt (true,"",string_f("user=%u:%s",rownum,u.name));
-								string since = format_date(userinfo.dateformat,u.since);
-								const char *pt = strchr(u.name,'@');
-								if (pt!=NULL){
-									// remote user
-									string name(u.name,pt-u.name);
-									glocal.webtable.setrow("white",rownum,"<img src=https://%s/public/%s/project/mini-photo.jpg>\t%s\t%s"
-										,pt+1,name.c_str(),u.name,since.c_str());
-								}else if (u.visible){
-									glocal.webtable.setrow("white",rownum,"<img src=/public/%s/project/mini-photo.jpg>\t%s\t%s"
-										,u.name,u.name,since.c_str());
-								}else{
-									glocal.webtable.setrow("white",rownum,"<img src=/private.png>\t%s\t%s"
-										,u.name,since.c_str());
-								}
-								rownum++;
-							}
-						</f>
-						</call>
-					</f>
-					</call>
-				</f>
-				<f right>
-					if (profile_formactive (glocal.webtabs)){
-						glocal bool done = false;
-						<call form>("interest");
-						<f top>
-							/- <table border=0><tr><td>&nbsp;&nbsp;&nbsp;<td><table border=0>
-							/- <table border=0>
-							/- <tr><td><td>
-							/-#I_ADDINTEREST <h2>Add more interesting people</h2>
-						</f>
-						<f bottom>
-							/- </table></table>
-						</f>
-						<f setup>
-							field_hidden (w_add);
-							/-#I_PEOPLES <tr><td valign=top>Peoples<td>
-							field_textarea (w_content,10,60,"");
-							/- <tr><td>
-							button_submit();
-						</f>
-						<f validate>
-							return true;
-						</f>
-						<f process>
-							glocal string error;
-							glocal bool fail = false;
-							glocal vector<string> users;
-							const char *pt = w_content.c_str();
-							while (*pt != '\0'){
-								pt = str_skip(pt);
-								if (*pt > ' '){
-									const char *start = pt;
-									while (*pt > ' ') pt++;
-									glocal.users.push_back(string(start,pt-start));
-								}
-							}
-							// Check if some are already in the interest list
-							<call bod_client_interest_list>(glocal.con,w_session.c_str(),"");
-							<f ok>
-								for (auto u:users){
-									if (find(glocal.users.begin(),glocal.users.end(),u.name)!=glocal.users.end()){
-										glocal.error += string_f(" %s",u.name);
-										glocal.fail = true;
-									}
-								}
-							</f>
-							</call>
-							if (!glocal.fail){
-								for (auto u:glocal.users){
-									glocal const char *user = u.c_str();
-									<call bod_client_interest_set>(glocal.con,w_session.c_str(),u,"");
-									<f ok>
-										if (!success){
-											htmlprintf (MSG_U(E_INTERESTSET,"Can't add user %s in interest list: %s<br>\n")
-												,glocal.user,msg);
-											glocal.fail = true;
-										}
-									</f>
-									</call>
-									if (glocal.fail) break;
-								}
-							}else{
-								htmlprintf ("%s<br>%s<br>",MSG_U(E_INTERESTDUP,"These people are already in your interest list"),glocal.error.c_str());
-							}
-							fail = glocal.fail;
-							if (!fail) glocal.webtabs.setstate("");
-						</f>
-						</call>
-					}
-				</f>
-				</call>
-			}else if (strcmp(id,"Account")==0){ // CONF account
-				glocal string status = "&nbsp;";
-				sethelp("helpaccount",MSG_U(I_HELPACCOUNT,"Account"));
-				DIV d("webtable"); d.autoscroll().print();
-				<call form>("configaccount");
-				<f top>
-					/- <table border=0>
-					htmlprintf ("<tr><td colspan=2>%s",glocal.status.c_str());
-				</f>
-				<f bottom>
-					/- </table>
-				</f>
-				<f load>
-					<call bod_client_config_read>(glocal.con,w_session.c_str(),"");
-					<f ok>
-						w_lang = config.lang;
-						w_dateformat = string_f("%u",config.dateformat);
-						w_public_view = config.public_view;
-						w_public_dir = config.public_dir;
-						w_anon_messages = config.anon_messages;
-					</f>
-					</call>
-					<call bod_client_info_read>(glocal.con,w_session.c_str(),"");
-					<f ok>
-						w_publish = info.publish;
-						w_bosite = info.bosite_visible;
-						w_name = info.fullname;
-						w_address1 = info.address1;
-						w_address2 = info.address2;
-						w_city = info.city;
-						w_zipcode = info.zipcode;
-						w_state = info.state;
-						w_country = info.country;
-						w_email = info.email;
-						w_phone = info.phone;
-						w_fax = info.fax;
-						w_website = info.website;
-						w_interest = info.interest;
-						w_photo = info.photo;
-						w_miniphoto = info.mini_photo;
-					</f>
-					</call>
-				</f>
-				<f setup>
-					{
-					DIV d; d.border(1,"gray").paddings(5,5).vpaddings(0,5).print();
-					/- <center><font size=+2>
-					/-#T_PERSOPREF Personal preferences
-					/- </font></center>
-					/- <table border=0>
-					/-#I_LANG <tr><td>Language<td>
-					field_list (w_lang,"");
-					field_list_item ("eng",MSG_U(I_ENGLISH,"English"));
-					field_list_item ("fr",MSG_U(I_FRENCH,"French"));
-					field_list_end();
-					/-#I_DATEFORMAT <tr><td>Date format<td>
-					field_list(w_dateformat,"");
-					field_list_item ("0",MSG_U(I_ENGDATE,"Month DD YYYY HH:MMam/pm"));
-					field_list_item ("1",MSG_U(I_ISODATE,"YYYY/MM/DD HH:MM:SS"));
-					field_list_end();
-
-					/-#I_ENABLEPUB <tr><td>Enable public view<td>
-					field_checkbox (w_public_view,"");
-					/-#I_PUBFOLDER <tr><td>Public folder<td>
-					field_list (w_public_dir,"");
-					field_list_item ("",MSG_U(I_NONE,"--none--"));
-					field_list_item ("/",MSG_U(I_ROOTDIR,"root"));
-					<call bod_client_listdir>(glocal.con,w_session.c_str(),string_f("/projects/%s/public",userinfo.name.c_str())
-						,"",false,0,100);
-					<f ok>
-						for (auto &f:files){
-							if (bolixo_isdir(f.type)){
-								glocal.form.field_list_item (f.name,f.name);
-							}
-						}
-					</f>
-					</call>
-					/-#I_ACCEPTANON <tr><td>Accept anonymous messages<td>
-					field_checkbox (w_anon_messages,"");
-					/- </table>
-					}
-					{
-					DIV d; d.border(1,"gray").paddings(5,5).vpaddings(0,5).vmargins(5,0).print();
-					/- <center><font size=+2>
-					/-#T_PUBLISH Public information
-					/- </font></center>
-					/-#F_PUBLISH Publish to bolixo.org directory
-					/- &nbsp;&nbsp;
-					field_checkbox (w_publish,"");
-					DIV dd; dd.border(1,"lightgray").print();
-					/- <table border=0>
-					index_field (this,true,3,MSG_U(F_FULLNAME,"Name and surname"),w_name,40);
-					index_field (this,true,3,MSG_U(F_ADDRESS1,"Address"),w_address1,40);
-					index_field (this,true,3,MSG_U(F_ADDRESS2,"Address"),w_address2,40);
-					index_field (this,true,MSG_U(F_CITY,"City"),w_city);
-					index_field (this,false,MSG_U(F_STATE,"State"),w_state);
-					index_field (this,true,MSG_U(F_COUNTRY,"Country"),w_country);
-					index_field (this,false,MSG_U(F_ZIPCODE,"ZIP code"),w_zipcode);
-					index_field (this,true,MSG_U(F_EMAIL,"Email"),w_email);
-					index_field (this,true,MSG_U(F_PHONE,"Phone"),w_phone);
-					index_field (this,false,MSG_U(F_FAX,"Fax"),w_fax);
-					/- <tr><td>
-					/-#F_PUBLISHSOME Publish
-					/- <td colspan=3>
-					field_checkbox (w_bosite,"");
-					/-#F_PUBBOLIXOSITE your bolixo page
-					/-&nbsp;&nbsp;
-					field_checkbox (w_photo,"");
-					/-#F_YOURPHOTO Your photo
-					/-&nbsp;&nbsp;
-					field_checkbox (w_miniphoto,"");
-					/-#F_YOURMINIPHOTO Your mini photo
-					index_field (this,true,MSG_U(F_WEBSITE,"Web site"),w_website);
-					/- <tr><td>
-					/-#F_INTERESTS Interests
-					/- <td colspan=3>
-					field_textarea (w_interest,8,70,"");
-					/- </table>
-					}
-					/- <tr><td><br>
-					button_submit();
-				</f>
-				<f validate>
-					bool ret = true;
-					if (w_bosite.getval() != 0 && w_public_view.getval()==0){
-						ret = false;
-						/- <font color=red>* </font>
-						/-#E_CANTPUBBOSITE You can't publish your bolixo page unless you enable public view
-					}
-					return ret;
-				</f>
-				<f process>
-					glocal bool fail = false;
-					CONFIG config;
-					config.lang = w_lang.c_str();
-					config.dateformat = atoi(w_dateformat.c_str());
-					config.public_view = w_public_view;
-					config.public_dir = w_public_dir.c_str();
-					config.anon_messages = w_anon_messages;
-					<call bod_client_config_write>(glocal.con,w_session.c_str(),"",config);
-					<f ok>
-						if (!success){
-							glocal.fail = true;
-							htmlprintf (MSG_U(E_CANTSAVECONFIG,"Can't save configuration: %s\n"),msg);
-						}else{
-							translat_selectlang (w_lang.c_str());
-							glocal.status = MSG_U(I_CONFIGUPDATED,"Configuration updated");
-						}
-					</f>
-					</call>
-					USERPUBLICINFO info;
-					info.publish = w_publish.getval();
-					info.bosite_visible = w_bosite.getval();
-					info.fullname = w_name.c_str();
-					info.address1 = w_address1.c_str();
-					info.address2 = w_address2.c_str();
-					info.city = w_city.c_str();
-					info.zipcode = w_zipcode.c_str();
-					info.state = w_state.c_str();
-					info.country = w_country.c_str();
-					info.email = w_email.c_str();
-					info.phone = w_phone.c_str();
-					info.fax = w_fax.c_str();
-					info.website = w_website.c_str();
-					info.interest = w_interest.c_str();
-					info.photo = w_photo.getval();
-					info.mini_photo = w_miniphoto.getval();
-					<call bod_client_info_write>(glocal.con,w_session.c_str(),"",info);
-					<f ok>
-						if (!success){
-							glocal.fail = true;
-							htmlprintf (MSG_U(E_CANTSAVEPUBCONFIG,"Can't save public configurations: %s\n"),msg);
-						}
-					</f>
-					</call>
-					fail = glocal.fail;
-					keepediting = true;
-				</f>
-				</call>
+	static unsigned size[5]={15,45,40,0,0};
+	<call webtabs>("profile",tabs,size);
+	<f documents>
+		<call webtable>("tab:profiles","100%",currents["tab:profiles"]);
+		<f load>
+			sethead (MSG_U(H_PROFILE,"Profiles"));
+			vector<pair<string,string>> t={
+				{"Account",MSG_U(T_ACCOUNT,"Account")},
+				{"Interests",MSG_U(T_INTERESTS,"Interests")},
+				{"Contacts",MSG_U(T_CONTACTS,"Contacts")},
+				{"Contact-req",MSG_U(T_CONTACT_REQS,"Requests")},
+				{"Projects",MSG_U(T_PROJECTS,"Projects")},
+				{"Groups",MSG_U(T_GROUPS,"Groups")}
+				};
+			unsigned rownum=0;
+			for (auto s:t){
+				if (glocal.webtabs.selected(s.first)) setcurrent(rownum);
+				string add = string_f("webtab_add=1:%s~%s",s.first.c_str(),s.second.c_str());
+				setclickopt (true,"",add);
+				setrow ("white",rownum,"%s",s.second.c_str());
+				rownum++;
 			}
 		</f>
 		</call>
+	</f>
+	<f doctype2>
+		DIV f("webtable"); f.print();
+		if (strcmp(id,"helpgroups")==0){
+			index_doc((*glocal.docpointers)[SECTION_GROUPS],section_groups);
+		}else if (strcmp(id,"helpprojects")==0){
+			index_doc((*glocal.docpointers)[SECTION_PROJECTS],section_projects);
+		}else if (strcmp(id,"helpcontacts")==0){
+			index_doc((*glocal.docpointers)[SECTION_CONTACTS],section_contacts);
+		}else if (strcmp(id,"helpcontact-req")==0){
+			index_doc((*glocal.docpointers)[SECTION_CONTACT_REQ],section_contact_req);
+		}else if (strcmp(id,"helpaccount")==0){
+			index_doc((*glocal.docpointers)[SECTION_ACCOUNT],section_account);
+		}else if (strcmp(id,"helpinterests")==0){
+			index_doc((*glocal.docpointers)[SECTION_INTERESTS],section_interests);
+		}else if (strcmp(id,"helpmain")==0){
+			index_doc((*glocal.docpointers)[SECTION_NONE],section_none);
+		}else if (strncmp(id,"project:",8)==0){
+			glocal const char *prjname = id+8;
+			glocal bool adding = glocal.prjname[0] == '\0';
+			<call form>(id);
+			<f top>
+				/- <table border=0 width=100%><tr><td>&nbsp;&nbsp;&nbsp;<td><table border=0 witdh=100%>
+				if (!glocal.adding) htmlprintf ("<tr><td>%s<td><b>%s<b><p>\n",MSG_U(T_PROJECT,"Project"),glocal.prjname);
+			</f>
+			<f bottom>
+				/- </table></table>
+			</f>
+			<f load>
+				<call bod_client_list_lists>(glocal.con,w_session.c_str(),"");
+				<f ok>
+					for (auto &l:lists){
+						if (strcmp(l.name,glocal.prjname)==0){
+							w_desc = l.description;
+							for (unsigned i=0; i<l.groups.size(); i++){
+								const char *group = l.groups[i];
+								string access = toupper(l.access[i]);
+								if (i==0){
+									w_group1 = group;
+									w_access1 = access;
+								}else if (i==1){
+									w_group2 = group;
+									w_access2 = access;
+								}else if (i==2){
+									w_group3 = group;
+									w_access3 = access;
+								}else if (i==3){
+									w_group4 = group;
+									w_access4 = access;
+								}
+							}
+							break;
+						}
+					}
+				</f>
+				</call>
+			</f>
+			<f setup>
+				glocal vector<string> groups;
+				// PATCH: Group contacts is not returned by list_groups
+				// For the public group, it is necessary. Maybe other projects would
+				// need access to special group contact...
+				if (strcmp(glocal.prjname,"public")==0) glocal.groups.push_back("contacts");
+				<call bod_client_list_groups>(glocal.con,w_session.c_str(),"",true);
+				<f ok>
+					for (auto &g:groups) glocal.groups.push_back(g.name);
+				</f>
+				</call>
+				if (glocal.adding){
+					htmlprintf ("<tr><td>%s&nbsp;<td width=99%%>\n",MSG_U(I_PRJ_PROJECT,"Project"));
+					field_string (w_list,"size=30");
+				}
+				htmlprintf ("<tr><td>%s&nbsp;<td width=99%%>",MSG_U(I_PRJ_DESCRIPTION,"Description"));
+				field_string (w_desc,"style=width:100%");
+				/- <tr><td>&nbsp;
+				/-#I_PRJ_MEMBERS <tr><td valign=top>Members<td><table border=0>
+				/-#I_PRJ_GROUP <tr><th>Group<th>Access
+				/- <tr><td>
+				index_field_group (this,w_group1,glocal.groups);
+				/- <td>
+				index_field_access (this,w_access1);
+				/- <tr><td>
+				index_field_group (this,w_group2,glocal.groups);
+				/- <td>
+				index_field_access (this,w_access2);
+				/- <tr><td>
+				index_field_group (this,w_group3,glocal.groups);
+				/- <td>
+				index_field_access (this,w_access3);
+				/- <tr><td>
+				index_field_group (this,w_group4,glocal.groups);
+				/- <td>
+				index_field_access (this,w_access4);
+				/- </table>
+				/- <tr><td>
+				button_submit();
+			</f>
+			<f validate>
+				bool ret = true;
+				if (strcmp(w_desc.c_str(),"a")==0){
+					ret = false;
+					/- <font color=red>a is not allowed</font>
+					/- <br>
+				}
+				return ret;
+			</f>
+			<f process>
+				glocal bool fail = false;
+				if (glocal.adding){
+					glocal.prjname = w_list.c_str();
+					<call bod_client_create_group_list>(glocal.con,w_session.c_str(),w_list.c_str(),"");
+					<f ok>
+						if (!success){
+							glocal.fail = true;
+							htmlprintf ("Can't create list: %s\n",msg);
+						}else{
+						}
+					</f>
+					</call>
+				}
+				if (!glocal.fail){
+					glocal vector<string> oldgroups;
+					<call bod_client_list_lists>(glocal.con,w_session.c_str(),"");
+					<f ok>
+						for (auto &l:lists){
+							if (strcmp(l.name,glocal.prjname)==0){
+								for (auto g:l.groups) glocal.oldgroups.push_back(g);
+								break;
+							}
+						}
+					</f>
+					</call>
+					<call bod_client_set_list_desc>(glocal.con,w_session.c_str(),glocal.prjname,w_desc.c_str(),"");
+					<f ok>
+						if (!success){
+							/- error
+							glocal.fail = true;
+						}
+					</f>
+					</call>
+					vector<string> newgroups;
+					index_set_group (glocal.con,glocal.prjname,w_group1,w_access1,newgroups,glocal.fail);
+					index_set_group (glocal.con,glocal.prjname,w_group2,w_access2,newgroups,glocal.fail);
+					index_set_group (glocal.con,glocal.prjname,w_group3,w_access3,newgroups,glocal.fail);
+					index_set_group (glocal.con,glocal.prjname,w_group4,w_access4,newgroups,glocal.fail);
+					if (!glocal.fail){
+						// We have to remove the groups that are gone
+						index_delete_new_from_old(newgroups,glocal.oldgroups);
+						// what remains in oldgroups have to be deleted (setting access to - does this)
+						for (auto &g:glocal.oldgroups) index_set_group (glocal.con,glocal.prjname,g.c_str(),"-",glocal.fail);
+					}
+				}
+				fail = glocal.fail;
+				if (!fail){
+					if (glocal.adding){
+						glocal.webtabs.redotab();
+						resetstate();
+					}
+					keepediting = true;
+					reload();
+				}
+			</f>
+			</call>
+		}else if (strncmp(id,"group:",6)==0){
+			glocal const char *grpname = id+6;
+			glocal bool adding = glocal.grpname[0] == '\0';
+			<call form>(id);
+			<f top>
+				/- <table border=0 width=100%><tr><td>&nbsp;&nbsp;&nbsp;<td><table border=0 width=100%>
+				if (!glocal.adding) htmlprintf ("<tr><td>%s<td width=99%%><b>%s</b><p>\n",MSG_R(I_GROUP),glocal.grpname);
+			</f>
+			<f bottom>
+				/- </table></table>
+			</f>
+			<f load>
+				<call bod_client_list_groups>(glocal.con,w_session.c_str(),"",true);
+				<f ok>
+					for (auto &g:groups){
+						if (strcmp(g.name,glocal.grpname)==0){
+							w_desc = g.description;
+							w_content = "";
+							for (unsigned i=0; i<g.users.size(); i++){
+								w_content.appendf ("%s:%s:%s\n",g.users[i],g.access[i],g.roles[i]);
+							}
+							break;
+						}
+					}
+				</f>
+				</call>
+			</f>
+			<f setup>
+				if (glocal.adding){
+					htmlprintf ("<tr><td>%s&nbsp;<td>",MSG_U(I_GROUP,"Group"));
+					field_string (w_group,"size=30");
+				}
+				/-#I_DESCRIPTION <tr><td>Description&nbsp;<td width=99%>
+				field_string (w_desc,"style=width:100%");
+				/- <tr><td>&nbsp;
+				/-#I_MEMBERS <tr><td valign=top>Members<td width=99%>
+				field_textarea (w_content,20,-100,"");
+				/- <tr><td>
+				button_submit();
+			</f>
+			<f validate>
+				bool ret = true;
+				return ret;
+			</f>
+			<f process>
+				glocal bool fail = false;
+				if (glocal.adding){
+					glocal.grpname = w_group.c_str();
+					<call bod_client_create_group>(glocal.con,w_session.c_str(),glocal.grpname,"");
+					<f ok>
+						if (!success){
+							glocal.fail = true;
+							htmlprintf (MSG_U(E_CANTCREATEGROUP,"Can't create group: %s<br>\n"),msg);
+						}
+					</f>
+					</call>
+				}
+				if (!glocal.fail){
+					glocal vector<string> oldusers;
+					<call bod_client_list_groups>(glocal.con,w_session.c_str(),"",true);
+					<f ok>
+						for (auto &g:groups){
+							if (strcmp(g.name,glocal.grpname)==0){
+								for (auto u:g.users) glocal.oldusers.push_back(u);
+								break;
+							}
+						}
+					</f>
+					</call>
+					<call bod_client_set_group_desc>(glocal.con,w_session.c_str(),glocal.grpname,w_desc.c_str(),"");
+					<f ok>
+						if (!success){
+							htmlprintf (MSG_U(E_CANTSETGROUPDESC,"Can't set group description: %s<br>\n"),msg);
+							glocal.fail = true;
+						}
+					</f>
+					</call>
+					vector<string> newusers,newaccesses,newroles;
+					const char *pt = w_content.c_str();
+					while (*pt != '\0'){
+						string word;
+						pt = str_copyword(word,pt);
+						vector<string> tb;
+						int n = str_splitline(word.c_str(),':',tb);
+						if (n > 0){
+							while (tb.size() < 3) tb.push_back("");
+							newusers.push_back (tb[0]);
+							newaccesses.push_back(tb[1]);
+							newroles.push_back(tb[2]);
+						}
+					}
+					for (unsigned i=0; !glocal.fail && i<newusers.size(); i++){
+						glocal const char *user = newusers[i].c_str();
+						<call bod_client_set_member>(glocal.con,w_session.c_str(),glocal.grpname
+							,glocal.user,newaccesses[i].c_str(),newroles[i].c_str(),"");
+						<f ok>
+							if (!success){
+								glocal.fail = true;
+								htmlprintf (MSG_U(E_CANTSETMEMBER,"Can't set member %s: %s\n"),glocal.user,msg);
+							}
+						</f>
+						</call>
+					}
+					if (!glocal.fail){
+						// We have to remove the groups that are gone
+						index_delete_new_from_old(newusers,glocal.oldusers);
+						// what remains in oldusers have to be deleted (setting access to - does this)
+						for (auto &g:glocal.oldusers){
+							glocal const char *user = g.c_str();
+							<call bod_client_set_member>(glocal.con,w_session.c_str(),glocal.grpname
+								,glocal.user,"-","","");
+							<f ok>
+								if (!success){
+									glocal.fail = true;
+									htmlprintf (MSG_U(E_CANTDELMEMBER,"Can't delete member %s: %s\n"),glocal.user,msg);
+								}
+							</f>
+							</call>
+						}
+					}
+				}
+				fail = glocal.fail;
+				if (!fail){
+					if (glocal.adding){
+						glocal.webtabs.settitle(string_f("%s %s",MSG_R(I_GROUP),glocal.grpname));
+						glocal.webtabs.setid (string_f("group:%s",glocal.grpname));
+						glocal.webtabs.redotab();
+						resetstate();
+					}
+					keepediting = true;
+					reload();
+				}
+			</f>
+			</call>
+		}else if (strcmp(id,"sendcontact")==0){
+			glocal bool done = false;
+			<call form>("contact");
+			<f top>
+				/- <table border=0 width=100%><tr><td>&nbsp;&nbsp;&nbsp;<td><table border=0 width=100%>
+				// /- <table border=0>
+				/- <tr><td><td>
+				/-#I_SENDCONTACT <h3>Send a contact request</h3>
+			</f>
+			<f bottom>
+				/- </table></table>
+			</f>
+			<f setup>
+				htmlprintf ("<tr><td>%s<td width=99%%>\n",MSG_U(I_TOCONTACT,"Person to contact"));
+				field_string (w_user,"style=width:100%");
+				htmlprintf ("<tr><td valign=top>%s<td width=99%%>\n",MSG_U(I_MESSAGE,"Message"));
+				field_textarea (w_content,10,-100,"");
+				/- <tr><td>
+				button_submit();
+			</f>
+			<f validate>
+				return true;
+			</f>
+			<f process>
+				glocal bool fail = false;
+				<call bod_client_contact_request>(glocal.con,w_session.c_str(),"",w_user.c_str(),w_content.c_str());
+				<f ok>
+					if (!success){
+						glocal.fail = true;
+						htmlprintf (MSG_U(E_CONTACTFAIL,"Contact request failed: %s<br>\n"),msg);
+					}else{
+						glocal.done = true;
+					}
+				</f>
+				</call>
+				fail = glocal.fail;
+			</f>
+			</call>
+			if (glocal.done){
+				/-#I_CONTACTSENT Contact request sent!
+			}
+		}else if (strncmp(id,"manage:",7)==0){
+			glocal bool done = false;
+			glocal CONTACT_STATUS status = CONTACT_WAITING;
+			glocal string user = id+7;
+			<call form>(string_f("managecontact:%s",glocal.user.c_str()));
+			<f top>
+				/- <table border=0 width=100%><tr><td>&nbsp;&nbsp;&nbsp;<td><table border=0 width=100%>
+				/- <tr><td><td>
+				/-#I_MANAGECONTACT <h3>Manage a contact</h3>
+			</f>
+			<f bottom>
+				/- </table></table>
+			</f>
+			<f load>
+				unsigned rownum = atoi(w_user.c_str());
+				<call bod_client_contact_list>(glocal.con,w_session.c_str(),"",true,rownum,1);
+				<f ok>
+					if (contacts.size() == 1){
+						auto &c = contacts[0];
+						w_content = c.message;
+					}
+				</f>
+				</call>
+			</f>
+			<f setup>
+				field_hidden(w_user);
+				/- <tr><td>
+				/-#I_REQUESTFROM Request from
+				/- <td>
+				htmlout (glocal.user);
+				/-<tr><td>
+				htmlout (MSG_R(I_MESSAGE));
+				/-<td width=70%>
+				field_textarea(w_content,5,-100,"readonly");
+				/- <tr><td>
+				/-#I_ACCEPTREQ Accept request
+				/- <td>
+				field_radio(w_accept,"accept",true,"");
+				/- <tr><td>
+				/-#I_REFUSEREQ Refuse request
+				/- <td>
+				field_radio(w_accept,"reject",false,"");
+				/- <tr><td>
+				button_submit();
+			</f>
+			<f validate>
+				return true;
+			</f>
+			<f process>
+				glocal bool fail = false;
+				if (strcmp(w_accept.c_str(),"accept")==0){
+					glocal.status = CONTACT_ACCEPTED;
+				}else if (strcmp(w_accept.c_str(),"reject")==0){
+					glocal.status = CONTACT_REJECTED;
+				}else{
+					glocal.fail = true;
+					/- Invalid input ???
+				}
+				if (!glocal.fail){
+					<call bod_client_contact_manage>(glocal.con,w_session.c_str(),"",glocal.user.c_str(),glocal.status);
+					<f ok>
+						if (!success){
+							glocal.fail = true;
+							htmlprintf ("operation failed: %s<br>\n",msg);
+						}else{
+							glocal.done = true;
+						}
+					</f>
+					</call>
+				}
+				fail = glocal.fail;
+			</f>
+			</call>
+			if (glocal.done){
+				/- <table border=0><tr><td>&nbsp;&nbsp;&nbsp;<td><table border=0><tr><td>
+				/-#I_CONTACTDONE Contact request processed!
+				/- <p>
+				if (glocal.status == CONTACT_ACCEPTED){
+					htmlprintf (MSG_U(I_FROMNOWON,"From now on, you can communicate with user %s<br>\n"),glocal.user.c_str());
+					htmlprintf (MSG_U(I_MAKEMEMBER,"You can make user %s member of your groups<br>\n"),glocal.user.c_str());
+					/-#I_HEMAKEMEMBER and he can make you member of his groups.
+				}
+				/- </table></table>
+				glocal.webtabs.setstate("");
+			}
+		}else if (strcmp(id,"interest")==0){
+			glocal bool done = false;
+			<call form>("interest");
+			<f top>
+				/- <table border=0 width=100%><tr><td>&nbsp;&nbsp;&nbsp;<td><table border=0 width=100%>
+				/- <tr><td><td>
+				/-#I_ADDINTEREST <h3>Add more interesting people</h3>
+			</f>
+			<f bottom>
+				/- </table></table>
+			</f>
+			<f setup>
+				htmlprintf ("<tr><td valign=top>%s<td width=90%%>\n",MSG_U(I_PEOPLES,"Peoples"));
+				field_textarea (w_content,10,-100,"");
+				/- <tr><td>
+				button_submit();
+			</f>
+			<f validate>
+				return true;
+			</f>
+			<f process>
+				glocal string error;
+				glocal bool fail = false;
+				glocal vector<string> users;
+				const char *pt = w_content.c_str();
+				while (*pt != '\0'){
+					pt = str_skip(pt);
+					if (*pt > ' '){
+						const char *start = pt;
+						while (*pt > ' ') pt++;
+						glocal.users.push_back(string(start,pt-start));
+					}
+				}
+				// Check if some are already in the interest list
+				<call bod_client_interest_list>(glocal.con,w_session.c_str(),"");
+				<f ok>
+					for (auto u:users){
+						if (find(glocal.users.begin(),glocal.users.end(),u.name)!=glocal.users.end()){
+							glocal.error += string_f(" %s",u.name);
+							glocal.fail = true;
+						}
+					}
+				</f>
+				</call>
+				if (!glocal.fail){
+					for (auto u:glocal.users){
+						glocal const char *user = u.c_str();
+						<call bod_client_interest_set>(glocal.con,w_session.c_str(),u,"");
+						<f ok>
+							if (!success){
+								htmlprintf (MSG_U(E_INTERESTSET,"Can't add user %s in interest list: %s<br>\n")
+									,glocal.user,msg);
+								glocal.fail = true;
+							}
+						</f>
+						</call>
+						if (glocal.fail) break;
+					}
+				}else{
+					htmlprintf ("%s<br>%s<br>",MSG_U(E_INTERESTDUP,"These people are already in your interest list"),glocal.error.c_str());
+				}
+				fail = glocal.fail;
+				if (!fail) glocal.webtabs.setstate("");
+			</f>
+			</call>
+		}
+	</f>
+	<f docmain>
+		if (strcmp(id,"Projects")==0){	// CONF projects
+			sethelp("helpprojects",MSG_U(I_HELPPROJECTS,"Projects"));
+			{
+				DIV t; t.id(TAB_FORM).print();
+				url_self (string_f("webtab_add=2:project:~%s",MSG_U(I_NEWPRJ,"New project")),MSG_U(I_CREATELIST,"Create a new project"));
+				/- <br>&nbsp;<br>
+			}
+			<call webtable>("list:projects","100%",currents["list:projects"]);
+			<f load>
+				sethead (MSG_U(H_PROF_PROJECTS,"Project\tMembers\tAccess"));
+				<call bod_client_list_lists>(glocal.con,w_session.c_str(),"");
+				<f ok>
+					unsigned rownum=0;
+					for (auto &l:lists){
+						if (l.name[0] != '#'){
+							string id = string_f("project:%s",l.name);
+							string add = string_f("webtab_add=2:%s~%s %s",id.c_str(),MSG_R(I_PROJECT),l.name);
+							glocal.webtable.setclickopt (true,"",add);
+							if (glocal.webtabs.selected(id)) glocal.webtable.setcurrent(rownum);
+							glocal.webtable.setrow ("sep",rownum,"%s\t%s\a",l.name,l.description);
+							glocal.webtable.setclickopt (false,"","");
+							for (unsigned i=0; i<l.groups.size(); i++){
+								glocal.webtable.setrow("white",-1,"\t%s\t%s",l.groups[i],l.access[i]);
+							}
+						}
+						rownum++;
+					}
+				</f>
+				</call>
+			</f>
+			</call>
+		}else if (strcmp(id,"Groups")==0){	// CONF groups
+			sethelp("helpgroups",MSG_U(I_HELPGROUPS,"Groups"));
+			{
+				DIV t; t.id(TAB_FORM).print();
+				url_self (string_f("webtab_add=2:group:~%s",MSG_U(I_NEWGROUP,"New group")),MSG_U(I_CREATEGROUP,"Create a new group"));
+				/- <br>&nbsp;<br>
+			}
+			<call webtable>("list:groups","100%",currents["list:groups"]);
+			<f load>
+				sethead (MSG_U(H_GROUPS,"Group\tMembers\tAccess\tRole"));
+				<call bod_client_list_groups>(glocal.con,w_session.c_str(),"",true);
+				<f ok>
+					unsigned rownum=0;
+					for (auto &g:groups){
+						string id = string_f("group:%s",g.name);
+						string add = string_f("webtab_add=2:%s~%s %s",id.c_str(),MSG_R(I_GROUP),g.name);
+						glocal.webtable.setclickopt (true,"",add);
+						if (glocal.webtabs.selected(id)) glocal.webtable.setcurrent(rownum);
+						glocal.webtable.setrow ("sep",rownum,"%s\t%s\a\a",g.name,g.description);
+						glocal.webtable.setclickopt (false,"","");
+						for (unsigned i=0; i<g.users.size(); i++){
+							glocal.webtable.setrow("white",-1,"\t%s\t%s\t%s",g.users[i],g.access[i],g.roles[i]);
+						}
+						rownum++;
+					}
+				</f>
+				</call>
+			</f>
+			</call>
+		}else if (strcmp(id,"Contacts")==0 || strcmp(id,"Contact-req")==0){	// CONF contacts
+			glocal bool to_me = strcmp(id,"Contacts")==0;
+			if (glocal.to_me){
+				sethelp("helpcontacts",MSG_U(I_HELPCONTACTS,"Contacts"));
+			}else{
+				sethelp("helpcontact-req",MSG_U(I_HELPCONTACT_REQ,"Requests"));
+			}
+			if (!glocal.to_me){
+				DIV f; f.id(TAB_FORM).print();
+				url_self (string_f("webtab_add=2:sendcontact~%s",MSG_U(I_CONTACTREQUEST,"Contact request")),MSG_U(I_NEWCONTACT,"Send a contact request"));
+				/- <br>&nbsp;<br>
+			}
+			static const string id = "list:contacts";
+			<call webtable>(ID_CONTACT,id,"100%",currents[id],offsets[id],10);
+			<f load>
+				sethead (MSG_U(H_CONTACTS,"User\tDate\tStatus"));
+				<call bod_client_contact_list>(glocal.con,w_session.c_str(),"",glocal.to_me,nbskip,nblines);
+				<f ok>
+					static const char *tbstatus[]={MSG_U(I_WAITING,"waiting"),MSG_U(I_ACCEPTED,"accepted"),MSG_U(I_REJECTED,"rejected")};
+					unsigned rownum = 0;
+					for (auto &c:contacts){
+						if (glocal.to_me){
+							glocal.webtable.setclickopt (true,"",string_f("webtab_add=2:manage:%s~%s %s",c.user,MSG_U(I_MANAGE,"Request from"),c.user));
+						}
+						glocal.webtable.setrow("white",rownum,"%s\t%s\t%s",c.user
+							,format_date(userinfo.dateformat,c.reqdate).c_str(),tbstatus[c.status]);
+						rownum++;
+					}
+				</f>
+				</call>
+			</f>
+			</call>
+		}else if (strcmp(id,"Interests")==0){	// CONF interests
+			sethelp("helpinterests",MSG_U(I_HELPINTERESTS,"Interests"));
+			{
+				DIV f; f.id(TAB_FORM).print();
+				url_self (string_f("webtab_add=2:interest~%s",MSG_R(I_NEWINTEREST)),MSG_U(I_NEWINTEREST,"Add interests"));
+				/- <br>&nbsp;<br>
+			}
+			static const string id = "list:interests";
+			<call webtable>(ID_INTERESTS,id,"100%",currents[id]);
+			<f click>
+				glocal unsigned dropmenu = dropmenu;
+				glocal unsigned noline = noline;
+				<call bod_client_interest_list>(glocal.con,w_session.c_str(),"");
+				<f ok>
+					if (glocal.noline < users.size() && glocal.dropmenu == MENU_DELETE){
+						<call bod_client_interest_unset>(glocal.con,w_session.c_str()
+							,users[glocal.noline].name,"");
+						<f ok>
+						</f>
+						</call>
+					}
+				</f>
+				</call>
+			</f>
+			<f load>
+				adddrop_opt (MENU_DELETE,MSG_R(M_DELETE));
+				sethead (MSG_U(H_INTEREST,"\tPerson\tSince"));
+				<call bod_client_interest_list>(glocal.con,w_session.c_str(),"");
+				<f ok>
+					unsigned rownum=0;
+					for (auto &u:users){
+						glocal.webtable.setclickopt (true,"",string_f("user=%u:%s",rownum,u.name));
+						string since = format_date(userinfo.dateformat,u.since);
+						const char *pt = strchr(u.name,'@');
+						if (pt!=NULL){
+							// remote user
+							string name(u.name,pt-u.name);
+							glocal.webtable.setrow("white",rownum,"<img src=https://%s/public/%s/project/mini-photo.jpg>\t%s\t%s"
+								,pt+1,name.c_str(),u.name,since.c_str());
+						}else if (u.visible){
+							glocal.webtable.setrow("white",rownum,"<img src=/public/%s/project/mini-photo.jpg>\t%s\t%s"
+								,u.name,u.name,since.c_str());
+						}else{
+							glocal.webtable.setrow("white",rownum,"<img src=/private.png>\t%s\t%s"
+								,u.name,since.c_str());
+						}
+						rownum++;
+					}
+				</f>
+				</call>
+			</f>
+			</call>
+		}else if (strcmp(id,"Account")==0){ // CONF account
+			glocal string status = "&nbsp;";
+			sethelp("helpaccount",MSG_U(I_HELPACCOUNT,"Account"));
+			DIV d("webtable"); d.autoscroll().print();
+			<call form>("configaccount");
+			<f top>
+				/- <table border=0>
+				htmlprintf ("<tr><td colspan=2>%s",glocal.status.c_str());
+			</f>
+			<f bottom>
+				/- </table>
+			</f>
+			<f load>
+				<call bod_client_config_read>(glocal.con,w_session.c_str(),"");
+				<f ok>
+					w_lang = config.lang;
+					w_dateformat = string_f("%u",config.dateformat);
+					w_public_view = config.public_view;
+					w_public_dir = config.public_dir;
+					w_anon_messages = config.anon_messages;
+				</f>
+				</call>
+				<call bod_client_info_read>(glocal.con,w_session.c_str(),"");
+				<f ok>
+					w_publish = info.publish;
+					w_bosite = info.bosite_visible;
+					w_name = info.fullname;
+					w_address1 = info.address1;
+					w_address2 = info.address2;
+					w_city = info.city;
+					w_zipcode = info.zipcode;
+					w_state = info.state;
+					w_country = info.country;
+					w_email = info.email;
+					w_phone = info.phone;
+					w_fax = info.fax;
+					w_website = info.website;
+					w_interest = info.interest;
+					w_photo = info.photo;
+					w_miniphoto = info.mini_photo;
+				</f>
+				</call>
+			</f>
+			<f setup>
+				{
+				DIV d; d.border(1,"gray").paddings(5,5).vpaddings(0,5).print();
+				/- <center><font size=+2>
+				/-#T_PERSOPREF Personal preferences
+				/- </font></center>
+				/- <table border=0>
+				/-#I_LANG <tr><td>Language<td>
+				field_list (w_lang,"");
+				field_list_item ("eng",MSG_U(I_ENGLISH,"English"));
+				field_list_item ("fr",MSG_U(I_FRENCH,"French"));
+				field_list_end();
+				/-#I_DATEFORMAT <tr><td>Date format<td>
+				field_list(w_dateformat,"");
+				field_list_item ("0",MSG_U(I_ENGDATE,"Month DD YYYY HH:MMam/pm"));
+				field_list_item ("1",MSG_U(I_ISODATE,"YYYY/MM/DD HH:MM:SS"));
+				field_list_end();
+
+				/-#I_ENABLEPUB <tr><td>Enable public view<td>
+				field_checkbox (w_public_view,"");
+				/-#I_PUBFOLDER <tr><td>Public folder<td>
+				field_list (w_public_dir,"");
+				field_list_item ("",MSG_U(I_NONE,"--none--"));
+				field_list_item ("/",MSG_U(I_ROOTDIR,"root"));
+				<call bod_client_listdir>(glocal.con,w_session.c_str(),string_f("/projects/%s/public",userinfo.name.c_str())
+					,"",false,0,100);
+				<f ok>
+					for (auto &f:files){
+						if (bolixo_isdir(f.type)){
+							glocal.form.field_list_item (f.name,f.name);
+						}
+					}
+				</f>
+				</call>
+				/-#I_ACCEPTANON <tr><td>Accept anonymous messages<td>
+				field_checkbox (w_anon_messages,"");
+				/- </table>
+				}
+				{
+				DIV d; d.border(1,"gray").paddings(5,5).vpaddings(0,5).vmargins(5,0).print();
+				/- <center><font size=+2>
+				/-#T_PUBLISH Public information
+				/- </font></center>
+				/-#F_PUBLISH Publish to bolixo.org directory
+				/- &nbsp;&nbsp;
+				field_checkbox (w_publish,"");
+				DIV dd; dd.border(1,"lightgray").print();
+				/- <table border=0>
+				index_field (this,true,3,MSG_U(F_FULLNAME,"Name and surname"),w_name,40);
+				index_field (this,true,3,MSG_U(F_ADDRESS1,"Address"),w_address1,40);
+				index_field (this,true,3,MSG_U(F_ADDRESS2,"Address"),w_address2,40);
+				index_field (this,true,MSG_U(F_CITY,"City"),w_city);
+				index_field (this,false,MSG_U(F_STATE,"State"),w_state);
+				index_field (this,true,MSG_U(F_COUNTRY,"Country"),w_country);
+				index_field (this,false,MSG_U(F_ZIPCODE,"ZIP code"),w_zipcode);
+				index_field (this,true,MSG_U(F_EMAIL,"Email"),w_email);
+				index_field (this,true,MSG_U(F_PHONE,"Phone"),w_phone);
+				index_field (this,false,MSG_U(F_FAX,"Fax"),w_fax);
+				/- <tr><td>
+				/-#F_PUBLISHSOME Publish
+				/- <td colspan=3>
+				field_checkbox (w_bosite,"");
+				/-#F_PUBBOLIXOSITE your bolixo page
+				/-&nbsp;&nbsp;
+				field_checkbox (w_photo,"");
+				/-#F_YOURPHOTO Your photo
+				/-&nbsp;&nbsp;
+				field_checkbox (w_miniphoto,"");
+				/-#F_YOURMINIPHOTO Your mini photo
+				index_field (this,true,MSG_U(F_WEBSITE,"Web site"),w_website);
+				/- <tr><td>
+				/-#F_INTERESTS Interests
+				/- <td colspan=3>
+				field_textarea (w_interest,8,70,"");
+				/- </table>
+				}
+				/- <tr><td><br>
+				button_submit();
+			</f>
+			<f validate>
+				bool ret = true;
+				if (w_bosite.getval() != 0 && w_public_view.getval()==0){
+					ret = false;
+					/- <font color=red>* </font>
+					/-#E_CANTPUBBOSITE You can't publish your bolixo page unless you enable public view
+				}
+				return ret;
+			</f>
+			<f process>
+				glocal bool fail = false;
+				CONFIG config;
+				config.lang = w_lang.c_str();
+				config.dateformat = atoi(w_dateformat.c_str());
+				config.public_view = w_public_view;
+				config.public_dir = w_public_dir.c_str();
+				config.anon_messages = w_anon_messages;
+				<call bod_client_config_write>(glocal.con,w_session.c_str(),"",config);
+				<f ok>
+					if (!success){
+						glocal.fail = true;
+						htmlprintf (MSG_U(E_CANTSAVECONFIG,"Can't save configuration: %s\n"),msg);
+					}else{
+						translat_selectlang (w_lang.c_str());
+						glocal.status = MSG_U(I_CONFIGUPDATED,"Configuration updated");
+					}
+				</f>
+				</call>
+				USERPUBLICINFO info;
+				info.publish = w_publish.getval();
+				info.bosite_visible = w_bosite.getval();
+				info.fullname = w_name.c_str();
+				info.address1 = w_address1.c_str();
+				info.address2 = w_address2.c_str();
+				info.city = w_city.c_str();
+				info.zipcode = w_zipcode.c_str();
+				info.state = w_state.c_str();
+				info.country = w_country.c_str();
+				info.email = w_email.c_str();
+				info.phone = w_phone.c_str();
+				info.fax = w_fax.c_str();
+				info.website = w_website.c_str();
+				info.interest = w_interest.c_str();
+				info.photo = w_photo.getval();
+				info.mini_photo = w_miniphoto.getval();
+				<call bod_client_info_write>(glocal.con,w_session.c_str(),"",info);
+				<f ok>
+					if (!success){
+						glocal.fail = true;
+						htmlprintf (MSG_U(E_CANTSAVEPUBCONFIG,"Can't save public configurations: %s\n"),msg);
+					}
+				</f>
+				</call>
+				fail = glocal.fail;
+				keepediting = true;
+			</f>
+			</call>
+		}
+	</f>
+	</call>
 }
 </mod>
 
