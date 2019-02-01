@@ -181,16 +181,21 @@ static int writed_mail_newaccount(
 		,"Account confirmation on bolixo.org"
 		,tmp);
 };
-static int bo_writed_findentry (CONNECT_INFO &con, const char *sessionid, const char *name, const char *threshold, ENTRY &entry, bool expect_exist)
+static int bo_writed_findentry (CONNECT_INFO &con, const char *sessionid, const char *name, const char *threshold, ENTRY &entry, bool expect_exist, bool force_admin)
 {
 	int ret = -1;
 	entry.userid = trli_getsessionuser(con,sessionid,entry.is_admin);
 	if (entry.userid == 0){
 		entry.msg = "Invalid session";
 	}else{
+		if (force_admin) entry.is_admin = true;
 		ret = fs_findentry(name,entry,expect_exist,threshold);
 	}
 	return ret;
+}
+static int bo_writed_findentry (CONNECT_INFO &con, const char *sessionid, const char *name, const char *threshold, ENTRY &entry, bool expect_exist)
+{
+	return bo_writed_findentry (con,sessionid,name,threshold,entry,expect_exist,false);
 }
 static int bo_writed_findentry (CONNECT_INFO &con, const char *sessionid, const char *name, ENTRY &entry, bool expect_exist)
 {
@@ -1239,6 +1244,29 @@ static void bo_writed_send_admin_msg (
 				,content,false,"",msgid,msg,handle,fileid,modified);
 		}
 	}
+}
+
+/*
+	Check if this file is /msgs/some_user/short-inbox/public/...
+	where some_user has enabled public_view in his configuration.
+
+	If true, anybody can read this file. It overrides all read access.
+*/
+static bool bo_writed_public_msg(const char *srcname)
+{
+	bool ret = false;
+	if (strncmp(srcname,"/msgs/",6)==0){
+		const char *ptuser = srcname+6;
+		const char *pt = strchr(ptuser,'/');
+		if (pt != NULL && strncmp(pt,"/short-inbox/public/",20)==0){
+			string user = string (ptuser,pt-ptuser);
+			bool public_view = fs_rec_getid ("select config.public_view from id2name"
+				" join config on config.userid=id2name.userid"
+				" where id2name.name ='%s'",user.c_str());
+			if (public_view) ret = true;
+		}
+	}
+	return ret;
 }
 
 <mod>
@@ -2294,10 +2322,15 @@ int main (int argc, char *argv[])
 				</f>
 				<f copy> // sessionid srcname srcdate dstname
 					// srcname and dstname are path
+					// srcname may point to a message public folder made public by the owner. So normal access right do not apply.
+					// bo_writed_findenry does not handle this situation. Since only copy and sendtalk_file needs that, bo_writed_findentry
+					// won't do it (It is used all over the place).
+					// So we check first the public case here. If this is the case, we force bo_writed_findentry into admin mode.
 					string msg;
 					ENTRY srcentry,dstentry;
 					bool is_msg = strncmp(dstname,"/msgs/",6)==0;
-					if (bo_writed_findentry (glocal.con,sessionid,srcname,srcdate,srcentry,true)==-1){
+					bool force_admin = bo_writed_public_msg (srcname);
+					if (bo_writed_findentry (glocal.con,sessionid,srcname,srcdate,srcentry,true,force_admin)==-1){
 						msg = srcentry.msg;
 					}else if (bo_writed_findentry (glocal.con,sessionid,dstname,dstentry,false)==-1){
 						msg = dstentry.msg;
@@ -2824,7 +2857,8 @@ int main (int argc, char *argv[])
 					glocal const char *groupname = groupname;
 					glocal const char *groupowner = groupowner;
 					glocal ENTRY srcentry;
-					if (bo_writed_findentry (glocal.con,sessionid,filename,glocal.srcentry,true)==-1){
+					bool force_admin = bo_writed_public_msg (filename);
+					if (bo_writed_findentry (glocal.con,sessionid,filename,"",glocal.srcentry,true,force_admin)==-1){
 						glocal.msg = glocal.srcentry.msg;
 					}else{
 						// We store the message in the short inbox of the group owner (like mail sent to the project) 

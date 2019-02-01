@@ -21,7 +21,6 @@
 #include <trlitool.h>
 #include <string>
 #include <tlmpweb.h>
-#define DEFINE_USERINFO
 #include "util.h"
 #define DEFINE_TBFTYPE
 #include "../bolixo.h"
@@ -115,81 +114,8 @@ using namespace std;
 #define bo_sessiond_client_setvar_NOTNEED
 #include "../proto/bo-sessiond_client.protoch"
 
-extern USERINFO userinfo;
-
 W_UNSIGNED w_robot ("robot");
 static W_SSTRING w_file("file");
-#if 0
-static string w_session;
-USERINFO userinfo;
-<mod>
-static void trli_getsessioninfo(CONNECT_INFO &con, CONNECT_INFO &con_sess, const char *varname, unsigned &varval)
-{
-	glocal const char *varname = varname;
-	glocal unsigned *varval = &varval;
-	glocal CONNECT_INFO *con = &con;
-	<call bo_sessiond_client_getsessioninfovars>(con_sess,w_session.c_str());
-	<f ok>
-		if (success){
-			userinfo.lang = lang;
-			userinfo.name = name;
-			userinfo.is_admin = admin;
-			for (auto &var:vars){
-				if (strcmp(var.name,glocal.varname)==0){
-					if (var.vals.size()==1) *glocal.varval = atoi(var.vals[0].sval);
-					break;
-				}
-			}
-		}else{
-			userinfo.reset();
-			<call bod_client_createsession>(*glocal.con);
-			<f ok>
-				w_session = sessionid;
-				websession_setcookie("session",sessionid,time(NULL)+48*60*60);
-			</f>
-			</call>
-		}
-	</f>
-	</call>
-}
-</mod>
-
-<mod>
-int util_getsessioninfo (CONNECT_INFO &con, CONNECT_INFO &con_sess,string &session, const char *varname, unsigned &varval)
-{
-	if (tlmpweb_isrobot()) w_robot = 1;
-	// debug
-	{
-		<call savefile>("/tmp/agent.log",true);
-		<f dowrite>
-			const char *pt = getenv ("HTTP_USER_AGENT");
-			if (pt == NULL){
-				fprintf (fout,"HTTP_USER_AGENT null\n");
-			}else{
-				fprintf (fout,"robot=%u HTTP_USER_AGENT %s\n",w_robot.getval(),pt);
-			}
-			return 0;
-		</f>
-		</call>
-	}
-	const char *ptsession = tlmpweb_getcookie("session");
-	if (ptsession == NULL){
-		<call bod_client_createsession>(con);
-		<f ok>
-			w_session = sessionid;
-			websession_setcookie("session",sessionid,time(NULL)+48*60*60);
-		</f>
-		</call>
-	}else{
-		w_session=ptsession;
-		trli_getsessioninfo(con,con_sess,varname,varval);
-	}
-	session = w_session;
-	if (w_session.empty()) return -1;
-	return 0;
-}
-</mod>
-#endif
 static float small_size=0.9;
 static unsigned draw_tab_height()
 {
@@ -1410,7 +1336,7 @@ string toupper (PARAM_STRING ss)
 /*
 	Format the path of a mail
 */
-string index_format_mail_fname(const MESSAGE_receive &m)
+string index_format_mail_fname(const MESSAGE_receive &m, PARAM_STRING username)
 {
 	string fname;
 	if (m.role[0] != '\0'){
@@ -1418,7 +1344,7 @@ string index_format_mail_fname(const MESSAGE_receive &m)
 	}else if (m.manager[0] != '\0'){
 		fname = string_f ("/msg-projects/%s/%s/%s",m.manager,m.project,m.uuid);
 	}else{
-		fname = string_f ("/msgs/%s/inbox/%s",userinfo.name.c_str(),m.uuid);
+		fname = string_f ("/msgs/%s/inbox/%s",username.ptr,m.uuid);
 	}	
 	return fname;
 }

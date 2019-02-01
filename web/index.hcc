@@ -1279,7 +1279,7 @@ extern "C" void webmain_real()
 			<f ok>
 				if (messages.size()==1){
 					glocal.valid = true;
-					string fname = index_format_mail_fname(messages[0]);
+					string fname = index_format_mail_fname(messages[0],userinfo.name);
 					index_markview (glocal.con,fname);
 				}
 			</f>
@@ -1558,19 +1558,35 @@ extern "C" void webmain_real()
 			string table = string("talk")+"public";
 			<call webtable>(ID_FOLLOW,table,"100%",currents[table],offsets[table],5);
 			<f click>
+				glocal unsigned dropmenu = dropmenu;
 				<call bod_client_interest_check>(glocal.con,w_session.c_str(),"",noline,1);
 				<f ok>
 					if (messages.size()!=1){
 						htmlprintf ("Internal error: %s\n",msg);
 					}else{
 						auto &m = messages[0];
-						index_popup (glocal.con,step_public,m.content,m.file_type,m.submit,m.from
-							,string_f("/%s/msg/%s",m.from,m.uuid));
+						string filename,extension;
+						index_msg_name(m.file_type,filename,extension);
+						string suggested_name = string_f("%s.%s",filename.c_str(),extension.c_str());
+						string fname = string_f("/%s/msg/%s",m.from,m.uuid);
+						if (glocal.dropmenu == MENU_DOWNLOAD){
+							tlmpweb_header ("Content-Disposition"," attachment; filename=%s.%s"
+								,suggested_name.c_str());
+							util_sendpublicfile (glocal.con,fname);
+						}else if (glocal.dropmenu == MENU_COPY){
+							string msg_name = string_f("/msgs/%s/short-inbox/public/%s",m.from,m.uuid);
+							index_setcopyitem(glocal.con_sess,msg_name,"",suggested_name);
+						}else{
+							index_popup (glocal.con,step_public,m.content,m.file_type,m.submit,m.from
+								,fname);
+						}
 					}
 				</f>
 				</call>
 			</f>
 			<f load>
+				adddrop_opt (MENU_COPY,MSG_R(M_COPY));
+				adddrop_opt (MENU_DOWNLOAD,MSG_R(M_DOWNLOAD));
 				sethead  (MSG_R(H_TALK));
 				glocal unsigned rownum = nbskip;
 				<call bod_client_interest_check>(glocal.con,w_session.c_str(),"",nbskip,nblines);

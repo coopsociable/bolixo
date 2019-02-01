@@ -451,39 +451,60 @@ struct _F_bofs_getpubkey {
 static void bofs_getpubkey(_F_bofs_getpubkey &c, CONTEXT &ctx, PARAM_STRING nickname)
 {
 	glocal _F_bofs_getpubkey *c = &c;
-	if (ctx.is_internal()){
-		<call bod_client_getpubkey>(ctx.con,nickname);
-		<f ok>
-			glocal.c->ok(internal_error,success,pubkey);
+	bofs_loadpubcache();
+	glocal string user = nickname.ptr;
+	CONNECT_HTTP_INFO hcon = ctx.hcon;
+	bool remote_user = false;
+	const char *pt = strchr(nickname.ptr,'@');
+	string local_user = nickname.ptr;
+	if (pt==NULL){
+		glocal.user = string_f("%s@%s",nickname.ptr,ctx.hcon.host.c_str());
+	}else{
+		local_user = string(nickname.ptr,pt-nickname.ptr);
+		remote_user = true;
+		hcon.host = pt+1;
+tlmp_error ("hconhost=%s\n",hcon.host.c_str());
+		hcon.port = "443";
+		hcon.use_ssl = true;
+		if (nonstrict) hcon.setnonstrictmode();
+	}
+	auto p = pubkeys.find(glocal.user);
+	if (p != pubkeys.end()){
+		debug_printf (D_SIGN,"Pubkey for user %s found in cache\n",glocal.user.c_str());
+		c.ok(false,true,p->second.c_str());
+	}else{
+		<call savefile>("/dev/tty",false);
+		<f dowrite>
+			fprintf (fout,MSG_U(I_GETPUBKEY,"Retrieve public key for user %s\n"),glocal.user.c_str());
+			return 0;
 		</f>
 		</call>
-	}else{
-		bofs_loadpubcache();
-		glocal string user = string_f("%s@%s",nickname.ptr,ctx.hcon.host.c_str());
-		auto p = pubkeys.find(glocal.user);
-		if (p != pubkeys.end()){
-			debug_printf (D_SIGN,"Pubkey for user %s found in cache\n",glocal.user.c_str());
-			c.ok(false,true,p->second.c_str());
-		}else{
-			<call savefile>("/dev/tty",false);
-			<f dowrite>
-				fprintf (fout,MSG_U(I_GETPUBKEY,"Retrieve public key for user %s\n"),glocal.user.c_str());
-				return 0;
-			</f>
-			</call>
-			<call webapi_getpubkey>(ctx.hcon,nickname);
+		glocal string pubkey;
+		if (!remote_user && ctx.is_internal()){
+			<call bod_client_getpubkey>(ctx.con,nickname);
 			<f ok>
 				if (success){
-					glocal const char *pubkey = pubkey;
-					pubkeys[glocal.user] = pubkey;
-					<call savefile>(bofs_pubcachefile(),true);
-					<f dowrite>
-						fprintf (fout,"#%s\n%s\n",glocal.user.c_str(),glocal.pubkey);
-						return 0;
-					</f>
-					</call>
+					glocal.pubkey = pubkey;
 				}
 				glocal.c->ok(internal_error,success,pubkey);
+			</f>
+			</call>
+		}else{
+			<call webapi_getpubkey>(hcon,local_user);
+			<f ok>
+				if (success){
+					glocal.pubkey = pubkey;
+				}
+				glocal.c->ok(internal_error,success,pubkey);
+			</f>
+			</call>
+		}
+		if (glocal.pubkey.size() > 0){
+			pubkeys[glocal.user] = glocal.pubkey;
+			<call savefile>(bofs_pubcachefile(),true);
+			<f dowrite>
+				fprintf (fout,"#%s\n%s\n",glocal.user.c_str(),glocal.pubkey.c_str());
+				return 0;
 			</f>
 			</call>
 		}
