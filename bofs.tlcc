@@ -922,6 +922,38 @@ static int bofs_cat_rest (CONTEXT &ctx, const char *handle, FILE *fin)
 </mod>
 
 <mod>
+static void bofs_checksig(CONTEXT &ctx, const BOB_TYPE &content, PARAM_STRING path, PARAM_STRING owner, PARAM_STRING modifiedby, PARAM_STRING signature)
+{
+	glocal string pubkey;
+	glocal const char *owner = owner.ptr;
+	if (modifiedby.ptr[0] != '\0') glocal.owner = modifiedby.ptr;
+				
+	<call bofs_getpubkey>(ctx,glocal.owner);
+	<f ok>
+		if (!success){
+			tlmp_error (MSG_U(E_CANTGETOWNERPUBKEY,"Can't get public key for user %s\n"),glocal.owner);
+		}else{
+			glocal.pubkey = pubkey;
+		}
+	</f>
+	</call>
+	debug_printf (D_SIGN,"user %s->%s public key = %s\n",owner.ptr,modifiedby.ptr,glocal.pubkey.c_str());
+	if (glocal.pubkey.size() > 0){
+		if (fs_verify (glocal.pubkey,content,signature)==-1){
+			tlmp_error (MSG_U(E_FILESIGNOMATCH,"Signature does not match for file %s, author %s\n")
+				,path.ptr,glocal.owner);
+		}else{
+			debug_printf (D_SIGN,"File %s, signature valid\n",path.ptr);
+		}
+	}
+}
+</mod>
+static void bofs_checksig(CONTEXT &ctx, PARAM_STRING content, PARAM_STRING path, PARAM_STRING owner, PARAM_STRING modifiedby, PARAM_STRING signature)
+{
+	bofs_checksig(ctx,BOB_TYPE(content.ptr,strlen(content.ptr),false),path,owner,modifiedby,signature);
+}
+
+<mod>
 static int bofs_cat_bofile (CONTEXT &ctx, const char *path, FILE *fout)
 {
 	glocal int ret = 0;
@@ -938,29 +970,7 @@ static int bofs_cat_bofile (CONTEXT &ctx, const char *path, FILE *fout)
 				tlmp_error (MSG_U(E_NOSIGFORFILE,"No signature for file %s, owner %s\n")
 					,glocal.path,info.owner);
 			}else if (!more){
-				// For now, we check signature of small files.
-				glocal string pubkey;
-				glocal const char *owner = info.owner;
-				if (info.modifiedby[0] != '\0') glocal.owner = info.modifiedby;
-				
-				<call bofs_getpubkey>(*glocal.ctx,glocal.owner);
-				<f ok>
-					if (!success){
-						tlmp_error (MSG_U(E_CANTGETOWNERPUBKEY,"Can't get public key for user %s\n"),glocal.owner);
-					}else{
-						glocal.pubkey = pubkey;
-					}
-				</f>
-				</call>
-				debug_printf (D_SIGN,"user %s->%s public key = %s\n",info.owner,info.modifiedby,glocal.pubkey.c_str());
-				if (glocal.pubkey.size() > 0){
-					if (fs_verify (glocal.pubkey,content,info.signature)==-1){
-						tlmp_error (MSG_U(E_FILESIGNOMATCH,"Signature does not match for file %s, author %s\n")
-							,glocal.path,glocal.owner);
-					}else{
-						debug_printf (D_SIGN,"File %s, signature valid\n",glocal.path);
-					}
-				}
+				bofs_checksig(*glocal.ctx,content,glocal.path,info.owner,info.modifiedby,info.signature);
 			}
 			fwrite (content.getbuffer(),1,content.getsize(),glocal.fout);
 			glocal bool more = more;
@@ -2326,22 +2336,41 @@ static void bofs_check_groupopt (const vector<string> &users, const char *groupn
 	}
 }
 
-static void bofs_listshortmsgs(const vector<SHORTMSG_receive> &messages)
+static void bofs_listshortmsgs(CONTEXT &ctx, const vector<SHORTMSG_receive> &messages, bool full)
 {
 	for (auto &m:messages){
-		int linelen = 0;
+		vector<string> lines;
+		bool complete = false;
 		if (m.content[0] != '\0'){
-			const char *eol = strchr(m.content,'\n');
-			if (eol != NULL){
-				linelen=(eol-m.content);
-			}else{
-				linelen = strlen(m.content);
+			const char *start = m.content;
+			while (*start != '\0'){
+				const char *eol = strchr(start,'\n');
+				if (eol == NULL){
+					lines.push_back(start);
+					break;
+				}else{
+					lines.push_back(string(start,eol-start));
+					start = eol+1;
+				}
+			}
+			complete = strlen(m.content)==m.size;
+			if (complete){
+				bofs_checksig(ctx,m.content,m.uuid,m.from,"",m.signature);
 			}
 		}
-		printf ("%s %-10s %-30s %-20s %7u %*.*s\n",tbftype[m.file_type],m.from
+		if (lines.size() == 0) lines.push_back("");
+		printf ("%s %-10s %-30s %-20s %7u %s\n",tbftype[m.file_type],m.from
 			,normalize_uuid(m.uuid).c_str()
 			,normalize_date(m.submit),normalize_size(m.size)
-			,linelen,linelen,m.content);
+			,lines[0].c_str());
+		if (full){
+			for (unsigned i=1; i<lines.size(); i++){
+				printf ("%74s %s\n","",lines[i].c_str());
+			}
+			if (file_is_text(m.file_type) && !complete){
+				printf ("%74s ... %s\n","",MSG_U(I_CONTENTTRUNCATED,"Content truncated"));
+			}
+		}
 	}
 }
 <mod>
@@ -2371,6 +2400,8 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 	glocal const char *content = NULL;
 	glocal const char *msgid = NULL;
 	glocal vector<string> users;
+	glocal bool full = false;
+
 	glocal.ret = <call tlmpprogram>(argc,argv);
 	<f init>
 		setproginfo ("bomsgs",VERSION
@@ -2401,7 +2432,9 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 		setarg ('C',"content",MSG_U(O_BODY,"body of the message"),glocal.content,false);
 		setarg ('L',"bolixofile",MSG_U(O_BOFILEPATH,"Bolixo file path"),glocal.filename,false);
 		setarg ('U',"user",MSG_U(O_USER,"User nickname"),glocal.users,false);
+		setgrouparg (MSG_R(I_MISC));
 		setarg ('O',"owner",MSG_U(O_OWNER,"Apply the command on behalf of this owner, must be admin"),glocal.owner,false);
+		setarg (' ',"full",MSG_U(O_FULL,"Display the full content of small messages"),glocal.full,false);
 	</f>
 	<f main_noarg>
 		glocal int ret = -1;
@@ -2446,7 +2479,7 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 							bofs_error ("msgs",internal_error,msg);
 							glocal.stop = true;
 						}else{
-							bofs_listshortmsgs(messages);
+							bofs_listshortmsgs(*glocal.ctx,messages,glocal.full);
 							glocal.stop = messages.size() < glocal.chunk;
 							glocal.offset += glocal.chunk;
 						}
@@ -2968,6 +3001,7 @@ static int bofs_public (CONTEXT &ctx, int argc, char *argv[])
 	glocal const char *user = NULL;
 	glocal bool use_http = false;
 	glocal const char *output = NULL;
+	glocal bool full = false;
 	glocal.ret = <call tlmpprogram>(argc,argv);
 	<f init>
 		setproginfo ("bopublic",VERSION
@@ -2982,6 +3016,7 @@ static int bofs_public (CONTEXT &ctx, int argc, char *argv[])
 		setarg ('u',"user","Specify the owner of the public files",glocal.user,true);
 		setarg ('h',"http","Use HTTP",glocal.use_http,false);
 		setarg ('O',"output","Copy readfile into this file",glocal.output,false);
+		setarg (' ',"full",MSG_R(O_FULL),glocal.full,false);
 	</f>
 	<f main_noarg>
 		glocal int ret = 0;
@@ -3065,7 +3100,7 @@ static int bofs_public (CONTEXT &ctx, int argc, char *argv[])
 							bofs_error ("public_listshortmsgs",internal_error,msg);
 							glocal.ret = -1;
 						}else{
-							bofs_listshortmsgs (messages);
+							bofs_listshortmsgs (*glocal.ctx,messages,glocal.full);
 							if (messages.size() < 20) glocal.done = true;
 						}
 					</f>
@@ -3078,7 +3113,7 @@ static int bofs_public (CONTEXT &ctx, int argc, char *argv[])
 							bofs_error ("public_listshortmsgs",internal_error,msg);
 							glocal.ret = -1;
 						}else{
-							bofs_listshortmsgs (messages);
+							bofs_listshortmsgs (*glocal.ctx,messages,glocal.full);
 							if (messages.size() < 20) glocal.done = true;
 						}
 					</f>

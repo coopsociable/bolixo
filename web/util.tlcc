@@ -517,6 +517,7 @@ void util_defstyles()
 		"	font-size: 0.7em;\n"
 		"}\n"
 		".smsg {\n"
+		"	font-size: 1em;\n"
 		"	display: block;\n"
 		"	overflow-wrap: break-word;\n"
 		"	background-color: #F0F0F0;\n"
@@ -925,7 +926,7 @@ string util_flipspaces(PARAM_STRING src)
 	Escapes < and >
 	Supports ? for URL
 */
-string util_format_shortmsg (PARAM_STRING msg, unsigned nblines)
+string util_format_shortmsg (PARAM_STRING msg, unsigned nblines, size_t size)
 {
 	const char *txt = msg.ptr;
 	string ret;
@@ -957,12 +958,12 @@ string util_format_shortmsg (PARAM_STRING msg, unsigned nblines)
 		}
 		txt++;
 	}
-	if (*txt != '\0') ret += "...";
+	if (*txt != '\0' || (size != 0 && size != strlen(msg.ptr))) ret += "...";
 	return ret;
 }
 string util_format_shortmsg (PARAM_STRING txt)
 {
-	return util_format_shortmsg (txt,0);
+	return util_format_shortmsg (txt,0,0);
 }
 
 // Send an HTML document. Does some remaping of relative URLs. Prevent scripting as well.
@@ -1037,7 +1038,7 @@ static void util_urls (_F_public_page &c, const SHORTMSG &m, string &content, bo
 {
 	string url = c.msgurl(m.uuid,m.submit);
 	if (m.content[0] != '\0'){
-		content = util_format_shortmsg (m.content,10000);
+		content = util_format_shortmsg (m.content);
 	}else if (file_is_sound(m.file_type)){
 		content = string_f("<audio controls>\n"
 			"<source src=\"%s\" type=\"audio/%s\">\n"
@@ -1122,7 +1123,7 @@ static void public_messages(_F_public_page &c, CONNECT_INFO &con, PARAM_STRING u
 					string path = string_f("/msgs/%s/short-inbox/public/%s",glocal.user,m.uuid.c_str());
 					string content;
 					if (m.content.size() != 0){
-						content = string_f("<div class=smsg>%s</div>",util_format_shortmsg (m.content,5).c_str());
+						content = string_f("<div class=smsg>%s</div>",util_format_shortmsg (m.content,5,m.size).c_str());
 					}else{
 						util_urls(*glocal.c,m,content,false);
 					}

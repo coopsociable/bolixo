@@ -384,7 +384,7 @@ static string bod_first_lines (const char *txt, unsigned nblines)
 	if (*pt == '\0'){
 		return txt;
 	}else{
-		return string(txt,pt-txt)+"...";
+		return string(txt,pt-txt);
 	}
 }
 
@@ -425,7 +425,7 @@ static void bod_list_talk (
 	int dirid = fs_find_short_inbox (ownerid,groupowner,groupname,msg);
 	if (dirid != -1){
 		<call sql_query>("select dirs_content.name,dirs_content.modified,id2name.name,id2name_copy.name,files.filetype"
-			",dirs_content.itemid,files.content,dirs_content.eventtime,dirs_content.type"
+			",dirs_content.itemid,files.content,dirs_content.eventtime,dirs_content.type,files.signature"
 			" from dirs_content"
 			" join files on files.id = dirs_content.itemid and files.modified = dirs_content.modified"
 			" join ids on dirs_content.itemid = ids.id"
@@ -448,14 +448,18 @@ static void bod_list_talk (
 			}else{
 				msg.file_type = row[4] == NULL ? FILE_UNKNOWN : (FILE_TYPE)atoi(row[4]);
 			}
+			msg.signature = row[9];
 			if (row[6] != NULL){
 				// Limit the number of lines if more than one message was requested
+				// Note the size is the complete size of the message, but what is sent may by few lines.
+				// So the application can tell this was truncated.
 				if (glocal.nb == 1){
 					msg.content = row[6];
+					msg.size = msg.content.size();
 				}else{
 					msg.content = bod_first_lines(row[6],5);
+					msg.size = strlen(row[6]);
 				}
-				msg.size = msg.content.size();
 			}else{
 				msg.size = fs_get_filesize(atoi(row[5]),modified);
 			}
@@ -2151,7 +2155,7 @@ static int bod_main (
 				glocal map<string,SHORTMSG> mp;
 				unsigned userid = bo_writed_get_group_owner (glocal.con_sess, sessionid, owner, glocal.msg);
 				if (userid != 0){
-					<call sql_query>("select id2name.name,dirs2.name,dirs2.modified,files.filetype,dirs2.itemid,files.content,dirs2.type from interests"
+					<call sql_query>("select id2name.name,dirs2.name,dirs2.modified,files.filetype,dirs2.itemid,files.content,dirs2.type,files.signature from interests"
 						" join id2name on id2name.userid = interests.check_userid"
 						" left join dirs_content on interests.dirid=dirs_content.itemid"
 						" left join marks on marks.userid=%u and marks.itemid=interests.dirid"
@@ -2173,14 +2177,16 @@ static int bod_main (
 							}else{
 								msg.file_type = row[3] == NULL ? FILE_UNKNOWN : (FILE_TYPE)atoi(row[3]);
 							}
+							msg.signature = row[7];
 							if (row[5] != NULL){
 								// Limit the number of lines if more than one message was requested
 								if (glocal.nb == 1){
 									msg.content = row[5];
+									msg.size = msg.content.size();
 								}else{
 									msg.content = bod_first_lines(row[5],5);
+									msg.size = strlen(row[5]);
 								}
-								msg.size = msg.content.size();
 							}else{
 								msg.size = fs_get_filesize(atoi(row[4]),modified);
 							}
