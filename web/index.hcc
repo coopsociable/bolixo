@@ -264,17 +264,17 @@ static bool private_site = false;
 
 static void show_buttons_right(_F_websteps *c)
 {
-	//int step = c->getcurstep();
+	int step = c->getcurstep();
 	/- <table border=0 cellspacing=0>
 	/- <tr>
 		
 	unsigned fontsize = is_mobile ? 3 : 1;	// size=+fontsize
 	bool is_user = userinfo.name.size() > 0;
-	if (!is_user){
+	if (step == step_doc && !is_user){
 		/- <td>&nbsp;
 		/- <td>
 		htmlprintf ("<a href=%s?webstep=%d><font size=+%u>%s</font></a>\n",tlmpweb_curpage(),step_login,fontsize,MSG_U(I_LOGIN,"Login"));
-		if (!private_site){
+		if (0 && !private_site){
 			/- <td>&nbsp;
 			/- <td align=center>
 			htmlprintf ("<font size=+%u color=black>%s</font>",fontsize,MSG_U(I_OR,"or"));
@@ -329,15 +329,15 @@ static void bolixo_title (const char *title, _F_websteps *c)
 	tlmpweb_body("white",NULL);
 	
 	DIV main; main.id("main").h(100).w(100).dispflex().flowcol().print();
-	DIV head; head.id("head").flexfixe().print();
+	DIV head; head.id("head").flexfixe().style("background-image","linear-gradient(to right, #ff6666 , yellow)").print();
 	/- <table border=0 width=100% cellpadding=0 cellspacing=0>
-	htmlprintf ("<table border=0 width=100%% bgcolor=%s cellspacing=0 cellpadding=0><tr><td rowspan=2 align=left>\n",newscolor);
+	htmlprintf ("<table border=0 width=100%% cellspacing=0 cellpadding=0><tr><td rowspan=2 align=left>\n");	//,newscolor);
 	if (is_mobile){
 		// /- <font color=gray>
 		// htmlprintf (MSG_U(I_NODENAME,"Node %s"),util_getnodename());
 		// /- </font>
 	}else{
-		/- <table border=0><tr><td><img height=20 src=/favicon.ico></td><td align=left>
+		/- <table border=0><tr><td>&nbsp;<img height=20 src=/favicon.ico></td><td align=left>
 		htmlprintf ("<a href=%s><font size=7 color=\"white\">%s</font></a>&nbsp;&nbsp;&nbsp;",util_getdirserver(),org.c_str());
 		/- <font color=gray>
 		htmlprintf (MSG_R(I_NODENAME),util_getnodename());
@@ -1495,7 +1495,7 @@ extern "C" void webmain_real()
 		}else if (w_session.empty() && step > 2){
 			step = 1;
 		}else if (userinfo.name.empty() && step != 2 && step != 3 && step != 10 && step != 12){
-			step = 1;
+			step = 2;
 		}
 	</f>
 	<f end>
@@ -1671,9 +1671,10 @@ extern "C" void webmain_real()
 	<f step2> // Login
 		<call form>("login");
 		<f top>
+			tlmpweb_body ("white",NULL,"background=background.png");
 			bolixo_title (MSG_U(T_LOGIN,"Login"),&glocal.websteps);
 			/- <p>
-			DIV d; d.w(is_mobile ? 80 : 50).marginauto().paddings(10,10).vpaddings(10,10).borderradius(5).border(1,"black").print();
+			DIV d; d.bg("white").w(is_mobile ? 80 : 50).marginauto().paddings(10,10).vpaddings(10,10).borderradius(5).border(1,"black").print();
 			d.donotend();
 			if (glocal.account_confirmed){
 				<?#I_ACCTCONFIRM Welcome
@@ -1684,7 +1685,11 @@ extern "C" void webmain_real()
 				/- <center><font size=+2>
 				htmlprintf (MSG_R(I_NODENAME),util_getnodename());
 				/- </font></center><p>
-				/-#I_HAVEACCT Already have an account, please login<p>
+				if (!tlmpweb_ismobile()) htmlout (MSG_R(I_BOLIXO));
+				/- <p>
+				/-#I_HAVEACCT Already have an account, please login.
+				htmlprintf ("&nbsp;<a href=%s?webstep=3>%s</a>\n",tlmpweb_curpage(),MSG_U(I_NOACCT,"No account, just create one"));
+				/- <p>
 			}
 		</f>
 		<f bottom>
@@ -1702,6 +1707,8 @@ extern "C" void webmain_real()
 			field_password (w_password,"");
 			/- <tr><td>
 			button_submit (MSG_U(B_LOGIN,"Login"));
+			/- <tr><td><td align=right>
+			htmlprintf ("<a href=%s?webstep=%d>%s</a>\n",tlmpweb_curpage(),step_doc,"Documentation");
 			/- </table>
 		</f>
 		<f validate>
@@ -1740,10 +1747,13 @@ extern "C" void webmain_real()
 		<call form>("createaccount");
 		<f top>
 			bolixo_title (MSG_U(T_CREATEACC,"Account creation"),&glocal.websteps);
-			DIV d; d.border(1,"black").borderradius(5).paddings(5,5).vpaddings(5,5).marginauto().vmargins(30,30).w(is_mobile ? 80 : 50).print();
+			/- <p>
+			DIV d; d.border(1,"black").borderradius(5).paddings(10,10).vpaddings(10,10).marginauto().w(is_mobile ? 80 : 50).print();
+			d.donotend();
 			/- <center><font size=+2>
 			htmlprintf (MSG_R(I_NODENAME),util_getnodename());
 			/- </font></center><p>
+			htmlprintf ("&nbsp;(<a href=%s?webstep=2>%s</a>)<p>\n",tlmpweb_curpage(),MSG_R(I_HAVEACCT));
 			<?#I_NOACCOUNT No account ? Please create one.
 			<p>
 			Your email will only be used for the following reasons.
@@ -1767,17 +1777,21 @@ extern "C" void webmain_real()
 				printhref_raw ("/terms-of-use.html",MSG_R(I_TERMSOFUSE),false);
 			}
 			/-#I_MOREDETAILS &nbsp;for more details
+			/- <p>
+		</f>
+		<f bottom>
+			/- </div>
 		</f>
 		<f setup>
-			/- <table border=0 align=center>
-			/-#I_NICKNAME <tr><td>Select a nickname<td>
-			field_string (new_nickname,"");
-			/-#I_ENTERMAIL <tr><td>Enter your email<td>
-			field_string (new_email,"");
-			/-#I_ENTERPWD <tr><td>Password<td>
-			field_password (new_password1,"");
-			/-#I_CONFIRMPWD <tr><td>Confirm password<td>
-			field_password (new_password2,"");
+			/- <table border=0 align=center width=100%>
+			htmlprintf ("<tr><td>%s<td style=width:70%%>\n",MSG_U(I_NICKNAME,"Select a nickname"));
+			field_string (new_nickname,"style=width:50%");
+			htmlprintf ("<tr><td>%s<td style=width:70%%>\n",MSG_U(I_ENTERMAIL,"Enter your email"));
+			field_string (new_email,"style=width:90%");
+			htmlprintf ("<tr><td>%s<td style=width:70%%>\n",MSG_U(I_ENTERPWD,"Password"));
+			field_password (new_password1,"style=width:50%");
+			htmlprintf ("<tr><td>%s<td style=width:70%%>\n",MSG_U(I_CONFIRMPWD,"Confirm password"));
+			field_password (new_password2,"style=width:50%");
 			/- <tr><td>
 			button_submit (MSG_U(B_ACCACCOUNT,"Add account"));
 			/- </table>
@@ -1839,9 +1853,7 @@ extern "C" void webmain_real()
 		<call bod_client_logout>(glocal.con,w_session.c_str());
 		<f ok>
 			userinfo.reset();	//trli_getsessioninfo(glocal.con,glocal.con_sess);
-			bolixo_title ("",&glocal.websteps);
-			DIV d; d.textalign("center").marginauto().vmargins(50,50).w(50).print();
-			/-#I_HOPESEEYOU Hope to see you again
+			glocal.websteps.gotostep(step_login);
 		</f>
 		</call>
 	</f>
