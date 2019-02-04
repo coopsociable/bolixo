@@ -29,6 +29,12 @@ EXTERN DOC_ID section_profile;
 #define SECTION_PREVIEW 10
 #define SECTION_NBSECTIONS 11
 
-void jump2app (int step, const char *webtab_add);
+void jump2app (int step, PARAM_STRING webtab_add);
 void jump2app (int step, int tab);
+void jump_config_account();
+void jump_config_interests();
+void jump_config_contacts();
+void jump_config_contact_req();
+void jump_config_projects();
+void jump_config_groups();
 extern bool document_button_display_only;

@@ -1203,18 +1203,20 @@ extern "C" void webmain_real()
 		</call>
 	}
 	{
-		<call savefile>("/tmp/agent.log",true);
-		<f dowrite>
-			string ip = tlmpweb_getip();
-			const char *pt = getenv ("HTTP_USER_AGENT");
-			if (pt == NULL){
-				fprintf (fout,"%s: robot=%u HTTP_USER_AGENT null\n",ip.c_str(),w_robot.getval());
-			}else{
-				fprintf (fout,"%s: robot=%u HTTP_USER_AGENT %s\n",ip.c_str(),w_robot.getval(),pt);
-			}
-			return 0;
-		</f>
-		</call>
+		glocal const char *agent = getenv ("HTTP_USER_AGENT");
+		if (glocal.agent == NULL || strcmp(glocal.agent,"bo-webtest")!=0){
+			<call savefile>("/tmp/agent.log",true);
+			<f dowrite>
+				string ip = tlmpweb_getip();
+				if (glocal.agent == NULL){
+					fprintf (fout,"%s: robot=%u HTTP_USER_AGENT null\n",ip.c_str(),w_robot.getval());
+				}else{
+					fprintf (fout,"%s: robot=%u HTTP_USER_AGENT %s\n",ip.c_str(),w_robot.getval(),glocal.agent);
+				}
+				return 0;
+			</f>
+			</call>
+		}
 	}
 	
 	const char *ptsession = tlmpweb_getcookie("session");
@@ -1731,6 +1733,12 @@ extern "C" void webmain_real()
 				if (success){
 					trli_getsessioninfo(glocal.con,glocal.con_sess,glocal.docpointers);
 					glocal.websteps.gotostep(1);
+					<call savefile>("/tmp/login.log",true);
+					<f dowrite>
+						fprintf (fout,"%s %s\n",userinfo.name.c_str(),tlmpweb_getip().c_str());
+						return 0;
+					</f>
+					</call>
 				}else{
 					/-#I_LOGINFAILED <font color=red>Login failed, invalid email or password</font>
 					glocal.fail = true;

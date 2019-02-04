@@ -1314,6 +1314,8 @@ elif [ "$1" = "lxc0-web" ]; then # prod:
 			--filelist /var/lib/lxc/$w/$w.files \
 			--savefile /var/lib/lxc/$w/$w.save \
 			--restorefile /var/lib/lxc/$w/$w.restore \
+			--preserve /tmp/agent.log \
+			--preserve /tmp/login.log \
 			$EXTRALXCPROG \
 			-i /usr/sbin/trli-init -l $LOG -l /tmp/log.web2 \
 			-e /var/www/html/index.hc \
