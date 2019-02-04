@@ -38,16 +38,22 @@ static void jump2app (int step, int tab, const char *webtab_add)
 	unsigned rectno = allocid++;
 	DIV d; d.sfloat("right").print();
 	if (!document_button_display_only){
-		htmlprintf ("<a href=\"#\" onclick=formsubmit(\"/index.hc?webstep=%d&webtab=%d&webtab_add=%s%s2:helpmain~%s\")"
-			,step,tab,webtab_add,comma,MSG_R(M_DOCUM));
+		// webtab_add supports adding more than one tab at once. The tabs must be separated by a comma.
+		// We use this so the help screen follows you in the UI. We make sure the help screen is
+		// added first because the current tab is the last one added. This is important for mobile.
+		htmlprintf ("<a href=\"#\" onclick=formsubmit(\"/index.hc?webstep=%d&webtab=%d&webtab_add=2:helpmain~%s%s%s\")"
+			,step,tab,MSG_R(M_DOCUM),comma,webtab_add);
 	}else{
 		htmlout ("<a href=\"#\"");
 	}
 	htmlprintf (" onmouseover=changefill('docrect%u','#D0D0D0') onmouseout=changefill('docrect%u','none')>\n",rectno,rectno);
-	htmlout ("<svg width=100 height=40>\n");
-	htmlprintf ("<rect id='docrect%u' x=0 y=0 rx=4 ry=4 width=100 height=40 stroke=black fill=none />\n",rectno);
-	htmlout    ("<rect x=2 y=2 rx=4 ry=4 width=96 height=36 stroke=black fill=none />\n");
-	htmlprintf ("\t<text x=20 y=25 class=small>%s</text>\n",MSG_U(B_JUMP,"Go!"));
+	unsigned height = tlmpweb_fontsize()*2;
+	unsigned str_width = tlmpweb_displaylen(MSG_R(B_JUMP));
+	unsigned width = str_width*3/2;
+	htmlprintf ("<svg width=%u height=%u>\n",width,height);
+	htmlprintf ("<rect id='docrect%u' x=0 y=0 rx=4 ry=4 width=%u height=%u stroke=black fill=none />\n",rectno,width,height);
+	htmlprintf ("<rect x=2 y=2 rx=4 ry=4 width=%u height=%u stroke=black fill=none />\n",width-4,height-4);
+	htmlprintf ("\t<text x=%u y=%u class=small>%s</text>\n",(width-str_width)/2,2*height/3,MSG_U(B_JUMP,"Go!"));
 	htmlout ("</svg>\n");
 	htmlout ("</a>\n");
 }
@@ -436,7 +442,7 @@ void bolixo_doc (DOCUMENT_POINTER &docpointer, DOC_ID &jump, const char *usernam
 					along his nickname, it means this person has not enabled public view in his
 					profile.
 				</->
-				<- section("Contacts",section_contacts);>
+				<- section("Contact requests to you",section_contacts);>
 					This is where you manage your contacts (people you know).
 					In this page, you can see the contact requests other people have made to you.
 					/- jump_config_contacts();
@@ -444,7 +450,7 @@ void bolixo_doc (DOCUMENT_POINTER &docpointer, DOC_ID &jump, const char *usernam
 					You click on one request. You will see the message associated with the request. You
 					can either accept it or reject it.
 				</->
-				<- section("Contact requests",section_contact_req);>
+				<- section("Contact requests from you",section_contact_req);>
 					This is where you manage your contacts (people you know).
 					In this page, you can see the contact requests you have made.
 					/- jump_config_contact_req();
