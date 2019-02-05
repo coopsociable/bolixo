@@ -135,8 +135,7 @@ struct DIRENTRY{
 #define webapi_public_list_talk_NOTNEED
 #define webapi_config_read_NOTNEED
 #define webapi_config_write_NOTNEED
-#define webapi_remotelogin_NOTNEED
-#define webapi_remotepass_NOTNEED
+#define webapi_contact_list_NOTNEED
 
 #include "proto/webapi.protoch"
 
@@ -742,6 +741,126 @@ static void bod_remote_interest_set(
 	}
 }
 </mod>
+static string bod_format_remote_user(PARAM_STRING user, PARAM_STRING our_nodename)
+{
+	const char *nodename = our_nodename.ptr;
+	if (strncasecmp(nodename,"http://",7)==0){
+		nodename += 7;
+	}else if (strncasecmp(nodename,"https://",8)==0){
+		nodename += 8;
+	}
+	return string_f("%s@%s",user.ptr,nodename);
+}
+<mod>
+static int bod_remotelogin (
+	CONNECT_INFO &con,		// To reach bo-writed
+	CONNECT_HTTP_INFO &hcon,	// To reach remote server
+	PARAM_STRING local_user,	// local user name
+	PARAM_STRING nodename,		// Our node name
+	const char *local_session,
+	string &sessionid)
+{
+	glocal int ret = -1;
+	glocal CONNECT_INFO *con = &con;
+	glocal string *sessionid = &sessionid;
+	glocal CONNECT_HTTP_INFO *hcon = &hcon;
+	glocal const char *local_session = local_session;
+	glocal string remote_user = bod_format_remote_user (local_user,nodename);
+tlmp_error ("bod_remotelogin %s %s\n",hcon.host.c_str(),glocal.remote_user.c_str());
+	<call webapi_remotelogin>(hcon,glocal.remote_user);
+	<f ok>
+		if (!success){
+			tlmp_error ("remotelogin failed for %s: %s\n"
+				,glocal.remote_user.c_str(),msg);
+		}else{
+			glocal string sign;
+			*glocal.sessionid = sessionid;
+			<call bo_writed_client_usersign>(*glocal.con,glocal.local_session,sessionid);
+			<f ok>
+				if (success) glocal.sign = sign;
+			</f>
+			</call>
+			// tlmp_error ("sign=%s\n",glocal.sign.c_str());
+			if (glocal.sign.size() > 0){
+				<call webapi_remotepass>(*glocal.hcon,sessionid,glocal.remote_user,glocal.sign);
+				<f ok>
+					if (success) glocal.ret = 0;
+				</f>
+				</call>
+			}
+		}
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+<mod>
+static void bod_remotelogout(CONNECT_HTTP_INFO &hcon, PARAM_STRING sessionid)
+{
+	<call webapi_logout>(hcon,sessionid);
+	<f ok>
+	</f>
+	</call>
+}
+</mod>
+/*
+	Perform a remote contact request
+*/
+<mod>
+static void bod_remote_contact_request(
+	CONNECT_INFO &con,
+	const char *sessionid,
+	PARAM_STRING caller,	// User who created this request
+	PARAM_STRING user,	// User we wish to contact
+	PARAM_STRING intro,	// Small message
+	PARAM_STRING server,	// Server where this user lives
+	const char *nodename)	// Our nodename
+{
+	CONNECT_HTTP_INFO hcon;
+	if (nonstrict) hcon.setnonstrictmode();
+	hcon.host = server.ptr;
+	hcon.port = "443";
+	hcon.use_ssl = true;
+	string session;
+	if (bod_remotelogin (con,hcon,caller,nodename,sessionid,session)!=-1){
+		<call webapi_contact_request> (hcon,session,"",user,intro);
+		<f ok>
+			if (!success) tlmp_error ("remote_contact_request: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
+		</f>
+		</call>
+		bod_remotelogout(hcon,session);
+	}
+}
+</mod>
+/*
+	Perform a remote contact manage
+*/
+<mod>
+static void bod_remote_contact_manage(
+	CONNECT_INFO &con,
+	const char *sessionid,
+	PARAM_STRING caller,	// User who created this request
+	PARAM_STRING user,	// User we wish to contact
+	CONTACT_STATUS status,	// Was the contact request accepted
+	PARAM_STRING server,	// Server where this user lives
+	const char *nodename)	// Our nodename
+{
+	CONNECT_HTTP_INFO hcon;
+	if (nonstrict) hcon.setnonstrictmode();
+	hcon.host = server.ptr;
+	hcon.port = "443";
+	hcon.use_ssl = true;
+	string session;
+	if (bod_remotelogin (con,hcon,caller,nodename,sessionid,session)!=-1){
+		<call webapi_contact_manage> (hcon,session,"",user,status);
+		<f ok>
+			if (!success) tlmp_error ("remote_contact_manage: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
+		</f>
+		</call>
+		bod_remotelogout(hcon,session);
+	}
+}
+</mod>
 // Parse a user[@nodename]
 // Strip the nodename if it is this node.
 static int bod_parse_user (
@@ -837,6 +956,78 @@ static string bod_getname(unsigned userid)
 		glocal.ret = row[0];
 	</f>
 	</call>
+	return glocal.ret;
+}
+</mod>
+
+/*
+	We do some validation here, even if bo-writed does the same.
+	if "user" is an account on another node, we do the validation here
+	if the remote user does not exist in this node (remote accounts),
+	we tell bo-writed to create it.
+	Return 0 if everything is ok.
+*/
+<mod>
+static int bod_check_remote_user(
+	CONNECT_INFO &con,
+	const char *user,
+	const char *nodename,
+	string &msg,
+	string &remote_user,
+	string &remote)
+{
+	glocal CONNECT_INFO *con = &con;
+	glocal const char *user = user;
+	glocal int ret = -1;
+	glocal string *msg = &msg;	
+	string tmpuser;
+	if (bod_parse_user(user,tmpuser,remote_user,remote,nodename)==-1){
+		msg = MSG_R(E_IVLDUSER);
+	}else{
+		glocal const char *remote_user = remote_user.c_str();
+		glocal const char *remote = remote.c_str();
+		glocal.user = tmpuser.c_str();
+		<call sql_query>("select userid from id2name where name='%s'",user);
+		<f empty>
+			// User unknown
+			if (glocal.remote[0] != '\0'){
+				// Check if this user exists on the remote node
+				CONNECT_HTTP_INFO hcon;
+				if (nonstrict) hcon.setnonstrictmode();
+				hcon.host = glocal.remote;
+				hcon.port = "443";
+				hcon.use_ssl = true;
+				<call webapi_getpubkey>(hcon,glocal.remote_user);
+				<f ok>
+					if (success){
+						if (fs_valid_pubkey(pubkey)==-1){
+							*glocal.msg = MSG_U(E_IVLDPUBKEY,"Invalid public key for remote user");
+						}else{
+							<call bo_writed_client_addremoteuser>(*glocal.con,glocal.user,pubkey);
+							<f ok>
+								if (!success){
+									*glocal.msg = msg;
+								}else{
+									glocal.ret = 0;
+								}
+							</f>
+							</call>
+						}
+					}else{
+						*glocal.msg = MSG_U(E_CANTGETPUBKEY,"Can't get public key for remote user");
+					}
+				</f>
+				</call>
+			}else{
+				*glocal.msg = MSG_R(E_IVLDUSER);
+			}
+		</f>
+		<f onerow>
+			// User exist on the system, remote user or local user, does not matter
+			glocal.ret = 0;
+		</f>
+		</call>
+	}
 	return glocal.ret;
 }
 </mod>
@@ -1923,18 +2114,56 @@ static int bod_main (
 				}
 			</f>
 			<f contact_request>	// sessionid owner user intro = success:b msg
-				<call bo_writed_client_contact_request>(glocal.con,sessionid,owner,user,intro);
-				<f ok>
-					glocal.bod_client.rep_contact_request (success,msg);
-				</f>
-				</call>
+				glocal const char *intro = intro;
+				glocal bool success = false;
+				glocal string msg;
+				glocal string username;
+				glocal const char *sessionid = sessionid;
+				unsigned userid = bo_writed_get_group_owner (glocal.con_sess, sessionid, owner, glocal.username, glocal.msg);
+				if (userid != 0){
+					glocal string remote_user;
+					glocal string remote;
+					if (bod_check_remote_user(glocal.con,user,glocal.nodename,glocal.msg,glocal.remote_user,glocal.remote)!=-1){
+						<call bo_writed_client_contact_request>(glocal.con,sessionid,owner,user,intro);
+						<f ok>
+							glocal.success = success;
+							glocal.msg = msg;
+							if (success && glocal.remote.size() > 0){
+								bod_remote_contact_request (glocal.con,glocal.sessionid,glocal.username,glocal.remote_user,glocal.intro,glocal.remote,glocal.nodename);
+							}
+						</f>
+						</call>
+					}
+				}
+				glocal.bod_client.rep_contact_request (glocal.success,glocal.msg);
 			</f>
 			<f contact_manage>	// sessionid owner user status = success:b msg
-				<call bo_writed_client_contact_manage>(glocal.con,sessionid,owner,user,status);
-				<f ok>
-					glocal.bod_client.rep_contact_manage (success,msg);
-				</f>
-				</call>
+				glocal bool success = false;
+				glocal string msg;
+				glocal CONTACT_STATUS status = status;
+				glocal const char *user = user;
+				glocal const char *sessionid = sessionid;
+				glocal string username;
+				unsigned userid = bo_writed_get_group_owner (glocal.con_sess, sessionid, owner, glocal.username, glocal.msg);
+				if (userid != 0){
+					<call bo_writed_client_contact_manage>(glocal.con,sessionid,owner,user,status);
+					<f ok>
+						glocal.success = success;
+						glocal.msg = msg;
+						if (success){
+							// We check if the target user of this call is a remote user.
+							// If this is the case, we have to execute the contact_manage on his server.
+							string tmpuser,remote_user,remote;
+							if (bod_parse_user(glocal.user,tmpuser,remote_user,remote,glocal.nodename)==-1
+								&& remote.size() > 0){
+								bod_remote_contact_manage (glocal.con,glocal.sessionid,glocal.username,remote_user
+									,glocal.status,remote,glocal.nodename);
+							}
+						}
+					</f>
+					</call>
+				}
+				rep_contact_manage (glocal.success,glocal.msg);
 			</f>
 			<f contact_list>	// sessionid owner to_me:b offset:u nb:u = success:b msg contacts:U{CONTACT}v
 				// CONTACT user reqdate message status
@@ -2021,66 +2250,16 @@ static int bod_main (
 				</f>
 				</call>
 			</f>
-			<f interest_set> // sessionid user = success:b msg
-				glocal const char *owner = owner;
-				glocal const char *sessionid = sessionid;
-				glocal const char *user = user;
+			<f interest_set> // sessionid user owner = success:b msg
 				glocal bool success = false;
 				glocal string msg;
-				glocal bool doit = false;
-				// We do some validation here, even if bo-writed does the same.
-				// if user is an account on another node, we do the validation here
-				// if the remote user does not exist in this node (remote accounts),
-				// we tell bo-writed to create it.
-				glocal string remote;
-				glocal string remote_user;
-				string tmpuser;
-				if (bod_parse_user(user,tmpuser,glocal.remote_user,glocal.remote,glocal.nodename)==-1){
-					glocal.msg = MSG_R(E_IVLDUSER);
-				}else{
-					glocal.user = tmpuser.c_str();
-					<call sql_query>("select userid from id2name where name='%s'",user);
-					<f empty>
-						// User unknown
-						if (glocal.remote.size() > 0){
-							// Check if this user exists on the remote node
-							CONNECT_HTTP_INFO hcon;
-							if (nonstrict) hcon.setnonstrictmode();
-							hcon.host = glocal.remote;
-							hcon.port = "443";
-							hcon.use_ssl = true;
-							<call webapi_getpubkey>(hcon,glocal.remote_user);
-							<f ok>
-								if (success){
-									if (fs_valid_pubkey(pubkey)==-1){
-										glocal.msg = MSG_U(E_IVLDPUBKEY,"Invalid public key for remote user");
-									}else{
-										<call bo_writed_client_addremoteuser>(glocal.con,glocal.user,pubkey);
-										<f ok>
-											if (!success){
-												glocal.msg = msg;
-											}else{
-												glocal.doit = true;
-											}
-										</f>
-										</call>
-									}
-								}else{
-									glocal.msg = MSG_U(E_CANTGETPUBKEY,"Can't get public key for remote user");
-								}
-							</f>
-							</call>
-						}else{
-							glocal.success = false;
-							glocal.msg = MSG_R(E_IVLDUSER);
-						}
-					</f>
-					<f onerow>
-						glocal.doit = true;
-					</f>
-					</call>
-					if (glocal.doit){
-						<call bo_writed_client_interest_set>(glocal.con,glocal.sessionid,glocal.user,glocal.owner);
+				string username;
+				unsigned userid = bo_writed_get_group_owner (glocal.con_sess, sessionid, owner, username, glocal.msg);
+				if (userid != 0){
+					glocal string remote_user;
+					glocal string remote;
+					if (bod_check_remote_user(glocal.con,user,glocal.nodename,glocal.msg,glocal.remote_user,glocal.remote)!=-1){
+						<call bo_writed_client_interest_set>(glocal.con,sessionid,user,owner);
 						<f ok>
 							if (success && glocal.remote.size() > 0){
 								bod_remote_interest_set (glocal.con,true,glocal.remote_user,glocal.remote,glocal.nodename);
@@ -2562,25 +2741,20 @@ static int bod_main (
 				// using remotepass.
 				glocal string msg;
 				glocal string sessionid;
-				if (strchr(user,'@') == NULL){
-					glocal.msg = MSG_R(E_IVLDUSER);
-				}else{
-					<call sql_query>("select pub_key from id2name where name='%s'",user);
-					<f empty>
+				glocal string remote_user;
+				glocal string remote;
+				// If the remote user does not exist, the account is created on the fly. But the remote user
+				// has to exist on his server and must have a public key.
+				if (bod_check_remote_user(glocal.con,user,glocal.nodename,glocal.msg,glocal.remote_user,glocal.remote)!=-1){
+					if (glocal.remote.size() == 0){
 						glocal.msg = MSG_R(E_IVLDUSER);
-					</f>
-					<f onerow>
-						if (row[0] == NULL){
-							glocal.msg = MSG_R(E_NOPUBKEY);
-						}else{
-							<call bo_writed_client_createsession>(glocal.con);
-							<f ok>
-								glocal.sessionid = sessionid;
-							</f>
-							</call>
-						}
-					</f>
-					</call>
+					}else{
+						<call bo_writed_client_createsession>(glocal.con);
+						<f ok>
+							glocal.sessionid = sessionid;
+						</f>
+						</call>
+					}
 				}
 				if (glocal.msg.size()>0){
 					rep_remotelogin (false,glocal.msg,"");

@@ -2810,7 +2810,14 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 					</f>
 					</call>
 				}else{
-					notdone();	// contact_manage
+					<call webapi_contact_manage>(glocal.ctx->hcon,glocal.ctx->hsessionid,glocal.owner,glocal.user,status);
+					<f ok>
+						if (!success){
+							bofs_error ("contact_manage",internal_error,msg);
+							glocal.ret = -1;
+						}
+					</f>
+					</call>
 				}
 			}
 		}else if (glocal.contact_request){
@@ -2829,7 +2836,14 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 					</f>
 					</call>
 				}else{
-					notdone();	// contact_request
+					<call webapi_contact_request>(glocal.ctx->hcon,glocal.ctx->hsessionid,glocal.owner,glocal.user,glocal.intro);
+					<f ok>
+						if (!success){
+							bofs_error ("contact_request",internal_error,msg);
+							glocal.ret = -1;
+						}
+					</f>
+					</call>
 				}
 			}
 		}else if (glocal.contact_list){
@@ -2849,7 +2863,19 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 					</f>
 					</call>
 				}else{
-					notdone();	// contact_list
+					<call webapi_contact_list>(glocal.ctx->hcon,glocal.ctx->hsessionid,glocal.owner,!glocal.contact_request_by_me,0,1000);
+					<f ok>
+						if (!success){
+							bofs_error ("contact_list",internal_error,msg);
+							glocal.ret = -1;
+						}else{
+							static const char *tbstatus[]={"waiting","accepted","rejected"};
+							for (auto &c:contacts){
+								printf ("%s\t%s\t%s\t%s\n",c.user,c.reqdate,tbstatus[c.status],c.message);
+							}
+						}
+					</f>
+					</call>
 				}
 			}
 		}else if (glocal.interest_set){

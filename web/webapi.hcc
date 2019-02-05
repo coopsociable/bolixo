@@ -526,6 +526,33 @@ static void webmain_real()
 		</f>
 		</call>
 	</f>
+	<f contact_request> // sessionid owner user intro = success:b msg
+		<call bod_client_contact_request>(glocal.con,sessionid,owner,user,intro);
+		<f ok>
+			glocal.webapi.rep_contact_request(success,msg);
+		</f>
+		</call>
+	</f>
+	<f contact_manage> //sessionid owner user status:e{CONTACT_STATUS} = success:b msg
+		<call bod_client_contact_manage>(glocal.con,sessionid,owner,user,status);
+		<f ok>
+			glocal.webapi.rep_contact_manage(success,msg);
+		</f>
+		</call>
+	</f>
+	<f contact_list> // sessionid owner to_me:b offset:u nb:u = success:b msg contacts:U{CONTACT}v
+		glocal vector<CONTACT> contacts;
+		glocal bool success = false;
+		glocal string msg;
+		<call bod_client_contact_list>(glocal.con,sessionid,owner,to_me,offset,nb);
+		<f ok>
+			glocal.success = success;
+			glocal.msg = msg;
+			for (auto &c:contacts) glocal.contacts.push_back(c);
+		</f>
+		</call>
+		rep_contact_list(glocal.success,glocal.msg,glocal.contacts);
+	</f>
 	<f invalid>
 		htmlprintf ("Invalid request\n");
 	</f>
