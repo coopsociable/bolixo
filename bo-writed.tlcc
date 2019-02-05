@@ -1750,14 +1750,12 @@ int main (int argc, char *argv[])
 					glocal const char *user = user;
 					glocal const char *sign = sign;
 					glocal const char *sessionid = sessionid;
-tlmp_error ("remotelogin %s\n",user);
 					<call sql_query>(*glocal.usq,"select userid,pub_key from users where name='%s'",user);
 					<f empty>
 						glocal.msg = MSG_R(E_IVLDUSER);
 					</f>
 					<f onerow>
 						unsigned userid = atoi(row[0]);
-tlmp_error ("rem1 %u\n",userid);
 						if (row[1] == NULL){
 							glocal.msg = MSG_R(E_NOPUBKEY);
 						}else{
@@ -1768,13 +1766,11 @@ tlmp_error ("rem1 %u\n",userid);
 								if (fs_verify(glocal.sessionid,p,sig)==-1){
 									glocal.msg = MSG_R(E_SIGNOMATCH);
 								}else{
-tlmp_error ("rem2\n");
 									<call bo_sessiond_admin_setsession>(glocal.con,glocal.sessionid,userid,"",glocal.user,"","eng",false,0);
 									<f ok>
 										if (internal_error){
 											glocal.msg = "Internal error";
 										}else{
-tlmp_error ("rem3\n");
 											sql_action (*glocal.usq,"update users set lastaccess=now() where name='%s'",glocal.user);
 										}
 									</f>
@@ -1785,7 +1781,6 @@ tlmp_error ("rem3\n");
 						}
 					</f>
 					</call>
-tlmp_error ("rem4 msg=%s\n",glocal.msg.c_str());
 					if (glocal.msg.size() > 0){
 						rep_remotelogin(false,glocal.msg);
 					}else{
@@ -2975,8 +2970,10 @@ tlmp_error ("rem4 msg=%s\n",glocal.msg.c_str());
 								}else{
 									bool add = glocal.status == CONTACT_ACCEPTED;
 									// We put or remove users from each other contacts group
-									bo_writed_group_member(glocal.userid,"contacts",glocal.target_userid,"R",add,glocal.msg);
-									bo_writed_group_member(glocal.target_userid,"contacts",glocal.userid,"R",add,glocal.msg);
+									bool from_user_remote = strchr(glocal.username.c_str(),'@');
+									bool target_user_remote = strchr(glocal.target_user,'@');
+									if (!from_user_remote) bo_writed_group_member(glocal.userid,"contacts",glocal.target_userid,"R",add,glocal.msg);
+									if (!target_user_remote) bo_writed_group_member(glocal.target_userid,"contacts",glocal.userid,"R",add,glocal.msg);
 									// Send a message to the user about his request
 									string message;
 									if (add){
@@ -2986,7 +2983,7 @@ tlmp_error ("rem4 msg=%s\n",glocal.msg.c_str());
 										message = string_f(MSG_U(I_CONTACTREQREFUSED,"Your contact request sent to %s was rejected")
 											,glocal.username.c_str());
 									}
-									bo_writed_send_admin_msg (glocal.target_userid,glocal.target_user,message);
+									if (!target_user_remote) bo_writed_send_admin_msg (glocal.target_userid,glocal.target_user,message);
 								}
 							</f>
 							</call>
