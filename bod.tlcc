@@ -702,10 +702,12 @@ static void bod_nodelogout(CONNECT_HTTP_INFO &hcon, PARAM_STRING session)
 	</call>
 }
 </mod>
+static vector<string> usehttp;
+
 static void bod_inithcon (CONNECT_HTTP_INFO &hcon, PARAM_STRING remote)
 {
 	hcon.host = remote.ptr;
-	if (strcmp(remote.ptr,"test1.bolixo.org")==0){
+	if(find(usehttp.begin(),usehttp.end(),remote.ptr)!=usehttp.end()){
 		hcon.port = "80";
 		hcon.use_ssl = false;
 	}else{
@@ -775,7 +777,6 @@ static int bod_remotelogin (
 	glocal CONNECT_HTTP_INFO *hcon = &hcon;
 	glocal const char *local_session = local_session;
 	glocal string remote_user = bod_format_remote_user (local_user,nodename);
-tlmp_error ("bod_remotelogin %s %s\n",hcon.host.c_str(),glocal.remote_user.c_str());
 	<call webapi_remotelogin>(hcon,glocal.remote_user);
 	<f ok>
 		if (!success){
@@ -789,7 +790,6 @@ tlmp_error ("bod_remotelogin %s %s\n",hcon.host.c_str(),glocal.remote_user.c_str
 				if (success) glocal.sign = sign;
 			</f>
 			</call>
-			// tlmp_error ("sign=%s\n",glocal.sign.c_str());
 			if (glocal.sign.size() > 0){
 				<call webapi_remotepass>(*glocal.hcon,sessionid,glocal.remote_user,glocal.sign);
 				<f ok>
@@ -1128,6 +1128,9 @@ static int bod_main (
 				tb.push_back(string_f ("nbrequest_client=%lu",glocal.nbrequest_client));
 				tb.push_back(string_f("filehandle %u",fs_getnbhandle()));
 				tb.push_back(string_f("sessions %lu",sessions.size()));
+				string useline = "usehttp:";
+				for (auto &s:usehttp) useline += string(" ") + s;
+				tb.push_back(useline);
 				#ifdef INSTRUMENT
 					tb.push_back("intrument: on");
 					fflush (f_instrument);
@@ -2961,6 +2964,7 @@ int main (int argc, char *argv[])
 		setarg (' ',"dirserver",MSG_U(O_DIRSERVE,"Directory server"),glocal.dirserver,false);
 		setarg (' ',"maxaccts",MSG_U(O_MAXACCOUNTS,"Maximum accounts on this server"),glocal.maxaccts,false);
 		setarg (' ',"nonstrict",MSG_R(O_NONSTRICT),nonstrict,false);
+		setarg (' ',"usehttp",MSG_U(O_USEHTTP,"Use HTTP (not HTTPS) to reach this node"),usehttp,false);
 		setgrouparg ("Database");
 		setarg (' ',"dbserv","Database server",glocal.dbserv,false);
 		setarg (' ',"dbname","Database name",glocal.dbname,false);
