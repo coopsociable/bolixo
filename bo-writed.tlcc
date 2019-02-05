@@ -128,7 +128,7 @@ static bool bo_writed_lex_check(const char *groupname, string &msg, const char s
 	bool ret = true;
 	const char *pt = groupname;
 	while (*pt != '\0'){
-		if (*pt < ' '){
+		if (*pt <= ' '){
 			ret = false;
 			break;
 		}else if (*pt == special || *pt == '@' || *pt == '#' || *pt == ';' || *pt == '"' || *pt == '\''){
@@ -1750,12 +1750,14 @@ int main (int argc, char *argv[])
 					glocal const char *user = user;
 					glocal const char *sign = sign;
 					glocal const char *sessionid = sessionid;
+tlmp_error ("remotelogin %s\n",user);
 					<call sql_query>(*glocal.usq,"select userid,pub_key from users where name='%s'",user);
 					<f empty>
 						glocal.msg = MSG_R(E_IVLDUSER);
 					</f>
 					<f onerow>
 						unsigned userid = atoi(row[0]);
+tlmp_error ("rem1 %u\n",userid);
 						if (row[1] == NULL){
 							glocal.msg = MSG_R(E_NOPUBKEY);
 						}else{
@@ -1766,11 +1768,13 @@ int main (int argc, char *argv[])
 								if (fs_verify(glocal.sessionid,p,sig)==-1){
 									glocal.msg = MSG_R(E_SIGNOMATCH);
 								}else{
+tlmp_error ("rem2\n");
 									<call bo_sessiond_admin_setsession>(glocal.con,glocal.sessionid,userid,"",glocal.user,"","eng",false,0);
 									<f ok>
 										if (internal_error){
 											glocal.msg = "Internal error";
 										}else{
+tlmp_error ("rem3\n");
 											sql_action (*glocal.usq,"update users set lastaccess=now() where name='%s'",glocal.user);
 										}
 									</f>

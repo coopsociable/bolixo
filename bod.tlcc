@@ -702,6 +702,18 @@ static void bod_nodelogout(CONNECT_HTTP_INFO &hcon, PARAM_STRING session)
 	</call>
 }
 </mod>
+static void bod_inithcon (CONNECT_HTTP_INFO &hcon, PARAM_STRING remote)
+{
+	hcon.host = remote.ptr;
+	if (strcmp(remote.ptr,"test1.bolixo.org")==0){
+		hcon.port = "80";
+		hcon.use_ssl = false;
+	}else{
+		if (nonstrict) hcon.setnonstrictmode();
+		hcon.port = "443";
+		hcon.use_ssl = true;
+	}
+}
 /*
 	Record user interest in another bolixo server
 */
@@ -714,10 +726,7 @@ static void bod_remote_interest_set(
 	const char *nodename)
 {
 	CONNECT_HTTP_INFO hcon;
-	if (nonstrict) hcon.setnonstrictmode();
-	hcon.host = server.ptr;
-	hcon.port = "443";
-	hcon.use_ssl = true;
+	bod_inithcon (hcon,server);
 	string session;
 	<call webapi_registernode>(hcon,nodename);
 	<f ok>
@@ -817,10 +826,7 @@ static void bod_remote_contact_request(
 	const char *nodename)	// Our nodename
 {
 	CONNECT_HTTP_INFO hcon;
-	if (nonstrict) hcon.setnonstrictmode();
-	hcon.host = server.ptr;
-	hcon.port = "443";
-	hcon.use_ssl = true;
+	bod_inithcon (hcon,server);
 	string session;
 	if (bod_remotelogin (con,hcon,caller,nodename,sessionid,session)!=-1){
 		<call webapi_contact_request> (hcon,session,"",user,intro);
@@ -846,10 +852,7 @@ static void bod_remote_contact_manage(
 	const char *nodename)	// Our nodename
 {
 	CONNECT_HTTP_INFO hcon;
-	if (nonstrict) hcon.setnonstrictmode();
-	hcon.host = server.ptr;
-	hcon.port = "443";
-	hcon.use_ssl = true;
+	bod_inithcon(hcon,server);
 	string session;
 	if (bod_remotelogin (con,hcon,caller,nodename,sessionid,session)!=-1){
 		<call webapi_contact_manage> (hcon,session,"",user,status);
@@ -993,10 +996,7 @@ static int bod_check_remote_user(
 			if (glocal.remote[0] != '\0'){
 				// Check if this user exists on the remote node
 				CONNECT_HTTP_INFO hcon;
-				if (nonstrict) hcon.setnonstrictmode();
-				hcon.host = glocal.remote;
-				hcon.port = "443";
-				hcon.use_ssl = true;
+				bod_inithcon (hcon,glocal.remote);
 				<call webapi_getpubkey>(hcon,glocal.remote_user);
 				<f ok>
 					if (success){
