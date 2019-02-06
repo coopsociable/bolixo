@@ -93,6 +93,18 @@ elif [ "$1" = "ivldsession" ] ; then # test: Test access with invalid session (a
 	SESSION=`./test.sh bod-control nodelogin http://test1.bolixo.org`
 	testseq $SESSION dir1
 	./test.sh bod-control nodelogout http://test1.bolixo.org $SESSION
+elif [ "$1" = "remote-contact" ] ; then # test: Perform remote contact request
+	ssh root@preprod.bolixo.org /root/bin/cleartest1
+	for user in bolixodev bolixonews bolixonouvelles jacquesg
+	do
+		./bofs misc --contact_request -u $user@preprod.bolixo.org
+	done
+	for user in bolixodev bolixonews bolixonouvelles jacquesg
+	do
+		ssh root@preprod.bolixo.org bofs -u $user misc --contact_manage -u jacques-A@test1.bolixo.org
+	done
+	./bofs groups --print-contacts
+	./bofs -t msgs -s -G inbox
 else
 	echo command
 fi

@@ -553,6 +553,39 @@ static void webmain_real()
 		</call>
 		rep_contact_list(glocal.success,glocal.msg,glocal.contacts);
 	</f>
+	<f list_lists> // sessionid owner = success:b msg lists:U{LIST}v
+		glocal bool success = false;
+		glocal string msg;
+		glocal vector<LIST> lists;
+		<call bod_client_list_lists>(glocal.con,sessionid,owner);
+		<f ok>
+			glocal.success = success;
+			glocal.msg = msg;
+			for (auto &l:lists) glocal.lists.push_back(l);
+		</f>
+		</call>
+		rep_list_lists (glocal.success,glocal.msg,glocal.lists);
+	</f>
+	<f list_groups> // sessionid owner only_owner:b = success:b msg groups:U{GROUP}v
+		glocal bool success = false;
+		glocal string msg;
+		glocal vector<GROUP> groups;
+		<call bod_client_list_groups>(glocal.con,sessionid,owner,only_owner);
+		<f ok>
+			glocal.success = success;
+			glocal.msg = msg;
+			for (auto &g:groups) glocal.groups.push_back(g);
+		</f>
+		</call>
+		rep_list_groups (glocal.success,glocal.msg,glocal.groups);
+	</f>
+	<f list_contacts> // sessionid owner = success:b msg members:v
+		<call bod_client_list_contacts>(glocal.con,sessionid,owner);
+		<f ok>
+			glocal.webapi.rep_list_contacts(success,msg,members);
+		</f>
+		</call>
+	</f>
 	<f invalid>
 		htmlprintf ("Invalid request\n");
 	</f>

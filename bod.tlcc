@@ -135,6 +135,9 @@ struct DIRENTRY{
 #define webapi_config_read_NOTNEED
 #define webapi_config_write_NOTNEED
 #define webapi_contact_list_NOTNEED
+#define webapi_list_lists_NOTNEED
+#define webapi_list_groups_NOTNEED
+#define webapi_list_contacts_NOTNEED
 
 #include "proto/webapi.protoch"
 
@@ -1850,6 +1853,27 @@ static int bod_main (
 					glocal.lists.clear();
 				}
 				rep_list_lists (ret,glocal.msg,glocal.lists);
+			</f>
+			<f list_contacts> // sessionid owner = success:b msg members:v
+				glocal string msg;
+				glocal vector<string> members;
+				unsigned userid = bo_writed_get_group_owner (glocal.con_sess, sessionid, owner, glocal.msg);
+				if (userid != 0){
+					<call sql_query>("select id2name.name from groups"
+						" join group_members on group_members.groupid = groups.id"
+						" join id2name on id2name.userid = group_members.userid"
+						" where groups.name='contacts' and groups.ownerid=%u",userid);
+					<f onerow>
+						glocal.members.push_back(row[0]);
+					</f>
+					</call>
+				}
+				if (glocal.msg.size() > 0){
+					glocal.members.clear();
+					rep_list_contacts(false,glocal.msg,glocal.members);
+				}else{
+					rep_list_contacts(true,"",glocal.members);
+				}
 			</f>
 			<f list_groups>	// sessionid owner only_onwer:b = success:b msg groups:v users:vv access:vv
 				// List either all groups own by the logged user

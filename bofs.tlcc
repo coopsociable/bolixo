@@ -1631,14 +1631,14 @@ static int bofs_rmdir (CONTEXT &ctx, int argc, char *argv[])
 </mod>
 
 <mod>
-static int bofs_print_groups (CONTEXT *ctx, const char *owner, const char *onegroup, unsigned indent, bool only_owner)
+static int bofs_print_groups (CONTEXT &ctx, const char *owner, const char *onegroup, unsigned indent, bool only_owner)
 {
 	glocal int ret = -1;
 	glocal unsigned indent = indent;
 	glocal const char *onegroup = onegroup;
 	glocal vector<GROUP> groups;
-	if (ctx->is_internal()){
-		<call bod_client_list_groups> (ctx->con,ctx->sessionid,owner,only_owner);
+	if (ctx.is_internal()){
+		<call bod_client_list_groups> (ctx.con,ctx.sessionid,owner,only_owner);
 		<f ok>
 			if (success){
 				for (auto &g:groups) glocal.groups.push_back(g);
@@ -1648,7 +1648,15 @@ static int bofs_print_groups (CONTEXT *ctx, const char *owner, const char *onegr
 		</f>
 		</call>
 	}else{
-		notdone();	// print_groups
+		<call webapi_list_groups> (ctx.hcon,ctx.hsessionid,owner,only_owner);
+		<f ok>
+			if (success){
+				for (auto &g:groups) glocal.groups.push_back(g);
+			}else{
+				bofs_error ("groups",internal_error,"Can't list groups: %s",msg);
+			}
+		</f>
+		</call>
 	}
 	glocal.ret = 0;
 	unsigned max_owner = 0;
@@ -1685,6 +1693,41 @@ static int bofs_print_groups (CONTEXT *ctx, const char *owner, const char *onegr
 }
 </mod>
 
+/*
+	Pretty print lists (projects)
+*/
+static int bofs_print_lists(CONTEXT &ctx, const char *owner, const vector<LIST_receive> &lists)
+{
+	int ret = 0;
+	unsigned max_listname=0;
+	unsigned max_group=0;
+	// 2 passes to compute the maximum field length
+	for (int r=0; r<2; r++){
+		for (unsigned i=0; i<lists.size(); i++){
+			const LIST_receive &l = lists[i];
+			const char *listname = l.name;
+			bofs_maxlen (listname,max_listname);
+			const vector<const char *> &gs = l.groups;
+			if (gs.size() == 0){
+				printf ("%s\n",listname);
+			}else{
+				const vector<const char *> &as = l.access;
+				for (unsigned j=0; j<gs.size(); j++){
+					const char *groupname = gs[j];
+					bofs_maxlen (groupname,max_group);
+					if (r==1){
+						printf ("%-*s   %-*s   %s\n"
+							,max_listname,listname,max_group,groupname,as[j]);
+						ret = bofs_print_groups (ctx,owner
+							,groupname,max_listname+max_group,true);
+					}
+					listname = "";
+				}
+			}
+		}
+	}
+	return ret;
+}
 <mod>
 static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 {
@@ -1699,6 +1742,7 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 
 	glocal bool print_lists = false;
 	glocal bool print_groups = false;
+	glocal bool print_contacts = false;
 
 	glocal bool set_access = false;
 
@@ -1737,8 +1781,9 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 		setarg (' ',"delete-list","Delete one list",glocal.delete_list,false);
 		setarg (' ',"delete-group","Delete one group",glocal.delete_group,false);
 		setgrouparg ("Print");
-		setarg (' ',"print-lists","Print the content of a list",glocal.print_lists,false);
-		setarg (' ',"print-groups","Print the content of a group",glocal.print_groups,false);
+		setarg (' ',"print-contacts",MSG_U(O_PRINTCONTACTS,"Print members of the contacts group"),glocal.print_contacts,false);
+		setarg (' ',"print-lists",MSG_U(O_PRINTLISTS,"Print the content of a lists/projects"),glocal.print_lists,false);
+		setarg (' ',"print-groups",MSG_U(O_PRINTGROUPS,"Print the content of groups"),glocal.print_groups,false);
 		setgrouparg ("Access");
 		setarg ('a',"set-access","Assign a user/list name to a file or directory",glocal.set_access,false);
 		setarg ('M',"listmode","list mode override (' ','p','r','w','a')",glocal.listmode,false);
@@ -1908,47 +1953,50 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 			}
 		}else if (glocal.print_lists){
 			if (glocal.ctx->is_internal()){
-			<call bod_client_list_lists> (glocal.ctx->con,glocal.ctx->sessionid,glocal.owner);
-			<f ok>
-				if (success){
-					glocal.ret = 0;
-					unsigned max_listname=0;
-					unsigned max_group=0;
-					for (int r=0; r<2; r++){
-						for (unsigned i=0; i<lists.size(); i++){
-							const LIST_receive &l = lists[i];
-							const char *listname = l.name;
-							bofs_maxlen (listname,max_listname);
-							const vector<const char *> &gs = l.groups;
-							if (gs.size() == 0){
-								printf ("%s\n",listname);
-							}else{
-								const vector<const char *> &as = l.access;
-								for (unsigned j=0; j<gs.size(); j++){
-									const char *groupname = gs[j];
-									bofs_maxlen (groupname,max_group);
-									if (r==1){
-										printf ("%-*s   %-*s   %s\n"
-											,max_listname,listname,max_group,groupname,as[j]);
-										glocal.ret = bofs_print_groups (glocal.ctx,glocal.owner
-											,groupname,max_listname+max_group,true);
-									}
-									listname = "";
-								}
-							}
-						}
+				<call bod_client_list_lists> (glocal.ctx->con,glocal.ctx->sessionid,glocal.owner);
+				<f ok>
+					if (success){
+						glocal.ret = bofs_print_lists(*glocal.ctx,glocal.owner,lists);
+					}else{
+						bofs_error ("groups",internal_error,"Can't list lists: %s",msg);
 					}
-					glocal.ret = 0;
-				}else{
-					bofs_error ("groups",internal_error,"Can't list lists: %s",msg);
-				}
-			</f>
-			</call>
+				</f>
+				</call>
 			}else{
-				notdone();	// print_lists
+				<call webapi_list_lists> (glocal.ctx->hcon,glocal.ctx->hsessionid,glocal.owner);
+				<f ok>
+					if (success){
+						glocal.ret = bofs_print_lists(*glocal.ctx,glocal.owner,lists);
+					}else{
+						bofs_error ("groups",internal_error,"Can't list lists: %s",msg);
+					}
+				</f>
+				</call>
 			}
 		}else if (glocal.print_groups){
-			glocal.ret = bofs_print_groups (glocal.ctx,glocal.owner,NULL,0,glocal.only_owner);
+			glocal.ret = bofs_print_groups (*glocal.ctx,glocal.owner,NULL,0,glocal.only_owner);
+		}else if (glocal.print_contacts){
+			if (glocal.ctx->is_internal()){
+				<call bod_client_list_contacts> (glocal.ctx->con,glocal.ctx->sessionid,glocal.owner);
+				<f ok>
+					if (success){
+						for (auto s:members) printf ("%s\n",s);
+					}else{
+						bofs_error ("list_contacts",internal_error,"Can't list contacts: %s",msg);
+					}
+				</f>
+				</call>
+			}else{
+				<call webapi_list_contacts> (glocal.ctx->hcon,glocal.ctx->hsessionid,glocal.owner);
+				<f ok>
+					if (success){
+						for (auto s:members) printf ("%s\n",s);
+					}else{
+						bofs_error ("list_contacts",internal_error,"Can't list contacts: %s",msg);
+					}
+				</f>
+				</call>
+			}
 		}else{
 			tlmp_error ("One of the following option must be used:\n"
 				"\t--create-group-list\n"
