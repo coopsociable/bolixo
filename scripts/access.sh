@@ -95,12 +95,14 @@ elif [ "$1" = "ivldsession" ] ; then # test: Test access with invalid session (a
 	./test.sh bod-control nodelogout http://test1.bolixo.org $SESSION
 elif [ "$1" = "remote-contact" ] ; then # test: Perform remote contact request
 	ssh root@preprod.bolixo.org /root/bin/cleartest1
+	sleep 5
 	for user in bolixodev bolixonews bolixonouvelles jacquesg
 	do
 		./bofs misc --contact_request -u $user@preprod.bolixo.org
 	done
 	for user in bolixodev bolixonews bolixonouvelles jacquesg
 	do
+		sleep 0.2
 		ssh root@preprod.bolixo.org bofs -u $user misc --contact_manage -u jacques-A@test1.bolixo.org
 	done
 	echo === Remote contacts
@@ -113,6 +115,12 @@ elif [ "$1" = "remote-contact" ] ; then # test: Perform remote contact request
 	./bofs groups --print-contacts
 	echo ==== Inbox jacques-A
 	./bofs -t msgs -s -G inbox
+elif [ "$1" = "remote-interest" ] ; then # test: add interest admin@preprod.bolixo.org
+	./bofs misc --interest_set --int_user admin@preprod.bolixo.org
+	./bofs -t misc --interest_list
+	ssh root@preprod.bolixo.org /root/bin/adminmsgs 2
+	sleep 1
+	./bofs -t misc --interest_check
 else
 	echo command
 fi

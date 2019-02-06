@@ -848,13 +848,16 @@ elif [ "$1" = "cmp-sequence" ] ; then # S: Execute QA tests
 	CMPDIR=/tmp/cmp-sequence
 	rm -fr $CMPDIR
 	mkdir $CMPDIR
-	for test in directory createsubdir projects ivldsession
+	for test in directory createsubdir projects ivldsession public remote-contact remote-interest
 	do
+		OPT=
+		if [ "$test" = "public" ]; then
+			OPT=jacques-A
+		fi
 		$0 syslog-clear
-		./scripts/access.sh $test >$CMPDIR/$test.out 2>$CMPDIR/$test.err
+		./scripts/access.sh $test $OPT >$CMPDIR/$test.out 2>$CMPDIR/$test.err
 		$0 syslog-logs >$CMPDIR/$test.log
 	done
-	./scripts/access.sh public jacques-A >$CMPDIR/public.out 2>$CMPDIR/public.err
 	cd ../cmp-sequence
 	NBREF=`ls | wc -l`
 	NBTST=`cd /tmp/cmp-sequence && ls | wc -l`
