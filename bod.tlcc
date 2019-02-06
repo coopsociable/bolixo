@@ -127,7 +127,6 @@ struct DIRENTRY{
 #define webapi_replymsg_NOTNEED
 #define webapi_replymsg_project_NOTNEED
 #define webapi_sendattach_NOTNEED
-#define webapi_sendtalk_NOTNEED
 #define webapi_sendtalk_file_NOTNEED
 #define webapi_list_talk_NOTNEED
 #define webapi_public_listdir_NOTNEED
@@ -858,6 +857,34 @@ static void bod_remote_contact_manage(
 		<call webapi_contact_manage> (hcon,session,"",user,status);
 		<f ok>
 			if (!success) tlmp_error ("remote_contact_manage: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
+		</f>
+		</call>
+		bod_remotelogout(hcon,session);
+	}
+}
+</mod>
+/*
+	Perform a sendtalk to one remote user
+*/
+<mod>
+static void bod_remote_sendtalk(
+	CONNECT_INFO &con,
+	const char *sessionid,
+	PARAM_STRING caller,	// User who wrote this message
+	PARAM_STRING user,	// recipient
+	const BOB_TYPE &content,
+	PARAM_STRING server,	// Server where this user lives
+	const char *nodename)	// Our nodename
+{
+	CONNECT_HTTP_INFO hcon;
+	bod_inithcon (hcon,server);
+	string session;
+	if (bod_remotelogin (con,hcon,caller,nodename,sessionid,session)!=-1){
+//owner to:v groupname groupowner content:o more:b name sign createdby
+		vector<string> to={user.ptr};
+		<call webapi_sendtalk> (hcon,session,"",to,"","",content,false,"","","");
+		<f ok>
+			if (!success) tlmp_error ("remote_sendtalk: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
 		</f>
 		</call>
 		bod_remotelogout(hcon,session);
@@ -2064,11 +2091,36 @@ static int bod_main (
 				rep_verifysign (glocal.status,glocal.msg);
 			</f>
 			<f sendtalk>	// sessionid owner to:v groupname groupowner content:o name sign createdby = success:b msg handle
-				<call bo_writed_client_sendtalk>(glocal.con,sessionid,owner,to,groupname,groupowner,content,more,name,sign);
-				<f ok>
-					glocal.bod_client.rep_sendtalk(success,msg,handle);
-				</f>
-				</call>
+				glocal const char *sessionid = sessionid;
+				glocal string msg;
+				glocal string handle;
+				glocal const vector<const char *> *to = &to;
+				glocal const BOB_TYPE *content = &content;
+				glocal string username;
+				unsigned userid = bo_writed_get_group_owner (glocal.con_sess, sessionid, owner, glocal.username, glocal.msg);
+				if (userid != 0){
+					<call bo_writed_client_sendtalk>(glocal.con,sessionid,owner,to,groupname,groupowner,content,more,name,sign);
+					<f ok>
+						glocal.msg = msg;
+						glocal.handle = handle;
+						if (success && handle[0] == '\0'){
+							for (auto s:*glocal.to){
+								string tmpuser,remote_user,remote;
+								if (bod_parse_user(s,tmpuser,remote_user,remote,glocal.nodename)!=-1
+									&& remote.size() > 0){
+									bod_remote_sendtalk (glocal.con,glocal.sessionid
+										,glocal.username,remote_user,*glocal.content,remote,glocal.nodename);
+								}
+							}
+						}
+					</f>
+					</call>
+				}
+				if (glocal.msg.size() > 0){
+					rep_sendtalk (false,glocal.msg,"");
+				}else{
+					rep_sendtalk(true,glocal.msg,glocal.handle);
+				}
 			</f>
 			<f sendtalk_file>	// sessionid owner to:v groupname groupowner filename filedate = success:b msg handle
 				<call bo_writed_client_sendtalk_file>(glocal.con,sessionid,owner,to,groupname,groupowner,filename,filedate);

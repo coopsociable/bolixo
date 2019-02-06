@@ -159,6 +159,20 @@ static bool bo_writed_fname_check(const char *name, string &msg)
 
 static const char *nodename = NULL;
 
+static string writed_format_mail_newacct(const char *nickname, PARAM_STRING id_str)
+{
+	return string_f(
+		MSG_U(I_CONFIRMMSG,"Hello!\r\n"
+		"\r\n"
+		"You just created an account using nickname %s on bolixo.org\r\n"
+		"Just click on the link below to confirm the account.\r\n"
+		"\r\n"
+		"%s/index.hc?webstep=10&confirm=%s\r\n"
+		"\r\n"
+		"Thanks for joining!\r\n")
+		,nickname
+		,nodename,id_str.ptr);
+}
 static int writed_mail_newaccount(
 	const char *mailserver,
 	const char *mailport,
@@ -167,16 +181,7 @@ static int writed_mail_newaccount(
 	const char *email,
 	PARAM_STRING id_str)
 {
-	string tmp = string_f(
-		MSG_U(I_CONFIRMMSG,"Hello!\r\n"
-		"\r\n"
-		"You just created an account using nickname %s on bolixo.org\r\n"
-		"Just click on the link below to confirm the account.\r\n"
-		"<a href=%s/index.hc?webstep=10&confirm=%s>confirm</a>\r\n"
-		"\r\n"
-		"Thanks for joining!\r\n")
-		,nickname
-		,nodename,id_str.ptr);
+	string tmp = writed_format_mail_newacct(nickname,id_str);
 	return fdpass_sendmail (mailserver,mailport,mailfrom,email
 		,"Account confirmation on bolixo.org"
 		,tmp);
@@ -477,6 +482,10 @@ static int bo_writed_project_msg(
 }
 </mod>
 
+static bool bo_writed_remote_user (PARAM_STRING user)
+{
+	return strchr(user.ptr,'@')!=NULL;
+}
 
 /*
 	Check that all recipients do exist and are members of the sender contact list.
@@ -515,8 +524,10 @@ static int bo_writed_check_recipients(
 				const char *pt = strchr(r,'@');
 				if (pt == NULL){
 					tos.push_back(r);
-				}else if (strcmp(our_node,pt+1)==0){
+				}else if (strcasecmp(our_node,pt+1)==0){
 					tos.push_back(string(r,pt-r));
+				}else{
+					tos.push_back(r);
 				}
 			}
 		}
@@ -1098,7 +1109,7 @@ static void bo_writed_interest_set(unsigned userid, const char *user, string &ms
 			// When the short inbox will be created, we will update the interest on the fly.
 			msg.clear();
 		}
-		if (strchr(user,'@')==NULL){
+		if (!bo_writed_remote_user(user)){
 			// Check the public_view only for local user. If the user has no public_view
 			// we se dirid to -1. It will be changed whenever the user sets his public_view
 			<call sql_query>("select public_view from config where userid=%d",glocal.check_id);
@@ -1552,15 +1563,20 @@ int main (int argc, char *argv[])
 					rep_sendmail (success);
 				</f>
 				<f newacctresend>
+					glocal bool to_stdout = to_stdout;
 					glocal bool success = false;
+					glocal string msg;
 					<call sql_query>(*glocal.usq,"select name,email,userid_str from users where email='%s' and confirmed is null",email);
 					<f onerow>
-						if (writed_mail_newaccount (glocal.mailserver,glocal.mailport,glocal.mailfrom,row[0],row[1],row[2]) != -1){
+						if (glocal.to_stdout){
+							glocal.msg = writed_format_mail_newacct(row[0],row[2]);
+							glocal.success = true;
+						}else if (writed_mail_newaccount (glocal.mailserver,glocal.mailport,glocal.mailfrom,row[0],row[1],row[2]) != -1){
 							glocal.success = true;
 						}
 					</f>
 					</call>
-					rep_newacctresend (glocal.success);
+					rep_newacctresend (glocal.success,glocal.msg);
 				</f>
 				<f mailctrl>
 					glocal.ctx.mailon = on;
@@ -2776,7 +2792,7 @@ int main (int argc, char *argv[])
 										bo_writed_addfile_bob (glocal.ctx.con_keys,glocal.sessionid,ptr_name,ENTRY_MSG,dirid,glocal.userid
 											,*glocal.content,glocal.more,glocal.sign
 											,msgid,glocal.msg,glocal.handle,fileid,modified);
-										bool remote_user = strchr(glocal.username.c_str(),'@')!=NULL;
+										bool remote_user = bo_writed_remote_user(glocal.username);
 										if (remote_user){
 											if (created){
 												bo_writed_update_interest_table(ownerid,dirid);
@@ -2796,17 +2812,21 @@ int main (int argc, char *argv[])
 												}
 											}
 										}
+										// Now that we have created the message in the group, we
+										// simply link the message in all recipients, except remote user.
 										for (auto &u:glocal.uids){
 											bool created;
-											int udirid = fs_find_short_inbox (u.second,u.first,"inbox",glocal.msg,true,created);
-											if (udirid != -1){
-												if (fs_insert_entry(udirid,fileid,modified.buf,msgid,ENTRY_MSG,ownerid)==-1){
-													tlmp_error ("Insert in short user inbox, internal error %s\n",u.first.c_str());
+											if (!bo_writed_remote_user(u.first)){
+												int udirid = fs_find_short_inbox (u.second,u.first,"inbox",glocal.msg,true,created);
+												if (udirid != -1){
+													if (fs_insert_entry(udirid,fileid,modified.buf,msgid,ENTRY_MSG,ownerid)==-1){
+														tlmp_error ("Insert in short user inbox, internal error %s\n",u.first.c_str());
+														break;
+													}
+												}else{
+													tlmp_error ("Insert in short user inbox, missing inbox, internal error %s\n",u.first.c_str());
 													break;
 												}
-											}else{
-												tlmp_error ("Insert in short user inbox, missing inbox, internal error %s\n",u.first.c_str());
-												break;
 											}
 										}
 									}
@@ -2814,28 +2834,42 @@ int main (int argc, char *argv[])
 								</f>
 								</call>
 							}else if (to.size() > 0){
-								bool created;
-								auto &uid0 = glocal.uids[0];
-								int dirid = fs_find_short_inbox (uid0.second,uid0.first,"inbox",glocal.msg,true,created);
-								if (dirid != -1){
-									int fileid;
-									string msgid;
-									DATEASC modified;
-									bo_writed_addfile_bob (glocal.ctx.con_keys,glocal.sessionid,NULL,ENTRY_MSG,dirid,glocal.userid
-										,*glocal.content,glocal.more,glocal.sign
-										,msgid,glocal.msg,glocal.handle,fileid,modified);
-									glocal.uids.erase(glocal.uids.begin());
-									for (auto &u:glocal.uids){
-										bool created;
-										int udirid = fs_find_short_inbox (u.second,u.first,"inbox",glocal.msg,true,created);
-										if (udirid != -1){
-											if (fs_insert_entry(udirid,fileid,modified.buf,msgid,ENTRY_MSG,glocal.userid)==-1){
-												tlmp_error ("Insert in short user inbox, internal error %s\n",u.first.c_str());
+								// No group, only recipient. We create the message in the first user inbox
+								// and then link it into the other inboxes.
+								// Now, there is a problem with remote user. The message is copied on their server
+								// We remove the remote users from the uids vector and process with the remaining ones
+								// The bod server, once bo-writed has done the job and validated everything
+								// will dispatch the message to remote users.
+								for (auto p=glocal.uids.begin(); p != glocal.uids.end();){
+									auto next = p;
+									next++;
+									if (bo_writed_remote_user(p->first)) glocal.uids.erase(p);
+									p = next;
+								}
+								if (glocal.uids.size() > 0){
+									bool created;
+									auto &uid0 = glocal.uids[0];
+									int dirid = fs_find_short_inbox (uid0.second,uid0.first,"inbox",glocal.msg,true,created);
+									if (dirid != -1){
+										int fileid;
+										string msgid;
+										DATEASC modified;
+										bo_writed_addfile_bob (glocal.ctx.con_keys,glocal.sessionid,NULL,ENTRY_MSG,dirid,glocal.userid
+											,*glocal.content,glocal.more,glocal.sign
+											,msgid,glocal.msg,glocal.handle,fileid,modified);
+										glocal.uids.erase(glocal.uids.begin());
+										for (auto &u:glocal.uids){
+											bool created;
+											int udirid = fs_find_short_inbox (u.second,u.first,"inbox",glocal.msg,true,created);
+											if (udirid != -1){
+												if (fs_insert_entry(udirid,fileid,modified.buf,msgid,ENTRY_MSG,glocal.userid)==-1){
+													tlmp_error ("Insert in short user inbox, internal error %s\n",u.first.c_str());
+													break;
+												}
+											}else{
+												tlmp_error ("Insert in short user inbox, missing inbox, internal error %s\n",u.first.c_str());
 												break;
 											}
-										}else{
-											tlmp_error ("Insert in short user inbox, missing inbox, internal error %s\n",u.first.c_str());
-											break;
 										}
 									}
 								}
@@ -2970,8 +3004,8 @@ int main (int argc, char *argv[])
 								}else{
 									bool add = glocal.status == CONTACT_ACCEPTED;
 									// We put or remove users from each other contacts group
-									bool from_user_remote = strchr(glocal.username.c_str(),'@');
-									bool target_user_remote = strchr(glocal.target_user,'@');
+									bool from_user_remote = bo_writed_remote_user(glocal.username);
+									bool target_user_remote = bo_writed_remote_user(glocal.target_user);
 									if (!from_user_remote) bo_writed_group_member(glocal.userid,"contacts",glocal.target_userid,"R",add,glocal.msg);
 									if (!target_user_remote) bo_writed_group_member(glocal.target_userid,"contacts",glocal.userid,"R",add,glocal.msg);
 									// Send a message to the user about his request
