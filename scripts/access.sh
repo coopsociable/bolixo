@@ -103,7 +103,15 @@ elif [ "$1" = "remote-contact" ] ; then # test: Perform remote contact request
 	do
 		ssh root@preprod.bolixo.org bofs -u $user misc --contact_manage -u jacques-A@test1.bolixo.org
 	done
+	echo === Remote contacts
+	for user in bolixodev bolixonews bolixonouvelles jacquesg
+	do
+		echo === $user
+		./bofs --nonstrict -u preprod/$user groups --print-contacts
+	done
+	echo ==== Contacts for jacques-A
 	./bofs groups --print-contacts
+	echo ==== Inbox jacques-A
 	./bofs -t msgs -s -G inbox
 else
 	echo command

@@ -285,11 +285,10 @@ static int bo_writed_copydir (
 	Return 0 if not a valid userid (sessionid is invalid)
 */
 <mod>
-static unsigned bo_writed_get_group_owner (CONNECT_INFO &con, const char *sessionid, const char *owner, string &username, string &msg)
+static unsigned bo_writed_get_group_owner (CONNECT_INFO &con, const char *sessionid, const char *owner, string &username, string &msg, bool &is_admin)
 {
 	glocal string *username = &username;
 	glocal string *msg = &msg;
-	bool is_admin;
 	glocal unsigned userid = trli_getsessionuser (con,sessionid,is_admin);
 	if (is_admin && owner[0] != '\0'){
 		<call sql_query>("select userid from id2name where name='%s'",owner);
@@ -302,6 +301,7 @@ static unsigned bo_writed_get_group_owner (CONNECT_INFO &con, const char *sessio
 		</call>
 		if (glocal.userid == 0) msg = MSG_U(E_UNKNOWNOWNER,"Unknown owner");
 		username = owner;
+		is_admin = false;
 	}else if (glocal.userid != 0){
 		<call sql_query>("select name from id2name where userid=%u",glocal.userid);
 		<f onerow>
@@ -318,10 +318,16 @@ static unsigned bo_writed_get_group_owner (CONNECT_INFO &con, const char *sessio
 	return glocal.userid;
 }
 </mod>
+static unsigned bo_writed_get_group_owner (CONNECT_INFO &con, const char *sessionid, const char *owner, string &username, string &msg)
+{
+	bool is_admin;
+	return bo_writed_get_group_owner (con,sessionid,owner,username,msg,is_admin);
+}
 static unsigned bo_writed_get_group_owner (CONNECT_INFO &con, const char *sessionid, const char *owner, string &msg)
 {
 	string username;
-	return bo_writed_get_group_owner (con,sessionid,owner,username,msg);
+	bool is_admin;
+	return bo_writed_get_group_owner (con,sessionid,owner,username,msg,is_admin);
 }
 
 static void bo_writed_set_msgid(string &msgid, const char *replyto)
@@ -498,7 +504,8 @@ static int bo_writed_check_recipients(
 	unsigned userid,	// All recipients must be member of this user contact group
 	const vector<const char*> &recipients,
 	vector<pair<string,unsigned>> &userids,
-	string &msg)
+	string &msg,
+	bool is_admin)
 {
 	int ret = -1;
 	if (recipients.size() == 0){
@@ -519,6 +526,7 @@ static int bo_writed_check_recipients(
 		}
 		for (auto r:recipients){
 			if (strcasecmp(r,"admin")==0){
+				// Everyone is allowed to talk to admin
 				userids.push_back(pair<string,unsigned>("admin",1));
 			}else{
 				const char *pt = strchr(r,'@');
@@ -532,10 +540,16 @@ static int bo_writed_check_recipients(
 			}
 		}
 		if (tos.size() > 0){
-			string req = string_f("select id2name.name,id2name.userid from groups"
-				" join group_members on group_members.groupid = groups.id"
-				" join id2name on id2name.userid=group_members.userid"
-				" where groups.name='contacts' and groups.ownerid=%u and (",userid);
+			string req;
+			if (is_admin){
+				// No membership needed. Admin can talk to anyone
+				req = "select id2name.name,id2name.userid from id2name where (";
+			}else{
+				req = string_f("select id2name.name,id2name.userid from groups"
+					" join group_members on group_members.groupid = groups.id"
+					" join id2name on id2name.userid=group_members.userid"
+					" where groups.name='contacts' and groups.ownerid=%u and (",userid);
+			}
 			const char *sep = "";
 			NSQL_ENCODE enc;
 			for (auto &r:tos){
@@ -590,7 +604,7 @@ static void bo_writed_sendmsg (
 	}else if (glocal.userid != 0){
 		// Check that all recipients do exist
 		glocal vector<pair<string,unsigned>> r_userids;
-		if (bo_writed_check_recipients(glocal.userid,recipients,glocal.r_userids,msg)!=-1){
+		if (bo_writed_check_recipients(glocal.userid,recipients,glocal.r_userids,msg,false)!=-1){
 			msg = "";
 			if (replyto != NULL){
 				int inbox_id = fs_find_inbox(glocal.userid,username,false,msg);
@@ -771,7 +785,7 @@ static int bo_writed_addfile_bob (
 					msg = string_f ("Signature do not match for pre-signed file %s",basename);
 					tlmp_error ("%s\n",msg.c_str());
 				}
-			}else if (sessionid != NULL){
+			}else{
 				sign = bo_writed_sign (con_keys,userid,content);
 			}
 		}
@@ -1235,6 +1249,7 @@ static int bod_sessionstate(
 	Send a message to a user from the admin
 */
 static void bo_writed_send_admin_msg (
+	CONNECT_INFO &con_keys,
 	unsigned userid,
 	PARAM_STRING username,
 	PARAM_STRING message)
@@ -1251,7 +1266,6 @@ static void bo_writed_send_admin_msg (
 			string msgid,handle;
 			DATEASC modified;
 			BOB_TYPE content(message.ptr,strlen(message.ptr),false);
-			CONNECT_INFO con_keys;
 			bo_writed_addfile_bob (con_keys,NULL,NULL,ENTRY_MSG,dirid,adminid
 				,content,false,"",msgid,msg,handle,fileid,modified);
 		}
@@ -2760,12 +2774,13 @@ int main (int argc, char *argv[])
 					glocal const char *groupowner = groupowner;
 					glocal const char *name = name;
 					glocal const char *sign = sign;
-					glocal unsigned userid = bo_writed_get_group_owner (glocal.con, sessionid, owner, glocal.username, glocal.msg);
+					bool is_admin;
+					glocal unsigned userid = bo_writed_get_group_owner (glocal.con, sessionid, owner, glocal.username, glocal.msg, is_admin);
 					if (glocal.userid > 0){
 						// sendtalk (and sendtalk_file) may send to a group, to a list of users, or both.
 						// so to[] may be empty and the groupnname may be empty. Not both.
 						glocal vector<pair<string,unsigned>> uids;
-						bo_writed_check_recipients(glocal.userid,to,glocal.uids,glocal.msg);
+						bo_writed_check_recipients(glocal.userid,to,glocal.uids,glocal.msg,is_admin);
 						if (to.size() == 0 && groupname[0] == '\0'){
 							glocal.msg = MSG_U(E_NODEST,"No recipient specified (users or group)");
 						}else if (glocal.msg.size() == 0){
@@ -3018,7 +3033,7 @@ int main (int argc, char *argv[])
 											,glocal.username.c_str());
 									}
 									if (!bo_writed_remote_user(glocal.target_user)){
-										bo_writed_send_admin_msg (glocal.target_userid,glocal.target_user,message);
+										bo_writed_send_admin_msg (glocal.ctx.con_keys,glocal.target_userid,glocal.target_user,message);
 									}
 								}
 							</f>

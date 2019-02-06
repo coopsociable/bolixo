@@ -850,7 +850,9 @@ elif [ "$1" = "cmp-sequence" ] ; then # S: Execute QA tests
 	mkdir $CMPDIR
 	for test in directory createsubdir projects ivldsession
 	do
+		$0 syslog-clear
 		./scripts/access.sh $test >$CMPDIR/$test.out 2>$CMPDIR/$test.err
+		$0 syslog-logs >$CMPDIR/$test.log
 	done
 	./scripts/access.sh public jacques-A >$CMPDIR/public.out 2>$CMPDIR/public.err
 	cd ../cmp-sequence
