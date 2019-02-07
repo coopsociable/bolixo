@@ -122,6 +122,8 @@ static unsigned trli_getsessionuser (CONNECT_INFO &con, const char *sessionid)
 }
 /*
 	Check if a name only use accepted characters
+	Many characters are refused even if they probably do not cause any problems on the system.
+	But names may be used on the command line (using bofs for example), so we avoid some more.
 */
 static bool bo_writed_lex_check(const char *groupname, string &msg, const char special)
 {
@@ -131,7 +133,8 @@ static bool bo_writed_lex_check(const char *groupname, string &msg, const char s
 		if (*pt <= ' '){
 			ret = false;
 			break;
-		}else if (*pt == special || *pt == '@' || *pt == '#' || *pt == ';' || *pt == '"' || *pt == '\''){
+		}else if (*pt == special || *pt == '@' || *pt == '#' || *pt == ';'
+			|| *pt == '"' || *pt == '\'' || *pt == '*' || *pt == '?' || *pt == '%' || *pt == '`'){
 			ret = false;
 			break;
 		}
@@ -492,7 +495,32 @@ static bool bo_writed_remote_user (PARAM_STRING user)
 {
 	return strchr(user.ptr,'@')!=NULL;
 }
-
+/*
+	Strip our nodename for the user so user@ournode becomes user
+	user stays user
+	user@some_other_node stays user@some_other_node
+*/
+static string bo_writed_remove_localnode(
+	const char *user)
+{
+	string ret;
+	const char *our_node = strstr(nodename,"//");
+	if (our_node != NULL){
+		our_node += 2;
+	}else{
+		tlmp_error ("Can't parse our nodename %s, no //\n",nodename);
+		our_node = "";
+	}
+	const char *pt = strchr(user,'@');
+	if (pt == NULL){
+		ret = user;
+	}else if (strcasecmp(our_node,pt+1)==0){
+		ret = string(user,pt-user);
+	}else{
+		ret = user;
+	}
+	return ret;
+}
 /*
 	Check that all recipients do exist and are members of the sender contact list.
 	For private site, all local users are accepted. Remote user have to be member of the contact list.
@@ -2964,6 +2992,8 @@ int main (int argc, char *argv[])
 					glocal const char *intro = intro;
 					glocal unsigned userid = bo_writed_get_group_owner (glocal.con, sessionid, owner, glocal.username, glocal.msg);
 					if (glocal.userid > 0){
+						string s_user = bo_writed_remove_localnode(user);
+						user = s_user.c_str();
 						glocal int target_userid = fs_rec_getid ("select userid from id2name where name='%s'",user);
 						if (glocal.target_userid == -1){
 							glocal.msg = MSG_U(E_UNKOWNUSER,"Unknown user");
@@ -3001,6 +3031,8 @@ int main (int argc, char *argv[])
 					glocal string msg;
 					glocal unsigned userid = bo_writed_get_group_owner (glocal.con, sessionid, owner, glocal.username, glocal.msg);
 					if (glocal.userid > 0){
+						string s_user = bo_writed_remove_localnode(user);
+						user = s_user.c_str();
 						glocal const char *target_user = user;
 						glocal int target_userid = fs_rec_getid ("select userid from id2name where name='%s'",user);
 						if (glocal.target_userid == -1){

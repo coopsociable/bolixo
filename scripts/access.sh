@@ -115,6 +115,22 @@ elif [ "$1" = "remote-contact" ] ; then # test: Perform remote contact request
 	./bofs groups --print-contacts
 	echo ==== Inbox jacques-A
 	./bofs -t msgs -s -G inbox
+elif [ "$1" = "contact-utf8" ] ; then # test: Perform contact request UTF-8
+	user=jacques-é
+	./bofs misc --contact_request -u $user
+	./bofs -u $user misc --contact_manage -u jacques-A@test1.bolixo.org
+	./bofs -u jacques-B misc --contact_request -u $user
+	./bofs -u $user misc --contact_manage -u jacques-B
+	for id in $user jacques-A jacques-B
+	do
+		echo ==== Contacts for $id
+		./bofs -u $id groups --print-contacts
+	done
+	for id in jacques-A jacques-B
+	do
+		echo ==== Inbox $id
+		./bofs -u $id  -t msgs -s -G inbox
+	done
 elif [ "$1" = "remote-interest" ] ; then # test: add interest admin@preprod.bolixo.org
 	./bofs misc --interest_set --int_user admin@preprod.bolixo.org
 	./bofs -t misc --interest_list

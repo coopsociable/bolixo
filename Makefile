@@ -184,6 +184,23 @@ proto/bolixoapi.protoh: proto/bolixoapi.proto proto/bolixod_client.protoh
 	build-protocol $(INSTRUMENT) --request_obj REQUEST_JSON --request_info_obj REQUEST_JSON_INFO \
 		--connect_info_obj CONNECT_HTTP_INFO --name bolixoapi \
 		--protoch proto/bolixoapi.protoch proto/bolixoapi.proto >proto/bolixoapi.protoh
+doc: documentd documentd-control
+
+documentd: documentd.tlcc proto/documentd_control.protoh proto/documentd_client.protoh _dict.o
+	cctlcc -Wall $(OPTIONS) documentd.tlcc _dict.o -o documentd $(LIBS)
+
+documentd-control: documentd-control.tlcc proto/documentd_control.protoh _dict.o
+	cctlcc -Wall $(OPTIONS) documentd-control.tlcc _dict.o -o documentd-control $(LIBS)
+
+proto/documentd_control.protoh: proto/documentd_control.proto
+	build-protocol --arg "int no" --arg "HANDLE_INFO *c" --name documentd_control \
+		--protoch proto/documentd_control.protoch proto/documentd_control.proto >proto/documentd_control.protoh
+
+proto/documentd_client.protoh: proto/documentd_client.proto
+	build-protocol $(INSTRUMENT) --secretmode --arg "int no" --arg "HANDLE_INFO *c" --name documentd_client \
+		--protoch proto/documentd_client.protoch proto/documentd_client.proto >proto/documentd_client.protoh
+
+
 
 ssltestsign: ssltestsign.tlcc
 	cctlcc $(OPTIONS) ssltestsign.tlcc -o ssltestsign -lstdc++ -lcrypto

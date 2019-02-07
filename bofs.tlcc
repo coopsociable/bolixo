@@ -2421,6 +2421,17 @@ static void bofs_listshortmsgs(CONTEXT &ctx, const vector<SHORTMSG_receive> &mes
 		}
 	}
 }
+static void bofs_copysort (const vector<SHORTMSG_receive> &messages, vector<SHORTMSG_receive> &copy)
+{
+	for (auto &m:messages) copy.push_back(m);
+	if (testmode){
+		sort (copy.begin(),copy.end()
+			,[](const SHORTMSG_receive &a, const SHORTMSG_receive &b) -> bool
+			{
+				return strcmp(a.content,b.content)<0;
+			});
+	}
+}
 <mod>
 static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 {
@@ -2528,16 +2539,7 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 							glocal.stop = true;
 						}else{
 							vector<SHORTMSG_receive> copy;
-							for (auto &m:messages) copy.push_back(m);
-							#if 1
-							if (testmode){
-								sort (copy.begin(),copy.end()
-									,[](const SHORTMSG_receive &a, const SHORTMSG_receive &b) -> bool
-									{
-										return strcmp(a.content,b.content)<0;
-									});
-							}
-							#endif
+							bofs_copysort (messages,copy);
 							bofs_listshortmsgs(*glocal.ctx,copy,glocal.full);
 							glocal.stop = messages.size() < glocal.chunk;
 							glocal.offset += glocal.chunk;
@@ -3006,7 +3008,9 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 							bofs_error ("interest_check",internal_error,msg);
 							glocal.stop = true;
 						}else{
-							for (auto &m:messages){
+							vector<SHORTMSG_receive> copy;
+							bofs_copysort (messages,copy);
+							for (auto &m:copy){
 								int linelen = 0;
 								if (m.content[0] != '\0'){
 									const char *eol = strchr(m.content,'\n');
