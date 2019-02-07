@@ -37,6 +37,7 @@
 #include <string>
 #include <vector>
 #include <deque>
+#include <algorithm>
 #include <trlitool.h>
 #define DEFINE_TBTYPE
 #define DEFINE_TBFTYPE
@@ -2526,7 +2527,18 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 							bofs_error ("msgs",internal_error,msg);
 							glocal.stop = true;
 						}else{
-							bofs_listshortmsgs(*glocal.ctx,messages,glocal.full);
+							vector<SHORTMSG_receive> copy;
+							for (auto &m:messages) copy.push_back(m);
+							#if 1
+							if (testmode){
+								sort (copy.begin(),copy.end()
+									,[](const SHORTMSG_receive &a, const SHORTMSG_receive &b) -> bool
+									{
+										return strcmp(a.content,b.content)<0;
+									});
+							}
+							#endif
+							bofs_listshortmsgs(*glocal.ctx,copy,glocal.full);
 							glocal.stop = messages.size() < glocal.chunk;
 							glocal.offset += glocal.chunk;
 						}
