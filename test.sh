@@ -845,7 +845,7 @@ elif [ "$1" = "test-sendmail" ] ;then # prod: ask writed to send one email
 elif [ "$1" = "cmp-sequence" ] ; then # S: Execute QA tests
 	rm -f /tmp/bofs.testuuids
 	unset LANG
-	CMPDIR=/tmp/cmp-sequence
+	CMPDIR=/tmp/cmp-test
 	rm -fr $CMPDIR
 	mkdir $CMPDIR
 	for test in directory createsubdir projects ivldsession public remote-contact remote-interest contact-utf8
@@ -858,15 +858,15 @@ elif [ "$1" = "cmp-sequence" ] ; then # S: Execute QA tests
 		./scripts/access.sh $test $OPT >$CMPDIR/$test.out 2>$CMPDIR/$test.err
 		$0 syslog-logs >$CMPDIR/$test.log
 	done
-	cd ../cmp-sequence
+	cd ../cmp-test
 	NBREF=`ls | wc -l`
-	NBTST=`cd /tmp/cmp-sequence && ls | wc -l`
+	NBTST=`cd /tmp/cmp-test && ls | wc -l`
 	if [ "$NBREF" != "$NBTST" ] ; then
 		echo NBREF=$NBREF NBTST=$NBTST
 	else
 		for file in *
 		do
-			diff -c $file /tmp/cmp-sequence/$file
+			diff -c $file /tmp/cmp-test/$file
 		done
 	fi
 elif [ "$1" = "eraseanon-lxc" ] ; then # prod: [ nbseconds anonymous normal admin ]
