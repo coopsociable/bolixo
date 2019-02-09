@@ -894,6 +894,19 @@ static void index_download (CONNECT_INFO &con, FILE_TYPE file_type, PARAM_STRING
 	util_sendfile (con,w_session.c_str(),fname);
 }
 
+static void index_msgs_style(_F_webtable &c)
+{
+	if (is_mobile){
+		c.setrowstyle ("sep","bgcolor=ghostwhite valign=top\t\t\talign=right");
+		c.setrowstyle ("sep+current","bgcolor=lightblue valign=top\t\t\talign=right");
+		c.setrowstyle ("sep1","bgcolor=white valign=top\t\t\talign=right");
+		c.setrowstyle ("sep1+current","bgcolor=lightblue valign=top\t\t\talign=right");
+		c.sethead (MSG_U(H_TALKMOBILE,"From\t\tSubmit"));
+	}else{
+		c.sethead (MSG_U(H_TALK,"From\t\tSubmit\tMessage"));
+	}
+}
+
 <mod>
 static void index_show_shortmsg(
 	CONNECT_INFO &con,
@@ -969,7 +982,7 @@ static void index_show_shortmsg(
 		adddrop_opt (MENU_UNDELETE,MSG_R(M_UNDELETE));
 		adddrop_opt (MENU_DOWNLOAD,MSG_R(M_DOWNLOAD));
 		glocal unsigned rownum = nbskip;
-		sethead (MSG_U(H_TALK,"From\t\tSubmit\tMessage"));
+		index_msgs_style(*this);
 		<call bod_client_list_talk>(*glocal.con,w_session.c_str(),"",glocal.groupname,glocal.groupowner,nbskip,nblines);
 		<f ok>
 			glocal.webtable.setdrop_default({MENU_PASTE});
@@ -984,9 +997,9 @@ static void index_show_shortmsg(
 				unsigned mini_image_width = 30;
 				unsigned video_size = 200;
 				if (is_mobile){
-					image_width = 300;
+					image_width = 700;
 					mini_image_width = 60;
-					video_size = 300;
+					video_size = 700;
 				}
 				for (auto &m:messages){
 					string now = string(m.submit,10);
@@ -1048,11 +1061,8 @@ static void index_show_shortmsg(
 					const char *style = line_styles[line_style];
 					line_style++;
 					if (line_style == 2) line_style = 0;
-					if (strcmp(m.from,userinfo.name.c_str())==0){
-						glocal.webtable.setrow (style,glocal.rownum,"\t\t%s\t%s"
-							,time.c_str(),content.c_str());
-					}else{
-						string img;
+					string img;
+					if (strcmp(m.from,userinfo.name.c_str())!=0){
 						if (strcmp(m.from,"admin")==0){
 							// admin is not in the contact list of everyone, but has a public page
 							img = "<img src=/public/admin/project/mini-photo.jpg>";
@@ -1060,6 +1070,12 @@ static void index_show_shortmsg(
 							string dir = string_f("/projects/%s/public",m.from);
 							img = index_img(step_image,mini_image_width,dir,"mini-photo.jpg",m.submit);
 						}
+					}
+					if (is_mobile){
+						glocal.webtable.setrow (style,glocal.rownum,"%s\t%s\t%s"
+							,img.c_str(),m.from,time.c_str());
+						glocal.webtable.setrow (style,glocal.rownum,"\t%s\a",content.c_str());
+					}else{
 						glocal.webtable.setrow (style,glocal.rownum,"%s\t%s\t%s\t%s"
 							,img.c_str(),m.from,time.c_str(),content.c_str());
 					}
@@ -1591,7 +1607,7 @@ extern "C" void webmain_real()
 			<f load>
 				adddrop_opt (MENU_COPY,MSG_R(M_COPY));
 				adddrop_opt (MENU_DOWNLOAD,MSG_R(M_DOWNLOAD));
-				sethead  (MSG_R(H_TALK));
+				index_msgs_style (*this);
 				glocal unsigned rownum = nbskip;
 				<call bod_client_interest_check>(glocal.con,w_session.c_str(),"",nbskip,nblines);
 				<f ok>
@@ -1604,9 +1620,9 @@ extern "C" void webmain_real()
 					unsigned mini_image_width = 30;
 					unsigned video_size = 200;
 					if (is_mobile){
-						image_width = 300;
+						image_width = 700;
 						mini_image_width = 60;
-						video_size = 300;
+						video_size = 700;
 					}
 					for (auto &m:messages){
 						string now = string (m.submit,10);
@@ -1661,8 +1677,14 @@ extern "C" void webmain_real()
 								,video_size,video_size
 								,tlmpweb_curpage(),step_public,path.c_str(),tmp.c_str());
 						}
-						glocal.webtable.setrow (style,glocal.rownum,"%s\t%s\t%s\t%s",img.c_str(),m.from
-							,time.c_str(),content.c_str());
+						if (is_mobile){
+							glocal.webtable.setrow (style,glocal.rownum,"%s\t%s\t%s",img.c_str(),m.from
+								,time.c_str());
+							glocal.webtable.setrow (style,glocal.rownum,"\t%s\a",content.c_str());
+						}else{
+							glocal.webtable.setrow (style,glocal.rownum,"%s\t%s\t%s\t%s",img.c_str(),m.from
+								,time.c_str(),content.c_str());
+						}
 						glocal.rownum++;
 					}
 				</f>
@@ -2108,6 +2130,7 @@ extern "C" void webmain_real()
 				}
 			</f>
 			<f load>
+				glocal unsigned status_width=20;	// Size of the small icon at the start of each line (new,seen,modified)
 				glocal unsigned rownum = nbskip;
 				// Defines all posible options for dropdown
 				adddrop_opt (MENU_COPY,MSG_U(M_COPY,"Copy"));
@@ -2123,6 +2146,10 @@ extern "C" void webmain_real()
 					glocal.webtable.setdrop_default({MENU_PASTE,MENU_PREVIEW,MENU_HELPPREVIEW});
 				}else{
 					glocal.webtable.setdrop_default({MENU_PASTE});
+				}
+				if (tlmpweb_ismobile()){
+					hide_columns ({2,4});
+					glocal.status_width=60;
 				}
 				sethead (MSG_U(H_FOLDER,"\tName\tModified\tOwner\tSize"));
 				<call bod_client_listdir>(glocal.con,w_session.c_str(),glocal.path,"",false,nbskip,nblines);
@@ -2156,7 +2183,8 @@ extern "C" void webmain_real()
 						}else{
 							snprintf (sizestr,sizeof(sizestr)-1,"%u",f.size);
 						}
-						glocal.webtable.setrow ("white",glocal.rownum,"<img width=20 src=/%s>\t%s%s\t%s\t%s/%s:%s\t%s"
+						glocal.webtable.setrow ("white",glocal.rownum,"<img width=%u src=/%s>\t%s%s\t%s\t%s/%s:%s\t%s"
+							,glocal.status_width
 							,tbviewed[f.viewed]
 							,f.name,bolixo_isdir(f.type) ? "/" : ""
 							,format_date(userinfo.dateformat,f.modified).c_str()

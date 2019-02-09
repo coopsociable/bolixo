@@ -115,7 +115,7 @@ elif [ "$1" = "sequence" ] ; then # test: Create some users from scratch
 	./bofs -u jacques-B groups --set-member -G common -U jacques-B -AW -Rdba
 	echo Create mails and messages
 	$0 writemails $NB
-elif [ "$1" = "writemails" ] ; then
+elif [ "$1" = "writemails" ] ; then # test: Write some mails and small messages
 	NB=$2
 	if [ "$NB" = "" ] ; then
 		NB=5
@@ -149,6 +149,9 @@ elif [ "$1" = "writemails" ] ; then
 	# Create short messages
 	./bofs              msgs -t -G Bgroup1 --groupowner jacques-B -C "Are you ready for lunch ?"
 	./bofs -u jacques-B msgs -t -G Bgroup1 --groupowner jacques-B -C "Not possible today"
+	echo "Hello how are you today ? I was hoping to see you at lunch time so we can review the work schedule and see all the options." >/tmp/msg.txt
+	echo "Anyway, if you are available before, just let me know and I will do my best to meet you." >>/tmp/msg.txt
+	./bofs -u jacques-B msgs -t -G Bgroup1 --groupowner jacques-B -F /tmp/msg.txt
 	# Test usage of the same group name
 	./bofs              msgs -t -G common --groupowner jacques-A -C "Jacques-A writes to jacques-A:common"
 	./bofs              msgs -t -G common --groupowner jacques-B -C "Jacques-A writes to jacques-B:common"
