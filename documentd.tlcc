@@ -1,0 +1,840 @@
+/*
+	This file is part of Bolixo.
+
+	Bolixo is free software: you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation, either version 3 of the License, or
+	(at your option) any later version.
+
+	Bolixo is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+	GNU General Public License for more details.
+
+	You should have received a copy of the GNU General Public License
+	along with Bolixo.  If not, see <https://www.gnu.org/licenses/>.
+*/
+/*
+	Documents and games manager.
+*/
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <errno.h>
+#include <signal.h>
+#include <syslog.h>
+#include <unistd.h>
+#include <tlmpsql.h>
+#include <tlmplib.h>
+#include <tlmpnet.h>
+#include <trlitool.h>
+#include <deque>
+#include <memory>
+#include <string>
+#include "filesystem.h"
+#include "bolixo.h"
+#include "bolixo.m"
+#include "instrument.h"
+
+static DEBUG_KEY D_SUDOKU("sudoku","sudoku game");
+
+using namespace std;
+static DEBUG_KEY D_PROTO ("proto","Protocol information");
+
+enum CONNECT_TYPE { TYPE_NONE, TYPE_CONTROL, TYPE_CLIENT, TYPE_WORKER};
+
+struct HANDLE_INFO: public ARRAY_OBJ{
+	CONNECT_TYPE type;
+	REQUEST_INFO req;
+	HANDLE_INFO(){
+		type = TYPE_NONE;
+	}
+};
+#include "proto/documentd_control.protoh"
+#include "proto/documentd_client.protoh"
+
+static string documentd_path (const char *name)
+{
+	return string_f("%s/bo-games/%s",getenv("HOME"),name);
+}
+static void documentd_error (vector<VARVAL> &res, PARAM_STRING s)
+{
+	VARVAL v;
+	v.var = "error";
+	v.val = s.ptr;
+	res.push_back(v);
+}
+
+class GAME{
+public:
+	virtual const char *getclass()=0;
+	virtual void save(FILE *fout)=0;
+	virtual void load(FILE *fin)=0;
+	virtual void resetgame() = 0;
+	virtual void testwin(vector<VARVAL> &res) = 0;
+	virtual void exec (const char *var, const char *val, vector<VARVAL> &res) = 0;
+	virtual ~GAME(){};
+};
+
+class TICTACTO: public GAME{
+	unsigned char grid[3][3];
+public:
+	void save(FILE *fout){
+		for (auto &g:grid){
+			fprintf (fout,"%u %u %u\n",g[0],g[1],g[2]);
+		}
+	}
+	void load(FILE *fin){
+		for (auto &g:grid){
+			unsigned v0,v1,v2;
+			if (fscanf(fin,"%u %u %u\n",&v0,&v1,&v2)==3){
+				g[0] = v0;
+				g[1] = v1;
+				g[2] = v2;
+			}
+		}
+	}
+	void resetgame(){
+		memset (grid,0,sizeof(grid));
+	}
+	TICTACTO(){
+		resetgame();
+	}
+	const char *getclass(){
+		return "tictacto";
+	}
+	void testwin(vector<VARVAL> &res){
+		bool won = false;
+		for (auto g:grid){
+			unsigned char v = g[0];
+			if (v != 0){
+				bool found = true;
+				for (unsigned j=1; j<3; j++){
+					if (v != g[j]){
+						found = false;
+						break;
+					}
+				}
+				if (found){
+					won = true;
+					break;
+				}
+			}
+		}
+		if (!won){
+			for (unsigned i=0; i<3; i++){
+				unsigned char v = grid[0][i];
+				if (v != 0){
+					bool found = true;
+					for (unsigned j=1; j<3; j++){
+						if (v != grid[j][i]){
+							found = false;
+							break;
+						}
+					}
+					if (found){
+						won = true;
+						break;
+					}
+				}
+			}
+			if (!won){
+				if (grid[0][0] != 0
+					&& grid[0][0] == grid[1][1]
+					&& grid[0][0] == grid[2][2]){
+					won = true;
+				}else if (grid[0][2] != 0
+					&& grid[0][2] == grid[1][1]
+					&& grid[0][2] == grid[2][0]){
+					won = true;
+				}
+			}
+		}
+		if (won){
+			VARVAL v;
+			v.var = "result";
+			v.val = "won";
+			res.push_back(v);
+		}
+	}
+	void exec (const char *var, const char *val, vector<VARVAL> &res){
+		if (strcmp(var,"place")==0){
+			bool ok = false;
+			unsigned i=atoi(val);
+			const char *pt = str_skipdig(val);
+			const char *msg = "Invalid syntax";
+			if (*pt == ','){
+				pt++;
+				unsigned j=atoi(pt);
+				pt = str_skipdig(pt);
+				if (*pt == ','){
+					pt++;
+					unsigned value=atoi(pt);
+					msg = "Out of range";
+					if (i < 3 && j < 3){
+						msg = "Invalid value";	
+						if (value > 0 && value < 3){
+							unsigned char &g = grid[i][j];
+							if (g == 0){
+								grid[i][j] = value;
+								ok = true;
+							}else{
+								msg = "Location already played";
+							}
+						}
+					}
+				}
+			}
+			if (!ok){
+				documentd_error (res,string_f("Invalid command %s=%s: %s",var,val,msg));
+			}
+		}else if (strcmp(var,"print")==0){
+			string lines;
+			const char *linesep = NULL;
+			for (auto &g:grid){
+				if (linesep != NULL) lines += linesep;
+				linesep = "-----------\n";
+				char sep = '\0';
+				for (auto &gg:g){
+					static char tbcar[]={' ','X','O'};
+					if (sep != '\0') lines += sep;
+					lines += ' ';
+					lines += tbcar[gg];
+					lines += ' ';
+					sep = '|';
+				}
+				lines += '\n';
+			}
+			VARVAL v;
+			v.var = "content";
+			v.val = lines;
+			res.push_back(v);
+					
+		}
+	}
+};
+struct SUDOKU_CELL{
+	unsigned char visible;
+	unsigned char value;
+	unsigned char user_value;
+	void reset(){
+		visible = value = user_value = 0;
+	}
+	SUDOKU_CELL(){
+		reset();
+	}
+};
+class SUDOKU: public GAME{
+	SUDOKU_CELL grid[9][9];	
+	unsigned line,column;	// Currently selected 3x3 area
+public:
+	const char *getclass(){
+		return "sudoku";
+	}
+	SUDOKU(){
+		resetgame();
+	}
+	void save(FILE *fout);
+	void load(FILE *fin);
+	void resetgame();
+	void testwin(vector<VARVAL> &res);
+	void exec (const char *var, const char *val, vector<VARVAL> &res);
+};
+
+void SUDOKU::save (FILE *fout)
+{
+	for (auto &g:grid){
+		for (auto &gg:g) fprintf (fout,"%u,%u,%u\n",gg.visible,gg.value,gg.user_value);
+	}
+}
+void SUDOKU::load (FILE *fin)
+{
+	resetgame();
+	for (auto &g:grid){
+		for (auto &gg:g){
+			unsigned visible,value,user_value;
+			if (fscanf(fin,"%u,%u,%u\n",&visible,&value,&user_value)==3){
+				gg.visible = visible;
+				gg.value = value;
+				gg.user_value = user_value;
+			}
+		}
+	}
+	
+}
+void SUDOKU::resetgame()
+{
+	line = column = 0;
+	for (auto &g:grid){
+		for (auto &gg:g){
+			gg.reset();
+		}
+	}
+}
+void SUDOKU::testwin(vector<VARVAL> &res)
+{
+	unsigned nbvisible = 0;
+	for (auto &g:grid){
+		for (auto &gg:g){
+			if (gg.visible) nbvisible++;
+		}
+	}
+	if (nbvisible == 9*9){
+		VARVAL v;
+		v.var = "result";
+		v.val = "won";
+		res.push_back(v);
+	}
+}
+<mod>
+void SUDOKU::exec (const char *var, const char *val, vector<VARVAL> &res)
+{
+	if (strcmp(var,"place")==0){
+		unsigned lo,co,v;
+		int n = sscanf(val,"%u,%u,%u",&lo,&co,&v);
+		if (n == 2){
+			if (lo < 3 && co < 3){
+				line=lo;
+				column = co;
+			}else{
+				documentd_error (res,"You can't select this area");
+			}
+		}else if (n!=3){
+			documentd_error (res,"Invalid place command (need 5 value)");
+		}else if (lo < 3 && co < 3 && v >= 0 && v < 10){
+			auto &gg = grid[line*3+lo][column*3+co];
+			if (gg.visible){
+				documentd_error (res,"You can't set this cell");
+			}else{
+				gg.user_value = v;
+			}
+		}else{
+			documentd_error (res,string_f("Invalid coordinate [%u,%u] [%u,%u]",line,column,lo,co));
+		}
+	}else if (strcmp(var,"print")==0){
+		string lines;
+		static const char *dashes = "\t+---+---+---+---+---+---+---+---+---+\n";	
+		unsigned nol = 0;
+		static const char *white = "\033[01;37m";
+		static const char *green = "\033[01;32m";
+		static const char *blue = "\033[01;34m";
+		static const char *red = "\033[01;31m";
+		static const char *bgblue = "\033[01;44m";
+		static const char *normal = "\033[00m";
+		for (auto &g:grid){
+			if (nol % 3 == 0){
+				lines += blue;
+				lines += dashes;
+				lines += normal;
+			}else{
+				lines += '\t';
+				for (unsigned i=0; i<9; i++){
+					if (i % 3 == 0){
+						lines += blue;
+					}else{
+						lines += green;
+					}
+					lines += '+';
+					lines += green;
+					lines += "---";
+				}
+				lines += blue;
+				lines += '+';
+				lines += normal;
+				lines += '\n';
+			}
+			lines += "\t";
+			unsigned pos = 0;
+			for (auto &gg:g){
+				if (pos % 3 == 0){
+					lines += blue;
+					lines += '|';
+				}else{
+					lines += green;
+					lines += '|';
+				}
+				lines += normal;
+				if (nol / 3 == line && pos / 3 == column) lines += bgblue;
+				if (gg.visible){
+					lines += string_f("%s %c %s",white,gg.value+'0',normal);
+				}else if (gg.user_value != 0){
+					if (gg.user_value != gg.value){
+						lines += red;
+					}
+					lines += string_f(" %c ",gg.user_value+'0');
+					lines += normal;
+				}else{
+					lines += "   ";
+				}
+				lines += normal;
+				pos++;
+			}
+			lines += blue;
+			lines += "|\n";
+			lines += normal;
+			nol++;
+		}
+		lines += blue;
+		lines += dashes;
+		lines += normal;
+		VARVAL v;
+		v.var = "content";
+		v.val = lines;
+		res.push_back(v);
+	}else if (strcmp(var,"newgame")==0){
+		glocal SUDOKU_CELL (*grid)[9][9] = &grid;
+		unsigned difficulty = atoi(val);
+		if (difficulty > 4){
+			documentd_error (res,"Difficulty from 0 to 3");
+		}else{
+			static const char *tbdiff[]={"simple", "easy", "intermediate", "expert"};
+			<call walkpopen>(string_f("qqwing --generate 1 --compact --solution --difficulty %s",tbdiff[difficulty]),10);
+			<f oneline>
+				debug_printf (D_SUDOKU,"read qqwing %s\n",line);
+				if (noline < 9){
+					auto &g = (*glocal.grid)[noline];
+					for (unsigned i=0; i<9; i++){
+						char car = line[i];
+						auto &gg = g[i];
+						gg.reset();
+						if (car != '.'){
+							gg.visible = 1;
+							gg.value = car - '0';
+						}
+					}
+				}
+				if (noline >= 10 && noline < 19){
+					auto &g = (*glocal.grid)[noline-10];
+					for (unsigned i=0; i<9; i++){
+						g[i].value = line[i]-'0';
+					}				
+				}
+				return 0;
+			</f>
+			</call>
+		}
+	}
+}
+</mod>
+
+class WORDPROC: public GAME{
+	vector<string> lines;
+public:
+	const char *getclass(){
+		return "wordproc";
+	}
+	void save(FILE *fout);
+	void load(FILE *fin);
+	void resetgame();
+	void testwin(vector<VARVAL> &res);
+	void exec (const char *var, const char *val, vector<VARVAL> &res);
+};
+
+void WORDPROC::save(FILE *fout)
+{
+}
+void WORDPROC::load(FILE *fin)
+{
+}
+void WORDPROC::resetgame()
+{
+	lines.clear();
+}
+void WORDPROC::testwin(vector<VARVAL> &res)
+{
+}
+void WORDPROC::exec (const char *var, const char *val, vector<VARVAL> &res)
+{
+}
+class CHECKERS: public GAME{
+	unsigned char grid[8][8];
+public:
+	const char *getclass(){
+		return "checkers";
+	}
+	void save(FILE *fout);
+	void load(FILE *fin);
+	void resetgame();
+	void testwin(vector<VARVAL> &res);
+	void exec (const char *var, const char *val, vector<VARVAL> &res);
+};
+
+void CHECKERS::save(FILE *fout)
+{
+	for (auto &g:grid){
+		for (auto &gg:g){
+			fprintf (fout," %u",gg);
+		}
+		fprintf (fout,"\n");
+	}
+}
+void CHECKERS::load(FILE *fin)
+{
+	resetgame();
+	for (auto &g:grid){
+		unsigned v[8];
+		if (fscanf(fin,"%u %u %u %u %u %u %u %u\n",&v[0],&v[1],&v[2],&v[3],&v[4],&v[5],&v[6],&v[7])==8){
+			for (unsigned i=0; i<8; i++) g[i] = v[i];
+		}
+	}
+}
+void CHECKERS::resetgame()
+{
+	for (auto &g:grid) for (auto &gg:g) gg=0;
+	for (unsigned i=0; i<3; i++){
+		unsigned start = (i+1)&1;
+		for (unsigned j=start; j<8; j+=2){
+			grid[i][j] = 1;
+		}
+		unsigned ii=5+i;
+		start = i&1;
+		for (unsigned j=start; j<8; j+=2){
+			grid[ii][j] = 2;
+		}
+	}
+}
+void CHECKERS::testwin(vector<VARVAL> &res)
+{
+}
+
+static const char *cnv (const char *val, unsigned &posx, unsigned &posy)
+{
+	val = str_skip(val);
+	if (islower(*val)){
+		posy = *val - 'a';
+	}else if (isupper(*val)){
+		posy = *val - 'A';
+	}
+	posx = 8-atoi(val+1);
+	return val+2;
+}
+		
+void CHECKERS::exec (const char *var, const char *val, vector<VARVAL> &res)
+{
+	if (strcmp(var,"print")==0){
+		string lines;
+		//static const char *white = "\033[01;37m";
+		//static const char *green = "\033[01;32m";
+		//static const char *blue = "\033[01;34m";
+		//static const char *red = "\033[01;31m";
+		static const char *bgblue = "\033[01;44m";
+		static const char *bggreen = "\033[01;42m";
+		static const char *bgred = "\033[01;41m";
+		static const char *bgblack = "\033[01;40m";
+		static const char *normal = "\033[00m";
+		static const char *tbcolor[]={bgblack,bgblue};
+		unsigned nol = 0;
+		for (auto &g:grid){
+			static const char *tbl[]={
+				"%s    %s  %s    ",
+				"%s  %s      %s  ",
+				"%s %s        %s ",
+				"%s  %s      %s  ",
+				"%s    %s  %s    ",
+				//"%s          ",
+			};
+			for (unsigned i=0; i<5; i++){
+				unsigned color = nol & 1;
+				if (i == 2){
+					lines += string_f("\t%d ",8-nol);
+				}else{
+					lines += "\t  ";
+				}
+				for (auto &gg:g){
+					const char *bg = tbcolor[color];
+					color = (color+1)&1;
+					const char *bg1 = "";
+					if (gg == 0){
+						bg1 = bg;
+					}else if (gg == 1){
+						bg1 = bgred;
+					}else if (gg == 2){
+						bg1 = bggreen;
+					}
+					lines += string_f(tbl[i],bg,bg1,bg);
+				}
+				lines += normal;
+				lines += '\n';
+			}
+			nol++;
+		}	
+		lines += "\t  ";
+		for (unsigned i=0; i<8; i++) lines += string_f("    %c     ",i+'A');
+		lines += '\n';
+		VARVAL v;
+		v.var = "content";
+		v.val = lines;
+		res.push_back(v);
+	}else if (strcmp(var,"place")==0){
+		unsigned fromx,fromy,tox,toy;
+		const char *pt = cnv(val,fromx,fromy);
+		cnv(pt,tox,toy);
+		// printf ("from = %u %u to %u %u\n",fromx,fromy,tox,toy);
+		unsigned char value = grid[fromx][fromy];
+		if (value == 0){
+			documentd_error (res,"Invalid move");
+		}else if (grid[tox][toy] != 0){
+			documentd_error (res,"Destination used");
+		}else{
+			grid[fromx][fromy] = 0;
+			grid[tox][toy] = value;
+		}
+	}
+}
+
+
+<mod>
+int main (int argc, char *argv[])
+{
+	glocal int ret = -1;
+	glocal const char *control = "/var/run/documentd.sock";
+	glocal const char *clientsock = "/tmp/documentd_client.sock";
+	glocal const char *user = "bolixo";
+	glocal bool daemon = false;
+	glocal const char *admin_secretfile = "/etc/bolixo/secrets.client";
+	glocal const char *pidfile = "/var/run/documentd.pid";
+	glocal const char *hostname = NULL;
+
+	static const char *tbdic[]={"bolixo",NULL};
+	glocal.ret = <call tlmpprogram>(argc,argv,tbdic);
+	<f init>
+		setproginfo ("documentd",VERSION,"Process document content");
+		setgrouparg ("Networking");
+		setarg ('c',"control","Unix socket for documentd-control",glocal.control,false);
+		setarg ('C',"clientsock","Unix socket for documentd-client",glocal.clientsock,false);
+		setgrouparg ("Misc.");
+		setarg (' ',"user","Run the program as this user",glocal.user,false);
+		setarg (' ',"daemon","Run in background",glocal.daemon,false);
+		setarg (' ',"pidfile","FIle holding the PID of the process",glocal.pidfile,false);
+		setarg (' ',"admin-secrets","File holding admin secrets for communication",glocal.admin_secretfile,false);
+	</f>
+	<f showerror>
+		if (glocal.daemon){
+			syslog (LOG_ERR,"%s",msg);
+		}else{
+			fprintf (stderr,"%s",msg);
+		}
+	</f>
+	<f showwarn>
+		if (glocal.daemon){
+			syslog (LOG_WARNING,"%s",msg);
+		}else{
+			fprintf (stderr,"%s",msg);
+		}
+	</f>
+	<f main_noarg>
+		int ret = -1;
+		glocal map<string,GAME *> games;
+		glocal unsigned messages_sent = 0;
+		glocal string controlport = string_f("unix:%s",glocal.control);
+		glocal string clientport = string_f("unix:%s",glocal.clientsock);
+		glocal map<string,string> admin_secrets;
+		glocal pid_t pid = (pid_t)-1;
+		fdpass_readsecrets (glocal.admin_secretfile,glocal.admin_secrets);
+		signal (SIGCHLD,SIG_IGN);
+		<obj TCPSERVER s>(glocal.clientport,5);
+		<f newclient>
+			HANDLE_INFO *n = new HANDLE_INFO;
+			info.data = n;
+			// tlmp_error ("port=%s control=%s client=%s\n",info.port,glocal.controlport.c_str(),glocal.clientport.c_str());
+			if (string_cmp(info.port,glocal.controlport)==0){
+				n->type = TYPE_CONTROL;
+			}else if (string_cmp(info.port,glocal.clientport)==0){
+				n->req.secret = fdpass_findsecret (glocal.admin_secrets,info.port);
+				n->type = TYPE_CLIENT;
+			}
+		</f>
+		<f endclient>
+		</f>
+		<f receive>
+			debug_printf (D_PROTO,"receive line: %s\n",line);
+			HANDLE_INFO *c = (HANDLE_INFO*)info.data;
+			static const char *tbtype[]={"none","control request","client request"};
+			ERROR_PREFIX prefix ("%s: ",tbtype[c->type]);
+			if (c->type == TYPE_CONTROL){
+				<call documentd_control>(this,c->req,line, info.linelen,endserver, endclient, no,c);
+				<f status>
+					vector<string> tb;
+					tb.push_back(string_f ("Version %s",VERSION));
+					for (auto g:glocal.games){
+						tb.push_back(string_f("gameid: %s",g.first.c_str()));
+					}
+					rep_status(tb);
+				</f>
+				<f quit>
+					endserver = true;
+				</f>
+				<f debug>
+					if (on){
+						debug_seton();
+					}else{
+						debug_setoff();
+					}
+				</f>
+				<f debugfile>
+					debug_setfdebug (filename);
+				</f>
+				<f startgame>	// gamename gameid = success:b msg
+					string msg;
+					bool success = false;
+					auto g = glocal.games.find(gameid);
+					if (g != glocal.games.end()){
+						msg = "Game already exist";
+					}else{
+						GAME *p = NULL;
+						if (strcmp(gamename,"tictacto")==0){
+							p = new TICTACTO;
+						}else if (strcmp(gamename,"sudoku")==0){
+							p = new SUDOKU;
+						}else if (strcmp(gamename,"wordproc")==0){
+							p = new WORDPROC;
+						}else if (strcmp(gamename,"checkers")==0){
+							p = new CHECKERS;
+						}
+						if (p != NULL){
+							glocal.games[gameid] = p;
+							glocal.games[gameid]->resetgame();
+							success = true;
+						}else{
+							msg = "unknown game";
+						}
+					}
+					rep_startgame(success,msg);
+				</f>
+				<f endgame>	// gameid = success:b msg
+					bool success = false;
+					string msg;
+					auto g = glocal.games.find(gameid);
+					if (g != glocal.games.end()){
+						success = true;
+						delete g->second;
+						glocal.games.erase (g);
+					}else{
+						msg = "Unknown game id";
+					}
+					rep_endgame (success,msg);
+				</f>
+				<f resetgame>	// gameid = success:b msg
+					bool success = false;
+					string msg;
+					auto g = glocal.games.find(gameid);
+					if (g != glocal.games.end()){
+						success = true;
+						g->second->resetgame();
+					}else{
+						msg = "Unknown game id";
+					}
+					rep_endgame (success,msg);
+				</f>
+				<f playstep>	// gameid steps:U{VARVAL}v = success:b msg res:U{VARVAL}v
+					vector<VARVAL> res;
+					bool success = true;
+					string msg;
+					auto g = glocal.games.find(gameid);
+					if (g != glocal.games.end()){
+						success = true;
+						for (auto &v:steps){
+							g->second->exec(v.var,v.val,res);
+						}
+						g->second->testwin(res);
+					}else{
+						msg = "Unknown game id";
+					}
+					rep_playstep(success,msg,res);
+				</f>
+				<f save> // gameid = success:b msg
+					bool success = false;
+					string msg;
+					auto g = glocal.games.find(gameid);
+					if (g != glocal.games.end()){
+						glocal GAME *game = g->second;
+						success = true;
+						<call savefile>(documentd_path(gameid),false);
+						<f dowrite>
+							fprintf (fout,"%s\n",glocal.game->getclass());
+							glocal.game->save(fout);
+							return 0;
+						</f>
+						</call>
+					}else{
+						msg = "Unknown game id";
+					}
+					rep_save(success,msg);
+				</f>
+				<f load> // gameid = success:b msg 
+					bool success = false;
+					string msg;
+					auto g = glocal.games.find(gameid);
+					if (g != glocal.games.end()){
+						delete g->second;
+						glocal.games.erase (g);
+					}
+					string tmp = documentd_path(gameid);
+					FILE *fin = fopen (tmp.c_str(),"r");
+					if (fin == NULL){
+						msg = "Gameid file does not exist";
+					}else{
+						char buf[100];
+						if (fgets(buf,sizeof(buf)-1,fin)!=NULL){
+							GAME *p = NULL;
+							if (strcmp(buf,"sudoku\n")==0){
+								p = new SUDOKU;
+							}else if (strcmp(buf,"tictacto\n")==0){
+								p = new TICTACTO;
+							}else if (strcmp(buf,"wordproc\n")==0){
+								p = new WORDPROC;
+							}else if (strcmp(buf,"checkers\n")==0){
+								p = new CHECKERS;
+							}else{
+								msg = string_f("Unknown game type %s",buf);
+							}
+							if (p != NULL){
+								glocal.games[gameid] = p;
+								p->load (fin);
+								success = true;
+							}
+						}
+						fclose (fin);
+					}
+					rep_save(success,msg);
+				</f>
+				<f invalid>
+					tlmp_error ("Invalid command: %s\n",line);
+					endclient = true;
+				</f>
+				</call>
+			}else if (c->type == TYPE_CLIENT){
+				<call documentd_client>(this,c->req,line,info.linelen, endserver, endclient,no,c);
+				<f test>
+					rep_test(false);
+				</f>
+				<f invalid>
+					tlmp_error ("Invalid command: %s\n",line);
+					endclient = true;
+				</f>
+				</call>
+			}
+		</f>
+		</obj>
+		bool some_errors = false;
+		if (fdpass_setcontrol(s,glocal.control,glocal.user)==-1){
+			some_errors = true;
+		}
+
+		if (!some_errors && s.is_ok()){
+			chmod (glocal.clientsock,0666);
+			s.setrawmode(true);
+			if (glocal.daemon){
+				daemon_init(glocal.pidfile,glocal.user);
+			}
+			s.loop();
+			ret = 0;
+		}
+		return ret;
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+

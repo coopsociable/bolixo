@@ -1,0 +1,146 @@
+/*
+	This file is part of Bolixo.
+
+	Bolixo is free software: you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation, either version 3 of the License, or
+	(at your option) any later version.
+
+	Bolixo is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+	GNU General Public License for more details.
+
+	You should have received a copy of the GNU General Public License
+	along with Bolixo.  If not, see <https://www.gnu.org/licenses/>.
+*/
+/*
+	Command line tool to control documentd
+*/
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <tlmplib.h>
+#include <tlmpnet.h>
+#include <string>
+#include <trlitool.h>
+#include "bolixo.m"
+
+using namespace std;
+
+#include "proto/documentd_control.protoch"
+
+<mod>
+int main (int argc, char *argv[])
+{
+	glocal int ret = -1;
+	glocal const char *control = "/var/run/documentd.sock";
+	glocal.ret = <call tlmpprogram>(argc,argv,"bolixo");
+	<f init>
+		setproginfo ("documentd-control",VERSION
+			,MSG_U(I_DOCUMENTD_CONTROL
+			,"Command line tool to control documentd\n"
+			 "\n"
+			 "\tdebug 0/1\n"
+			 "\tdebugfile filename\n"
+			 "\tquit\n"
+			 "\tstatus\n"
+			));
+		setarg ('p',"control","Unix socket to reach documentd",glocal.control,false);
+	</f>
+	<f main>
+		int ret = -1;
+		CONNECT_INFO con;
+		con.port = glocal.control;
+		if (strcmp(argv[0],"status")==0 && argc==1){
+			<call documentd_control_status>(con);
+			<f ok>
+				for (auto x:lines) printf ("%s\n",x);
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"quit")==0 && argc==1){
+			<call documentd_control_quit>(con);
+			<f ok>
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"debug")==0 && argc==2){
+			<call documentd_control_debug>(con,atoi(argv[1]));
+			<f ok>
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"debugfile")==0 && argc==2){
+			<call documentd_control_debugfile>(con,argv[1]);
+			<f ok>
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"load")==0 && argc == 2){
+			<call documentd_control_load>(con,argv[1]);
+			<f ok>
+				printf ("success=%d msg=%s\n",success,msg);
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"save")==0 && argc == 2){
+			<call documentd_control_save>(con,argv[1]);
+			<f ok>
+				printf ("success=%d msg=%s\n",success,msg);
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"startgame")==0 && argc == 3){
+			<call documentd_control_startgame>(con,argv[1],argv[2]);
+			<f ok>
+				printf ("success=%d msg=%s\n",success,msg);
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"endgame")==0 && argc == 2){
+			<call documentd_control_endgame>(con,argv[1]);
+			<f ok>
+				printf ("success=%d msg=%s\n",success,msg);
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"resetgame")==0 && argc == 2){
+			<call documentd_control_resetgame>(con,argv[1]);
+			<f ok>
+				printf ("success=%d msg=%s\n",success,msg);
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"playstep")==0 && argc > 2){
+			vector<VARVAL> args;
+			for (int i=2; i<argc; i++){
+				const char *arg = argv[i];
+				const char *pt = strchr(arg,'=');
+				if (pt == NULL){
+					tlmp_error ("Invalid var=val argument: %s\n",arg);
+					exit (-1);
+				}else{
+					VARVAL v;
+					v.var = string(arg,pt-arg);
+					v.val = pt+1;
+					args.push_back(v);
+				}
+			}
+			<call documentd_control_playstep>(con,argv[1],args);
+			<f ok>
+				if (!success){
+					printf ("success=%d msg=%s\n",success,msg);
+				}else{
+					for (auto &r:res){
+						if (strcmp(r.var,"content")==0){
+							printf ("Content:\n%s\n",r.val);
+						}else{
+							printf ("var=%s val=%s\n",r.var,r.val);
+						}
+					}
+				}
+			</f>
+			</call>
+		}else{
+			tlmp_error ("Invalid command: %s\n",argv[0]);
+			usage();
+		}
+		return ret;
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+
