@@ -212,7 +212,7 @@ verify.o: verify.tlcc filesystem.h
 	cctlcc -Wall $(OPTIONS) -c verify.tlcc -o verify.o
 
 clean:
-	rm -f $(PROGS) *.o *.os proto/*.protoh proto/*.protoch proto/*.protodef web/*.hc web/*.os
+	rm -f $(PROGS) *.o *.os proto/*.protoh proto/*.protoch proto/*.protodef web/*.hc web/*.os web/genbackground
 
 
 install: msg.eng msg.fr

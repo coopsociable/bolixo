@@ -41,7 +41,7 @@ install: all
 
 
 clean:
-	rm -f *.hc *.o *.os
+	rm -f *.hc *.o *.os genbackground
 
 util.os: util.tlcc util.h /usr/include/tlmp/tlmpweb.h /usr/include/tlmp/tlmpweb.p
 	cctlcc -fPIC -Wall $(OPTIONS) -c util.tlcc -o util.os
