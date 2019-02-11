@@ -5,7 +5,8 @@ INSTRUMENT:=$(shell test -f ../instrument && echo --instrument --getnow fdpass_g
 DINSTRUMENT:=$(shell test -f ../instrument && echo -DINSTRUMENT)
 PROGS=_dict.o bod bod-client bod-control bo-writed bo-writed-control bo-sessiond bo-sessiond-control \
       bo-manager bofs ssltestsign bo-keysd bo-keysd-control bolixod bolixod-control perfsql \
-      bo-mon bo-mon-control utils/eximexec publishd publishd-control bo-webtest
+      bo-mon bo-mon-control utils/eximexec publishd publishd-control bo-webtest \
+      documentd documentd-control
 #bo-log bo-log-control \
 DOCS=
 OPTIONS=$(DINSTRUMENT) -funsigned-char -O2 -Wall -g -DVERSION=\"$(PACKAGE_REV)\" -I/usr/include/tlmp -I/usr/include/trlitool
@@ -184,8 +185,6 @@ proto/bolixoapi.protoh: proto/bolixoapi.proto proto/bolixod_client.protoh
 	build-protocol $(INSTRUMENT) --request_obj REQUEST_JSON --request_info_obj REQUEST_JSON_INFO \
 		--connect_info_obj CONNECT_HTTP_INFO --name bolixoapi \
 		--protoch proto/bolixoapi.protoch proto/bolixoapi.proto >proto/bolixoapi.protoh
-doc: documentd documentd-control
-
 documentd: documentd.tlcc proto/documentd_control.protoh proto/documentd_client.protoh _dict.o
 	cctlcc -Wall $(OPTIONS) documentd.tlcc _dict.o -o documentd $(LIBS)
 

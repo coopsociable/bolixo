@@ -777,7 +777,7 @@ static int bo_writed_addfile_bob (
 	unsigned userid,
 	const BOB_TYPE &content,
 	bool more,
-	const char *presign,	// Pre-signed content
+	string &sign,		// Either contain the Pre-signed content or will contain the new signature
 	string &fileuuid,
 	string &msg,
 	string &handle,
@@ -792,14 +792,13 @@ static int bo_writed_addfile_bob (
 		FILE_TYPE file_type = bo_writed_file_type (basename,content,more);
 		const char *content_str = NULL;
 		string tmp;
-		string sign;
-		if (presign[0] != '\0') sign = presign;
 		if (!more){
 			if (file_type == FILE_TEXT){
 				tmp = string((const char *) content.getbuffer(),content.getsize());
 				content_str = tmp.c_str();
 			}
-			if (presign[0] != '\0'){
+			if (sign.size() > 0){
+				// Already signed, validate
 				glocal string pubkey;
 				<call sql_query>("select pub_key from id2name where userid=%u",userid);
 				<f onerow>
@@ -809,7 +808,7 @@ static int bo_writed_addfile_bob (
 				if (glocal.pubkey.size()==0){
 					msg = string_f("No public key for userid=%u",userid);
 					tlmp_error ("%s\n",msg.c_str());
-				}else if (fs_verify(glocal.pubkey,content,presign)==-1){
+				}else if (fs_verify(glocal.pubkey,content,sign)==-1){
 					msg = string_f ("Signature do not match for pre-signed file %s",basename);
 					tlmp_error ("%s\n",msg.c_str());
 				}
@@ -1294,8 +1293,9 @@ static void bo_writed_send_admin_msg (
 			string msgid,handle;
 			DATEASC modified;
 			BOB_TYPE content(message.ptr,strlen(message.ptr),false);
+			string sign;
 			bo_writed_addfile_bob (con_keys,NULL,NULL,ENTRY_MSG,dirid,adminid
-				,content,false,"",msgid,msg,handle,fileid,modified);
+				,content,false,sign,msgid,msg,handle,fileid,modified);
 		}
 	}
 }
@@ -2115,11 +2115,11 @@ int main (int argc, char *argv[])
 					}else{
 						string msg;
 						string handle;
-						string msgid;
+						string msgid,sign;
 						int fileid;
 						DATEASC modified;
 						bo_writed_addfile_bob (glocal.ctx.con_keys,sessionid,entry.basename,ENTRY_FILE,entry.dirid,entry.userid
-								,content,more,""
+								,content,more,sign
 								,msgid,msg,handle,fileid,modified);
 						if (msg.size() > 0){
 							rep_addfile_bob (false,"",msg);
@@ -2771,10 +2771,10 @@ int main (int argc, char *argv[])
 							int dirid = fs_find_short_inbox (userid,glocal.to,"anonymous",glocal.msg,true,created);
 							if (dirid != -1){
 								int fileid;
-								string msgid;
+								string msgid,sign;
 								DATEASC modified;
 								bo_writed_addfile_bob (glocal.ctx.con_keys,glocal.sessionid,NULL,ENTRY_MSG,dirid,userid
-									,*glocal.content,glocal.more,""
+									,*glocal.content,glocal.more,sign
 									,msgid,glocal.msg,glocal.handle,fileid,modified);
 							}
 						}
@@ -2801,7 +2801,7 @@ int main (int argc, char *argv[])
 					glocal const char *groupname = groupname;
 					glocal const char *groupowner = groupowner;
 					glocal const char *name = name;
-					glocal const char *sign = sign;
+					glocal string sign = sign;
 					bool is_admin;
 					glocal unsigned userid = bo_writed_get_group_owner (glocal.con, sessionid, owner, glocal.username, glocal.msg, is_admin);
 					if (glocal.userid > 0){
@@ -2922,14 +2922,14 @@ int main (int argc, char *argv[])
 						}
 					}
 					if (glocal.msg.size() > 0){
-						rep_sendtalk (false,glocal.msg,"");
+						rep_sendtalk (false,glocal.msg,"","");
 						fs_delete_handle(glocal.handle);
 					}else{
 						if (!more){
 							fs_delete_handle(glocal.handle);
 							glocal.handle.clear();
 						}
-						rep_sendtalk (true,glocal.msg,glocal.handle);
+						rep_sendtalk (true,glocal.msg,glocal.handle,glocal.sign);
 					}
 				</f>
 				<f sendtalk_file>	// sessionid owner to:v groupname groupowner filename = success:b msg
