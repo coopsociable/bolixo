@@ -2496,7 +2496,7 @@ tlmp_error ("Appendfile remote_handle found %s more %d\n",handle,more);
 				}
 				rep_contact_manage (glocal.success,glocal.msg);
 			</f>
-			<f contact_list>	// sessionid owner to_me:b offset:u nb:u = success:b msg contacts:U{CONTACT}v
+			<f contact_list>	// sessionid owner to_me:b contact offset:u nb:u = success:b msg contacts:U{CONTACT}v
 				// CONTACT user reqdate message status
 				glocal vector<CONTACT> contacts;
 				glocal string msg;
@@ -2504,11 +2504,18 @@ tlmp_error ("Appendfile remote_handle found %s more %d\n",handle,more);
 				unsigned userid = bo_writed_get_group_owner (glocal.con_sess, sessionid, owner, username, glocal.msg);
 				if (userid != 0){
 					if (to_me){
+						string where;
+						if (contact[0] != '\0'){
+							int contact_id = fs_rec_getid("select userid from id2name where name='%s'",contact);
+							if (contact_id != -1){
+								where = string_f (" and contact_requests.reqid = %d",contact_id);
+							}
+						}
 						// Some people made contact request to me
 						<call sql_query>("select id2name.name,message,status,reqdate from contact_requests"
 							" join id2name on id2name.userid=contact_requests.reqid"
-							" where contact_requests.userid=%u order by id2name.name limit %u,%u"
-							,userid,offset,nb);
+							" where contact_requests.userid=%u %s order by id2name.name limit %u,%u"
+							,userid,where.c_str(),offset,nb);
 						<f onerow>
 							CONTACT c;
 							c.user = row[0];
