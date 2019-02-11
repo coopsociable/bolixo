@@ -392,6 +392,8 @@ elif [ "$1" = "bo-keysd" ] ; then # A: Runs keysd
 		echo $BOLIXOPATH/bo-keysd $OPTIONS
 	fi
 	$STRACE $BOLIXOPATH/bo-keysd $OPTIONS
+elif [ "$1" = "documentd" ] ; then # A: Runs documentd
+	./documentd -c /tmp/documentd.sock --admin-secrets data/secrets.admin --user `id -un`
 elif [ "$1" = "reload" ] ; then # S: Reloads the database using writed log
 	$0 resetdb
 	OPTIONS="--data_dbserv $DBSERV --data_dbuser $TRLI_WRITED_DBUSER --data_dbname $DBNAME \

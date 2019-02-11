@@ -112,8 +112,6 @@ struct DIRENTRY{
 #define webapi_rename_NOTNEED
 #define webapi_copy_NOTNEED
 #define webapi_readfile_NOTNEED
-#define webapi_readfile_bob_NOTNEED
-#define webapi_readmore_NOTNEED
 #define webapi_mkdir_NOTNEED
 #define webapi_rmdir_NOTNEED
 #define webapi_listdir_NOTNEED
@@ -874,18 +872,27 @@ static void bod_remote_contact_manage(
 */
 struct REMOTE_INFO{
 	string server;
-	vector<string> users;
 	string sessionid;
 	string handle;
 	CONNECT_HTTP_INFO con;
 	void logout();
 	~REMOTE_INFO();
+	void initcon();
+};
+void REMOTE_INFO::initcon()
+{
+	bod_inithcon(con,server);
+}
+struct REMOTE_INFO_FROM: public REMOTE_INFO{
+	string user;
+};
+struct REMOTE_INFO_TO: public REMOTE_INFO{
+	vector<string> users;
 };
 <mod>
 void REMOTE_INFO::logout()
 {
 	if (sessionid.size() > 0){
-tlmp_error ("remote_logout %s@%s\n",users[0].c_str(),server.c_str());
 		bod_remotelogout(con,sessionid);
 		sessionid.clear();
 	}
@@ -898,10 +905,13 @@ REMOTE_INFO::~REMOTE_INFO()
 struct REMOTE_HANDLE{
 	string username;
 	string handle;
-	REMOTE_INFO from;
-	vector<REMOTE_INFO> to;
+	REMOTE_INFO_FROM from;
+	vector<REMOTE_INFO_TO> to;
+	void setfrom (PARAM_STRING server){
+		from.server = server.ptr;
+	}
 	void addto (PARAM_STRING server, const vector<string> &users){
-		REMOTE_INFO r;
+		REMOTE_INFO_TO r;
 		r.server = server.ptr;
 		r.users = users;
 		to.push_back(r);
@@ -926,7 +936,7 @@ static void bod_remote_sendtalk(
 {
 	for (auto &r:rem.to){
 		glocal REMOTE_INFO *r = &r;
-		bod_inithcon (r.con,r.server);
+		r.initcon();
 		if (bod_remotelogin (con,r.con,rem.username,nodename,sessionid,r.sessionid)!=-1){
 			<call webapi_sendtalk> (r.con,r.sessionid,"",r.users,"","",content,more,name,sign,createdby);
 			<f ok>
@@ -948,7 +958,7 @@ static void bod_remote_appendfile(
 	bool more)
 {
 	for (auto &r:rem.to){
-		glocal REMOTE_INFO *r = &r;
+		glocal REMOTE_INFO_TO *r = &r;
 		<call webapi_appendfile>(r.con,r.sessionid,r.handle,content,more);
 		<f ok>
 			if (!success) tlmp_error ("remote_appendfile failed: %s@%s %s\n"
@@ -956,6 +966,78 @@ static void bod_remote_appendfile(
 		</f>
 		</call>
 	}
+}
+</mod>
+
+/*
+	Convert a local name to remote name if it is local.
+*/
+static void bod_patchname(string &name, const string &remote)
+{
+	if (name.size() > 0 && name.find('@') == string::npos){
+		name += string("@") + remote;
+	}
+}
+
+<mod>
+static void bod_remote_readfile_bob (
+	CONNECT_INFO &con,
+	const char *sessionid,
+	REMOTE_HANDLE *rem,
+	PARAM_STRING name,
+	bool nomore,
+	const char *nodename,
+	BOB_TYPE &bob,
+	READINFO &info,
+	bool &more,
+	string &msg)
+{
+	glocal BOB_TYPE *bob = &bob;
+	glocal bool *more = &more;
+	glocal string *msg = &msg;
+	glocal READINFO *info = &info;
+	glocal REMOTE_INFO_FROM *from = &rem->from;
+	glocal.from->initcon ();
+	if (bod_remotelogin (con,glocal.from->con,rem->username,nodename,sessionid,glocal.from->sessionid)!=-1){
+		<call webapi_readfile_bob> (glocal.from->con,glocal.from->sessionid,name,"",nomore);
+		<f ok>
+			glocal.from->handle = handle;
+			(*glocal.msg) = msg;
+			if (success){
+				(*glocal.bob) = content;
+				(*glocal.more) = more;
+				(*glocal.info) = info;
+			}else{
+				tlmp_error ("remote_readfile_bob: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
+			}
+		</f>
+		</call>
+		if (!more){
+			glocal.from->logout();
+		}
+	}
+}
+</mod>
+<mod>
+static void bod_remote_readmore(
+	REMOTE_HANDLE *rem,
+	bool &success,
+	string &msg,
+	BOB_TYPE &content,
+	bool &more)
+{
+	glocal bool *success = &success;
+	glocal string *msg = &msg;
+	glocal bool *more = &more;
+	glocal BOB_TYPE *content = &content;
+	<call webapi_readmore>(rem->from.con,rem->from.sessionid,rem->from.handle);
+	<f ok>
+		(*glocal.success) = success;
+		(*glocal.msg) = msg;
+		(*glocal.more) = more;
+		(*glocal.content) = content;
+	</f>
+	</call>
 }
 </mod>
 // Parse a user[@nodename]
@@ -1551,7 +1633,53 @@ tlmp_error ("Appendfile remote_handle found %s more %d\n",handle,more);
 				glocal READINFO info;
 				glocal ENTRY entry;
 				glocal const char *sessionid = sessionid;
-				if (bod_findentry (glocal.con_sess,sessionid,name,glocal.entry,threshold)!=-1){
+				// Are we trying to read /projects/user@remote_node/...
+				// In general, you are trying to read the public photo of the user.
+				string remote_user,remote,remote_name;
+				if (strncmp(name,"/projects/",10)==0){
+					// All failure in this parsing end up with remote_user being empty,
+					// so the normal case (bod_findentry) is used.
+					const char *user = name+10;
+					const char *slash = strchr(user,'/');
+					if (slash != NULL){
+						string tmp = string(user,slash-user);
+						user = tmp.c_str();
+						const char *sepat = strchr(user,'@');
+						if (sepat != NULL){
+							remote = sepat+1;
+							remote_user = string(user,sepat-user);
+							remote_name = string_f("/projects/%s/%s",remote_user.c_str(),slash+1);
+						}
+					}
+				}
+				if (remote_user.size() > 0){
+					REMOTE_HANDLE *rem = new REMOTE_HANDLE;
+					rem->setfrom (remote);
+					bool is_admin;	// Just a place holder, admin rights have no effect on remote server.
+					unsigned userid = trli_getsessionuser (glocal.con_sess,sessionid,is_admin, rem->username, glocal.entry.msg);
+					if (userid != 0){
+						BOB_TYPE bob;
+						bool more = false;
+						READINFO info;
+						bod_remote_readfile_bob (glocal.con,sessionid
+							,rem,remote_name,nomore,glocal.nodename
+							,bob,info,more,glocal.entry.msg);
+						if (glocal.entry.msg.size() == 0){
+							// info come from the remote system.
+							// We have to patch the owner and modifiedby field to reflect that
+							bod_patchname (info.owner,remote);
+							bod_patchname (info.modifiedby,remote);
+							string handle;
+							if (more){
+								handle = fs_makeid();
+								rem_handles[handle] = rem;
+								rem = NULL;
+							}
+							rep_readfile_bob (true,"",bob,info,handle,more);
+						}
+					}
+					delete rem;
+				}else if (bod_findentry (glocal.con_sess,sessionid,name,glocal.entry,threshold)!=-1){
 					if (!bolixo_isfile(glocal.entry.type)){
 						glocal.entry.msg = MSG_R(E_NOTAFILE);
 					}else{
@@ -1591,7 +1719,7 @@ tlmp_error ("Appendfile remote_handle found %s more %d\n",handle,more);
 											handle.clear();
 										}
 										glocal.info.size = st.st_size;
-										glocal.bod_client.rep_readfile_bob (true,"Ok"
+										glocal.bod_client.rep_readfile_bob (true,""
 											,bob,glocal.info,handle,more);
 									}
 								}
@@ -1608,18 +1736,32 @@ tlmp_error ("Appendfile remote_handle found %s more %d\n",handle,more);
 				}
 			</f>
 			<f readmore>	// sessionid handle = success:b msg content:o more:b
-				FILE *fin = fs_get_file (handle,sessionid);
-				if (fin == NULL){
-					rep_readmore (false,"Internal error, reading content file",BOB_TYPE(),false);
-					fs_delete_handle (handle);
-				}else{
-					char buf[REQ_CONTENT_CHUNK];
-					int len = fread (buf,1,sizeof(buf),fin);
-					BOB_TYPE bob (buf,len,false);
-					bool more = len == REQ_CONTENT_CHUNK;
-					rep_readmore (true,"Ok",bob,more);
+				auto r = rem_handles.find(handle);
+				if (r != rem_handles.end()){
+					bool success = false;
+					string msg;
+					bool more = false;
+					BOB_TYPE content;
+					bod_remote_readmore(r->second,success,msg,content,more);
 					if (!more){
-						fs_delete_handle(handle);
+						delete r->second;
+						rem_handles.erase (r);
+					}
+					rep_readmore (success,msg,content,more);
+				}else{
+					FILE *fin = fs_get_file (handle,sessionid);
+					if (fin == NULL){
+						rep_readmore (false,"Internal error, reading content file",BOB_TYPE(),false);
+						fs_delete_handle (handle);
+					}else{
+						char buf[REQ_CONTENT_CHUNK];
+						int len = fread (buf,1,sizeof(buf),fin);
+						BOB_TYPE bob (buf,len,false);
+						bool more = len == REQ_CONTENT_CHUNK;
+						rep_readmore (true,"Ok",bob,more);
+						if (!more){
+							fs_delete_handle(handle);
+						}
 					}
 				}
 			</f>
@@ -2241,11 +2383,10 @@ tlmp_error ("Appendfile remote_handle found %s more %d\n",handle,more);
 								if (handle[0] != '\0'){
 									rem->handle = handle;
 									glocal.handle = fs_makeid();
-tlmp_error ("sendtalk handle=%s rem_handle=%s\n",rem->handle.c_str(),glocal.handle.c_str());
 									rem_handles[glocal.handle] = rem;
-								}else{
-									delete rem;
+									rem = NULL;
 								}	
+								delete rem;
 							}
 						}
 					</f>
