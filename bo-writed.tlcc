@@ -1593,6 +1593,7 @@ int main (int argc, char *argv[])
 						if (sql_action(*glocal.usq,"delete from users where userid=%s",row[0])!=-1){
 							bo_log_del_incomplete(glocal.ctx.flog,row[1]);
 							glocal.emails.push_back(row[2]);
+							sql_action("delete from id2name where userid=%s",row[0]);
 							
 						}
 					</f>
@@ -1964,30 +1965,42 @@ int main (int argc, char *argv[])
 				<f login>
 					glocal const char *email = email;
 					glocal const char *sessionid = sessionid;
-					<call sql_query>(*glocal.usq,"select userid,userid_str,name,email,admin from users where email='%s' and password=password('%s')"
-						" and disabled is null and deleted is null and confirmed is not null and nbfail < 3",email,password);
+					<call sql_query>(*glocal.usq,"select userid,userid_str,name,email,admin,confirmed from users where email='%s' and password=password('%s')"
+						" and disabled is null and deleted is null and nbfail < 3",email,password);
 					<f onerow>
-						glocal string lang = "eng";
-						glocal unsigned dateformat=0;
-						debug_printf (D_PROTO,"login ok\n");
-						int userid = atoi(row[0]);
-						<call sql_query>("select lang,dateformat from config where userid=%d",userid);
-						<f onerow>
-							glocal.lang = row[0];
-							glocal.dateformat = atoi(row[1]);
-						</f>
-						</call>
-						<call bo_sessiond_admin_setsession>(glocal.con,glocal.sessionid,userid,row[1],row[2],row[3],glocal.lang,atoi(row[4]),glocal.dateformat);
-						<f ok>
-							if (internal_error){
-								glocal.bo_writed_client.rep_login (false);
-							}else{
-								debug_printf (D_PROTO,"login session ok %s\n",glocal.sessionid);
-								sql_action (*glocal.usq,"update users set lastaccess=now() where email='%s'",glocal.email);
-								glocal.bo_writed_client.rep_login (true);
+						if (row[5] == NULL){
+							// This account is not confirmed, but the password is good.
+							// So we return an error, but with the clue that it is not confirmed.
+							// The user will be offered to resend the confirmation email
+							glocal.bo_writed_client.rep_login (false,true);
+							if (glocal.ctx.mailon){
+								writed_mail_newaccount(glocal.ctx.mailserver,glocal.ctx.mailport,glocal.ctx.mailfrom
+									,row[2],glocal.email,row[1]);
 							}
-						</f>
-						</call>
+						}else{
+							glocal string lang = "eng";
+							glocal unsigned dateformat=0;
+							debug_printf (D_PROTO,"login ok\n");
+							int userid = atoi(row[0]);
+							<call sql_query>("select lang,dateformat from config where userid=%d",userid);
+							<f onerow>
+								glocal.lang = row[0];
+								glocal.dateformat = atoi(row[1]);
+							</f>
+							</call>
+							<call bo_sessiond_admin_setsession>(glocal.con,glocal.sessionid,userid,row[1],row[2],row[3]
+								,glocal.lang,atoi(row[4]),glocal.dateformat);
+							<f ok>
+								if (internal_error){
+									glocal.bo_writed_client.rep_login (false,false);
+								}else{
+									debug_printf (D_PROTO,"login session ok %s\n",glocal.sessionid);
+									sql_action (*glocal.usq,"update users set lastaccess=now() where email='%s'",glocal.email);
+									glocal.bo_writed_client.rep_login (true,false);
+								}
+							</f>
+							</call>
+						}
 					</f>
 					<f empty>
 						// It fails, why ?
@@ -2002,7 +2015,7 @@ int main (int argc, char *argv[])
 							}
 						</f>
 						</call>
-						glocal.bo_writed_client.rep_login (false);
+						glocal.bo_writed_client.rep_login (false,false);
 					</f>
 					</call>
 				</f>

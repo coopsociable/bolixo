@@ -1758,10 +1758,14 @@ extern "C" void webmain_real()
 					glocal.websteps.gotostep(1);
 					<call savefile>("/tmp/login.log",true);
 					<f dowrite>
-						fprintf (fout,"%s %s\n",userinfo.name.c_str(),tlmpweb_getip().c_str());
+						DATEASC buf;
+						fdpass_asctime(time(NULL),buf);
+						fprintf (fout,"%s %s %s\n",buf.buf,userinfo.name.c_str(),tlmpweb_getip().c_str());
 						return 0;
 					</f>
 					</call>
+				}else if (incomplete){
+					glocal.websteps.gotostep(step_incomplete);
 				}else{
 					/-#I_LOGINFAILED <font color=red>Login failed, invalid email or password</font>
 					glocal.fail = true;
@@ -1877,7 +1881,11 @@ extern "C" void webmain_real()
 			<p>
 			<b>Please note</b>: the email is sometime thrown into spam. If you have not received
 			the message after few minutes, it probably sits there.
+			<p>
+			To get another copy of the confirmation message, just sign-in to the account. 
 			?>
+			/-<p>
+			htmlprintf ("<a href=/index.hc?webstep=1>%s</a>\n",MSG_U(I_BACKTOLOGIN,"Back to login page"));
 		}
 
 	</f>
@@ -2629,7 +2637,19 @@ extern "C" void webmain_real()
 		DIV d("tabs","tab"); d.w(100).print();
 		index_doc(glocal.docpointers[SECTION_NONE],section_none,true);
 	</f>
-	<f step13>
+	<f step13> // Valid password on incomplete account
+		tlmpweb_body ("white",NULL,"background=background.png");
+		bolixo_title (MSG_R(T_LOGIN),this);
+		/- <p><p>
+		DIV d; d.bg("white").w(is_mobile ? 80 : 50).marginauto().paddings(10,10).vpaddings(10,10).borderradius(5).border(1,"black").print();
+		<?#I_NOTCONFIRMED This account has not been confirmed yet!
+		<p>
+		A confirmation email was sent with a link. Click on the link to enable this account.
+		<p>
+		We just sent another confirmation email (just in case the first was lost).
+		?>
+		/- <p>
+		htmlprintf ("<a href=/index.hc?webstep=1>%s</a>\n",MSG_R(I_BACKTOLOGIN));
 	</f>
 	<f step14>
 	</f>

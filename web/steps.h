@@ -10,4 +10,5 @@ static const int step_talks=9;
 static const int step_confirm=10;
 static const int step_profile=11;
 static const int step_doc=12;
+static const int step_incomplete=13;
 
