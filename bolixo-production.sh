@@ -433,6 +433,9 @@ elif [ "$1" = "confirmuser" ] ; then # prod: Confirm a new user account
 	fi
 	/usr/lib/bolixo-test.sh bo-writed-control confirmuser $2
 	/usr/lib/bolixo-test.sh bod-control publishemail $2 $3
+elif [ "$1" = "del_incomplete" ] ; then # prod: Deletes un-confirmed user accounts (seconds)
+	shift
+	/usr/lib/bolixo-test.sh bo-writed-control del_incomplete $1 
 elif [ "$1" = "status" ] ; then # prod: Status of one service
 	shift
 	while [ "$1" != "" ]
