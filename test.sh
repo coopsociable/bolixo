@@ -500,7 +500,7 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 		)engine=$ENGINE;
 		create index users_email on users (email);
 		create index users_idstr on users (userid_str);
-		insert into users (userid,userid_str,name) values (-2,"--system--","--system--");
+		insert into users (userid,userid_str,name,confirmed) values (-2,"--system--","--system--",now());
 		create table user_interest (
 			userid int,
 			subjectid int
