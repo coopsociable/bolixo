@@ -370,15 +370,16 @@ static void webtabs(_F_webtabs &c,
 		So by changing the evaluation order when a dropdown is used, we evaluate the dropdown before the
 		right section is evaluated. so the document form is never registered as active.
 	*/
-	deque<int> typeorder;
+	deque<unsigned> typeorder;
 	if (webtable_is_dropdown()){
 		typeorder={0,1,2,3};
 	}else{
 		typeorder={3,2,1,0};
 	}
+	bool mobile_view = is_mobile || tlmpweb_screenwidth() < 900;
 	while (typeorder.size() > 0){
 		FORM_HIDDEN t(w_subtab);
-		int type = typeorder.front();
+		const unsigned type = typeorder.front();
 		typeorder.pop_front();	
 		WEBTAB *ptt = NULL;
 		{
@@ -395,6 +396,7 @@ static void webtabs(_F_webtabs &c,
 			}
 		}
 		if (ptt != NULL){
+			if (mobile_view && type != w_subtab-1) tlmpweb_visibletab(false);
 			lines[type].clear();
 			if (draw_ok) tlmpweb_pushgrab(lines[type]);
 			while (1){
@@ -430,6 +432,7 @@ static void webtabs(_F_webtabs &c,
 				lines[type].clear();
 			}
 			if (draw_ok) tlmpweb_popgrab();
+			if (mobile_view && type != w_subtab-1) tlmpweb_visibletab(true);
 		}
 		if (c.added_tab != -1){
 			// We have to replay the tab
@@ -438,7 +441,6 @@ static void webtabs(_F_webtabs &c,
 		} 
 	}
 	if (draw_ok){
-		bool mobile_view = is_mobile || tlmpweb_screenwidth() < 900;
 		DIV sc; sc.w(100).dispflex().flowrow().align("stetch").bg("white").print();
 		vector<GRABLINE> docs;
 		tlmpweb_pushgrab(docs);
@@ -473,7 +475,7 @@ static void webtabs(_F_webtabs &c,
 					"</script>\n",href.c_str(),href1.c_str());
 			}else{
 				DIV dc("tabs"); dc.flexfixe().w(side).align("stretch").bg("white").print();
-				htmlprintf ("<a href=%s style=\"width:100%%; height:100%%; background-color:lightgray;\">%s</a>\n"
+				htmlprintf ("<a href=\"#\" onclick=formsubmit(\"%s\") style=\"width:100%%; height:100%%; background-color:lightgray;\">%s</a>\n"
 					,href.c_str(),nbspline);
 			}
 		}
@@ -639,7 +641,7 @@ static void webtabs(_F_webtabs &c,
 						"</script>\n",href.c_str(),href1.c_str());
 				}else{
 					DIV dc("tabs"); dc.flexfixe().w(side).align("stretch").bg("white").print();
-					htmlprintf ("<a href=%s style=\"width:100%%; height:100%%; background-color:lightgray;\">%s</a>\n"
+					htmlprintf ("<a href=\"#\" onclick=formsubmit(\"%s\") style=\"width:100%%; height:100%%; background-color:lightgray;\">%s</a>\n"
 						,href.c_str(),nbspline);
 				}
 			}
