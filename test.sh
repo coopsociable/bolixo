@@ -1405,6 +1405,7 @@ elif [ "$1" = "lxc0-webssl" ]; then # prod:
 			-e /var/www/html/talk3.jpg \
 			-e /var/www/html/talk-fr.jpg \
 			-e /var/www/html/talk.jpg \
+			-e /var/www/html/narrowscreen.jpg \
 			-i /usr/sbin/trli-init \
 			-l $LOG \
 			-n $w -p /usr/sbin/httpd >/var/lib/lxc/$w/$w-lxc0.sh
