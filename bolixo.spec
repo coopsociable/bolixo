@@ -97,6 +97,7 @@ make install
 /var/www/html/talk3.jpg
 /var/www/html/talk-fr.jpg
 /var/www/html/talk.jpg
+/var/www/html/narrowscreen.jpg
 /usr/lib/bolixo-test.sh
 /usr/sbin/bolixo-production
 /usr/sbin/bo
