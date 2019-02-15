@@ -536,6 +536,8 @@ elif [ "$1" = "certificate-install" ]; then # prod: Install the SSL certificate
 	EOF
 	certbot --apache certonly
 	rm -f $ADD
+elif [ "$1" = "certificates" ] ; then # prod: Show SSL certifcates status
+	certbot certificates
 elif [ "$1" = "certificate-renew" ] ; then # prod: Renew the SSL certificate
 	# Do a backup
 	cd /etc
