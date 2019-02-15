@@ -1648,7 +1648,7 @@ elif [ "$1" = "instrument" ] ; then # A: Report remote call statistics
 	echo
 	) | bc -l
 elif [ "$1" = "setnotify" ] ; then # T: Add some notifies in sessiond for jacques-A
-	for notify in talks:jacques-A:public talks:jacques-A:anonymous talks:jacques-A:inbox main profile:Contact-req
+	for notify in talks:jacques-A:public talks:jacques-A:anonymous talks:jacques-A:inbox main profile:Contact-req profile:Contacts
 	do
 		$0 bod-client --testsetnotify $notify --extra 2
 	done

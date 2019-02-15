@@ -64,7 +64,7 @@ const unsigned MENU_RENAME=7;
 const unsigned MENU_DOWNLOAD=100;
 
 #define TAB_FORM "tab_form"
-extern USERINFO userinfo;
+extern USERLOGINFO userinfo;
 extern map<string,unsigned> offsets;
 extern map<string,unsigned> currents;
 extern map<string,WEBTAB_CTRL> tabs;

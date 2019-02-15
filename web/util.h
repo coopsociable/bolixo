@@ -1,5 +1,5 @@
 #ifdef DEFINE_USERINFO
-struct USERINFO{
+struct USERLOGINFO{
 	std::string name;
 	bool is_admin;
 	unsigned dateformat;
@@ -16,7 +16,7 @@ struct USERINFO{
 		notifies.clear();
 		talk_notify = main_notify = mail_notify = false;
 	}
-	USERINFO(){
+	USERLOGINFO(){
 		reset();
 	}
 };
