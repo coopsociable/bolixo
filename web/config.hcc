@@ -21,6 +21,7 @@
 #include <trlitool.h>
 #include <string>
 #include <algorithm>
+#include <set>
 #define DEFINE_USERINFO
 #include "util.h"
 #include "../bolixo.h"
@@ -138,18 +139,27 @@ static bool profile_formactive (_F_webtabs &c)
 	}
 	return w_add.isset();
 }
+/*
+	Return the proper image to tell if this ID has a notification or not
+*/
+static const char *profile_notify_icon (const string &id)
+{
+	string tmp = string("profile:")+id;
+	return userinfo.notifies.count(tmp) > 0 ? "/new.png" : "/seen.png";
+}
 
 <mod>
-void profile(CONNECT_INFO &con, vector<DOCUMENT_POINTER> &docpointers)
+void profile(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER> &docpointers)
 {
 	glocal CONNECT_INFO con = con;
+	glocal CONNECT_INFO *con_sess = &con_sess;
 	glocal vector<DOCUMENT_POINTER> *docpointers = &docpointers;
 	static unsigned size[5]={15,45,40,0,0};
 	<call webtabs>("profile",tabs,size);
 	<f documents>
 		<call webtable>("tab:profiles","100%",currents["tab:profiles"]);
 		<f load>
-			sethead (MSG_U(H_PROFILE,"Profiles"));
+			sethead (MSG_U(H_PROFILE,"\tProfiles"));
 			vector<tuple<string,string,string>> t={
 				{"Account",MSG_U(T_ACCOUNT,"Account"),MSG_R(T_ACCOUNT)},
 				{"Interests",MSG_U(T_INTERESTS,"Interests"),MSG_R(T_INTERESTS)},
@@ -163,7 +173,7 @@ void profile(CONNECT_INFO &con, vector<DOCUMENT_POINTER> &docpointers)
 				if (glocal.webtabs.selected(get<0>(s))) setcurrent(rownum);
 				string add = string_f("webtab_add=1:%s~%s",get<0>(s).c_str(),get<1>(s).c_str());
 				setclickopt (true,"",add);
-				setrow ("white",rownum,"%s",get<2>(s).c_str());
+				setrow ("white",rownum,"<img src=%s>\t%s",profile_notify_icon(get<0>(s)),get<2>(s).c_str());
 				rownum++;
 			}
 		</f>
@@ -720,6 +730,7 @@ void profile(CONNECT_INFO &con, vector<DOCUMENT_POINTER> &docpointers)
 			</call>
 		}else if (strcmp(id,"Contacts")==0 || strcmp(id,"Contact-req")==0){	// CONF contacts
 			glocal bool to_me = strcmp(id,"Contacts")==0;
+			util_delnotify (*glocal.con_sess,"profile",id);
 			if (glocal.to_me){
 				sethelp("helpcontacts",MSG_U(I_HELPCONTACTS,"Contacts"));
 			}else{

@@ -4,11 +4,17 @@ struct USERINFO{
 	bool is_admin;
 	unsigned dateformat;
 	std::string lang;
+	bool talk_notify;
+	bool mail_notify;
+	bool main_notify;
+	std::set<std::string> notifies;
 	void reset(){
 		name.clear();
 		lang = "eng";
 		is_admin = false;
 		dateformat = 0;
+		notifies.clear();
+		talk_notify = main_notify = mail_notify = false;
 	}
 	USERINFO(){
 		reset();
@@ -26,14 +32,17 @@ struct DOTMENU{
 };
 void util_dotmenu(const std::vector<DOTMENU> &menu);
 int util_getsessioninfo (CONNECT_INFO &con, CONNECT_INFO &con_sess, std::string &session, const char *varname, unsigned &varval);
-void print_href (const char *title, PARAM_STRING href);
-void print_aref (const char *title, int step);
-void print_aref (const char *title, int step, W_VAR &var);
+void print_href (const char *title, PARAM_STRING href, bool notify);
+void print_aref (const char *title, int step, bool notify);
 void print_aref_selected (const char *title, int step);
+
+#if 0
+void print_aref (const char *title, int step, W_VAR &var);
 void print_aref_selected (const char *title, int step, W_VAR &var);
 void print_aref (const char *title, int step, W_VAR &var1, W_VAR &var2);
 void print_aref (const char *title, int step, W_VAR &var1, const char *varname2, const char *val2);
 void print_aref (const char *title, int step, W_VAR &var1, W_VAR &var2, W_VAR &var3);
+#endif
 
 const char *format_line (const char *s);
 const char *format_url(const char *s);
@@ -125,3 +134,5 @@ const char *util_getdirserver();
 string toupper (PARAM_STRING s);
 class MESSAGE_receive;
 string index_format_mail_fname(const MESSAGE_receive &m, PARAM_STRING username);
+void util_delnotify(CONNECT_INFO &con_sess, PARAM_STRING id);
+void util_delnotify(CONNECT_INFO &con_sess, PARAM_STRING prefix, PARAM_STRING id);

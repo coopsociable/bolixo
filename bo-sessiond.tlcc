@@ -70,7 +70,8 @@ struct SESSION_INFO{
 	string name;
 	string email;
 	string lang;
-	unsigned dateformat;
+	unsigned char dateformat;
+	unsigned char timezone;
 	bool admin;
 	vector<VAR> vars;
 	struct {
@@ -82,6 +83,8 @@ struct SESSION_INFO{
 		stats.lastvisit = time(NULL);
 		stats.nbacc = 0;
 		admin = false;
+		dateformat = 0;
+		timezone = 0;
 	}
 	SESSION_INFO (unsigned _userid,
 		const string &_userid_str,
@@ -89,7 +92,8 @@ struct SESSION_INFO{
 		const char *_email,
 		const char *_lang,
 		bool _admin,
-		unsigned _dateformat){
+		unsigned _dateformat,
+		unsigned _timezone){
 		userid = _userid;
 		userid_str = _userid_str;
 		name = _name;
@@ -97,11 +101,13 @@ struct SESSION_INFO{
 		lang = _lang;
 		admin = _admin;
 		dateformat = _dateformat;
+		timezone = _timezone;
 		stats.lastvisit = time(NULL);
 		stats.nbacc=1;
 	}
 };
 
+static const char *VAR_NOTIFIES = "notifies";
 
 <mod>
 int main (int argc, char *argv[])
@@ -175,7 +181,7 @@ int main (int argc, char *argv[])
 			if (fin != NULL){
 				<call session_log>(fin);
 				<f session>
-					SESSION_INFO sess(userid, userid_str, name, email, lang, admin, dateformat);
+					SESSION_INFO sess(userid, userid_str, name, email, lang, admin, dateformat,0);
 					sess.stats.lastvisit = lastvisit;
 					sess.stats.nbacc = nbacc;
 					for (auto &v:vars) sess.vars.push_back(v);
@@ -287,10 +293,11 @@ int main (int argc, char *argv[])
 								tmp = string_f ("%07u: %s anonymous %s %u",pos,it.first.c_str()
 									,datetime.buf,it.second.stats.nbacc);
 							}else{
-								tmp = string_f ("%07u: %s %d-%s %s %s %s %u %u %d %s",pos,it.first.c_str()
+								tmp = string_f ("%07u: %s %d-%s %s %s %s %u %u %d %s %u %u",pos,it.first.c_str()
 									,it.second.userid,it.second.userid_str.c_str(),it.second.name.c_str(),it.second.email.c_str()
 									,datetime.buf,it.second.stats.nbacc
-									,it.second.userid,it.second.admin,it.second.lang.c_str());
+									,it.second.userid,it.second.admin,it.second.lang.c_str()
+									,it.second.dateformat,it.second.timezone);
 							}
 							tb.push_back(tmp);
 							for (auto &v:it.second.vars){
@@ -420,6 +427,30 @@ int main (int argc, char *argv[])
 					}
 					rep_setvar (success,msg);
 				</f>
+				<f delnotify>
+					bool success = false;
+					string msg;
+					auto it = glocal.sessions.find(sessionid);
+					if (it == glocal.sessions.end()){
+						msg = "Invalid sessionid";
+					}else{
+						for (auto &v:it->second.vars){
+							if (v.name == VAR_NOTIFIES){
+								unsigned pos=0;
+								for (auto vv:v.vals){
+									if (vv.sname == name){
+										v.vals.erase(v.vals.begin()+pos);
+										break;
+									}
+									pos++;
+								}
+								break;
+							}
+						}
+						success = true;
+					}
+					rep_delnotify(success,msg);
+				</f>
 				<f test>
 					rep_test (true);
 				</f>
@@ -454,7 +485,15 @@ int main (int argc, char *argv[])
 					if (it == glocal.sessions.end()){
 						tlmp_error ("setsession: %s does not exist\n",sessionid);
 					}else{
-						it->second = SESSION_INFO(userid,userid_str,name,email,lang,admin,dateformat);
+						it->second = SESSION_INFO(userid,userid_str,name,email,lang,admin,dateformat,timezone);
+						VAR var;
+						var.name = VAR_NOTIFIES;
+						for (auto n:notifies){
+							SNAMEVAL val;
+							val.sname = n;
+							var.vals.push_back(val);
+						}
+						it->second.vars.push_back(var);
 					}
 				</f>
 				<f setlang>
@@ -469,7 +508,46 @@ int main (int argc, char *argv[])
 							if (s.second.userid==it->second.userid){
 								s.second.lang = lang;
 								s.second.dateformat = dateformat;
+								s.second.timezone = timezone;
 							}
+						}
+					}
+				</f>
+				<f setnotify>
+					// Assigned a notification to a list of userids
+					for (auto userid:userids){
+						for (auto &s:glocal.sessions){
+							if (s.second.userid==userid){
+								bool found_var = false;
+								for (auto &var:s.second.vars){
+									if (var.name == VAR_NOTIFIES){
+										found_var = true;
+										bool found = false;
+										for (auto v:var.vals){
+											if (v.sname == name){
+												found = true;
+												break;
+											}
+										}
+										if (!found){
+											SNAMEVAL val;
+											val.sname = name;
+											var.vals.push_back(val);
+										}
+										break;
+									}
+								}
+								if (!found_var){
+									VAR var;
+									var.name = VAR_NOTIFIES;
+									SNAMEVAL val;
+									val.sname = name;
+									var.vals.push_back(val);
+									s.second.vars.push_back(var);
+								}
+							}
+							// A user may be connected using several devices
+							// so no break.
 						}
 					}
 				</f>

@@ -90,6 +90,11 @@ using namespace std;
 #define bo_sessiond_admin_getsession_NOTNEED
 #define bo_sessiond_admin_setlang_NOTNEED
 #include "proto/bo-sessiond_admin.protoch"
+#define bo_sessiond_client_getsessioninfo_NOTNEED
+#define bo_sessiond_client_getsessioninfovars_NOTNEED
+#define bo_sessiond_client_test_NOTNEED
+#define bo_sessiond_client_setvar_NOTNEED
+#include "proto/bo-sessiond_client.protoch"
 
 <mod>
 static string bod_createsession(CONNECT_INFO &con)
@@ -189,6 +194,7 @@ int main (int argc, char *argv[])
 	glocal const char *cli_port = "9000";
 	glocal const char *adm_port = "9000";
 	glocal const char *sessport = "9200";
+	glocal const char *sessclientport = "9100";
 	glocal const char *host = "192.168.4.1";
 	glocal const char *client_bind = "192.168.5.5";
 	glocal const char *admin_bind = "192.168.5.6";
@@ -219,6 +225,8 @@ int main (int argc, char *argv[])
 	glocal const char *testset_member = NULL;
 	glocal const char *testset_access = NULL;
 	glocal const char *testverifysign = NULL;
+	glocal const char *testsetnotify=NULL;
+	glocal const char *testdelnotify=NULL;
 	glocal bool testsystem = false;
 	glocal bool testcreatesessions = false;
 	glocal const char *exec1 = NULL;
@@ -252,6 +260,7 @@ int main (int argc, char *argv[])
 		setarg ('p',"cli_port","client TCP port of bod server (or unix path)",glocal.cli_port,false);
 		setarg (' ',"adm_port","admin TCP port of bod server (or unix path)",glocal.adm_port,false);
 		setarg (' ',"sessport","TCP port of sessiond server",glocal.sessport,false);
+		setarg (' ',"sessclientport","TCP port of sessiond server (client)",glocal.sessclientport,false);
 		setarg (' ',"client_secret","Secret used to sign client requests",glocal.client_secret,true);
 		setarg (' ',"client_bind","Client IP used to reach the host",glocal.client_bind,false);
 		setarg (' ',"admin_secret","Secret used to sign admin requests",glocal.admin_secret,true);
@@ -289,6 +298,8 @@ int main (int argc, char *argv[])
 		setarg (' ',"testset_group","Add or configure a group in a list",glocal.testset_group,false);
 		setarg (' ',"testset_member","Add or configure a member of a group",glocal.testset_member,false);
 		setarg (' ',"testset_access","Set access to a file or directory",glocal.testset_access,false);
+		setarg (' ',"testsetnotify","Register a notification in bo-sessiond for all session of a user",glocal.testsetnotify,false);
+		setarg (' ',"testdelnotify","Remove a notification in bo-sessiond for one session",glocal.testdelnotify,false);
 		setarg (' ',"testverifysign","Check the signature of a message",glocal.testverifysign,false);
 		setgrouparg ("Test parameters");
 		setarg (' ',"workers","Test concurent access",glocal.workers,false);
@@ -307,6 +318,7 @@ int main (int argc, char *argv[])
 		glocal CONNECT_INFO con_cli;
 		glocal CONNECT_INFO con_adm;
 		glocal CONNECT_INFO con_sess;
+		glocal CONNECT_INFO con_client_sess;
 		glocal.con_cli.secret = glocal.client_secret;
 		glocal.con_cli.host = glocal.host;
 		glocal.con_cli.port = glocal.cli_port;
@@ -321,6 +333,11 @@ int main (int argc, char *argv[])
 		glocal.con_sess.host = glocal.host;
 		glocal.con_sess.port = glocal.sessport;
 		glocal.con_sess.bind = glocal.sess_bind;
+
+		glocal.con_client_sess.secret = glocal.client_secret;
+		glocal.con_client_sess.host = glocal.host;
+		glocal.con_client_sess.port = glocal.sessclientport;
+		glocal.con_client_sess.bind = glocal.sess_bind;
 		if (glocal.loaduserfile != NULL){
 			<call loadfile>(glocal.loaduserfile,true);
 			<f oneline>
@@ -840,6 +857,25 @@ int main (int argc, char *argv[])
 			<call bod_client_verifysign> (glocal.con_cli,glocal.testverifysign,glocal.extra);
 			<f ok>
 				printf ("\tstatus=%d msg=%s\n",status,msg);
+			</f>
+			</call>
+		}else if (glocal.testsetnotify != NULL){
+			if (glocal.extra[0] == '\0'){
+				tlmp_error ("You must specify the userid using --extra\n");
+				exit (-1);
+			}
+			unsigned userid = atoi(glocal.extra);
+			printf ("setnotify name=%s userid={%u}\n",glocal.testsetnotify,userid);
+			vector<unsigned> userids={userid};
+			<call bo_sessiond_admin_setnotify>(glocal.con_sess,userids,glocal.testsetnotify);
+			<f ok>
+			</f>
+			</call>
+		}else if (glocal.testdelnotify != NULL){
+			printf ("delnotify session=%s name=%s\n",glocal.extra,glocal.testdelnotify);
+			<call bo_sessiond_client_delnotify>(glocal.con_client_sess,glocal.extra,glocal.testdelnotify);
+			<f ok>
+				printf ("success=%d msg=%s\n",success,msg);
 			</f>
 			</call>
 		}else{

@@ -21,6 +21,8 @@
 #include <trlitool.h>
 #include <string>
 #include <tlmpweb.h>
+#include <set>
+#define DEFINE_USERINFO
 #include "util.h"
 #define DEFINE_TBFTYPE
 #include "../bolixo.h"
@@ -28,6 +30,7 @@
 #include "../bolixo.m"
 #undef INSTRUMENT
 #include "../instrument.h"
+#include "w_var.h"
 
 using namespace std;
 
@@ -114,7 +117,6 @@ using namespace std;
 #define bo_sessiond_client_getsessioninfo_NOTNEED
 #define bo_sessiond_client_setvar_NOTNEED
 #include "../proto/bo-sessiond_client.protoch"
-
 W_UNSIGNED w_robot ("robot");
 static W_SSTRING w_file("file");
 static float small_size=0.9;
@@ -237,18 +239,18 @@ static void print_href_c (const char *title, PARAM_STRING href, const char *colo
 	bool close = strcmp(color,"white")==0 ? false : true;
 	draw_tab (0,color,color,close,title,href);
 }
-void print_href (const char *title, PARAM_STRING href)
+void print_href (const char *title, PARAM_STRING href, bool notify)
 {
-	print_href_c(title, href,"#EAEAEA");	//"#33cc33");
+	print_href_c(title, href,notify ? "pink" : "#EAEAEA");
 }
-void print_aref (const char *page, const char *title, int step)
+void print_aref (const char *page, const char *title, int step, bool notify)
 {
 	string href = string_f ("%s?webstep=%d",page,step);
-	print_href (title,href);
+	print_href (title,href,notify);
 }
-void print_aref (const char *title, int step)
+void print_aref (const char *title, int step, bool notify)
 {
-	print_aref (tlmpweb_curpage(),title,step);
+	print_aref (tlmpweb_curpage(),title,step,notify);
 }
 void print_aref_selected (const char *page, const char *title, int step)
 {
@@ -259,6 +261,7 @@ void print_aref_selected (const char *title, int step)
 {
 	print_aref_selected (tlmpweb_curpage(),title,step);
 }
+#if 0
 void print_aref_selected (const char *page, const char *title, int step, W_VAR &var)
 {
 	SSTRING val;
@@ -312,6 +315,7 @@ void print_aref (const char *title, int step, W_VAR &var1, W_VAR &var2, W_VAR &v
 		,var3.getname(),val3.c_str());
 	print_href (title,href);
 }
+#endif
 const char *format_line (const char *s)
 {
 	while (*s != '\0' && *s != '\n'){
@@ -1350,4 +1354,21 @@ string index_format_mail_fname(const MESSAGE_receive &m, PARAM_STRING username)
 	}	
 	return fname;
 }
-
+<mod>
+void util_delnotify(CONNECT_INFO &con_sess, PARAM_STRING id)
+{
+	auto f = userinfo.notifies.find(id.ptr);
+	if (f != userinfo.notifies.end()){
+		userinfo.notifies.erase(f);
+		<call bo_sessiond_client_delnotify>(con_sess,w_session.c_str(),id);
+		<f ok>
+		</f>
+		</call>
+	}
+}
+</mod>
+void util_delnotify(CONNECT_INFO &con_sess, PARAM_STRING prefix, PARAM_STRING id)
+{
+	string tmp = string_f("%s:%s",prefix.ptr,id.ptr);
+	util_delnotify(con_sess,tmp);
+}

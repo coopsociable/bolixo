@@ -16,6 +16,7 @@ struct WEBTAB{
 	bool locked;	// Can't be deleted
 	string state;	// It is a string set by the application and preserved
 			// in the session manager. The state is passed back to the application
+	bool notify;	// Use a different color to show there is content to review
 	void setargs(PARAM_STRING args){
 		vector<string> tb;
 		str_splitline(args.ptr,',',tb);
@@ -37,6 +38,7 @@ struct WEBTAB{
 		type = WEBTAB_TYPE1;
 		selorder = 0;
 		locked = false;
+		notify = false;
 	}
 	WEBTAB(WEBTAB_TYPE _type, PARAM_STRING _tab, PARAM_STRING _title, PARAM_STRING args){
 		selorder = 0;
@@ -44,6 +46,7 @@ struct WEBTAB{
 		tab = _tab.ptr;
 		title = _title.ptr;
 		locked = false;
+		notify = false;
 		setargs(args);
 	}
 	WEBTAB(PARAM_STRING _tab, PARAM_STRING args){
@@ -57,6 +60,7 @@ struct WEBTAB{
 		}
 		title.clear();
 		locked = false;
+		notify = false;
 		setargs(args);
 	}
 	bool operator < (const WEBTAB &n) const {

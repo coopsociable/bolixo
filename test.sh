@@ -35,6 +35,7 @@ fi
 BODCLIENTPORT=$SOCKTESTDIR/B-bod-*-client-9000.sock
 BODADMINPORT=$SOCKTESTDIR/B-bod-*-admin-9000.sock
 SESSIONDADMINPORT=$SOCKTESTDIR/A-sessiond-*-admin-9200.sock
+SESSIONDCLIENTPORT=$SOCKTESTDIR/A-sessiond-*-client-9200.sock
 if [ "$LXCSOCK" = "" ] ; then
 	LXCSOCK=on
 fi
@@ -426,7 +427,8 @@ elif [ "$1" = "bod-control" ] ; then # A: Talks to bod
 	$BOLIXOPATH/bod-control --control $BOD_SOCK $*
 elif [ "$1" = "bod-client" ] ; then # A: Executes the bod test client
 	shift
-	$BOLIXOPATH/bod-client --host "" -p $BODCLIENTPORT --adm_port $BODADMINPORT --sessport $SESSIONDADMINPORT --client_secret foo --admin_secret adm "$@"
+	$BOLIXOPATH/bod-client --host "" -p $BODCLIENTPORT --adm_port $BODADMINPORT \
+		--sessclientport $SESSIONDCLIENTPORT --sessport $SESSIONDADMINPORT --client_secret foo --admin_secret adm "$@"
 elif [ "$1" = "bo-writed-control" ] ; then # A: Talks to writed
 	shift
 	$BOLIXOPATH/bo-writed-control --control $WRITED_SOCK "$@"
@@ -1645,6 +1647,11 @@ elif [ "$1" = "instrument" ] ; then # A: Report remote call statistics
 	done
 	echo
 	) | bc -l
+elif [ "$1" = "setnotify" ] ; then # T: Add some notifies in sessiond for jacques-A
+	for notify in talks:jacques-A:public talks:jacques-A:anonymous talks:jacques-A:inbox main profile:Contact-req
+	do
+		$0 bod-client --testsetnotify $notify --extra 2
+	done
 else
 	echo test.sh command ...
 fi

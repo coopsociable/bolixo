@@ -28,6 +28,7 @@
 #include <string>
 #include <algorithm>
 #include <deque>
+#include <set>
 #define DEFINE_USERINFO
 #include "util.h"
 #include "../bolixo.h"
@@ -40,7 +41,7 @@
 
 extern void bolixo_doc (DOCUMENT_POINTER &, DOC_ID &jump, const char *username, bool display_full, bool index);
 extern void bolixo_doc_fr (DOCUMENT_POINTER &, DOC_ID &jump, const char *username, bool display_full, bool index);
-extern void profile(CONNECT_INFO &con, vector<DOCUMENT_POINTER> &docpointers);
+extern void profile(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER> &docpointers);
 extern void mail(CONNECT_INFO &con, vector<DOCUMENT_POINTER> &docpointers);
 
 static WEBID ID_TALK("talk");
@@ -128,7 +129,7 @@ static void index_field (_F_form *c, bool newline, const char *title, W_SSTRING 
 	index_field (c,newline,1,title,var,25);
 }
 map<string,WEBTAB_CTRL> tabs;
-void webtab_init (const vector<SNAMEVAL_receive> &vals)
+static void webtab_init (const vector<SNAMEVAL_receive> &vals)
 {
 	for (auto &s:vals){
 		// Split the name
@@ -146,6 +147,21 @@ void webtab_init (const vector<SNAMEVAL_receive> &vals)
 			}else{
 				ctrl.tabs.push_back(WEBTAB(pt+1,s.sval));
 			}
+		}
+	}
+}
+/*
+	Set the notify flag on each tabs based on userinfo.notifies
+*/
+static void webtab_notify()
+{
+	for (auto &m:tabs){
+		const char *tname = m.first.c_str();
+		for (auto &t:m.second.tabs){
+			const char *name = t.tab.c_str();
+			if (isdigit(*name) && name[1] == ':') name += 2;
+			string tmp = string_f("%s:%s",tname,name);
+			if (userinfo.notifies.count(tmp) > 0) t.notify = true;
 		}
 	}
 }
@@ -283,11 +299,13 @@ static void show_buttons_right(_F_websteps *c)
 			htmlprintf ("<a href=%s?webstep=%d><font size=+%u>%s</font></a>\n",tlmpweb_curpage(),step_adduser,fontsize,MSG_U(I_CREATEACCT,"Create account"));
 		}
 	}
-	if (0 && userinfo.is_admin){
+	#if 0
+	if (userinfo.is_admin){
 		/- <td>
 		string tmp = string_f ("href=%s/admin.hc",tlmpweb_curdir());
 		print_href("Admin menu",tmp);
 	}
+	#endif
 	if (is_user){
 		if (!is_mobile){
 			/- <td align=right>
@@ -303,12 +321,12 @@ static void show_buttons_right(_F_websteps *c)
 static unsigned subject = 0;
 const unsigned max_subject=7;
 
-static void print_button (const char *title, int step, int curstep)
+static void print_button (const char *title, int step, int curstep, bool notify)
 {
 	if (step == curstep){
 		print_aref_selected (title,step);
 	}else{
-		print_aref (title,step);
+		print_aref (title,step,notify);
 	}
 }
 struct CURRENTFORM{
@@ -355,15 +373,15 @@ static void bolixo_title (const char *title, _F_websteps *c)
 		<call button_row>(0,newscolor,false);
 		<f draw>
 			split();
-			print_button (MSG_U(M_MAIN,"Main"),1,glocal.step);
+			print_button (MSG_U(M_MAIN,"Main"),1,glocal.step,userinfo.main_notify);
 			split();
-			print_button (MSG_U(M_TALK,"Talk"),step_talks,glocal.step);
+			print_button (MSG_U(M_TALK,"Talk"),step_talks,glocal.step,userinfo.talk_notify);
 			#if 0
 			split();
-			print_button (MSG_U(M_MAIL,"Mail"),step_mails,glocal.step);
+			print_button (MSG_U(M_MAIL,"Mail"),step_mails,glocal.step,userinfo.mail_notify);
 			#endif
 			split();
-			print_button (MSG_U(M_PROJECTS,"Projects"),step_projects,glocal.step);
+			print_button (MSG_U(M_PROJECTS,"Projects"),step_projects,glocal.step,false);
 			split();
 			vector<DOTMENU> menu;
 			menu.emplace_back(DOTMENU(MSG_U(M_PROFILE,"Profile"),step_profile));
@@ -496,8 +514,20 @@ static void trli_getsessioninfo(CONNECT_INFO &con, CONNECT_INFO &con_sess, vecto
 							fcopy.name = v.sval;
 						}
 					}
+				}else if (strcmp(var.name,"notifies")==0){
+					for (auto &v:var.vals){
+						if (strncmp(v.sname,"talks:",6)==0){
+							userinfo.talk_notify=true;
+						}else if (strncmp(v.sname,"mail:",5)==0){
+							userinfo.mail_notify=true;
+						}else if (strcmp(v.sname,"main")==0){
+							userinfo.main_notify=true;
+						}
+						userinfo.notifies.insert(v.sname);
+					}
 				}
 			}
+			webtab_notify();
 			// Refresh the cookie so it is valid for 2 more days
 			websession_setcookie("session",w_session.c_str(),time(NULL)+48*60*60);
 		}else{
@@ -513,6 +543,14 @@ static void trli_getsessioninfo(CONNECT_INFO &con, CONNECT_INFO &con_sess, vecto
 	</call>
 }
 </mod>
+/*
+	Return the proper image to tell if this ID has a notification or not
+*/
+static const char *index_talk_notify_icon (const string &id)
+{
+	string tmp = string("talks:")+id;
+	return userinfo.notifies.count(tmp) > 0 ? "/new.png" : "/seen.png";
+}
 void index_doc (DOCUMENT_POINTER &pt, DOC_ID &jump, bool index)
 {
 	if (tlmpweb_ismobile()) index = false;
@@ -1166,6 +1204,7 @@ static void index_script()
 	?>
 }
 
+
 <mod>
 extern "C" void webmain_real()
 {
@@ -1566,6 +1605,7 @@ extern "C" void webmain_real()
 				htmlprintf ("<a href=%s?webstep=12>%s</a>\n",tlmpweb_curpage(),MSG_R(I_COMPLETEDOC));
 			}
 		}else{
+			util_delnotify(glocal.con_sess,"main");
 			DIV d("tabs");
 			if (is_mobile){
 				d.w(100).print();
@@ -2435,7 +2475,7 @@ extern "C" void webmain_real()
 			static const char *id = "tab:talk";
 			<call webtable>(id,"100%",currents[id]);
 			<f load>
-				sethead (MSG_U(H_TALKS,"Owner\tGroup"));
+				sethead (MSG_U(H_TALKS,"\tOwner\tGroup"));
 				<call bod_client_list_groups>(glocal.con,w_session.c_str(),"",false);
 				<f ok>
 					// Make sure the inbox and public inbox (anonymous) appears at the
@@ -2446,7 +2486,8 @@ extern "C" void webmain_real()
 					string add = string_f("webtab_add=1:%s:inbox~%s",username,MSG_U(I_SHORTINBOX,"Inbox"));
 					if (glocal.webtabs.selected(id)) glocal.webtable.setcurrent(rownum);
 					glocal.webtable.setclickopt (true,"",add);
-					glocal.webtable.setrow ("white",rownum,"\t%s",MSG_R(I_SHORTINBOX));
+					glocal.webtable.setrow ("white",rownum,"<img src=%s>\t\t%s"
+						,index_talk_notify_icon(id),MSG_R(I_SHORTINBOX));
 					rownum++;
 					for (auto &g:groups){
 						if (userinfo.name != g.owner
@@ -2455,7 +2496,8 @@ extern "C" void webmain_real()
 							add = string_f("webtab_add=1:%s:%s",g.owner,g.name);
 							if (glocal.webtabs.selected(id)) glocal.webtable.setcurrent(rownum);
 							glocal.webtable.setclickopt (true,"",add);
-							glocal.webtable.setrow ("white",rownum,"%s\t%s",g.owner,g.name);
+							glocal.webtable.setrow ("white",rownum,"<img src=%s>\t%s\t%s"
+								,index_talk_notify_icon(id),g.owner,g.name);
 							rownum++;
 						}
 					}
@@ -2463,7 +2505,8 @@ extern "C" void webmain_real()
 					add = string_f("webtab_add=1:%s:anonymous~%s",username,MSG_U(I_ANONINBOX,"Public-inbox"));
 					if (glocal.webtabs.selected(id)) glocal.webtable.setcurrent(rownum);
 					glocal.webtable.setclickopt (true,"",add);
-					glocal.webtable.setrow ("white",rownum,"\t%s",MSG_R(I_ANONINBOX));
+					glocal.webtable.setrow ("white",rownum,"<img src=%s>\t\t%s"
+						,index_talk_notify_icon(id),MSG_R(I_ANONINBOX));
 				</f>
 				</call>
 			</f>
@@ -2475,6 +2518,7 @@ extern "C" void webmain_real()
 			if (n != 2) return;
 			glocal string groupowner = tb[0];
 			glocal string groupname = tb[1];
+			util_delnotify (glocal.con_sess,"talks",id);
 			if (glocal.groupname != "anonymous"){
 				glocal bool private_inbox = glocal.groupname == "inbox";
 				DIV f; f.id(TAB_FORM).print();
@@ -2634,7 +2678,7 @@ extern "C" void webmain_real()
 	</f>
 	<f step11> // TAB Profile
 		bolixo_title (MSG_U(T_PROFILE,"Profile"),this);
-		profile(glocal.con, glocal.docpointers);
+		profile(glocal.con,glocal.con_sess,glocal.docpointers);
 	</f>
 	<f step12> // Documentation
 		bolixo_title (MSG_R(M_DOCUM),this);
