@@ -547,7 +547,19 @@ static void trli_getsessioninfo(CONNECT_INFO &con, CONNECT_INFO &con_sess, vecto
 static const char *index_talk_notify_icon (const string &id)
 {
 	string tmp = string("talks:")+id;
-	return userinfo.notifies.count(tmp) > 0 ? "/new.png" : "/seen.png";
+	if (userinfo.notifies.count(tmp) > 0){
+		if (is_mobile){
+			return "<img width=60 src=/new.png>";
+		}else{
+			return "<img src=/new.png>";
+		}
+	}else{
+		if (is_mobile){
+			return "<img width=60 src=/seen.png>";
+		}else{
+			return "<img src=/seen.png>";
+		}
+	}
 }
 void index_doc (DOCUMENT_POINTER &pt, DOC_ID &jump, bool index)
 {
@@ -2197,7 +2209,7 @@ extern "C" void webmain_real()
 				}else{
 					glocal.webtable.setdrop_default({MENU_PASTE});
 				}
-				if (tlmpweb_ismobile()){
+				if (is_mobile){
 					hide_columns ({2,4});
 					glocal.status_width=60;
 				}
@@ -2484,7 +2496,7 @@ extern "C" void webmain_real()
 					string add = string_f("webtab_add=1:%s:inbox~%s",username,MSG_U(I_SHORTINBOX,"Inbox"));
 					if (glocal.webtabs.selected(id)) glocal.webtable.setcurrent(rownum);
 					glocal.webtable.setclickopt (true,"",add);
-					glocal.webtable.setrow ("white",rownum,"<img src=%s>\t\t%s"
+					glocal.webtable.setrow ("white",rownum,"%s\t\t%s"
 						,index_talk_notify_icon(id),MSG_R(I_SHORTINBOX));
 					rownum++;
 					for (auto &g:groups){
@@ -2494,7 +2506,7 @@ extern "C" void webmain_real()
 							add = string_f("webtab_add=1:%s:%s",g.owner,g.name);
 							if (glocal.webtabs.selected(id)) glocal.webtable.setcurrent(rownum);
 							glocal.webtable.setclickopt (true,"",add);
-							glocal.webtable.setrow ("white",rownum,"<img src=%s>\t%s\t%s"
+							glocal.webtable.setrow ("white",rownum,"%s\t%s\t%s"
 								,index_talk_notify_icon(id),g.owner,g.name);
 							rownum++;
 						}
@@ -2503,7 +2515,7 @@ extern "C" void webmain_real()
 					add = string_f("webtab_add=1:%s:anonymous~%s",username,MSG_U(I_ANONINBOX,"Public-inbox"));
 					if (glocal.webtabs.selected(id)) glocal.webtable.setcurrent(rownum);
 					glocal.webtable.setclickopt (true,"",add);
-					glocal.webtable.setrow ("white",rownum,"<img src=%s>\t\t%s"
+					glocal.webtable.setrow ("white",rownum,"%s\t\t%s"
 						,index_talk_notify_icon(id),MSG_R(I_ANONINBOX));
 				</f>
 				</call>
