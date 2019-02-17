@@ -1324,15 +1324,32 @@ static bool bo_writed_public_msg(const char *srcname)
 }
 
 <mod>
-static void bo_writed_notify (CONNECT_INFO &con_sess, const char *key, unsigned userid)
+static void bo_writed_notify (CONNECT_INFO &con_sess, PARAM_STRING key, vector<unsigned> &userids)
+{
+	#if 0
+		string tmp;
+		for (auto u:userids) tmp += string_f(" %u",u);
+		tlmp_error ("bo_writed_notify key=%s userids=%s\n",key.ptr,tmp.c_str());
+	#endif
+	if (userids.size() > 0){
+		<call bo_sessiond_admin_setnotify>(con_sess,userids,key);
+		<f ok>
+		</f>
+		</call>
+	}
+}
+</mod>
+static void bo_writed_notify (CONNECT_INFO &con_sess, PARAM_STRING key, unsigned userid)
 {
 	vector<unsigned> userids={userid};
-	<call bo_sessiond_admin_setnotify>(con_sess,userids,key);
-	<f ok>
-	</f>
-	</call>
-	
+	bo_writed_notify (con_sess,key,userids);
 }
+static void bo_writed_notify_talk_inbox(CONNECT_INFO &con_sess, PARAM_STRING user, unsigned userid)
+{
+	string tmp = string_f("talks:%s:inbox",user.ptr);
+	bo_writed_notify(con_sess,tmp,userid);
+}
+
 <mod>
 int main (int argc, char *argv[])
 {
@@ -2844,7 +2861,7 @@ int main (int argc, char *argv[])
 								// We store the message in the short inbox of the group owner (like mail sent to the project) 
 								// The query is to check if the user posting the message is a member of the group
 								// and to validate the group exist
-								<call sql_query>("select groups.ownerid from groups"
+								<call sql_query>("select groups.ownerid,groups.id,groups.name,id2name.name from groups"
 									" join id2name on id2name.userid=groups.ownerid"
 									" join group_members on group_members.groupid = groups.id"
 									" where id2name.name='%s' and groups.name='%s' and group_members.userid=%u"
@@ -2855,7 +2872,10 @@ int main (int argc, char *argv[])
 								<f onerow>
 									bool created;
 									unsigned ownerid = atoi(row[0]);
-									int dirid = fs_find_short_inbox (ownerid,glocal.groupowner,glocal.groupname,glocal.msg,true,created);
+									unsigned group_id = atoi(row[1]);
+									const char *bd_group_name = row[2];
+									const char *bd_group_owner = row[3];
+									int dirid = fs_find_short_inbox (ownerid,bd_group_owner,bd_group_name,glocal.msg,true,created);
 									if (dirid != -1){
 										int fileid;
 										string msgid;
@@ -2870,8 +2890,8 @@ int main (int argc, char *argv[])
 												bo_writed_update_interest_table(ownerid,dirid);
 											}
 										}else{
-											bo_writed_update_interest(created,glocal.groupname,ownerid,dirid);
-											if (strcmp(glocal.groupname,"public")==0){
+											bo_writed_update_interest(created,bd_group_name,ownerid,dirid);
+											if (strcmp(bd_group_name,"public")==0){
 												if (!glocal.more){
 													<call publishd_client_sendmessage>(glocal.ctx.con_publish,ownerid
 														,dirid,fileid,modified.buf,msgid);
@@ -2882,7 +2902,27 @@ int main (int argc, char *argv[])
 												}else{
 													fs_file_handle_addextra (glocal.handle,ownerid,dirid,msgid);
 												}
+												// Add notification for the main page for those who have interests
+												// for this user
+												glocal vector<unsigned> interested;
+												<call sql_query>("select userid from interests where check_userid=%u",ownerid);
+												<f onerow>
+													glocal.interested.push_back(atoi(row[0]));
+												</f>
+												</call>
+												bo_writed_notify(glocal.con,"main",glocal.interested);
 											}
+										}
+										// We send a notification to each members of the group
+										glocal vector<unsigned> members;
+										<call sql_query>("select userid from group_members where groupid=%u",group_id);
+										<f onerow>
+											glocal.members.push_back(atoi(row[0]));
+										</f>
+										</call>
+										{
+											string tmp = string_f("talks:%s:%s",bd_group_owner,bd_group_name);
+											bo_writed_notify (glocal.con,tmp,glocal.members);
 										}
 										// Now that we have created the message in the group, we
 										// simply link the message in all recipients, except remote user.
@@ -2895,6 +2935,7 @@ int main (int argc, char *argv[])
 														tlmp_error ("Insert in short user inbox, internal error %s\n",u.first.c_str());
 														break;
 													}
+													bo_writed_notify_talk_inbox(glocal.con,u.first,u.second);
 												}else{
 													tlmp_error ("Insert in short user inbox, missing inbox, internal error %s\n",u.first.c_str());
 													break;
@@ -2930,6 +2971,7 @@ int main (int argc, char *argv[])
 										bo_writed_addfile_bob (glocal.ctx.con_keys,glocal.sessionid,NULL,ENTRY_MSG,dirid,glocal.userid
 											,*glocal.content,glocal.more,glocal.sign
 											,msgid,glocal.msg,glocal.handle,fileid,modified);
+										bo_writed_notify_talk_inbox(glocal.con,uid0.first,uid0.second);
 										glocal.uids.erase(glocal.uids.begin());
 										for (auto &u:glocal.uids){
 											bool created;
@@ -2939,6 +2981,7 @@ int main (int argc, char *argv[])
 													tlmp_error ("Insert in short user inbox, internal error %s\n",u.first.c_str());
 													break;
 												}
+												bo_writed_notify_talk_inbox(glocal.con,u.first,u.second);
 											}else{
 												tlmp_error ("Insert in short user inbox, missing inbox, internal error %s\n",u.first.c_str());
 												break;
