@@ -170,6 +170,13 @@ elif [ "$1" = "notifications" ] ; then # test: test notifications to session man
 	./bofs -u jacques-A msgs --shortmsg --groupowner jacques-B -G public -C "public notifications from jacques-A"
 	./bofs -u jacques-A msgs --shortmsg --groupowner jacques-C -G public -C "public notifications from jacques-A"
 	./bofs -u jacques-B msgs --shortmsg --groupowner jacques-A -G public -C "public notifications from jacques-B"
+	# Anonymous message to A B and C
+	for user in A B C
+	do
+		# Make sure user accepts anonymous messages
+		 ./bofs -u jacques-$user misc -w --anonmsgs 1
+		./bofs msgs --shortmsg --groupowner jacques-$user -G anonymous -C "Anonymous message to jacques-$user"
+	done
 	# User Z perform a contact request to A B and C
 	# Users A B C perform a contact request to Y and Y accepts
 	for user in A B C

@@ -49,6 +49,7 @@ static WEBID ID_MAIL("mail");
 static WEBID ID_PROJECT("project");
 static WEBID ID_PRJTEXT("prjtext");
 static WEBID ID_FOLLOW("follow");
+static WEBID ID_ALLCONTACTS("allcontacts");
 
 using namespace std;
 
@@ -1616,7 +1617,13 @@ extern "C" void webmain_real()
 			}
 		}else{
 			util_delnotify(glocal.con_sess,"main");
+			DIV h; h.w(100).dispflex().flowrow().print();
+			DIV l("tabs");
 			DIV d("tabs");
+			DIV r("tabs");
+			unsigned center_w = 100;
+			unsigned left_side_w = 0;
+			unsigned right_side_w = 0;
 			if (is_mobile){
 				d.w(100).print();
 			}else{
@@ -1624,11 +1631,48 @@ extern "C" void webmain_real()
 				unsigned dw = 50;
 				if (w > 0){
 					unsigned pixels = dw/100.0*1920;	// dw% of an HD screen
-					dw = pixels*100/w;
-					if (dw > 90) dw = 90;
+					center_w = pixels*100/w;
+					if (center_w > 90){
+						center_w = 90;
+					}else if (center_w > 70){
+						right_side_w = 100-center_w;
+					}else{
+						left_side_w = (100-center_w)/2;
+						right_side_w = left_side_w;
+					}
 				} 
-				d.w(dw).textalign("center").marginauto().border(1,"black").borderradius(5).vmargins(5,5).paddings(5,5).print();
 			}
+			if (center_w < 100){
+				if (left_side_w > 0){
+ 					l.flexfixe().w(left_side_w).border(1,"black").borderradius(5).margins(5,5).vmargins(5,5).paddings(5,5).print();
+					DIV f; f.id(TAB_FORM).print();
+					htmlprintf ("<center><div style=font-size:1.5em>%s</div></center>\n",MSG_U(I_CONTACTS,"Contacts"));
+					f.end();
+					string table("allcontacts");
+					<call webtable>(ID_ALLCONTACTS,table,"100%",currents[table],offsets[table],5);
+					<f load>
+						<call bod_client_list_contacts>(glocal.con,w_session.c_str(),"");
+						<f ok>
+							unsigned rownum = 0;
+							unsigned mini_image_width = is_mobile ? 60 : 30;
+							string img = index_img(step_public,mini_image_width,"admin","project/mini-photo.jpg","");
+							glocal.webtable.setrow("white",rownum,"%s\tadmin",img.c_str());
+							rownum++;
+							for (auto m:members){
+								string dir = string_f("/projects/%s/public",m);
+								img = index_img(step_image,mini_image_width,dir,"mini-photo.jpg","");
+								glocal.webtable.setrow("white",rownum,"%s\t%s",img.c_str(),m);
+								rownum++;
+							}
+						</f>
+						</call>
+					</f>
+					</call>
+					l.end();
+				}
+				d.w(center_w).textalign("center").marginauto().border(1,"black").borderradius(5).vmargins(5,5).paddings(5,5).print();
+			}
+
 			string table = string("talk")+"public";
 			<call webtable>(ID_FOLLOW,table,"100%",currents[table],offsets[table],5);
 			<f click>
@@ -1745,6 +1789,42 @@ extern "C" void webmain_real()
 				</call>
 			</f>
 			</call>
+			d.end();
+			if (right_side_w > 0){
+ 				r.flexfixe().w(right_side_w).border(1,"black").borderradius(5).margins(5,5).vmargins(5,5).paddings(5,5).autoscroll().print();
+				htmlprintf ("<center><div style=font-size:1.5em>%s</div></center><br>\n",MSG_U(I_NOTIFICATIONS,"Notifications"));
+				for (auto n:userinfo.notifies){
+					if (n == "profile:Contacts"){
+						htmlprintf ("<a href=# onclick=formsubmit('%s?webstep=%d&webtab_add=1:Contacts')>%s</a><br>\n"
+							,tlmpweb_curpage(),step_profile,MSG_R(T_CONTACTSTOYOU));
+					}else if (n == "profile:Contact-req"){
+						htmlprintf ("<a href=# onclick=formsubmit('%s?webstep=%d&webtab_add=1:Contact-req')>%s</a><br>\n"
+							,tlmpweb_curpage(),step_profile,MSG_R(T_REQUESTSBYYOU));
+					}else if (strncmp(n.c_str(),"talks:",6)==0){
+						const char *name = n.c_str()+6;
+						const char *groupname = strchr(name,':');
+						if (groupname != NULL){
+							string owner = string(name,groupname-name);
+							groupname++;
+							htmlprintf ("<a href=# onclick=formsubmit('%s?webstep=%d&webtab_add=1:%s"
+								,tlmpweb_curpage(),step_talks,name);
+							if (owner == userinfo.name){
+								if (strcmp(groupname,"inbox")==0){
+									htmlprintf ("~%s')>",MSG_R(I_SHORTINBOX));
+									/-#I_MESSAGESINBOX Messages in your inbox
+								}else{
+									htmlout ("')>");
+									htmlprintf (MSG_U(I_MESSAGEINYOURGROUP,"Messages in your %s group"),groupname);
+								}
+							}else{
+								htmlout ("')>");
+								htmlprintf (MSG_U(I_MESSAGEINGROUP,"Messages in %s group of %s"),groupname,owner.c_str());
+							}
+							htmlout ("</a><p>\n");
+						}
+					}
+				}
+			}
 		}
 	</f>
 	<f step2> // Login
