@@ -240,7 +240,7 @@ int main (int argc, char *argv[])
 					tb.push_back(string_f ("nbsessions=%lu",glocal.sessions.size()));
 					unsigned long nbanon = 0;
 					unsigned long nbadmin = 0;
-					for (auto x:glocal.sessions){
+					for (auto &x:glocal.sessions){
 						if (x.second.userid ==(unsigned)-1) nbanon++;
 						if (x.second.admin) nbadmin++;
 					}
@@ -270,7 +270,7 @@ int main (int argc, char *argv[])
 					unsigned end = offset+nb-1;
 					vector<string> tb;
 					tb.push_back(string_f("listsessions %u -> %u",offset,end));
-					for (auto it:glocal.sessions){
+					for (auto &it:glocal.sessions){
 						if (pos >end){
 							break;
 						}else if (pos >= offset){
@@ -312,6 +312,15 @@ int main (int argc, char *argv[])
 						pos++;
 					}
 					rep_listsessions(tb);
+				</f>
+				<f resetnotifies>
+					for (auto &it:glocal.sessions){
+						for (auto &v:it.second.vars){
+							if (v.name == "notifies"){
+								v.vals.clear();
+							}
+						}
+					}
 				</f>
 				<f stuffsessions>
 					time_t t = time(NULL);
@@ -437,7 +446,7 @@ int main (int argc, char *argv[])
 						for (auto &v:it->second.vars){
 							if (v.name == VAR_NOTIFIES){
 								unsigned pos=0;
-								for (auto vv:v.vals){
+								for (auto &vv:v.vals){
 									if (vv.sname == name){
 										v.vals.erase(v.vals.begin()+pos);
 										break;
@@ -523,7 +532,7 @@ int main (int argc, char *argv[])
 									if (var.name == VAR_NOTIFIES){
 										found_var = true;
 										bool found = false;
-										for (auto v:var.vals){
+										for (auto &v:var.vals){
 											if (v.sname == name){
 												found = true;
 												break;
@@ -561,10 +570,10 @@ int main (int argc, char *argv[])
 				</f>
 				<f deletesessions>
 					vector<string> sessionids;
-					for (auto it:glocal.sessions){
+					for (auto &it:glocal.sessions){
 						if (it.second.userid==userid) sessionids.push_back(it.first);
 					}
-					for (auto it:sessionids){
+					for (auto &it:sessionids){
 						auto s = glocal.sessions.find(it);
 						if (s != glocal.sessions.end()){
 							glocal.sessions.erase(s);

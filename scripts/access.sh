@@ -143,6 +143,10 @@ elif [ "$1" = "notifications" ] ; then # test: test notifications to session man
 	# manager contains this stuff. If we are already logged in (using a browser)
 	# while doing this test, it won't matter because of the sort | uniq.
 	# This is true because notification are spreaded to all sessions of users
+	./test.sh bo-sessiond-control resetnotifies
+	SESSIONA=`./bofs -u jacques-A --login`
+	SESSIONB=`./bofs -u jacques-B --login`
+	SESSIONC=`./bofs -u jacques-C --login`
 
 	# Make sure A B and C are connected	
 	./bofs -u jacques-A misc --contact_request -u jacques-B
@@ -158,18 +162,15 @@ elif [ "$1" = "notifications" ] ; then # test: test notifications to session man
 	./bofs -u jacques-B groups --set-member --groupname public --user jacques-C
 	./bofs -u jacques-C groups --set-member --groupname public --user jacques-A
 	./bofs -u jacques-C groups --set-member --groupname public --user jacques-B
-	SESSIONA=`./bofs -u jacques-A --login`
-	SESSIONB=`./bofs -u jacques-B --login`
-	SESSIONC=`./bofs -u jacques-C --login`
 	# admin sends a message to his public group. Every account is interested in admin
 	./bofs -u admin msgs --shortmsg -G public -C "test notifications: There is a new version available"
 	# jacques-A sends a private message to B and C and B sends to A and C
 	./bofs -u jacques-A msgs --shortmsg -G inbox -D jacques-B -D jacques-C -C "test notifications from jacques-A"
 	./bofs -u jacques-B msgs --shortmsg -G inbox -D jacques-A -D jacques-C -C "test notifications from jacques-B"
 	# A sends a message to B and C public group, B to A public group
-	./bofs -u jacques-A msgs --shortmsg --groupowner jacques-B -G public -C "public notifications from jacques-A"
-	./bofs -u jacques-A msgs --shortmsg --groupowner jacques-C -G public -C "public notifications from jacques-A"
-	./bofs -u jacques-B msgs --shortmsg --groupowner jacques-A -G public -C "public notifications from jacques-B"
+	./bofs -u jacques-A msgs --shortmsg --groupowner jacques-B -G public -C "public jacques-B notifications from jacques-A"
+	./bofs -u jacques-A msgs --shortmsg --groupowner jacques-C -G public -C "public jacques-C notifications from jacques-A"
+	./bofs -u jacques-B msgs --shortmsg --groupowner jacques-A -G public -C "public jacques-A notifications from jacques-B"
 	# Anonymous message to A B and C
 	for user in A B C
 	do

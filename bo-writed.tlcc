@@ -2801,14 +2801,15 @@ int main (int argc, char *argv[])
 					glocal string handle;
 					glocal const BOB_TYPE *content = &content;
 					glocal bool more = more;
-					<call sql_query>("select id2name.userid,anon_messages from id2name join config on config.userid=id2name.userid"
+					<call sql_query>("select id2name.userid,id2name.name,anon_messages from id2name join config on config.userid=id2name.userid"
 						" where id2name.name='%s'",to);
 					<f empty>
 						glocal.msg = MSG_R(E_IVLDUSER);
 					</f>
 					<f onerow>
 						unsigned userid = atoi(row[0]);
-						unsigned anon_messages = atoi(row[1]);
+						const char *username = row[1];
+						unsigned anon_messages = atoi(row[2]);
 						if (!anon_messages){
 							glocal.msg = MSG_U(E_ANON_MESSAGES,"This user do not accept anonymous messages");
 						}else{
@@ -2821,6 +2822,8 @@ int main (int argc, char *argv[])
 								bo_writed_addfile_bob (glocal.ctx.con_keys,glocal.sessionid,NULL,ENTRY_MSG,dirid,userid
 									,*glocal.content,glocal.more,sign
 									,msgid,glocal.msg,glocal.handle,fileid,modified);
+								string tmp = string_f("talks:%s:anonymous",username);
+								bo_writed_notify(glocal.con,tmp,userid);
 							}
 						}
 					</f>
