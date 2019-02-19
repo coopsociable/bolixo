@@ -5,7 +5,7 @@ INSTRUMENT:=$(shell test -f ../instrument && echo --instrument --getnow fdpass_g
 DINSTRUMENT:=$(shell test -f ../instrument && echo -DINSTRUMENT)
 PROGS=_dict.o bod bod-client bod-control bo-writed bo-writed-control bo-sessiond bo-sessiond-control \
       bo-manager bofs ssltestsign bo-keysd bo-keysd-control bolixod bolixod-control perfsql \
-      bo-mon bo-mon-control utils/eximexec publishd publishd-control bo-webtest \
+      bo-mon bo-mon-control utils/eximexec utils/helpspell publishd publishd-control bo-webtest \
       documentd documentd-control
 #bo-log bo-log-control \
 DOCS=
@@ -101,6 +101,9 @@ perfsql: perfsql.tlcc
 
 utils/eximexec: utils/eximexec.cc
 	g++ -Wall utils/eximexec.cc -o utils/eximexec
+
+utils/helpspell: utils/helpspell.tlcc
+	cctlcc -Wall utils/helpspell.tlcc -o utils/helpspell -lstdc++
 
 proto/publishd_control.protoh: proto/publishd_control.proto
 	build-protocol --arg "int no" --arg "HANDLE_INFO *c" --name publishd_control \

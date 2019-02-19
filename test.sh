@@ -1652,6 +1652,12 @@ elif [ "$1" = "setnotify" ] ; then # T: Add some notifies in sessiond for jacque
 	do
 		$0 bod-client --testsetnotify $notify --extra 2
 	done
+elif [ "$1" = "spellcheck" ] ; then # A: Spell check the bolixo.dic file
+	utils/helpspell bolixo.dic >/tmp/bolixo.dic
+	aspell -l en -c /tmp/bolixo.dic --mode=sgml
+elif [ "$1" = "spelldiff" ] ; then # A: Show differences after spell check
+	utils/helpspell bolixo.dic >/tmp/bolixo1.dic
+	diff -c /tmp/bolixo.dic /tmp/bolixo1.dic | less -S
 else
 	echo test.sh command ...
 fi
