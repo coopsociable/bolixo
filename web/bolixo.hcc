@@ -89,7 +89,7 @@ static void bolixo_script()
 				var top = document.getElementById("topform");
 				if (top != null){
 					var top_b = top.getBoundingClientRect();
-					if (tb_b.width > top_b.width) top.style.width = tb_b.width;
+					//if (tb_b.width > top_b.width) top.style.width = tb_b.width;
 				}
 			}
 			var top = document.getElementById("top");
@@ -131,7 +131,7 @@ struct WEBENC{
 
 static void bolixo_prevnext(bool display_more)
 {
-	/- <tr><td align=left colspan=4>
+	/- <tr><td align=right colspan=2>
 	WEBENC enc;
 	if (w_offset.getval() > 0){
 		htmlprintf ("<a href=%s?offset=%u&user=%s&fullname=%s&address=%s&city=%s&state=%s&country=%s&interest=%s>%s</a>\n"
@@ -155,14 +155,26 @@ static void bolixo_prevnext(bool display_more)
 		htmlprintf ("<font color=white>%s</font>\n",MSG_R(I_NEXTPAGE));
 	}
 }
+static void bolixo_url (int called_from_step, int is_step, const char *title)
+{
+	DIV d; d.flexfixe().paddings(5,5);
+	if (called_from_step == is_step){
+		d.bg("white").print();
+		htmlprintf ("%s\n",title);
+	}else{
+		d.bg("lightgray").print();
+		htmlprintf ("<a href=%s?webstep=%d>%s</a>\n",tlmpweb_curpage(),is_step,title);
+	}
+}
+
 
 static void bolixo_title(int called_from_step)
 {
 	unsigned body_font_size=100;
 	unsigned input_font_size=100;
 	if (tlmpweb_ismobile()){
-		body_font_size = 200;
-		input_font_size = 125;
+		body_font_size = 250;
+		input_font_size = 80;
 	}
 	htmlout ("<style>\n");
 	htmlprintf ("body{\n"
@@ -171,23 +183,29 @@ static void bolixo_title(int called_from_step)
 	htmlprintf ("input{\n"
 		"	font-size: %u%%\n"
 		"}\n",input_font_size);
+	htmlout (".col{\n"
+		"	font-size: 1em;\n"
+		"}\n");
+	htmlout (
+		"table, tr, td {\n"
+		"	font-size: 1em;\n"
+		"}\n");
 	htmlout ("</style>\n");
 	
-	DIV t; t.dispflex().flowrow().print();
+	DIV t; t.dispflex().flowrow().style("background-image","linear-gradient(to right, #ff6666 , yellow)").print();
 	DIV tt; tt.flexgrow().marginauto().disp("inline-block").textalign("center").print();
-	/- <font size=+3>
-	htmlout (MSG_R(T_BOLIXO_ORG_DIR));
-	/- </font>
+	if (!tlmpweb_ismobile()){
+		/- <div style=font-size:2em>
+		htmlout (MSG_R(T_BOLIXO_ORG_DIR));
+		/- </div>
+	}
 	tt.end();
 	tt.flexfixe().sfloat("right").print();
-	if (called_from_step != 5) htmlprintf ("<a href=%s?webstep=5>%s</a>\n",tlmpweb_curpage(),MSG_U(I_ABOUTBOLIXO,"What is bolixo ?"));
-	/- <br>
-	if (called_from_step != 3) htmlprintf ("<a href=%s?webstep=3>%s</a>\n",tlmpweb_curpage(),MSG_R(I_LOGIN));
-	/- <br>
-	if (called_from_step != 4) htmlprintf ("<a href=%s?webstep=4>%s</a>\n",tlmpweb_curpage(),MSG_R(I_CREATEACCT));
-	/- <br>
-	if (called_from_step != 1) htmlprintf ("<a href=%s?webstep=1>%s</a>\n",tlmpweb_curpage(),MSG_U(I_BACKTOSEARCH,"Search"));
-	/- <br>
+	DIV dt; dt.dispflex().flowcol().print();
+	bolixo_url (called_from_step,5,MSG_U(I_ABOUTBOLIXO,"What is bolixo ?"));
+	bolixo_url (called_from_step,3,MSG_R(I_LOGIN));
+	bolixo_url (called_from_step,4,MSG_R(I_CREATEACCT));
+	bolixo_url (called_from_step,1,MSG_U(I_BACKTOSEARCH,"Search"));
 }
 
 extern W_UNSIGNED w_robot;
@@ -215,30 +233,32 @@ static void webmain_real()
 		DIV b("","top"); b.print(); 
 		bolixo_title(1);
 		b.end();
-		b.id("middle").textalign("center").print();
+		b.id("middle").marginauto().print();
 		<call form>("filter");
 		<f setup>
-			DIV d("x","topform"); d.borderradius(5).border(1,"lightgray").bg("lightgray").disp("inline-block").print();
-			/- <center><font size=+2>
+			const char *fsize = tlmpweb_ismobile() ? "size=10" : "size=15";
+			DIV d("x","topform"); d.borderradius(5).border(1,"lightgray").bg("lightgray").disp("inline-block").vmargins(5,5).print();
+			/- <center><div style=font-size:1.3em>
 			/-#I_LOOKINGFOR Looking for someone ?
-			/- </font></center>
+			/- </div></center>
 			/- <table border=0>
-			/-#H_FILTER <tr><td>User<td>Full name<td>Address<td>City
+			htmlprintf ("<tr><td>%s<td>%s<td>%s\n",MSG_U(H_USER,"User"),MSG_U(H_FULLNAME,"Full name"),MSG_U(H_ADDRESS,"Address"));
 			/- <tr><td>
-			field_string (w_user,"");
+			field_string (w_user,fsize);
 			/- <td>
-			field_string (w_fullname,"");
+			field_string (w_fullname,fsize);
 			/- <td>
-			field_string (w_address,"");
-			/- <td>
-			field_string (w_city,"");
-			/-#H_FILTER2 <tr><td>State<td>Country<td>Interest
+			field_string (w_address,fsize);
+			htmlprintf ("<tr><td>%s<td>%s<td>%s\n",MSG_U(H_CITY,"City"),MSG_U(H_STATE,"State"),MSG_U(H_COUNTRY,"Country"));
 			/- <tr><td>
-			field_string (w_state,"");
+			field_string (w_city,fsize);
 			/- <td>
-			field_string (w_country,"");
+			field_string (w_state,fsize);
 			/- <td>
-			field_string (w_interest,"");
+			field_string (w_country,fsize);
+			htmlprintf ("<tr><td>%s\n",MSG_U(H_INTERESTS,"Interests"));
+			/- <tr><td>
+			field_string (w_interest,fsize);
 			/- <td>
 			button_submit (MSG_U(B_SEARCH,"Search"));
 			/- </table>
@@ -251,7 +271,7 @@ static void webmain_real()
 		</f>
 		</call>
 		b.end();
-		/- <center>
+		// /- <center>
 		FILTER filter;
 		filter.user = w_user.c_str();
 		filter.fullname = w_fullname.c_str();
@@ -262,16 +282,45 @@ static void webmain_real()
 		filter.interest = w_interest.c_str();
 		<call bolixod_client_pub_search>(glocal.con,filter,w_offset,10);
 		<f ok>
+			bool is_mobile = tlmpweb_ismobile();
 			if (!success){
 				/- <br><p>
-				DIV d; d.bg("white").border(1,"black").textalign("center").w(30).vpaddings(5,5).borderradius(5).print();
+				DIV d; d.bg("white").border(1,"black").marginauto().w(is_mobile ? 90 : 30).paddings(5,5).vpaddings(5,5).borderradius(5).print();
 				htmlprintf ("<center>%s</center>\n",MSG_U(E_NOFILTER,"No filter specified"));
+				/- <p>
+				<?#I_FILTERDOC
+					Fill any of the seven fields.
+					<p>
+					<ul>
+					<li>Empty fields do not participate in the search.
+					<li>Records matching all non-empty fields will be shown (logical and).
+					<li>A field may contain the complete value you are looking for or just a subset. For example,
+						the following entries will all match the word "montreal".
+						<ul>
+						<li>montreal
+						<li>mont
+						<li>ontrea
+						<li>real
+						</ul>
+					<li>The search is case insensitive.
+					</ul>
+				?>
 			}else{
-				DIV d("","search"); d.w(90).vpaddings(5,5).vmargins(10,0).bg("white").border(1,"black").borderradius(5).autoscroll().print();
+				DIV d("","search");
+				if (is_mobile){
+					d.w(100).vpaddings(5,0).vmargins(10,0).bg("white").autoscroll().print();
+				}else{
+					d.w(90).vpaddings(5,5).marginauto().vmargins(10,0).bg("white").border(1,"black").borderradius(5).autoscroll().print();
+				}
+				//is_mobile = true;
 				/- <table id=tb border=0>
 				bolixo_prevnext(users.size()==10);
 				for (auto &u:users){
-					/- <tr><td valign=top>
+					if (is_mobile){
+						/- <tr><td valign=top>
+					}else{
+						/- <tr><td valign=top>
+					}
 					{
 						const char *nodename = u.nodename;
 						if (strncasecmp(nodename,"https://",8)==0){
@@ -279,13 +328,18 @@ static void webmain_real()
 						}else if (strncasecmp(nodename,"http://",7)==0){
 							nodename += 7;
 						}
-						DIV d("col0"); d.print();
+						DIV d("col0"); d.margins(5,5).print();
 						htmlprintf ("%s@%s<br>%s<br>\n",u.user,nodename,u.fullname);
 						if (u.photo) htmlprintf ("<img src=%s?webstep=2&user=%s&node=%s&file=photo.jpg>\n",tlmpweb_curpage(),u.user,u.nodename);
 						if (u.mini_photo) htmlprintf ("<img src=%s?webstep=2&user=%s&node=%s&file=mini-photo.jpg>\n",tlmpweb_curpage(),u.user,u.nodename);
 					}
-					/- <td valign=top>
-					DIV info; info.dispflex().flowrow().print();
+					if (is_mobile){
+						/- <tr><td valign=top>
+					}else{
+						/- <td valign=top>
+					}
+					DIV info;
+					if (!is_mobile) info.dispflex().flowrow().print();
 					if (f(u.address1)  || f(u.address2) || f(u.city) || f(u.state) || f(u.country) || f(u.zipcode)){
 						DIV d("col1"); d.bg("lightblue").margins(2,2).paddings(4,4).borderradius(5).border(1,"gray").print();
 						htmlprintf ("%s<br>\n",u.address1);
@@ -294,6 +348,7 @@ static void webmain_real()
 						htmlprintf ("%s, %s<br>\n",u.country,u.zipcode);
 					}
 					if (f(u.email) || f(u.phone) || f(u.fax) || f(u.bolixosite) || f(u.website)){
+						if (is_mobile) htmlout ("<tr><td valign=top>\n");
 						DIV d("col2"); d.bg("lightblue").margins(2,2).paddings(2,2).borderradius(5).border(1,"gray").print();
 						/- <table border=0>
 						if (f(u.email)) htmlprintf ("<tr><td>%s<td>%s\n",MSG_R(F_EMAIL),u.email);
@@ -305,6 +360,7 @@ static void webmain_real()
 							,u.website,u.website);
 						/- </table>
 					}
+					if (is_mobile) htmlout ("<tr><td valign=top>\n");
 					if (f(u.interest)){
 						DIV d("col3"); d.bg("lightgray").margins(2,2).paddings(4,4).borderradius(5).border(1,"gray").print();
 						htmlprintf ("%s\n",u.interest);
@@ -315,7 +371,7 @@ static void webmain_real()
 			/- </table>
 		</f>
 		</call>
-		/- </center>
+		// /- </center>
 	</f>
 	<f step2>
 		<call bolixod_client_readfile>(glocal.con,w_node.c_str(),w_user.c_str(),w_file.c_str());
@@ -339,9 +395,11 @@ static void webmain_real()
 		tlmpweb_title (MSG_R(T_BOLIXO_ORG_DIR));
 		tlmpweb_body ("white",NULL,"background=background.png");
 		bolixo_title(3);
-		DIV d; d.w(50).marginauto().vmargins(30,0).vpaddings(10,10).paddings(10,10).border(1,"black").bg("white").borderradius(5).print();
+		DIV d; d.w(tlmpweb_ismobile() ? 90 : 50).marginauto().vmargins(30,0).vpaddings(10,10).paddings(10,10).border(1,"black").bg("white").borderradius(5).print();
 		<call form>("login");
 		<f setup>
+			htmlprintf ("<center><div style=font-size:1.5em>%s</div></center>\n",MSG_R(I_LOGIN));
+			/-<p>
 			/-#I_REDIRECT Enter your email and you will be redirected to the login page of your bolixo node.
 			/-<p>
 			/- <table border=0>
@@ -377,9 +435,11 @@ static void webmain_real()
 		tlmpweb_title (MSG_R(T_BOLIXO_ORG_DIR));
 		tlmpweb_body ("white",NULL,"background=background.png");
 		bolixo_title(4);
-		DIV d; d.w(50).marginauto().vmargins(30,0).vpaddings(10,10).paddings(10,10).border(1,"black").borderradius(5).bg("white").print();
+		DIV d; d.w(tlmpweb_ismobile() ? 90 : 50).marginauto().vmargins(30,0).vpaddings(10,10).paddings(10,10).border(1,"black").borderradius(5).bg("white").print();
 		<call form>("create");
 		<f setup>
+			htmlprintf ("<center><div style=font-size:1.5em>%s</div></center>\n",MSG_R(I_CREATEACCT));
+			/-<p>
 			/-#I_SELECTNICKNAME Select a nickname you like and an available node will be found.
 			/-<p>
 			htmlout (MSG_R(I_NICKNAME));
@@ -414,7 +474,7 @@ static void webmain_real()
 		tlmpweb_title (MSG_R(T_BOLIXO_ORG_DIR));
 		tlmpweb_body ("white",NULL,"background=background.png");
 		bolixo_title(5);
-		DIV d; d.w(50).marginauto().vmargins(30,0).vpaddings(10,10).paddings(10,10).border(1,"black").borderradius(5).bg("white").print();
+		DIV d; d.w(tlmpweb_ismobile() ? 90 : 50).marginauto().vmargins(30,0).vpaddings(10,10).paddings(10,10).border(1,"black").borderradius(5).bg("white").print();
 		<?#I_BOLIXO
 			Bolixo is a distributed social media and collaboration tool. It is also free software.
 			<p>
@@ -447,7 +507,13 @@ static void webmain_real()
 		DIV b("","top"); b.print(); 
 		bolixo_title(6);
 		b.end();
-		DIV d("","search"); d.w(90).autoscroll().marginauto().vmargins(10,0).vpaddings(10,10).paddings(10,10).border(1,"black").borderradius(5).bg("white").print();
+
+		DIV d("","search");
+		if (tlmpweb_ismobile()){
+			d.w(100).autoscroll().marginauto().vmargins(10,0).vpaddings(10,10).paddings(10,10).bg("white").print();
+		}else{
+			d.w(90).autoscroll().marginauto().vmargins(10,0).vpaddings(10,10).paddings(10,10).border(1,"black").borderradius(5).bg("white").print();
+		}
 		DOCUMENT_POINTER pt;
 		DOC_ID jump;
 		bool index = !tlmpweb_ismobile();
