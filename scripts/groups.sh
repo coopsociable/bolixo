@@ -242,6 +242,11 @@ elif [ "$1" = "manypublish" ] ; then # test: Add many entries into the bolixo.or
 	do
 		./bofs bolixoapi publish http://test1.bolixo.org jacques-X$i
 	done
+elif [ "$1" = "manymsgs" ] ; then # test: Add many messages to jacques-A inbox
+	for ((i=0; i<100; i++))
+	do
+		./bofs msgs -t -G inbox -C "This is a small message"
+	done
 else
 	echo reset print or config
 fi
