@@ -517,11 +517,11 @@ void util_defstyles()
 		"	padding-left: 8px;\n"
 		"}\n"
 		"#date0_7b{\n"
-		"	font-size: 0.7em;\n"
+		"	font-size: 0.8em;\n"
 		"	color: white;\n"
 		"}\n"
 		"#date0_7{\n"
-		"	font-size: 0.7em;\n"
+		"	font-size: 0.8em;\n"
 		"}\n"
 		".smsg {\n"
 		"	font-size: 1em;\n"
@@ -1044,6 +1044,12 @@ static string util_img(unsigned step, unsigned width, PARAM_STRING dirpath, PARA
 static void util_urls (_F_public_page &c, const SHORTMSG &m, string &content, bool large)
 {
 	string url = c.msgurl(m.uuid,m.submit);
+	const char *width = "300";
+	if (tlmpweb_ismobile()){
+		width = large ? "100%" : "700";
+	}else if (large){
+		width = "800";
+	}
 	if (m.content[0] != '\0'){
 		content = util_format_shortmsg (m.content);
 	}else if (file_is_sound(m.file_type)){
@@ -1052,19 +1058,14 @@ static void util_urls (_F_public_page &c, const SHORTMSG &m, string &content, bo
 			"</audio>"
 			,url.c_str(),tbftype[m.file_type]);
 	}else if (file_is_image(m.file_type)){
-		unsigned width = large ? 800 : 200;
-		content = string_f("<img width=%u src=%s>",width,url.c_str());
+		content = string_f("<img width=%s src=%s>",width,url.c_str());
 	}else if (file_is_video(m.file_type)){
-		unsigned height=600,width=800;
-		if (!large){
-			height = width = 200;
-		}
 		content = string_f(
-			"<video width=\"%u\" height=\"%u\" controls>\n"
+			"<video width=\"%s\" height=\"%s\" controls>\n"
 			"<source src=\"%s\" type=\"video/mp4\">\n"
 			"Your browser does not support the video tag.\n"
 			"</video>"
-			,width,height,url.c_str());
+			,width,width,url.c_str());
 	}
 }
 <mod>
@@ -1111,7 +1112,7 @@ static void public_messages(_F_public_page &c, CONNECT_INFO &con, PARAM_STRING u
 					if (now != day){
 						day = now;
 						glocal.webtable.setclickopt (true,"","");
-						glocal.webtable.setrow("hline",-1,"<font size=-1 color=white>%s</font>\a\a",format_date(0,day).c_str());
+						glocal.webtable.setrow("hline",-1,"<div id=date0_7b>%s</div>\a\a",format_date(0,day).c_str());
 						line_style=0;
 					}
 					const char *style = line_styles[line_style];
@@ -1126,7 +1127,7 @@ static void public_messages(_F_public_page &c, CONNECT_INFO &con, PARAM_STRING u
 					}else{
 						glocal.webtable.setclickopt (true,func,"800,300");
 					}
-					string time = string_f("<font size=-1>%s</font>",format_time(0,m.submit.substr(11)).c_str());
+					string time = string_f("<div id=date0_7>%s</div>",format_time(0,m.submit.substr(11)).c_str());
 					string path = string_f("/msgs/%s/short-inbox/public/%s",glocal.user,m.uuid.c_str());
 					string content;
 					if (m.content.size() != 0){
@@ -1178,18 +1179,11 @@ const char *util_getdirserver()
 }
 static void public_top(const char *user)
 {
-	#if 0
-	DIV dd; dd.dispflex().flowrow().print();
-	DIV d; d.w(80).print();
-	htmlprintf ("<center><h1>%s@%s</h1></center>\n",user,util_getnodename());
-	d.end();
-	d.w(20).print();
-	htmlout ("<a href=http://bolixo.org><img src=/bolixo.png></a>\n");
-	#else
-	htmlprintf ("<table border=0 width=100%%><tr><td align=center><h2>%s@%s</h2>\n",user,util_getnodename());
+	htmlprintf ("<table border=0 width=100%%><tr><td align=center><div style=font-size:%sem>%s@%s</div>\n"
+		,tlmpweb_ismobile() ? "1" : "1.5"
+		,user,util_getnodename());
 	htmlprintf ("<td align=right><a href=%s><img src=/bolixo.png></a>\n",dirserver.c_str());
 	htmlout ("</table>\n");
-	#endif
 }
 <mod>
 static void public_display_full (_F_public_page &c, CONNECT_INFO &con, PARAM_STRING user, vector<FILEINFO> &files)
@@ -1296,7 +1290,7 @@ static void public_display_base(_F_public_page &c, CONNECT_INFO &con, PARAM_STRI
 		public_top_left (*glocal.c);
 	</f>
 	<f body>
-		DIV d; d.w(50).marginauto().print();
+		DIV d; d.w(tlmpweb_ismobile() ? 100: 50).marginauto().print();
 		public_messages(*glocal.c,*glocal.con,glocal.user);
 	</f>
 	</call>
