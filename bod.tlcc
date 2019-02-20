@@ -1324,10 +1324,10 @@ static int bod_main (
 				for (auto &s:usehttp) useline += string(" ") + s;
 				tb.push_back(useline);
 				#ifdef INSTRUMENT
-					tb.push_back("intrument: on");
-					fflush (f_instrument);
+					tb.push_back(string_f("instrument: %s", f_instrument != NULL ? "on" : "disable"));
+					if (f_instrument != NULL) fflush (f_instrument);
 				#else
-					tb.push_back("intrument: off");
+					tb.push_back("instrument: off");
 				#endif
 				rep_status(tb);
 			</f>
@@ -1421,6 +1421,19 @@ static int bod_main (
 				hcon.init (node);
 				bod_nodelogout(hcon,session);
 				rep_nodelogout (true);
+			</f>
+			<f instrument>
+				if (on){
+					if (f_instrument==NULL){
+						f_instrument = fopen ("/tmp/instrument.log","a");
+						if (f_instrument == NULL) tlmp_error ("Can't open instrument file /tmp/instrument.log (%s)\n",strerror(errno));
+					}
+				}else{
+					if (f_instrument != NULL){
+						fclose (f_instrument);
+						f_instrument = NULL;
+					}
+				}
 			</f>
 			<f debug>
 				if (on){
@@ -1867,11 +1880,11 @@ tlmp_error ("Appendfile remote_handle found %s more %d\n",handle,more);
 				#endif
 				if (bod_findentry (glocal.con_sess,sessionid,name,entry,threshold)!=-1){
 					#ifdef INSTRUMENT
-					{
-					long long end = fdpass_getnow();
-					fprintf (f_instrument,"%Ld listdir:findentry %lf userid=%u dirid=%d name=%s\n"
-						,glocal.start,(end-glocal.start)/1000000.0,entry.userid,entry.entryid,name);
-					glocal.start = end;
+					if (f_instrument != NULL){
+						long long end = fdpass_getnow();
+						fprintf (f_instrument,"%Ld listdir:findentry %lf userid=%u dirid=%d name=%s\n"
+							,glocal.start,(end-glocal.start)/1000000.0,entry.userid,entry.entryid,name);
+						glocal.start = end;
 					}
 					#endif
 					if (!bolixo_isdir(entry.type)){
@@ -1895,7 +1908,7 @@ tlmp_error ("Appendfile remote_handle found %s more %d\n",handle,more);
 							,entry.userid,entry.entryid,threshold);
 						<f onerow>
 							#ifdef INSTRUMENT
-							if (rownum==0){
+							if (rownum==0 && f_instrument != NULL){
 								long long end = fdpass_getnow();
 								fprintf (f_instrument,"%Ld listdir:row0 %lf\n",glocal.start,(end-glocal.start)/1000000.0);
 								glocal.start = end;
@@ -1952,10 +1965,10 @@ tlmp_error ("Appendfile remote_handle found %s more %d\n",handle,more);
 						</f>
 						</call>
 						#ifdef INSTRUMENT
-						{
-						long long end = fdpass_getnow();
-						fprintf (f_instrument,"%Ld listdir:endsql %lf\n",glocal.start,(end-glocal.start)/1000000.0);
-						glocal.start = end;
+						if (f_instrument != NULL){
+							long long end = fdpass_getnow();
+							fprintf (f_instrument,"%Ld listdir:endsql %lf\n",glocal.start,(end-glocal.start)/1000000.0);
+							glocal.start = end;
 						}
 						#endif
 						if (!glocal.history){
@@ -1984,9 +1997,9 @@ tlmp_error ("Appendfile remote_handle found %s more %d\n",handle,more);
 					}
 				}
 				#ifdef INSTRUMENT
-				{
-				long long end = fdpass_getnow();
-				fprintf (f_instrument,"%Ld listdir:rep %lf\n",glocal.start,(end-glocal.start)/1000000.0);
+				if (f_instrument != NULL){
+					long long end = fdpass_getnow();
+					fprintf (f_instrument,"%Ld listdir:rep %lf\n",glocal.start,(end-glocal.start)/1000000.0);
 				}
 				#endif
 				if (entry.msg.size() > 0){
