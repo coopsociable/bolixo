@@ -1,0 +1,112 @@
+/*
+	This file is part of Bolixo.
+
+	Bolixo is free software: you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation, either version 3 of the License, or
+	(at your option) any later version.
+
+	Bolixo is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+	GNU General Public License for more details.
+
+	You should have received a copy of the GNU General Public License
+	along with Bolixo.  If not, see <https://www.gnu.org/licenses/>.
+*/
+/*
+	Command line tool to control rssd
+*/
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <tlmplib.h>
+#include <tlmpnet.h>
+#include <string>
+#include <vector>
+#include <trlitool.h>
+#include "bolixo.m"
+
+using namespace std;
+
+#include "proto/rssd_control.protoch"
+
+<mod>
+int main (int argc, char *argv[])
+{
+	glocal int ret = -1;
+	glocal const char *control = "/var/run/rssd.sock";
+	glocal.ret = <call tlmpprogram>(argc,argv,"bolixo");
+	<f init>
+		setproginfo ("rssd-control",VERSION
+			,MSG_U(I_RSSD_CONTROL
+			,"Command line tool to control rssd\n"
+			 "\n"
+			 "\tdebug 0/1\n"
+			 "\tdebugfile filename\n"
+			 "\thelp_connect host port message\n"
+			 "\tprocess [ website ... ]\n"
+			 "\tquit\n"
+			 "\tstatus\n"
+			 "\ttest\n"
+			));
+		setarg ('p',"control","Unix socket to reach rssd",glocal.control,false);
+	</f>
+	<f main>
+		int ret = -1;
+		CONNECT_INFO con;
+		con.port = glocal.control;
+		if (strcmp(argv[0],"status")==0 && argc==1){
+			<call rssd_control_status>(con);
+			<f ok>
+				for (auto x:lines) printf ("%s\n",x);
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"quit")==0 && argc==1){
+			<call rssd_control_quit>(con);
+			<f ok>
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"debug")==0 && argc==2){
+			<call rssd_control_debug>(con,atoi(argv[1]));
+			<f ok>
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"debugfile")==0 && argc==2){
+			<call rssd_control_debugfile>(con,argv[1]);
+			<f ok>
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"test")==0 && argc==1){
+			<call rssd_control_test>(con);
+			<f ok>
+				printf ("internal_error=%d bod=%d\n",internal_error,bod);
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"help_connect")==0 && argc==4){
+			<call rssd_control_help_connect>(con,argv[1],argv[2],argv[3]);
+			<f ok>
+				for (auto l:lines){
+					printf ("%s\n",l);
+				}
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"process")==0){
+			vector<string> tb;
+			for (int i=1; i<argc; i++) tb.push_back(argv[i]);
+			<call rssd_control_process>(con,tb);
+			<f ok>
+				printf ("success=%d msg=%s\n",success,msg);
+			</f>
+			</call>
+		}else{
+			tlmp_error ("Invalid command: %s\n",argv[0]);
+			usage();
+		}
+		return ret;
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+

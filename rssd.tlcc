@@ -1,0 +1,312 @@
+/*
+	This file is part of Bolixo.
+
+	Bolixo is free software: you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation, either version 3 of the License, or
+	(at your option) any later version.
+
+	Bolixo is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+	GNU General Public License for more details.
+
+	You should have received a copy of the GNU General Public License
+	along with Bolixo.  If not, see <https://www.gnu.org/licenses/>.
+*/
+/*
+	Get RSS feed from site and inject that as public message in bolixo rss account for this site.
+*/
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <errno.h>
+#include <signal.h>
+#include <syslog.h>
+#include <unistd.h>
+#include <tlmpsql.h>
+#include <tlmplib.h>
+#include <tlmpnet.h>
+#include <trlitool.h>
+#include <deque>
+#include <memory>
+#include <string>
+#include "filesystem.h"
+#include "bolixo.h"
+#include "bolixo.m"
+#include "instrument.h"
+
+
+using namespace std;
+static DEBUG_KEY D_PROTO ("proto","Protocol information");
+
+enum CONNECT_TYPE { TYPE_NONE, TYPE_CONTROL, TYPE_CLIENT, TYPE_WORKER};
+
+struct HANDLE_INFO: public ARRAY_OBJ{
+	CONNECT_TYPE type;
+	REQUEST_INFO req;
+	HANDLE_INFO(){
+		type = TYPE_NONE;
+	}
+};
+#include "proto/rssd_control.protoh"
+
+#include "proto/bod_client.protodef"
+#define bod_client_login_NOTNEED
+#define bod_client_logout_NOTNEED
+#define bod_client_adduser_NOTNEED
+#define bod_client_confirmuser_NOTNEED
+#define bod_client_deleteuser_NOTNEED
+#define bod_client_confirmdelete_NOTNEED
+#define bod_client_createsession_NOTNEED
+#define bod_client_addfile_NOTNEED
+#define bod_client_addfile_bob_NOTNEED
+#define bod_client_appendfile_NOTNEED
+#define bod_client_delfile_NOTNEED
+#define bod_client_undelete_NOTNEED
+#define bod_client_modifyfile_NOTNEED
+#define bod_client_modifyfile_bob_NOTNEED
+#define bod_client_rename_NOTNEED
+#define bod_client_copy_NOTNEED
+#define bod_client_readfile_NOTNEED
+#define bod_client_readfile_bob_NOTNEED
+#define bod_client_readmore_NOTNEED
+#define bod_client_mkdir_NOTNEED
+#define bod_client_rmdir_NOTNEED
+#define bod_client_listdir_NOTNEED
+#define bod_client_stat_NOTNEED
+#define bod_client_set_access_NOTNEED
+#define bod_client_markview_NOTNEED
+#define bod_client_create_group_list_NOTNEED
+#define bod_client_create_group_NOTNEED
+#define bod_client_set_group_NOTNEED
+#define bod_client_set_member_NOTNEED
+#define bod_client_set_list_desc_NOTNEED
+#define bod_client_set_group_desc_NOTNEED
+#define bod_client_delete_list_NOTNEED
+#define bod_client_delete_group_NOTNEED
+#define bod_client_list_lists_NOTNEED
+#define bod_client_list_groups_NOTNEED
+#define bod_client_create_project_dir_NOTNEED
+#define bod_client_list_contacts_NOTNEED
+#define bod_client_list_inboxes_NOTNEED
+#define bod_client_list_msgs_NOTNEED
+#define bod_client_sendmsg_NOTNEED
+#define bod_client_sendmsg_project_NOTNEED
+#define bod_client_replymsg_NOTNEED
+#define bod_client_replymsg_project_NOTNEED
+#define bod_client_sendattach_NOTNEED
+#define bod_client_verifysign_NOTNEED
+#define bod_client_getpubkey_NOTNEED
+#define bod_client_registernode_NOTNEED
+#define bod_client_remotelogin_NOTNEED
+#define bod_client_remotepass_NOTNEED
+#define bod_client_remote_interest_set_NOTNEED
+#define bod_client_remote_interest_unset_NOTNEED
+#define bod_client_nodelogin_NOTNEED
+#define bod_client_nodepass_NOTNEED
+#define bod_client_sendtalk_anon_NOTNEED
+#define bod_client_sendtalk_NOTNEED
+#define bod_client_sendtalk_file_NOTNEED
+#define bod_client_list_talk_NOTNEED
+#define bod_client_contact_request_NOTNEED
+#define bod_client_contact_manage_NOTNEED
+#define bod_client_contact_list_NOTNEED
+#define bod_client_config_read_NOTNEED
+#define bod_client_config_write_NOTNEED
+#define bod_client_public_checkuser_NOTNEED
+#define bod_client_public_listdir_NOTNEED
+#define bod_client_public_readfile_NOTNEED
+#define bod_client_public_list_talk_NOTNEED
+#define bod_client_form_savevar_NOTNEED
+#define bod_client_form_readvar_NOTNEED
+#define bod_client_form_deletevar_NOTNEED
+#define bod_client_form_deleteall_NOTNEED
+#define bod_client_interest_set_NOTNEED
+#define bod_client_interest_unset_NOTNEED
+#define bod_client_interest_list_NOTNEED
+#define bod_client_interest_check_NOTNEED
+#define bod_client_systempubkey_NOTNEED
+#define bod_client_systemsign_NOTNEED
+#define bod_client_info_read_NOTNEED
+#define bod_client_info_write_NOTNEED
+#include "proto/bod_client.protoch"
+
+
+struct WEBSITE{
+	string name;		// Name of the site
+	string url;		// Url to retrieve the RSS
+	string account;		// Bolixo account
+	string password;	// Password of the bolixo account
+};
+
+struct RSSD_CONFIG{
+	vector<WEBSITE> websites;
+	void reset(){
+		websites.clear();
+	}
+};
+
+static void rssd_readconfig (const char *configfile, RSSD_CONFIG &config)
+{
+	config.reset();
+}
+
+static int rssd_process (RSSD_CONFIG &config, PARAM_STRING name, string &msg)
+{
+	return -1;
+}
+
+<mod>
+int main (int argc, char *argv[])
+{
+	glocal int ret = -1;
+	glocal const char *configfile = "/etc/bolixo/rssd.conf";
+	glocal const char *control = "/var/run/rssd.sock";
+	glocal const char *bod_sock = "/dev/bod.sock";
+	glocal const char *user = "bolixo";
+	glocal bool daemon = false;
+	glocal const char *pidfile = "/var/run/rssd.pid";
+
+	static const char *tbdic[]={"bolixo",NULL};
+	glocal.ret = <call tlmpprogram>(argc,argv,tbdic);
+	<f init>
+		setproginfo ("rssd",VERSION,"Convert RSS feeds into bolixo messages");
+		setarg (' ',"config","Configuration file path",glocal.configfile,false);
+		setgrouparg ("Networking");
+		setarg ('c',"control","Unix socket for rssd-control",glocal.control,false);
+		setgrouparg ("Misc.");
+		setarg (' ',"user","Run the program as this user",glocal.user,false);
+		setarg (' ',"daemon","Run in background",glocal.daemon,false);
+		setarg (' ',"pidfile","File holding the PID of the process",glocal.pidfile,false);
+	</f>
+	<f showerror>
+		if (glocal.daemon){
+			syslog (LOG_ERR,"%s",msg);
+		}else{
+			fprintf (stderr,"%s",msg);
+		}
+	</f>
+	<f showwarn>
+		if (glocal.daemon){
+			syslog (LOG_WARNING,"%s",msg);
+		}else{
+			fprintf (stderr,"%s",msg);
+		}
+	</f>
+	<f main_noarg>
+		int ret = -1;
+		glocal RSSD_CONFIG config;
+		glocal CONNECT_INFO con;	// Connection to bod
+		glocal string controlport = string_f("unix:%s",glocal.control);
+		glocal.con.port = glocal.bod_sock;
+		<obj TCPSERVER s>();
+		<f newclient>
+			HANDLE_INFO *n = new HANDLE_INFO;
+			info.data = n;
+			// tlmp_error ("port=%s control=%s client=%s\n",info.port,glocal.controlport.c_str(),glocal.clientport.c_str());
+			if (string_cmp(info.port,glocal.controlport)==0){
+				n->type = TYPE_CONTROL;
+			}
+		</f>
+		<f endclient>
+		</f>
+		<f receive>
+			debug_printf (D_PROTO,"receive line: %s\n",line);
+			HANDLE_INFO *c = (HANDLE_INFO*)info.data;
+			static const char *tbtype[]={"none","control request","client request", "worker request"};
+			ERROR_PREFIX prefix ("%s: ",tbtype[c->type]);
+			if (c->type == TYPE_CONTROL){
+				<call rssd_control>(this,c->req,line, info.linelen,endserver, endclient, no,c);
+				<f status>
+					vector<string> tb;
+					tb.push_back(string_f ("Version %s",VERSION));
+					rep_status(tb);
+				</f>
+				<f quit>
+					endserver = true;
+				</f>
+				<f debug>
+					if (on){
+						debug_seton();
+					}else{
+						debug_setoff();
+					}
+				</f>
+				<f debugfile>
+					debug_setfdebug (filename);
+				</f>
+				<f help_connect> // connectto port send = lines:v
+					glocal const char *send = send;
+					glocal vector<string> lines;
+					// We want to test publishd connectivity to the outside
+					<call tcpconnect>(connectto,port,5);
+					<f init>
+						sendf ("%s\n",glocal.send);
+					</f>
+					<f oneline>
+						glocal.lines.push_back(line);
+						end = true;
+					</f>
+					<f fail>
+						glocal.lines.emplace_back(string_f("fail: %s\n",strerror(errno)));
+					</f>
+					<f end>
+					</f>
+					</call>
+					rep_help_connect (glocal.lines);
+				</f>
+				<f process>
+					bool success = true;
+					string msg;
+					rssd_readconfig (glocal.configfile,glocal.config);
+					if (websites.size() == 0){
+						for (auto const &r:glocal.config.websites){
+							if (rssd_process(glocal.config,r.name,msg)==-1){
+								success = false;
+								break;
+							}
+						} 
+					}else{
+						for (auto r:websites){
+							if (rssd_process(glocal.config,r,msg)==-1){
+								success = false;
+								break;
+							}
+						} 
+					}
+					rep_process (success,msg);
+				</f>
+				<f test>
+					glocal bool bod = false;
+					rep_test (glocal.bod);
+				</f>
+				<f invalid>
+					tlmp_error ("Invalid command: %s\n",line);
+					endclient = true;
+				</f>
+				</call>
+			}
+		</f>
+		</obj>
+		bool some_errors = false;
+		if (fdpass_setcontrol(s,glocal.control,glocal.user)==-1){
+			some_errors = true;
+		}
+
+		if (!some_errors && s.is_ok()){
+			s.setrawmode(true);
+			if (glocal.daemon){
+				daemon_init(glocal.pidfile,glocal.user);
+			}
+			s.loop();
+			ret = 0;
+		}
+		return ret;
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+

@@ -6,7 +6,7 @@ DINSTRUMENT:=$(shell test -f ../instrument && echo -DINSTRUMENT)
 PROGS=_dict.o bod bod-client bod-control bo-writed bo-writed-control bo-sessiond bo-sessiond-control \
       bo-manager bofs ssltestsign bo-keysd bo-keysd-control bolixod bolixod-control perfsql \
       bo-mon bo-mon-control utils/eximexec utils/helpspell publishd publishd-control bo-webtest \
-      documentd documentd-control
+      documentd documentd-control rssd rssd-control
 #bo-log bo-log-control \
 DOCS=
 OPTIONS=$(DINSTRUMENT) -funsigned-char -O2 -Wall -g -DVERSION=\"$(PACKAGE_REV)\" -I/usr/include/tlmp -I/usr/include/trlitool
@@ -202,6 +202,15 @@ proto/documentd_client.protoh: proto/documentd_client.proto
 	build-protocol $(INSTRUMENT) --secretmode --arg "int no" --arg "HANDLE_INFO *c" --name documentd_client \
 		--protoch proto/documentd_client.protoch proto/documentd_client.proto >proto/documentd_client.protoh
 
+rssd: rssd.tlcc proto/rssd_control.protoh proto/bod_client.protoh _dict.o
+	cctlcc -Wall $(OPTIONS) rssd.tlcc _dict.o -o rssd $(LIBS)
+
+rssd-control: rssd-control.tlcc proto/rssd_control.protoh _dict.o
+	cctlcc -Wall $(OPTIONS) rssd-control.tlcc _dict.o -o rssd-control $(LIBS)
+
+proto/rssd_control.protoh: proto/rssd_control.proto
+	build-protocol --arg "int no" --arg "HANDLE_INFO *c" --name rssd_control \
+		--protoch proto/rssd_control.protoch proto/rssd_control.proto >proto/rssd_control.protoh
 
 
 ssltestsign: ssltestsign.tlcc
@@ -279,6 +288,8 @@ install: msg.eng msg.fr
 	install -m755 bolixod-control $(RPM_BUILD_ROOT)/usr/sbin/bolixod-control
 	install -m755 publishd $(RPM_BUILD_ROOT)/usr/sbin/publishd
 	install -m755 publishd-control $(RPM_BUILD_ROOT)/usr/sbin/publishd-control
+	install -m755 rssd $(RPM_BUILD_ROOT)/usr/sbin/rssd
+	install -m755 rssd-control $(RPM_BUILD_ROOT)/usr/sbin/rssd-control
 	install -m755 bo-keysd $(RPM_BUILD_ROOT)/usr/sbin/bo-keysd
 	install -m755 bo-keysd-control $(RPM_BUILD_ROOT)/usr/sbin/bo-keysd-control
 	install -m755 bo-mon $(RPM_BUILD_ROOT)/usr/sbin/bo-mon

@@ -54,6 +54,8 @@ make install
 /usr/sbin/bo-manager
 /usr/sbin/bo-mon
 /usr/sbin/bo-mon-control
+/usr/sbin/rssd
+/usr/sbin/rssd-control
 /usr/sbin/summary
 /usr/sbin/listusers
 /usr/sbin/nbusers
