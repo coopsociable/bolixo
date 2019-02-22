@@ -1223,6 +1223,15 @@ static int bod_check_remote_user(
 	return glocal.ret;
 }
 </mod>
+static void fopen_instrument_file(PARAM_STRING fname)
+{
+	#ifdef INSTRUMENT
+		f_instrument = fopen (fname.ptr,"a");
+		if (f_instrument == NULL){
+			tlmp_error ("Can't open instrument file %s (%s)\n",fname.ptr,strerror(errno));
+		}
+	#endif
+}
 <mod>
 static int bod_main (
 	const char *bind,
@@ -1252,9 +1261,7 @@ static int bod_main (
 	glocal string unixportadmin = string_f("unix:/tmp/bod-admin-%s.sock",portstr);
 	glocal unsigned maxaccts = maxaccts;
 	glocal string instrument_file = string_f("/tmp/instrument-%s.log",portstr);
-	#ifdef INSTRUMENT
-		f_instrument = fopen (glocal.instrument_file.c_str(),"a");
-	#endif
+	fopen_instrument_file (glocal.instrument_file);
 	<obj TCPSERVER s>(bind,glocal.unixportclient,5);
 	<f newclient>
 		HANDLE_INFO *n = new HANDLE_INFO;
@@ -1431,10 +1438,7 @@ static int bod_main (
 				#ifdef INSTRUMENT
 					if (on){
 						if (f_instrument==NULL){
-							f_instrument = fopen (glocal.instrument_file.c_str(),"a");
-							if (f_instrument == NULL){
-								tlmp_error ("Can't open instrument file %s (%s)\n",glocal.instrument_file.c_str(),strerror(errno));
-							}
+							fopen_instrument_file (glocal.instrument_file);
 						}
 					}else{
 						if (f_instrument != NULL){
