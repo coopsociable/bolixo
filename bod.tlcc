@@ -42,6 +42,7 @@
 #include "bolixo.h"
 #include "bolixo.m"
 #include <translat.h>
+#define INSTRUMENT_DONOTOPEN
 #include "instrument.h"
 
 
@@ -1250,6 +1251,10 @@ static int bod_main (
 	glocal string unixportclient = string_f("unix:/tmp/bod-client-%s.sock",portstr);
 	glocal string unixportadmin = string_f("unix:/tmp/bod-admin-%s.sock",portstr);
 	glocal unsigned maxaccts = maxaccts;
+	glocal string instrument_file = string_f("/tmp/instrument-%s.log",portstr);
+	#ifdef INSTRUMENT
+		f_instrument = fopen (glocal.instrument_file.c_str(),"a");
+	#endif
 	<obj TCPSERVER s>(bind,glocal.unixportclient,5);
 	<f newclient>
 		HANDLE_INFO *n = new HANDLE_INFO;
@@ -1426,8 +1431,10 @@ static int bod_main (
 				#ifdef INSTRUMENT
 					if (on){
 						if (f_instrument==NULL){
-							f_instrument = fopen ("/tmp/instrument.log","a");
-							if (f_instrument == NULL) tlmp_error ("Can't open instrument file /tmp/instrument.log (%s)\n",strerror(errno));
+							f_instrument = fopen (glocal.instrument_file.c_str(),"a");
+							if (f_instrument == NULL){
+								tlmp_error ("Can't open instrument file %s (%s)\n",glocal.instrument_file.c_str(),strerror(errno));
+							}
 						}
 					}else{
 						if (f_instrument != NULL){
@@ -1553,7 +1560,6 @@ static int bod_main (
 				auto r = rem_handles.find(handle);
 				if (r != rem_handles.end()){
 					handle = r->second->handle.c_str();	// Retrieve the local handle.
-tlmp_error ("Appendfile remote_handle found %s more %d\n",handle,more);
 				}
 				<call bo_writed_client_appendfile>(glocal.con,sessionid,handle,content,more);
 				<f ok>

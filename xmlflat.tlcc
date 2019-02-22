@@ -1,0 +1,48 @@
+#include <string.h>
+#include <misc.h>
+#include <tlmplib.h>
+#include "xmlflat.h"
+#include <string>
+
+using namespace std;
+
+void _F_xmlflat::start (const char *, const char *, const char *, xmlNodePtr node)
+{
+}
+void _F_xmlflat::end (const char *, const char *, const char *, xmlNodePtr node)
+{
+}
+void _F_xmlflat::tag (const char *, const char *, const char *, xmlNodePtr node)
+{
+}
+void _F_xmlflat::text (const char *, const char *, const char *, xmlNodePtr node)
+{
+}
+
+void xmlflat (_F_xmlflat &c, xmlNodePtr node, const char *basepath)
+{
+	while (node != NULL){
+		const char *nodename = (const char*)node->name;
+		if (strcmp(nodename,"text")==0){
+			const char *sep = strrchr(basepath,'/');
+			if (sep == NULL){
+				if (*basepath != '\0') tlmp_error ("xmlflat, no / ??? %s\n",basepath);
+			}else{
+				string base = string(basepath,sep-basepath);
+				c.text (base.c_str(),sep+1,basepath,node);
+			}
+		}else{
+			string path = string(basepath)+ '/' + nodename;
+			const char *pt = path.c_str();
+			c.start (basepath,nodename,pt,node);
+			c.tag (basepath,nodename,pt,node);
+			xmlNodePtr sub = node->xmlChildrenNode;
+			if (sub != NULL){
+				xmlflat(c,sub,pt);
+			}
+			c.end(basepath,nodename,pt,node);
+		}
+		node = node->next;
+	}
+}
+

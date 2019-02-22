@@ -29,10 +29,9 @@
 #include <tlmplib.h>
 #include <tlmpnet.h>
 #include <trlitool.h>
-#include <deque>
-#include <memory>
 #include <string>
-#include "filesystem.h"
+#include <set>
+#include "xmlflat.h"
 #include "bolixo.h"
 #include "bolixo.m"
 #include "instrument.h"
@@ -40,6 +39,7 @@
 
 using namespace std;
 static DEBUG_KEY D_PROTO ("proto","Protocol information");
+static DEBUG_KEY D_HEADER ("header","http header");
 
 enum CONNECT_TYPE { TYPE_NONE, TYPE_CONTROL, TYPE_CLIENT, TYPE_WORKER};
 
@@ -148,15 +148,213 @@ struct RSSD_CONFIG{
 	}
 };
 
-static void rssd_readconfig (const char *configfile, RSSD_CONFIG &config)
+static constexpr unsigned length(const char *s)
 {
-	config.reset();
+	return *s == '\0' ? 0 : 1+length(s+1);
 }
 
+<mod>
+static void rssd_readconfig (const char *configfile, RSSD_CONFIG &config)
+{
+	glocal RSSD_CONFIG *config = &config;
+	glocal WEBSITE website;
+	config.reset();
+	<call loadfile>(configfile,true);
+	<f oneline>
+		constexpr unsigned len_account  = length("account:");
+		constexpr unsigned len_password = length("password:");
+		if (strncmp(line,"name:",5)==0){
+			if (glocal.website.name.size() > 0){
+				glocal.config->websites.push_back(move(glocal.website));
+			}
+			glocal.website.name = str_skip(line+5);
+		}else if (strncmp(line,"url:",4)==0){
+			glocal.website.url = str_skip(line+4);
+		}else if (strncmp(line,"account:",len_account)==0){
+			glocal.website.account = str_skip(line+len_account);
+		}else if (strncmp(line,"password:",len_password)==0){
+			glocal.website.password = str_skip(line+len_password);
+		}
+		return 0;
+	</f>
+	</call>
+	if (glocal.website.name.size() > 0){
+		config.websites.push_back(move(glocal.website));
+	}
+}
+</mod>
+
+static int rssd_parseurl (PARAM_STRING purl, string &baseurl, string &hostname, string &file)
+{
+	int ret = -1;
+	const char *url = purl.ptr;
+	const char *ptfile = strrchr(url,'/');
+	if (ptfile != NULL){
+		file = ptfile;
+		baseurl = string(url,ptfile-url);
+		url = baseurl.c_str();
+		if (strncasecmp(url,"http://",7)==0){
+			hostname = url+7;
+			ret = 0;
+		}else if (strncasecmp(url,"https://",8)==0){
+			hostname = url+8;
+			ret = 0;
+		}
+	}
+	return ret;
+}
+
+<mod>
+static int rssd_getrss(PARAM_STRING url, string &rss)
+{
+	glocal string *rss = &rss;
+	glocal unsigned received = 0;
+	glocal bool header_seen = false;
+	glocal int ret = -1;
+	glocal CONNECT_HTTP_INFO con;
+	string baseurl,hostname,file;
+	if (rssd_parseurl(url,baseurl,hostname,file)==-1) return -1;
+	glocal.con.init (baseurl);
+	debug_printf (D_PROTO,"host=%s\n",glocal.con.host.c_str());
+	string buf = string_f ("GET %s HTTP/1.0\r\nhost: %s\r\nUser-Agent: bolixo rssd\r\n",file.c_str(),hostname.c_str());
+	buf += string_f ("Content-Type: text/html; charset=UTF-8\r\n\r\n");
+	glocal.con.send (buf.c_str());
+	debug_printf (D_HEADER,"%s-----\n",buf.c_str());
+	<call streamp>();
+	<f fill>
+		int ret = glocal.con.receive (buf,size);
+		if (ret <= 0){
+			debug_printf (D_PROTO,"fill received=%u ret=%d size=%u %d(%s)\n",glocal.received,ret,size,errno,strerror(errno));
+			ret = 0;
+		}else{
+			glocal.received += ret;
+		}
+		return ret; 
+	</f>
+	<f process>
+		int ret = 0;
+		const char *line = (const char *)buf;
+		const char *endbuf = line+len;
+		const char *pt = line;
+		while (pt < endbuf && *pt != '\n') pt++;
+		//debug_printf (D_PROTO,"process len=%u %lu %d\n",len,pt-line,pt<endbuf);
+		if (pt < endbuf){
+			ret = (pt-line)+1;
+			string tmp = string(line,pt-line);
+			debug_printf (D_PROTO,"line[%lu]=%s\n",tmp.size(),tmp.c_str());
+			if (tmp == "\r" && !glocal.header_seen){
+				glocal.header_seen = true;
+			}else if (glocal.header_seen){
+				(*glocal.rss) += tmp + "\n";
+				line = tmp.c_str();
+				if (strcasecmp(line,"</rss>")==0){
+					glocal.ret = 0;
+					end = true;
+				}
+			}
+		}
+		return ret;
+	</f>
+	</call>
+	if (rss.size() > 0 && glocal.ret == -1){
+		rss += "</rss>\n";
+		glocal.ret = 0;
+	}
+	return glocal.ret;
+}
+</mod>
+
+#define _TLMP_rssd_processxml
+struct _F_rssd_processxml{
+	#define _F_rssd_processxml_onepage(x) void x onepage(const string &title, const string &link, const string &pubdate, const string &guid, const string &description, const string &content)
+	virtual _F_rssd_processxml_onepage( )=0;
+};
+
+<mod>
+static void rssd_processxml(_F_rssd_processxml &c, const string &rss)
+{
+	xmlDoc *doc = xmlParseDoc((const xmlChar*)rss.c_str());
+	if (doc != NULL){
+		xmlNode *cur = xmlDocGetRootElement(doc);
+		glocal string title;
+		glocal string link;
+		glocal string pubdate;
+		glocal string guid;
+		glocal string description;
+		glocal string content;
+		glocal _F_rssd_processxml *c = &c;
+		<call xmlflat>(cur->xmlChildrenNode,"");
+		<f tag>
+			//printf ("parent=%s name=%s path=%s\n",parent,name,path);
+			const char *val = (const char*)xmlNodeGetContent(node);
+			if (strcmp(name,"title")==0){
+				glocal.title = val;
+			}else if (strcmp(name,"link")==0){
+				glocal.link = val;
+			}else if (strcmp(name,"pubDate")==0){
+				glocal.pubdate = val;
+			}else if (strcmp(name,"guid")==0){
+				glocal.guid = val;
+			}else if (strcmp(name,"description")==0){
+				glocal.description = val;
+			}else if (strcmp(name,"content")==0){
+				glocal.content = val;
+			}
+		</f>
+		<f end>
+			if (strcmp(name,"item")==0){
+				glocal.c->onepage(glocal.title,glocal.link,glocal.pubdate,glocal.guid,glocal.description,glocal.content);
+			}
+		</f>
+		</call>
+	}
+}
+</mod>
+<mod>
 static int rssd_process (RSSD_CONFIG &config, PARAM_STRING name, string &msg)
 {
-	return -1;
+	int ret = -1;
+	bool found = false;
+	for (auto &r:config.websites){
+		if (r.name == name.ptr){
+			found = true;
+			string rss;
+			if (rssd_getrss(r.url,rss)!=-1){
+				// Load the link already process for that site
+				glocal set<string> links;
+				string fname = string_f("/tmp/%s",name.ptr);
+				<call loadfile>(fname,true);
+				<f missing>
+					// Not a problem. this files is created on the fly
+				</f>
+				<f oneline>
+					glocal.links.insert(line);
+					return 0;
+				</f>
+				</call>
+				<call rssd_processxml>(rss);
+				<f onepage>
+					if (glocal.links.insert(link).second){
+						printf ("Genere message pour link=%s\n",link.c_str());
+					}
+				</f>
+				</call>
+				// Save the links
+				<call savefile>(fname,false);
+				<f dowrite>
+					for (auto const &s:glocal.links) fprintf (fout,"%s\n",s.c_str());
+					return 0;
+				</f>
+				</call>
+				ret = 0;
+			}
+			break;
+		}
+	}
+	if (!found) msg = "Website not found in configuration";
+	return ret;
 }
+</mod>
 
 <mod>
 int main (int argc, char *argv[])
@@ -167,6 +365,8 @@ int main (int argc, char *argv[])
 	glocal const char *bod_sock = "/dev/bod.sock";
 	glocal const char *user = "bolixo";
 	glocal bool daemon = false;
+	glocal bool testmode = false;
+	glocal bool process = false;
 	glocal const char *pidfile = "/var/run/rssd.pid";
 
 	static const char *tbdic[]={"bolixo",NULL};
@@ -180,6 +380,9 @@ int main (int argc, char *argv[])
 		setarg (' ',"user","Run the program as this user",glocal.user,false);
 		setarg (' ',"daemon","Run in background",glocal.daemon,false);
 		setarg (' ',"pidfile","File holding the PID of the process",glocal.pidfile,false);
+		setgrouparg ("Tests");
+		setarg (' ',"testmode","Execution inline of some part of the rssd server",glocal.testmode,false);
+		setarg (' ',"process","Process some websites",glocal.process,false);
 	</f>
 	<f showerror>
 		if (glocal.daemon){
@@ -194,6 +397,49 @@ int main (int argc, char *argv[])
 		}else{
 			fprintf (stderr,"%s",msg);
 		}
+	</f>
+	<f main>
+		// Test mode.
+		int ret = -1;
+		if (!glocal.testmode && !glocal.process){
+			usage();
+		}else if (glocal.process){
+			RSSD_CONFIG config;
+			rssd_readconfig (glocal.configfile,config);
+			for (int i=0; i<argc; i++){
+				string msg;
+				if (rssd_process(config,argv[i],msg)!=-1){
+					ret = 0;
+				}else{
+					tlmp_error ("%s\n",msg.c_str());
+					break;
+				}
+			}
+		}else if (glocal.testmode){
+			for (int i=0; i<argc; i++){
+				const char *arg = argv[i];
+				if (strncmp(arg,"http://",7)==0 || strncmp(arg,"https://",8)==0){
+					string rss;
+					ret = rssd_getrss (arg,rss);
+					printf ("%s\n",rss.c_str());
+				}else{
+					glocal string rss;
+					<call loadfile>(arg,false);
+					<f oneline>
+						glocal.rss += line;
+						return 0;
+					</f>
+					</call>
+					<call rssd_processxml> (glocal.rss);
+					<f onepage>
+						printf ("title=%s\nlink=%s\npubdate=%s\nguid=%s\ndescription=%s\ncontent=%s\n"
+						,title.c_str(),link.c_str(),pubdate.c_str(),guid.c_str(),description.c_str(),content.c_str());
+					</f>
+					</call>
+				}
+			}
+		}
+		return ret;
 	</f>
 	<f main_noarg>
 		int ret = -1;

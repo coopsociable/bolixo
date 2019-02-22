@@ -1,5 +1,9 @@
-#ifdef INSTRUMENT
-	FILE *f_instrument = fopen ("/tmp/instrument.log","a");
+#ifdef INSTRUMENT_DONOTOPEN
+	FILE *f_instrument = NULL;
 #else
-	extern FILE *f_instrument;
+	#ifdef INSTRUMENT
+		FILE *f_instrument = fopen ("/tmp/instrument.log","a");
+	#else
+		extern FILE *f_instrument;
+	#endif
 #endif

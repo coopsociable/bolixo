@@ -202,8 +202,11 @@ proto/documentd_client.protoh: proto/documentd_client.proto
 	build-protocol $(INSTRUMENT) --secretmode --arg "int no" --arg "HANDLE_INFO *c" --name documentd_client \
 		--protoch proto/documentd_client.protoch proto/documentd_client.proto >proto/documentd_client.protoh
 
-rssd: rssd.tlcc proto/rssd_control.protoh proto/bod_client.protoh _dict.o
-	cctlcc -Wall $(OPTIONS) rssd.tlcc _dict.o -o rssd $(LIBS)
+rssd: rssd.tlcc proto/rssd_control.protoh proto/bod_client.protoh _dict.o xmlflat.o
+	cctlcc -Wall $(OPTIONS) -I/usr/include/libxml2 rssd.tlcc xmlflat.o _dict.o -o rssd $(LIBS) -lssl -lxml2
+
+xmlflat.o: xmlflat.tlcc
+	cctlcc -Wall $(OPTIONS) -I/usr/include/libxml2 -c xmlflat.tlcc -o xmlflat.o
 
 rssd-control: rssd-control.tlcc proto/rssd_control.protoh _dict.o
 	cctlcc -Wall $(OPTIONS) rssd-control.tlcc _dict.o -o rssd-control $(LIBS)
