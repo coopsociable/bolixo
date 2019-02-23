@@ -38,6 +38,7 @@
 
 
 using namespace std;
+static DEBUG_KEY D_GETRSS ("getrss","Protocol to retrieve RSS");
 static DEBUG_KEY D_PROTO ("proto","Protocol information");
 static DEBUG_KEY D_HEADER ("header","http header");
 
@@ -55,11 +56,11 @@ struct HANDLE_INFO: public ARRAY_OBJ{
 #include "proto/bod_client.protodef"
 #define bod_client_login_NOTNEED
 #define bod_client_logout_NOTNEED
+#define bod_client_createsession_NOTNEED
 #define bod_client_adduser_NOTNEED
 #define bod_client_confirmuser_NOTNEED
 #define bod_client_deleteuser_NOTNEED
 #define bod_client_confirmdelete_NOTNEED
-#define bod_client_createsession_NOTNEED
 #define bod_client_addfile_NOTNEED
 #define bod_client_addfile_bob_NOTNEED
 #define bod_client_appendfile_NOTNEED
@@ -107,7 +108,6 @@ struct HANDLE_INFO: public ARRAY_OBJ{
 #define bod_client_nodelogin_NOTNEED
 #define bod_client_nodepass_NOTNEED
 #define bod_client_sendtalk_anon_NOTNEED
-#define bod_client_sendtalk_NOTNEED
 #define bod_client_sendtalk_file_NOTNEED
 #define bod_client_list_talk_NOTNEED
 #define bod_client_contact_request_NOTNEED
@@ -135,10 +135,9 @@ struct HANDLE_INFO: public ARRAY_OBJ{
 
 
 struct WEBSITE{
-	string name;		// Name of the site
-	string url;		// Url to retrieve the RSS
 	string account;		// Bolixo account
-	string password;	// Password of the bolixo account
+	string url;		// Url to retrieve the RSS
+	string session;		// Pre-logged session
 };
 
 struct RSSD_CONFIG{
@@ -146,6 +145,8 @@ struct RSSD_CONFIG{
 	void reset(){
 		websites.clear();
 	}
+	void read(PARAM_STRING file);
+	void readsessions(PARAM_STRING file);
 };
 
 static constexpr unsigned length(const char *s)
@@ -154,33 +155,49 @@ static constexpr unsigned length(const char *s)
 }
 
 <mod>
-static void rssd_readconfig (const char *configfile, RSSD_CONFIG &config)
+void RSSD_CONFIG::read (PARAM_STRING configfile)
 {
-	glocal RSSD_CONFIG *config = &config;
+	glocal RSSD_CONFIG *config = this;
 	glocal WEBSITE website;
-	config.reset();
+	reset();
 	<call loadfile>(configfile,true);
 	<f oneline>
 		constexpr unsigned len_account  = length("account:");
-		constexpr unsigned len_password = length("password:");
-		if (strncmp(line,"name:",5)==0){
-			if (glocal.website.name.size() > 0){
+		if (strncmp(line,"account:",len_account)==0){
+			if (glocal.website.account.size() > 0){
 				glocal.config->websites.push_back(move(glocal.website));
 			}
-			glocal.website.name = str_skip(line+5);
+			glocal.website.account = str_skip(line+len_account);
 		}else if (strncmp(line,"url:",4)==0){
 			glocal.website.url = str_skip(line+4);
-		}else if (strncmp(line,"account:",len_account)==0){
-			glocal.website.account = str_skip(line+len_account);
-		}else if (strncmp(line,"password:",len_password)==0){
-			glocal.website.password = str_skip(line+len_password);
 		}
 		return 0;
 	</f>
 	</call>
-	if (glocal.website.name.size() > 0){
-		config.websites.push_back(move(glocal.website));
+	if (glocal.website.account.size() > 0){
+		websites.push_back(move(glocal.website));
 	}
+}
+</mod>
+// Read the session ID allocated to each account
+<mod>
+void RSSD_CONFIG::readsessions (PARAM_STRING file)
+{
+	glocal RSSD_CONFIG *config = this;
+	<call loadfile>(file,true);
+	<f oneline>
+		vector<string> tb;
+		if (str_splitline(line,' ',tb)==2){
+			for (auto &w:glocal.config->websites){
+				if (w.account == tb[0]){
+					w.session = tb[1];
+					break;
+				}
+			}
+		}
+		return 0;
+	</f>
+	</call>
 }
 </mod>
 
@@ -188,21 +205,27 @@ static int rssd_parseurl (PARAM_STRING purl, string &baseurl, string &hostname, 
 {
 	int ret = -1;
 	const char *url = purl.ptr;
-	const char *ptfile = strrchr(url,'/');
-	if (ptfile != NULL){
-		file = ptfile;
-		baseurl = string(url,ptfile-url);
-		url = baseurl.c_str();
-		if (strncasecmp(url,"http://",7)==0){
-			hostname = url+7;
-			ret = 0;
-		}else if (strncasecmp(url,"https://",8)==0){
-			hostname = url+8;
-			ret = 0;
+	const char *pthost = NULL;
+	if (strncasecmp(url,"http://",7)==0){
+		pthost = url+7;
+	}else if (strncasecmp(url,"https://",8)==0){
+		pthost = url+8;
+	}
+	if (pthost != NULL){
+		const char *ptfile = strchr(pthost,'/');
+		if (ptfile == NULL){
+			baseurl = url;
+			hostname = pthost;
+		}else{
+			file = ptfile;
+			baseurl = string(url,ptfile-url);
+			hostname = string(pthost,ptfile-pthost);
 		}
+		ret = 0;
 	}
 	return ret;
 }
+
 
 <mod>
 static int rssd_getrss(PARAM_STRING url, string &rss)
@@ -215,7 +238,7 @@ static int rssd_getrss(PARAM_STRING url, string &rss)
 	string baseurl,hostname,file;
 	if (rssd_parseurl(url,baseurl,hostname,file)==-1) return -1;
 	glocal.con.init (baseurl);
-	debug_printf (D_PROTO,"host=%s\n",glocal.con.host.c_str());
+	debug_printf (D_GETRSS,"host=%s\n",glocal.con.host.c_str());
 	string buf = string_f ("GET %s HTTP/1.0\r\nhost: %s\r\nUser-Agent: bolixo rssd\r\n",file.c_str(),hostname.c_str());
 	buf += string_f ("Content-Type: text/html; charset=UTF-8\r\n\r\n");
 	glocal.con.send (buf.c_str());
@@ -224,7 +247,7 @@ static int rssd_getrss(PARAM_STRING url, string &rss)
 	<f fill>
 		int ret = glocal.con.receive (buf,size);
 		if (ret <= 0){
-			debug_printf (D_PROTO,"fill received=%u ret=%d size=%u %d(%s)\n",glocal.received,ret,size,errno,strerror(errno));
+			debug_printf (D_GETRSS,"fill received=%u ret=%d size=%u %d(%s)\n",glocal.received,ret,size,errno,strerror(errno));
 			ret = 0;
 		}else{
 			glocal.received += ret;
@@ -237,11 +260,11 @@ static int rssd_getrss(PARAM_STRING url, string &rss)
 		const char *endbuf = line+len;
 		const char *pt = line;
 		while (pt < endbuf && *pt != '\n') pt++;
-		//debug_printf (D_PROTO,"process len=%u %lu %d\n",len,pt-line,pt<endbuf);
+		//debug_printf (D_GETRSS,"process len=%u %lu %d\n",len,pt-line,pt<endbuf);
 		if (pt < endbuf){
 			ret = (pt-line)+1;
 			string tmp = string(line,pt-line);
-			debug_printf (D_PROTO,"line[%lu]=%s\n",tmp.size(),tmp.c_str());
+			debug_printf (D_GETRSS,"line[%lu]=%s\n",tmp.size(),tmp.c_str());
 			if (tmp == "\r" && !glocal.header_seen){
 				glocal.header_seen = true;
 			}else if (glocal.header_seen){
@@ -257,7 +280,14 @@ static int rssd_getrss(PARAM_STRING url, string &rss)
 	</f>
 	</call>
 	if (rss.size() > 0 && glocal.ret == -1){
-		rss += "</rss>\n";
+		// Some sites produces bad XML. We patch it here
+		auto end_pos = rss.find("</rss>");
+		if (end_pos == string::npos){
+			auto rss_pos = rss.find("<rss");
+			if (rss_pos != string::npos){
+				rss += "</rss>\n";
+			}
+		}
 		glocal.ret = 0;
 	}
 	return glocal.ret;
@@ -310,19 +340,39 @@ static void rssd_processxml(_F_rssd_processxml &c, const string &rss)
 	}
 }
 </mod>
+static const char *savexmldir = "/tmp/savexml";
+static const char *savelinkdir = "/tmp/savelink";
+static const char *tmp_dir = "/tmp";
+static const char *force_account = NULL;	// For testing, all messages are sent to this account
 <mod>
-static int rssd_process (RSSD_CONFIG &config, PARAM_STRING name, string &msg)
+static int rssd_process (CONNECT_INFO &con, RSSD_CONFIG &config, PARAM_STRING name, string &msg)
 {
+	glocal CONNECT_INFO *con = &con;
 	int ret = -1;
 	bool found = false;
 	for (auto &r:config.websites){
-		if (r.name == name.ptr){
+		if (r.account == name.ptr){
 			found = true;
-			string rss;
-			if (rssd_getrss(r.url,rss)!=-1){
+			glocal WEBSITE *r = &r;
+			glocal string rss;
+			if (r.session.empty()){
+				tlmp_error (MSG_U(E_NOSESSSION,"Session not set for account %s\n"),name.ptr);
+				break;
+			}
+			if (rssd_getrss(r.url,glocal.rss)!=-1){
+				if (savexmldir != NULL){
+					mkdir (savexmldir,0755);
+					<call savefile>(string_f("%s/%s.xml",savexmldir,name.ptr),false);
+					<f dowrite>
+						fprintf (fout,"%s",glocal.rss.c_str());
+						return 0;
+					</f>
+					</call>
+				}
 				// Load the link already process for that site
+				mkdir (savelinkdir,0755);
 				glocal set<string> links;
-				string fname = string_f("/tmp/%s",name.ptr);
+				string fname = string_f("%s/%s.links",savelinkdir,name.ptr);
 				<call loadfile>(fname,true);
 				<f missing>
 					// Not a problem. this files is created on the fly
@@ -332,10 +382,31 @@ static int rssd_process (RSSD_CONFIG &config, PARAM_STRING name, string &msg)
 					return 0;
 				</f>
 				</call>
-				<call rssd_processxml>(rss);
+				<call rssd_processxml>(glocal.rss);
 				<f onepage>
-					if (glocal.links.insert(link).second){
-						printf ("Genere message pour link=%s\n",link.c_str());
+					string datelink = pubdate + " " + link;
+					if (glocal.links.count(datelink) == 0){
+						printf ("Genere message pour link=%s\n",datelink.c_str());
+						glocal string content;
+						glocal.content = string_f("%s\n\n%s\n\n%s",title.c_str(),link.c_str(),description.c_str());
+						glocal bool success = false;
+						vector<string> empty;
+						BOB_TYPE content(glocal.content.c_str(),glocal.content.size(),false);
+						const char *groupowner = force_account != NULL ? force_account : glocal.r->account.c_str();
+						<call bod_client_sendtalk>(*glocal.con,glocal.r->session,"",empty,"public",groupowner,content,false,"","","");
+						<f ok>
+							if (!success) tlmp_error (MSG_U(E_RSSSENDFAIL,"Can't publish the RSS message: %s\n"),msg);
+							glocal.success = success;
+						</f>
+						</call>
+						if (glocal.success) glocal.links.insert(datelink);
+						string textfile = string_f("%s/rss.txt",tmp_dir);
+						<call savefile>(textfile,false);
+						<f dowrite>
+							fprintf (fout,"%s",glocal.content.c_str());
+							return 0;
+						</f>
+						</call>
 					}
 				</f>
 				</call>
@@ -361,21 +432,29 @@ int main (int argc, char *argv[])
 {
 	glocal int ret = -1;
 	glocal const char *configfile = "/etc/bolixo/rssd.conf";
+	glocal const char *sessionsfile = "/var/run/sssd-sessions";
 	glocal const char *control = "/var/run/rssd.sock";
 	glocal const char *bod_sock = "/dev/bod.sock";
 	glocal const char *user = "bolixo";
 	glocal bool daemon = false;
 	glocal bool testmode = false;
 	glocal bool process = false;
+	glocal const char *mysecret = "";
 	glocal const char *pidfile = "/var/run/rssd.pid";
 
 	static const char *tbdic[]={"bolixo",NULL};
 	glocal.ret = <call tlmpprogram>(argc,argv,tbdic);
 	<f init>
 		setproginfo ("rssd",VERSION,"Convert RSS feeds into bolixo messages");
-		setarg (' ',"config","Configuration file path",glocal.configfile,false);
+		setarg (' ',"config",MSG_U(O_CONFIGPATH,"Configuration file path"),glocal.configfile,false);
+		setarg (' ',"sessions",MSG_U(O_SESSIONS,"Session file"),glocal.sessionsfile,false);
 		setgrouparg ("Networking");
 		setarg ('c',"control","Unix socket for rssd-control",glocal.control,false);
+		setarg (' ',"bod_sock","Unix socket to reach the bod server",glocal.bod_sock,false);
+		setarg (' ',"mysecret","Secret used to talk with bod",glocal.mysecret,false);
+		setgrouparg ("Directories");
+		setarg (' ',"savexml","Save retrieved XML file (for review/debug)",savexmldir,false);
+		setarg (' ',"savelink","Save known link about a site",savelinkdir,false);
 		setgrouparg ("Misc.");
 		setarg (' ',"user","Run the program as this user",glocal.user,false);
 		setarg (' ',"daemon","Run in background",glocal.daemon,false);
@@ -383,6 +462,7 @@ int main (int argc, char *argv[])
 		setgrouparg ("Tests");
 		setarg (' ',"testmode","Execution inline of some part of the rssd server",glocal.testmode,false);
 		setarg (' ',"process","Process some websites",glocal.process,false);
+		setarg (' ',"force_account","Send all messages to this account",force_account,false);
 	</f>
 	<f showerror>
 		if (glocal.daemon){
@@ -404,11 +484,15 @@ int main (int argc, char *argv[])
 		if (!glocal.testmode && !glocal.process){
 			usage();
 		}else if (glocal.process){
+			CONNECT_INFO con;	// Connection to bod
+			con.port = glocal.bod_sock;
+			con.secret = glocal.mysecret;
 			RSSD_CONFIG config;
-			rssd_readconfig (glocal.configfile,config);
+			config.read(glocal.configfile);
+			config.readsessions (glocal.sessionsfile);
 			for (int i=0; i<argc; i++){
 				string msg;
-				if (rssd_process(config,argv[i],msg)!=-1){
+				if (rssd_process(con,config,argv[i],msg)!=-1){
 					ret = 0;
 				}else{
 					tlmp_error ("%s\n",msg.c_str());
@@ -447,6 +531,7 @@ int main (int argc, char *argv[])
 		glocal CONNECT_INFO con;	// Connection to bod
 		glocal string controlport = string_f("unix:%s",glocal.control);
 		glocal.con.port = glocal.bod_sock;
+		glocal.con.secret = glocal.mysecret;
 		<obj TCPSERVER s>();
 		<f newclient>
 			HANDLE_INFO *n = new HANDLE_INFO;
@@ -506,17 +591,18 @@ int main (int argc, char *argv[])
 				<f process>
 					bool success = true;
 					string msg;
-					rssd_readconfig (glocal.configfile,glocal.config);
+					glocal.config.read (glocal.configfile);
+					glocal.config.readsessions (glocal.sessionsfile);
 					if (websites.size() == 0){
 						for (auto const &r:glocal.config.websites){
-							if (rssd_process(glocal.config,r.name,msg)==-1){
+							if (rssd_process(glocal.con,glocal.config,r.account,msg)==-1){
 								success = false;
 								break;
 							}
 						} 
 					}else{
 						for (auto r:websites){
-							if (rssd_process(glocal.config,r,msg)==-1){
+							if (rssd_process(glocal.con,glocal.config,r,msg)==-1){
 								success = false;
 								break;
 							}

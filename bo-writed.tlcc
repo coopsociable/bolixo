@@ -1690,6 +1690,100 @@ int main (int argc, char *argv[])
 						rep_confirmuser (true,"");
 					}
 				</f>
+				<f disableuser>	// name = success:b msg
+					glocal string msg;
+					<call sql_query>(*glocal.usq,"select userid,disabled from users where name='%s' or email='%s'",name,name);
+					<f empty>
+						glocal.msg = "Unknown account";
+					</f>
+					<f onerow>
+						if (row[1] != NULL){
+							glocal.msg = "Account already disabled";
+						}else if (sql_action (*glocal.usq,"update users set disabled=now() where userid=%s",row[0])==-1){
+							glocal.msg = "Internal error, table users";
+						}
+					</f>
+					</call>
+					if (glocal.msg.size() > 0){
+						rep_disableuser(false,glocal.msg);
+					}else{
+						rep_disableuser(true,"");
+					}
+				</f>
+				<f enableuser>	// name = success:b msg
+					glocal string msg;
+					<call sql_query>(*glocal.usq,"select userid,disabled from users where name='%s' or email='%s'",name,name);
+					<f empty>
+						glocal.msg = "Unknown account";
+					</f>
+					<f onerow>
+						if (row[1] == NULL){
+							glocal.msg = "Account already enabled";
+						}else if (sql_action (*glocal.usq,"update users set disabled=null where userid=%s",row[0])==-1){
+							glocal.msg = "Internal error, table users";
+						}
+					</f>
+					</call>
+					if (glocal.msg.size() > 0){
+						rep_enableuser(false,glocal.msg);
+					}else{
+						rep_enableuser(true,"");
+					}
+				</f>
+				<f login>	// name = success:b msg session
+					glocal bool success = false;
+					glocal string msg;
+					glocal string session;
+					// This is a request from admin, so we create a session even if this account is disabled, not confirmed...
+					<call sql_query>(*glocal.usq,"select userid,userid_str,name,email,admin from users where name='%s' or email='%s'",name,name);
+					<f onerow>
+						glocal string newsession = fs_makeid ();
+						glocal const char *email = row[3];
+						glocal string lang = "eng";
+						glocal unsigned dateformat=0;
+						debug_printf (D_PROTO,"login ok\n");
+						int userid = atoi(row[0]);
+						<call sql_query>("select lang,dateformat from config where userid=%d",userid);
+						<f onerow>
+							glocal.lang = row[0];
+							glocal.dateformat = atoi(row[1]);
+						</f>
+						</call>
+						<call bo_sessiond_admin_createsession>(glocal.con,glocal.newsession);
+						<f ok>
+							if (internal_error){
+								glocal.msg = "Createsession, internal error";
+							}else{
+								debug_printf (D_PROTO,"create session ok %s\n",glocal.newsession.c_str());
+							}
+						</f>
+						</call>
+						if (glocal.msg.empty()){
+							vector<string> empty;
+							<call bo_sessiond_admin_setsession>(glocal.con,glocal.newsession,userid,row[1],row[2],row[3]
+								,glocal.lang,atoi(row[4]),glocal.dateformat,0,empty);
+							<f ok>
+								if (internal_error){
+									glocal.msg = "Internal error";
+								}else{
+									debug_printf (D_PROTO,"login session ok %s\n",glocal.newsession.c_str());
+									sql_action (*glocal.usq,"update users set lastaccess=now() where email='%s'",glocal.email);
+									glocal.session = glocal.newsession;
+								}
+							</f>
+							</call>
+						}
+					</f>
+					<f empty>
+						glocal.msg = "Unknown account";
+					</f>
+					</call>
+					if (glocal.msg.size() > 0){
+						rep_login (false,glocal.msg,"");
+					}else{
+						rep_login (true,"",glocal.session);
+					}
+				</f>
 				<f setpassword>
 					string msg;
 					if (sql_action(*glocal.usq,"update users set password=password('%s') where name='%s'",password,name)==-1){
@@ -2066,7 +2160,7 @@ int main (int argc, char *argv[])
 				<f createsession>
 					// Create a web session, not associated with any user
 					glocal string sessionid = fs_makeid ();
-					<call bo_sessiond_admin_createsession>(glocal.con,glocal.sessionid.c_str());
+					<call bo_sessiond_admin_createsession>(glocal.con,glocal.sessionid);
 					<f ok>
 						if (internal_error){
 							glocal.bo_writed_client.rep_createsession ("");
@@ -2839,7 +2933,7 @@ int main (int argc, char *argv[])
 						rep_sendtalk_anon (true,glocal.msg,glocal.handle);
 					}
 				</f>
-				<f sendtalk>	// sessionid owner to:v groupname groupowner content:o more:b name sign = success:b msg handle
+				<f sendtalk>	// sessionid owner to:v groupname groupowner content:o more:b filename sign = success:b msg handle
 					glocal const char *sessionid = sessionid;
 					glocal const BOB_TYPE *content = &content;
 					glocal bool more = more;
@@ -2848,7 +2942,7 @@ int main (int argc, char *argv[])
 					glocal string msg;
 					glocal const char *groupname = groupname;
 					glocal const char *groupowner = groupowner;
-					glocal const char *name = name;
+					glocal const char *filename = filename;
 					glocal string sign = sign;
 					bool is_admin;
 					glocal unsigned userid = bo_writed_get_group_owner (glocal.con, sessionid, owner, glocal.username, glocal.msg, is_admin);
@@ -2883,7 +2977,7 @@ int main (int argc, char *argv[])
 										int fileid;
 										string msgid;
 										DATEASC modified;
-										const char *ptr_name = glocal.name[0] != '\0' ? glocal.name : NULL;
+										const char *ptr_name = glocal.filename[0] != '\0' ? glocal.filename : NULL;
 										bo_writed_addfile_bob (glocal.ctx.con_keys,glocal.sessionid,ptr_name,ENTRY_MSG,dirid,glocal.userid
 											,*glocal.content,glocal.more,glocal.sign
 											,msgid,glocal.msg,glocal.handle,fileid,modified);

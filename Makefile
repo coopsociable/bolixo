@@ -298,6 +298,7 @@ install: msg.eng msg.fr
 	install -m755 bo-mon $(RPM_BUILD_ROOT)/usr/sbin/bo-mon
 	install -m755 bo-mon-control $(RPM_BUILD_ROOT)/usr/sbin/bo-mon-control
 	install -m755 bofs $(RPM_BUILD_ROOT)/usr/bin/bofs
+	install -m755 utils/create-rss-accounts $(RPM_BUILD_ROOT)/usr/sbin/create-rss-accounts
 	install -m755 utils/logssl $(RPM_BUILD_ROOT)/usr/sbin/logssl
 	install -m755 utils/logweb $(RPM_BUILD_ROOT)/usr/sbin/logweb
 	install -m755 utils/logexim $(RPM_BUILD_ROOT)/usr/sbin/logexim

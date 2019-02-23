@@ -1,0 +1,38 @@
+#!/bin/sh
+# This script creates the missing accounts for rss feeds
+# Il reads the /etc/bolixo/rssd.conf
+HOSTNAME=`hostname`
+BO=bo
+BOFS=bofs
+CALLTEST="bo calltest"
+CONFIG=/etc/bolixo/rssd.conf
+if [ "$1" = "debug" ] ; then
+	BO=./test.sh
+	BOFS=./bofs
+	CALLTEST=./test.sh
+	CONFIG=../rssd.conf
+fi
+$BO mailctrl 0 keep
+grep account: $CONFIG | sed 's/:/ /' | while read keyw acc
+do
+	nb=`$BO files --silent <<-EOF
+		select count(*) from id2name where name='$acc';
+	EOF
+	`
+	if [ "$nb" = 0 ] ; then
+		$CALLTEST bo-writed-control adduser $acc $acc@$HOSTNAME "" eng \
+			&& $CALLTEST bo-writed-control confirmuser $acc
+		# Disable accounts. No one should log to this
+		$CALLTEST bo-writed-control disable $acc
+		# Make the account visible (public page)
+		echo bofs -u admin misc --owner $acc -w -V 1
+		$BOFS -u admin misc --owner $acc -w -V 1
+		DIR=/root/images/$acc
+		test -f /root/images/$acc/mini-photo.jpg && \
+			$BOFS -u admin cp $DIR/mini-photo.jpg bo://projects/$acc/public/mini-photo.jpg
+		test -f /root/images/$acc/photo.jpg && \
+			$BOFS -u admin cp $DIR/photo.jpg bo://projects/$acc/public/photo.jpg
+	fi
+done
+$BO mailctrl 1 keep
+

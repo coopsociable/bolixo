@@ -64,6 +64,7 @@ make install
 /usr/sbin/logweb
 /usr/sbin/logexim
 /usr/sbin/eximrm
+/usr/sbin/create-rss-accounts
 /usr/lib/eximexec
 /usr/bin/bofs
 /usr/lib/tlmp/help.eng/bolixo.eng
