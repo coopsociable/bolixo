@@ -5,15 +5,22 @@ HOSTNAME=`hostname`
 BO=bo
 BOFS=bofs
 CALLTEST="bo calltest"
-CONFIG=/etc/bolixo/rssd.conf
-if [ "$1" = "debug" ] ; then
-	BO=./test.sh
-	BOFS=./bofs
-	CALLTEST=./test.sh
-	CONFIG=../rssd.conf
-fi
+CONFIG=/etc/bolixo/rssd.conf.d
+UPDPHOTO=
+while [ $# != 0 ]
+do
+	if [ "$1" = "debug" ] ; then
+		BO=./test.sh
+		BOFS=./bofs
+		CALLTEST=./test.sh
+		CONFIG=../rssd.conf.d
+	elif [ "$1" = "updphoto" ] ; then
+		UPDPHOTO=1
+	fi
+	shift
+done
 $BO mailctrl 0 keep
-grep account: $CONFIG | sed 's/:/ /' | while read keyw acc
+./rssd --config $CONFIG --printaccounts | while read acc
 do
 	nb=`$BO files --silent <<-EOF
 		select count(*) from id2name where name='$acc';
@@ -27,10 +34,29 @@ do
 		# Make the account visible (public page)
 		echo bofs -u admin misc --owner $acc -w -V 1
 		$BOFS -u admin misc --owner $acc -w -V 1
-		DIR=/root/images/$acc
-		test -f /root/images/$acc/mini-photo.jpg && \
+	fi
+	if [ "$nb" = 0 -o "$UPDPHOTO" != "" ] ; then
+		DIR=/var/lib/rssd/images/$acc
+		mkdir -p $DIR
+		URL=`./rssd --config $CONFIG --printfield mini_photo_url --account $acc`
+		if [ "$URL" != "" ] ;then
+			echo Retrieve mini-photo for account $acc
+			rm -fr /tmp/download
+			mkdir /tmp/download
+			(cd /tmp/download && wget -q $URL)
+			convert /tmp/download/* $DIR/mini-photo.jpg
+		fi
+		URL=`./rssd --config $CONFIG --printfield photo_url --account $acc`
+		if [ "$URL" != "" ] ;then
+			echo Retrieve photo for account $acc
+			rm -fr /tmp/download
+			mkdir /tmp/download
+			(cd /tmp/download && wget -q $URL)
+			convert /tmp/download/* $DIR/photo.jpg
+		fi
+		test -f $DIR/mini-photo.jpg && \
 			$BOFS -u admin cp $DIR/mini-photo.jpg bo://projects/$acc/public/mini-photo.jpg
-		test -f /root/images/$acc/photo.jpg && \
+		test -f $DIR/photo.jpg && \
 			$BOFS -u admin cp $DIR/photo.jpg bo://projects/$acc/public/photo.jpg
 	fi
 done

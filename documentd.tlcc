@@ -77,6 +77,8 @@ public:
 	virtual ~GAME(){};
 };
 
+using GAME_P = shared_ptr<GAME>;
+
 class TICTACTO: public GAME{
 	unsigned char grid[3][3];
 public:
@@ -625,7 +627,7 @@ int main (int argc, char *argv[])
 	</f>
 	<f main_noarg>
 		int ret = -1;
-		glocal map<string,GAME *> games;
+		glocal map<string,GAME_P> games;
 		glocal unsigned messages_sent = 0;
 		glocal string controlport = string_f("unix:%s",glocal.control);
 		glocal string clientport = string_f("unix:%s",glocal.clientsock);
@@ -682,15 +684,15 @@ int main (int argc, char *argv[])
 					if (g != glocal.games.end()){
 						msg = "Game already exist";
 					}else{
-						GAME *p = NULL;
+						GAME_P p;
 						if (strcmp(gamename,"tictacto")==0){
-							p = new TICTACTO;
+							p = GAME_P(new TICTACTO);
 						}else if (strcmp(gamename,"sudoku")==0){
-							p = new SUDOKU;
+							p = GAME_P(new SUDOKU);
 						}else if (strcmp(gamename,"wordproc")==0){
-							p = new WORDPROC;
+							p = GAME_P(new WORDPROC);
 						}else if (strcmp(gamename,"checkers")==0){
-							p = new CHECKERS;
+							p = GAME_P(new CHECKERS);
 						}
 						if (p != NULL){
 							glocal.games[gameid] = p;
@@ -708,7 +710,6 @@ int main (int argc, char *argv[])
 					auto g = glocal.games.find(gameid);
 					if (g != glocal.games.end()){
 						success = true;
-						delete g->second;
 						glocal.games.erase (g);
 					}else{
 						msg = "Unknown game id";
@@ -748,7 +749,7 @@ int main (int argc, char *argv[])
 					string msg;
 					auto g = glocal.games.find(gameid);
 					if (g != glocal.games.end()){
-						glocal GAME *game = g->second;
+						glocal GAME_P game = g->second;
 						success = true;
 						<call savefile>(documentd_path(gameid),false);
 						<f dowrite>
@@ -767,7 +768,6 @@ int main (int argc, char *argv[])
 					string msg;
 					auto g = glocal.games.find(gameid);
 					if (g != glocal.games.end()){
-						delete g->second;
 						glocal.games.erase (g);
 					}
 					string tmp = documentd_path(gameid);
@@ -777,15 +777,15 @@ int main (int argc, char *argv[])
 					}else{
 						char buf[100];
 						if (fgets(buf,sizeof(buf)-1,fin)!=NULL){
-							GAME *p = NULL;
+							GAME_P p;
 							if (strcmp(buf,"sudoku\n")==0){
-								p = new SUDOKU;
+								p = GAME_P(new SUDOKU);
 							}else if (strcmp(buf,"tictacto\n")==0){
-								p = new TICTACTO;
+								p = GAME_P(new TICTACTO);
 							}else if (strcmp(buf,"wordproc\n")==0){
-								p = new WORDPROC;
+								p = GAME_P(new WORDPROC);
 							}else if (strcmp(buf,"checkers\n")==0){
-								p = new CHECKERS;
+								p = GAME_P(new CHECKERS);
 							}else{
 								msg = string_f("Unknown game type %s",buf);
 							}

@@ -927,8 +927,8 @@ struct REMOTE_HANDLE{
 		to.push_back(r);
 	}
 };
-
-static map<string,REMOTE_HANDLE*> rem_handles;
+using REMOTE_HANDLE_P = unique_ptr<REMOTE_HANDLE>;
+static map<string,REMOTE_HANDLE_P> rem_handles;
 /*
 	Perform a sendtalk to one remote user
 */
@@ -993,7 +993,7 @@ static void bod_patchname(string &name, const string &remote)
 static void bod_remote_readfile_bob (
 	CONNECT_INFO &con,
 	const char *sessionid,
-	REMOTE_HANDLE *rem,
+	REMOTE_HANDLE_P &rem,
 	PARAM_STRING name,
 	bool nomore,
 	const char *nodename,
@@ -1030,7 +1030,7 @@ static void bod_remote_readfile_bob (
 </mod>
 <mod>
 static void bod_remote_readmore(
-	REMOTE_HANDLE *rem,
+	REMOTE_HANDLE_P &rem,
 	bool &success,
 	string &msg,
 	BOB_TYPE &content,
@@ -1578,7 +1578,6 @@ static int bod_main (
 						more = false;
 					}
 					if (!more){
-						delete r->second;
 						rem_handles.erase(r);
 					}
 				}
@@ -1687,7 +1686,7 @@ static int bod_main (
 					}
 				}
 				if (remote_user.size() > 0){
-					REMOTE_HANDLE *rem = new REMOTE_HANDLE;
+					REMOTE_HANDLE_P rem = REMOTE_HANDLE_P(new REMOTE_HANDLE);
 					rem->setfrom (remote);
 					bool is_admin;	// Just a place holder, admin rights have no effect on remote server.
 					unsigned userid = trli_getsessionuser (glocal.con_sess,sessionid,is_admin, rem->username, glocal.entry.msg);
@@ -1706,13 +1705,11 @@ static int bod_main (
 							string handle;
 							if (more){
 								handle = fs_makeid();
-								rem_handles[handle] = rem;
-								rem = NULL;
+								rem_handles[handle] = move(rem);
 							}
 							rep_readfile_bob (true,"",bob,info,handle,more);
 						}
 					}
-					delete rem;
 				}else if (bod_findentry (glocal.con_sess,sessionid,name,glocal.entry,threshold)!=-1){
 					if (!bolixo_isfile(glocal.entry.type)){
 						glocal.entry.msg = MSG_R(E_NOTAFILE);
@@ -1778,7 +1775,6 @@ static int bod_main (
 					BOB_TYPE content;
 					bod_remote_readmore(r->second,success,msg,content,more);
 					if (!more){
-						delete r->second;
 						rem_handles.erase (r);
 					}
 					rep_readmore (success,msg,content,more);
@@ -2409,7 +2405,7 @@ static int bod_main (
 								}
 							}
 							if (mp.size() > 0){
-								REMOTE_HANDLE *rem = new REMOTE_HANDLE;
+								REMOTE_HANDLE_P rem = REMOTE_HANDLE_P(new REMOTE_HANDLE);
 								rem->username = glocal.username;
 								for (auto p:mp) rem->addto(p.first,p.second);
 								bod_remote_sendtalk (glocal.con,glocal.sessionid,*rem,*glocal.content,glocal.nodename
@@ -2417,10 +2413,8 @@ static int bod_main (
 								if (handle[0] != '\0'){
 									rem->handle = handle;
 									glocal.handle = fs_makeid();
-									rem_handles[glocal.handle] = rem;
-									rem = NULL;
+									rem_handles[glocal.handle] = move(rem);
 								}	
-								delete rem;
 							}
 						}
 					</f>

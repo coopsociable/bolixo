@@ -25,12 +25,14 @@
 #include <signal.h>
 #include <syslog.h>
 #include <unistd.h>
+#include <misc.h>
 #include <tlmpsql.h>
 #include <tlmplib.h>
 #include <tlmpnet.h>
 #include <trlitool.h>
 #include <string>
 #include <set>
+#include <algorithm>
 #include "xmlflat.h"
 #include "bolixo.h"
 #include "bolixo.m"
@@ -136,15 +138,52 @@ struct HANDLE_INFO: public ARRAY_OBJ{
 
 struct WEBSITE{
 	string account;		// Bolixo account
-	string url;		// Url to retrieve the RSS
+	string rssurl;		// Url to retrieve the RSS
+	string siteurl;		// Url of the site
+	string country;
+	string state;
+	string city;
+	string lang;
 	string session;		// Pre-logged session
+	string mini_photo_url;
+	string photo_url;
+	void clear(){
+		*this = WEBSITE();
+	}
+	void printfield (const char *field) const{
+		const char *p = NULL;
+		if (strcmp(field,"account")==0){
+			p = account.c_str();
+		}else if (strcmp(field,"rssurl")==0){
+			p = rssurl.c_str();
+		}else if (strcmp(field,"siteurl")==0){
+			p = siteurl.c_str();
+		}else if (strcmp(field,"lang")==0){
+			p = lang.c_str();
+		}else if (strcmp(field,"country")==0){
+			p = country.c_str();
+		}else if (strcmp(field,"state")==0){
+			p = state.c_str();
+		}else if (strcmp(field,"city")==0){
+			p = city.c_str();
+		}else if (strcmp(field,"photo_url")==0){
+			p = photo_url.c_str();
+		}else if (strcmp(field,"mini_photo_url")==0){
+			p = mini_photo_url.c_str();
+		}else{
+			tlmp_error ("Unknown field name %s\n",field);
+		}
+		if (p != NULL) printf ("%s\n",p);
+	}
 };
 
 struct RSSD_CONFIG{
 	vector<WEBSITE> websites;
-	void reset(){
+	void clear(){
 		websites.clear();
 	}
+	void readfile(PARAM_STRING file);
+	void readdir(PARAM_STRING file);
 	void read(PARAM_STRING file);
 	void readsessions(PARAM_STRING file);
 };
@@ -154,22 +193,60 @@ static constexpr unsigned length(const char *s)
 	return *s == '\0' ? 0 : 1+length(s+1);
 }
 
+
+struct CONST_STR{
+	const char *pt;
+	unsigned len;
+	constexpr CONST_STR(const char *s)
+		:pt(s),len(length(s)){
+	}
+};
+static bool rssd_compare (const char *line, const CONST_STR &word, const char *&pos)
+{
+	bool ret = false;
+	if (strncmp(line,word.pt,word.len)==0){
+		ret = true;
+		pos = str_skip(line+word.len);
+	}
+	return ret;
+}
+
 <mod>
-void RSSD_CONFIG::read (PARAM_STRING configfile)
+void RSSD_CONFIG::readfile (PARAM_STRING configfile)
 {
 	glocal RSSD_CONFIG *config = this;
 	glocal WEBSITE website;
-	reset();
 	<call loadfile>(configfile,true);
 	<f oneline>
-		constexpr unsigned len_account  = length("account:");
-		if (strncmp(line,"account:",len_account)==0){
+		constexpr CONST_STR account("account:");
+		const char *next=NULL;
+		if (rssd_compare(line,CONST_STR("account:"),next)){
 			if (glocal.website.account.size() > 0){
 				glocal.config->websites.push_back(move(glocal.website));
+				glocal.website.clear();
 			}
-			glocal.website.account = str_skip(line+len_account);
-		}else if (strncmp(line,"url:",4)==0){
-			glocal.website.url = str_skip(line+4);
+			glocal.website.account = next;
+		}else if (rssd_compare(line,CONST_STR("rssurl:"),next)){
+			glocal.website.rssurl = next;
+		}else if (rssd_compare(line,CONST_STR("siteurl:"),next)){
+			glocal.website.siteurl = next;
+		}else if (rssd_compare(line,CONST_STR("country:"),next)){
+			glocal.website.country = next;
+		}else if (rssd_compare(line,CONST_STR("state:"),next)){
+			glocal.website.state = next;
+		}else if (rssd_compare(line,CONST_STR("city:"),next)){
+			glocal.website.city = next;
+		}else if (rssd_compare(line,CONST_STR("lang:"),next)){
+			glocal.website.lang = next;
+		}else if (rssd_compare(line,CONST_STR("mini-photourl:"),next)){
+			glocal.website.mini_photo_url = next;
+		}else if (rssd_compare(line,CONST_STR("photourl:"),next)){
+			glocal.website.photo_url = next;
+		}else{
+			const char *pt = str_skip(line);
+			if (pt[0] != '#' && pt[0] != '\0'){
+				tlmp_error ("Invalid configuration line %d: %s\n",noline+1,line);
+			}
 		}
 		return 0;
 	</f>
@@ -179,6 +256,31 @@ void RSSD_CONFIG::read (PARAM_STRING configfile)
 	}
 }
 </mod>
+<mod>
+void RSSD_CONFIG::readdir (PARAM_STRING configfile)
+{
+	glocal RSSD_CONFIG *config = this;
+	<call walkfs>(configfile);
+	<f onefile>
+		if (file_type(path)==0) glocal.config->readfile(path);
+	</f>
+	</call>
+}
+</mod>
+void RSSD_CONFIG::read (PARAM_STRING configfile)
+{
+	clear();
+	auto type = file_type(configfile.ptr);
+	if (type == -1){
+		tlmp_error ("Configuration file %s does not exist\n",configfile.ptr);
+	}else if (type == 0){
+		readfile(configfile);
+	}else if (type == 1){
+		readdir (configfile);
+	}else{
+		tlmp_error ("Configuration path %s is not a file nor a directory\n",configfile.ptr);
+	}
+}
 // Read the session ID allocated to each account
 <mod>
 void RSSD_CONFIG::readsessions (PARAM_STRING file)
@@ -341,7 +443,7 @@ static void rssd_processxml(_F_rssd_processxml &c, const string &rss)
 }
 </mod>
 static const char *savexmldir = "/tmp/savexml";
-static const char *savelinkdir = "/tmp/savelink";
+static const char *savelinkdir = "/var/lib/rssd/savelink";
 static const char *tmp_dir = "/tmp";
 static const char *force_account = NULL;	// For testing, all messages are sent to this account
 <mod>
@@ -359,7 +461,7 @@ static int rssd_process (CONNECT_INFO &con, RSSD_CONFIG &config, PARAM_STRING na
 				tlmp_error (MSG_U(E_NOSESSSION,"Session not set for account %s\n"),name.ptr);
 				break;
 			}
-			if (rssd_getrss(r.url,glocal.rss)!=-1){
+			if (rssd_getrss(r.rssurl,glocal.rss)!=-1){
 				if (savexmldir != NULL){
 					mkdir (savexmldir,0755);
 					<call savefile>(string_f("%s/%s.xml",savexmldir,name.ptr),false);
@@ -431,7 +533,7 @@ static int rssd_process (CONNECT_INFO &con, RSSD_CONFIG &config, PARAM_STRING na
 int main (int argc, char *argv[])
 {
 	glocal int ret = -1;
-	glocal const char *configfile = "/etc/bolixo/rssd.conf";
+	glocal const char *configfile = "/etc/bolixo/rssd.conf.d";
 	glocal const char *sessionsfile = "/var/run/sssd-sessions";
 	glocal const char *control = "/var/run/rssd.sock";
 	glocal const char *bod_sock = "/dev/bod.sock";
@@ -439,8 +541,13 @@ int main (int argc, char *argv[])
 	glocal bool daemon = false;
 	glocal bool testmode = false;
 	glocal bool process = false;
+	glocal bool printconf = false;
+	glocal bool printaccounts = false;
+	glocal bool server = false;
 	glocal const char *mysecret = "";
 	glocal const char *pidfile = "/var/run/rssd.pid";
+	glocal const char *printfield = NULL;
+	glocal const char *account = NULL;
 
 	static const char *tbdic[]={"bolixo",NULL};
 	glocal.ret = <call tlmpprogram>(argc,argv,tbdic);
@@ -454,14 +561,20 @@ int main (int argc, char *argv[])
 		setarg (' ',"mysecret","Secret used to talk with bod",glocal.mysecret,false);
 		setgrouparg ("Directories");
 		setarg (' ',"savexml","Save retrieved XML file (for review/debug)",savexmldir,false);
-		setarg (' ',"savelink","Save known link about a site",savelinkdir,false);
+		setarg (' ',"savelink","Save known links about a site",savelinkdir,false);
 		setgrouparg ("Misc.");
+		setarg (' ',"server","Run as a server",glocal.server,false);
 		setarg (' ',"user","Run the program as this user",glocal.user,false);
 		setarg (' ',"daemon","Run in background",glocal.daemon,false);
 		setarg (' ',"pidfile","File holding the PID of the process",glocal.pidfile,false);
+		setgrouparg ("Scripting");
+		setarg (' ',"printaccounts","Print all accounts id",glocal.printaccounts,false);
+		setarg (' ',"printfield","Print one information about an account",glocal.printfield,false);
+		setarg (' ',"account","Account select for printfield",glocal.account,false);
 		setgrouparg ("Tests");
 		setarg (' ',"testmode","Execution inline of some part of the rssd server",glocal.testmode,false);
 		setarg (' ',"process","Process some websites",glocal.process,false);
+		setarg (' ',"printconf","Print configuration",glocal.printconf,false);
 		setarg (' ',"force_account","Send all messages to this account",force_account,false);
 	</f>
 	<f showerror>
@@ -527,113 +640,154 @@ int main (int argc, char *argv[])
 	</f>
 	<f main_noarg>
 		int ret = -1;
-		glocal RSSD_CONFIG config;
-		glocal CONNECT_INFO con;	// Connection to bod
-		glocal string controlport = string_f("unix:%s",glocal.control);
-		glocal.con.port = glocal.bod_sock;
-		glocal.con.secret = glocal.mysecret;
-		<obj TCPSERVER s>();
-		<f newclient>
-			HANDLE_INFO *n = new HANDLE_INFO;
-			info.data = n;
-			// tlmp_error ("port=%s control=%s client=%s\n",info.port,glocal.controlport.c_str(),glocal.clientport.c_str());
-			if (string_cmp(info.port,glocal.controlport)==0){
-				n->type = TYPE_CONTROL;
+		if (glocal.printconf){
+			RSSD_CONFIG config;
+			config.read(glocal.configfile);
+			for (auto const &w:config.websites){
+				printf ("account:%s\n",w.account.c_str());
+				printf ("\tsiteurl:%s\n",w.siteurl.c_str());
+				printf ("\trssurl:%s\n",w.rssurl.c_str());
+				printf ("\tlang:%s\n",w.lang.c_str());
+				printf ("\tcountry:%s\n",w.country.c_str());
+				printf ("\tstate:%s\n",w.state.c_str());
+				printf ("\tcity:%s\n",w.city.c_str());
+				printf ("\tphotourl:%s\n",w.photo_url.c_str());
+				printf ("\tmini-photourl:%s\n",w.mini_photo_url.c_str());
 			}
-		</f>
-		<f endclient>
-		</f>
-		<f receive>
-			debug_printf (D_PROTO,"receive line: %s\n",line);
-			HANDLE_INFO *c = (HANDLE_INFO*)info.data;
-			static const char *tbtype[]={"none","control request","client request", "worker request"};
-			ERROR_PREFIX prefix ("%s: ",tbtype[c->type]);
-			if (c->type == TYPE_CONTROL){
-				<call rssd_control>(this,c->req,line, info.linelen,endserver, endclient, no,c);
-				<f status>
-					vector<string> tb;
-					tb.push_back(string_f ("Version %s",VERSION));
-					rep_status(tb);
-				</f>
-				<f quit>
-					endserver = true;
-				</f>
-				<f debug>
-					if (on){
-						debug_seton();
-					}else{
-						debug_setoff();
-					}
-				</f>
-				<f debugfile>
-					debug_setfdebug (filename);
-				</f>
-				<f help_connect> // connectto port send = lines:v
-					glocal const char *send = send;
-					glocal vector<string> lines;
-					// We want to test publishd connectivity to the outside
-					<call tcpconnect>(connectto,port,5);
-					<f init>
-						sendf ("%s\n",glocal.send);
+			ret = 0;
+		}else if (glocal.printaccounts){
+			RSSD_CONFIG config;
+			config.read(glocal.configfile);
+			for (auto const &w:config.websites){
+				printf ("%s\n",w.account.c_str());
+			}
+			ret = 0;
+		}else if (glocal.printfield != NULL){
+			RSSD_CONFIG config;
+			config.read(glocal.configfile);
+			if (glocal.account == NULL){
+				for (auto const &w:config.websites){
+					w.printfield(glocal.printfield);
+				}
+			}else{
+				const auto &w = find_if(config.websites.begin(),config.websites.end(),[this](const auto w){
+					return w.account == glocal.account;
+					});
+				if (w != config.websites.end()){
+					w->printfield(glocal.printfield);
+				}
+			}	
+		}else if (glocal.server){
+			glocal RSSD_CONFIG config;
+			glocal CONNECT_INFO con;	// Connection to bod
+			glocal string controlport = string_f("unix:%s",glocal.control);
+			glocal.con.port = glocal.bod_sock;
+			glocal.con.secret = glocal.mysecret;
+			<obj TCPSERVER s>();
+			<f newclient>
+				HANDLE_INFO *n = new HANDLE_INFO;
+				info.data = n;
+				// tlmp_error ("port=%s control=%s client=%s\n",info.port,glocal.controlport.c_str(),glocal.clientport.c_str());
+				if (string_cmp(info.port,glocal.controlport)==0){
+					n->type = TYPE_CONTROL;
+				}
+			</f>
+			<f endclient>
+			</f>
+			<f receive>
+				debug_printf (D_PROTO,"receive line: %s\n",line);
+				HANDLE_INFO *c = (HANDLE_INFO*)info.data;
+				static const char *tbtype[]={"none","control request","client request", "worker request"};
+				ERROR_PREFIX prefix ("%s: ",tbtype[c->type]);
+				if (c->type == TYPE_CONTROL){
+					<call rssd_control>(this,c->req,line, info.linelen,endserver, endclient, no,c);
+					<f status>
+						vector<string> tb;
+						tb.push_back(string_f ("Version %s",VERSION));
+						rep_status(tb);
 					</f>
-					<f oneline>
-						glocal.lines.push_back(line);
-						end = true;
+					<f quit>
+						endserver = true;
 					</f>
-					<f fail>
-						glocal.lines.emplace_back(string_f("fail: %s\n",strerror(errno)));
+					<f debug>
+						if (on){
+							debug_seton();
+						}else{
+							debug_setoff();
+						}
 					</f>
-					<f end>
+					<f debugfile>
+						debug_setfdebug (filename);
+					</f>
+					<f help_connect> // connectto port send = lines:v
+						glocal const char *send = send;
+						glocal vector<string> lines;
+						// We want to test publishd connectivity to the outside
+						<call tcpconnect>(connectto,port,5);
+						<f init>
+							sendf ("%s\n",glocal.send);
+						</f>
+						<f oneline>
+							glocal.lines.push_back(line);
+							end = true;
+						</f>
+						<f fail>
+							glocal.lines.emplace_back(string_f("fail: %s\n",strerror(errno)));
+						</f>
+						<f end>
+						</f>
+						</call>
+						rep_help_connect (glocal.lines);
+					</f>
+					<f process>
+						bool success = true;
+						string msg;
+						glocal.config.read (glocal.configfile);
+						glocal.config.readsessions (glocal.sessionsfile);
+						if (websites.size() == 0){
+							for (auto const &r:glocal.config.websites){
+								if (rssd_process(glocal.con,glocal.config,r.account,msg)==-1){
+									success = false;
+									break;
+								}
+							} 
+						}else{
+							for (auto r:websites){
+								if (rssd_process(glocal.con,glocal.config,r,msg)==-1){
+									success = false;
+									break;
+								}
+							} 
+						}
+						rep_process (success,msg);
+					</f>
+					<f test>
+						glocal bool bod = false;
+						rep_test (glocal.bod);
+					</f>
+					<f invalid>
+						tlmp_error ("Invalid command: %s\n",line);
+						endclient = true;
 					</f>
 					</call>
-					rep_help_connect (glocal.lines);
-				</f>
-				<f process>
-					bool success = true;
-					string msg;
-					glocal.config.read (glocal.configfile);
-					glocal.config.readsessions (glocal.sessionsfile);
-					if (websites.size() == 0){
-						for (auto const &r:glocal.config.websites){
-							if (rssd_process(glocal.con,glocal.config,r.account,msg)==-1){
-								success = false;
-								break;
-							}
-						} 
-					}else{
-						for (auto r:websites){
-							if (rssd_process(glocal.con,glocal.config,r,msg)==-1){
-								success = false;
-								break;
-							}
-						} 
-					}
-					rep_process (success,msg);
-				</f>
-				<f test>
-					glocal bool bod = false;
-					rep_test (glocal.bod);
-				</f>
-				<f invalid>
-					tlmp_error ("Invalid command: %s\n",line);
-					endclient = true;
-				</f>
-				</call>
+				}
+			</f>
+			</obj>
+			bool some_errors = false;
+			if (fdpass_setcontrol(s,glocal.control,glocal.user)==-1){
+				some_errors = true;
 			}
-		</f>
-		</obj>
-		bool some_errors = false;
-		if (fdpass_setcontrol(s,glocal.control,glocal.user)==-1){
-			some_errors = true;
-		}
 
-		if (!some_errors && s.is_ok()){
-			s.setrawmode(true);
-			if (glocal.daemon){
-				daemon_init(glocal.pidfile,glocal.user);
+			if (!some_errors && s.is_ok()){
+				s.setrawmode(true);
+				if (glocal.daemon){
+					daemon_init(glocal.pidfile,glocal.user);
+				}
+				s.loop();
+				ret = 0;
 			}
-			s.loop();
-			ret = 0;
+		}else{
+			usage();
 		}
 		return ret;
 	</f>

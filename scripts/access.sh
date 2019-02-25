@@ -137,6 +137,23 @@ elif [ "$1" = "remote-interest" ] ; then # test: add interest admin@preprod.boli
 	ssh root@preprod.bolixo.org /root/bin/adminmsgs 2
 	sleep 1
 	./bofs -t misc --interest_check
+elif [ "$1" = "remote-sendlarge" ] ; then # test: Send large file to remote
+	# This test works after some other tests have populated the contact list
+	USER=jacquesg@preprod.bolixo.org
+	NB=`./bofs groups --print-contacts | grep -c $USER`
+	if [ "$NB" = 0 ] ; then
+		echo Remote user $USER not in contact list >&2
+		exit 1
+	fi
+	import -window root /tmp/image.png
+	./bofs msgs --shortmsg --groupname inbox --recipient $USER -F /tmp/image.png
+	# Compare the size of the image
+	REMOTESIZE=`ssh root@preprod.bolixo.org bofs -u jacquesg msgs -s --groupname inbox | head -1 | (read a b c d e f; echo $f)`
+	LOCALSIZE=`stat --print="%s\n" /tmp/image.png`
+	if [ "$REMOTESIZE" != "$LOCALSIZE" ] ; then
+		echo remote size differ from local size: local=$LOCALSIZE remote=$REMOTESIZE
+	fi
+	ssh root@preprod.bolixo.org bofs -t -u jacquesg msgs -s --groupname inbox
 elif [ "$1" = "notifications" ] ; then # test: test notifications to session manager
 	# We make sure all the users we generally use while testing are logged in
 	# Then we generate activities triggering notifications and we see if the session

@@ -848,11 +848,12 @@ elif [ "$1" = "test-sendmail" ] ;then # prod: ask writed to send one email
 	./bo-writed-control -p /var/lib/lxc/writed/rootfs/tmp/bo-writed-0.sock sendmail jack@dns.solucorp.qc.ca test body1
 elif [ "$1" = "cmp-sequence" ] ; then # S: Execute QA tests
 	rm -f /tmp/bofs.testuuids
+	ssh root@preprod.bolixo.org rm -f /tmp/bofs.testuuids
 	unset LANG
 	CMPDIR=/tmp/cmp-test
 	rm -fr $CMPDIR
 	mkdir $CMPDIR
-	for test in directory createsubdir projects ivldsession public remote-contact remote-interest contact-utf8 notifications
+	for test in directory createsubdir projects ivldsession public remote-contact remote-interest contact-utf8 notifications remote-sendlarge
 	do
 		OPT=
 		if [ "$test" = "public" ]; then
