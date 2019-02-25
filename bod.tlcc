@@ -1686,7 +1686,7 @@ static int bod_main (
 					}
 				}
 				if (remote_user.size() > 0){
-					REMOTE_HANDLE_P rem = REMOTE_HANDLE_P(new REMOTE_HANDLE);
+					auto rem = make_unique<REMOTE_HANDLE>();
 					rem->setfrom (remote);
 					bool is_admin;	// Just a place holder, admin rights have no effect on remote server.
 					unsigned userid = trli_getsessionuser (glocal.con_sess,sessionid,is_admin, rem->username, glocal.entry.msg);
@@ -2405,7 +2405,7 @@ static int bod_main (
 								}
 							}
 							if (mp.size() > 0){
-								REMOTE_HANDLE_P rem = REMOTE_HANDLE_P(new REMOTE_HANDLE);
+								auto rem = make_unique<REMOTE_HANDLE>();
 								rem->username = glocal.username;
 								for (auto p:mp) rem->addto(p.first,p.second);
 								bod_remote_sendtalk (glocal.con,glocal.sessionid,*rem,*glocal.content,glocal.nodename
@@ -2700,14 +2700,25 @@ static int bod_main (
 				glocal map<string,SHORTMSG> mp;
 				unsigned userid = bo_writed_get_group_owner (glocal.con_sess, sessionid, owner, glocal.msg);
 				if (userid != 0){
-					<call sql_query>("select id2name.name,dirs2.name,dirs2.modified,files.filetype,dirs2.itemid,files.content,dirs2.type,files.signature from interests"
+					#ifdef INSTRUMENT
+					glocal long long start = fdpass_getnow();
+					#endif
+					<call sql_query>("select id2name.name,dirs2.name,dirs2.modified,files.filetype,dirs2.itemid,files.content,dirs2.type,files.signature"
+						" from interests"
 						" join id2name on id2name.userid = interests.check_userid"
-						" left join dirs_content on interests.dirid=dirs_content.itemid"
-						" left join marks on marks.userid=%u and marks.itemid=interests.dirid"
-						" left join dirs_content dirs2 on interests.dirid = dirs2.dirid and (marks.modified is null or dirs2.modified > marks.modified)"
+						" left join dirs_content dirs2 on interests.dirid=dirs2.dirid"
+						//" left join dirs_content on interests.dirid=dirs_content.itemid"
+						//" left join marks on marks.userid=%u and marks.itemid=interests.dirid"
+						//" left join dirs_content dirs2 on interests.dirid = dirs2.dirid and (marks.modified is null or dirs2.modified > marks.modified)"
 						" join files on dirs2.itemid = files.id"
-						" where interests.userid=%u order by dirs2.eventtime",userid,userid);
+						" where interests.userid=%u order by dirs2.eventtime",userid);	//,userid);
 					<f onerow>
+						#ifdef INSTRUMENT
+						if (rownum==0 && f_instrument != NULL){
+							long long end = fdpass_getnow();
+							fprintf (f_instrument,"%Ld interest_check:row0 %lf\n",glocal.start,(end-glocal.start)/1000000.0);
+						}
+						#endif
 						// If the dirid is -1 in interests, there nothing to show
 						// row[1] is null
 						if (row[1] != NULL){
@@ -2735,7 +2746,7 @@ static int bod_main (
 							}else{
 								msg.size = fs_get_filesize(atoi(row[4]),modified);
 							}
-							glocal.mp[msg.uuid] = msg;
+							glocal.mp[msg.uuid] = move(msg);
 						}
 					</f>
 					</call>
@@ -2746,7 +2757,7 @@ static int bod_main (
 				}else{
 					for (auto &m:glocal.mp){
 						if (m.second.file_type != FILE_UNKNOWN){
-							msgs.push_back(m.second);
+							msgs.push_back(move(m.second));
 						}
 					}
 					sort (msgs.begin(),msgs.end(),msg_compare);
