@@ -792,6 +792,7 @@ elif [ "$1" = "test-rotatelog" ] ; then # prod: Rotate writed log
 	$0 bo-writed-control rotatelog
 elif [ "$1" = "test-sequence" ] ; then # S: Reloads database (big,medium,real,nomail)
 	./bofs --clearpubcache --pubsite test1.bolixo.org
+	./bofs --clearpubcache --pubsite ""
 	rm -f $WRITEDLOG
 	$0 syslog-clear
 	$0 syslog-reset
