@@ -44,10 +44,7 @@ extern void bolixo_doc_fr (DOCUMENT_POINTER &, DOC_ID &jump, const char *usernam
 extern void profile(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER> &docpointers);
 extern void mail(CONNECT_INFO &con, vector<DOCUMENT_POINTER> &docpointers);
 
-static WEBID ID_TALK("talk");
 static WEBID ID_MAIL("mail");
-static WEBID ID_PROJECT("project");
-static WEBID ID_PRJTEXT("prjtext");
 static WEBID ID_FOLLOW("follow");
 static WEBID ID_ALLCONTACTS("allcontacts");
 
@@ -432,6 +429,7 @@ static void trli_getsessioninfo(CONNECT_INFO &con, CONNECT_INFO &con_sess, vecto
 {
 	glocal CONNECT_INFO *con = &con;
 	glocal vector<DOCUMENT_POINTER> *docpointers = &docpointers;
+	tlmpweb_reset_tablegeometry();
 	<call bo_sessiond_client_getsessioninfovars>(con_sess,w_session.c_str());
 	<f ok>
 		if (success){
@@ -491,16 +489,20 @@ static void trli_getsessioninfo(CONNECT_INFO &con, CONNECT_INFO &con_sess, vecto
 						currentforms.push_back(form);
 					}
 				}else if (strcmp(var.name,"geometry")==0){
-					// We receive triplets: id,height,width
+					// We receive 4 values: id,height,width,scroll_top
 					WEBID id;
-					unsigned height=0;
+					unsigned height=0,width=0,scroll_top=0;
 					for (auto &v:var.vals){
 						if (strcmp(v.sname,"id")==0){
 							id.set(v.sval);
 						}else if (strcmp(v.sname,"height")==0){
 							height = atoi(v.sval);
 						}else if (strcmp(v.sname,"width")==0){
-							tlmpweb_settablegeometry(id,height,atoi(v.sval));
+							width = atoi(v.sval);
+						}else if (strcmp(v.sname,"scroll_top")==0){
+							scroll_top = atoi(v.sval);
+						}else if (strcmp(v.sname,"scroll_left")==0){
+							tlmpweb_settablegeometry(id,height,width,scroll_top,atoi(v.sval));
 						}
 					}
 				}else if (strcmp(var.name,"copy")==0){
@@ -974,6 +976,7 @@ static void index_show_shortmsg(
 	if (offsets[table] == 0){
 		index_markview (con,glocal.path);
 	}
+	WEBID ID_TALK("talk",string_f("%s:%s",groupowner.ptr,groupname.ptr));
 	<call webtable>(ID_TALK,table,"100%",currents[table],offsets[table],5);
 	<f click>
 		glocal unsigned dropmenu = dropmenu;
@@ -1138,84 +1141,6 @@ static void index_show_shortmsg(
 }
 </mod>
 
-static void index_script()
-{
-	// Script to make sure the webtabs tabs use the full height of the screen
-	// Then it takes the webtables and grows them too.
-	<?
-	<script>
-		document.onreadystatechange = function () {
-			var state = document.readyState;
-			if (state == 'interactive') {
-				fixsize();
-			} else if (state == 'complete') {
-			}
-		};
-		var diff = 0;
-		function allDescendants (node,total) {
-			//console.log ("Enter " + node.className + " " + node.id);
-			if (node.className == "tabs"){
-				var bord=(node.offsetHeight-node.clientHeight);
-				var style = node.currentStyle || window.getComputedStyle(node);
-				var margins = parseInt(style.marginTop,10) + parseInt(style.marginBottom,10);
-				var paddings = parseInt(style.paddingTop,10) + parseInt(style.paddingBottom,10);
-				total += bord + margins + paddings;
-				console.log ("border node.id=" + node.id + " total="+total+" bord="+bord);
-			}
-			for (var i = 0; i < node.childNodes.length; i++) {
-				var child = node.childNodes[i];
-				if (child.id != null
-					&& (child.id == "tabs"
-						|| child.id == "tab_form"
-						|| child.id == "webtable-top")){
-					total += child.offsetHeight;
-					if (child.id == "tab_form") total += 2;	// Bug scrollbar ???
-					console.log ("child.id=" + child.id + " total="+total+" height="+child.offsetHeight);
-				}else{
-					if (child.id != null && child.id == "vframe2h"){
-						var bord=(child.offsetWidth-child.clientWidth);
-						total += bord;
-						console.log ("border child.id=" + child.id + " total="+total+" border="+bord);
-					}else if (child.className == "webtable" || child.id == "textgrow"){
-						console.log ("Set webtable "+child.id+" total="+total+" diff="+diff+" oldheight="+child.offsetHeight);
-						child.style.height = diff - total;
-						break;
-					}
-					total = allDescendants(child,total);
-				}
-			}
-			return total;
-		}
-		function fixsize(){
-			var t = document.getElementById('head').offsetHeight;
-			diff = window.innerHeight-t;
-			document.getElementById('body').style.height = diff-1;
-			document.getElementById('main').style.height = window.innerHeight-1;
-			var tabs = document.getElementsByClassName("tabs");
-			for (var i=0; i<tabs.length; i++){
-				var node = tabs[i];
-				var style = node.currentStyle || window.getComputedStyle(node);
-				var margins = parseInt(style.marginTop,10);
-				margins += parseInt(style.marginBottom,10);
-				node.style.height = diff-2-margins;
-			}
-			console.log ("tabs.length=" + tabs.length);
-			var i;
-			for (i=0; i<tabs.length; i++){
-				allDescendants (tabs[i],0);
-			}
-			var tables = document.getElementsByClassName('webtable');
-			console.log ("ready " + document.readyState);
-			for (i = 0; i < tables.length; i++) {
-				var table = tables[i];
-				console.log (table.id+" "+table.offsetHeight+" "+table.offsetWidth);
-			}
-		}
-	</script>
-	?>
-}
-
-
 <mod>
 extern "C" void webmain_real()
 {
@@ -1307,13 +1232,19 @@ extern "C" void webmain_real()
 			SNAMEVAL val;
 			val.sname = "id";
 			val.sval = v.id.c_str();
-			var.vals.push_back(val);
+			var.vals.push_back(move(val));
 			val.sname = "height";
 			val.sval = string_f("%u",v.height);
-			var.vals.push_back(val);
+			var.vals.push_back(move(val));
 			val.sname = "width";
 			val.sval = string_f("%u",v.width);
-			var.vals.push_back(val);
+			var.vals.push_back(move(val));
+			val.sname = "scroll_top";
+			val.sval = string_f("%u",v.scroll_top);
+			var.vals.push_back(move(val));
+			val.sname = "scroll_left";
+			val.sval = string_f("%u",v.scroll_left);
+			var.vals.push_back(move(val));
 		}
 		//tlmp_error ("savetablegeometry setvar\n");
 		<call bo_sessiond_client_setvar>(glocal.con_sess,w_session.c_str(),var);
@@ -1574,7 +1505,7 @@ extern "C" void webmain_real()
 	<f end>
 		/- </div>
 		/- </div>
-		index_script();
+		util_endscript(getcurstep());
 		{
 			// Save the position in the document
 			bool one_changed = false;
@@ -2170,6 +2101,7 @@ extern "C" void webmain_real()
 			</f>
 			</call>
 			}
+			WEBID ID_PROJECT("project",id);
 			<call webtable>(ID_PROJECT,glocal.path,"100%",currents[glocal.path],offsets[glocal.path],5);
 			<f click>
 				glocal unsigned dropmenu = dropmenu;
@@ -2300,6 +2232,8 @@ extern "C" void webmain_real()
 				if (is_mobile){
 					hide_columns ({2,4});
 					glocal.status_width=60;
+				}else if (width != 0 && width < 400){
+					hide_columns ({2,4});
 				}
 				sethead (MSG_U(H_FOLDER,"\tName\tModified\tOwner\tSize"));
 				<call bod_client_listdir>(glocal.con,w_session.c_str(),glocal.path,"",false,nbskip,nblines);
@@ -2373,7 +2307,7 @@ extern "C" void webmain_real()
 				htmlprintf (MSG_U(I_PREVIEW,"Preview of the folder %s"),glocal.base);
 				/- <br>
 				dd.end();
-				DIV d("webtable"); d.print();
+				// DIV d("wwebtable"); d.print();
 				<call public_page>();
 				<f list_talk>
 					glocal vector<SHORTMSG> *msgs = &msgs;
@@ -2497,7 +2431,8 @@ extern "C" void webmain_real()
 						DIV ddd; ddd.sfloatright().print();
 						button_submit(MSG_U(B_SAVE,"Save"));
 					}
-					field_textarea(w_content,ID_PRJTEXT,-100,"style=\"border:none\"");
+					WEBID id ("prjtext",glocal.filename);
+					field_textarea(w_content,id,-100,"style=\"border:none\"");
 				</f>
 				<f validate>
 					bool ret = true;

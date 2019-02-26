@@ -468,6 +468,100 @@ void util_setmobilespecs (unsigned body_font_size, unsigned input_font_size)
 	mobile_body_font_size = body_font_size;
 	mobile_input_font_size = input_font_size;
 }
+/*
+	Javascript needed at the end of the HTML
+*/
+void util_endscript(int webstep)
+{
+	// Script to make sure the webtabs tabs use the full height of the screen
+	// Then it takes the webtables and grows them too.
+	<?
+	<script>
+		document.onreadystatechange = function () {
+			var state = document.readyState;
+			if (state == 'interactive') {
+				fixsize();
+			} else if (state == 'complete') {
+			}
+		};
+		var diff = 0;
+		function allDescendants (node,total) {
+			//console.log ('Enter ' + node.className + ' ' + node.id);
+			if (node.className == "tabs"){
+				var bord=(node.offsetHeight-node.clientHeight);
+				var style = node.currentStyle || window.getComputedStyle(node);
+				var margins = parseInt(style.marginTop,10) + parseInt(style.marginBottom,10);
+				var paddings = parseInt(style.paddingTop,10) + parseInt(style.paddingBottom,10);
+				total += bord + margins + paddings;
+				console.log ("border node.id=" + node.id + " total="+total+" bord="+bord);
+			}
+			for (var i = 0; i < node.childNodes.length; i++) {
+				var child = node.childNodes[i];
+				if (child.id != null
+					&& (child.id == "tabs"
+						|| child.id == "tab_form"
+						|| child.id == "webtable-top")){
+					total += child.offsetHeight;
+					if (child.id == "tab_form") total += 2;	// Bug scrollbar ???
+					console.log ("child.id=" + child.id + " total="+total+" height="+child.offsetHeight);
+				}else{
+					if (child.id != null && child.id == "vframe2h"){
+						var bord=(child.offsetWidth-child.clientWidth);
+						total += bord;
+						console.log ("border child.id=" + child.id + " total="+total+" border="+bord);
+					}else if (child.className == "webtable" || child.className == "textgrow"){
+						console.log ("Set webtable "+child.id+" total="+total+" diff="+diff+" oldheight="+child.offsetHeight);
+						child.style.height = diff - total;
+						break;
+					}
+					total = allDescendants(child,total);
+				}
+			}
+			return total;
+		}
+		function fixsize(){
+			var t = document.getElementById('head').offsetHeight;
+			diff = window.innerHeight-t;
+			document.getElementById('body').style.height = diff-1;
+			document.getElementById('main').style.height = window.innerHeight-1;
+			var tabs = document.getElementsByClassName("tabs");
+			for (var i=0; i<tabs.length; i++){
+				var node = tabs[i];
+				var style = node.currentStyle || window.getComputedStyle(node);
+				var margins = parseInt(style.marginTop,10);
+				margins += parseInt(style.marginBottom,10);
+				node.style.height = diff-2-margins;
+			}
+			console.log ('tabs.length=' + tabs.length);
+			var i;
+			for (i=0; i<tabs.length; i++){
+				allDescendants (tabs[i],0);
+			}
+			var tables = document.getElementsByClassName('webtable');
+			console.log ("ready " + document.readyState);
+			for (i = 0; i < tables.length; i++) {
+				var table = tables[i];
+				console.log (table.id+" "+table.offsetHeight+" "+table.offsetWidth);
+			}
+	
+	?>
+	webtable_setscroll();
+	if (tlmpweb_some_geometry_missing()){
+		if (webstep == -1){
+			htmlprintf ("formsubmit(\"%s\");\n",tlmpweb_curpage());
+		}else{
+			htmlprintf ("formsubmit(\"%s?webstep=%d\");\n",tlmpweb_curpage(),webstep);
+		}
+	}
+	<?
+		}
+	</script>
+	?>
+}
+void util_endscript()
+{
+	util_endscript(-1);
+}
 
 void util_defstyles()
 {
@@ -1202,12 +1296,15 @@ static void public_display_full (_F_public_page &c, CONNECT_INFO &con, PARAM_STR
 		public_top(glocal.user);
 	</f>
 	<f top_left>
+		DIV d; d.w(100).vmargins(0,20).print();
 		public_top_left (*glocal.c);
 	</f>
 	<f left>
 		public_messages(*glocal.c,*glocal.con,glocal.user);
 	</f>
 	<f body>
+		DIV d("webtable","pubbody"); d.w(100).autoscroll().print();
+		webtable_request_scroll("pubbody");
 		{
 			bool guide = false;
 			bool index_html = false;

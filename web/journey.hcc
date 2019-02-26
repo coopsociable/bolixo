@@ -14,27 +14,39 @@
 	You should have received a copy of the GNU General Public License
 	along with Bolixo.  If not, see <https://www.gnu.org/licenses/>.
 */
+/*
+	This file hold various test done to figure out how to use html and javascript
+*/
 // To learn and experiment with HTML
+#include <tlmplib.h>
 #include <tlmpweb.h>
 #include <tlmp/translat.h>
+#include "../instrument.h"
 
 extern "C" void tlmp_initmod()
 {
 	translat_load ("bolixo");
 }
 <mod>
-static void do_webtable(const WEBID &id, int nbrow)
+static void do_webtable(const WEBID &id, int nbrow, unsigned &cur)
 {
 	glocal int nbrow = nbrow;
-	unsigned cur = 0;
 	<call webtable>(id,"titi","100%",cur,0,5);
 	<f load>
 		sethead ("title1\ttitle2\ttitle3\ttitle4");
-		for (int i=0; i<glocal.nbrow; i++) setrow("white",0,"aaaa\tbbbb\tcccc\tdddd");
+		setrowstyle ("white","bgcolor=white");
+		setrowstyle ("white+current","bgcolor=lightblue");
+		setclickopt(true,"","");
+		for (int i=0; i<glocal.nbrow; i++) setrow("white",i,"aaaa\tbbbb\tcccc\tdddd");
 	</f>
 	</call>
 }
 </mod>
+static void do_webtable(const WEBID &id, int nbrow)
+{
+	unsigned cur = 0;
+	do_webtable (id,nbrow,cur);
+}
 <mod>
 static void layout (int width, int toprep, int middlerep)
 {
@@ -857,6 +869,119 @@ void webtable_popup()
 }
 </mod>
 
+static void index_script(unsigned scrollid1, unsigned scrollid2)
+{
+	// Script to make sure the webtabs tabs use the full height of the screen
+	// Then it takes the webtables and grows them too.
+	<?
+	<script>
+		document.onreadystatechange = function () {
+			var state = document.readyState;
+			if (state == 'interactive') {
+				fixsize();
+			} else if (state == 'complete') {
+			}
+		};
+		var diff = 0;
+		function allDescendants (node,total) {
+			//console.log ("Enter " + node.className + " " + node.id);
+			if (node.className == "tabs"){
+				var bord=(node.offsetHeight-node.clientHeight);
+				var style = node.currentStyle || window.getComputedStyle(node);
+				var margins = parseInt(style.marginTop,10) + parseInt(style.marginBottom,10);
+				var paddings = parseInt(style.paddingTop,10) + parseInt(style.paddingBottom,10);
+				total += bord + margins + paddings;
+				console.log ("border node.id=" + node.id + " total="+total+" bord="+bord);
+			}
+			for (var i = 0; i < node.childNodes.length; i++) {
+				var child = node.childNodes[i];
+				if (child.id != null
+					&& (child.id == "tabs"
+						|| child.id == "tab_form"
+						|| child.id == "webtable-top")){
+					total += child.offsetHeight;
+					if (child.id == "tab_form") total += 2;	// Bug scrollbar ???
+					console.log ("child.id=" + child.id + " total="+total+" height="+child.offsetHeight);
+				}else{
+					if (child.id != null && child.id == "vframe2h"){
+						var bord=(child.offsetWidth-child.clientWidth);
+						total += bord;
+						console.log ("border child.id=" + child.id + " total="+total+" border="+bord);
+					}else if (child.className == "webtable" || child.id == "textgrow"){
+						console.log ("Set webtable "+child.id+" total="+total+" diff="+diff+" oldheight="+child.offsetHeight);
+						child.style.height = diff - total;
+						break;
+					}
+					total = allDescendants(child,total);
+				}
+			}
+			return total;
+		}
+		function fixsize(){
+			var t = document.getElementById('head').offsetHeight;
+			diff = window.innerHeight-t;
+			document.getElementById('body').style.height = diff-1;
+			document.getElementById('main').style.height = window.innerHeight-1;
+			var tabs = document.getElementsByClassName("tabs");
+			for (var i=0; i<tabs.length; i++){
+				var node = tabs[i];
+				var style = node.currentStyle || window.getComputedStyle(node);
+				var margins = parseInt(style.marginTop,10);
+				margins += parseInt(style.marginBottom,10);
+				node.style.height = diff-2-margins;
+			}
+			console.log ("tabs.length=" + tabs.length);
+			var i;
+			for (i=0; i<tabs.length; i++){
+				allDescendants (tabs[i],0);
+			}
+			var tables = document.getElementsByClassName('webtable');
+			console.log ("ready " + document.readyState);
+			for (i = 0; i < tables.length; i++) {
+				var table = tables[i];
+				console.log (table.id+" "+table.offsetHeight+" "+table.offsetWidth);
+			}
+	?>
+	webtable_setscroll();
+	<?
+		}
+	</script>
+	?>
+}
+<mod>
+static void journey_setscroll()
+{
+	<obj WEBCONTEXT ctx>();
+	</obj>
+	tlmpweb_setscripts();
+	tlmpweb_body("white",NULL);
+	WEBID id1 ("id1");
+	WEBID id2 ("id2");
+	{
+		DIV m("","main"); m.w(100).h(100).print();
+		DIV d("","head"); d.w(100).h(10).print();
+		/- Hello
+		d.end();
+		unsigned cur1 = 10;
+		unsigned cur2 = 20;
+		d.id("body").w(100).dispflex().flowrow().print();
+		{
+			DIV tab("tabs"); tab.flexfixe().w(40).bg("lightblue").margins(5,5).vmargins(5,5).border(1,"black").print();
+			do_webtable(id1, 100,cur1);
+		}
+		{
+			DIV tab("tabs"); tab.flexfixe().w(60).bg("lightred").margins(5,5).vmargins(5,5).border(1,"black").print();
+			do_webtable(id2, 100,cur2);
+		}
+	}
+	unsigned w,h,l,scroll_top1=100,scroll_top2=400;
+	tlmpweb_gettablegeometry (id1,w,h,scroll_top1,l);
+	tlmpweb_gettablegeometry (id2,w,h,scroll_top2,l);
+tlmp_error ("top %u %u\n",scroll_top1,scroll_top2);
+	index_script(scroll_top1,scroll_top2);
+}
+</mod>
+
 extern "C" void webmain()
 {
 	tlmpweb_title ("This is the start of a long long journey");
@@ -868,6 +993,7 @@ extern "C" void webmain()
 	//tabs();
 	//popup();
 	//webtable_dropdown();
-	webtable_popup();
+	//webtable_popup();
+	journey_setscroll();
 }
 

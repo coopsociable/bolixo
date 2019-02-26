@@ -43,8 +43,12 @@ install: all
 clean:
 	rm -f *.hc *.o *.os genbackground
 
-util.os: util.tlcc util.h /usr/include/tlmp/tlmpweb.h /usr/include/tlmp/tlmpweb.p
-	cctlcc -fPIC -Wall $(OPTIONS) -c util.tlcc -o util.os
+util.os: util.hcc util.h /usr/include/tlmp/tlmpweb.h /usr/include/tlmp/tlmpweb.p
+	@echo tlmpwebcc $< $@
+	@tlmpwebcc $< \
+		| tlcc \
+		--name $(basename $(notdir $@)).tlcc - /tmp/$(basename $(notdir $@)).cc
+	@g++ -fPIC -Wall -DEXPORT= $(OPTIONS) -I. -c /tmp/util.cc -o util.os
 
 webtabs.os: webtabs.tlcc webtabs.h util.h /usr/include/tlmp/tlmpweb.h /usr/include/tlmp/tlmpweb.p
 	cctlcc -fPIC -Wall $(OPTIONS) -c webtabs.tlcc -o webtabs.os
