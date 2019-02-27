@@ -136,5 +136,6 @@ class MESSAGE_receive;
 string index_format_mail_fname(const MESSAGE_receive &m, PARAM_STRING username);
 void util_delnotify(CONNECT_INFO &con_sess, PARAM_STRING id);
 void util_delnotify(CONNECT_INFO &con_sess, PARAM_STRING prefix, PARAM_STRING id);
+void util_endscript(int webstep, PARAM_STRING urlparam);
 void util_endscript(int webstep);
-void util_endscript();
+void util_endscript(PARAM_STRING urlparam);

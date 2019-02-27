@@ -471,7 +471,7 @@ void util_setmobilespecs (unsigned body_font_size, unsigned input_font_size)
 /*
 	Javascript needed at the end of the HTML
 */
-void util_endscript(int webstep)
+void util_endscript(int webstep, PARAM_STRING urlparam)
 {
 	// Script to make sure the webtabs tabs use the full height of the screen
 	// Then it takes the webtables and grows them too.
@@ -547,10 +547,15 @@ void util_endscript(int webstep)
 	?>
 	webtable_setscroll();
 	if (tlmpweb_some_geometry_missing()){
+		const char *sep1 = "?";
+		const char *sep2 = "&";
+		if (urlparam.ptr[0] == '\0'){
+			sep1 = sep2 = "";
+		}
 		if (webstep == -1){
-			htmlprintf ("formsubmit(\"%s\");\n",tlmpweb_curpage());
+			htmlprintf ("formsubmit(\"%s%s%s\");\n",tlmpweb_curpage(),sep1,urlparam.ptr);
 		}else{
-			htmlprintf ("formsubmit(\"%s?webstep=%d\");\n",tlmpweb_curpage(),webstep);
+			htmlprintf ("formsubmit(\"%s?webstep=%d%s%s\");\n",tlmpweb_curpage(),webstep,sep2,urlparam.ptr);
 		}
 	}
 	<?
@@ -558,9 +563,13 @@ void util_endscript(int webstep)
 	</script>
 	?>
 }
-void util_endscript()
+void util_endscript(int webstep)
 {
-	util_endscript(-1);
+	util_endscript(webstep,"");
+}
+void util_endscript(PARAM_STRING urlparam)
+{
+	util_endscript(-1,urlparam);
 }
 
 void util_defstyles()
