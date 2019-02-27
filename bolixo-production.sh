@@ -518,7 +518,7 @@ elif [ "$1" = "loadfail" ] ; then # prod: Switch web access (normal,backup,split
 elif [ "$1" = "calltest" ] ; then # A: Call /usr/lib/bolixo-test.sh
 	export LXCSOCK=on
 	shift
-	/usr/lib/bolixo-test.sh $*
+	/usr/lib/bolixo-test.sh "$@"
 elif [ "$1" = "certificate-install" ]; then # prod: Install the SSL certificate
 	# Make sure the special /root/bin/apachectl is used
 	export PATH=/root/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin
