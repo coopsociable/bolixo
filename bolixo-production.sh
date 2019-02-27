@@ -436,6 +436,12 @@ elif [ "$1" = "confirmuser" ] ; then # prod: Confirm a new user account
 elif [ "$1" = "del_incomplete" ] ; then # prod: Deletes un-confirmed user accounts (seconds)
 	shift
 	/usr/lib/bolixo-test.sh bo-writed-control del_incomplete $1 
+elif [ "$1" = "disable" ] ; then # prod: Disable one user account
+	shift
+	/usr/lib/bolixo-test.sh bo-writed-control disable $1 
+elif [ "$1" = "enable" ] ; then # prod: Enable one user account
+	shift
+	/usr/lib/bolixo-test.sh bo-writed-control enable $1 
 elif [ "$1" = "status" ] ; then # prod: Status of one service
 	shift
 	while [ "$1" != "" ]

@@ -4,6 +4,7 @@
 HOSTNAME=`hostname`
 BO=bo
 BOFS=bofs
+RSSD=rssd
 CALLTEST="bo calltest"
 CONFIG=/etc/bolixo/rssd.conf.d
 UPDPHOTO=
@@ -12,6 +13,7 @@ do
 	if [ "$1" = "debug" ] ; then
 		BO=./test.sh
 		BOFS=./bofs
+		RSSD=./rssd
 		CALLTEST=./test.sh
 		CONFIG=../rssd.conf.d
 	elif [ "$1" = "updphoto" ] ; then
@@ -20,7 +22,7 @@ do
 	shift
 done
 $BO mailctrl 0 keep
-./rssd --config $CONFIG --printaccounts | while read acc
+$RSSD --config $CONFIG --printaccounts | while read acc
 do
 	nb=`$BO files --silent <<-EOF
 		select count(*) from id2name where name='$acc';
@@ -38,7 +40,7 @@ do
 	if [ "$nb" = 0 -o "$UPDPHOTO" != "" ] ; then
 		DIR=/var/lib/rssd/images/$acc
 		mkdir -p $DIR
-		URL=`./rssd --config $CONFIG --printfield mini_photo_url --account $acc`
+		URL=`$RSSD --config $CONFIG --printfield mini_photo_url --account $acc`
 		if [ "$URL" != "" ] ;then
 			echo Retrieve mini-photo for account $acc
 			rm -fr /tmp/download
@@ -46,7 +48,7 @@ do
 			(cd /tmp/download && wget -q $URL)
 			convert /tmp/download/* $DIR/mini-photo.jpg
 		fi
-		URL=`./rssd --config $CONFIG --printfield photo_url --account $acc`
+		URL=`$RSSD --config $CONFIG --printfield photo_url --account $acc`
 		if [ "$URL" != "" ] ;then
 			echo Retrieve photo for account $acc
 			rm -fr /tmp/download

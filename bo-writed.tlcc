@@ -1097,8 +1097,15 @@ static void bo_writed_adduser (CONTEXT &ctx, const char *lang, const char *name,
 			</f>
 			<f empty>
 				glocal.id_str = fs_makeid ();
-				if (sql_action(*glocal.ctx->usq,"insert into users (name,email,password,userid_str) values ('%s','%s',password('%s'),'%s')"
-					,glocal.name,glocal.email,glocal.password,glocal.id_str.c_str())==-1){
+				int action_ret = -1;
+				if (glocal.password == nullptr || glocal.password[0] == '\0'){
+					action_ret = sql_action(*glocal.ctx->usq,"insert into users (name,email,password,userid_str) values ('%s','%s',NULL,'%s')"
+						,glocal.name,glocal.email,glocal.id_str.c_str());
+				}else{
+					action_ret = sql_action(*glocal.ctx->usq,"insert into users (name,email,password,userid_str) values ('%s','%s',password('%s'),'%s')"
+						,glocal.name,glocal.email,glocal.password,glocal.id_str.c_str());
+				}
+				if (action_ret == -1){
 					glocal.msg = "Internal error: can't create";
 				}else{
 					int userid = glocal.ctx->usq->getlastid();
@@ -1112,7 +1119,8 @@ static void bo_writed_adduser (CONTEXT &ctx, const char *lang, const char *name,
 						// Retrieve the password hashed by MySQL
 						<call sql_query>(*glocal.ctx->usq,"select password from users where email='%s'",glocal.email);
 						<f onerow>
-							bo_log_adduser (glocal.ctx->flog,glocal.id_str,glocal.name,glocal.email,row[0],time(NULL));
+							const char *password = row[0] == nullptr ? "" : row[0];
+							bo_log_adduser (glocal.ctx->flog,glocal.id_str,glocal.name,glocal.email,password,time(NULL));
 						</f>
 						</call>
 						// Create a record in the config table
@@ -1767,7 +1775,7 @@ int main (int argc, char *argv[])
 									glocal.msg = "Internal error";
 								}else{
 									debug_printf (D_PROTO,"login session ok %s\n",glocal.newsession.c_str());
-									sql_action (*glocal.usq,"update users set lastaccess=now() where email='%s'",glocal.email);
+									sql_action (*glocal.usq,"update users set nbfail=0,lastaccess=now() where email='%s'",glocal.email);
 									glocal.session = glocal.newsession;
 								}
 							</f>
