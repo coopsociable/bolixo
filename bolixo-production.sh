@@ -521,6 +521,10 @@ elif [ "$1" = "loadfail" ] ; then # prod: Switch web access (normal,backup,split
 			fi
 		done
 	fi
+elif [ "$1" = "deleteitems" ] ; then # db: Delete items and check integrity
+	export DELETEITEMS_PWD=$BO_WRITED_PWD
+	shift
+	deleteitems --data_socket /var/lib/lxc/bosqlddata/rootfs/var/lib/mysql/mysql.sock --data_dbserv localhost --data_dbname files --data_dbuser bowrited --integrity $@
 elif [ "$1" = "calltest" ] ; then # A: Call /usr/lib/bolixo-test.sh
 	export LXCSOCK=on
 	shift

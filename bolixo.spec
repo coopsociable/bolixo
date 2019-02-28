@@ -56,6 +56,7 @@ make install
 /usr/sbin/bo-mon-control
 /usr/sbin/rssd
 /usr/sbin/rssd-control
+/usr/sbin/rss-scan
 /usr/sbin/summary
 /usr/sbin/listusers
 /usr/sbin/nbusers

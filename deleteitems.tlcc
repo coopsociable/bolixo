@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <tlmplib.h>
 #include <tlmpsql.h>
 #include <string>
@@ -34,6 +35,14 @@ using namespace std;
 static bool deleteitems_notin (const vector<bool> &items, unsigned id)
 {
 	return id >= items.size() || !items[id];
+}
+static void deleteitems_insert (vector<bool> &items, const char *id)
+{
+	unsigned itemid = atoi(id);
+	if (items.size() < itemid){
+		items.resize(itemid+1000000);
+	}
+	items[itemid] = true;
 }
 <mod>
 int main (int argc, char *argv[])
@@ -79,15 +88,12 @@ int main (int argc, char *argv[])
 		if (glocal.integrity){
 			glocal vector<bool> userids;
 			glocal vector<bool> itemids;
+			// Find all userids
 			<call sql_query>("select userid from id2name");
 			<f onerow>
+				// Avoid negative userids
 				if (row[0][0] == '-') return;
-				unsigned userid = atoi(row[0]);
-				//printf ("userid=%u %lu\n",userid,glocal.userids.size());
-				if (glocal.userids.size() < userid){
-					glocal.userids.resize(userid+1000000);
-				}
-				glocal.userids[userid] = true;
+				deleteitems_insert (glocal.userids,row[0]);
 			</f>
 			</call>
 			// Delete directory entries pointing to deleted/invalid userid
@@ -117,23 +123,36 @@ int main (int argc, char *argv[])
 			</f>
 			</call>
 			// Delete files entries pointing to deleted/invalid userid
-			<call sql_query>("select files.id,ids.ownerid,modified,filetype"
+			<call sql_query>("select files.id,ids.ownerid,modified,filetype,content is null"
 				" from files join ids on files.id=ids.id");
 			<f onerow>
-				unsigned fileid = atoi(row[0]);
 				unsigned ownerid = atoi(row[1]);
-				const char *modified = row[2];
-				const char *filetype = tbftype[atoi(row[3])];
 				if (deleteitems_notin(glocal.userids,ownerid)){
+					unsigned fileid = atoi(row[0]);
+					const char *modified = row[2];
+					const char *filetype = tbftype[atoi(row[3])];
+					bool content_is_null = atoi(row[4]);
 					if (glocal.verbose){
-						printf ("file %5u ownerid %5u modified %s filetype=%s must go\n"
-							,fileid,ownerid,modified,filetype);
+						printf ("file %5u ownerid %5u modified %s filetype=%s content_is_null %d must go\n"
+							,fileid,ownerid,modified,filetype,content_is_null);
+						if (content_is_null){
+							printf ("Content file %u-%s must go\n",fileid,modified);
+						}
 					}
 					if (glocal.doit){
 						if (sql_action("delete from files where id=%u and modified='%s'"
 							,fileid,modified)==-1){
 							tlmp_error ("Delete fail in table files, aborting: %s\n",query_getdefaultdb()->error());
 							exit (-1);
+						}
+						if (content_is_null){
+							// We must delete the file content in /var/lib/bolixo
+							string path = string_f("/var/lib/bolixo/%u-%s",fileid,modified);
+							for (auto &c:path) if (c == ' ') c='-';
+							if (unlink(path.c_str())==-1){
+								tlmp_error ("Can't delete content file %s (%s)\n",path.c_str(),strerror(errno));
+								exit (-1);
+							}
 						}
 					}
 				}
@@ -145,20 +164,12 @@ int main (int argc, char *argv[])
 			// Retrieve all used ids
 			<call sql_query>("select itemid from dirs_content");
 			<f onerow>
-				unsigned id = atoi(row[0]);
-				if (glocal.itemids.size() < id){
-					glocal.itemids.resize(id+1000000);
-				}
-				glocal.itemids[id] = true;
+				deleteitems_insert (glocal.itemids,row[0]);
 			</f>
 			</call>
 			<call sql_query>("select id from files");
 			<f onerow>
-				unsigned id = atoi(row[0]);
-				if (glocal.itemids.size() < id){
-					glocal.itemids.resize(id+1000000);
-				}
-				glocal.itemids[id] = true;
+				deleteitems_insert (glocal.itemids,row[0]);
 			</f>
 			</call>
 			// Delete unused entries in table ids
@@ -172,6 +183,23 @@ int main (int argc, char *argv[])
 					if (glocal.doit){
 						if (sql_action("delete from ids where id=%u",id)==-1){
 							tlmp_error ("Delete fail in table ids, aborting: %s\n",query_getdefaultdb()->error());
+							exit (-1);
+						}
+					}
+				}
+			</f>
+			</call>
+			// Delete all files in /var/lib/bolixo connected to unused itemid
+			<call walkfs>("/var/lib/bolixo");
+			<f onefile>
+				unsigned id = atoi(basename);
+				if (deleteitems_notin(glocal.itemids,id)){
+					if (glocal.verbose){
+						printf ("Content file %s must go\n",basename);
+					}
+					if (glocal.doit){
+						if (unlink(path)==-1){
+							tlmp_error ("Can't delete content file %s (%s)\n",path,strerror(errno));
 							exit (-1);
 						}
 					}

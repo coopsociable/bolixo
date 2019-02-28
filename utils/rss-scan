@@ -1,0 +1,35 @@
+#!/bin/sh
+SESSIONS=/var/lib/rssd/sessions
+DEBUG=
+if [ "$1" = debug ] ; then
+	DEBUG="--debug --debugpath proto"
+	shift
+fi
+if [ "$1" == "" ] ; then
+	echo rss:xxx accounts
+	echo all
+	exit 1
+fi
+# The rss: accounts are disabled and have a NULL password
+# So we use a special service of bo-writed to login
+# We save the sessions a a file and rssd used those pre-establish session
+# to talk with bod.
+# At the end, we logout
+>$SESSIONS
+rssd --printaccounts | while read b
+do
+	SESSION=`bo calltest bo-writed-control login $b`	
+	echo $b $SESSION >>$SESSIONS
+done
+SECRET=`grep  ^bod /root/data/manager.conf | (read a b c d e f; echo $e)`
+if [ "$1" = "all" ]; then
+	ACCOUNTS=`rssd --printaccounts`
+else
+	ACCOUNTS="$*"
+fi
+rssd $DEBUG --mysecret $SECRET --bod_sock /var/lib/lxc/bod/rootfs/tmp/bod-client-9002.sock \
+	--sessions $SESSIONS --process $ACCOUNTS
+cat $SESSIONS | while read user session
+do
+	bofs --logout --session $session
+done

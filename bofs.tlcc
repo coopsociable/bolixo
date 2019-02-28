@@ -2735,6 +2735,7 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 	glocal bool interest_unset = false;
 	glocal bool interest_list = false;
 	glocal bool interest_check = false;
+	glocal vector<string> fulltext;
 	glocal const char *interest_user = NULL;
 	glocal const char *status = "A";
 	glocal const char *intro = MSG_U(I_HELLOCONTACT,"Hello I would like to chat with you");
@@ -2765,7 +2766,7 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 		setarg ('I',"interest_set","Add one user to your interest list",glocal.interest_set,false);
 		setarg ('U',"interest_unset","Remove one user from your interest list",glocal.interest_unset,false);
 		setarg ('P',"interest_list","List members of your interest list",glocal.interest_list,false);
-		setarg ('C',"interest_check","List members of your interest list with new activity",glocal.interest_check,false);
+		setarg ('C',"interest_check","List messages of your interest list",glocal.interest_check,false);
 
 		setarg ('v',"verifysign","Verify a message signature",glocal.verifysign,false);
 		setarg (' ',"getpubkey","Get the public key of a user",glocal.getpubkey,false);
@@ -2793,6 +2794,7 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 
 		setgrouparg (MSG_R(I_MISC));
 		setarg ('O',"owner",MSG_R(O_OWNER),glocal.owner,false);
+		setarg (' ',"fulltext","Request full text for these messages",glocal.fulltext,false);
 	</f>
 	<f main>
 		glocal int ret = -1;
@@ -3006,7 +3008,7 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 				glocal unsigned chunk=100;
 				while (!glocal.stop){
 					<call bod_client_interest_check>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner
-						,glocal.offset,glocal.chunk);
+						,glocal.fulltext,glocal.offset,glocal.chunk);
 					<f ok>
 						if (!success){
 							bofs_error ("interest_check",internal_error,msg);
@@ -3028,6 +3030,10 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 									,normalize_uuid(m.uuid).c_str()
 									,normalize_date(m.submit),normalize_size(m.size)
 									,linelen,linelen,m.content);
+								if (find(glocal.fulltext.begin(),glocal.fulltext.end(),m.uuid)
+									!= glocal.fulltext.end()){
+									printf ("%s\n",m.content);
+								}
 							}
 							glocal.stop = messages.size() < glocal.chunk;
 							glocal.offset += glocal.chunk;

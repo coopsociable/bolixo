@@ -296,6 +296,7 @@ install: msg.eng msg.fr
 	install -m755 publishd-control $(RPM_BUILD_ROOT)/usr/sbin/publishd-control
 	install -m755 rssd $(RPM_BUILD_ROOT)/usr/sbin/rssd
 	install -m755 rssd-control $(RPM_BUILD_ROOT)/usr/sbin/rssd-control
+	install -m755 utils/rss-scan $(RPM_BUILD_ROOT)/usr/sbin/rss-scan
 	install -m755 bo-keysd $(RPM_BUILD_ROOT)/usr/sbin/bo-keysd
 	install -m755 bo-keysd-control $(RPM_BUILD_ROOT)/usr/sbin/bo-keysd-control
 	install -m755 bo-mon $(RPM_BUILD_ROOT)/usr/sbin/bo-mon

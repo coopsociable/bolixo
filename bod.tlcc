@@ -30,6 +30,7 @@
 #include <tlmpnet.h>
 #include <string>
 #include <memory>
+#include <set>
 #include <algorithm>
 #include <trlitool.h>
 #include <tlmpsql.h>
@@ -372,16 +373,30 @@ static int bod_checkpublic(const char *username, string &msg)
 	bool pubdir;
 	return bod_checkpublic (username,NULL,msg,abspath,pubdir);
 }
-
+/*
+	Extract the first line of a text.
+	Handle long line. Assumes that each chunk of 80 characters in a line accounts for one line.
+*/
 static string bod_first_lines (const char *txt, unsigned nblines)
 {
 	const char *pt = txt;
 	unsigned noline = 0;
+	const char *start = txt;
 	while (*pt != '\0' && noline < nblines){
 		while (*pt != '\0' && *pt != '\n') pt++;
 		if (*pt == '\n'){
+			unsigned add_lines = (pt-start)/80;
 			pt++;
-			noline++;
+			noline += 1 + add_lines;
+			if (noline > nblines && add_lines > 0){
+				while (noline > nblines && add_lines > 0){
+					pt -= 80;
+					add_lines--;
+					noline--;
+				}
+				break;
+			}
+			start = pt;
 		}
 	}
 	if (*pt == '\0'){
@@ -2694,10 +2709,12 @@ static int bod_main (
 					rep_interest_list (true,glocal.msg,glocal.users);
 				}
 			</f>
-			<f interest_check> // sessionid owner offset:u nb:u = success:b msg messages:U{SHORTMSG}v
+			<f interest_check> // sessionid owner fulltext:v offset:u nb:u = success:b msg messages:U{SHORTMSG}v
 				glocal unsigned nb = nb;
 				glocal string msg;
 				glocal map<string,SHORTMSG> mp;
+				glocal set<string> fulltext;
+				for (auto f:fulltext) glocal.fulltext.insert(f);
 				unsigned userid = bo_writed_get_group_owner (glocal.con_sess, sessionid, owner, glocal.msg);
 				if (userid != 0){
 					#ifdef INSTRUMENT
@@ -2736,11 +2753,11 @@ static int bod_main (
 							msg.signature = row[7];
 							if (row[5] != NULL){
 								// Limit the number of lines if more than one message was requested
-								if (glocal.nb == 1){
+								if (glocal.nb == 1 || glocal.fulltext.count(msg.uuid) > 0){
 									msg.content = row[5];
 									msg.size = msg.content.size();
 								}else{
-									msg.content = bod_first_lines(row[5],5);
+									msg.content = bod_first_lines(row[5],8);
 									msg.size = strlen(row[5]);
 								}
 							}else{

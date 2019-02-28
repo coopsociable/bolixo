@@ -67,6 +67,8 @@ struct COPY{
 	}
 };
 static COPY fcopy;		// Cut buffer, holding a file path
+static vector<string> fulltext;	// For interest_check, list of message with full text required
+static W_SSTRING w_fulltext("fullt");
 W_SSTRING w_lang("lang");
 W_SSTRING w_public_dir("public_dir");
 W_UNSIGNED w_public_view("public_view");
@@ -443,6 +445,8 @@ static void trli_getsessioninfo(CONNECT_INFO &con, CONNECT_INFO &con_sess, vecto
 			userinfo.dateformat = dateformat;
 			userinfo.is_admin = admin;
 			fcopy.clear();
+			fulltext.clear();
+			if (w_fulltext.is_filled()) fulltext.push_back(w_fulltext.c_str());
 			for (auto &var:vars){
 				if (strcmp(var.name,"subject")==0 && var.vals.size()==1) subject=atoi(var.vals[0].sval);
 				if (strcmp(var.name,"order")==0 && var.vals.size()==1) order=atoi(var.vals[0].sval);
@@ -947,7 +951,7 @@ static void index_download (CONNECT_INFO &con, FILE_TYPE file_type, PARAM_STRING
 
 static void index_msgs_style(_F_webtable &c)
 {
-	if (is_mobile){
+	if (1 || is_mobile){
 		c.setrowstyle ("sep","bgcolor=ghostwhite valign=top\t\t\talign=right");
 		c.setrowstyle ("sep+current","bgcolor=lightblue valign=top\t\t\talign=right");
 		c.setrowstyle ("sep1","bgcolor=white valign=top\t\t\talign=right");
@@ -1123,7 +1127,7 @@ static void index_show_shortmsg(
 							img = index_img(step_image,mini_image_width,dir,"mini-photo.jpg","");
 						}
 					}
-					if (is_mobile){
+					if (1 || is_mobile){
 						glocal.webtable.setrow (style,glocal.rownum,"%s\t%s\t%s"
 							,img.c_str(),m.from,time.c_str());
 						glocal.webtable.setrow (style,glocal.rownum,"\t%s\a",content.c_str());
@@ -1613,7 +1617,8 @@ extern "C" void webmain_real()
 			<call webtable>(ID_FOLLOW,table,"100%",currents[table],offsets[table],5);
 			<f click>
 				glocal unsigned dropmenu = dropmenu;
-				<call bod_client_interest_check>(glocal.con,w_session.c_str(),"",noline,1);
+				vector<string> empty;
+				<call bod_client_interest_check>(glocal.con,w_session.c_str(),"",empty,noline,1);
 				<f ok>
 					if (messages.size()!=1){
 						htmlprintf ("Internal error: %s\n",msg);
@@ -1643,7 +1648,7 @@ extern "C" void webmain_real()
 				adddrop_opt (MENU_DOWNLOAD,MSG_R(M_DOWNLOAD));
 				index_msgs_style (*this);
 				glocal unsigned rownum = nbskip;
-				<call bod_client_interest_check>(glocal.con,w_session.c_str(),"",nbskip,nblines);
+				<call bod_client_interest_check>(glocal.con,w_session.c_str(),"",fulltext,nbskip,nblines);
 				<f ok>
 					// success:b msg messages:U{SHORTMSG}v
 					static const char *func = "Popup";
@@ -1677,7 +1682,7 @@ extern "C" void webmain_real()
 						}else if (file_is_image(m.file_type)){
 							glocal.webtable.setclickopt (true,func,"800,800");
 						}else{
-							glocal.webtable.setclickopt (true,func,"800,300");
+							glocal.webtable.setclickopt (true,"",string_f("fullt=%s",m.uuid));
 						}
 						string time = string_f("<div id=date0_7>%s</div>",format_time(userinfo.dateformat,m.submit+11).c_str());
 						string img;
@@ -1692,7 +1697,7 @@ extern "C" void webmain_real()
 						string path = string_f("%s/msg/%s",m.from,m.uuid);
 						string content;
 						if (m.content[0] != '\0'){
-							content = string_f("<div class=smsg>%s</div>",util_format_shortmsg (m.content,5,m.size).c_str());
+							content = string_f("<div class=smsg>%s</div>",util_format_shortmsg (m.content,100,m.size).c_str());
 						}else if (file_is_sound(m.file_type)){
 							string tmp = util_flipspaces(m.submit);
 							content = string_f("<audio controls>\n"
@@ -1711,7 +1716,7 @@ extern "C" void webmain_real()
 								,video_size,video_size
 								,tlmpweb_curpage(),step_public,path.c_str(),tmp.c_str());
 						}
-						if (is_mobile){
+						if (1 || is_mobile){
 							glocal.webtable.setrow (style,glocal.rownum,"%s\t%s\t%s",img.c_str(),m.from
 								,time.c_str());
 							glocal.webtable.setrow (style,glocal.rownum,"\t%s\a",content.c_str());
