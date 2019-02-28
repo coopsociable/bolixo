@@ -36,6 +36,23 @@ elif [ "$1" = "projects" ] ; then # test: List all projects
 		echo user $user
 		listdir $user /projects/$user
 	done
+elif [ "$1" = "userfiles" ] ; then # help: List user files
+	shift
+	if [ "$1" = "" ] ; then
+			echo userid needed
+			exit 1
+	fi
+	user=$1
+	for inbox in `./bofs -u admin ls bo://msgs/$user/short-inbox`
+	do
+		echo inbox = $inbox
+		./bofs -u admin ls -l bo://msgs/$user/short-inbox/$inbox
+	done
+	for dir in `./bofs -u admin ls bo://projects/$user`
+	do
+		echo project = $dir
+		./bofs -u admin ls -l bo://projects/$user/$dir
+	done
 elif [ "$1" = "createsubdir" ] ; then # test: Create a project, then a subdir
 	PRJ=newprj
 	if [ "$2" != "" ] ; then

@@ -221,6 +221,10 @@ elif [ "$1" = "checks" ]; then # A: Sanity checks
 	else
 		echo "*** Horizon not connected"
 	fi
+elif [ "$1" = "deleteitems" ] ; then # db: Delete items and check integrity
+	export DELETEITEMS_PWD=$BO_WRITED_PWD
+	shift
+	./deleteitems --data_socket /var/lib/lxc/bosqlddata/rootfs/var/lib/mysql/mysql.sock --data_dbserv localhost --data_dbname files --data_dbuser root --integrity $@
 elif [ "$1" = "files" ] ; then	# db: Access files database
 	shift
 	mysql $* -uroot -S $SOCKN $DBNAME

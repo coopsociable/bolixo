@@ -6,7 +6,7 @@ DINSTRUMENT:=$(shell test -f ../instrument && echo -DINSTRUMENT)
 PROGS=_dict.o bod bod-client bod-control bo-writed bo-writed-control bo-sessiond bo-sessiond-control \
       bo-manager bofs ssltestsign bo-keysd bo-keysd-control bolixod bolixod-control perfsql \
       bo-mon bo-mon-control utils/eximexec utils/helpspell publishd publishd-control bo-webtest \
-      documentd documentd-control rssd rssd-control
+      documentd documentd-control rssd rssd-control deleteitems
 #bo-log bo-log-control \
 DOCS=
 OPTIONS=$(DINSTRUMENT) -funsigned-char -O2 -Wall -g -DVERSION=\"$(PACKAGE_REV)\" -I/usr/include/tlmp -I/usr/include/trlitool
@@ -202,6 +202,9 @@ proto/documentd_client.protoh: proto/documentd_client.proto
 	build-protocol $(INSTRUMENT) --secretmode --arg "int no" --arg "HANDLE_INFO *c" --name documentd_client \
 		--protoch proto/documentd_client.protoch proto/documentd_client.proto >proto/documentd_client.protoh
 
+deleteitems: deleteitems.tlcc _dict.o
+	cctlcc -Wall $(OPTIONS) deleteitems.tlcc _dict.o -o deleteitems $(LIBS) -ltlmpsql -L/usr/lib64/mysql -lmysqlclient
+
 rssd: rssd.tlcc proto/rssd_control.protoh proto/bod_client.protoh _dict.o xmlflat.o
 	cctlcc -Wall $(OPTIONS) -I/usr/include/libxml2 rssd.tlcc xmlflat.o _dict.o -o rssd $(LIBS) -lssl -lxml2
 
@@ -308,6 +311,7 @@ install: msg.eng msg.fr
 	install -m755 utils/nbusers $(RPM_BUILD_ROOT)/usr/sbin/nbusers
 	install -m755 utils/pendingusers $(RPM_BUILD_ROOT)/usr/sbin/pendingusers
 	install -m755 utils/listusers $(RPM_BUILD_ROOT)/usr/sbin/listusers
+	install -m755 deleteitems $(RPM_BUILD_ROOT)/usr/sbin/deleteitems
 	for file in web/images-doc/*.jpg; do install -m644 $$file $(RPM_BUILD_ROOT)/var/www/html/.; done
 
 #	install -m755 web/admin.hc $(RPM_BUILD_ROOT)/var/www/html/admin.hc

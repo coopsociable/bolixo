@@ -1,0 +1,254 @@
+/*
+	This file is part of Bolixo.
+
+	Bolixo is free software: you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation, either version 3 of the License, or
+	(at your option) any later version.
+
+	Bolixo is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+	GNU General Public License for more details.
+
+	You should have received a copy of the GNU General Public License
+	along with Bolixo.  If not, see <https://www.gnu.org/licenses/>.
+*/
+/*
+	This program deletes stuff in the database while maintaining some integrity
+*/
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <tlmplib.h>
+#include <tlmpsql.h>
+#include <string>
+#include <vector>
+#include <set>
+#include "bolixo.m"
+#define DEFINE_TBFTYPE
+#include "bolixo.h"
+
+using namespace std;
+
+static bool deleteitems_notin (const vector<bool> &items, unsigned id)
+{
+	return id >= items.size() || !items[id];
+}
+<mod>
+int main (int argc, char *argv[])
+{
+	glocal int ret = -1;
+	glocal bool oldmsgs = false;
+	glocal bool integrity = false;
+	glocal const char *data_socket = "/var/lib/mysql/mysql.sock";
+	glocal const char *data_dbserv = "localhost";
+	glocal const char *data_dbname = "files";
+	glocal const char *data_dbuser = NULL;
+	glocal bool verbose = false;
+	glocal bool doit = false;
+
+	static const char *tb[]={"bolixo","tlmpsql",NULL};
+	glocal.ret = <call tlmpprogram>(argc,argv,tb);
+	<f init>
+		setproginfo ("deleteitems",VERSION
+			,MSG_U(I_DELETEITEMS
+			,"Delete items in the bolixo database."));
+		setarg ('o',"oldmsgs",MSG_U(O_OLDMSGS,"Delete old short messages"),glocal.oldmsgs,false);
+		setarg ('I',"integrity",MSG_U(O_INTEGRITY,"Perform garbage collection"),glocal.integrity,false);
+		setarg (' ',"doit",MSG_U(O_DOIT,"Perform the deletion, not just a test"),glocal.doit,false);
+		setgrouparg (MSG_R(I_DATABASE));
+		setarg (' ',"data_dbserv","Database server",glocal.data_dbserv,false);
+		setarg (' ',"data_dbname","Database name",glocal.data_dbname,false);
+		setarg (' ',"data_dbuser","Database user",glocal.data_dbuser,true);
+		setarg (' ',"data_socket","Database unix socket",glocal.data_socket,false);
+		setgrouparg(MSG_R(I_MISC));
+		setarg ('v',"verbose",MSG_U(O_VERBOPER,"Verbose operation"),glocal.verbose,false);
+		
+	</f>
+	<f main_noarg>
+		int ret = -1;
+		if (!glocal.doit) glocal.verbose = true;	// Probably a test
+		const char *passwd = getenv("DELETEITEMS_PWD");
+		if (passwd == NULL){
+			tlmp_error ("Can't get database password from environment, aborting\n");
+			exit (-1);
+		}
+		query_setdefaultdb (glocal.data_dbserv,glocal.data_dbname,glocal.data_dbuser,passwd);
+		query_getdefaultdb()->setunixpath(glocal.data_socket);
+		if (glocal.integrity){
+			glocal vector<bool> userids;
+			glocal vector<bool> itemids;
+			<call sql_query>("select userid from id2name");
+			<f onerow>
+				if (row[0][0] == '-') return;
+				unsigned userid = atoi(row[0]);
+				//printf ("userid=%u %lu\n",userid,glocal.userids.size());
+				if (glocal.userids.size() < userid){
+					glocal.userids.resize(userid+1000000);
+				}
+				glocal.userids[userid] = true;
+			</f>
+			</call>
+			// Delete directory entries pointing to deleted/invalid userid
+			<call sql_query>("select dirid,itemid,ids.ownerid,dirs_content.name,dirs_content.modified,files.filetype"
+				" from dirs_content join ids on dirs_content.itemid=ids.id"
+				" left join files on files.id=dirs_content.itemid and files.modified=dirs_content.modified");
+			<f onerow>
+				unsigned dirid = atoi(row[0]);
+				unsigned itemid = atoi(row[1]);
+				unsigned ownerid = atoi(row[2]);
+				const char *name = row[3];
+				const char *modified = row[4];
+				const char *filetype = row[5] == nullptr ? "NULL" : tbftype[atoi(row[5])];
+				if (deleteitems_notin(glocal.userids,ownerid)){
+					if (glocal.verbose){
+						printf ("directory %5u item %5u ownerid %5u name %-30s modified %s filetype=%s must go\n"
+							,dirid,itemid,ownerid,name,modified,filetype);
+					}
+					if (glocal.doit){
+						if (sql_action("delete from dirs_content where dirid=%u and itemid=%u and modified='%s'"
+							,dirid,itemid,modified)==-1){
+							tlmp_error ("Delete fail in table dirs_content, aborting: %s\n",query_getdefaultdb()->error());
+							exit (-1);
+						}
+					}
+				}
+			</f>
+			</call>
+			// Delete files entries pointing to deleted/invalid userid
+			<call sql_query>("select files.id,ids.ownerid,modified,filetype"
+				" from files join ids on files.id=ids.id");
+			<f onerow>
+				unsigned fileid = atoi(row[0]);
+				unsigned ownerid = atoi(row[1]);
+				const char *modified = row[2];
+				const char *filetype = tbftype[atoi(row[3])];
+				if (deleteitems_notin(glocal.userids,ownerid)){
+					if (glocal.verbose){
+						printf ("file %5u ownerid %5u modified %s filetype=%s must go\n"
+							,fileid,ownerid,modified,filetype);
+					}
+					if (glocal.doit){
+						if (sql_action("delete from files where id=%u and modified='%s'"
+							,fileid,modified)==-1){
+							tlmp_error ("Delete fail in table files, aborting: %s\n",query_getdefaultdb()->error());
+							exit (-1);
+						}
+					}
+				}
+			</f>
+			</call>
+			// Delete orphan files entries (no directory entry reference them)
+			// ... not done ...
+
+			// Retrieve all used ids
+			<call sql_query>("select itemid from dirs_content");
+			<f onerow>
+				unsigned id = atoi(row[0]);
+				if (glocal.itemids.size() < id){
+					glocal.itemids.resize(id+1000000);
+				}
+				glocal.itemids[id] = true;
+			</f>
+			</call>
+			<call sql_query>("select id from files");
+			<f onerow>
+				unsigned id = atoi(row[0]);
+				if (glocal.itemids.size() < id){
+					glocal.itemids.resize(id+1000000);
+				}
+				glocal.itemids[id] = true;
+			</f>
+			</call>
+			// Delete unused entries in table ids
+			<call sql_query>("select id from ids");
+			<f onerow>
+				unsigned id = atoi(row[0]);
+				if (deleteitems_notin(glocal.itemids,id)){
+					if (glocal.verbose){
+						printf ("Itemid %5u must go\n",id);
+					}
+					if (glocal.doit){
+						if (sql_action("delete from ids where id=%u",id)==-1){
+							tlmp_error ("Delete fail in table ids, aborting: %s\n",query_getdefaultdb()->error());
+							exit (-1);
+						}
+					}
+				}
+			</f>
+			</call>
+			// Other table just related to userid
+			set<unsigned> group_ids;
+			set<unsigned> group_list_ids;
+			struct TABLESPEC { const char *table; const char *field; set<unsigned> *collect;} tables[]={
+				{"contact_requests","userid",nullptr},
+				{"contact_requests","reqid",nullptr},
+				{"interests","userid",nullptr},
+				{"interests_remote","userid",nullptr},
+				{"marks","userid",nullptr},
+				{"userinfo","userid",nullptr},
+				{"group_members","userid",nullptr},
+				{"groups","ownerid",&group_ids},
+				{"group_lists","ownerid",&group_list_ids}
+				};
+			for (auto const &table:tables){
+				glocal const char *table = table.table;
+				glocal const char *field = table.field;
+				glocal set<unsigned> *collect = table.collect;
+				glocal set<unsigned> done;	// Avoid repetition
+								// Another solution would be to put unique in the SQL statement
+								// but it would put too much work on the server.
+				<call sql_query>("select %s%s from %s",table.field
+					,table.collect == nullptr ? "" : ",id"
+					,table.table);
+				<f onerow>
+					unsigned id = atoi(row[0]);
+					if (deleteitems_notin(glocal.userids,id)){
+						if (glocal.collect != nullptr) glocal.collect->insert(atoi(row[1]));
+ 						if (glocal.done.insert(id).second){
+							if (glocal.verbose){
+								printf ("Table %s: %s %5u must go\n",glocal.table,glocal.field,id);
+							}
+							if (glocal.doit){
+								if (sql_action("delete from %s where %s=%u",glocal.table,glocal.field,id)==-1){
+									tlmp_error ("Delete fail in table %s, aborting: %s\n"
+										,glocal.table,query_getdefaultdb()->error());
+									exit (-1);
+								}
+							}
+						}
+					}
+				</f>
+				</call>
+			}
+			// Some groups and group_lists have vanished
+			// We must delete all records related to them in group_members and group_list_members
+			for (auto const &table:tables){
+				if (table.collect != nullptr){
+					for (auto &u:*table.collect){
+						if (glocal.verbose){
+							printf ("delete %s %u\n",table.table,u);
+						}
+						if (glocal.doit){
+							if (sql_action("delete from %s where id=%u",table.table,u)==-1){
+								tlmp_error ("Delete fail in table %s, aborting: %s\n"
+									,table.table,query_getdefaultdb()->error());
+								exit (-1);
+							}
+						}
+					}
+				}
+			}
+		}
+		return ret;
+	</f>
+	<f main>
+		int ret = -1;
+		return ret;
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+
