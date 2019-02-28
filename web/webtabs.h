@@ -133,4 +133,5 @@ void webtabs(_F_webtabs &c,
 	map<string,WEBTAB_CTRL> &alltabs,
 	unsigned size[5]);
 
+unsigned webtabs_getsubtab();
 #endif
