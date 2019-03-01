@@ -186,6 +186,7 @@ struct RSSD_CONFIG{
 	void readdir(PARAM_STRING file);
 	void read(PARAM_STRING file);
 	void readsessions(PARAM_STRING file);
+	void fillempty(WEBSITE &w) const;
 };
 
 static constexpr unsigned length(const char *s)
@@ -201,16 +202,45 @@ struct CONST_STR{
 		:pt(s),len(length(s)){
 	}
 };
-static bool rssd_compare (const char *line, const CONST_STR &word, const char *&pos)
+static bool rssd_compare (const char *line, const CONST_STR &word, string &value)
 {
 	bool ret = false;
 	if (strncmp(line,word.pt,word.len)==0){
 		ret = true;
-		pos = str_skip(line+word.len);
+		value = str_skip(line+word.len);
+		strip_end (value);
 	}
 	return ret;
 }
 
+static void copyif (string &dst, const string &src)
+{
+	if (dst.empty()) dst = src;
+}
+/*
+	Fill empty field using a parent account, if found
+	An account name goes like this: rss:some_name[-suffix]
+	Parent accounts has the same prefix as
+*/
+void RSSD_CONFIG::fillempty(WEBSITE &w) const
+{
+	auto pos = w.account.find ('-');
+	if (pos != string::npos){
+		string parent_account = w.account.substr(0,pos);
+		for (auto const &p:websites){
+			if (p.account == parent_account){
+				copyif (w.siteurl,p.siteurl);
+				copyif (w.country,p.country);
+				copyif (w.state,p.state);
+				copyif (w.city,p.city);
+				copyif (w.lang,p.lang);
+        			copyif (w.mini_photo_url,p.mini_photo_url);
+				copyif (w.photo_url,p.photo_url);
+				break;
+			}
+		}
+	}
+}
 <mod>
 void RSSD_CONFIG::readfile (PARAM_STRING configfile)
 {
@@ -219,9 +249,10 @@ void RSSD_CONFIG::readfile (PARAM_STRING configfile)
 	<call loadfile>(configfile,true);
 	<f oneline>
 		constexpr CONST_STR account("account:");
-		const char *next=NULL;
+		string next;
 		if (rssd_compare(line,CONST_STR("account:"),next)){
 			if (glocal.website.account.size() > 0){
+				glocal.config->fillempty(glocal.website);
 				glocal.config->websites.push_back(move(glocal.website));
 				glocal.website.clear();
 			}
@@ -252,6 +283,7 @@ void RSSD_CONFIG::readfile (PARAM_STRING configfile)
 	</f>
 	</call>
 	if (glocal.website.account.size() > 0){
+		fillempty(glocal.website);
 		websites.push_back(move(glocal.website));
 	}
 }
