@@ -446,7 +446,6 @@ static void trli_getsessioninfo(CONNECT_INFO &con, CONNECT_INFO &con_sess, vecto
 			userinfo.is_admin = admin;
 			fcopy.clear();
 			fulltext.clear();
-			if (w_fulltext.is_filled()) fulltext.push_back(w_fulltext.c_str());
 			for (auto &var:vars){
 				if (strcmp(var.name,"subject")==0 && var.vals.size()==1) subject=atoi(var.vals[0].sval);
 				if (strcmp(var.name,"order")==0 && var.vals.size()==1) order=atoi(var.vals[0].sval);
@@ -530,6 +529,8 @@ static void trli_getsessioninfo(CONNECT_INFO &con, CONNECT_INFO &con_sess, vecto
 						}
 						userinfo.notifies.insert(v.sname);
 					}
+				}else if (strcmp(var.name,"fulltext")==0){
+					for (auto &v:var.vals) fulltext.push_back(v.sname);
 				}
 			}
 			webtab_notify();
@@ -546,6 +547,32 @@ static void trli_getsessioninfo(CONNECT_INFO &con, CONNECT_INFO &con_sess, vecto
 		}
 	</f>
 	</call>
+	if (w_fulltext.is_filled()){
+		// The fulltext values control the visibility of entries in the main screen.
+		// Normally, only a few lines are shown for each entries. Entries with their message id (UUID)
+		// in fulltext[] are shown in full.
+		// When we click on on entry, the variable w_fulltext is filled. It acts as a toggle.
+		// If it is in fulltext[], it is removed, if not it is added.
+		const char *new_fulltext = w_fulltext.c_str();
+		auto p = find(fulltext.begin(),fulltext.end(),new_fulltext);
+		if (p == fulltext.end()){
+			fulltext.push_back(new_fulltext);
+		}else{
+			fulltext.erase(p);
+		}
+		VAR var;
+		var.name = "fulltext";
+		for (auto &v:fulltext){
+			SNAMEVAL val;
+			val.sname = v;
+			var.vals.push_back(val);
+		}
+		<call bo_sessiond_client_setvar>(con_sess,w_session.c_str(),var);
+		<f ok>
+			if (!success) tlmp_error ("Can't set variable offset: %s\n",msg);
+		</f>
+		</call>
+	}
 }
 </mod>
 /*

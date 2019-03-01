@@ -740,7 +740,7 @@ static int bofs_stat (
 	return ret;
 }
 
-static void bofs_printdir (bool opt_long, const vector<FILEINFO_receive> &files)
+static void bofs_printdir (bool opt_long, const vector<FILEINFO_receive> &files, bool nostatus)
 {
 	if (opt_long){
 		unsigned max_owner = 0;
@@ -764,20 +764,29 @@ static void bofs_printdir (bool opt_long, const vector<FILEINFO_receive> &files)
 				bofs_maxlen (owner,max_owner);
 				bofs_maxlen (f.listname,max_members);
 				bofs_maxlen (f.listmode,max_modes);
-				bofs_maxlen (f.name,max_name);
+				const char *name = f.name;
+				string tmpname;
+				if (strlen(name)==21){
+					tmpname = normalize_uuid(name);
+					name = tmpname.c_str();
+				} 
+				bofs_maxlen (name,max_name);
 				string tmp = string_f ("%u",f.size);
 				if (tmp.size() > max_size) max_size = tmp.size();
 				if (r==1){
 					const char *listmode = f.listmode;
 					if (listmode[0] == '\0') listmode = " ";
 					string member_mode = string_f("%s:%s",f.listname,f.listmode);
-					printf ("\t%-*s %c%-3s   %s   %s   %*s/%-*s   %*u   %-*s  %s\n"
-						,max_viewed,tbviewed[f.viewed]->get()
+					fputc('\t',stdout);
+					if (!nostatus){
+						printf ("%-*s ",max_viewed,tbviewed[f.viewed]->get());
+					}
+					printf ("%c%-3s   %s   %s   %*s/%-*s   %*u   %-*s  %s\n"
 						,tbtype[f.type],tbftype[f.file_type]
 						,normalize_date(f.eventdate),normalize_date(f.modified)
 						,max_owner,owner.c_str()
 						,max_members+max_modes+1,member_mode.c_str(),max_size,normalize_size(f.size)
-						,max_name,f.name,f.title);
+						,max_name,name,f.title);
 				}
 			}
 		}
@@ -815,6 +824,7 @@ static int bofs_ls (CONTEXT &ctx, int argc, char *argv[])
 	glocal bool opt_history = false;
 	glocal CONTEXT *ctx = &ctx;
 	glocal const char *threshold = NULL;
+	glocal bool nostatus = false;
 	glocal.ret = <call tlmpprogram>(argc,argv);
 	<f init>
 		setproginfo ("bols",VERSION
@@ -825,6 +835,7 @@ static int bofs_ls (CONTEXT &ctx, int argc, char *argv[])
 		setarg ('h',"history","Show all versions of files and sub-directories",glocal.opt_history,false);
 		setarg ('l',"long","Long listing",glocal.opt_long,false);
 		setarg ('t',"threshold","Date threshold, only older-or-equal entries are shown/used (aaaa/mm/jj-hh:mm:ss)",glocal.threshold,false);
+		setarg (' ',"nostatus","Do not display the status of a file (new,modified)",glocal.nostatus,false);
 	</f>
 	<f main>
 		int ret = 0;
@@ -848,7 +859,7 @@ static int bofs_ls (CONTEXT &ctx, int argc, char *argv[])
 						}
 						glocal.stop = true;
 					}else{
-						bofs_printdir (glocal.opt_long,files);
+						bofs_printdir (glocal.opt_long,files,glocal.nostatus);
 						glocal.stop = files.size() < 500;
 					}
 				</f>
@@ -874,7 +885,7 @@ static int bofs_ls (CONTEXT &ctx, int argc, char *argv[])
 						}
 						glocal.stop = true;
 					}else{
-						bofs_printdir (glocal.opt_long,files);
+						bofs_printdir (glocal.opt_long,files,glocal.nostatus);
 						glocal.stop = files.size() < glocal.chunk;
 					}
 				</f>
@@ -3133,7 +3144,7 @@ static int bofs_public (CONTEXT &ctx, int argc, char *argv[])
 							bofs_error ("public_listdir",internal_error,msg);
 							glocal.ret = -1;
 						}else{
-							bofs_printdir (true,files);
+							bofs_printdir (true,files,false);
 							if (files.size() < 20) glocal.done = true;
 						}
 					</f>
@@ -3146,7 +3157,7 @@ static int bofs_public (CONTEXT &ctx, int argc, char *argv[])
 							bofs_error ("public_listdir",internal_error,msg);
 							glocal.ret = -1;
 						}else{
-							bofs_printdir (true,files);
+							bofs_printdir (true,files,false);
 							if (files.size() < 20) glocal.done = true;
 						}
 					</f>

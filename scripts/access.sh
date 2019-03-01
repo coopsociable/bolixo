@@ -4,7 +4,7 @@ inittest(){
 }
 listdir(){
 	./bofs -t -u $1 ls -l bo:/$2
-	./bofs -u admin ls -l bo:/$2 | while read a b c d e f g h
+	./bofs -u admin ls --nostatus -l bo:/$2 | while read a b c d e f g h
 	do
 		case $a in
 		D*)
@@ -31,10 +31,18 @@ elif [ "$1" = "directory" ] ;then # test: Basic directory content
 	./bofs rmdir $DIR/ppp
 	echo test | ./bofs cat --pipeto $DIR/ppp/toto
 elif [ "$1" = "projects" ] ; then # test: List all projects
+	./bofs -t -u admin ls -l bo://
 	for user in `./bofs -u admin ls bo://projects`
 	do
 		echo user $user
 		listdir $user /projects/$user
+	done
+elif [ "$1" = "msgs" ] ; then # test: List all short messages
+	./bofs -t -u admin ls -l bo://
+	for user in `./bofs -u admin ls bo://msgs`
+	do
+		echo user $user
+		listdir $user /msgs/$user
 	done
 elif [ "$1" = "userfiles" ] ; then # help: List user files
 	shift
