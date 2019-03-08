@@ -16,8 +16,12 @@ do
 		RSSD=./rssd
 		CALLTEST=./test.sh
 		CONFIG=../rssd.conf.d
-	elif [ "$1" = "updphoto" ] ; then
-		UPDPHOTO=1
+	elif [ "$1" = "updphoto" -a "$2" != "" ] ; then
+		UPDPHOTO=$2
+		shift
+	else
+		echo Invalid option $1
+		exit 1
 	fi
 	shift
 done
@@ -37,7 +41,7 @@ do
 		echo bofs -u admin misc --owner $acc -w -V 1
 		$BOFS -u admin misc --owner $acc -w -V 1
 	fi
-	if [ "$nb" = 0 -o "$UPDPHOTO" != "" ] ; then
+	if [ "$nb" = 0 -o "$UPDPHOTO" = "$acc" ] ; then
 		DIR=/var/lib/rssd/images/$acc
 		mkdir -p $DIR
 		URL=`$RSSD --config $CONFIG --printfield mini_photo_url --account $acc`
@@ -46,7 +50,8 @@ do
 			rm -fr /tmp/download
 			mkdir /tmp/download
 			(cd /tmp/download && wget -q $URL)
-			convert /tmp/download/* $DIR/mini-photo.jpg
+			rm -f $DIR/mini-photo.jpg
+			convert /tmp/download/* -background white $DIR/mini-photo.jpg
 		fi
 		URL=`$RSSD --config $CONFIG --printfield photo_url --account $acc`
 		if [ "$URL" != "" ] ;then
@@ -54,7 +59,8 @@ do
 			rm -fr /tmp/download
 			mkdir /tmp/download
 			(cd /tmp/download && wget -q $URL)
-			convert /tmp/download/* $DIR/photo.jpg
+			rm -f $DIR/photo.jpg
+			convert /tmp/download/* -background white -flatten $DIR/photo.jpg
 		fi
 		test -f $DIR/mini-photo.jpg && \
 			$BOFS -u admin cp $DIR/mini-photo.jpg bo://projects/$acc/public/mini-photo.jpg

@@ -3371,7 +3371,24 @@ static int bofs_bolixoapi (CONTEXT &ctx, int argc, char *argv[])
 {
 	glocal int ret = -1;
 	glocal CONTEXT *ctx = &ctx;
-	glocal const char *dir = NULL;
+	// Info for publish
+	glocal bool filldummy = false;
+	glocal const char *fullname = "";
+	glocal const char *address1 = "";
+	glocal const char *address2 = "";
+	glocal const char *city = "";
+	glocal const char *state = "";
+	glocal const char *country = "";
+	glocal const char *zipcode = "";
+	glocal const char *email = "";
+	glocal const char *phone = "";
+	glocal const char *fax = "";
+	glocal const char *bolixosite = "";
+	glocal const char *website = "";
+	glocal const char *interest = "";
+	glocal const char *photo = nullptr;
+	glocal const char *mini_photo = nullptr;
+
 	glocal.ret = <call tlmpprogram>(argc,argv);
 	<f init>
 		setproginfo ("bofs bolixoapi",VERSION
@@ -3394,6 +3411,23 @@ static int bofs_bolixoapi (CONTEXT &ctx, int argc, char *argv[])
 				)
 			);
 		setarg ('d',"directory-server","Server hosting the Bolixo directory",dirserver,false);
+		setgrouparg (MSG_U(O_PUBLISHDATA,"publish data"));
+		setarg (' ',"filldummy",MSG_U(O_FILLDUMMY,"Fill dummy values is all fields"),glocal.filldummy,false);
+		setarg (' ',"fullname",MSG_U(O_FULLNAME,"Full name of the user"),glocal.fullname,false);
+		setarg (' ',"address1",MSG_U(O_ADDRESS1,"First line of address"),glocal.address1,false);
+		setarg (' ',"address2",MSG_U(O_ADDRESS2,"Second line of address"),glocal.address2,false);
+		setarg (' ',"city",MSG_U(O_CITY,"City"),glocal.city,false);
+		setarg (' ',"state",MSG_U(O_STATE,"State"),glocal.state,false);
+		setarg (' ',"country",MSG_U(O_COUNTRY,"Country"),glocal.country,false);
+		setarg (' ',"zipcode",MSG_U(O_ZIPCODE,"Zip code"),glocal.zipcode,false);
+		setarg (' ',"email",MSG_U(O_EMAIL,"Email"),glocal.email,false);
+		setarg (' ',"phone",MSG_U(O_PHONE,"Phone"),glocal.phone,false);
+		setarg (' ',"fax",MSG_U(O_FAX,"Fax"),glocal.fax,false);
+		setarg (' ',"bolixosite",MSG_U(O_BOLIXOSITE,"Bolixo site"),glocal.bolixosite,false);
+		setarg (' ',"website",MSG_U(O_WEBSITE,"Web site"),glocal.website,false);
+		setarg (' ',"interest",MSG_U(O_INTEREST,"Interests"),glocal.interest,false);
+		setarg (' ',"photo",MSG_U(O_PHOTO,"Path of the large photo of the user"),glocal.photo,false);
+		setarg (' ',"mini_photo",MSG_U(O_MINIPHOTO,"Path of the small photo of the user"),glocal.mini_photo,false);
 	</f>
 	<f main>
 		glocal int ret = 0;
@@ -3458,23 +3492,41 @@ static int bofs_bolixoapi (CONTEXT &ctx, int argc, char *argv[])
 			if (bofs_bolixoapi_login (glocal.ctx->hcon,glocal.ctx->con,nodename,session)!=-1){
 				USERINFO info;
 				info.user = user;
-				info.fullname = string_f("full %s",user);
-				info.address1 = string_f("%s street 1",user);
-				info.address2 = string_f("%s street 2",user);
-				info.city = string_f("%s city",user);
-				info.state = string_f("%s state",user);
-				info.country = string_f("%s country",user);
-				info.zipcode = string_f("%s zip",user);
-				info.email = string_f("%s email",user);
-				info.phone = string_f("%s phone",user);
-				info.fax = string_f("%s fax",user);
-				info.bolixosite = string_f("%s bolixosite",user);
-				info.website = string_f("%s website",user);
-				for (unsigned i=0; i<5; i++){
-					info.interest += string_f("%s is interested in various topics such as this one<br>\n",user);
+				if (glocal.filldummy){
+					info.fullname = string_f("full %s",user);
+					info.address1 = string_f("%s street 1",user);
+					info.address2 = string_f("%s street 2",user);
+					info.city = string_f("%s city",user);
+					info.state = string_f("%s state",user);
+					info.country = string_f("%s country",user);
+					info.zipcode = string_f("%s zip",user);
+					info.email = string_f("%s email",user);
+					info.phone = string_f("%s phone",user);
+					info.fax = string_f("%s fax",user);
+					info.bolixosite = string_f("%s bolixosite",user);
+					info.website = string_f("%s website",user);
+					for (unsigned i=0; i<5; i++){
+						info.interest += string_f("%s is interested in various topics such as this one<br>\n",user);
+					}
+					bofs_loadimage (info.photo,"/tmp/photo.jpg");
+					bofs_loadimage (info.mini_photo,"/tmp/mini-photo.jpg");
+				}else{
+					info.fullname = glocal.fullname;
+					info.address1 = glocal.address1;
+					info.address2 = glocal.address2;
+					info.city = glocal.city;
+					info.state = glocal.state;
+					info.country = glocal.country;
+					info.zipcode = glocal.zipcode;
+					info.email = glocal.email;
+					info.phone = glocal.phone;
+					info.fax = glocal.fax;
+					info.bolixosite = glocal.bolixosite;
+					info.website = glocal.website;
+					info.interest = glocal.interest;
+					if (glocal.photo != nullptr) bofs_loadimage (info.photo,glocal.photo);
+					if (glocal.mini_photo != nullptr) bofs_loadimage (info.mini_photo,glocal.mini_photo);
 				}
-				bofs_loadimage (info.photo,"/tmp/photo.jpg");
-				bofs_loadimage (info.mini_photo,"/tmp/mini-photo.jpg");
 				<call bolixoapi_publish> (glocal.ctx->hcon,session,info);
 				<f ok>
 					debug_printf ("publish: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);

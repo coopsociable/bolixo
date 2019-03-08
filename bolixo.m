@@ -2,7 +2,7 @@ extern const char **_dictionary_bolixo;
 #ifndef DICTIONARY_REQUEST
 	#define DICTIONARY_REQUEST \
 	const char **_dictionary_bolixo;\
-	TRANSLATE_SYSTEM_REQ _dictionary_req_bolixo("bolixo",_dictionary_bolixo,457,15);\
+	TRANSLATE_SYSTEM_REQ _dictionary_req_bolixo("bolixo",_dictionary_bolixo,474,15);\
 	void dummy_dict_bolixo(){}
 #endif
 #ifndef MSG_U
@@ -470,3 +470,20 @@ extern const char **_dictionary_bolixo;
 #define I_DATABASE	454
 #define O_VERBOPER	455
 #define O_DOIT	456
+#define O_PUBLISHDATA	457
+#define O_FILLDUMMY	458
+#define O_FULLNAME	459
+#define O_ADDRESS1	460
+#define O_ADDRESS2	461
+#define O_CITY	462
+#define O_STATE	463
+#define O_COUNTRY	464
+#define O_ZIPCODE	465
+#define O_EMAIL	466
+#define O_PHONE	467
+#define O_FAX	468
+#define O_BOLIXOSITE	469
+#define O_WEBSITE	470
+#define O_INTEREST	471
+#define O_PHOTO	472
+#define O_MINIPHOTO	473

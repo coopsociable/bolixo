@@ -474,6 +474,47 @@ static void rssd_processxml(_F_rssd_processxml &c, const string &rss)
 	}
 }
 </mod>
+/*
+	Remove some HTML from the RSS description to make it fit better as a message
+*/
+static string rssd_formatdesc (const string &description)
+{
+	string ret;
+	ret.reserve(description.size());
+	const char *ptdesc = description.c_str();
+	bool cdata_seen = false;
+	while (*ptdesc != '\0'){
+		if (strncmp(ptdesc,"<![CDATA[",9)==0){
+			cdata_seen = true;
+			ptdesc += 9;
+		}else if (cdata_seen && strncmp(ptdesc,"]]",2)==0){
+			cdata_seen = false;
+			ptdesc += 2;
+		}else if (strncmp(ptdesc,"<!--",4)==0){
+			ptdesc += 4;
+			while (*ptdesc != '>' && *ptdesc != '\0') ptdesc++;
+			if (*ptdesc == '>') ptdesc++;
+		}else if (strncmp(ptdesc,"<span ",6)==0){
+			ptdesc += 6;
+			while (*ptdesc != '>' && *ptdesc != '\0') ptdesc++;
+			if (*ptdesc == '>') ptdesc++;
+		}else if (strncmp(ptdesc,"</span>",7)==0){
+			ptdesc += 7;
+		}else if (strncmp(ptdesc,"<strong>",8)==0){
+			ptdesc += 8;
+		}else if (strncmp(ptdesc,"</strong>",9)==0){
+			ptdesc += 9;
+		}else if (strncmp(ptdesc,"<p>",3)==0){
+			ptdesc += 3;
+			if (ret.size() > 0) ret += '\n';
+		}else if (strncmp(ptdesc,"</p>",4)==0){
+			ptdesc += 4;
+		}else{
+			ret += *ptdesc++;
+		}
+	}
+	return ret;
+}
 static const char *savexmldir = "/tmp/savexml";
 static const char *savelinkdir = "/var/lib/rssd/savelink";
 static const char *tmp_dir = "/tmp";
@@ -520,9 +561,10 @@ static int rssd_process (CONNECT_INFO &con, RSSD_CONFIG &config, PARAM_STRING na
 				<f onepage>
 					string datelink = pubdate + " " + link;
 					if (glocal.links.count(datelink) == 0){
+						string formatdesc = rssd_formatdesc(description);
 						printf ("Genere message pour link=%s\n",datelink.c_str());
 						glocal string content;
-						glocal.content = string_f("%s\n%s\n%s",title.c_str(),link.c_str(),description.c_str());
+						glocal.content = string_f("%s\n%s\n%s",title.c_str(),link.c_str(),formatdesc.c_str());
 						glocal bool success = false;
 						vector<string> empty;
 						BOB_TYPE content(glocal.content.c_str(),glocal.content.size(),false);
@@ -691,7 +733,7 @@ int main (int argc, char *argv[])
 			RSSD_CONFIG config;
 			config.read(glocal.configfile);
 			for (auto const &w:config.websites){
-				printf ("%s\n",w.account.c_str());
+				if (w.rssurl.size() > 0) printf ("%s\n",w.account.c_str());
 			}
 			ret = 0;
 		}else if (glocal.printfield != NULL){
