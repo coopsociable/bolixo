@@ -1,0 +1,107 @@
+/*
+	This file is part of Bolixo.
+
+	Bolixo is free software: you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation, either version 3 of the License, or
+	(at your option) any later version.
+
+	Bolixo is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+	GNU General Public License for more details.
+
+	You should have received a copy of the GNU General Public License
+	along with Bolixo.  If not, see <https://www.gnu.org/licenses/>.
+*/
+/*
+	This program caches files associated with URL. This is not a proxy
+	at all. It simply copies a file somewhere and remembers the URL.
+	You can retrieve the file later using the URL as the key.
+
+	It was created as a helper for the script create-rss-accounts. Many RSS
+	feeds are sharing the same photos. For some site, they have tons of RSS feeds
+	so we avoid downloading the same logo over and over.
+*/
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <tlmplib.h>
+#include <string>
+#include <map>
+
+using namespace std;
+
+<mod>
+int main (int argc, char *argv[])
+{
+	glocal int ret = -1;
+	glocal const char *dir = "/tmp/cacheurl.dir";
+	glocal const char *file = nullptr;
+	glocal const char *url = nullptr;
+	glocal bool save = false;
+	glocal bool get = false;
+	glocal.ret = <call tlmpprogram>(argc,argv);
+	<f init>
+		setproginfo ("cacheurl",VERSION,"save and retrieve file using a key");
+		setarg ('f',"file","File to save or get",glocal.file,true);
+		setarg ('u',"url","Url associated with the file",glocal.url,true);
+		setarg ('s',"save","Save the file associated with the url",glocal.save,false);
+		setarg ('g',"get","Retrieve the file associated with the url",glocal.get,false);
+	</f>
+	<f main_noarg>
+		glocal map<string,string> url2file;
+		int ret = -1;
+		if (glocal.save || glocal.get){
+			mkdir (glocal.dir,0755);
+			string mapfile = string_f("%s/map",glocal.dir);
+			<call loadfile>(mapfile,true);
+			<f missing>
+				// Ok
+			</f>
+			<f oneline>
+				vector<string> tb;
+				if (str_splitline(line,' ',tb)==2){
+					glocal.url2file[tb[0]] = tb[1];
+				}
+				return 0;
+			</f>
+			</call>
+			if (glocal.get){
+				auto m = glocal.url2file.find(glocal.url);
+				if (m != glocal.url2file.end()){
+					ret = <call copyfile>(m->second.c_str(),glocal.file);
+					<f fail>
+						tlmp_error ("Can't retrieve file %s: %s\n",src,details);
+					</f>
+					</call>
+				}
+			}else if (glocal.save){
+				string newfile = string_f("%s/%lu",glocal.dir,glocal.url2file.size());
+				glocal.url2file[glocal.url] = newfile;
+				<call copyfile>(glocal.file,newfile.c_str());
+				<f fail>
+					tlmp_error ("Can't save file %s -> %s: %s\n",src,dst,details);
+				</f>
+				</call>
+				<call savefile>(mapfile,false);
+				<f dowrite>
+					for (auto const &m:glocal.url2file){
+						fprintf (fout,"%s %s\n",m.first.c_str(),m.second.c_str());
+					}
+					return 0;
+				</f>
+				</call>
+			}
+		}else{
+			usage();
+		}
+		return ret;
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+

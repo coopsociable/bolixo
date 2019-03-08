@@ -6,7 +6,7 @@ DINSTRUMENT:=$(shell test -f ../instrument && echo -DINSTRUMENT)
 PROGS=_dict.o bod bod-client bod-control bo-writed bo-writed-control bo-sessiond bo-sessiond-control \
       bo-manager bofs ssltestsign bo-keysd bo-keysd-control bolixod bolixod-control perfsql \
       bo-mon bo-mon-control utils/eximexec utils/helpspell publishd publishd-control bo-webtest \
-      documentd documentd-control rssd rssd-control deleteitems
+      documentd documentd-control rssd rssd-control deleteitems utils/cacheurl
 #bo-log bo-log-control \
 DOCS=
 OPTIONS=$(DINSTRUMENT) -funsigned-char -O2 -Wall -g -DVERSION=\"$(PACKAGE_REV)\" -I/usr/include/tlmp -I/usr/include/trlitool
@@ -104,6 +104,9 @@ utils/eximexec: utils/eximexec.cc
 
 utils/helpspell: utils/helpspell.tlcc
 	cctlcc -Wall utils/helpspell.tlcc -o utils/helpspell -lstdc++
+
+utils/cacheurl: utils/cacheurl.tlcc
+	cctlcc $(OPTIONS) utils/cacheurl.tlcc -o utils/cacheurl -lstdc++
 
 proto/publishd_control.protoh: proto/publishd_control.proto
 	build-protocol --arg "int no" --arg "HANDLE_INFO *c" --name publishd_control \
@@ -308,6 +311,7 @@ install: msg.eng msg.fr
 	install -m755 utils/logexim $(RPM_BUILD_ROOT)/usr/sbin/logexim
 	install -m755 utils/eximrm $(RPM_BUILD_ROOT)/usr/sbin/eximrm
 	install -m755 utils/eximexec $(RPM_BUILD_ROOT)/usr/lib/eximexec
+	install -m755 utils/cacheurl $(RPM_BUILD_ROOT)/usr/lib/cacheurl
 	install -m755 utils/summary $(RPM_BUILD_ROOT)/usr/sbin/summary
 	install -m755 utils/nbusers $(RPM_BUILD_ROOT)/usr/sbin/nbusers
 	install -m755 utils/pendingusers $(RPM_BUILD_ROOT)/usr/sbin/pendingusers

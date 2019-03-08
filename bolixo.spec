@@ -68,6 +68,7 @@ make install
 /usr/sbin/deleteitems
 /usr/sbin/create-rss-accounts
 /usr/lib/eximexec
+/usr/lib/cacheurl
 /usr/bin/bofs
 /usr/lib/tlmp/help.eng/bolixo.eng
 /usr/lib/tlmp/help.fr/bolixo.fr

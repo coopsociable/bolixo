@@ -7,7 +7,9 @@ BOFS=bofs
 RSSD=rssd
 CALLTEST="bo calltest"
 CONFIG=/etc/bolixo/rssd.conf.d
+. $HOME/bolixo.conf
 UPDPHOTO=
+PUBLISH=
 while [ $# != 0 ]
 do
 	if [ "$1" = "debug" ] ; then
@@ -19,12 +21,16 @@ do
 	elif [ "$1" = "updphoto" -a "$2" != "" ] ; then
 		UPDPHOTO=$2
 		shift
+	elif [ "$1" = "publish" -a "$2" != "" ] ; then
+		PUBLISH=$2
+		shift
 	else
 		echo Invalid option $1
 		exit 1
 	fi
 	shift
 done
+rm -fr /tmp/cacheurl.dir
 $BO mailctrl 0 keep
 $RSSD --config $CONFIG --printaccounts | while read acc
 do
@@ -41,7 +47,11 @@ do
 		echo bofs -u admin misc --owner $acc -w -V 1
 		$BOFS -u admin misc --owner $acc -w -V 1
 	fi
-	if [ "$nb" = 0 -o "$UPDPHOTO" = "$acc" ] ; then
+	# Get photos and upload to bolixo
+	if [ "$nb" = 0 -o "$UPDPHOTO" = "$acc" -o "$UPDPHOTO" = all ] ; then
+		if [ "$UPDPHOTO" = all ] ; then
+			echo Update photo for account $acc
+		fi
 		DIR=/var/lib/rssd/images/$acc
 		mkdir -p $DIR
 		URL=`$RSSD --config $CONFIG --printfield mini_photo_url --account $acc`
@@ -49,9 +59,13 @@ do
 			echo Retrieve mini-photo for account $acc
 			rm -fr /tmp/download
 			mkdir /tmp/download
-			(cd /tmp/download && wget -q $URL)
 			rm -f $DIR/mini-photo.jpg
-			convert /tmp/download/* -background white $DIR/mini-photo.jpg
+			if ! /usr/lib/cacheurl --get --url $URL --file /tmp/download/`basename $URL`
+			then
+				(cd /tmp/download && wget -q $URL)
+				/usr/lib/cacheurl --save --url $URL --file /tmp/download/*
+			fi
+			convert /tmp/download/* -background white -resize 40x $DIR/mini-photo.jpg
 		fi
 		URL=`$RSSD --config $CONFIG --printfield photo_url --account $acc`
 		if [ "$URL" != "" ] ;then
@@ -60,12 +74,40 @@ do
 			mkdir /tmp/download
 			(cd /tmp/download && wget -q $URL)
 			rm -f $DIR/photo.jpg
-			convert /tmp/download/* -background white -flatten $DIR/photo.jpg
+			convert /tmp/download/* -background white -flatten -resize 100x $DIR/photo.jpg
 		fi
 		test -f $DIR/mini-photo.jpg && \
 			$BOFS -u admin cp $DIR/mini-photo.jpg bo://projects/$acc/public/mini-photo.jpg
 		test -f $DIR/photo.jpg && \
 			$BOFS -u admin cp $DIR/photo.jpg bo://projects/$acc/public/photo.jpg
+	fi
+	# Publish to the directory bolixo.org
+	if [ "$nb" = 0 -o "$PUBLISH" = "$acc" -o "$PUBLISH" = all ] ; then
+		if [ "$PUBLISH" = all ] ; then
+			echo Publish account $acc
+		fi
+		DIR=/var/lib/rssd/images/$acc
+		CITY=`rssd --printfield city --account $acc`
+		STATE=`rssd --printfield state --account $acc`
+		COUNTRY=`rssd --printfield country --account $acc`
+		WEBSITE=`rssd --printfield siteurl --account $acc`
+		LANG=`rssd --printfield lang --account $acc`
+		if [ "$LANG" = "fr" ] ; then
+			INTEREST="Compte RSS créé par l'équipe Bolixo"
+		else
+			INTEREST="RSS account created by the Bolixo team"
+		fi
+		$BOFS bolixoapi \
+			--city		"$CITY" \
+			--state		"$STATE" \
+			--country	"$COUNTRY" \
+			--bolixosite	"$THISNODE/public/$acc" \
+			--website	"$WEBSITE" \
+			--interest	"$INTEREST" \
+			--photo		$DIR/photo.jpg \
+			--mini_photo	$DIR/mini-photo.jpg \
+			publish $THISNODE $acc
+
 	fi
 done
 $BO mailctrl 1 keep
