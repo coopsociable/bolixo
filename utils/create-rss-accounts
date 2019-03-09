@@ -72,8 +72,12 @@ do
 			echo Retrieve photo for account $acc
 			rm -fr /tmp/download
 			mkdir /tmp/download
-			(cd /tmp/download && wget -q $URL)
 			rm -f $DIR/photo.jpg
+			if ! /usr/lib/cacheurl --get --url $URL --file /tmp/download/`basename $URL`
+			then
+				(cd /tmp/download && wget -q $URL)
+				/usr/lib/cacheurl --save --url $URL --file /tmp/download/*
+			fi
 			convert /tmp/download/* -background white -flatten -resize 100x $DIR/photo.jpg
 		fi
 		test -f $DIR/mini-photo.jpg && \

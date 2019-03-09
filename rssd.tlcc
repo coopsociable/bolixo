@@ -391,22 +391,25 @@ static int rssd_getrss(PARAM_STRING url, string &rss)
 	<f process>
 		int ret = 0;
 		const char *line = (const char *)buf;
-		const char *endbuf = line+len;
-		const char *pt = line;
-		while (pt < endbuf && *pt != '\n') pt++;
-		//debug_printf (D_GETRSS,"process len=%u %lu %d\n",len,pt-line,pt<endbuf);
-		if (pt < endbuf){
-			ret = (pt-line)+1;
-			string tmp = string(line,pt-line);
-			debug_printf (D_GETRSS,"line[%lu]=%s\n",tmp.size(),tmp.c_str());
-			if (tmp == "\r" && !glocal.header_seen){
-				glocal.header_seen = true;
-			}else if (glocal.header_seen){
-				(*glocal.rss) += tmp + "\n";
-				line = tmp.c_str();
-				if (strcasecmp(line,"</rss>")==0){
-					glocal.ret = 0;
-					end = true;
+		debug_printf (D_GETRSS,"header_seen=%d process len=%u\n",glocal.header_seen,len);
+		if (glocal.header_seen){
+			(*glocal.rss) += string(line,len);
+			//if (strcasecmp(line,"</rss>")==0){
+			//		glocal.ret = 0;
+			//		end = true;
+			ret = len;
+		}else{
+			// We extract one line of the header
+			const char *endbuf = line+len;
+			const char *pt = line;
+			while (pt < endbuf && *pt != '\n') pt++;
+			debug_printf (D_GETRSS,"header_seen=%d process len=%u %lu %d\n",glocal.header_seen,len,pt-line,pt<endbuf);
+			if (pt < endbuf){
+				ret = (pt-line)+1;
+				string tmp = string(line,pt-line);
+				debug_printf (D_GETRSS,"line[%lu]=%s\n",tmp.size(),tmp.c_str());
+				if (tmp == "\r" && !glocal.header_seen){
+					glocal.header_seen = true;
 				}
 			}
 		}
