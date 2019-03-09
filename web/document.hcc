@@ -25,6 +25,46 @@ bool document_button_display_only = false;
 
 static void jump2app (int step, int tab, const char *webtab_add)
 {
+	static bool is_init = false;
+	if (!is_init && tlmpweb_get_output_state()){
+		is_init = true;
+		{
+			DIV a("popup"); a.print();
+			DIV d("popup-content","popup"); d.print();
+			DIV dd; dd.dispflex().flowrow().print();
+			DIV left; left.flexfixe().margins(10,10).vmargins(5,0).print();
+			htmlprintf ("<center>%s</center>\n<p>\n",MSG_U(I_NOTE,"Note"));
+			htmlprintf ("%s<p>\n",MSG_U(I_ONLYWHENLOGGED,"Only available when logged"));
+			htmlout ("<p>\n");
+			left.end();
+			DIV right; right.print();
+			htmlout (
+				"<svg width=20 height=20>\n"
+				"<a href='#' onclick=unshow() onmouseover=changefill('svg1','#D0D0D0') onmouseout=changefill('svg1','#F1F1F1')>\n"
+				"<rect id=svg1 x=2 y=2 rx=2 ry=2 width=18 height=18 fill=#f1f1f1 />\n"
+				"<path stroke=black stroke-width=1 d='M7,7 l8,8 M7,15 l8,-8'/>\n"
+				"</a>\n"
+				"</svg>\n");
+		}
+		htmlout ("<script>\n"
+			"function show(event){\n"
+			"	var pop = document.getElementById('popup');\n"
+			"	if (pop != null){\n"
+			"		pop.style.left = event.clientX;\n"
+			"		pop.style.top = event.clientY;\n"
+			"		pop.classList.toggle('show');\n"
+			"	}\n"
+			"}\n"
+
+			"function unshow(){\n"
+			"	var pop = document.getElementById('popup');\n"
+			"	console.log ('pop='+pop);\n"
+			"	pop.classList.toggle('show');\n"
+			"}\n"
+
+			"</script>\n");
+	}
+
 	if (tab != 0){
 		tab = tab*2-1;	// Trick because webtab used even tab number to hit the X
 				// and odd to select the TAB.
@@ -44,7 +84,7 @@ static void jump2app (int step, int tab, const char *webtab_add)
 		htmlprintf ("<a href=\"#\" onclick=formsubmit(\"/index.hc?webstep=%d&webtab=%d&webtab_add=2:helpmain~%s%s%s\")"
 			,step,tab,MSG_R(M_DOCUM),comma,webtab_add);
 	}else{
-		htmlout ("<a href=\"#\"");
+		htmlout ("<a href=\"#\" onclick=show(event);");
 	}
 	htmlprintf (" onmouseover=changefill('docrect%u','#D0D0D0') onmouseout=changefill('docrect%u','none')>\n",rectno,rectno);
 	unsigned height = tlmpweb_fontsize()*2;
@@ -140,6 +180,11 @@ void bolixo_doc (DOCUMENT_POINTER &docpointer, DOC_ID &jump, const char *usernam
 			/- jump2app (step_doc,0);
 			<p>
 			It allows you to jump at the right place in the application, while this document follows you.
+			/- if (document_button_display_only){
+				<br>(You are currently not logged, so the buttons have no effect)
+			/- }else{
+				<br>(This one has no effect)
+			/- }
 			<p>
 			/- if (!glocal.unknown_user){
 			The links presented in this document are generally directly usable. They are formatted using
