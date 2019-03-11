@@ -759,47 +759,48 @@ int main (int argc, char *argv[])
 				</f>
 				<f pub_search>	// filter:U{FILTER} offset:u nb:u = success:b msg users:v
 					glocal vector<USERPUBINFO> users;
-					NSQL_ENCODE enc;
-					string pattern;
-					static const char *sepand = " and ";
-					const char *sep = "";
-					if (filter.user[0] != '\0'){
-						pattern += string_f("name like '%%%%%s%%%%'",enc.enc(filter.user));
-						sep = sepand;
-					}
-					if (filter.fullname[0] != '\0'){
-						pattern += string_f("%sfullname like '%%%%%s%%%%'",sep,enc.enc(filter.fullname));
-						sep = sepand;
-					}
-					if (filter.address[0] != '\0'){
-						pattern += string_f("%saddress1 like '%%%%%s%%%%' or address2 like '%%%%%s%%%%'"
-							,sep,enc.enc(filter.address),enc.enc(filter.address));
-						sep = sepand;
-					}
-					if (filter.city[0] != '\0'){
-						pattern += string_f("%scity like '%%%%%s%%%%'",sep,enc.enc(filter.city));
-						sep = sepand;
-					}
-					if (filter.state[0] != '\0'){
-						pattern += string_f("%sstate like '%%%%%s%%%%'",sep,enc.enc(filter.state));
-						sep = sepand;
-					}
-					if (filter.country[0] != '\0'){
-						pattern += string_f("%scountry like '%%%%%s%%%%'",sep,enc.enc(filter.country));
-						sep = sepand;
-					}
-					if (filter.interest[0] != '\0'){
-						pattern += string_f("%sinterest like '%%%%%s%%%%'",sep,enc.enc(filter.interest));
-					}
-					if (pattern.size() == 0){
-						rep_pub_search (false,"No filter specified",glocal.users);
-					}else{
-						string query = string_f("select name,fullname"
+					NSQL_REQ query;
+					query.append ("select name,fullname"
 							",address1,address2,city,state,country"
 							",zipcode,email,phone,fax,bolixosite,website,interest,nodename"
 							" from users join nodes on nodes.nodeid=users.nodeid"
-							" where %s order by name,nodename limit %u,%u",pattern.c_str(),offset,nb);
-						<call sql_query>(query.c_str());
+							" where ");
+					auto start_size = query.size();
+					static const char *sepand = " and ";
+					const char *sep = "";
+					if (filter.user[0] != '\0'){
+						query.appendf ("name like '%%%s%%'",filter.user);
+						sep = sepand;
+					}
+					if (filter.fullname[0] != '\0'){
+						query.appendf("%sfullname like '%%%s%%'",sep,filter.fullname);
+						sep = sepand;
+					}
+					if (filter.address[0] != '\0'){
+						query.appendf("%s(address1 like '%%%s%%' or address2 like '%%%s%%')"
+							,sep,filter.address,filter.address);
+						sep = sepand;
+					}
+					if (filter.city[0] != '\0'){
+						query.appendf("%scity like '%%%s%%'",sep,filter.city);
+						sep = sepand;
+					}
+					if (filter.state[0] != '\0'){
+						query.appendf("%sstate like '%%%s%%'",sep,filter.state);
+						sep = sepand;
+					}
+					if (filter.country[0] != '\0'){
+						query.appendf("%scountry like '%%%s%%'",sep,filter.country);
+						sep = sepand;
+					}
+					if (filter.interest[0] != '\0'){
+						query.appendf("%sinterest like '%%%s%%'",sep,filter.interest);
+					}
+					if (query.size() == start_size){
+						rep_pub_search (false,"No filter specified",glocal.users);
+					}else{
+						query.appendf (" order by name,nodename limit %u,%u",offset,nb);
+						<call sql_query>(query);
 						<f onerow>
 							USERPUBINFO info;
 							info.user = row[0];
