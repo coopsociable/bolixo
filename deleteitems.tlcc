@@ -44,6 +44,56 @@ static void deleteitems_insert (vector<bool> &items, const char *id)
 	}
 	items[itemid] = true;
 }
+/*
+	Collect all ids in table dirs_content and files
+*/
+<mod>
+static void deleteitems_getids (vector<bool> &itemids, bool from_dirs_content, bool from_files)
+{
+	glocal vector<bool> *itemids = &itemids;
+	itemids.clear();
+	if (from_dirs_content){
+		// Retrieve all used ids
+		<call sql_query>("select itemid from dirs_content");
+		<f onerow>
+			deleteitems_insert (*glocal.itemids,row[0]);
+		</f>
+		</call>
+	}
+	if (from_files){
+		<call sql_query>("select id from files");
+		<f onerow>
+			deleteitems_insert (*glocal.itemids,row[0]);
+		</f>
+		</call>
+	}
+}
+</mod>
+static bool verbose = false;
+static bool doit = false;
+// Delete unused entries in table ids
+<mod>
+static void deleteitems_table_ids(vector<bool> &itemids)
+{
+	glocal vector<bool> *itemids = &itemids;
+	<call sql_query>("select id from ids");
+	<f onerow>
+		unsigned id = atoi(row[0]);
+		if (deleteitems_notin(*glocal.itemids,id)){
+			if (verbose){
+				printf ("Itemid %5u must go\n",id);
+			}
+			if (doit){
+				if (sql_action("delete from ids where id=%u",id)==-1){
+					tlmp_error ("Delete fail in table ids, aborting: %s\n",query_getdefaultdb()->error());
+					exit (-1);
+				}
+			}
+		}
+	</f>
+	</call>
+}
+</mod>
 <mod>
 int main (int argc, char *argv[])
 {
@@ -54,8 +104,6 @@ int main (int argc, char *argv[])
 	glocal const char *data_dbserv = "localhost";
 	glocal const char *data_dbname = "files";
 	glocal const char *data_dbuser = NULL;
-	glocal bool verbose = false;
-	glocal bool doit = false;
 
 	static const char *tb[]={"bolixo","tlmpsql",NULL};
 	glocal.ret = <call tlmpprogram>(argc,argv,tb);
@@ -65,19 +113,19 @@ int main (int argc, char *argv[])
 			,"Delete items in the bolixo database."));
 		setarg ('o',"oldmsgs",MSG_U(O_OLDMSGS,"Delete old short messages"),glocal.oldmsgs,false);
 		setarg ('I',"integrity",MSG_U(O_INTEGRITY,"Perform garbage collection"),glocal.integrity,false);
-		setarg (' ',"doit",MSG_U(O_DOIT,"Perform the deletion, not just a test"),glocal.doit,false);
+		setarg (' ',"doit",MSG_U(O_DOIT,"Perform the deletion, not just a test"),doit,false);
 		setgrouparg (MSG_R(I_DATABASE));
 		setarg (' ',"data_dbserv","Database server",glocal.data_dbserv,false);
 		setarg (' ',"data_dbname","Database name",glocal.data_dbname,false);
 		setarg (' ',"data_dbuser","Database user",glocal.data_dbuser,true);
 		setarg (' ',"data_socket","Database unix socket",glocal.data_socket,false);
 		setgrouparg(MSG_R(I_MISC));
-		setarg ('v',"verbose",MSG_U(O_VERBOPER,"Verbose operation"),glocal.verbose,false);
+		setarg ('v',"verbose",MSG_U(O_VERBOPER,"Verbose operation"),verbose,false);
 		
 	</f>
 	<f main_noarg>
 		int ret = -1;
-		if (!glocal.doit) glocal.verbose = true;	// Probably a test
+		if (!doit) verbose = true;	// Probably a test
 		const char *passwd = getenv("DELETEITEMS_PWD");
 		if (passwd == NULL){
 			tlmp_error ("Can't get database password from environment, aborting\n");
@@ -108,11 +156,11 @@ int main (int argc, char *argv[])
 				const char *modified = row[4];
 				const char *filetype = row[5] == nullptr ? "NULL" : tbftype[atoi(row[5])];
 				if (deleteitems_notin(glocal.userids,ownerid)){
-					if (glocal.verbose){
+					if (verbose){
 						printf ("directory %5u item %5u ownerid %5u name %-30s modified %s filetype=%s must go\n"
 							,dirid,itemid,ownerid,name,modified,filetype);
 					}
-					if (glocal.doit){
+					if (doit){
 						if (sql_action("delete from dirs_content where dirid=%u and itemid=%u and modified='%s'"
 							,dirid,itemid,modified)==-1){
 							tlmp_error ("Delete fail in table dirs_content, aborting: %s\n",query_getdefaultdb()->error());
@@ -132,14 +180,14 @@ int main (int argc, char *argv[])
 					const char *modified = row[2];
 					const char *filetype = tbftype[atoi(row[3])];
 					bool content_is_null = atoi(row[4]);
-					if (glocal.verbose){
+					if (verbose){
 						printf ("file %5u ownerid %5u modified %s filetype=%s content_is_null %d must go\n"
 							,fileid,ownerid,modified,filetype,content_is_null);
 						if (content_is_null){
 							printf ("Content file %u-%s must go\n",fileid,modified);
 						}
 					}
-					if (glocal.doit){
+					if (doit){
 						if (sql_action("delete from files where id=%u and modified='%s'"
 							,fileid,modified)==-1){
 							tlmp_error ("Delete fail in table files, aborting: %s\n",query_getdefaultdb()->error());
@@ -158,46 +206,85 @@ int main (int argc, char *argv[])
 				}
 			</f>
 			</call>
-			// Delete orphan files entries (no directory entry reference them)
-			// ... not done ...
+			
 
-			// Retrieve all used ids
-			<call sql_query>("select itemid from dirs_content");
-			<f onerow>
-				deleteitems_insert (glocal.itemids,row[0]);
-			</f>
-			</call>
-			<call sql_query>("select id from files");
-			<f onerow>
-				deleteitems_insert (glocal.itemids,row[0]);
-			</f>
-			</call>
-			// Delete unused entries in table ids
-			<call sql_query>("select id from ids");
+			deleteitems_getids(glocal.itemids,true,true);
+			deleteitems_table_ids(glocal.itemids);
+			// Delete dirs_content entries where dirid has no entry in ids
+			// This case happen when we delete an itemid of dirs_content pointing to a deleted userid
+			// dirid=parent_dir,itemid=dir1
+			// We end up with many lines like this
+			// dirid=dir1, ... where dir1 has no entry in ids
+			<call sql_query>("select dirid from dirs_content where dirid != 0");
 			<f onerow>
 				unsigned id = atoi(row[0]);
 				if (deleteitems_notin(glocal.itemids,id)){
-					if (glocal.verbose){
-						printf ("Itemid %5u must go\n",id);
+					if (verbose){
+						printf ("Dirid %5u must go\n",id);
 					}
-					if (glocal.doit){
-						if (sql_action("delete from ids where id=%u",id)==-1){
-							tlmp_error ("Delete fail in table ids, aborting: %s\n",query_getdefaultdb()->error());
+					if (doit){
+						if (sql_action("delete from dirs_content where dirid=%u",id)==-1){
+							tlmp_error ("Delete fail in table dirs_content, aborting: %s\n",query_getdefaultdb()->error());
 							exit (-1);
 						}
 					}
 				}
 			</f>
 			</call>
+
+			// Delete orphan files entries (no directory entry reference them)
+			/*
+				*** There is a flaw here. If a file is has multiple versions and only one version
+				and not all versions are referenced, the following code won't do anything. It will
+				keep all versions. This happens becauses we only check if the itemid is referenced,
+				not the combination itemid,modified.
+			*/
+			// First, Retrieve (again) all used referenced itemids
+			deleteitems_getids(glocal.itemids,true,false);
+			glocal bool deleted_orphan = false;
+			<call sql_query>("select id,modified,content is null from files");
+			<f onerow>
+				unsigned fileid = atoi(row[0]);
+				if (deleteitems_notin(glocal.itemids,fileid)){
+					if (verbose){
+						printf ("Orphan file %5u must go\n",fileid);
+					}
+					if (doit){
+						glocal.deleted_orphan = true;
+						if (sql_action("delete from files where id=%u",fileid)==-1){
+							tlmp_error ("Delete fail in table files, aborting: %s\n",query_getdefaultdb()->error());
+							exit (-1);
+						}
+						bool content_is_null = atoi(row[2]);
+						if (content_is_null){
+							const char *modified = row[1];
+							// We must delete the file content in /var/lib/bolixo
+							string path = string_f("/var/lib/bolixo/%u-%s",fileid,modified);
+							for (auto &c:path) if (c == ' ') c='-';
+							if (unlink(path.c_str())==-1){
+								tlmp_error ("Can't delete content file %s (%s)\n",path.c_str(),strerror(errno));
+								exit (-1);
+							}
+						}
+					}
+				}
+			</f>
+			</call>
+			if (glocal.deleted_orphan){
+				// Another cleanup pass
+				deleteitems_getids(glocal.itemids,true,true);
+				deleteitems_table_ids(glocal.itemids);
+			}
+
 			// Delete all files in /var/lib/bolixo connected to unused itemid
 			<call walkfs>("/var/lib/bolixo");
 			<f onefile>
 				unsigned id = atoi(basename);
 				if (deleteitems_notin(glocal.itemids,id)){
-					if (glocal.verbose){
+					if (verbose){
 						printf ("Content file %s must go\n",basename);
 					}
-					if (glocal.doit){
+					if (doit){
 						if (unlink(path)==-1){
 							tlmp_error ("Can't delete content file %s (%s)\n",path,strerror(errno));
 							exit (-1);
@@ -235,10 +322,10 @@ int main (int argc, char *argv[])
 					if (deleteitems_notin(glocal.userids,id)){
 						if (glocal.collect != nullptr) glocal.collect->insert(atoi(row[1]));
  						if (glocal.done.insert(id).second){
-							if (glocal.verbose){
+							if (verbose){
 								printf ("Table %s: %s %5u must go\n",glocal.table,glocal.field,id);
 							}
-							if (glocal.doit){
+							if (doit){
 								if (sql_action("delete from %s where %s=%u",glocal.table,glocal.field,id)==-1){
 									tlmp_error ("Delete fail in table %s, aborting: %s\n"
 										,glocal.table,query_getdefaultdb()->error());
@@ -255,10 +342,10 @@ int main (int argc, char *argv[])
 			for (auto const &table:tables){
 				if (table.collect != nullptr){
 					for (auto &u:*table.collect){
-						if (glocal.verbose){
+						if (verbose){
 							printf ("delete %s %u\n",table.table,u);
 						}
-						if (glocal.doit){
+						if (doit){
 							if (sql_action("delete from %s where id=%u",table.table,u)==-1){
 								tlmp_error ("Delete fail in table %s, aborting: %s\n"
 									,table.table,query_getdefaultdb()->error());

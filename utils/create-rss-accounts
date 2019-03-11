@@ -10,6 +10,7 @@ CONFIG=/etc/bolixo/rssd.conf.d
 . $HOME/bolixo.conf
 UPDPHOTO=
 PUBLISH=
+ACCOUNT=
 while [ $# != 0 ]
 do
 	if [ "$1" = "debug" ] ; then
@@ -24,6 +25,14 @@ do
 	elif [ "$1" = "publish" -a "$2" != "" ] ; then
 		PUBLISH=$2
 		shift
+	elif [ "$1" = "account" -a "$2" != "" ] ; then
+		ACCOUNT=$2
+		shift
+	elif [ "$1" = "help" ] ; then
+		echo create-rss-account [ account one-account ]
+		echo create-rss-account [ updphoto one-account ]
+		echo create-rss-account [ publish one-account ]
+		exit 1
 	else
 		echo Invalid option $1
 		exit 1
@@ -34,6 +43,9 @@ rm -fr /tmp/cacheurl.dir
 $BO mailctrl 0 keep
 $RSSD --config $CONFIG --printaccounts | while read acc
 do
+	if [ "$ACCOUNT" != "" -a "$ACCOUNT" != "$acc" ] ; then
+		continue
+	fi
 	nb=`$BO files --silent <<-EOF
 		select count(*) from id2name where name='$acc';
 	EOF
@@ -80,10 +92,13 @@ do
 			fi
 			convert /tmp/download/* -background white -flatten -resize 100x $DIR/photo.jpg
 		fi
+		# RSS account can't log since they are disabled
+		SESSION=`bo calltest bo-writed-control login $acc`
 		test -f $DIR/mini-photo.jpg && \
-			$BOFS -u admin cp $DIR/mini-photo.jpg bo://projects/$acc/public/mini-photo.jpg
+			$BOFS --session $SESSION cp $DIR/mini-photo.jpg bo://projects/$acc/public/mini-photo.jpg
 		test -f $DIR/photo.jpg && \
-			$BOFS -u admin cp $DIR/photo.jpg bo://projects/$acc/public/photo.jpg
+			$BOFS --session $SESSION cp $DIR/photo.jpg bo://projects/$acc/public/photo.jpg
+		$BOFS --logout --session $SESSION
 	fi
 	# Publish to the directory bolixo.org
 	if [ "$nb" = 0 -o "$PUBLISH" = "$acc" -o "$PUBLISH" = all ] ; then
