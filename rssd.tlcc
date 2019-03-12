@@ -214,6 +214,11 @@ static bool rssd_compare (const char *line, const CONST_STR &word, string &value
 	return ret;
 }
 
+static int rssd_ncmp (const char *line, const CONST_STR &word)
+{
+	return strncmp(line,word.pt,word.len);
+}
+
 static void copyif (string &dst, const string &src)
 {
 	if (dst.empty()) dst = src;
@@ -454,7 +459,8 @@ static void rssd_processxml(_F_rssd_processxml &c, const string &rss)
 		<call xmlflat>(cur->xmlChildrenNode,"");
 		<f tag>
 			debug_printf (D_XML,"parent=%s name=%s path=%s\n",parent,name,path);
-			if (strncmp(path,"/item/",6)==0){
+			if (rssd_ncmp(path,CONST_STR("/item/"))==0
+				|| rssd_ncmp(path,CONST_STR("/channel/item/"))==0){
 				const char *val = (const char*)xmlNodeGetContent(node);
 				if (strcmp(name,"title")==0){
 					glocal.title = val;
@@ -499,30 +505,30 @@ static string rssd_formatdesc (const string &description)
 	const char *ptdesc = description.c_str();
 	bool cdata_seen = false;
 	while (*ptdesc != '\0'){
-		if (strncmp(ptdesc,"<![CDATA[",9)==0){
+		if (rssd_ncmp(ptdesc,CONST_STR("<![CDATA["))==0){
 			cdata_seen = true;
 			ptdesc += 9;
-		}else if (cdata_seen && strncmp(ptdesc,"]]",2)==0){
+		}else if (cdata_seen && rssd_ncmp(ptdesc,CONST_STR("]]"))==0){
 			cdata_seen = false;
 			ptdesc += 2;
-		}else if (strncmp(ptdesc,"<!--",4)==0){
+		}else if (rssd_ncmp(ptdesc,CONST_STR("<!--"))==0){
 			ptdesc += 4;
 			while (*ptdesc != '>' && *ptdesc != '\0') ptdesc++;
 			if (*ptdesc == '>') ptdesc++;
-		}else if (strncmp(ptdesc,"<span ",6)==0){
+		}else if (rssd_ncmp(ptdesc,CONST_STR("<span "))==0){
 			ptdesc += 6;
 			while (*ptdesc != '>' && *ptdesc != '\0') ptdesc++;
 			if (*ptdesc == '>') ptdesc++;
-		}else if (strncmp(ptdesc,"</span>",7)==0){
+		}else if (rssd_ncmp(ptdesc,CONST_STR("</span>"))==0){
 			ptdesc += 7;
-		}else if (strncmp(ptdesc,"<strong>",8)==0){
+		}else if (rssd_ncmp(ptdesc,CONST_STR("<strong>"))==0){
 			ptdesc += 8;
-		}else if (strncmp(ptdesc,"</strong>",9)==0){
+		}else if (rssd_ncmp(ptdesc,CONST_STR("</strong>"))==0){
 			ptdesc += 9;
-		}else if (strncmp(ptdesc,"<p>",3)==0){
+		}else if (rssd_ncmp(ptdesc,CONST_STR("<p>"))==0){
 			ptdesc += 3;
 			if (ret.size() > 0) ret += '\n';
-		}else if (strncmp(ptdesc,"</p>",4)==0){
+		}else if (rssd_ncmp(ptdesc,CONST_STR("</p>"))==0){
 			ptdesc += 4;
 		}else{
 			ret += *ptdesc++;
@@ -705,7 +711,7 @@ int main (int argc, char *argv[])
 		}else if (glocal.testmode){
 			for (int i=0; i<argc; i++){
 				const char *arg = argv[i];
-				if (strncmp(arg,"http://",7)==0 || strncmp(arg,"https://",8)==0){
+				if (rssd_ncmp(arg,CONST_STR("http://"))==0 || rssd_ncmp(arg,CONST_STR("https://"))==0){
 					string rss;
 					ret = rssd_getrss (arg,rss);
 					printf ("%s\n",rss.c_str());
@@ -719,8 +725,16 @@ int main (int argc, char *argv[])
 					</call>
 					<call rssd_processxml> (glocal.rss);
 					<f onepage>
+						const char *ptdesc = description.c_str();
+						const char *pt = strchr(ptdesc,'\n');
+						string oneline;
+						if (pt == NULL){
+							oneline = description;
+						}else{
+							oneline = string(ptdesc,pt-ptdesc);
+						}
 						printf ("title=%s\nlink=%s\npubdate=%s\nguid=%s\ndescription=%s\ncontent=%s\n"
-						,title.c_str(),link.c_str(),pubdate.c_str(),guid.c_str(),description.c_str(),content.c_str());
+						,title.c_str(),link.c_str(),pubdate.c_str(),guid.c_str(),oneline.c_str(),content.c_str());
 					</f>
 					</call>
 				}
