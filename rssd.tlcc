@@ -456,7 +456,8 @@ static void rssd_processxml(_F_rssd_processxml &c, const string &rss)
 			const char *val = (const char*)xmlNodeGetContent(node);
 			if (strcmp(name,"title")==0){
 				glocal.title = val;
-			}else if (strcmp(name,"link")==0){
+			}else if (strcmp(name,"link")==0 && node->ns == nullptr){
+				//tlmp_error ("link=%s ns=%p %s\n",path,node->ns,val);
 				glocal.link = val;
 			}else if (strcmp(name,"pubDate")==0){
 				glocal.pubdate = val;
@@ -471,6 +472,12 @@ static void rssd_processxml(_F_rssd_processxml &c, const string &rss)
 		<f end>
 			if (strcmp(name,"item")==0){
 				glocal.c->onepage(glocal.title,glocal.link,glocal.pubdate,glocal.guid,glocal.description,glocal.content);
+				glocal.title.clear();
+				glocal.link.clear();
+				glocal.pubdate.clear();
+				glocal.guid.clear();
+				glocal.description.clear();
+				glocal.content.clear();
 			}
 		</f>
 		</call>
@@ -563,6 +570,7 @@ static int rssd_process (CONNECT_INFO &con, RSSD_CONFIG &config, PARAM_STRING na
 				<call rssd_processxml>(glocal.rss);
 				<f onepage>
 					string datelink = pubdate + " " + link;
+					strip_end (datelink);
 					if (glocal.links.count(datelink) == 0){
 						string formatdesc = rssd_formatdesc(description);
 						printf ("Genere message pour link=%s\n",datelink.c_str());
