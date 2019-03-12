@@ -203,20 +203,19 @@ struct CONST_STR{
 		:pt(s),len(length(s)){
 	}
 };
-static bool rssd_compare (const char *line, const CONST_STR &word, string &value)
+static bool rssd_compare (PARAM_STRING line, const CONST_STR &word, string &value)
 {
 	bool ret = false;
-	if (strncmp(line,word.pt,word.len)==0){
+	if (strncmp(line.ptr,word.pt,word.len)==0){
 		ret = true;
-		value = str_skip(line+word.len);
+		value = str_skip(line.ptr+word.len);
 		strip_end (value);
 	}
 	return ret;
 }
-
-static int rssd_ncmp (const char *line, const CONST_STR &word)
+static int rssd_ncmp (PARAM_STRING line, const CONST_STR &word)
 {
-	return strncmp(line,word.pt,word.len);
+	return strncmp(line.ptr,word.pt,word.len);
 }
 
 static void copyif (string &dst, const string &src)
@@ -371,57 +370,71 @@ static int rssd_parseurl (PARAM_STRING purl, string &baseurl, string &hostname, 
 static int rssd_getrss(PARAM_STRING url, string &rss)
 {
 	glocal string *rss = &rss;
-	glocal unsigned received = 0;
-	glocal bool header_seen = false;
 	glocal int ret = -1;
-	glocal CONNECT_HTTP_INFO con;
-	string baseurl,hostname,file;
-	if (rssd_parseurl(url,baseurl,hostname,file)==-1) return -1;
-	glocal.con.init (baseurl);
-	debug_printf (D_GETRSS,"host=%s\n",glocal.con.host.c_str());
-	string buf = string_f ("GET %s HTTP/1.0\r\nhost: %s\r\nUser-Agent: bolixo rssd\r\n",file.c_str(),hostname.c_str());
-	buf += string_f ("Content-Type: text/html; charset=UTF-8\r\n\r\n");
-	glocal.con.send (buf.c_str());
-	debug_printf (D_HEADER,"%s-----\n",buf.c_str());
-	<call streamp>();
-	<f fill>
-		int ret = glocal.con.receive (buf,size);
-		if (ret <= 0){
-			debug_printf (D_GETRSS,"fill received=%u ret=%d size=%u %d(%s)\n",glocal.received,ret,size,errno,strerror(errno));
-			ret = 0;
-		}else{
-			glocal.received += ret;
-		}
-		return ret; 
-	</f>
-	<f process>
-		int ret = 0;
-		const char *line = (const char *)buf;
-		debug_printf (D_GETRSS,"header_seen=%d process len=%u\n",glocal.header_seen,len);
-		if (glocal.header_seen){
-			(*glocal.rss) += string(line,len);
-			//if (strcasecmp(line,"</rss>")==0){
-			//		glocal.ret = 0;
-			//		end = true;
-			ret = len;
-		}else{
-			// We extract one line of the header
-			const char *endbuf = line+len;
-			const char *pt = line;
-			while (pt < endbuf && *pt != '\n') pt++;
-			debug_printf (D_GETRSS,"header_seen=%d process len=%u %lu %d\n",glocal.header_seen,len,pt-line,pt<endbuf);
-			if (pt < endbuf){
-				ret = (pt-line)+1;
-				string tmp = string(line,pt-line);
-				debug_printf (D_GETRSS,"line[%lu]=%s\n",tmp.size(),tmp.c_str());
-				if (tmp == "\r" && !glocal.header_seen){
-					glocal.header_seen = true;
+	glocal string newlocation = url.ptr;
+
+	while (glocal.newlocation.size() > 0){
+		glocal bool relocated = false;
+		glocal CONNECT_HTTP_INFO con;
+		glocal unsigned received = 0;
+		glocal bool header_seen = false;
+		string baseurl,hostname,file;
+		if (rssd_parseurl(glocal.newlocation,baseurl,hostname,file)==-1) return -1;
+		glocal.newlocation.clear();
+		rss.clear();
+		glocal.con.init (baseurl);
+		debug_printf (D_GETRSS,"host=%s\n",glocal.con.host.c_str());
+		string buf = string_f ("GET %s HTTP/1.0\r\nhost: %s\r\nUser-Agent: bolixo rssd\r\n",file.c_str(),hostname.c_str());
+		buf += string_f ("Content-Type: text/html; charset=UTF-8\r\n\r\n");
+		glocal.con.send (buf.c_str());
+		debug_printf (D_HEADER,"%s-----\n",buf.c_str());
+		<call streamp>();
+		<f fill>
+			int ret = glocal.con.receive (buf,size);
+			if (ret <= 0){
+				debug_printf (D_GETRSS,"fill received=%u ret=%d size=%u %d(%s)\n",glocal.received,ret,size,errno,strerror(errno));
+				ret = 0;
+			}else{
+				glocal.received += ret;
+			}
+			return ret; 
+		</f>
+		<f process>
+			int ret = 0;
+			const char *line = (const char *)buf;
+			debug_printf (D_GETRSS,"header_seen=%d process len=%u\n",glocal.header_seen,len);
+			if (glocal.header_seen){
+				(*glocal.rss) += string(line,len);
+				//if (strcasecmp(line,"</rss>")==0){
+				//		glocal.ret = 0;
+				//		end = true;
+				ret = len;
+			}else{
+				// We extract one line of the header
+				const char *endbuf = line+len;
+				const char *pt = line;
+				while (pt < endbuf && *pt != '\n') pt++;
+				debug_printf (D_GETRSS,"header_seen=%d process len=%u %lu %d\n",glocal.header_seen,len,pt-line,pt<endbuf);
+				if (pt < endbuf){
+					ret = (pt-line)+1;
+					string tmp = string(line,pt-line);
+					debug_printf (D_GETRSS,"line[%lu]=%s\n",tmp.size(),tmp.c_str());
+					if (rssd_ncmp(tmp,CONST_STR("HTTP/"))==0 && tmp.find(" 301 ") != string::npos){
+						glocal.relocated = true;
+					}else if (glocal.relocated 
+						&& rssd_compare(tmp,CONST_STR("Location:"),glocal.newlocation)){
+						printf (MSG_U(I_RELOCATED,"relocated: %s\n"),glocal.newlocation.c_str());
+						debug_printf (D_GETRSS,"new location found: %s\n",glocal.newlocation.c_str());
+					}
+					if (tmp == "\r" && !glocal.header_seen){
+						glocal.header_seen = true;
+					}
 				}
 			}
-		}
-		return ret;
-	</f>
-	</call>
+			return ret;
+		</f>
+		</call>
+	}
 	if (rss.size() > 0 && glocal.ret == -1){
 		// Some sites produces bad XML. We patch it here
 		auto end_pos = rss.find("</rss>");
@@ -701,6 +714,7 @@ int main (int argc, char *argv[])
 			config.readsessions (glocal.sessionsfile);
 			for (int i=0; i<argc; i++){
 				string msg;
+				printf ("%s:\n",argv[i]);
 				if (rssd_process(con,config,argv[i],msg)!=-1){
 					ret = 0;
 				}else{
