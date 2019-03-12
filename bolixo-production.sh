@@ -266,6 +266,7 @@ elif [ "$1" = "restart" ] ; then # prod: restart some services (webs, internals,
 		echo All services may be restarted any time except horizon
 		echo services are:
 		echo
+		echo "    " most "(internals + webs)"
 		echo "    " internals "(restart everything except the databases, web and exim)"
 		echo "    " sqls "(restart all databases)"
 		echo "    " webs "(All four web... services)"
@@ -295,8 +296,14 @@ elif [ "$1" = "restart" ] ; then # prod: restart some services (webs, internals,
 		echo
 		$0 loadfail normal
 		echo Normal operation resumed
-	elif $0 stop-stop
-	then
+	elif [ "$1" = "most" ] ; then
+		$0 restart internals
+		echo
+		$0 restart webs
+		echo
+		$0 test-system
+	else	
+		KEYSDPASS=
 		SERVICES=
 		for serv in $*
 		do
@@ -308,6 +315,7 @@ elif [ "$1" = "restart" ] ; then # prod: restart some services (webs, internals,
 						SERVICES="$SERVICES $std"
 					fi
 				done
+				KEYSDPASS=needed
 			elif [ "$serv" = "sqls" ] ; then
 				for db in bosqlddata bosqlduser bosqldbolixo
 				do
@@ -315,57 +323,72 @@ elif [ "$1" = "restart" ] ; then # prod: restart some services (webs, internals,
 						SERVICES="$SERVICES $db"
 					fi
 				done
+			elif [ "$serv" = "keysd" ] ; then
+				KEYSDPASS=needed
 			else
 				SERVICES="$SERVICES $serv"
 			fi
 		done
+		if [ "$KEYSDPASS" != "" ] ;then
+			echo -n "keysd will be restarted, please enter its passphrase : "
+			read -s KEYSDPASS
+			echo
+		fi
 		keysd_restarted=
-		for serv in $SERVICES
-		do
-			echo "   " $serv
-			if [ "$serv" = "keysd" ] ; then
-				keysd_restarted=true
-			fi
-			if [ "$serv" = "horizon" ] ; then
-				/etc/init.d/horizon restart
-				for file in /var/lib/lxc/*/horizon-start.sh
-				do
-					$file
-				done
-			elif [ "$serv" = "web" -o "$serv" = "webssl" ] ; then
-				echo "   Can't restart web or webssl, use webs"
-			elif [ "$serv" = "bo-mon" ] ; then
-				/var/lib/lxc/bo-mon-stop.sh
-				/var/lib/lxc/bo-mon-start.sh
-				bo-mon-control autotest 0
-			elif [ "$serv" = "trli-syslog" ] ; then
-				/var/lib/lxc/trli-syslog-stop.sh
-				/var/lib/lxc/trli-syslog-start.sh
-			else
-				DIR=/var/lib/lxc/$serv
-				if [ -d "$DIR" ] ; then
-					if $DIR/$serv.stop; then
-						if ! $DIR/$serv.start; then
-						       echo $serv.start failed
+		if $0 stop-stop
+		then
+			for serv in $SERVICES
+			do
+				echo "   " $serv
+				if [ "$serv" = "keysd" ] ; then
+					keysd_restarted=true
+				fi
+				if [ "$serv" = "horizon" ] ; then
+					/etc/init.d/horizon restart
+					for file in /var/lib/lxc/*/horizon-start.sh
+					do
+						$file
+					done
+				elif [ "$serv" = "web" -o "$serv" = "webssl" ] ; then
+					echo "   Can't restart web or webssl, use webs"
+				elif [ "$serv" = "bo-mon" ] ; then
+					/var/lib/lxc/bo-mon-stop.sh
+					/var/lib/lxc/bo-mon-start.sh
+					bo-mon-control autotest 0
+				elif [ "$serv" = "trli-syslog" ] ; then
+					/var/lib/lxc/trli-syslog-stop.sh
+					/var/lib/lxc/trli-syslog-start.sh
+				else
+					DIR=/var/lib/lxc/$serv
+					if [ -d "$DIR" ] ; then
+						if $DIR/$serv.stop; then
+							if ! $DIR/$serv.start; then
+							       echo $serv.start failed
+							fi
+						else
+							echo $serv.stop failed
 						fi
 					else
-						echo $serv.stop failed
+						echo Directory $DIR does not exist
 					fi
-
+				fi
+			done
+			if [ "$keysd_restarted" != "" ] ; then
+				echo Service keysd was restarted, passphrase in place
+				if /usr/sbin/bo-keysd-control -p /var/lib/lxc/keysd/rootfs/var/run/blackhole/bo-keysd.sock setpassphrase $KEYSDPASS
+				then
+					echo Pass phrase ok
 				else
-					echo Directory $DIR does not exist
+					echo ERROR: Pass phrase wrong
+					/usr/sbin/bo-keysd-control -p /var/lib/lxc/keysd/rootfs/var/run/blackhole/bo-keysd.sock setpassphrase
 				fi
 			fi
-		done
-		if [ "$keysd_restarted" != "" ] ; then
-			echo Service keysd was restarted
-			/usr/sbin/bo-keysd-control -p /var/lib/lxc/keysd/rootfs/var/run/blackhole/bo-keysd.sock setpassphrase
+			$0 stop-start
+		else
+			echo "*** Can't stop the web"
+			echo "*** Try to restart anyway"
+			$0 stop-start
 		fi
-		$0 stop-start
-	else
-		echo "*** Can't stop the web"
-		echo "*** Try to restart anyway"
-		$0 stop-start
 	fi
 	bo-mon-control autotest 1
 elif [ "$1" = "autotest" ] ; then # prod: turn bo-mon autotest on or off (1 o 0)
