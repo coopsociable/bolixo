@@ -139,11 +139,19 @@ struct HANDLE_INFO: public ARRAY_OBJ{
 struct WEBSITE_OPTIONS{
 	bool remove_a;
 	bool remove_div;
+	bool remove_img;
 	bool remove_iframe;
 	WEBSITE_OPTIONS(){
 		remove_a = false;
 		remove_div = false;
+		remove_img = false;
 		remove_iframe = false;
+	}
+	bool empty() const {
+		return !remove_a
+			&& !remove_div
+			&& !remove_img
+			&& !remove_iframe;
 	}
 };
 
@@ -186,6 +194,7 @@ struct WEBSITE{
 		}else if (strcmp(field,"options")==0){
 			if (options.remove_a) tmp = "remove_a ";
 			if (options.remove_div) tmp += "remove_div ";
+			if (options.remove_img) tmp += "remove_img ";
 			if (options.remove_iframe) tmp += "remove_iframe ";
 			p = tmp.c_str();
 		}else{
@@ -258,6 +267,7 @@ void RSSD_CONFIG::fillempty(WEBSITE &w) const
 				copyif (w.lang,p.lang);
         			copyif (w.mini_photo_url,p.mini_photo_url);
 				copyif (w.photo_url,p.photo_url);
+				if (w.options.empty()) w.options = p.options;
 				break;
 			}
 		}
@@ -303,6 +313,8 @@ void RSSD_CONFIG::readfile (PARAM_STRING configfile)
 					glocal.website.options.remove_a = true;
 				}else if (t == "remove_div"){
 					glocal.website.options.remove_div = true;
+				}else if (t == "remove_img"){
+					glocal.website.options.remove_img = true;
 				}else if (t == "remove_iframe"){
 					glocal.website.options.remove_iframe = true;
 				}else{
@@ -452,7 +464,9 @@ static int rssd_getrss(PARAM_STRING url, string &rss)
 					ret = (pt-line)+1;
 					string tmp = string(line,pt-line);
 					debug_printf (D_GETRSS,"line[%lu]=%s\n",tmp.size(),tmp.c_str());
-					if (rssd_ncmp(tmp,CONST_STR("HTTP/"))==0 && tmp.find(" 301 ") != string::npos){
+					if (rssd_ncmp(tmp,CONST_STR("HTTP/"))==0
+						&& (tmp.find(" 301 ") != string::npos
+							|| tmp.find(" 302 ") != string::npos)){
 						glocal.relocated = true;
 					}else if (glocal.relocated 
 						&& rssd_compare(tmp,CONST_STR("Location:"),glocal.newlocation)){
@@ -577,10 +591,19 @@ static string rssd_formatdesc (const string &description, const WEBSITE_OPTIONS 
 		}else if (rssd_ncmp(ptdesc,CONST_STR("</p>"))==0){
 			ptdesc += 4;
 		}else if (rssd_ncmp(ptdesc,CONST_STR("<div "))==0 && options.remove_div){
-			ptdesc += 2;
+			ptdesc += 5;
 			const char *end = strstr(ptdesc,"</div>");
 			if (end != nullptr){
 				ptdesc = end+6;
+				if (*ptdesc == '\n') ptdesc++;
+			}else{
+				ptdesc += strlen(ptdesc);
+			}
+		}else if (rssd_ncmp(ptdesc,CONST_STR("<img "))==0 && options.remove_img){
+			ptdesc += 5;
+			const char *end = strstr(ptdesc,">");
+			if (end != nullptr){
+				ptdesc = end+1;
 				if (*ptdesc == '\n') ptdesc++;
 			}else{
 				ptdesc += strlen(ptdesc);
@@ -614,6 +637,14 @@ static string rssd_formatdesc (const string &description, const WEBSITE_OPTIONS 
 			}
 		}else{
 			ret += *ptdesc++;
+		}
+	}
+	// Remove spaces at the end and front
+	strip_end (ret);
+	for (unsigned i=0; i<ret.size(); i++){
+		if (!isspace(ret[i])){
+			if (i > 0) ret.replace (0,i,"");
+			break;
 		}
 	}
 	return ret;
@@ -853,6 +884,7 @@ int main (int argc, char *argv[])
 				printf ("\tcity:%s\n",w.city.c_str());
 				printf ("\tphotourl:%s\n",w.photo_url.c_str());
 				printf ("\tmini-photourl:%s\n",w.mini_photo_url.c_str());
+				printf ("\toptions:"); w.printfield("options");
 			}
 			ret = 0;
 		}else if (glocal.printaccounts){
