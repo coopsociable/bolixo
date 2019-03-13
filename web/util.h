@@ -96,7 +96,7 @@ void button_row(_F_button_row &c, int border);
 void button_row(_F_button_row &c);
 
 void trli_subjects (int step_statistics, int subject_selected, bool stat_selected, bool blog_selected, W_UNSIGNED &_w_tosubject);
-void util_sendfile (CONNECT_INFO &con, PARAM_STRING session, PARAM_STRING filename);
+int util_sendfile (CONNECT_INFO &con, PARAM_STRING session, PARAM_STRING filename);
 int util_sendpublicfile (CONNECT_INFO &con, PARAM_STRING filename);
 std::string util_flipspaces(PARAM_STRING s);
 
