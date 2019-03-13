@@ -16,6 +16,7 @@
 */
 #include <string.h>
 #include <time.h>
+#include <sys/stat.h>
 #include <tlmpweb.h>
 #include <tlmplib.h>
 #include <trlitool.h>
@@ -973,11 +974,32 @@ int util_sendfile (CONNECT_INFO &con, PARAM_STRING session, PARAM_STRING filenam
 	glocal int ret = -1;
 	glocal CONNECT_INFO *con = &con;
 	glocal const char *session = session.ptr;
+	glocal bool is_mini_photo = strstr(filename.ptr,"/public/mini-photo.jpg")!=nullptr;
 	<call bod_client_readfile_bob>(con,session,filename,"",false);
 	<f ok>
 		if (success){
 			glocal.ret = 0;
 			util_sendfile_common(*glocal.con,info,content,more,handle,glocal.session);
+		}else if (glocal.is_mini_photo){
+			FILE *fin = fopen ("/var/www/html/no-mini-photo.jpg","r");
+			if (fin != NULL){
+				struct stat64 st;
+				time_t mod = 0;
+				unsigned size = 0;
+				if (fstat64(fileno(fin),&st)!=-1){
+					size = st.st_size;
+					mod = st.st_mtime;
+				}
+				tlmpweb_setmodified(mod);
+				tlmpweb_doctype ("image/jpeg",size);
+				char buf[64*1024];
+				int n;
+				while ((n=fread(buf,1,sizeof(buf),fin))>0){
+					htmlwrite(buf,n);
+				}
+				fclose (fin);
+				glocal.ret = 0;
+			}
 		}
 	</f>
 	</call>

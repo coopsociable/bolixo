@@ -101,6 +101,11 @@ news-photo.jpg: admin.scad Makefile
 	convert news-photo.png news-photo.jpg
 	rm -f news-photo.png
 
+no-mini-photo.jpg: no-mini-photo.scad Makefile
+	openscad --imgsize 40,40 -ono-mini-photo.png --colorscheme=Nature --camera=0,0,400,0,0,0 no-mini-photo.scad
+	convert no-mini-photo.png no-mini-photo.jpg
+	rm -f no-mini-photo.png
+
 genbackground: genbackground.tlcc
 	cctlcc -Wall genbackground.tlcc -o genbackground -lstdc++
 
