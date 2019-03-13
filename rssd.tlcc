@@ -31,7 +31,7 @@
 #include <tlmpnet.h>
 #include <trlitool.h>
 #include <string>
-#include <set>
+#include <map>
 #include <algorithm>
 #include "xmlflat.h"
 #include "bolixo.h"
@@ -136,6 +136,16 @@ struct HANDLE_INFO: public ARRAY_OBJ{
 #define bod_client_info_write_NOTNEED
 #include "proto/bod_client.protoch"
 
+struct WEBSITE_OPTIONS{
+	bool remove_a;
+	bool remove_div;
+	bool remove_iframe;
+	WEBSITE_OPTIONS(){
+		remove_a = false;
+		remove_div = false;
+		remove_iframe = false;
+	}
+};
 
 struct WEBSITE{
 	string account;		// Bolixo account
@@ -148,11 +158,13 @@ struct WEBSITE{
 	string session;		// Pre-logged session
 	string mini_photo_url;
 	string photo_url;
+	WEBSITE_OPTIONS options;
 	void clear(){
 		*this = WEBSITE();
 	}
 	void printfield (const char *field) const{
 		const char *p = NULL;
+		string tmp;
 		if (strcmp(field,"account")==0){
 			p = account.c_str();
 		}else if (strcmp(field,"rssurl")==0){
@@ -171,6 +183,11 @@ struct WEBSITE{
 			p = photo_url.c_str();
 		}else if (strcmp(field,"mini_photo_url")==0){
 			p = mini_photo_url.c_str();
+		}else if (strcmp(field,"options")==0){
+			if (options.remove_a) tmp = "remove_a ";
+			if (options.remove_div) tmp += "remove_div ";
+			if (options.remove_iframe) tmp += "remove_iframe ";
+			p = tmp.c_str();
 		}else{
 			tlmp_error ("Unknown field name %s\n",field);
 		}
@@ -277,6 +294,22 @@ void RSSD_CONFIG::readfile (PARAM_STRING configfile)
 		}else if (rssd_compare(line,CONST_STR("mini-photourl:"),next)){
 			glocal.website.mini_photo_url = next;
 		}else if (rssd_compare(line,CONST_STR("photourl:"),next)){
+			glocal.website.photo_url = next;
+		}else if (rssd_compare(line,CONST_STR("options:"),next)){
+			vector<string> tb;
+			str_splitline(next,' ',tb);
+			for (auto const &t:tb){
+				if (t == "remove_a"){
+					glocal.website.options.remove_a = true;
+				}else if (t == "remove_div"){
+					glocal.website.options.remove_div = true;
+				}else if (t == "remove_iframe"){
+					glocal.website.options.remove_iframe = true;
+				}else{
+					tlmp_error (MSG_U(E_IVLDOPT,"Invalid option %s for website %s\n")
+						,t.c_str(),glocal.website.account.c_str());
+				}
+			}
 			glocal.website.photo_url = next;
 		}else{
 			const char *pt = str_skip(line);
@@ -511,7 +544,7 @@ static void rssd_processxml(_F_rssd_processxml &c, const string &rss)
 /*
 	Remove some HTML from the RSS description to make it fit better as a message
 */
-static string rssd_formatdesc (const string &description)
+static string rssd_formatdesc (const string &description, const WEBSITE_OPTIONS &options)
 {
 	string ret;
 	ret.reserve(description.size());
@@ -543,6 +576,42 @@ static string rssd_formatdesc (const string &description)
 			if (ret.size() > 0) ret += '\n';
 		}else if (rssd_ncmp(ptdesc,CONST_STR("</p>"))==0){
 			ptdesc += 4;
+		}else if (rssd_ncmp(ptdesc,CONST_STR("<div "))==0 && options.remove_div){
+			ptdesc += 2;
+			const char *end = strstr(ptdesc,"</div>");
+			if (end != nullptr){
+				ptdesc = end+6;
+				if (*ptdesc == '\n') ptdesc++;
+			}else{
+				ptdesc += strlen(ptdesc);
+			}
+		}else if (rssd_ncmp(ptdesc,CONST_STR("<a"))==0 && options.remove_a){
+			ptdesc += 2;
+			const char *end = strstr(ptdesc,"</a>");
+			if (end != nullptr){
+				ptdesc = end+4;
+				if (*ptdesc == '\n') ptdesc++;
+			}else{
+				ptdesc += strlen(ptdesc);
+			}
+		}else if (rssd_ncmp(ptdesc,CONST_STR("<iframe "))==0 && options.remove_iframe){
+			// Unlike remove_div and remove_a, we keep the URL in src= and discard everything else.
+			ptdesc += 2;
+			const char *src = strstr(ptdesc,"src=");
+			if (src != nullptr){
+				ptdesc = src+4;
+				if (*ptdesc == '"') ptdesc++;
+				while (*ptdesc > ' ' && *ptdesc != '"') ret += *ptdesc++;
+				if (*ptdesc == '\n') ptdesc++;
+			}
+			// Skip the rest until we find </iframe>
+			const char *end = strstr(ptdesc,"</iframe>");
+			if (end != nullptr){
+				ptdesc = end+9;
+				if (*ptdesc == '\n') ptdesc++;
+			}else{
+				ptdesc += strlen(ptdesc);
+			}
 		}else{
 			ret += *ptdesc++;
 		}
@@ -580,23 +649,30 @@ static int rssd_process (CONNECT_INFO &con, RSSD_CONFIG &config, PARAM_STRING na
 				}
 				// Load the link already process for that site
 				mkdir (savelinkdir,0755);
-				glocal set<string> links;
+				glocal map<string,unsigned> links;
+				glocal time_t now = time(NULL);
 				string fname = string_f("%s/%s.links",savelinkdir,name.ptr);
 				<call loadfile>(fname,true);
 				<f missing>
 					// Not a problem. this files is created on the fly
 				</f>
 				<f oneline>
-					glocal.links.insert(line);
+					// Older versions had the date and the link as the key, but it was not reliable.
+					// Now, we only keep the URL.
+					unsigned timestamp = atoi(line);
+					line = str_skipdig(line);
+					line = strstr(line,"http");
+					if (line != nullptr) glocal.links[line] = timestamp;
 					return 0;
 				</f>
 				</call>
 				<call rssd_processxml>(glocal.rss);
 				<f onepage>
-					string datelink = pubdate + " " + link;
+					string datelink = link;	// pubdate + " " + link;
 					strip_end (datelink);
-					if (glocal.links.count(datelink) == 0){
-						string formatdesc = rssd_formatdesc(description);
+					auto mlink = glocal.links.find(datelink);
+					if (mlink == glocal.links.end()){
+						string formatdesc = rssd_formatdesc(description,glocal.r->options);
 						printf (MSG_U(I_GENMSG,"Create a message for link %s\n"),datelink.c_str());
 						glocal string content;
 						glocal.content = string_f("%s\n%s\n%s",title.c_str(),link.c_str(),formatdesc.c_str());
@@ -610,7 +686,7 @@ static int rssd_process (CONNECT_INFO &con, RSSD_CONFIG &config, PARAM_STRING na
 							glocal.success = success;
 						</f>
 						</call>
-						if (glocal.success) glocal.links.insert(datelink);
+						if (glocal.success) glocal.links[datelink] = glocal.now;
 						string textfile = string_f("%s/rss.txt",tmp_dir);
 						<call savefile>(textfile,false);
 						<f dowrite>
@@ -618,13 +694,19 @@ static int rssd_process (CONNECT_INFO &con, RSSD_CONFIG &config, PARAM_STRING na
 							return 0;
 						</f>
 						</call>
+					}else{
+						mlink->second = glocal.now;	// Whatever is in the RSS is kept current.
 					}
 				</f>
 				</call>
 				// Save the links
 				<call savefile>(fname,false);
 				<f dowrite>
-					for (auto const &s:glocal.links) fprintf (fout,"%s\n",s.c_str());
+					// We keep old links around for 30 days
+					time_t old = time(NULL)-(30*24*60*60);
+					for (auto const &s:glocal.links){
+						if (s.second > old) fprintf (fout,"%u %s\n",s.second,s.first.c_str());
+					}
 					return 0;
 				</f>
 				</call>
