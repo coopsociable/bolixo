@@ -86,6 +86,7 @@ make install
 /var/www/html/bolixo.png
 /var/www/html/background.png
 /var/www/html/no-mini-photo.jpg
+/var/www/html/no-photo.jpg
 /var/www/html/admin.jpg
 /var/www/html/admin-photo.jpg
 /var/www/html/conditions-d-utilisation.html

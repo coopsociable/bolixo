@@ -968,6 +968,31 @@ static void util_sendfile_common(CONNECT_INFO &con, const READINFO_receive &info
 	}
 }
 </mod>	
+
+static int util_sendfile (const char *fname)
+{
+	int ret = -1;
+	FILE *fin = fopen (fname,"r");
+	if (fin != NULL){
+		struct stat64 st;
+		time_t mod = 0;
+		unsigned size = 0;
+		if (fstat64(fileno(fin),&st)!=-1){
+			size = st.st_size;
+			mod = st.st_mtime;
+		}
+		tlmpweb_setmodified(mod);
+		tlmpweb_doctype ("image/jpeg",size);
+		char buf[64*1024];
+		int n;
+		while ((n=fread(buf,1,sizeof(buf),fin))>0){
+			htmlwrite(buf,n);
+		}
+		fclose (fin);
+		ret = 0;
+	}
+	return ret;
+}
 <mod>
 int util_sendfile (CONNECT_INFO &con, PARAM_STRING session, PARAM_STRING filename)
 {
@@ -975,31 +1000,17 @@ int util_sendfile (CONNECT_INFO &con, PARAM_STRING session, PARAM_STRING filenam
 	glocal CONNECT_INFO *con = &con;
 	glocal const char *session = session.ptr;
 	glocal bool is_mini_photo = strstr(filename.ptr,"/public/mini-photo.jpg")!=nullptr;
+	glocal bool is_photo = strstr(filename.ptr,"/public/photo.jpg")!=nullptr;
 	<call bod_client_readfile_bob>(con,session,filename,"",false);
 	<f ok>
 		if (success){
 			glocal.ret = 0;
 			util_sendfile_common(*glocal.con,info,content,more,handle,glocal.session);
 		}else if (glocal.is_mini_photo){
-			FILE *fin = fopen ("/var/www/html/no-mini-photo.jpg","r");
-			if (fin != NULL){
-				struct stat64 st;
-				time_t mod = 0;
-				unsigned size = 0;
-				if (fstat64(fileno(fin),&st)!=-1){
-					size = st.st_size;
-					mod = st.st_mtime;
-				}
-				tlmpweb_setmodified(mod);
-				tlmpweb_doctype ("image/jpeg",size);
-				char buf[64*1024];
-				int n;
-				while ((n=fread(buf,1,sizeof(buf),fin))>0){
-					htmlwrite(buf,n);
-				}
-				fclose (fin);
-				glocal.ret = 0;
-			}
+			glocal.ret = util_sendfile("/var/www/html/no-mini-photo.jpg");
+		}else if (glocal.is_photo){
+			glocal.ret = util_sendfile("/var/www/html/no-photo.jpg");
+		}else{
 		}
 	</f>
 	</call>
@@ -1022,12 +1033,16 @@ int util_sendpublicfile (CONNECT_INFO &con, PARAM_STRING filename)
 	pt = strchr(pt,'/');
 	if (pt != NULL){
 		glocal const char *filename = pt;
-		glocal string username;
-		glocal.username = string(start,pt-start);
+		glocal string username = string(start,pt-start);
 		<call bod_client_public_readfile>(con,glocal.username,pt,0);
 		<f ok>
 			if (!success){
-				tlmp_warning ("Can't read public file %s for user %s: %s\n",glocal.filename,glocal.username.c_str(),msg);
+				if (strcmp(glocal.filename,"/project/photo.jpg")==0){
+					glocal.ret = util_sendfile ("/var/www/html/no-photo.jpg");
+				}else if (strcmp(glocal.filename,"/project/mini-photo.jpg")==0){
+					glocal.ret = util_sendfile ("/var/www/html/no-mini-photo.jpg");
+				}
+				if (glocal.ret != 0) tlmp_warning ("Can't read public file %s for user %s: %s\n",glocal.filename,glocal.username.c_str(),msg);
 			}else{
 				glocal.ret = 0;
 				util_sendfile_common(*glocal.con,info,content,more,handle,"public");

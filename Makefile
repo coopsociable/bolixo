@@ -288,6 +288,7 @@ install: msg.eng msg.fr
 	install -m644 web/bolixo.png $(RPM_BUILD_ROOT)/var/www/html/bolixo.png
 	install -m644 web/background.png $(RPM_BUILD_ROOT)/var/www/html/background.png
 	install -m644 web/no-mini-photo.jpg $(RPM_BUILD_ROOT)/var/www/html/no-mini-photo.jpg
+	install -m644 web/no-photo.jpg $(RPM_BUILD_ROOT)/var/www/html/no-photo.jpg
 	install -m644 web/admin.jpg $(RPM_BUILD_ROOT)/var/www/html/admin.jpg
 	install -m644 web/admin-photo.jpg $(RPM_BUILD_ROOT)/var/www/html/admin-photo.jpg
 	install -m644 web/conditions-d-utilisation.html $(RPM_BUILD_ROOT)/var/www/html/conditions-d-utilisation.html

@@ -1352,6 +1352,7 @@ elif [ "$1" = "lxc0-web" ]; then # prod:
 			-e /var/www/html/.tlmplibs \
 			-e /usr/share/fonts/dejavu/DejaVuSans.ttf \
 			-e /var/www/html/no-mini-photo.jpg \
+			-e /var/www/html/no-photo.jpg \
 			-n $w -p /usr/sbin/httpd >/var/lib/lxc/$w/$w-lxc0.sh
 			chmod +x /var/lib/lxc/$w/$w-lxc0.sh
 	done

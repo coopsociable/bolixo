@@ -106,6 +106,13 @@ no-mini-photo.jpg: no-mini-photo.scad Makefile
 	convert no-mini-photo.png no-mini-photo.jpg
 	rm -f no-mini-photo.png
 
+no-photo.jpg:
+	convert -font helvetica -size 100x100 xc:white \
+		-stroke black -fill lightgray -draw "roundrectangle 5,5 95,95 10,10" \
+		-pointsize 50 -stroke black -fill lightblue no-photo.jpg
+	#-draw "text 35,65 ?" /tmp/photo.jpg
+
+
 genbackground: genbackground.tlcc
 	cctlcc -Wall genbackground.tlcc -o genbackground -lstdc++
 
