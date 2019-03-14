@@ -289,22 +289,14 @@ void RSSD_CONFIG::readfile (PARAM_STRING configfile)
 				glocal.website.clear();
 			}
 			glocal.website.account = next;
-		}else if (rssd_compare(line,CONST_STR("rssurl:"),next)){
-			glocal.website.rssurl = next;
-		}else if (rssd_compare(line,CONST_STR("siteurl:"),next)){
-			glocal.website.siteurl = next;
-		}else if (rssd_compare(line,CONST_STR("country:"),next)){
-			glocal.website.country = next;
-		}else if (rssd_compare(line,CONST_STR("state:"),next)){
-			glocal.website.state = next;
-		}else if (rssd_compare(line,CONST_STR("city:"),next)){
-			glocal.website.city = next;
-		}else if (rssd_compare(line,CONST_STR("lang:"),next)){
-			glocal.website.lang = next;
-		}else if (rssd_compare(line,CONST_STR("mini-photourl:"),next)){
-			glocal.website.mini_photo_url = next;
-		}else if (rssd_compare(line,CONST_STR("photourl:"),next)){
-			glocal.website.photo_url = next;
+		}else if (rssd_compare(line,CONST_STR("rssurl:"),glocal.website.rssurl)){
+		}else if (rssd_compare(line,CONST_STR("siteurl:"),glocal.website.siteurl)){
+		}else if (rssd_compare(line,CONST_STR("country:"),glocal.website.country)){
+		}else if (rssd_compare(line,CONST_STR("state:"),glocal.website.state)){
+		}else if (rssd_compare(line,CONST_STR("city:"),glocal.website.city)){
+		}else if (rssd_compare(line,CONST_STR("lang:"),glocal.website.lang)){
+		}else if (rssd_compare(line,CONST_STR("mini-photourl:"),glocal.website.mini_photo_url)){
+		}else if (rssd_compare(line,CONST_STR("photourl:"),glocal.website.photo_url)){
 		}else if (rssd_compare(line,CONST_STR("options:"),next)){
 			vector<string> tb;
 			str_splitline(next,' ',tb);
@@ -322,7 +314,6 @@ void RSSD_CONFIG::readfile (PARAM_STRING configfile)
 						,t.c_str(),glocal.website.account.c_str());
 				}
 			}
-			glocal.website.photo_url = next;
 		}else{
 			const char *pt = str_skip(line);
 			if (pt[0] != '#' && pt[0] != '\0'){
@@ -891,7 +882,16 @@ int main (int argc, char *argv[])
 			RSSD_CONFIG config;
 			config.read(glocal.configfile);
 			for (auto const &w:config.websites){
-				if (w.rssurl.size() > 0) printf ("%s\n",w.account.c_str());
+				if (w.rssurl.size() > 0){
+					if (w.siteurl.empty()
+						|| w.mini_photo_url.empty()
+						|| w.photo_url.empty()
+						|| w.country.empty()){
+						tlmp_error (MSG_U(E_INCOMPLETEACC,"Incomplete RSS account %s\n"),w.account.c_str());
+					}else{
+						printf ("%s\n",w.account.c_str());
+					}
+				}
 			}
 			ret = 0;
 		}else if (glocal.printfield != NULL){

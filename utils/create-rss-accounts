@@ -82,12 +82,23 @@ do
 			rm -fr /tmp/download
 			mkdir /tmp/download
 			rm -f $DIR/mini-photo.jpg
-			if ! /usr/lib/cacheurl --get --url $URL --file /tmp/download/`basename $URL`
+			FILE=/tmp/download/`basename $URL`
+			if ! /usr/lib/cacheurl --get --url $URL --file $FILE
 			then
 				(cd /tmp/download && wget -q $URL)
-				/usr/lib/cacheurl --save --url $URL --file /tmp/download/*
+				/usr/lib/cacheurl --save --url $URL --file $FILE
 			fi
-			convert /tmp/download/* -background white -resize 40x $DIR/mini-photo.jpg
+			ls -l /tmp/download
+			case $FILE in
+			/tmp/download/*.ico)
+				echo ICO convert $FILE[3] -background white -thumbnail 40x -alpha on -flatten $DIR/mini-photo.jpg
+				convert $FILE[3] -background white -thumbnail 40x -alpha on -flatten $DIR/mini-photo.jpg
+				;;
+			*)
+				echo AUTRE convert /tmp/download/* -background white -thumbnail 40x -flatten $DIR/mini-photo.jpg
+				convert /tmp/download/* -background white -thumbnail 40x -flatten $DIR/mini-photo.jpg
+				;;
+			esac	
 		fi
 		URL=`$RSSD --config $CONFIG --printfield photo_url --account $acc`
 		if [ "$URL" != "" ] ;then
@@ -95,12 +106,13 @@ do
 			rm -fr /tmp/download
 			mkdir /tmp/download
 			rm -f $DIR/photo.jpg
-			if ! /usr/lib/cacheurl --get --url $URL --file /tmp/download/`basename $URL`
+			FILE=/tmp/download/`basename $URL`
+			if ! /usr/lib/cacheurl --get --url $URL --file $FILE
 			then
 				(cd /tmp/download && wget -q $URL)
-				/usr/lib/cacheurl --save --url $URL --file /tmp/download/*
+				/usr/lib/cacheurl --save --url $URL --file $FILE
 			fi
-			convert /tmp/download/* -background white -flatten -resize 100x $DIR/photo.jpg
+			convert $FILE -background white -flatten -resize 100x $DIR/photo.jpg
 		fi
 		# RSS account can't log since they are disabled
 		SESSION=`bo calltest bo-writed-control login $acc`
