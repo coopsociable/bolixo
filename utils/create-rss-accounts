@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/sh
 # This script creates the missing accounts for rss feeds
 # Il reads the /etc/bolixo/rssd.conf
 HOSTNAME=`hostname`
@@ -85,7 +85,11 @@ do
 			FILE=/tmp/download/`basename $URL`
 			if ! /usr/lib/cacheurl --get --url $URL --file $FILE
 			then
-				(cd /tmp/download && wget -q $URL)
+				if ! wget --directory-prefix /tmp/download --no-verbose $URL
+				then
+					echo wget failed
+					exit 1
+				fi
 				/usr/lib/cacheurl --save --url $URL --file $FILE
 			fi
 			case $FILE in
@@ -108,7 +112,11 @@ do
 			FILE=/tmp/download/`basename $URL`
 			if ! /usr/lib/cacheurl --get --url $URL --file $FILE
 			then
-				(cd /tmp/download && wget -q $URL)
+				if ! wget --directory-prefix /tmp/download --no-verbose $URL
+				then
+					echo wget failed
+					exit 1
+				fi
 				/usr/lib/cacheurl --save --url $URL --file $FILE
 			fi
 			convert $FILE -background white -flatten -resize 100x $DIR/photo.jpg

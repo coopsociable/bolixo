@@ -2,6 +2,7 @@
 #define WEBTABS_H
 
 #include <misc.h>
+#include <tuple>
 
 #define WEBTAB_MARK '*'
 
@@ -64,13 +65,7 @@ struct WEBTAB{
 		setargs(args);
 	}
 	bool operator < (const WEBTAB &n) const {
-		bool ret = false;
-		if (type < n.type){
-			ret = true;
-		}else if (type == n.type){
-			ret = tab < n.tab;
-		}
-		return ret;
+		return tie(type,tab) < tie(n.type,n.tab);
 	}
 };
 struct WEBTAB_CTRL{
