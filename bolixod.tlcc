@@ -151,12 +151,14 @@ static void bolixod_test (CONNECT_INFO &con_sess, string &msg, bool &sessiond_ok
 	msg = glocal.msg;
 }
 </mod>
+static bool nonstrict = false;
 <mod>
 static void bolixod_getpubkey (bool use_ssl, const char *hostname, const char *nodename, string &msg)
 {
 	glocal string *msg = &msg;
 	glocal const char *nodename = nodename;
 	CONNECT_HTTP_INFO con;
+	if (nonstrict) con.setnonstrictmode();
 	con.use_ssl = use_ssl;
 	const char *pt = strchr(hostname,':');
 	if (pt == NULL){
@@ -388,6 +390,7 @@ int main (int argc, char *argv[])
 		setarg (' ',"domain",MSG_U(O_DOMAIN,"Accept nodes only from this domain"),glocal.domain,false);
 		setarg (' ',"maxaccts",MSG_U(O_MAXACCOUNTSPER,"Maximum accounts per servers"),glocal.maxaccts,false);
 		setarg (' ',"devmode",MSG_U(O_DEVMODE,"Relax rule for registernode api"),glocal.devmode,false);
+		setarg (' ',"nonstrict",MSG_R(O_NONSTRICT),nonstrict,false);
 	</f>
 	<f showerror>
 		if (glocal.daemon){
@@ -452,6 +455,7 @@ int main (int argc, char *argv[])
 					tb.push_back(string_f ("maxaccts: %u",glocal.maxaccts));
 					tb.push_back(string_f ("nbrequest: %u",glocal.nbrequest));
 					tb.push_back(string_f ("devmode: %d",glocal.devmode));
+					tb.push_back(string_f("nonstrict: %d",nonstrict));
 					rep_status(tb);
 				</f>
 				<f quit>
