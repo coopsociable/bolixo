@@ -3388,6 +3388,10 @@ static int bofs_bolixoapi (CONTEXT &ctx, int argc, char *argv[])
 	glocal const char *interest = "";
 	glocal const char *photo = nullptr;
 	glocal const char *mini_photo = nullptr;
+	glocal bool publish = false;
+	glocal bool publish_photo = false;
+	glocal bool publish_mini_photo = false;
+	glocal bool publish_bolixosite = false;
 
 	glocal.ret = <call tlmpprogram>(argc,argv);
 	<f init>
@@ -3399,6 +3403,8 @@ static int bofs_bolixoapi (CONTEXT &ctx, int argc, char *argv[])
 				 "\n"
 				 "Commands are:\n"
 				 "\ttest\n"
+				 "\tinforead\n"
+				 "\tinfowrite\n"
 				 "\tsystempubkey\n"
 				 "\tsystemsign msg\n"
 				 "\tregisternode node-url\n"
@@ -3412,6 +3418,10 @@ static int bofs_bolixoapi (CONTEXT &ctx, int argc, char *argv[])
 			);
 		setarg ('d',"directory-server","Server hosting the Bolixo directory",dirserver,false);
 		setgrouparg (MSG_U(O_PUBLISHDATA,"publish data"));
+		setarg (' ',"publish",MSG_U(O_PUBLISH,"Publish to the bolixo.org directory"),glocal.publish,false);
+		setarg (' ',"publish_bosite",MSG_U(O_PUBLISH_BOSITE,"Publish the user public page"),glocal.publish_bolixosite,false);
+		setarg (' ',"publish_photo",MSG_U(O_PUBLISH_PHOTO,"Publish the photo"),glocal.publish_photo,false);
+		setarg (' ',"publish_mini_photo",MSG_U(O_PUBLISH_MINI_PHOTO,"Publish the mini photo"),glocal.publish_mini_photo,false);
 		setarg (' ',"filldummy",MSG_U(O_FILLDUMMY,"Fill dummy values is all fields"),glocal.filldummy,false);
 		setarg (' ',"fullname",MSG_U(O_FULLNAME,"Full name of the user"),glocal.fullname,false);
 		setarg (' ',"address1",MSG_U(O_ADDRESS1,"First line of address"),glocal.address1,false);
@@ -3632,21 +3642,43 @@ static int bofs_bolixoapi (CONTEXT &ctx, int argc, char *argv[])
 			}else{
 				const char *user = glocal.ctx->user.c_str();
 				USERPUBLICINFO info;
-				info.publish = true;
-				info.bosite_visible = true;
-				info.fullname = string_f ("%s Bolixo",user);
-				info.address1 = string_f ("1234 %s st.",user);
-				info.address2 = string_f ("Office 123");
-				info.city = "SoundCity";
-				info.zipcode = "123456";
-				info.state = string_f("%s state",user);
-				info.country = string_f("My country");
-				info.email = string_f("%s@%s.com",user,user);
-				info.phone = "1-123-456-1234";
-				info.fax = "1-123-456-1234";
-				info.website = string_f("https://%s.com",user);
-				for (unsigned i=0; i<5; i++){
-					info.interest += string_f("%s is interested in various topics such as this one<br>\n",user);
+				if (glocal.filldummy){
+					info.publish = true;
+					info.bosite_visible = true;
+					info.fullname = string_f("full %s",user);
+					info.address1 = string_f("%s street 1",user);
+					info.address2 = string_f("%s street 2",user);
+					info.city = string_f("%s city",user);
+					info.state = string_f("%s state",user);
+					info.country = string_f("%s country",user);
+					info.zipcode = string_f("%s zip",user);
+					info.email = string_f("%s email",user);
+					info.phone = string_f("%s phone",user);
+					info.fax = string_f("%s fax",user);
+					info.bosite_visible = true;
+					info.website = string_f("%s website",user);
+					for (unsigned i=0; i<5; i++){
+						info.interest += string_f("%s is interested in various topics such as this one<br>\n",user);
+					}
+					info.mini_photo = true;
+					info.photo = true;
+				}else{
+					info.publish = glocal.publish;
+					info.fullname = glocal.fullname;
+					info.address1 = glocal.address1;
+					info.address2 = glocal.address2;
+					info.city = glocal.city;
+					info.state = glocal.state;
+					info.country = glocal.country;
+					info.zipcode = glocal.zipcode;
+					info.email = glocal.email;
+					info.phone = glocal.phone;
+					info.fax = glocal.fax;
+					info.bosite_visible = glocal.publish_bolixosite;
+					info.website = glocal.website;
+					info.interest = glocal.interest;
+					info.photo = glocal.publish_photo;
+					info.mini_photo = glocal.publish_mini_photo;
 				}
 				<call bod_client_info_write>(glocal.ctx->con,glocal.ctx->sessionid,"",info);
 				<f ok>

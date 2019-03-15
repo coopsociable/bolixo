@@ -1305,14 +1305,18 @@ static void public_messages(_F_public_page &c, CONNECT_INFO &con, PARAM_STRING u
 	</call>
 }
 </mod>
-static void public_top_left(_F_public_page &c)
+static void public_top_left(_F_public_page &c, const char *website)
 {
 	DIV d; d.h(100).w(100).dispflex().flowrow().print();
 	DIV dd; dd.margins(0,5).print();
+	if (website[0] != '\0') htmlprintf ("<a href=%s>",website);
 	htmlprintf ("<img width=40 src=%s>\n",c.projecturl("/mini-photo.jpg","",true).c_str());
+	if (website[0] != '\0') htmlout ("</a>\n");
 	dd.end();
 	dd.print();
+	if (website[0] != '\0') htmlprintf ("<a href=%s>",website);
 	htmlprintf ("<img width=100 src=%s>\n",c.projecturl("/photo.jpg","",true).c_str());
+	if (website[0] != '\0') htmlout ("</a>\n");
 }
 static string dirserver="https://bolixo.org";
 static string nodename;
@@ -1333,28 +1337,37 @@ const char *util_getdirserver()
 {
 	return dirserver.c_str();
 }
-static void public_top(const char *user)
+static void public_top(const char *user, const char *interest)
 {
 	htmlprintf ("<table border=0 width=100%%><tr><td align=center><div style=font-size:%sem>%s@%s</div>\n"
 		,tlmpweb_ismobile() ? "1" : "1.5"
 		,user,util_getnodename());
 	htmlprintf ("<td align=right><a href=%s><img src=/bolixo.png></a>\n",dirserver.c_str());
+	htmlprintf ("<tr><td>%s\n",util_format_shortmsg(interest).c_str());
 	htmlout ("</table>\n");
 }
 <mod>
-static void public_display_full (_F_public_page &c, CONNECT_INFO &con, PARAM_STRING user, vector<FILEINFO> &files)
+static void public_display_full (
+	_F_public_page &c,
+	CONNECT_INFO &con,
+	PARAM_STRING user,
+	const vector<FILEINFO> &files,
+	PARAM_STRING website,
+	PARAM_STRING interest)
 {
 	glocal CONNECT_INFO *con = &con;
 	glocal _F_public_page *c = &c;
 	glocal const char *user = user.ptr;
-	glocal vector<FILEINFO> *files = &files;
+	glocal const vector<FILEINFO> *files = &files;
+	glocal const char *website = website.ptr;
+	glocal const char *interest = interest.ptr;
 	<call vframe4>(30,12);
 	<f top>
-		public_top(glocal.user);
+		public_top(glocal.user,glocal.interest);
 	</f>
 	<f top_left>
 		DIV d; d.w(100).vmargins(0,20).print();
-		public_top_left (*glocal.c);
+		public_top_left (*glocal.c,glocal.website);
 	</f>
 	<f left>
 		public_messages(*glocal.c,*glocal.con,glocal.user);
@@ -1436,17 +1449,24 @@ static void public_display_full (_F_public_page &c, CONNECT_INFO &con, PARAM_STR
 	Display only the short messages
 */
 <mod>
-static void public_display_base(_F_public_page &c, CONNECT_INFO &con, PARAM_STRING user)
+static void public_display_base(
+	_F_public_page &c,
+	CONNECT_INFO &con,
+	PARAM_STRING user,
+	PARAM_STRING website,
+	PARAM_STRING interest)
 {
 	glocal CONNECT_INFO *con = &con;
 	glocal _F_public_page *c = &c;
 	glocal const char *user = user.ptr;
+	glocal const char *website = website.ptr;
+	glocal const char *interest = interest.ptr;
 	<call vframe3>(30,12);
 	<f top>
-		public_top(glocal.user);
+		public_top(glocal.user,glocal.interest);
 	</f>
 	<f top_left>
-		public_top_left (*glocal.c);
+		public_top_left (*glocal.c,glocal.website);
 	</f>
 	<f body>
 		DIV d; d.w(tlmpweb_ismobile() ? 100: 50).marginauto().print();
@@ -1457,14 +1477,20 @@ static void public_display_base(_F_public_page &c, CONNECT_INFO &con, PARAM_STRI
 </mod>
 // Display the public page of the user
 <mod>
-void public_display (_F_public_page &c, CONNECT_INFO &con, PARAM_STRING user, bool pubdir)
+void public_display (
+	_F_public_page &c,
+	CONNECT_INFO &con,
+	PARAM_STRING user,
+	bool pubdir,
+	PARAM_STRING website,
+	PARAM_STRING interest)
 {
 	vector<FILEINFO> files;
 	if (pubdir && c.listdir("/",0,20,files)==-1){
 	}else if (files.size() == 0){
-		public_display_base (c,con,user);
+		public_display_base (c,con,user,website,interest);
 	}else{
-		public_display_full (c,con,user,files);
+		public_display_full (c,con,user,files,website,interest);
 	}
 }
 </mod>

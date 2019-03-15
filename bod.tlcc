@@ -1356,6 +1356,7 @@ static int bod_main (
 				#else
 					tb.push_back("instrument: off");
 				#endif
+				tb.push_back(string_f("nonstrict: %d",nonstrict));
 				rep_status(tb);
 			</f>
 			<f helptest> // dotimes:b readproc:b = lines:v
@@ -2793,9 +2794,21 @@ static int bod_main (
 				string msg;
 				bool pubdir;
 				if (bod_checkpublic(username,msg,pubdir) != -1){
-					rep_public_checkuser(true,"",true,pubdir);
+					glocal string website;
+					glocal string interest;
+					<call sql_query>("select publish,website,interest from id2name"
+						" join userinfo on userinfo.userid=id2name.userid"
+						" where id2name.name='%s'",username);
+					<f onerow>
+						if (atoi(row[0])){
+							glocal.website = row[1];
+							glocal.interest = row[2];
+						}
+					</f>
+					</call>
+					rep_public_checkuser(true,"",true,pubdir,glocal.website,glocal.interest);
 				}else{
-					rep_public_checkuser(true,"",false,false);
+					rep_public_checkuser(true,"",false,false,"","");
 				}
 			</f>
 			<f public_listdir>	// username dirpath offset:u nb:u = success:b msg files:U{FILEINFO}v
