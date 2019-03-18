@@ -38,6 +38,7 @@
 #include "../instrument.h"
 #include "webtabs.h"
 #include "w_var.h"
+#include "../helper.h"
 
 extern void bolixo_doc (DOCUMENT_POINTER &, DOC_ID &jump, const char *username, bool display_full, bool index);
 extern void bolixo_doc_fr (DOCUMENT_POINTER &, DOC_ID &jump, const char *username, bool display_full, bool index);
@@ -1188,13 +1189,7 @@ extern "C" void webmain_real()
 	<call loadfile>("/etc/bolixonode.conf",true);
 	<f oneline>
 		if (strncmp(line,"node=",5)==0){
-			const char *pt = line+5;
-			if (strncasecmp(pt,"http://",7)==0){
-				pt+=7;
-			}else if (strncasecmp(pt,"https://",8)==0){
-				pt+=8;
-			}
-			util_setnodename(pt);
+			util_setnodeurl(line+5);
 		}
 		if (strncmp(line,"dirserver=",10)==0) util_setdirserver(line+10);
 		if (strncmp(line,"org=",4)==0) org = line+4;
@@ -1316,18 +1311,12 @@ extern "C" void webmain_real()
 			</call>
 		}else if (strncmp(tableid,"list:",5)==0){
 			const char *tab = tableid+5;
-			if (strcmp(tab,"projects")==0
-				|| strcmp(tab,"groups")==0
-				|| strcmp(tab,"interests")==0
-				|| strcmp(tab,"contacts")==0){
+			if (is_any_of(tab,"projects","groups","interests","contacts")){
 				glocal.valid = true;
 			}
 		}else if (strncmp(tableid,"tab:",4)==0){
 			const char *tab = tableid+4;
-			if (strcmp(tab,"projects")==0
-				|| strcmp(tab,"mails")==0
-				|| strcmp(tab,"talk")==0
-				|| strcmp(tab,"profiles")==0){
+			if (is_any_of(tab,"projects","mails","talk","profiles")){
 				glocal.valid = true;
 			}
 		}else if (strcmp(tableid,"allcontacts")==0){
@@ -2407,7 +2396,7 @@ extern "C" void webmain_real()
 				<f projecturl>
 					string ret;
 					string tmp = util_flipspaces(modified.ptr);
-					if (strcmp(name.ptr,"/photo.jpg")==0 || strcmp(name.ptr,"/mini-photo.jpg")==0){
+					if (is_any_of(name.ptr,"/photo.jpg","/mini-photo.jpg")){
 						// Those tow are located in the public folder directly
 						ret = string_f("%s?webstep=%d&image=/projects/%s/public%s&mod=%s"
 							,tlmpweb_curpage(),step_image,glocal.groupowner.c_str(),name.ptr,tmp.c_str());
@@ -2581,7 +2570,7 @@ extern "C" void webmain_real()
 					rownum++;
 					for (auto &g:groups){
 						if (userinfo.name != g.owner
-							|| (strcmp(g.name,"inbox")!=0 && strcmp(g.name,"anonymous")!=0)){
+							|| is_not_in(g.name,"inbox","anonymous")){
 							id = string_f("%s:%s",g.owner,g.name);
 							add = string_f("webtab_add=1:%s:%s",g.owner,g.name);
 							if (glocal.webtabs.selected(id)) glocal.webtable.setcurrent(rownum);

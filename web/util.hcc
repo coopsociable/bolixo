@@ -29,6 +29,7 @@
 #include "../bolixo.h"
 #include <translat.h>
 #include "../bolixo.m"
+#include "../helper.h"
 #undef INSTRUMENT
 #include "../instrument.h"
 #include "w_var.h"
@@ -490,13 +491,14 @@ void util_endscript(PARAM_STRING urlparam)
 			//console.log ('Enter ' + node.className + ' ' + node.id);
 			if (node.className == "tabs" || node.className == "subtabs"){
 				var bord=(node.offsetHeight-node.clientHeight);
-				var style = node.currentStyle || window.getComputedStyle(node);
+				//var style = node.currentStyle || window.getComputedStyle(node);
+				var style = window.getComputedStyle(node);
 				var margins = parseInt(style.marginTop,10) + parseInt(style.marginBottom,10);
 				var paddings = parseInt(style.paddingTop,10) + parseInt(style.paddingBottom,10);
 				total += bord + margins + paddings;
 				console.log ("border cls=" + node.className + " node.id=" + node.id + " total="+total+" bord="+bord + " margins="+margins+ " paddings="+paddings);
 				if (node.className == "subtabs"){
-					console.log ("Set subtabs "+node.id+" total="+total+" diff="+diff+" oldheight="+node.offsetHeight);
+					console.log ("Set subtabs "+node.id+" total="+total+" oldheight="+node.offsetHeight);
 					node.style.height = diff - total;
 				}
 			}
@@ -515,7 +517,7 @@ void util_endscript(PARAM_STRING urlparam)
 						total += bord;
 						console.log ("border child.id=" + child.id + " total="+total+" border="+bord);
 					}else if (child.className == "webtable" || child.className == "textgrow"){
-						console.log ("Set webtable "+child.id+" total="+total+" diff="+diff+" oldheight="+child.offsetHeight);
+						console.log ("Set webtable "+child.id+" total="+total+" oldheight="+child.offsetHeight);
 						child.style.height = diff - total;
 						break;
 					}
@@ -527,6 +529,7 @@ void util_endscript(PARAM_STRING urlparam)
 		function fixsize(){
 			var t = document.getElementById('head').offsetHeight;
 			diff = window.innerHeight-t;
+			console.log ("diff="+diff);
 			document.getElementById('body').style.height = diff-1;
 			document.getElementById('main').style.height = window.innerHeight-1;
 			var tabs = document.getElementsByClassName("tabs");
@@ -543,7 +546,6 @@ void util_endscript(PARAM_STRING urlparam)
 				allDescendants (tabs[i],0);
 			}
 			var tables = document.getElementsByClassName('webtable');
-			console.log ("ready " + document.readyState);
 			for (i = 0; i < tables.length; i++) {
 				var table = tables[i];
 				console.log (table.id+" "+table.offsetHeight+" "+table.offsetWidth);
@@ -1231,7 +1233,9 @@ static void public_messages(_F_public_page &c, CONNECT_INFO &con, PARAM_STRING u
         glocal _F_public_page *c = &c;
         glocal const char *user = user.ptr;
 
-	DIV d("subtabs"); d.h(100).borderradius(5).border(1,"black").paddings(5,5).vmargins(5,3).print();
+	DIV d("subtabs");
+	if (!tlmpweb_ismobile()) d.borderradius(5).border(1,"black").paddings(5,5).vpaddings(5,5);
+	d.h(100).bg("white").print();
 	<call webtable>("talkpublic","100%");
 	<f click>
 		util_defstyles();
@@ -1320,14 +1324,26 @@ static void public_top_left(_F_public_page &c, const char *website)
 }
 static string dirserver="https://bolixo.org";
 static string nodename;
+static string nodeurl;
 
-void util_setnodename(PARAM_STRING name)
+void util_setnodeurl(PARAM_STRING url)
 {
-	nodename = name.ptr;
+	const char *pt = url.ptr;
+	nodeurl = pt;
+	if (strncasecmp(pt,"http://",7)==0){
+		pt+=7;
+	}else if (strncasecmp(pt,"https://",8)==0){
+		pt+=8;
+	}
+	nodename = pt;
 }
 const char *util_getnodename()
 {
 	return nodename.c_str();
+}
+const char *util_getnodeurl()
+{
+	return nodeurl.c_str();
 }
 void util_setdirserver(PARAM_STRING dir)
 {
@@ -1355,7 +1371,8 @@ static void public_display_full (
 	PARAM_STRING user,
 	const vector<FILEINFO> &files,
 	PARAM_STRING website,
-	PARAM_STRING interest)
+	PARAM_STRING interest,
+	PARAM_STRING bg)	// Background-image paramater for the body
 {
 	glocal CONNECT_INFO *con = &con;
 	glocal _F_public_page *c = &c;
@@ -1363,7 +1380,6 @@ static void public_display_full (
 	glocal const vector<FILEINFO> *files = &files;
 	glocal const char *website = website.ptr;
 	glocal const char *interest = interest.ptr;
-	DIV d("subtabs"); d.w(100).style("background-image","linear-gradient(to right,lightgray,white,lightgray)").print();
 	<call vframe4>(vframe_topleft_width,vframe_top_height,30);
 	<f top>
 		public_top(glocal.user,glocal.interest);
@@ -1457,15 +1473,16 @@ static void public_display_base(
 	CONNECT_INFO &con,
 	PARAM_STRING user,
 	PARAM_STRING website,
-	PARAM_STRING interest)
+	PARAM_STRING interest,
+	PARAM_STRING bg_top,	// Backgroup-image for the who top
+	PARAM_STRING bg_body)	// Background-image paramater for the body
 {
 	glocal CONNECT_INFO *con = &con;
 	glocal _F_public_page *c = &c;
 	glocal const char *user = user.ptr;
 	glocal const char *website = website.ptr;
 	glocal const char *interest = interest.ptr;
-	DIV d("subtabs"); d.w(100).style("background-image","linear-gradient(to right,lightgray,white,lightgray)").print();
-	<call vframe3>(vframe_topleft_width,vframe_top_height);
+	<call vframe3>(vframe_topleft_width,vframe_top_height,bg_top,bg_body);
 	<f top>
 		public_top(glocal.user,glocal.interest);
 	</f>
@@ -1473,7 +1490,7 @@ static void public_display_base(
 		public_top_left (*glocal.c,glocal.website);
 	</f>
 	<f body>
-		DIV d; d.w(tlmpweb_ismobile() ? 100: 50).marginauto().print();
+		DIV d("subtabs","base_messages"); d.w(tlmpweb_ismobile() ? 100: 50).marginauto().print();
 		public_messages(*glocal.c,*glocal.con,glocal.user);
 	</f>
 	</call>
@@ -1491,10 +1508,28 @@ void public_display (
 {
 	vector<FILEINFO> files;
 	if (pubdir && c.listdir("/",0,20,files)==-1){
-	}else if (files.size() == 0){
-		public_display_base (c,con,user,website,interest);
 	}else{
-		public_display_full (c,con,user,files,website,interest);
+		// Remove photo related files
+		bool some_files = false;
+		string bg_top = "linear-gradient(to right,lightgray,white,lightgray)";
+		string bg_body(bg_top);
+		for (auto f=files.begin(); f!=files.end(); ){
+			if (f->name == "background.jpg"){
+				bg_body = string_f("url(\"%s%s\")",util_getnodeurl(),c.projecturl(f->name,f->modified,true).c_str());
+				f = files.erase(f);
+			}else if (is_any_of(f->name,"photo.jpg","mini-photo.jpg")){
+				f = files.erase(f);
+			}else{
+				if (bolixo_isfile(f->type)) some_files = true;
+				f++;
+			}
+		}
+		//tlmp_error ("bg_body=%s\n",bg_body.c_str());
+		if (some_files){
+			public_display_full (c,con,user,files,website,interest,bg_top);
+		}else{
+			public_display_base (c,con,user,website,interest,bg_top,bg_body);
+		}
 	}
 }
 </mod>
