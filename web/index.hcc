@@ -995,7 +995,6 @@ static void index_show_shortmsg(
 	CONNECT_INFO &con,
 	CONNECT_INFO &con_sess,
 	_F_webtabs &webtabs,
-	const string &table,
 	PARAM_STRING groupname,
 	PARAM_STRING groupowner)
 {
@@ -1005,11 +1004,12 @@ static void index_show_shortmsg(
 	glocal const char *groupname = groupname.ptr;
 	glocal const char *groupowner = groupowner.ptr;
 	glocal string path = string_f("/msgs/%s/short-inbox/%s",glocal.groupowner,glocal.groupname);
+	WEBID ID_TALK("talk",string_f("%s:%s",groupowner.ptr,groupname.ptr));
+	const char *table = ID_TALK.c_str();
 	if (offsets[table] == 0){
 		index_markview (con,glocal.path);
 	}
-	WEBID ID_TALK("talk",string_f("%s:%s",groupowner.ptr,groupname.ptr));
-	<call webtable>(ID_TALK,table,"100%",currents[table],offsets[table],5);
+	<call webtable>(ID_TALK,"100%",currents[table],offsets[table],5);
 	<f click>
 		glocal unsigned dropmenu = dropmenu;
 		if (dropmenu == 0) tlmpweb_flushheader();
@@ -1319,15 +1319,14 @@ extern "C" void webmain_real()
 			if (is_any_of(tab,"projects","mails","talk","profiles")){
 				glocal.valid = true;
 			}
-		}else if (strcmp(tableid,"allcontacts")==0){
+		}else if (is_any_of(tableid,"allcontacts","talkpublic","follow")){
 			// All contacts in main tab
+			// Messages in preview
+			// Messages in main tab
 			glocal.valid = true;
-		}else if (strcmp(tableid,"talkpublic")==0){
-			// Preview mode
-			glocal.valid = true;
-		}else if (strncmp(tableid,"talk",4)==0){
+		}else if (strncmp(tableid,"talk=",5)==0){
 			vector<string> tb;
-			int n = str_splitline (tableid+4,':',tb);
+			int n = str_splitline (tableid+5,':',tb);
 			if (n == 2){
 				<call bod_client_list_talk>(glocal.con,w_session.c_str(),"",tb[1],tb[0],current_row,1);
 				<f ok>
@@ -1632,8 +1631,8 @@ extern "C" void webmain_real()
 				d.w(center_w).textalign("center").marginauto().border(1,"black").borderradius(5).vmargins(5,5).paddings(5,5).print();
 			}
 
-			string table = string("talk")+"public";
-			<call webtable>(ID_FOLLOW,table,"100%",currents[table],offsets[table],5);
+			const char *table = ID_FOLLOW.c_str();
+			<call webtable>(ID_FOLLOW,"100%",currents[table],offsets[table],5);
 			<f click>
 				glocal unsigned dropmenu = dropmenu;
 				vector<string> empty;
@@ -2697,8 +2696,7 @@ extern "C" void webmain_real()
 				</f>
 				</call>
 			}
-			string table = string("talk")+id;
-			index_show_shortmsg (glocal.con,glocal.con_sess,glocal.webtabs,table,glocal.groupname,glocal.groupowner);
+			index_show_shortmsg (glocal.con,glocal.con_sess,glocal.webtabs,glocal.groupname,glocal.groupowner);
 		</f>
 		<f doctype2>
 			FILEINFO info;
