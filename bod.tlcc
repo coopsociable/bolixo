@@ -424,6 +424,7 @@ static bool msg_compare (const SHORTMSG &s1, const SHORTMSG &s2)
 	return s2.submit < s1.submit;
 }
 
+static unsigned keepdays = 6;
 
 <mod>
 static void bod_list_talk (
@@ -441,6 +442,8 @@ static void bod_list_talk (
 	glocal bool deletes = false;
 	int dirid = fs_find_short_inbox (ownerid,groupowner,groupname,msg);
 	if (dirid != -1){
+		DATEASC keepdate;
+		fdpass_asctime(time(NULL)-keepdays*24*60*60,keepdate);
 		<call sql_query>("select dirs_content.name,dirs_content.modified,id2name.name,id2name_copy.name,files.filetype"
 			",dirs_content.itemid,files.content,dirs_content.eventtime,dirs_content.type,files.signature"
 			" from dirs_content"
@@ -448,8 +451,8 @@ static void bod_list_talk (
 			" join ids on dirs_content.itemid = ids.id"
 			" join id2name on ids.ownerid = id2name.userid"
 			" left join id2name as id2name_copy on dirs_content.copiedby = id2name_copy.userid"
-			" where dirid = %d and (type=%u or type=%u) order by eventtime"
-			,dirid,ENTRY_MSG,ENTRY_DELETED);
+			" where dirid = %d and dirs_content.eventtime > '%s' and (type=%u or type=%u) order by eventtime"
+			,dirid,keepdate.buf,ENTRY_MSG,ENTRY_DELETED);
 		<f onerow>
 			SHORTMSG msg;
 			msg.uuid = row[0];
@@ -1341,6 +1344,7 @@ static int bod_main (
 				tb.push_back(string_f("dirserver: %s",glocal.dirserver));
 				tb.push_back(string_f("nodename: %s",glocal.nodename));
 				tb.push_back(string_f("maxaccts: %u",glocal.maxaccts));
+				tb.push_back(string_f("keepmsgs: %u",keepdays));
 				tb.push_back(string_f ("nbrequest_admin=%lu",glocal.nbrequest_admin));
 				tb.push_back(string_f ("nbrequest_client=%lu",glocal.nbrequest_client));
 				tb.push_back(string_f("filehandle %u",fs_getnbhandle()));
@@ -1472,6 +1476,9 @@ static int bod_main (
 			</f>
 			<f debugfile>
 				debug_setfdebug (filename);
+			</f>
+			<f keepmsgs>
+				keepdays = days;
 			</f>
 			<f invalid>
 				endclient = true;
@@ -2720,15 +2727,17 @@ static int bod_main (
 					#ifdef INSTRUMENT
 					glocal long long start = fdpass_getnow();
 					#endif
+					DATEASC keepdate;
+					fdpass_asctime(time(NULL)-keepdays*24*60*60,keepdate);
 					<call sql_query>("select id2name.name,dirs2.name,dirs2.modified,files.filetype,dirs2.itemid,files.content,dirs2.type,files.signature"
 						" from interests"
 						" join id2name on id2name.userid = interests.check_userid"
-						" left join dirs_content dirs2 on interests.dirid=dirs2.dirid"
+						" left join dirs_content dirs2 on interests.dirid=dirs2.dirid and dirs2.eventtime > '%s'"
 						//" left join dirs_content on interests.dirid=dirs_content.itemid"
 						//" left join marks on marks.userid=%u and marks.itemid=interests.dirid"
 						//" left join dirs_content dirs2 on interests.dirid = dirs2.dirid and (marks.modified is null or dirs2.modified > marks.modified)"
 						" join files on dirs2.itemid = files.id"
-						" where interests.userid=%u order by dirs2.eventtime",userid);	//,userid);
+						" where interests.userid=%u order by dirs2.eventtime",keepdate.buf,userid);	//,userid);
 					<f onerow>
 						#ifdef INSTRUMENT
 						if (rownum==0 && f_instrument != NULL){
@@ -3368,6 +3377,7 @@ int main (int argc, char *argv[])
 		setarg (' ',"maxaccts",MSG_U(O_MAXACCOUNTS,"Maximum accounts on this server"),glocal.maxaccts,false);
 		setarg (' ',"nonstrict",MSG_R(O_NONSTRICT),nonstrict,false);
 		setarg (' ',"usehttp",MSG_U(O_USEHTTP,"Use HTTP (not HTTPS) to reach this node"),usehttp,false);
+		setarg (' ',"keepmsgs",MSG_U(O_KEEPMSGS,"Show only messages younger than N days"),keepdays,false);
 		setgrouparg ("Database");
 		setarg (' ',"dbserv","Database server",glocal.dbserv,false);
 		setarg (' ',"dbname","Database name",glocal.dbname,false);

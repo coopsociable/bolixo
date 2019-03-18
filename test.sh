@@ -43,6 +43,7 @@ if [ "$LXCSOCK" == "on" ] ; then
 	BOLIXOD_SOCK=/var/lib/lxc/bolixod/rootfs/var/run/blackhole/bolixod-0.sock
 	PUBLISHD_SOCK=/var/lib/lxc/publishd/rootfs/var/run/blackhole/publishd.sock
 	BOD_SOCK=/var/lib/lxc/bod/rootfs/var/run/blackhole/bod-2.sock
+	BOD_SOCKS=/var/lib/lxc/bod/rootfs/var/run/blackhole/bod-*.sock
 	WRITED_SOCK=/var/lib/lxc/writed/rootfs/var/run/blackhole/bo-writed-0.sock
 	SESSIOND_SOCK=/var/lib/lxc/sessiond/rootfs/var/run/blackhole/bo-sessiond.sock
 	KEYSD_SOCK=/var/lib/lxc/keysd/rootfs/var/run/blackhole/bo-keysd.sock
@@ -428,7 +429,10 @@ elif [ "$1" = "publishd-control" ] ; then # A: Talks to publishd
 	$BOLIXOPATH/publishd-control --control $PUBLISHD_SOCK $*
 elif [ "$1" = "bod-control" ] ; then # A: Talks to bod
 	shift
-	$BOLIXOPATH/bod-control --control $BOD_SOCK $*
+	for sock in $BOD_SOCKS
+	do
+		$BOLIXOPATH/bod-control --control $sock $*
+	done
 elif [ "$1" = "bod-client" ] ; then # A: Executes the bod test client
 	shift
 	$BOLIXOPATH/bod-client --host "" -p $BODCLIENTPORT --adm_port $BODADMINPORT \
