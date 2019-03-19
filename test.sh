@@ -429,6 +429,9 @@ elif [ "$1" = "publishd-control" ] ; then # A: Talks to publishd
 	$BOLIXOPATH/publishd-control --control $PUBLISHD_SOCK $*
 elif [ "$1" = "bod-control" ] ; then # A: Talks to bod
 	shift
+	$BOLIXOPATH/bod-control --control $BOD_SOCK $*
+elif [ "$1" = "bod-controls" ] ; then # A: Talks to all bod servers
+	shift
 	for sock in $BOD_SOCKS
 	do
 		$BOLIXOPATH/bod-control --control $sock $*
