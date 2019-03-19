@@ -1286,13 +1286,13 @@ extern "C" void webmain_real()
 			We do the markview at the same time.
 		*/
 		glocal bool valid = false;
-		if (tableid[0] == '/'){
-			glocal const char *dir = tableid;
-			<call bod_client_listdir>(glocal.con,w_session.c_str(),tableid,"",false,current_row,1);
+		if (strncmp(tableid,"project=",8)==0){
+			glocal string dir = string_f("/projects/%s",tableid+8);
+			<call bod_client_listdir>(glocal.con,w_session.c_str(),glocal.dir,"",false,current_row,1);
 			<f ok>
 				if (files.size()==1){
 					glocal.valid = true;
-					string fname = string_f("%s/%s",glocal.dir,files[0].name);
+					string fname = string_f("%s/%s",glocal.dir.c_str(),files[0].name);
 					index_markview (glocal.con,fname);
 				}
 			</f>
@@ -2137,7 +2137,7 @@ extern "C" void webmain_real()
 			</call>
 			}
 			WEBID ID_PROJECT("project",id);
-			<call webtable>(ID_PROJECT,currents[glocal.path],offsets[glocal.path],5);
+			<call webtable>(ID_PROJECT,currents[ID_PROJECT.c_str()],offsets[ID_PROJECT.c_str()],5);
 			<f click>
 				glocal unsigned dropmenu = dropmenu;
 				if (dropmenu == MENU_HELPPREVIEW){
