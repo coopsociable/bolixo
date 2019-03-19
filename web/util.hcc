@@ -1069,16 +1069,29 @@ string util_flipspaces(PARAM_STRING src)
 	}
 	return ret;
 }
+static bool util_is_url(const char *txt, const char *&end,string &url)
+{
+	bool ret = false;
+	const char *pt;
+	if (is_start_any_ofnc(txt,pt,"http://","https://")){
+		pt = txt;
+		while (*pt > ' ' && *pt != '"' && *pt != '>') pt++;
+		url = string(txt,pt-txt);
+		end = pt;
+		ret = true;
+	}
+	return ret;
+}
 /*
 	Format a short message, remove the signature
 	Escapes < and >
 	Supports ? for URL
 */
-string util_format_shortmsg (PARAM_STRING msg, unsigned nblines, size_t size)
+string util_format_shortmsg (PARAM_STRING msg, unsigned nblines, size_t size, unsigned image_width)
 {
 	const char *txt = msg.ptr;
 	string ret;
-	ret.reserve(nblines*100);
+	ret.reserve(nblines > 0 ? nblines*100 : 1000);
 	unsigned pos=0;
 	unsigned noline=0;
 	if (nblines == 0) nblines=(unsigned)-1;
@@ -1088,24 +1101,15 @@ string util_format_shortmsg (PARAM_STRING msg, unsigned nblines, size_t size)
 			pos=0;
 			noline++;
 		}else{
-			if (strncasecmp(txt,"http://",7)==0 || strncasecmp(txt,"https://",8)==0){
-				const char *pt = txt;
-				while (*pt > ' ' && *pt != '"' && *pt != '>') pt++;
+			const char *pt;
+			string url;
+			if (util_is_url(txt,pt,url)){
 				ret += "<span style=color:blue onclick=openintab(event,'" + string(txt,pt-txt) + "')>" + string(txt,pt-txt) + "</span>";
 				txt = pt-1;
 			}else if (*txt == '<'){
-				if (strncmp(txt,"<sup>",5)==0
-					|| strncmp(txt,"</sup>",6)==0
-					|| strncmp(txt,"<sub>",5)==0
-					|| strncmp(txt,"</sub>",6)==0
-					|| strncmp(txt,"<em>",4)==0
-					|| strncmp(txt,"</em>",5)==0
-					|| strncmp(txt,"<strong>",8)==0
-					|| strncmp(txt,"</strong>",9)==0
-					|| strncmp(txt,"<b>",3)==0
-					|| strncmp(txt,"</b>",4)==0){
-					while (*txt != '>') ret += *txt++;
-					ret += *txt;
+				if (is_start_any_ofnc(txt,pt,"<sup>","</sup>","<sub>","</sub>","<em>","</em>","<strong>","</strong>","<b>","</b>")){
+					while (txt < pt) ret += *txt++;
+					txt--;	// There is a txt++ at the end of the loop.
 				}else{
 					ret += "&lt;";
 				}
@@ -1114,6 +1118,34 @@ string util_format_shortmsg (PARAM_STRING msg, unsigned nblines, size_t size)
 			}else if (*txt == '\t'){
 				unsigned nb = 4 - (pos%4);
 				for (unsigned i=0; i<nb; i++) ret += "&nbsp;";
+			}else if (is_start_any_of(txt,pt,"_IMG=")){
+				txt = pt;
+				if (util_is_url(txt,pt,url)){
+					txt = pt;
+					ret += "<span style=color:blue onclick=openintab(event,'" + url + "')>";
+					ret += string_f("<img width=%u src=",image_width);
+					ret += url;
+					ret += '>';
+					ret += "</span>";
+				}else{
+					ret += "_IMG=";
+				}
+				txt--;
+			}else if (is_start_any_of(txt,pt,"_VIDEO=")){
+				txt = pt;
+				if (util_is_url(txt,pt,url)){
+					txt = pt;
+					ret += "<span style=color:blue onclick=openintab(event,'" + url + "')>";
+					htmlprintf ("<video width=%u controls>\n"
+						"<source src=\"%s\" type=\"video/mp4\">\n"
+						"Your browser does not support the video tag.\n"
+						"</video>\n"
+						,image_width,url.c_str());
+					ret += "</span>";
+				}else{
+					ret += "_IMG=";
+				}
+				txt--;
 			}else{
 				ret += *txt;
 				pos++;
@@ -1127,9 +1159,9 @@ string util_format_shortmsg (PARAM_STRING msg, unsigned nblines, size_t size)
 	}
 	return ret;
 }
-string util_format_shortmsg (PARAM_STRING txt)
+string util_format_shortmsg (PARAM_STRING txt, unsigned image_width)
 {
-	return util_format_shortmsg (txt,0,0);
+	return util_format_shortmsg (txt,0,0,image_width);
 }
 
 // Send an HTML document. Does some remaping of relative URLs. Prevent scripting as well.
@@ -1203,28 +1235,34 @@ static string util_img(unsigned step, unsigned width, PARAM_STRING dirpath, PARA
 static void util_urls (_F_public_page &c, const SHORTMSG &m, string &content, bool large)
 {
 	string url = c.msgurl(m.uuid,m.submit);
-	const char *width = "300";
+	unsigned width = 300;
+	const char *percent = "";
 	if (tlmpweb_ismobile()){
-		width = large ? "100%" : "700";
+		if (large){
+			width = 100;
+			percent = "%";
+		}else{
+			width = 700;
+		}
 	}else if (large){
-		width = "800";
+		width = 800;
 	}
 	if (m.content[0] != '\0'){
-		content = util_format_shortmsg (m.content);
+		content = util_format_shortmsg (m.content,width);
 	}else if (file_is_sound(m.file_type)){
 		content = string_f("<audio controls>\n"
 			"<source src=\"%s\" type=\"audio/%s\">\n"
 			"</audio>"
 			,url.c_str(),tbftype[m.file_type]);
 	}else if (file_is_image(m.file_type)){
-		content = string_f("<img width=%s src=%s>",width,url.c_str());
+		content = string_f("<img width=%u%s src=%s>",width,percent,url.c_str());
 	}else if (file_is_video(m.file_type)){
 		content = string_f(
-			"<video width=\"%s\" height=\"%s\" controls>\n"
+			"<video width=\"%u%s\" height=\"%u%s\" controls>\n"
 			"<source src=\"%s\" type=\"video/mp4\">\n"
 			"Your browser does not support the video tag.\n"
 			"</video>"
-			,width,width,url.c_str());
+			,width,percent,width,percent,url.c_str());
 	}
 }
 <mod>
@@ -1292,7 +1330,7 @@ static void public_messages(_F_public_page &c, CONNECT_INFO &con, PARAM_STRING u
 					string path = string_f("/msgs/%s/short-inbox/public/%s",glocal.user,m.uuid.c_str());
 					string content;
 					if (m.content.size() != 0){
-						content = string_f("<div class=smsg>%s</div>",util_format_shortmsg (m.content,5,m.size).c_str());
+						content = string_f("<div class=smsg>%s</div>",util_format_shortmsg (m.content,5,m.size,100).c_str());
 					}else{
 						util_urls(*glocal.c,m,content,false);
 					}
@@ -1360,7 +1398,7 @@ static void public_top(const char *user, const char *interest)
 		,tlmpweb_ismobile() ? "1" : "1.5"
 		,user,util_getnodename());
 	htmlprintf ("<td align=right><a href=%s><img src=/bolixo.png></a>\n",dirserver.c_str());
-	htmlprintf ("<tr><td>%s\n",util_format_shortmsg(interest).c_str());
+	htmlprintf ("<tr><td>%s\n",util_format_shortmsg(interest,100).c_str());
 	htmlout ("</table>\n");
 }
 const unsigned vframe_topleft_width=20;

@@ -30,4 +30,43 @@ bool is_not_in(T t, T1 t1, Ts ... ts){
 	return is_not_in(t,t1) && is_not_in(t,ts...);
 }
 
+inline bool is_start_any_of (const char *a, const char *&pt, const char *b)
+{
+	bool ret = false;
+	auto len = strlen(b);
+	if (strncmp(a,b,len)==0){
+		ret = true;
+		pt = a+len;
+	}
+	return ret;
+}
+inline bool is_start_any_of (const std::string &a, const char *&pt, const char *b)
+{
+	return is_start_any_of(a.c_str(),pt,b);
+}
+template<typename T, typename T1, typename ... Ts>
+bool is_start_any_of(T t, const char *&pt, T1 t1, Ts ... ts){
+	return is_start_any_of(t,pt,t1) || is_start_any_of(t,pt,ts...);
+}
+
+// Case insensitive
+inline bool is_start_any_ofnc (const char *a, const char *&pt, const char *b)
+{
+	bool ret = false;
+	auto len = strlen(b);
+	if (strncasecmp(a,b,len)==0){
+		ret = true;
+		pt = a+len;
+	}
+	return ret;
+}
+inline bool is_start_any_ofnc (const std::string &a, const char *&pt, const char *b)
+{
+	return is_start_any_ofnc(a.c_str(),pt,b);
+}
+template<typename T, typename T1, typename ... Ts>
+bool is_start_any_ofnc(T t, const char *&pt, T1 t1, Ts ... ts){
+	return is_start_any_ofnc(t,pt,t1) || is_start_any_ofnc(t,pt,ts...);
+}
+
 #endif

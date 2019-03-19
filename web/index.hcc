@@ -720,7 +720,7 @@ static int index_loadfile(CONNECT_INFO &con, PARAM_STRING filename, W_SSTRING &t
 static void index_format_large_text(const BOB_TYPE &content)
 {
 	string tmp = string((const char*)content.getbuffer(),content.getsize());
-	tmp = util_format_shortmsg (tmp.c_str());
+	tmp = util_format_shortmsg (tmp.c_str(),800);
 	htmlwrite (tmp.c_str(),tmp.size());
 }
 <mod>
@@ -738,7 +738,7 @@ static void index_popup (CONNECT_INFO &con, int step, const char *content, FILE_
 	dd.flexfixe().w(100).h(95).vpaddings(5,5).bordertop(1,"black").print();	
 	DIV ddd; ddd.marginauto().w(99).print();	
 	if (content[0] != '\0'){
-		htmlout (util_format_shortmsg (content).c_str());
+		htmlout (util_format_shortmsg (content,800));
 	}else if (file_is_sound(file_type)){
 		htmlprintf ("<audio controls>\n"
 			"<source src=\"%s?webstep=%u&image=%s\" type=\"audio/%s\">\n"
@@ -1078,11 +1078,11 @@ static void index_show_shortmsg(
 				static const char *line_styles[]={"sep","sep1"};
 				unsigned line_style = 0;
 				if (!deletes) glocal.webtable.setdrop_disable(MENU_UNDELETE);
-				unsigned image_width = 200;
+				glocal unsigned image_width = 200;
 				unsigned mini_image_width = 40;
 				unsigned video_size = 200;
 				if (is_mobile){
-					image_width = 700;
+					glocal.image_width = 700;
 					mini_image_width = 60;
 					video_size = 700;
 				}
@@ -1110,7 +1110,8 @@ static void index_show_shortmsg(
 					}
 					string content;
 					if (m.content[0] != '\0'){
-						content = string_f("<div class=smsg>%s</div>",util_format_shortmsg (m.content,5,m.size).c_str());
+						content = string_f("<div class=smsg>%s</div>",util_format_shortmsg (m.content,5,m.size
+							,glocal.image_width).c_str());
 					}else if (file_is_sound(m.file_type)){
 						string tmp = util_flipspaces(m.submit);
 						content = string_f("<audio controls>\n"
@@ -1118,7 +1119,7 @@ static void index_show_shortmsg(
 							"</audio>"
 							,tlmpweb_curpage(),step_image,path.c_str(),tmp.c_str(),tbftype[m.file_type]);
 					}else if (file_is_image(m.file_type)){
-						content = index_img (step_image,image_width,"",path,m.submit);
+						content = index_img (step_image,glocal.image_width,"",path,m.submit);
 					}else if (file_is_video(m.file_type)){
 						string tmp = util_flipspaces(m.submit);
 						content = string_f(
@@ -1136,7 +1137,7 @@ static void index_show_shortmsg(
 								htmlprintf (MSG_U(E_CANTREADFILE,"Can't read file: %s\n"),msg);
 							}else{
 								string tmp = string((const char*)content.getbuffer(),content.getsize());
-								tmp = util_format_shortmsg (tmp.c_str(),5,info.size);
+								tmp = util_format_shortmsg (tmp.c_str(),5,info.size,glocal.image_width);
 								glocal.webtable.setrow("image",glocal.rownum,"\t%s\a",tmp.c_str());
 							}
 						</f>
@@ -1730,7 +1731,7 @@ extern "C" void webmain_real()
 						string path = string_f("%s/msg/%s",m.from,m.uuid);
 						string content;
 						if (m.content[0] != '\0'){
-							content = string_f("<div class=smsg>%s</div>",util_format_shortmsg (m.content,100,m.size).c_str());
+							content = string_f("<div class=smsg>%s</div>",util_format_shortmsg (m.content,100,m.size,image_width).c_str());
 						}else if (file_is_sound(m.file_type)){
 							string tmp = util_flipspaces(m.submit);
 							content = string_f("<audio controls>\n"
@@ -2741,7 +2742,7 @@ extern "C" void webmain_real()
 				DIV dd("webtable","text"); dd.autoscroll().w(100).bordertop(1,"black").print();
 				<call bod_client_readfile>(glocal.con,w_session.c_str(),id,"");
 				<f ok>
-					string tmp = util_format_shortmsg (content);
+					string tmp = util_format_shortmsg (content,500);
 					htmlout (tmp);
 				</f>
 				</call>
