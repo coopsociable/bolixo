@@ -568,6 +568,7 @@ static void trli_getsessioninfo(CONNECT_INFO &con, CONNECT_INFO &con_sess, vecto
 			val.sname = v;
 			var.vals.push_back(val);
 		}
+		add_to_instrument ("setvar fulltext");
 		<call bo_sessiond_client_setvar>(con_sess,w_session.c_str(),var);
 		<f ok>
 			if (!success) tlmp_error ("Can't set variable offset: %s\n",msg);
@@ -627,7 +628,7 @@ static void web_updateoffsets(CONNECT_INFO &con_sess)
 		val.sval = string_f ("%u",v.second);
 		var.vals.push_back(val);
 	}
-	//tlmp_error ("updateoffsets\n");
+	add_to_instrument ("setvar updateoffsets");
 	<call bo_sessiond_client_setvar>(con_sess,w_session.c_str(),var);
 	<f ok>
 		if (!success) tlmp_error ("Can't set variable offset: %s\n",msg);
@@ -646,7 +647,7 @@ static void web_updatecurrents(CONNECT_INFO &con_sess)
 		val.sval = string_f ("%u",v.second);
 		var.vals.push_back(val);
 	}
-	//tlmp_error ("updatecurrents\n");
+	add_to_instrument ("setvar updatecurrents");
 	<call bo_sessiond_client_setvar>(con_sess,w_session.c_str(),var);
 	<f ok>
 		if (!success) printf ("Can't set variable current: %s\n",msg);
@@ -928,7 +929,7 @@ static void index_setcopyitem(CONNECT_INFO &con_sess, PARAM_STRING path, PARAM_S
 	val.sname = "name";
 	val.sval = name.ptr;
 	var.vals.push_back(val);
-	//tlmp_error ("setcopyitem setvar\n");
+	add_to_instrument ("setvar setcopyitem");
 	<call bo_sessiond_client_setvar>(con_sess,w_session.c_str(),var);
 	<f ok>
 		if (!success) tlmp_error ("Can't set variable copy: %s\n",msg);
@@ -1272,7 +1273,7 @@ extern "C" void webmain_real()
 			val.sval = string_f("%u",v.scroll_left);
 			var.vals.push_back(move(val));
 		}
-		//tlmp_error ("savetablegeometry setvar\n");
+		add_to_instrument ("setvar savetablegeometry");
 		<call bo_sessiond_client_setvar>(glocal.con_sess,w_session.c_str(),var);
 		<f ok>
 			if (!success) tlmp_error ("Can't set variable geometry: %s\n",msg);
@@ -1366,9 +1367,13 @@ extern "C" void webmain_real()
 				for (auto &c:currentforms){
 					if (c.id == v.formid){
 						found = true;
+						break;
 					}
 				}
-				if (!found) update = true;
+				if (!found){
+					update = true;
+					break;
+				}
 			}
 		}
 		if (update){
@@ -1385,7 +1390,7 @@ extern "C" void webmain_real()
 					var.vals.push_back(val);
 				}
 			}
-			//tlmp_error ("recordform setvar\n");
+			add_to_instrument ("setvar recordform");
 			<call bo_sessiond_client_setvar> (glocal.con_sess,w_session.c_str(),var);
 			<f ok>
 				if (!success) tlmp_error (MSG_U(E_SAVECURFORM,"Can't save active form state: %s\n"),msg);
@@ -1506,7 +1511,7 @@ extern "C" void webmain_real()
 				var.vals.push_back(val);
 			}
 		}
-		//tlmp_error ("savetabs setvar\n");
+		add_to_instrument ("setvar savetabs");
 		<call bo_sessiond_client_setvar>(glocal.con_sess,w_session.c_str(),var);
 		<f ok>
 			if (!success) htmlprintf ("Can't set variable webtabs: %s\n",msg);
@@ -1548,7 +1553,7 @@ extern "C" void webmain_real()
 						var.vals.push_back(val);
 					}
 				}
-				//tlmp_error ("document setvar\n");
+				add_to_instrument ("setvar document");
 				<call bo_sessiond_client_setvar>(glocal.con_sess,w_session.c_str(),var);
 				<f ok>
 					if (!success) htmlprintf ("Can't set variable document: %s\n",msg);
