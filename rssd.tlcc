@@ -37,6 +37,7 @@
 #include "bolixo.h"
 #include "bolixo.m"
 #include "instrument.h"
+#include "helper.h"
 
 
 using namespace std;
@@ -137,20 +138,21 @@ struct HANDLE_INFO: public ARRAY_OBJ{
 #include "proto/bod_client.protoch"
 
 struct WEBSITE_OPTIONS{
-	bool remove_a;
-	bool remove_div;
-	bool remove_img;
-	bool remove_iframe;
-	WEBSITE_OPTIONS(){
-		remove_a = false;
-		remove_div = false;
-		remove_img = false;
-		remove_iframe = false;
-	}
+	bool remove_a = false;
+	bool remove_p = false;
+	bool remove_div = false;
+	bool remove_img = false;
+	bool remove_iframe = false;
+	bool remove_h6 = false;
+	bool remove_comma = false;
+	WEBSITE_OPTIONS() = default;
 	bool empty() const {
 		return !remove_a
+			&& !remove_p
 			&& !remove_div
 			&& !remove_img
+			&& !remove_h6
+			&& !remove_comma
 			&& !remove_iframe;
 	}
 };
@@ -193,8 +195,11 @@ struct WEBSITE{
 			p = mini_photo_url.c_str();
 		}else if (strcmp(field,"options")==0){
 			if (options.remove_a) tmp = "remove_a ";
+			if (options.remove_p) tmp = "remove_p ";
 			if (options.remove_div) tmp += "remove_div ";
 			if (options.remove_img) tmp += "remove_img ";
+			if (options.remove_h6) tmp += "remove_h6 ";
+			if (options.remove_comma) tmp += "remove_comma ";
 			if (options.remove_iframe) tmp += "remove_iframe ";
 			p = tmp.c_str();
 		}else{
@@ -303,10 +308,16 @@ void RSSD_CONFIG::readfile (PARAM_STRING configfile)
 			for (auto const &t:tb){
 				if (t == "remove_a"){
 					glocal.website.options.remove_a = true;
+				}else if (t == "remove_p"){
+					glocal.website.options.remove_p = true;
 				}else if (t == "remove_div"){
 					glocal.website.options.remove_div = true;
 				}else if (t == "remove_img"){
 					glocal.website.options.remove_img = true;
+				}else if (t == "remove_h6"){
+					glocal.website.options.remove_h6 = true;
+				}else if (t == "remove_comma"){
+					glocal.website.options.remove_comma = true;
 				}else if (t == "remove_iframe"){
 					glocal.website.options.remove_iframe = true;
 				}else{
@@ -590,20 +601,55 @@ static string rssd_formatdesc (const string &description, const WEBSITE_OPTIONS 
 			}else{
 				ptdesc += strlen(ptdesc);
 			}
-		}else if (rssd_ncmp(ptdesc,CONST_STR("<img "))==0 && options.remove_img){
+		}else if (rssd_ncmp(ptdesc,CONST_STR("<img "))==0){
 			ptdesc += 5;
-			const char *end = strstr(ptdesc,">");
-			if (end != nullptr){
-				ptdesc = end+1;
-				if (*ptdesc == '\n') ptdesc++;
+			if (options.remove_img){
+				const char *end = strstr(ptdesc,">");
+				if (end != nullptr){
+					ptdesc = end+1;
+					if (*ptdesc == '\n') ptdesc++;
+				}else{
+					ptdesc += strlen(ptdesc);
+				}
 			}else{
-				ptdesc += strlen(ptdesc);
+				const char *pt = strcasestr(ptdesc,"src=");
+				if (pt != nullptr){
+					pt += 4;
+					if (*pt == '"') pt++;
+					const char *end;
+					if (is_start_any_ofnc(pt,end,"http://","https://")){
+						while (*end != '\0' && *end > ' ' && *end != '>' && *end != '"') end++;
+						ret += "_IMG=" + string(pt,end-pt);
+						if (*end == '"') end++;
+						while (*end != '\0' && *end != '>') end++;
+						if (*end == '>') end++;
+						ptdesc = end;
+					}
+				}
 			}
 		}else if (rssd_ncmp(ptdesc,CONST_STR("<a"))==0 && options.remove_a){
 			ptdesc += 2;
 			const char *end = strstr(ptdesc,"</a>");
 			if (end != nullptr){
 				ptdesc = end+4;
+				if (*ptdesc == '\n') ptdesc++;
+			}else{
+				ptdesc += strlen(ptdesc);
+			}
+		}else if (rssd_ncmp(ptdesc,CONST_STR("<p"))==0 && options.remove_p){
+			ptdesc += 2;
+			const char *end = strstr(ptdesc,"</p>");
+			if (end != nullptr){
+				ptdesc = end+4;
+				if (*ptdesc == '\n') ptdesc++;
+			}else{
+				ptdesc += strlen(ptdesc);
+			}
+		}else if (rssd_ncmp(ptdesc,CONST_STR("<h6"))==0 && options.remove_h6){
+			ptdesc += 3;
+			const char *end = strstr(ptdesc,"</h6>");
+			if (end != nullptr){
+				ptdesc = end+5;
 				if (*ptdesc == '\n') ptdesc++;
 			}else{
 				ptdesc += strlen(ptdesc);
@@ -630,6 +676,36 @@ static string rssd_formatdesc (const string &description, const WEBSITE_OPTIONS 
 			ret += *ptdesc++;
 		}
 	}
+	if (options.remove_comma){
+		// After using various remove_ options, we end up with a bunch of commas.
+		while (true){
+			auto pos = ret.find(",,");
+			if (pos == string::npos){
+				break;
+			}else{
+				unsigned start = pos;
+				while (ret[pos] == ',') pos++;
+				ret.replace(start,pos-start,"");
+			}
+		}
+		while (true){
+			auto pos = ret.find("&nbsp;");
+			if (pos == string::npos){
+				break;
+			}else{
+				ret.replace(pos,6,"");
+			}
+		}
+		while (true){
+			auto pos = ret.find("\t|");
+			if (pos == string::npos){
+				break;
+			}else{
+				ret.replace(pos,2,"");
+			}
+		}
+	}
+			
 	// Remove spaces at the end and front
 	strip_end (ret);
 	for (unsigned i=0; i<ret.size(); i++){
@@ -753,6 +829,7 @@ int main (int argc, char *argv[])
 	glocal const char *user = "bolixo";
 	glocal bool daemon = false;
 	glocal bool testmode = false;
+	glocal bool test_summary = false;
 	glocal bool process = false;
 	glocal bool printconf = false;
 	glocal bool printaccounts = false;
@@ -786,6 +863,7 @@ int main (int argc, char *argv[])
 		setarg (' ',"account","Account select for printfield",glocal.account,false);
 		setgrouparg ("Tests");
 		setarg (' ',"testmode","Execution inline of some part of the rssd server",glocal.testmode,false);
+		setarg (' ',"test_summary","Do not format rss, just print the fields",glocal.test_summary,false);
 		setarg (' ',"process","Process some websites",glocal.process,false);
 		setarg (' ',"printconf","Print configuration",glocal.printconf,false);
 		setarg (' ',"force_account","Send all messages to this account",force_account,false);
@@ -843,6 +921,7 @@ int main (int argc, char *argv[])
 					</call>
 					<call rssd_processxml> (glocal.rss);
 					<f onepage>
+						printf ("------------------------------------------------------------------------\n");
 						const char *ptdesc = description.c_str();
 						const char *pt = strchr(ptdesc,'\n');
 						string oneline;
@@ -852,7 +931,17 @@ int main (int argc, char *argv[])
 							oneline = string(ptdesc,pt-ptdesc);
 						}
 						printf ("title=%s\nlink=%s\npubdate=%s\nguid=%s\ndescription=%s\ncontent=%s\n"
-						,title.c_str(),link.c_str(),pubdate.c_str(),guid.c_str(),oneline.c_str(),content.c_str());
+							,title.c_str(),link.c_str(),pubdate.c_str(),guid.c_str(),oneline.c_str(),content.c_str());
+						if (!glocal.test_summary){
+							printf ("===================\n");
+							WEBSITE_OPTIONS options;
+							options.remove_a = true;
+							options.remove_p = true;
+							options.remove_h6 = true;
+							options.remove_comma = true;
+							string formatdesc = rssd_formatdesc (description,options);
+							printf ("%s\n%s\n%s",title.c_str(),link.c_str(),formatdesc.c_str());
+						}
 					</f>
 					</call>
 				}
