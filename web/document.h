@@ -37,4 +37,5 @@ void jump_config_contacts();
 void jump_config_contact_req();
 void jump_config_projects();
 void jump_config_groups();
+void document_clickable_img (PARAM_STRING url, const char *image_width, unsigned border);
 extern bool document_button_display_only;
