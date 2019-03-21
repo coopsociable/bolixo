@@ -458,7 +458,8 @@ static void bod_list_talk (
 	unsigned offset,
 	unsigned nb,
 	bool &deletes,
-	string &msg)
+	string &msg,
+	bool public_page)	// keepdays do not apply to public pages
 {
 	glocal unsigned nb = nb;
 	glocal map<string,SHORTMSG> mp;
@@ -466,7 +467,13 @@ static void bod_list_talk (
 	int dirid = fs_find_short_inbox (ownerid,groupowner,groupname,msg);
 	if (dirid != -1){
 		DATEASC keepdate;
-		fdpass_asctime(time(NULL)-keepdays*24*60*60,keepdate);
+		const char *keepdate_ptr;
+		if (public_page){
+			 keepdate_ptr = "2018/12/13";	// Start of bolixo
+		}else{	
+			fdpass_asctime(time(NULL)-keepdays*24*60*60,keepdate);
+			keepdate_ptr = keepdate.buf;
+		}
 		<call sql_query>("select dirs_content.name,dirs_content.modified,id2name.name,id2name_copy.name,files.filetype"
 			",dirs_content.itemid,files.content,dirs_content.eventtime,dirs_content.type,files.signature"
 			" from dirs_content"
@@ -475,7 +482,7 @@ static void bod_list_talk (
 			" join id2name on ids.ownerid = id2name.userid"
 			" left join id2name as id2name_copy on dirs_content.copiedby = id2name_copy.userid"
 			" where dirid = %d and dirs_content.eventtime > '%s' and (type=%u or type=%u) order by eventtime"
-			,dirid,keepdate.buf,ENTRY_MSG,ENTRY_DELETED);
+			,dirid,keepdate_ptr,ENTRY_MSG,ENTRY_DELETED);
 		<f onerow>
 			SHORTMSG msg;
 			msg.uuid = row[0];
@@ -2506,7 +2513,8 @@ static int bod_main (
 						glocal.msg = MSG_U(E_GROUPPROBLEMS,"Unknown group name, empty group, or user not a member");
 					</f>
 					<f onerow>
-						bod_list_talk (glocal.msgs,atoi(row[0]),glocal.groupowner,glocal.groupname,glocal.offset,glocal.nb,glocal.deletes,glocal.msg);
+						bod_list_talk (glocal.msgs,atoi(row[0]),glocal.groupowner,glocal.groupname
+							,glocal.offset,glocal.nb,glocal.deletes,glocal.msg,false);
 					</f>
 					</call>
 				}
@@ -3005,7 +3013,7 @@ static int bod_main (
 				unsigned userid = bod_checkpublic(username,msg);
 				if (userid != (unsigned)-1){
 					bool deletes;
-					bod_list_talk (msgs,userid,username,"public",offset,nb,deletes,msg);
+					bod_list_talk (msgs,userid,username,"public",offset,nb,deletes,msg,true);
 				}
 				if (msg.size() > 0){
 					msgs.clear();
