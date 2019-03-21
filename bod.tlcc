@@ -2739,7 +2739,7 @@ static int bod_main (
 					rep_interest_list (true,glocal.msg,glocal.users);
 				}
 			</f>
-			<f interest_check> // sessionid owner fulltext:v offset:u nb:u = success:b msg messages:U{SHORTMSG}v
+			<f interest_check> // sessionid owner fulltext:v offset:u nb:u = success:b msg messages:U{SHORTMSG}v total:u
 				glocal unsigned nb = nb;
 				glocal string msg;
 				glocal map<string,SHORTMSG> mp;
@@ -2802,16 +2802,17 @@ static int bod_main (
 				}	
 				vector<SHORTMSG> msgs;
 				if (glocal.msg.size() > 0){
-					rep_interest_check (false,glocal.msg,msgs);
+					rep_interest_check (false,glocal.msg,msgs,0);
 				}else{
 					for (auto &m:glocal.mp){
 						if (m.second.file_type != FILE_UNKNOWN){
 							msgs.push_back(move(m.second));
 						}
 					}
+					unsigned total = msgs.size();
 					sort (msgs.begin(),msgs.end(),msg_compare);
 					bod_trim (msgs,offset,nb);
-					rep_interest_check (true,glocal.msg,msgs);
+					rep_interest_check (true,glocal.msg,msgs,total);
 				}
 			</f>
 			<f config_write>// sessionid owner config:U{CONFIG} = success:b msg
