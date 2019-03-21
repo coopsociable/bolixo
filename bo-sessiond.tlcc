@@ -446,17 +446,22 @@ int main (int argc, char *argv[])
 					if (it == glocal.sessions.end()){
 						msg = "Invalid sessionid";
 					}else{
-						for (auto &v:it->second.vars){
-							if (v.name == VAR_NOTIFIES){
-								unsigned pos=0;
-								for (auto &vv:v.vals){
-									if (vv.sname == name){
-										v.vals.erase(v.vals.begin()+pos);
+						// Valid session, we apply the delnotify to all sessions of this user
+						for (auto &s:glocal.sessions){
+							if (s.second.userid == it->second.userid){
+								for (auto &v:s.second.vars){
+									if (v.name == VAR_NOTIFIES){
+										unsigned pos=0;
+										for (auto &vv:v.vals){
+											if (vv.sname == name){
+												v.vals.erase(v.vals.begin()+pos);
+												break;
+											}
+											pos++;
+										}
 										break;
 									}
-									pos++;
 								}
-								break;
 							}
 						}
 						success = true;
@@ -498,14 +503,30 @@ int main (int argc, char *argv[])
 						tlmp_error ("setsession: %s does not exist\n",sessionid);
 					}else{
 						it->second = SESSION_INFO(userid,userid_str,name,email,lang,admin,dateformat,timezone);
-						VAR var;
-						var.name = VAR_NOTIFIES;
-						for (auto n:notifies){
-							SNAMEVAL val;
-							val.sname = n;
-							var.vals.push_back(val);
+						// If notifies is empty, check if the user has another session running and copy
+						// the notifications from there.
+						if (notifies.empty()){
+							for (auto &s:glocal.sessions){
+								if (s.second.userid==userid){
+									for (auto &var:s.second.vars){
+										if (var.name == VAR_NOTIFIES){
+											it->second.vars.push_back(var);
+											break;
+										}
+									}
+									break;
+								}
+							}
+						}else{
+							VAR var;
+							var.name = VAR_NOTIFIES;
+							for (auto n:notifies){
+								SNAMEVAL val;
+								val.sname = n;
+								var.vals.push_back(val);
+							}
+							it->second.vars.push_back(var);
 						}
-						it->second.vars.push_back(var);
 					}
 				</f>
 				<f setlang>
