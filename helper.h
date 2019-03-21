@@ -30,24 +30,44 @@ bool is_not_in(T t, T1 t1, Ts ... ts){
 	return is_not_in(t,t1) && is_not_in(t,ts...);
 }
 
-static const char *NONEED="";
+enum class NONEED_T{noneed};
+
+#define NONEED NONEED_T::noneed
 inline bool is_start_any_of (const char *a, const char *&pt, const char *b)
 {
 	bool ret = false;
 	auto len = strlen(b);
 	if (strncmp(a,b,len)==0){
 		ret = true;
-		if (&pt != &NONEED) pt = a+len;
+		pt = a+len;
 	}
 	return ret;
 }
-inline bool is_start_any_of (const std::string &a, const char *&pt, const char *b)
+inline bool is_start_any_of (const char *a, NONEED_T, const char *b)
 {
-	return is_start_any_of(a.c_str(),pt,b);
+	bool ret = false;
+	auto len = strlen(b);
+	if (strncmp(a,b,len)==0){
+		ret = true;
+	}
+	return ret;
 }
 template<typename T, typename T1, typename ... Ts>
 bool is_start_any_of(T t, const char *&pt, T1 t1, Ts ... ts){
 	return is_start_any_of(t,pt,t1) || is_start_any_of(t,pt,ts...);
+}
+template<typename T, typename T1, typename ... Ts>
+bool is_start_any_of(T t, NONEED_T no, T1 t1, Ts ... ts){
+	return is_start_any_of(t,no,t1) || is_start_any_of(t,no,ts...);
+}
+// Specialisation for std::string, optimisation
+template<typename T1, typename ... Ts>
+bool is_start_any_of(const std::string &t, const char *&pt, T1 t1, Ts ... ts){
+	return is_start_any_of(t.c_str(),pt,t1,ts...);
+}
+template<typename T1, typename ... Ts>
+bool is_start_any_of(const std::string &t, NONEED_T no, T1 t1, Ts ... ts){
+	return is_start_any_of(t.c_str(),no,t1,ts...);
 }
 
 // Case insensitive
@@ -61,13 +81,31 @@ inline bool is_start_any_ofnc (const char *a, const char *&pt, const char *b)
 	}
 	return ret;
 }
-inline bool is_start_any_ofnc (const std::string &a, const char *&pt, const char *b)
+inline bool is_start_any_ofnc (const char *a, NONEED_T, const char *b)
 {
-	return is_start_any_ofnc(a.c_str(),pt,b);
+	bool ret = false;
+	auto len = strlen(b);
+	if (strncasecmp(a,b,len)==0){
+		ret = true;
+	}
+	return ret;
 }
 template<typename T, typename T1, typename ... Ts>
 bool is_start_any_ofnc(T t, const char *&pt, T1 t1, Ts ... ts){
 	return is_start_any_ofnc(t,pt,t1) || is_start_any_ofnc(t,pt,ts...);
+}
+template<typename T, typename T1, typename ... Ts>
+bool is_start_any_ofnc(T t, NONEED_T no, T1 t1, Ts ... ts){
+	return is_start_any_ofnc(t,no,t1) || is_start_any_ofnc(t,no,ts...);
+}
+// Specialisation for std::string, optimisation
+template<typename T1, typename ... Ts>
+bool is_start_any_ofnc(const std::string &t, const char *&pt, T1 t1, Ts ... ts){
+	return is_start_any_ofnc(t.c_str(),pt,t1,ts...);
+}
+template<typename T1, typename ... Ts>
+bool is_start_any_ofnc(const std::string &t, NONEED_T no, T1 t1, Ts ... ts){
+	return is_start_any_ofnc(t.c_str(),no,t1,ts...);
 }
 
 #endif
