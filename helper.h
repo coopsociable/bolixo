@@ -30,13 +30,14 @@ bool is_not_in(T t, T1 t1, Ts ... ts){
 	return is_not_in(t,t1) && is_not_in(t,ts...);
 }
 
+static const char *NONEED="";
 inline bool is_start_any_of (const char *a, const char *&pt, const char *b)
 {
 	bool ret = false;
 	auto len = strlen(b);
 	if (strncmp(a,b,len)==0){
 		ret = true;
-		pt = a+len;
+		if (&pt != &NONEED) pt = a+len;
 	}
 	return ret;
 }
