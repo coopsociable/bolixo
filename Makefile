@@ -1,8 +1,10 @@
 CURDIR=bolixo
 MANPAGES=/usr/share/man
 PACKAGE_REV:=$(shell ./makeversion $(BUILD_SVNVER))
-INSTRUMENT:=$(shell test -f ../instrument && echo --instrument --getnow fdpass_getnow)
 DINSTRUMENT:=$(shell test -f ../instrument && echo -DINSTRUMENT)
+ifeq ($(DINSTRUMENT),-DINSTRUMENT)
+	INSTRUMENT=--instrument --getnow fdpass_getnow
+endif
 PROGS=_dict.o bod bod-client bod-control bo-writed bo-writed-control bo-sessiond bo-sessiond-control \
       bo-manager bofs ssltestsign bo-keysd bo-keysd-control bolixod bolixod-control perfsql \
       bo-mon bo-mon-control utils/eximexec utils/helpspell publishd publishd-control bo-webtest \
@@ -347,7 +349,8 @@ RPM=rpmbuild
 
 buildspec:
 	sed s/RPMREV/$(RPMREV)/ <$(CURDIR).spec \
-		|  sed s/REV/$(PACKAGE_REV)/ \
+		| sed s/REV/$(PACKAGE_REV)/ \
+		| sed s/BUILDOPTIONS/$(BUILDOPTIONS)/ \
 		> $(RPMTOPDIR)/SPECS/$(CURDIR)-$(PACKAGE_REV).spec
 	rm -fr /tmp/$(CURDIR)-$(PACKAGE_REV)
 	mkdir /tmp/$(CURDIR)-$(PACKAGE_REV)
@@ -359,6 +362,9 @@ buildspec:
 
 buildrpm: buildspec
 	unset LD_PRELOAD; $(RPM) -ba $(RPMTOPDIR)/SPECS/$(CURDIR)-$(PACKAGE_REV).spec
+
+buildrpm_instrument:
+	make BUILDOPTIONS="DINSTRUMENT=-DINSTRUMENT" buildrpm
 
 
 REPO=https://solucorp.solutions/repos/solucorp/bolixo

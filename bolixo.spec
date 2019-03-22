@@ -18,7 +18,7 @@ to run a node.
 %setup 
 
 %build
-make BUILD_SVNVER=REV compile
+make BUILD_SVNVER=REV BUILDOPTIONS compile
 
 %install
 if [ "$RPM_BUILD_ROOT" != "" ] ; then
