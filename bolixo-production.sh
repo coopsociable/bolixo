@@ -111,8 +111,6 @@ elif [ "$1" = "createsqluser" ] ; then # db: Configure sql user
 		/var/lib/lxc/bosqldbolixo/bosqldbolixo.runsql mysql </tmp/bolixo.sql
 		/var/lib/lxc/bosqldbolixo/bosqldbolixo.admsql reload
 	fi
-elif [ "$1" = "test-system" ]; then # A: Checks components
-	time -p bo-mon-control test
 elif [ "$1" = "checks" ]; then # A: Sanity checks blackhole
 	if blackhole-control status >/dev/null 2>/dev/null
 	then
@@ -254,9 +252,11 @@ elif [ "$1" = "mailctrl" ] ; then # config: Control writed sendmail
 		exit 1
 	fi
 	/usr/lib/bolixo-test.sh mailctrl "$2" "$3"
-elif [ "$1" = "monitor" ] ; then # prod: Test all trlids
+elif [ "$1" = "test-system" ]; then # prod: Perform a test loop using the bolixo monitor
+	time -p bo-mon-control test
+elif [ "$1" = "monitor" ] ; then # prod: Reports last run of the bolixo monitor
 	bo-mon-control status	
-elif [ "$1" = "resetmsg" ] ; then # prod: Reset alarm
+elif [ "$1" = "resetmsg" ] ; then # prod: Reset alarm in bolixo monitor
 	bo-mon-control resetmsg
 elif [ "$1" = "restart" ] ; then # prod: restart some services (webs, internals, ...)
 	shift

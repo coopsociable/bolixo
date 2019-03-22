@@ -458,6 +458,7 @@ static void bod_list_talk (
 	unsigned offset,
 	unsigned nb,
 	bool &deletes,
+	unsigned &total,
 	string &msg,
 	bool public_page)	// keepdays do not apply to public pages
 {
@@ -522,6 +523,7 @@ static void bod_list_talk (
 			msgs.push_back(move(m.second));
 		}
 	}
+	total = msgs.size();
 	sort (msgs.begin(),msgs.end(),msg_compare);
 	bod_trim (msgs,offset,nb);
 	deletes = glocal.deletes;
@@ -2498,6 +2500,7 @@ static int bod_main (
 				glocal unsigned offset = offset;
 				glocal unsigned nb = nb;
 				glocal bool deletes = false;	// Is there some deleted entries
+				glocal unsigned total = 0;	// Total number of records
 				glocal string msg;
 				glocal vector<SHORTMSG> msgs;
 				string username;
@@ -2514,15 +2517,15 @@ static int bod_main (
 					</f>
 					<f onerow>
 						bod_list_talk (glocal.msgs,atoi(row[0]),glocal.groupowner,glocal.groupname
-							,glocal.offset,glocal.nb,glocal.deletes,glocal.msg,false);
+							,glocal.offset,glocal.nb,glocal.deletes,glocal.total,glocal.msg,false);
 					</f>
 					</call>
 				}
 				if (glocal.msg.size()>0){
 					glocal.msgs.clear();
-					rep_list_talk(false,glocal.msg,glocal.msgs,false);
+					rep_list_talk(false,glocal.msg,glocal.msgs,false,0);
 				}else{
-					rep_list_talk(true,glocal.msg,glocal.msgs,glocal.deletes);
+					rep_list_talk(true,glocal.msg,glocal.msgs,glocal.deletes,glocal.total);
 				}
 			</f>
 			<f contact_request>	// sessionid owner user intro = success:b msg
@@ -2767,7 +2770,7 @@ static int bod_main (
 						//" left join dirs_content on interests.dirid=dirs_content.itemid"
 						//" left join marks on marks.userid=%u and marks.itemid=interests.dirid"
 						//" left join dirs_content dirs2 on interests.dirid = dirs2.dirid and (marks.modified is null or dirs2.modified > marks.modified)"
-						" join files on dirs2.itemid = files.id"
+						" join files on dirs2.itemid = files.id and dirs2.modified = files.modified"
 						" where interests.userid=%u order by dirs2.eventtime",keepdate.buf,userid);	//,userid);
 					<f onerow>
 						#ifdef INSTRUMENT
@@ -3013,7 +3016,8 @@ static int bod_main (
 				unsigned userid = bod_checkpublic(username,msg);
 				if (userid != (unsigned)-1){
 					bool deletes;
-					bod_list_talk (msgs,userid,username,"public",offset,nb,deletes,msg,true);
+					unsigned total;
+					bod_list_talk (msgs,userid,username,"public",offset,nb,deletes,total,msg,true);
 				}
 				if (msg.size() > 0){
 					msgs.clear();

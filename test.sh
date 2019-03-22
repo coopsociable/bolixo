@@ -566,6 +566,7 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 		create index dirs_content_dirid on dirs_content (dirid);
 		create index dirs_content_name on dirs_content (name);
 		create index dirs_content_itemid on dirs_content (itemid);
+		create index dirs_content_eventtime on dirs_content (eventtime);
 		create table groups (
 			id int primary key auto_increment,
 			ownerid int,
@@ -687,6 +688,11 @@ elif [ "$1" = "createdb-patch2" ]; then # db: add anonymous messages
 	ENGINE=myisam
 	mysql -uroot -S $SOCKN $DBNAME <<-EOF
 		alter table config add anon_messages tinyint unsigned default 0;
+	EOF
+elif [ "$1" = "createdb-patch3" ]; then # db: add eventtime index to dirs_content
+	ENGINE=myisam
+	mysql -uroot -S $SOCKN $DBNAME <<-EOF
+		create index dirs_content_eventtime on dirs_content (eventtime);
 	EOF
 elif [ "$1" = "generate-system-pubkey" ] ; then # config: Generate the system public key
 	echo Generate --system-- crypto key
