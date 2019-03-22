@@ -748,7 +748,11 @@ static int rssd_process (CONNECT_INFO &con, RSSD_CONFIG &config, PARAM_STRING na
 				tlmp_error (MSG_U(E_NOSESSSION,"Session not set for account %s\n"),name.ptr);
 				break;
 			}
-			if (rssd_getrss(r.rssurl,glocal.rss)!=-1){
+			if (rssd_getrss(r.rssurl,glocal.rss)==-1){
+				tlmp_error (MSG_U(E_GETRSS,"Error getting the RSS for account %s\n"),name.ptr);
+				ret = 0;	// We have to continue for other accounts. This is a network
+						// error probably and this will fix itself next time.
+			}else{
 				if (savexmldir != NULL){
 					mkdir (savexmldir,0755);
 					<call savefile>(string_f("%s/%s.xml",savexmldir,name.ptr),false);
@@ -829,7 +833,7 @@ static int rssd_process (CONNECT_INFO &con, RSSD_CONFIG &config, PARAM_STRING na
 			break;
 		}
 	}
-	if (!found) msg = "Website not found in configuration";
+	if (!found) msg = string_f(MSG_U(E_WEBSITENOTFOUND,"RSS account %s not found in configuration"),name.ptr);
 	return ret;
 }
 </mod>
@@ -912,13 +916,14 @@ int main (int argc, char *argv[])
 			config.readsessions (glocal.sessionsfile);
 			unsigned nbproc=0;
 			PROCESS_STATS stats;
+			ret = 0;
 			for (int i=0; i<argc; i++){
 				string msg;
 				printf ("%s:\n",argv[i]);
 				if (rssd_process(con,config,argv[i],msg,true,stats)!=-1){
 					nbproc++;
-					ret = 0;
 				}else{
+					ret = -1;
 					tlmp_error ("%s\n",msg.c_str());
 					break;
 				}
