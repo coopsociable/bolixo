@@ -541,39 +541,49 @@ static void webmain_real()
 	<f step7>	// List all the directory for robots
 		tlmpweb_title (MSG_R(T_BOLIXO_ORG_DIR));
 		tlmpweb_body ("white",NULL);
-		<call bolixod_client_pub_list>(glocal.con,"a",0,50);
-		<f ok>
-			for (auto &u:users){
-				DIV d; d.border(1,"black").margins(5,5).vmargins(5,5).paddings(5,5).vpaddings(5,5).print();
-				const char *nodename = u.nodename;
-				if (strncasecmp(nodename,"https://",8)==0){
-					nodename += 8;
-				}else if (strncasecmp(nodename,"http://",7)==0){
-					nodename += 7;
+		unsigned offset = 0;
+		while (true){
+			glocal bool more = false;
+			<call bolixod_client_pub_list>(glocal.con,"a",offset,50);
+			<f ok>
+				for (auto &u:users){
+					DIV d; d.border(1,"black").margins(5,5).vmargins(5,5).paddings(5,5).vpaddings(5,5).print();
+					const char *nodename = u.nodename;
+					if (strncasecmp(nodename,"https://",8)==0){
+						nodename += 8;
+					}else if (strncasecmp(nodename,"http://",7)==0){
+						nodename += 7;
+					}
+					htmlprintf ("user: %s@%s<br>\n",u.user,nodename);
+					if (f(u.fullname)) htmlprintf ("fullname: %s<br>\n",u.fullname);
+					if (u.photo) htmlprintf ("<img src=%s?webstep=2&user=%s&node=%s&file=photo.jpg>\n",tlmpweb_curpage(),u.user,u.nodename);
+					if (u.mini_photo) htmlprintf ("<img src=%s?webstep=2&user=%s&node=%s&file=mini-photo.jpg>\n",tlmpweb_curpage(),u.user,u.nodename);
+					/- <br>
+					if (f(u.address1)) htmlprintf ("address1: %s<br>\n",u.address1);
+					if (f(u.address2)) htmlprintf ("address2: %s<br>\n",u.address2);
+					if (f(u.city)) htmlprintf ("city: %s<br>\n",u.city);
+					if (f(u.state)) htmlprintf ("state: %s<br>\n",u.state);
+					if (f(u.country)) htmlprintf ("country: %s<br>\n",u.country);
+					if (f(u.zipcode)) htmlprintf ("zipcode: %s<br>\n",u.zipcode);
+					if (f(u.email)) htmlprintf ("email: %s<br>\n",u.email);
+					if (f(u.phone)) htmlprintf ("phone: %s<br>\n",u.phone);
+					if (f(u.fax))   htmlprintf ("fax: %s<br>\n",u.fax);
+					if (f(u.bolixosite)) htmlprintf ("bolixosite: <a href=%s>%s</a><br>\n",u.bolixosite,u.bolixosite);
+					if (f(u.website)) htmlprintf ("website: <a href=%s>%s</a>\n",u.website,u.website);
+					if (f(u.interest)){
+						DIV d("col3"); d.w(98).bg("lightgray").margins(2,2).paddings(4,4).borderradius(5).border(1,"gray").print();
+						htmlprintf ("%s\n",u.interest);
+					}
 				}
-				htmlprintf ("user: %s@%s<br>\n",u.user,nodename);
-				if (f(u.fullname)) htmlprintf ("fullname: %s<br>\n",u.fullname);
-				if (u.photo) htmlprintf ("<img src=%s?webstep=2&user=%s&node=%s&file=photo.jpg>\n",tlmpweb_curpage(),u.user,u.nodename);
-				if (u.mini_photo) htmlprintf ("<img src=%s?webstep=2&user=%s&node=%s&file=mini-photo.jpg>\n",tlmpweb_curpage(),u.user,u.nodename);
-				/- <br>
-				if (f(u.address1)) htmlprintf ("address1: %s<br>\n",u.address1);
-				if (f(u.address2)) htmlprintf ("address2: %s<br>\n",u.address2);
-				if (f(u.city)) htmlprintf ("city: %s<br>\n",u.city);
-				if (f(u.state)) htmlprintf ("state: %s<br>\n",u.state);
-				if (f(u.country)) htmlprintf ("country: %s<br>\n",u.country);
-				if (f(u.zipcode)) htmlprintf ("zipcode: %s<br>\n",u.zipcode);
-				if (f(u.email)) htmlprintf ("email: %s<br>\n",u.email);
-				if (f(u.phone)) htmlprintf ("phone: %s<br>\n",u.phone);
-				if (f(u.fax))   htmlprintf ("fax: %s<br>\n",u.fax);
-				if (f(u.bolixosite)) htmlprintf ("bolixosite: <a href=%s>%s</a><br>\n",u.bolixosite,u.bolixosite);
-				if (f(u.website)) htmlprintf ("website: <a href=%s>%s</a>\n",u.website,u.website);
-				if (f(u.interest)){
-					DIV d("col3"); d.w(98).bg("lightgray").margins(2,2).paddings(4,4).borderradius(5).border(1,"gray").print();
-					htmlprintf ("%s\n",u.interest);
-				}
+				if (users.size() >= 50) glocal.more = true;
+			</f>
+			</call>
+			if (glocal.more){
+				offset += 50;
+			}else{
+				break;
 			}
-		</f>
-		</call>
+		}
 	</f>
 	</call>
 	
