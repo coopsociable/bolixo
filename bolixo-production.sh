@@ -231,15 +231,27 @@ elif [ "$1" = "stop-status" ] ; then # prod: status of trli-stop
 	/usr/lib/bolixo-test.sh stop-status
 elif [ "$1" = "stop-start" ] ; then # prod: Restart the web
 	/usr/lib/bolixo-test.sh stop-start
+elif [ "$1" = "instrument" ] ; then # prod: Turn instrumentation on and off
+	if [ "$2" = "" ] ; then
+		echo "bolixo-production instrument 0|1"
+		exit 1
+	fi
+	$0 calltest bod-controls instrument $2
 elif [ "$1" = "eraseanon" ] ; then # prod: [nbsec (default 1 day) anonymous normal admin]
-	NBSEC=`expr 60 \* 60 \* 24`
+	OLD=1d
 	shift
 	if [ "$1" != "" ] ; then
-		NBSEC=$1
+		OLD=$1
 		shift
 	fi
-	echo Erase anonymous session older than $NBSEC seconds
-	/usr/lib/bolixo-test.sh eraseanon-lxc $NBSEC $*
+	if [ $# != 0 -a $# != 3  ]; then
+		echo you must supply a flag for every type of account
+       		echo The flag is 0 or 1
+		echo anonymous user admin
+		exit 1
+	fi
+	echo Erase anonymous session older than $OLD 
+	/usr/lib/bolixo-test.sh eraseanon-lxc $OLD $*
 elif [ "$1" = "listsessions" ] ; then # prod: list web sessions (offset)
 	OFF=0
 	if [ "$2" != "" ] ; then
@@ -298,6 +310,7 @@ elif [ "$1" = "restart" ] ; then # prod: restart some services (webs, internals,
 		echo Normal operation resumed
 	elif [ "$1" = "most" ] ; then
 		$0 restart internals
+		$0 instrument 0
 		echo
 		$0 restart webs
 		echo

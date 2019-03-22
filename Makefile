@@ -67,7 +67,7 @@ bo-sessiond: bo-sessiond.tlcc proto/bo-sessiond_control.protoh \
 	cctlcc -Wall $(OPTIONS) bo-sessiond.tlcc -o bo-sessiond $(LIBS) -ltlmpsql -L/usr/lib64/mysql -lmysqlclient
 
 bo-sessiond-control: bo-sessiond-control.tlcc proto/bo-sessiond_control.protoh
-	cctlcc -Wall $(OPTIONS) bo-sessiond-control.tlcc -o bo-sessiond-control $(LIBS)
+	cctlcc -Wall $(OPTIONS) bo-sessiond-control.tlcc _dict.o -o bo-sessiond-control $(LIBS)
 
 bo-log: bo-log.tlcc proto/bo-log.protoh proto/bo-log-control.protoh proto/bo-log-admin.protoh
 	cctlcc -Wall $(OPTIONS) trli-log.tlcc -o trli-log $(LIBS) -ltlmpsql -L/usr/lib64/mysql -lmysqlclient

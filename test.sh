@@ -892,14 +892,14 @@ elif [ "$1" = "cmp-sequence" ] ; then # S: Execute QA tests
 			diff -c $file /tmp/cmp-test/$file
 		done
 	fi
-elif [ "$1" = "eraseanon-lxc" ] ; then # prod: [ nbseconds anonymous normal admin ]
+elif [ "$1" = "eraseanon-lxc" ] ; then # prod: [  time [ anonymous normal admin ] ]
 	export LXCSOCK=on
-	NBSEC=0
+	OLD=0
 	ANONYMOUS=1
 	NORMAL=0
 	ADMIN=0
 	if [ "$2" != "" ] ; then
-		NBSEC=$2
+		OLD=$2
 	fi
 	if [ "$3" != "" ] ; then
 		ANONYMOUS="$3"
@@ -910,8 +910,8 @@ elif [ "$1" = "eraseanon-lxc" ] ; then # prod: [ nbseconds anonymous normal admi
 	if [ "$5" != "" ] ; then
 		ADMIN="$5"
 	fi
-	echo eraseold $NBSEC $ANONYMOUS $NORMAL $ADMIN
-	$0 bo-sessiond-control eraseold $NBSEC $ANONYMOUS $NORMAL $ADMIN
+	echo eraseold $OLD $ANONYMOUS $NORMAL $ADMIN
+	$0 bo-sessiond-control eraseold $OLD $ANONYMOUS $NORMAL $ADMIN
 elif [ "$1" = "test-sequence-lxc" ] ; then # S: Reloads and fills database lxc mode
 	export LXCSOCK=on
 	shift
