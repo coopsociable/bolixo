@@ -1099,8 +1099,16 @@ static void bod_remote_readmore(
 	</call>
 }
 </mod>
-// Parse a user[@nodename]
-// Strip the nodename if it is this node.
+/*
+	Parse a user[@nodename]
+	Strip the nodename if it is this node.
+
+	If this is a local user, local_user will contain just the user part wihtout @our_nodename.
+	If this is a remote user
+		local_user will contain user
+		remote_user will contain the user part without the @some_server
+		server will contain some_server.
+*/
 static int bod_parse_user (
 	const char *user,
 	string &local_user,
@@ -1131,14 +1139,14 @@ static int bod_parse_user (
 		if (!bad){
 			pt = strchr(user,'@');
 			if (pt == NULL){
+				local_user = user;
 				ret = 0;
 			}else if (pt[1] != '-'){
 				// A hostname can't start with -
 				// This is user@nodename
-				if (strncmp(our_nodename,"http://",7)==0){
-					our_nodename = our_nodename+7;
-				}else if (strncmp(our_nodename,"https://",7)==0){
-					our_nodename = our_nodename+8;
+				const char *ptnode;
+				if (is_start_any_ofnc(our_nodename,ptnode,"http://","https://")){
+					our_nodename = ptnode;
 				}
 				if (strcasecmp(pt+1,our_nodename)==0){
 					// Local user
@@ -1154,40 +1162,28 @@ static int bod_parse_user (
 	return ret;
 }
 <mod>
-static int bod_getpubkey (bool use_ssl,const char *hostname, string &pubkey)
-{
-	glocal int ret = -1;
-	glocal const char *hostname = hostname;
-	glocal string *pubkey = &pubkey;
-	CONNECT_HTTP_INFO con;
-	if (nonstrict) con.setnonstrictmode();
-	con.host = hostname;
-	con.use_ssl = use_ssl;
-	<call webapi_systempubkey>(con);
-	<f ok>
-		if (pubkey[0] == '\0'){
-			tlmp_error ("Enpty public key for host %s\n",glocal.hostname);
-		}else if (fs_valid_pubkey(pubkey)==-1){
-			tlmp_error ("Invalid public key for host %s\n",glocal.hostname);
-		}else{
-			*glocal.pubkey = pubkey;
-			glocal.ret = 0;
-		}
-	</f>
-	</call>
-	return glocal.ret;
-}
 static int bod_getpubkey (const char *nodename, string &pubkey)
 {
-	int ret = -1;
-	if (strncasecmp(nodename,"http://",7)==0){
-		ret = bod_getpubkey(false,nodename+7,pubkey);
-	}else if (strncasecmp(nodename,"https://",8)==0){
-		ret = bod_getpubkey(true,nodename+8,pubkey);
-	}else{
-		tlmp_error ("getpubkey invalid nodename: %s\n",nodename);
+	glocal int ret = -1;
+	glocal const char *hostname = nodename;
+	glocal string *pubkey = &pubkey;
+	CONNECT_HTTP_INFO con;
+	if (con.init (nodename) != -1){
+		if (nonstrict) con.setnonstrictmode();
+		<call webapi_systempubkey>(con);
+		<f ok>
+			if (pubkey[0] == '\0'){
+				tlmp_error ("Enpty public key for host %s\n",glocal.hostname);
+			}else if (fs_valid_pubkey(pubkey)==-1){
+				tlmp_error ("Invalid public key for host %s\n",glocal.hostname);
+			}else{
+				*glocal.pubkey = pubkey;
+				glocal.ret = 0;
+			}
+		</f>
+		</call>
 	}
-	return ret;
+	return glocal.ret;
 }
 </mod>
 <mod>
@@ -1217,6 +1213,7 @@ static int bod_check_remote_user(
 	const char *user,
 	const char *nodename,
 	string &msg,
+	string &local_user,
 	string &remote_user,
 	string &remote)
 {
@@ -1224,14 +1221,13 @@ static int bod_check_remote_user(
 	glocal const char *user = user;
 	glocal int ret = -1;
 	glocal string *msg = &msg;	
-	string tmpuser;
-	if (bod_parse_user(user,tmpuser,remote_user,remote,nodename)==-1){
+	if (bod_parse_user(user,local_user,remote_user,remote,nodename)==-1){
 		msg = MSG_R(E_IVLDUSER);
 	}else{
 		glocal const char *remote_user = remote_user.c_str();
 		glocal const char *remote = remote.c_str();
-		glocal.user = tmpuser.c_str();
-		<call sql_query>("select userid from id2name where name='%s'",user);
+		glocal.user = local_user.c_str();
+		<call sql_query>("select userid from id2name where name='%s'",glocal.user);
 		<f empty>
 			// User unknown
 			if (glocal.remote[0] != '\0'){
@@ -2537,8 +2533,10 @@ static int bod_main (
 				if (userid != 0){
 					glocal string remote_user;
 					glocal string remote;
-					if (bod_check_remote_user(glocal.con,user,glocal.nodename,glocal.msg,glocal.remote_user,glocal.remote)!=-1){
-						<call bo_writed_client_contact_request>(glocal.con,sessionid,owner,user,intro);
+					string local_user;
+					if (bod_check_remote_user(glocal.con,user,glocal.nodename,glocal.msg
+						,local_user,glocal.remote_user,glocal.remote)!=-1){
+						<call bo_writed_client_contact_request>(glocal.con,sessionid,owner,local_user,intro);
 						<f ok>
 							glocal.success = success;
 							glocal.msg = msg;
@@ -2679,8 +2677,10 @@ static int bod_main (
 				if (userid != 0){
 					glocal string remote_user;
 					glocal string remote;
-					if (bod_check_remote_user(glocal.con,user,glocal.nodename,glocal.msg,glocal.remote_user,glocal.remote)!=-1){
-						<call bo_writed_client_interest_set>(glocal.con,sessionid,user,owner);
+					string local_user;
+					if (bod_check_remote_user(glocal.con,user,glocal.nodename,glocal.msg
+						,local_user,glocal.remote_user,glocal.remote)!=-1){
+						<call bo_writed_client_interest_set>(glocal.con,sessionid,local_user,owner);
 						<f ok>
 							if (success && glocal.remote.size() > 0){
 								bod_remote_interest_set (glocal.con,true,glocal.remote_user,glocal.remote,glocal.nodename);
@@ -3191,12 +3191,14 @@ static int bod_main (
 				// using remotepass.
 				glocal string msg;
 				glocal string sessionid;
-				glocal string remote_user;
-				glocal string remote;
+				string remote_user;
+				string remote;
+				string local_user;
 				// If the remote user does not exist, the account is created on the fly. But the remote user
 				// has to exist on his server and must have a public key.
-				if (bod_check_remote_user(glocal.con,user,glocal.nodename,glocal.msg,glocal.remote_user,glocal.remote)!=-1){
-					if (glocal.remote.size() == 0){
+				if (bod_check_remote_user(glocal.con,user,glocal.nodename,glocal.msg
+					,local_user,remote_user,remote)!=-1){
+					if (remote.size() == 0){
 						glocal.msg = MSG_R(E_IVLDUSER);
 					}else{
 						<call bo_writed_client_createsession>(glocal.con);
