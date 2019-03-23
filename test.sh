@@ -87,6 +87,9 @@ webtest(){
 		-N*)
 			N=$1
 			;;
+		-T)
+			page="$page?test=1"
+			;;
 		*)
 			OPTS="$OPTS $1"
 			;;
