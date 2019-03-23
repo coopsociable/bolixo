@@ -41,6 +41,7 @@ if [ "$LXCSOCK" = "" ] ; then
 fi
 if [ "$LXCSOCK" == "on" ] ; then
 	BOLIXOD_SOCK=/var/lib/lxc/bolixod/rootfs/var/run/blackhole/bolixod-0.sock
+	BOLIXOD_SOCKS=/var/lib/lxc/bolixod/rootfs/var/run/blackhole/bolixod-*.sock
 	PUBLISHD_SOCK=/var/lib/lxc/publishd/rootfs/var/run/blackhole/publishd.sock
 	BOD_SOCK=/var/lib/lxc/bod/rootfs/var/run/blackhole/bod-2.sock
 	BOD_SOCKS=/var/lib/lxc/bod/rootfs/var/run/blackhole/bod-*.sock
@@ -48,6 +49,7 @@ if [ "$LXCSOCK" == "on" ] ; then
 	SESSIOND_SOCK=/var/lib/lxc/sessiond/rootfs/var/run/blackhole/bo-sessiond.sock
 	KEYSD_SOCK=/var/lib/lxc/keysd/rootfs/var/run/blackhole/bo-keysd.sock
 	WRITEDLOG=/var/lib/lxc/writed/rootfs/var/log/bolixo/bo-writed.log
+	BO_MON_SOCK=/var/run/blackhole/bo-mon.sock
 elif [ "$BOD_SOCK" = "" ] ; then
 	BOLIXOD_SOCK=/tmp/bolixod.sock
 	PUBLISHD_SOCK=/tmp/publishd.sock
@@ -55,6 +57,7 @@ elif [ "$BOD_SOCK" = "" ] ; then
 	WRITED_SOCK=/tmp/bo-writed.sock
 	SESSIOND_SOCK=/tmp/bo-sessiond.sock
 	KEYSD_SOCK=/tmp/bo-keysd.sock
+	BO_MON_SOCK=/tmp/bo-mon.sock
 fi
 if [ -x bo-webtest ] ; then
 	BOWEBTEST=./bo-webtest
@@ -424,6 +427,12 @@ elif [ "$1" = "cmplxclog" ] ;then # S: Compares the lxc writed log with the refe
 elif [ "$1" = "bolixod-control" ] ; then # A: Talks to bolixod
 	shift
 	$BOLIXOPATH/bolixod-control --control $BOLIXOD_SOCK $*
+elif [ "$1" = "bolixod-controls" ] ; then # A: Talks to all bolixod
+	shift
+	for sock in $BOLIXOD_SOCKS
+	do
+		$BOLIXOPATH/bolixod-control --control $sock $*
+	done
 elif [ "$1" = "publishd-control" ] ; then # A: Talks to publishd
 	shift
 	$BOLIXOPATH/publishd-control --control $PUBLISHD_SOCK $*
@@ -777,7 +786,7 @@ elif [ "$1" = "test-monitor" ] ; then # T: Tests all bods
 	fi
 elif [ "$1" = "bo-mon-control" ] ; then # A: Talks to bo-mon
 	shift
-	$BOLIXOPATH/bo-mon-control -p /tmp/bo-mon.sock $*
+	$BOLIXOPATH/bo-mon-control -p $BO_MON_SOCK $*
 elif [ "$1" = "test-createsessions" ] ; then # T: Creates many sessions
 	shift
 	NBREP=1
