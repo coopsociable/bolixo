@@ -40,6 +40,7 @@
 #include "filesystem.h"
 #include "bolixo.m"
 #include <translat.h>
+#define INSTRUMENT_DONOTOPEN
 #include "instrument.h"
 
 static DEBUG_KEY D_PROTO ("proto","Protocol information");
@@ -1533,13 +1534,11 @@ int main (int argc, char *argv[])
 					tb.push_back(string_f("filehandle %u",fs_getnbhandle()));
 					tb.push_back(string_f("nodename: %s",nodename));
 					tb.push_back(string_f("private_site: %s",glocal.private_site ? "yes" : "no"));
-					#ifdef INSTRUMENT
-						tb.push_back("instrument: on");
-						fflush (f_instrument);
-					#else
-						tb.push_back("instrument: off");
-					#endif
+					instrument_status(tb);
 					rep_status (tb);
+				</f>
+				<f instrument>
+					toggle_instrument_file(on);
 				</f>
 				<f quit>
 					endserver = true;
@@ -3487,6 +3486,7 @@ int main (int argc, char *argv[])
 				tlmp_error ("Can't open logfile %s (%s)\n",glocal.logfile,strerror(errno));
 				exit (-1);
 			}
+			open_instrument_file();
 			s.loop();
 			ret = 0;
 		}

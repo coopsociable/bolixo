@@ -236,7 +236,10 @@ elif [ "$1" = "instrument" ] ; then # prod: Turn instrumentation on and off
 		echo "bolixo-production instrument 0|1"
 		exit 1
 	fi
-	$0 calltest bod-controls instrument $2
+	for cmd in bod-controls bo-mon-control bo-writed-control bo-sessiond-control bolixod-control publishd-control
+	do
+		$0 calltest $cmd instrument $2
+	done
 elif [ "$1" = "eraseanon" ] ; then # prod: [nbsec (default 1 day) anonymous normal admin]
 	OLD=1d
 	shift

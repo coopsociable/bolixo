@@ -1268,15 +1268,6 @@ static int bod_check_remote_user(
 	return glocal.ret;
 }
 </mod>
-static void fopen_instrument_file(PARAM_STRING fname)
-{
-	#ifdef INSTRUMENT
-		f_instrument = fopen (fname.ptr,"a");
-		if (f_instrument == NULL){
-			tlmp_error ("Can't open instrument file %s (%s)\n",fname.ptr,strerror(errno));
-		}
-	#endif
-}
 <mod>
 static int bod_main (
 	const char *bind,
@@ -1380,12 +1371,7 @@ static int bod_main (
 				string useline = "usehttp:";
 				for (auto &s:usehttp) useline += string(" ") + s;
 				tb.push_back(useline);
-				#ifdef INSTRUMENT
-					tb.push_back(string_f("instrument: %s", f_instrument != NULL ? "on" : "disable"));
-					if (f_instrument != NULL) fflush (f_instrument);
-				#else
-					tb.push_back("instrument: off");
-				#endif
+				instrument_status(tb);
 				tb.push_back(string_f("nonstrict: %d",nonstrict));
 				rep_status(tb);
 			</f>
@@ -1481,18 +1467,7 @@ static int bod_main (
 				rep_nodelogout (true);
 			</f>
 			<f instrument>
-				#ifdef INSTRUMENT
-					if (on){
-						if (f_instrument==NULL){
-							fopen_instrument_file (glocal.instrument_file);
-						}
-					}else{
-						if (f_instrument != NULL){
-							fclose (f_instrument);
-							f_instrument = NULL;
-						}
-					}
-				#endif
+				toggle_instrument_file(on,glocal.instrument_file);
 			</f>
 			<f debug>
 				if (on){
@@ -3354,7 +3329,7 @@ static int bod_main (
 		if (daemon){
 			daemon_init(pidfile,user);
 		}
-		fopen_instrument_file (glocal.instrument_file);
+		open_instrument_file (glocal.instrument_file);
 		s.loop();
 		ret = 0;
 	}
