@@ -404,7 +404,16 @@ static int fs_parse_fname (const char *name, vector<string> &parentdirs, string 
 int fs_findentry (PARAM_STRING path, ENTRY &entry, bool expect_exist, const char *threshold)
 {
 	int ret = -1;
-	if (threshold[0] == '\0') threshold = END_OF_TIME;
+	string tmp;
+	if (threshold[0] == '\0'){
+		threshold = END_OF_TIME;
+	}else{
+		// threshold is a date, which will be compared with an event time, a date with micro-seconds resolution
+		// So we append .999999 to the current threshold so a date like 2019/03/22 15:04:32 match
+		// anything that happened during this 32th second
+		tmp = string(threshold)+".999999";
+		threshold = tmp.c_str();
+	}
 	vector<string> parents;
 	const char *name = path.ptr;
 	if (name[0] == '/' && name[1] == '\0'){
