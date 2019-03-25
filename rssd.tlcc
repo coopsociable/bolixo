@@ -776,21 +776,25 @@ static int rssd_process (CONNECT_INFO &con, RSSD_CONFIG &config, PARAM_STRING na
 					// Now, we only keep the URL.
 					unsigned timestamp = atoi(line);
 					line = str_skipdig(line);
-					line = strstr(line,"http");
-					if (line != nullptr) glocal.links[line] = timestamp;
+					line = str_skip(line);
+					if (line[0] != '\0') glocal.links[line] = timestamp;
 					return 0;
 				</f>
 				</call>
 				<call rssd_processxml>(glocal.rss);
 				<f onepage>
-					string datelink = link;	// pubdate + " " + link;
-					strip_end (datelink);
-					auto mlink = glocal.links.find(datelink);
+					string fulllink = link;
+					strip_end (fulllink);
+					if (!is_start_any_ofnc(fulllink,NONEED,"http://","https://")){
+						// This is a relative URL, we use the siteurl to make it complete
+						fulllink = glocal.r->siteurl+fulllink;
+					}
+					auto mlink = glocal.links.find(fulllink);
 					if (mlink == glocal.links.end()){
 						string formatdesc = rssd_formatdesc(description,glocal.r->options);
-						if (glocal.verbose) printf (MSG_U(I_GENMSG,"Create a message for link %s\n"),datelink.c_str());
+						if (glocal.verbose) printf (MSG_U(I_GENMSG,"Create a message for link %s\n"),fulllink.c_str());
 						glocal string content;
-						glocal.content = string_f("%s\n%s\n%s",title.c_str(),link.c_str(),formatdesc.c_str());
+						glocal.content = string_f("%s\n%s\n%s",title.c_str(),fulllink.c_str(),formatdesc.c_str());
 						glocal bool success = false;
 						vector<string> empty;
 						BOB_TYPE content(glocal.content.c_str(),glocal.content.size(),false);
@@ -801,7 +805,7 @@ static int rssd_process (CONNECT_INFO &con, RSSD_CONFIG &config, PARAM_STRING na
 							glocal.success = success;
 						</f>
 						</call>
-						if (glocal.success) glocal.links[datelink] = glocal.now;
+						if (glocal.success) glocal.links[fulllink] = glocal.now;
 						string textfile = string_f("%s/rss.txt",tmp_dir);
 						<call savefile>(textfile,false);
 						<f dowrite>
@@ -811,7 +815,7 @@ static int rssd_process (CONNECT_INFO &con, RSSD_CONFIG &config, PARAM_STRING na
 						</call>
 						glocal.stats->newmsgs++;
 					}else{
-						if (glocal.verbose) printf (MSG_U(I_ALREADY,"Old message ignored for link %s\n"),datelink.c_str());
+						if (glocal.verbose) printf (MSG_U(I_ALREADY,"Old message ignored for link %s\n"),fulllink.c_str());
 						mlink->second = glocal.now;	// Whatever is in the RSS is kept current.
 						glocal.stats->keepmsgs++;
 					}
