@@ -1440,6 +1440,20 @@ elif [ "$1" = "lxc0-webssl" ]; then # prod:
 			-e /var/www/html/talk3.jpg \
 			-e /var/www/html/talk-fr.jpg \
 			-e /var/www/html/talk.jpg \
+			-e /var/www/html/talk-list.jpg \
+			-e /var/www/html/talk-list-fr.jpg \
+			-e /var/www/html/talk-msgs.jpg \
+			-e /var/www/html/talk-msgs-fr.jpg \
+			-e /var/www/html/talk-documents.jpg \
+			-e /var/www/html/talk-documents-fr.jpg \
+			-e /var/www/html/talk-menu.jpg \
+			-e /var/www/html/talk-menu-fr.jpg \
+			-e /var/www/html/profile.jpg \
+			-e /var/www/html/profile-fr.jpg \
+			-e /var/www/html/inbox-ui.jpg \
+			-e /var/www/html/inbox-ui-fr.jpg \
+			-e /var/www/html/group-inbox-ui.jpg \
+			-e /var/www/html/group-inbox-ui-fr.jpg \
 			-e /var/www/html/narrowscreen.jpg \
 			-i /usr/sbin/trli-init \
 			-l $LOG \

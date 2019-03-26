@@ -31,6 +31,14 @@ void document_clickable_img (PARAM_STRING url, const char *image_width, unsigned
 	htmlprintf ("<img width=%s border=%u src=%s>",image_width,border,url.ptr);
 	htmlout ("</span>");
 }
+void document_clickable_link (PARAM_STRING url, PARAM_STRING txt)
+{
+	htmlout ("<span style=color:blue onclick=openintab(event,'");
+	htmlout (url.ptr);
+	htmlout ("')>");
+	htmlout (txt.ptr);
+	htmlout ("</span>");
+}
 
 static void jump2app (int step, int tab, const char *webtab_add)
 {
@@ -237,7 +245,7 @@ void bolixo_doc (DOCUMENT_POINTER &docpointer, DOC_ID &jump, const char *usernam
 			</->
 			<- section("Subscribe to public messages");>
 				You may want to track the public messages of friends, organizations, etc. Instead of visiting all their public pages, you can register your interest and
-				you will get a summary in your main bolixo page.
+				you will get a summary in your main Bolixo page.
 				<p>
 				Visit the
 				/- tlmpdoc_link(section_interests,"Interests");
@@ -249,22 +257,42 @@ void bolixo_doc (DOCUMENT_POINTER &docpointer, DOC_ID &jump, const char *usernam
 				<ul>
 				<li>bolixonews@alpha.bolixo.org: What is going on with Bolixo.
 					<br>
-					The public page is <a href=https://alpha.bolixo.org/public/bolixonews>https://alpha.bolixo.org/public/bolixonews</a>.
+					The public page is
+					/- document_clickable_link("https://alpha.bolixo.org/public/bolixonews","https://alpha.bolixo.org/public/bolixonews");
+					.
 				<li>bolixodev@alpha.bolixo.org: Development and new releases.
 					<br>
-					The public page is <a href=https://alpha.bolixo.org/public/bolixodev>https://alpha.bolixo.org/public/bolixodev</a>.
+					The public page is
+					/- document_clickable_link("https://alpha.bolixo.org/public/bolixodev","https://alpha.bolixo.org/public/bolixodev");
+					.
 
 				</ul>
 				<p>
 				Note that all users are subscribed to the admin account of their node. This is how they learn about activities on their server such as scheduled downtime.
+				<p>
+				A good way to locate people on Bolixo is to visit the
+				/- document_clickable_link("https://bolixo.org","bolixo.org directory");
+				.
+				<- section("RSS feeds");>
+					Special accounts have been created by the Bolixo team. They map
+					/- document_clickable_link ("https://en.wikipedia.org/wiki/RSS","RSS feeds");
+					to Bolixo accounts. All those accounts have the prefix <em>rss:</em>.
+					<p>
+					You will find there popular news outlets. Add some to your interest list and you will be able to <em>track the world</em>
+					from your main Bolixo page.
+				</->
 			</->
 			<- section("Make yourself visible");>
 				By default, your account is invisible on Bolixo. Unless you tell someone your nickname and node name, there is no way they can find you. There is no
 				mean or API allowing one to list users on a node. There is no way to list nodes either. This is maybe what you want ... or not. You may want to be
-				visible so friends may find you. This is what the <a href=https://bolixo.org>bolixo.org</a> directory is all about.
+				visible so friends may find you. This is what the
+				/- document_clickable_link("https://bolixo.org","bolixo.org");
+				directory is all about.
 				<p>
 				Visit the account sub tab of the profile tab and look at the <em>Public information</em> section. Decide what you want to publish. All fields are optional.
-				Click on the <em>Publish to bolixo.org directory</em> checkbox and submit. Go to <a href=https://bolixo.org>Bolixo.org</a> and search.
+				Click on the <em>Publish to bolixo.org directory</em> checkbox and submit. Go to
+				/- document_clickable_link ("https://bolixo.org","Bolixo.org");
+				and search.
 				You will only find the information you entered. Uncheck the checkbox and
 				submit again. Visit bolixo.org and your information is gone. You have the control.
 				/- jump_config_account();
@@ -275,7 +303,9 @@ void bolixo_doc (DOCUMENT_POINTER &docpointer, DOC_ID &jump, const char *usernam
 				add him to your projects and he can do the same with you. If this person is located on another node, you enter "nickname@nodename".
 				/- jump_config_contact_req();
 				<p>
-				You can visit <a href=https://bolixo.org>Bolixo.org</a> to search for people and organization.
+				You can visit
+				/- document_clickable_link("https://bolixo.org","Bolixo.org");
+				to search for people and organization.
 			</->
 			<- section ("Getting help");>
 				You can request help by sending a message to the administrator of your Bolixo server. Just visit the <em>talk</em> tab and then
@@ -407,12 +437,14 @@ void bolixo_doc (DOCUMENT_POINTER &docpointer, DOC_ID &jump, const char *usernam
 			<- section("Messages");>
 				You can send short messages, image, audio and video files to group members. There is no limit on the size of a text message
 				but the interface is not suited for large text.
-				Only the first five lines are shown. When you click on a message, it is displayed on the right in full. Audio and video messages
+				Only the first eight lines are shown. When you click on a message, it is displayed on the right in full. Audio and video messages
 				are presented in popups.
 				<p>
-				HTML is not supported in short messages. If you enter an HTML tag, it will appear verbatim and won't take effect.
+				HTML is not fully supported in messages (few tags are supported). If you enter an HTML tag, it will appear verbatim and won't take effect.
 				If you enter what looks like a URL (starting with http:// or https://), it will
-				become a clickable link.
+				become a clickable link. You can learn more about message formatting in the 
+				/- tlmpdoc_link(section_talk,"<em>talk section</em>");
+				of this document.
 				<p>
 				Messages are not kept forever. The policy may vary from one bolixo server to the other. The default is one week.
 			</->
@@ -421,7 +453,8 @@ void bolixo_doc (DOCUMENT_POINTER &docpointer, DOC_ID &jump, const char *usernam
 				/- if (!glocal.unknown_user){
 					For example, here is the link to see your public page:
 					<pre>
-					/- htmlprintf ("<a href=https://%s/public/%s>https://%s/public/%s</a>",glocal.host,glocal.username,glocal.host,glocal.username);
+					/- string url = string_f("https://%s/public/%s",glocal.host,glocal.username);
+					/- document_clickable_link(url,url);
 					</pre>
 				/- }
 				<p>
@@ -477,7 +510,8 @@ void bolixo_doc (DOCUMENT_POINTER &docpointer, DOC_ID &jump, const char *usernam
 				</ul>
 			</->
 			<- section("Digital signature");>
-				(You can find an explanation of digital signature <a href=https://en.wikipedia.org/wiki/Digital_signature>here on Wikipedia</a>)
+				(You can find an explanation about digital signature
+				/- document_clickable_link("https://en.wikipedia.org/wiki/Digital_signature","here on Wikipedia");
 				<p>
 				Every user has a 2048 bits digital key. This key is made of a public and private part. The private part is used to sign
 				documents and messages. The public part is used to validate the document signature.
@@ -497,6 +531,12 @@ void bolixo_doc (DOCUMENT_POINTER &docpointer, DOC_ID &jump, const char *usernam
 		</->
 		<- section("Operations");>
 			<- section("Profile",section_profile);>
+				This is where you configure all operations. You access this area using the three dots menu on the far right of the application tab
+				(do not confuse it with the three dots menu of the browser itself).
+				<p>
+				<center>
+				/- document_clickable_img ("/profile.jpg","60%",1);
+				</center>
 				<- section("Account",section_account);>
 					You manage the account preferences here.
 					This includes interface preferences and the access control/privacy of your public page.
@@ -552,8 +592,9 @@ void bolixo_doc (DOCUMENT_POINTER &docpointer, DOC_ID &jump, const char *usernam
 					You click on the link "Send a contact request". Enter the nick
 					name of the person you wish to contact and a message.
 					<p>
-					Use the <a href=bttps://bolixo.org>Bolixo.org directory</a> to locate
-					other bolixo users.
+					Use the
+					/- document_clickable_link("bttps://bolixo.org","Bolixo.org directory");
+					to locate other Bolixo users.
 				</->
 				<- section("Projects",section_projects);>
 					To exchange with other people, you must create projects. A project has a name,
@@ -583,6 +624,137 @@ void bolixo_doc (DOCUMENT_POINTER &docpointer, DOC_ID &jump, const char *usernam
 				</->
 			</->
 			<- section("Talk",section_talk);>
+				In this section, you can
+				<p>
+				<ul>
+				<li>Read messages sent either directly to you or to groups you belong.
+				<li>Send messages directly to people or to groups.
+				</ul>
+				<p>
+				The screen is splitted in three areas or panels.
+				<p>
+				<center>
+				/- document_clickable_img ("/talk.jpg","60%",1);
+				</center>
+				<- section("Left panel");>
+					The lines displayed on the left panel correspond to inboxes. When you click on one, the messages are shown on the
+					middle panel.
+					<p>
+					<ul>
+					<li>The first line is your private inbox.
+					<li>The last line is your public inbox.
+					<li>All other lines are groups you belong. The first column is the owner of the group and the second column
+						is name of the group.
+					<li>The arrow to the left tells you there are unseen message in that folder.
+					</ul>
+					<p>
+					<center>
+					/- document_clickable_img ("/talk-list.jpg","20%",1);
+					</center>
+				</->
+				<- section("Center panel");>
+					This panel displays the messages in the inbox. At the top, there is a dialog allowing you to post
+					messages. 20 messages are presented at once. The page number and the number of pages is displayed if there
+					is more than one page. Only the first 8 lines of a message are displayed.
+					<p>
+					If you click on a tab, it selects and displays the corresponding inbox. If you click on the currently displayed tab, it triggers
+					a refresh of the inbox.
+					<center>
+					/- document_clickable_img ("/talk-msgs.jpg","50%",1);
+					</center>
+				</->
+				<- section("Right panel");>
+					If you click on a message (or image), it will show on the right panel, opening a new tab. Videos and audio opens a popup window.
+					<p>
+					<center>
+					/- document_clickable_img ("/talk-documents.jpg","50%",1);
+					</center>
+				</->
+				<- section("Private inbox operation");>
+					Anyone in your contact list may send you a message. And you can send a message directly to anyone in your contact list. You
+					can also send messages to user <em>admin</em> even if he is not in your contact list. This is how you request help.
+					<p>
+					You can send a message to multiple recipients. Just enter the nickname of the users separated with a space. You can send either
+					a short text and/or upload a file (image, video or audio).
+					<p>
+					Messages sent this way are copied into the private inbox of each recipients.
+					<p>
+					/- document_clickable_img ("/inbox-ui.jpg","60%",1);
+				</->
+				<- section("Groups operation");>
+					To send a message to a group, you enter a small message or upload a file. In general, you do not specify any recipients. If you enter a few recipients,
+					they have to be member of your contact list.
+					<p>
+					Unlike private message above, message sent to a group goes into a shared group inbox. This means that a new group member will
+					see old messages.
+					<p>
+					/- document_clickable_img ("/group-inbox-ui.jpg","60%",1);
+				</->
+				<- section("Public inbox");>
+					The public inbox is used to receive messages from anonymous strangers. When you enable the public view,
+					you may also enable the public messages. Visitors of your public page may leave a message. You can review the messages here.
+				</->
+				<- section("Contextual menu");>
+					The contextual menu let you perform various actions on messages.
+					<p>
+					<dl>
+					<dt>Copy
+						<dd>Specification of a message is recorded. Once recorded, it may be copied either into another inbox or into a project.
+							Note that you can still paste the message even if you deleted it after the copy.
+						</dd> 
+					<dt>Paste
+						<dd>
+						Insert a previously copied or deleted message or document in this inbox.
+						</dd>
+					<dt>Delete
+						<dd>The message is removed from the list. You can either undelete it, or paste it elsewhere.</dd>
+					<dt>Undelete
+						<dd>Note that the <em>undelete</em> functionality is robust. You can delete several messages and undelete them all. They are undeleted
+							in the reverse order they were deleted.
+						</dd>
+					<dt>Download
+						<dd>The message will be download to your computer.</dd>
+					</dl>
+					<p>
+					<p>Note that you can copy/paste messages from the main screen or from the project tab.
+					<p>
+					/- document_clickable_img ("/talk-menu.jpg","60%",1);
+				</->
+				<- section("Message format and appearance");>
+					Messages are not full documents. They are meant to be short, with only a few lines, like the SMS messages used on phones.
+					Nevertheless, there are few ways to enhance the presentation. Here are the rules.
+					<p>
+					<ul>
+					<li>A line feed is seen as a paragraph change. This is unlike HTML where a special tag is needed.
+					<li>An empty line will appear as such.
+					<li>Tabs are used and are equivalent to 8 spaces.
+					<li>Anything starting with http:// or https:// is presented as a link. The link is presented as is.
+						When clicking on a it, a new browser tab is opened.
+					<li>Few HTML tags are supported. All other will appear as is. Here is the list of supported tags.
+						<p>
+						<center>
+						<table border=1>
+						<tr><th>Tag<th>Description<th>Usage<th>Example
+						<tr><td>&lt;b&gt;<td>Bold<td>&lt;b&gt;some text&lt;/b&gt;<td>This is <b>bold</b>
+						<tr><td>&lt;em&gt;<td>Emphasis<td>&lt;em&gt;some text&lt;/em&gt;<td>This is <em>important</em>
+						<tr><td>&lt;strong&gt;<td>More emphasis<td>&lt;strong&gt;some text&lt;/strong&gt;<td>This is <strong>important</strong>
+						<tr><td>&lt;sub&gt;<td>Subscript<td>item&lt;sub&gt;1&lt;/sub&gt;<td>This is item<sub>1</sub> and item<sub>2</sub>
+						<tr><td>&lt;sup&gt;<td>Superscript<td>10&lt;sup&gt;2&lt;/sup&gt;<td>10 exponent 2 is written 10<sup>2</sup>
+						</table>
+						</center>
+						<p>
+					<li>To embed an image from another site, you simply enter _IMG=URL. Be sure to have either a space
+						or a line feed at the end of the URL. The size of the image will be selected based on context.
+					<li>To embed a video, simply use _VIDEO=URL.
+					<li>To embed a web page, like a Youtube video, use _IFRAME=URL.
+					</ul>
+					<p>
+					Note that there are no practical limits for the size of a message.
+				</->
+				<- section("Sharing your inbox");>
+				</->
+				<- section("Adding members to your public group");>
+				</->
 			</->
 			<- section("Projects",section_project);>
 			</->

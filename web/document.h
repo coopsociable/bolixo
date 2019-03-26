@@ -38,4 +38,5 @@ void jump_config_contact_req();
 void jump_config_projects();
 void jump_config_groups();
 void document_clickable_img (PARAM_STRING url, const char *image_width, unsigned border);
+void document_clickable_link (PARAM_STRING url, PARAM_STRING txt);
 extern bool document_button_display_only;
