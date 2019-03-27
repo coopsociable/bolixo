@@ -136,6 +136,7 @@ make install
 /usr/lib/bo-complete
 %attr(-,bolixo,bolixo)/var/lib/bolixo
 %attr(-,bolixo,bolixo)/var/lib/bolixod
+%doc utils/rss-scan.hourly
 
 %clean
 if [ "$RPM_BUILD_ROOT" != "" ] ; then
