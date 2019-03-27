@@ -276,7 +276,7 @@ elif [ "$1" = "resetmsg" ] ; then # prod: Reset alarm in bolixo monitor
 elif [ "$1" = "restart" ] ; then # prod: restart some services (webs, internals, ...)
 	shift
 	flock --close /var/run/bolixo-restart.lock $0 restart-nolock $*
-elif [ "$1" = "restart-nolock" ] ; then # proc: restart without locking some services (webs, internals, ...)
+elif [ "$1" = "restart-nolock" ] ; then # prod: restart without locking some services (webs, internals, ...)
 	shift
 	bo-mon-control autotest 0
 	if [ "$1" = "" ] ; then
