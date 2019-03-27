@@ -1082,13 +1082,35 @@ static bool util_is_url(const char *txt, const char *&end,string &url)
 	return ret;
 }
 /*
+	Format and print a <span> ... </span> with openitab()
+*/
+void util_print_span(PARAM_STRING url)
+{
+	htmlprintf ("<span style=color:blue;cursor:pointer onclick=openintab(event,'%s')>%s</span>\n",url.ptr,url.ptr);
+}
+/*
+	Format a <span> ... </span> with openitab()
+*/
+static string util_span(PARAM_STRING url)
+{
+	return string("<span style=color:blue;cursor:pointer onclick=openintab(event,'") + url.ptr + "')>" + url.ptr + "</span>";
+}
+/*
+	Format an open <span> ... with openitab()
+	(no closing </span>
+*/
+static string util_open_span(PARAM_STRING url)
+{
+	return string("<span style=color:blue;cursor:pointer onclick=openintab(event,'") + url.ptr + "')>";
+}
+/*
 	Create the HTML for a clickable image (using javascript openintab())
 */
 string util_clickable_img (PARAM_STRING url, unsigned image_width)
 {
 	string ret;
 	ret.reserve(500);
-	ret = "<span style=color:blue onclick=openintab(event,'" + string(url.ptr) + "')>";
+	ret = util_open_span(url);
 	ret += string_f("<img width=%u src=",image_width);
 	ret += url.ptr;
 	ret += '>';
@@ -1117,7 +1139,7 @@ string util_format_shortmsg (PARAM_STRING msg, unsigned nblines, size_t size, un
 			const char *pt;
 			string url;
 			if (util_is_url(txt,pt,url)){
-				ret += "<span style=color:blue onclick=openintab(event,'" + string(txt,pt-txt) + "')>" + string(txt,pt-txt) + "</span>";
+				ret += util_span (string(txt,pt-txt));
 				txt = pt-1;
 			}else if (*txt == '<'){
 				if (is_start_any_ofnc(txt,pt,"<br>","<sup>","</sup>","<sub>","</sub>","<em>","</em>","<strong>","</strong>","<b>","</b>")){
@@ -1144,7 +1166,7 @@ string util_format_shortmsg (PARAM_STRING msg, unsigned nblines, size_t size, un
 				txt = pt;
 				if (util_is_url(txt,pt,url)){
 					txt = pt;
-					ret += "<span style=color:blue onclick=openintab(event,'" + url + "')>";
+					ret += util_open_span(url);
 					ret += string_f ("<video width=%u controls>\n"
 						"<source src=\"%s\" type=\"video/mp4\">\n"
 						"Your browser does not support the video tag.\n"
@@ -1159,7 +1181,7 @@ string util_format_shortmsg (PARAM_STRING msg, unsigned nblines, size_t size, un
 				txt = pt;
 				if (util_is_url(txt,pt,url)){
 					txt = pt;
-					ret += "<span style=color:blue onclick=openintab(event,'" + url + "')>";
+					ret += util_open_span(url);
 					ret += "<div style=\"position:relative;padding-top:56.25%;\">\n";
 					ret += string_f ("<iframe\n"
 						"style=\"position:absolute;top:0;left:0;width:100%%;height:100%%;\"\n"
