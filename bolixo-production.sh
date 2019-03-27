@@ -240,7 +240,7 @@ elif [ "$1" = "instrument" ] ; then # prod: Turn instrumentation on and off
 	do
 		$0 calltest $cmd instrument $2
 	done
-elif [ "$1" = "eraseanon" ] ; then # prod: [nbsec (default 1 day) anonymous normal admin]
+elif [ "$1" = "eraseanon" ] ; then # prod: [old (default 1 day) anonymous normal admin]
 	OLD=1d
 	shift
 	if [ "$1" != "" ] ; then

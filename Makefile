@@ -249,6 +249,7 @@ install: msg.eng msg.fr
 	mkdir -p $(RPM_BUILD_ROOT)/etc/init.d
 	mkdir -p $(RPM_BUILD_ROOT)/usr/share/bolixo
 	mkdir -p $(RPM_BUILD_ROOT)/etc/bash_completion.d
+	mkdir -p $(RPM_BUILD_ROOT)/etc/cron.hourly
 	install -m644 data/secrets.admin $(RPM_BUILD_ROOT)/usr/share/bolixo/secrets.admin
 	install -m644 data/secrets.client $(RPM_BUILD_ROOT)/usr/share/bolixo/secrets.client
 	install -m644 data/manager.conf.ref $(RPM_BUILD_ROOT)/usr/share/bolixo/manager.conf
@@ -321,6 +322,7 @@ install: msg.eng msg.fr
 	install -m755 utils/pendingusers $(RPM_BUILD_ROOT)/usr/sbin/pendingusers
 	install -m755 utils/listusers $(RPM_BUILD_ROOT)/usr/sbin/listusers
 	install -m755 deleteitems $(RPM_BUILD_ROOT)/usr/sbin/deleteitems
+	install -m755 utils/erase-oldsesssions.hourly  $(RPM_BUILD_ROOT)/etc/cron.hourly/erase-oldsesssions
 	for file in web/images-doc/*.jpg; do install -m644 $$file $(RPM_BUILD_ROOT)/var/www/html/.; done
 
 #	install -m755 web/admin.hc $(RPM_BUILD_ROOT)/var/www/html/admin.hc
