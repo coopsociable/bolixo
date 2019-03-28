@@ -145,6 +145,7 @@ struct WEBSITE_OPTIONS{
 	bool remove_iframe = false;
 	bool remove_h6 = false;
 	bool remove_comma = false;
+	bool remove_h = false;
 	WEBSITE_OPTIONS() = default;
 	bool empty() const {
 		return !remove_a
@@ -153,7 +154,8 @@ struct WEBSITE_OPTIONS{
 			&& !remove_img
 			&& !remove_h6
 			&& !remove_comma
-			&& !remove_iframe;
+			&& !remove_iframe
+			&& !remove_h;
 	}
 };
 
@@ -207,6 +209,7 @@ struct WEBSITE{
 			if (options.remove_h6) tmp += "remove_h6 ";
 			if (options.remove_comma) tmp += "remove_comma ";
 			if (options.remove_iframe) tmp += "remove_iframe ";
+			if (options.remove_h) tmp += "remove_h ";
 			p = tmp.c_str();
 		}else{
 			tlmp_error ("Unknown field name %s\n",field);
@@ -330,6 +333,8 @@ void RSSD_CONFIG::readfile (PARAM_STRING configfile)
 					glocal.website.options.remove_comma = true;
 				}else if (t == "remove_iframe"){
 					glocal.website.options.remove_iframe = true;
+				}else if (t == "remove_h"){
+					glocal.website.options.remove_h  = true;
 				}else{
 					tlmp_error (MSG_U(E_IVLDOPT,"Invalid option %s for website %s\n")
 						,t.c_str(),glocal.website.account.c_str());
@@ -572,6 +577,7 @@ static string rssd_formatdesc (const string &description, const WEBSITE_OPTIONS 
 	const char *ptdesc = description.c_str();
 	bool cdata_seen = false;
 	while (*ptdesc != '\0'){
+		const char *pt;
 		if (rssd_ncmp(ptdesc,CONST_STR("<![CDATA["))==0){
 			cdata_seen = true;
 			ptdesc += 9;
@@ -655,6 +661,10 @@ static string rssd_formatdesc (const string &description, const WEBSITE_OPTIONS 
 			}else{
 				ptdesc += strlen(ptdesc);
 			}
+		}else if (options.remove_h && is_start_any_ofnc(ptdesc,pt
+				,"<h1>","<h2>","<h3>","<h4>"
+				,"</h1>","</h2>","</h3>","</h4>")){
+			ptdesc = pt;
 		}else if (rssd_ncmp(ptdesc,CONST_STR("<h6"))==0 && options.remove_h6){
 			ptdesc += 3;
 			const char *end = strstr(ptdesc,"</h6>");
