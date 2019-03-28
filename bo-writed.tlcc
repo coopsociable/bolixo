@@ -1860,14 +1860,16 @@ int main (int argc, char *argv[])
 								stat.group = name;
 								stat.deleted = 0;
 								string eventtime_mark;
-								for (auto const &f:glocal.items){
-									// tlmp_error ("compare name=%s %s <= %s\n",name,f.eventtime.c_str(),buf.buf);
-									if (f.eventtime <= buf.buf){
-										if (glocal.items.size() - stat.deleted < minmsgs) break;
-										eventtime_mark = f.eventtime;
-										stat.deleted++;
-									}else{
-										break;
+								if (glocal.items.size() > minmsgs){
+									for (auto const &f:glocal.items){
+										// tlmp_error ("compare name=%s %s <= %s\n",name,f.eventtime.c_str(),buf.buf);
+										if (f.eventtime <= buf.buf){
+											eventtime_mark = f.eventtime;
+											stat.deleted++;
+											if (glocal.items.size() - stat.deleted <= minmsgs) break;
+										}else{
+											break;
+										}
 									}
 								}
 								if (eventtime_mark.size() > 0 && glocal.doit){
