@@ -34,6 +34,13 @@ int main (int argc, char *argv[])
 {
 	glocal int ret = -1;
 	glocal const char *control = "/var/run/bo-writed.sock";
+	// Options for deleteoldmsgs
+	glocal bool doit = false;
+	glocal unsigned keeppublic=30;
+	glocal unsigned keepother=7;
+	glocal unsigned keeprss=7;
+	glocal unsigned min_msgs = 5;
+	glocal unsigned min_pub_msgs = 20;
 	glocal.ret = <call tlmpprogram>(argc,argv,"bolixo");
 	<f init>
 		setproginfo ("bo-writed-control",VERSION
@@ -44,6 +51,7 @@ int main (int argc, char *argv[])
 			 "\tdebug 0/1\n"
 			 "\tdebugfile filename\n"
 			 "\tdel_incomplete seconds\n"
+			 "\tdeleteoldmsgs user ...\n"
 			 "\tdisable user\n"
 			 "\tenable user\n"
 			 "\tinstrument 0|1\n"
@@ -61,6 +69,13 @@ int main (int argc, char *argv[])
 			 "\tsendmail dest subject body\n"
 			);
 		setarg ('p',"control","Unix socket to reach trlid",glocal.control,false);
+		setgrouparg ("deleteoldmsgs options");
+		setarg (' ',"doit","Really delete entries, not just collect statistics",glocal.doit,false);
+		setarg (' ',"keeppublic","Keep public messages for N days",glocal.keeppublic,false);
+		setarg (' ',"keepother","Keep other messages for N days",glocal.keepother,false);
+		setarg (' ',"keeprss","Keep public messages for RSS accounts for N days",glocal.keeprss,false);
+		setarg (' ',"min_msgs","Maintain at least that many messages",glocal.min_msgs,false); 
+		setarg (' ',"min_pub_msgs","Maintain at least that many messages in public folder",glocal.min_pub_msgs,false); 
 	</f>
 	<f main>
 		glocal int ret = -1;
@@ -234,8 +249,34 @@ int main (int argc, char *argv[])
 		}else if (strcmp(argv[0],"instrument")==0 && argc==2){
 			<call bo_writed_control_instrument>(con,atoi(argv[1]));
 			<f ok>
+				glocal.ret = 0;
 			</f>
 			</call>
+		}else if (strcmp(argv[0],"deleteoldmsgs")==0){
+			glocal unsigned deleted = 0;
+			glocal.ret = 0;
+			for (int i=1; i<argc; i++){
+				glocal const char *user = argv[i];
+				glocal bool fail = false;
+				<call bo_writed_control_deleteoldmsgs>(con,glocal.user,glocal.doit
+					,glocal.keeppublic,glocal.keepother,glocal.keeprss
+					,glocal.min_msgs,glocal.min_pub_msgs);
+				<f ok>
+					if (!success){
+						glocal.fail = true;
+						tlmp_error ("deleteoldmsgs failed for user %s: %s\n",glocal.user,msg);
+						glocal.ret = -1;
+					}else{
+						for (auto const &s:stats){
+							printf ("%-40s %-15s %5u\n",glocal.user,s.group,s.deleted);
+							glocal.deleted += s.deleted;
+						}
+					}
+				</f>
+				</call>
+				if (glocal.fail) break;
+			}
+			printf ("%u deleted messages\n",glocal.deleted);
 		}else{
 			tlmp_error ("Invalid command: %s\n",argv[0]);
 			usage();

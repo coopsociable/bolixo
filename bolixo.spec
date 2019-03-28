@@ -59,6 +59,7 @@ make install
 /usr/sbin/rss-scan
 /usr/sbin/summary
 /usr/sbin/listusers
+/usr/sbin/deleteoldmsgs
 /usr/sbin/nbusers
 /usr/sbin/pendingusers
 /usr/sbin/logssl

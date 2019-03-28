@@ -1,0 +1,54 @@
+#!/bin/sh
+# Delete old message from the database. The policies are defined in bo-writed-control itself
+OPTIONS=
+ACTION=
+if [ -f /etc/bolixo/deleteoldmsgs.conf ] ; then
+	. /etc/bolixo/deleteoldmsgs.conf
+fi
+while [ $# -gt 0 ]
+do
+	if [ "$1" = "--doit" ] ; then
+		OPTIONS="$OPTIONS --doit"
+		ACTION=1
+		shift
+	elif [ "$1" == "--test" ] ; then
+		ACTION=1
+		shift
+	elif [ "$1" == "--keepother" ] ; then
+		OPTIONS="$OPTIONS --keepother $2"
+		shift; shift
+	elif [ "$1" == "--keeprss" ] ; then
+		OPTIONS="$OPTIONS --keeprss $2"
+		shift; shift
+	elif [ "$1" == "--keeppublic" ] ; then
+		OPTIONS="$OPTIONS --keeppublic $2"
+		shift; shift
+	elif [ "$1" == "--min_msgs" ] ; then
+		OPTIONS="$OPTIONS --min_msgs $2"
+		shift; shift
+	elif [ "$1" == "--min_pub_msgs" ] ; then
+		OPTIONS="$OPTIONS --min_pub_msgs $2"
+		shift; shift
+	else
+		break
+	fi
+done
+if [ "$ACTION" = "" ] ;then
+	echo deleteoldmsg --doit [ options ] [ accounts ]
+	echo deleteoldmsg --test [ options ] [ accounts ]
+	echo Options are:
+	echo "  --keepother    Ndays"
+	echo "  --keeprss      Ndays"
+	echo "  --keeppublic   Ndays"
+	echo "  --min_msgs     keep_minimum_messages"
+	echo "  --min_pub_msgs keep_minimum_messages_in_public_folder"
+	exit 1
+fi
+LIST=
+if [ $# -gt 0 ] ; then
+	LIST="$*"
+else
+	LIST=`/usr/sbin/listusers --name`
+fi
+bolixo-production calltest bo-writed-control $OPTIONS deleteoldmsgs $LIST
+ 
