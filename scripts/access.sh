@@ -141,7 +141,7 @@ elif [ "$1" = "remote-contact" ] ; then # test: Perform remote contact request
 	echo ==== Inbox jacques-A
 	./bofs -t msgs -s -G inbox
 elif [ "$1" = "contact-utf8" ] ; then # test: Perform contact request UTF-8
-	user=jacques-é
+	user=jacques-éà
 	./bofs misc --contact_request -u $user
 	./bofs -u $user misc --contact_manage -u jacques-A@test1.bolixo.org
 	./bofs -u jacques-B misc --contact_request -u $user

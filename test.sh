@@ -739,7 +739,7 @@ elif [ "$1" = "dropdb" ] ; then # db: Drop databases
 elif [ "$1" = "filldb" ] ; then # db: Fill database with test accounts (many)
 	$0 bo-writed-control mailctrl 0 keep
 	echo ==== Create some users
-	for user in A B C D E F G H I J K L M N O P Q R S T U V W X Y Z é
+	for user in A B C D E F G H I J K L M N O P Q R S T U V W X Y Z éà
 	do
 		$0 test-adduser $user
 	done

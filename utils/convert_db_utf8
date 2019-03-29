@@ -1,0 +1,10 @@
+#!/bin/sh
+# Script to convert a latin1 database to utf8
+if [ "$1" != "files" -a "$1" != "users" -a "$1" != "bolixo" ]; then
+	echo database-name required
+	exit 1
+fi
+. /root/bolixo.conf
+BKFILE=/tmp/utf8cnv.$1.dump
+mysqldump --add-drop-table -u root $1 >$BKFILE
+cat $BKFILE | sed -e 's/CHARSET\=latin1/CHARSET\=utf8\ COLLATE\=utf8_general_ci/g' | iconv -f latin1 -t utf8 | mysql -u root $1

@@ -139,6 +139,7 @@ make install
 %attr(-,bolixo,bolixo)/var/lib/bolixo
 %attr(-,bolixo,bolixo)/var/lib/bolixod
 %doc utils/rss-scan.hourly
+%doc utils/convert_db_utf8
 
 %clean
 if [ "$RPM_BUILD_ROOT" != "" ] ; then
