@@ -16,6 +16,17 @@
 */
 /*
 	This program deletes stuff in the database while maintaining some integrity
+	This program is used by deleteoldmsgs on a regular basis. deleteoldmsgs remove
+	the directory entries in table dirs_content and left the data in the table "files"
+	in place. The program deleteitems finds un-referenced stuff dans deletes it.
+
+	This program may be used after deleting an account. You just remove an account entry
+	in the table id2name and all tables will be cleaned.
+
+	It could be argued that if the table "files" would be better with a reference count.
+	There are cases where this program will fail to remove un-referenced files entry.
+	For now these cases do not occur because we can't pack a directory yet. Packing a directory
+	is the operation which cleans all old versions of a file.
 */
 #include <stdio.h>
 #include <stdlib.h>
@@ -128,6 +139,25 @@ static void deleteitems_table_ids(const BOOLSET &itemids)
 	</call>
 }
 </mod>
+static void delete_fileids (vector<unsigned> &fileids)
+{
+	if (fileids.size() > 0){
+		string req;
+		req.reserve(10000);
+		req = "delete from files where id in (";
+		const char *comma = "";
+		for (auto id:fileids){
+			req += string_f("%s%u",comma,id);
+			comma = ",";
+		}		
+		req += ")";
+		fileids.clear();
+		if (sql_action(req.c_str())==-1){
+			tlmp_error ("Delete fail in table files, aborting: %s\n",query_getdefaultdb()->error());
+			exit (-1);
+		}
+	}
+}
 <mod>
 int main (int argc, char *argv[])
 {
@@ -277,6 +307,7 @@ int main (int argc, char *argv[])
 			// First, Retrieve (again) all used referenced itemids
 			deleteitems_getids(glocal.itemids,true,false);
 			glocal bool deleted_orphan = false;
+			glocal vector<unsigned> delete_fileids;	// Optimise the deletes
 			<call sql_query>("select id,modified,content is null from files");
 			<f onerow>
 				unsigned fileid = atoi(row[0]);
@@ -286,10 +317,8 @@ int main (int argc, char *argv[])
 					}
 					if (doit){
 						glocal.deleted_orphan = true;
-						if (sql_action("delete from files where id=%u",fileid)==-1){
-							tlmp_error ("Delete fail in table files, aborting: %s\n",query_getdefaultdb()->error());
-							exit (-1);
-						}
+						glocal.delete_fileids.push_back(fileid);
+						if (glocal.delete_fileids.size() > 1000) delete_fileids(glocal.delete_fileids);
 						bool content_is_null = atoi(row[2]);
 						if (content_is_null){
 							const char *modified = row[1];
@@ -305,6 +334,7 @@ int main (int argc, char *argv[])
 				}
 			</f>
 			</call>
+			delete_fileids(glocal.delete_fileids);
 			if (glocal.deleted_orphan){
 				// Another cleanup pass
 				deleteitems_getids(glocal.itemids,true,true);
