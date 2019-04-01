@@ -143,14 +143,10 @@ static void delete_fileids (vector<unsigned> &fileids)
 {
 	if (fileids.size() > 0){
 		NSQL_REQ req;
-		req.appendf ("delete from files where id in (");
-		const char *comma = "";
-		for (auto id:fileids){
-			req.appendf("%s%u",comma,id);
-			comma = ",";
-		}		
-		req.appendf (")");
+		req.appendf ("delete from files where id in ");
+		req.appendlist(fileids);
 		fileids.clear();
+		// tlmp_error ("delete_fileids %s\n",req.c_str());
 		if (sql_action(req)==-1){
 			tlmp_error ("Delete fail in table files, aborting: %s\n",query_getdefaultdb()->error());
 			exit (-1);

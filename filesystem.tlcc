@@ -269,20 +269,16 @@ int fs_locate_dir (
 		int parentid = 0;
 		string tmp;
 		NSQL_REQ req;
-		string owner_cmp;	// = is_admin ? "" : string_f ("(ownerid=1 or ownerid=%u) and",userid);
+		//string owner_cmp;	// = is_admin ? "" : string_f ("(ownerid=1 or ownerid=%u) and",userid);
 		req.appendf ("select name,dirid,itemid,ids.ownerid,ids.group_list_id,ids.listmode,type"
-			" from dirs_content join ids on ids.id=itemid where eventtime <= '%s' and (type=%u or type=%u) and %s"
-			,threshold,ENTRY_DIR,ENTRY_DELETED,owner_cmp.c_str());
-		const char *sep = "(";
-		for (auto &d:tb){
- 			req.appendf (" %s name='%s'",sep,d.c_str());
-			sep = "or";
-		}
-		req.append (") order by eventtime");
+			" from dirs_content join ids on ids.id=itemid where eventtime <= '%s' and (type=%u or type=%u) and name in "
+			,threshold,ENTRY_DIR,ENTRY_DELETED);
+		req.appendlist(tb);
+		req.append (" order by eventtime");
 		<call sql_query>(req);
 		<f onerow>
 			unsigned group_list_id = row[4] == NULL ? (unsigned)-1 : atoi(row[4]);
-			glocal.dirs.push_back(DIRINFO(row[0],atoi(row[1]),atoi(row[2]),atoi(row[3]),group_list_id,row[5][0],(ENTRY_TYPE)atoi(row[6])));
+			glocal.dirs.emplace_back(row[0],atoi(row[1]),atoi(row[2]),atoi(row[3]),group_list_id,row[5][0],(ENTRY_TYPE)atoi(row[6]));
 		</f>
 		</call>
 		// We have to remove entries in glocal.dirs which are followed by a deleted entry
