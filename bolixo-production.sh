@@ -79,6 +79,9 @@ elif [ "$1" = "compute" ] ; then # prod: Update stats in news database
 elif [ "$1" = "files" ] ; then	# db: Access files database
 	shift
 	mysql -S /var/lib/lxc/bosqlddata/rootfs/var/lib/mysql/mysql.sock $DBNAME $*
+elif [ "$1" = "temp" ] ; then	# db: Access temp database
+	shift
+	mysql -uroot -S /var/lib/lxc/bosqlddata/rootfs/var/lib/mysql/mysql.sock $DBNAMET $*
 elif [ "$1" = "users" ] ; then # db: Access users database
 	shift
 	mysql -S /var/lib/lxc/bosqlduser/rootfs/var/lib/mysql/mysql.sock $DBNAMEU $*
