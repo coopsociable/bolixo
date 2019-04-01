@@ -142,17 +142,16 @@ static void deleteitems_table_ids(const BOOLSET &itemids)
 static void delete_fileids (vector<unsigned> &fileids)
 {
 	if (fileids.size() > 0){
-		string req;
-		req.reserve(10000);
-		req = "delete from files where id in (";
+		NSQL_REQ req;
+		req.appendf ("delete from files where id in (");
 		const char *comma = "";
 		for (auto id:fileids){
-			req += string_f("%s%u",comma,id);
+			req.appendf("%s%u",comma,id);
 			comma = ",";
 		}		
-		req += ")";
+		req.appendf (")");
 		fileids.clear();
-		if (sql_action(req.c_str())==-1){
+		if (sql_action(req)==-1){
 			tlmp_error ("Delete fail in table files, aborting: %s\n",query_getdefaultdb()->error());
 			exit (-1);
 		}
