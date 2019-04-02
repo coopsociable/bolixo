@@ -129,7 +129,7 @@ static unsigned draw_tab_height()
 	unsigned fontsize = tlmpweb_fontsize();
 	unsigned height = fontsize*1.3*small_size;
 	if (height < 20) height = 20;
-	return height;
+	return height+2;	// Keep some space at the top
 }
 unsigned draw_tab (
 	unsigned width,		// TAB width or 0 (computed from the title)
@@ -170,27 +170,31 @@ unsigned draw_tab (
 	htmlout ("d=\"\n");
 	htmlprintf ("M0,%u\n",height);
 	htmlout ("H1\n");
-	htmlout ("V10\n");
-	htmlout ("C1,0 10,0 20,0\n");
+	htmlout ("V12\n");
+	htmlout ("Q1,2 12,2\n");
 	htmlprintf ("H%u\n",width-12);
-	htmlprintf ("C%u,0 %u,0 %u,5\n",width-10,width-2,width-2);
+	htmlprintf ("Q%u,2 %u,12\n",width-2,width-2);
 	htmlprintf ("V%u\n",height);
 	htmlprintf ("H%u\n",width);
 	if (close) htmlout ("z\n");
 	htmlout ("\"/>\n");
-	htmlprintf ("\t<text x=10 y=%u class=small>%s</text>\n",height-tlmpweb_fontsize()/4,title);
+	htmlprintf ("\t<text x=10 y=%u class=small>%s</text>\n",height-tlmpweb_fontsize()/4-1,title);
 	htmlout ("</a>\n");
 	if (drawx && !tlmpweb_ismobile()){
-		unsigned x=width-20;
+		unsigned x=width-17;
 		htmlprintf ("<a href='#' onclick=formsubmit('%s') onmouseover=changefill('tabxrect%u','#D0D0D0') onmouseout=changefill('tabxrect%u','none')>\n",xref.ptr,id,id);
 		// First rect is there to make the a tag larger. fill=none does not work. So we have to give it the same color
 		// as the tab and changefill2 will change the color of the tab and this rect.
 		// The second rect is used to highlit the X
-		htmlprintf ("<rect id='tabsrect%u' x=%u y=%u width=18 height=%u fill=%s />\n",id,x-5,2,height-4,fill);
+		htmlprintf ("<rect id='tabsrect%u' x=%u y=%u width=16 height=%u fill=%s />\n",id,x-5,4,height-6,fill);
+		unsigned hmiddle = height/2+2;
 		unsigned h14 = height-8;
 		unsigned h8=height/3;
-		htmlprintf ("<rect id='tabxrect%u' x=%u y=%u rx=2 ry=2 width=%u height=%u fill=none />\n",id,x-3,2,h14,height-4);
-		htmlprintf ("<path stroke=black stroke-width=1 d='M%u,%u l%u,%u M%u,%u l%u,-%u'/>\n",x,height/2-h8/2,h8,h8,x,height/2+h8/2,h8,h8);
+		if (h8 & 1) h8++;	// Make sure h8 is even.
+		htmlprintf ("<rect id='tabxrect%u' x=%u y=%u rx=2 ry=2 width=%u height=%u fill=none />\n",id,x-3,4,h14,height-4);
+		htmlprintf ("<path stroke=black stroke-width=1 d='M%u,%u l%u,%u M%u,%u l%u,-%u'/>\n"
+			,x,hmiddle-h8/2,h8,h8
+			,x,hmiddle+h8/2,h8,h8);
 		htmlout ("</a>\n");
 	}
 	htmlout ("</svg>\n");
@@ -509,6 +513,9 @@ void util_endscript(PARAM_STRING urlparam)
 						|| child.id == "tab_form"
 						|| child.id == "webtable-top")){
 					total += child.offsetHeight;
+					var style = window.getComputedStyle(child);
+					total += parseInt(style.getPropertyValue('margin-top'));
+					total += parseInt(style.getPropertyValue('margin-bottom'));
 					if (child.id == "tab_form") total += 2;	// Bug scrollbar ???
 					console.log ("child.id=" + child.id + " total="+total+" height="+child.offsetHeight);
 				}else{
