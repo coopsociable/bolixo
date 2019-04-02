@@ -111,6 +111,15 @@ static void bolixo_script()
 			window.location.href = href;
 		}
 	</script>
+	<style>
+		#link{
+			background-color: #f44336;
+			color: white;
+			padding: 4px 15px;
+			text-align: center;
+			text-decoration: none;
+			display: inline-block;
+		}
 	?>
 }
 
@@ -205,10 +214,9 @@ static void bolixo_title(int called_from_step)
 	tt.end();
 	tt.flexfixe().sfloat("right").print();
 	DIV dt; dt.dispflex().flowcol().print();
+	bolixo_url (called_from_step,1,MSG_U(I_BOLIXOHOME,"Home page"));
 	bolixo_url (called_from_step,5,MSG_U(I_ABOUTBOLIXO,"What is Bolixo ?"));
-	bolixo_url (called_from_step,3,MSG_R(I_LOGIN));
-	bolixo_url (called_from_step,4,MSG_R(I_CREATEACCT));
-	bolixo_url (called_from_step,1,MSG_U(I_BACKTOSEARCH,"Search"));
+	bolixo_url (called_from_step,8,MSG_U(I_BACKTOSEARCH,"Search"));
 }
 
 extern W_UNSIGNED w_robot;
@@ -229,13 +237,68 @@ static void webmain_real()
 	<f end>
 		bolixo_script();
 	</f>
-	<f step1> // Search
+	<f step1> // Home
 		tlmpweb_title (MSG_U(T_BOLIXO_ORG_DIR,"Bolixo.org directory"));
 		util_defstyles();
 		tlmpweb_body ("white",NULL,"background=background.png");
 		DIV v; v.dispflex().flowcol().print();
 		DIV b("","top"); b.print(); 
 		bolixo_title(1);
+		b.end();
+		b.autoscroll();
+		if (tlmpweb_ismobile()){
+			b.id("middle").marginauto().w(100).h(100).bg("lightblue").paddings(10,10).vpaddings(10,10).vmargins(20,20).print();
+		}else{
+			b.id("middle").marginauto().w(60).h(85).bg("lightblue").paddings(10,10).vpaddings(10,10).vmargins(20,20).borderradius(20).border(1,"black").print();
+		}
+		<?#I_HOME
+			<center><div style=font-size:1.5em>Welcome</div></center>
+			<p>
+			Already have an account, just <a href=/bolixo.hc?webstep=3 id=link>Log in</a>
+			<p>
+			<div style=background-color:gray;color:white><center>Why Bolixo ?</center></div>
+			<p>
+			Bolixo is a distributed social media. Bolixo is free software.
+			<p>
+			<div style=margin-left:80;color:darkblue>
+				Looking for a social media respecting your privacy ? Tired of fake news ?<br>
+				Tired of being harassed by sites, suggesting new friends every day ?<br>
+				Want to create your own media site for your organisation ? Connected will the Bolixo network ?<br>
+				Exchange with friends, create work groups, share documents and messages ?<br>
+				Follow what is going on in the world ? <br>
+				Contribute to what is going on in the world ?<br>
+				Publish your latest ideas to the world on your public page ?<br>
+			</div>
+			<p>
+			Give Bolixo a spin. Invite a friend.
+			<br>
+			It is free and will remain free forever.
+			<a href=/bolixo.hc?webstep=4 id=link>Just create an account now</a>
+			<p>
+			<div style=background-color:gray;color:white><center>On dekstop or Mobile</center></div>
+			<p>
+		?>
+		if (strcmp(tlmpweb_getlang(),"fr")==0){
+			util_clickable_img ("/main-fr.jpg","40%",1);
+			/- &nbsp;
+			util_clickable_img ("/talk-fr.jpg","40%",1);
+			/- &nbsp;
+			util_clickable_img ("/talk2-fr.jpg","15%",1);
+		}else{
+			util_clickable_img ("/main.jpg","40%",1);
+			/- &nbsp;
+			util_clickable_img ("/talk.jpg","40%",1);
+			/- &nbsp;
+			util_clickable_img ("/talk2.jpg","15%",1);
+		}
+	</f>
+	<f step8> // Search
+		tlmpweb_title (MSG_R(T_BOLIXO_ORG_DIR));
+		util_defstyles();
+		tlmpweb_body ("white",NULL,"background=background.png");
+		DIV v; v.dispflex().flowcol().print();
+		DIV b("","top"); b.print(); 
+		bolixo_title(8);
 		b.end();
 		b.id("middle").marginauto().print();
 		<call form>("filter");
@@ -402,18 +465,16 @@ static void webmain_real()
 		tlmpweb_title (MSG_R(T_BOLIXO_ORG_DIR));
 		tlmpweb_body ("white",NULL,"background=background.png");
 		bolixo_title(3);
-		DIV d; d.w(tlmpweb_ismobile() ? 90 : 50).marginauto().vmargins(30,0).vpaddings(10,10).paddings(10,10).border(1,"black").bg("white").borderradius(5).print();
+		DIV d; d.w(tlmpweb_ismobile() ? 90 : 50).marginauto().vmargins(100,0).vpaddings(10,10).paddings(10,10).border(1,"black").bg("#ffefc1").borderradius(5).print();
 		<call form>("login");
 		<f setup>
 			htmlprintf ("<center><div style=font-size:1.5em>%s</div></center>\n",MSG_R(I_LOGIN));
 			/-<p>
 			/-#I_REDIRECT Enter your email and you will be redirected to the login page of your Bolixo node.
 			/-<p>
-			/- <table border=0>
-			htmlout (MSG_R(I_EMAIL));
-			/- <br>
-			field_string (w_email,"style=width:100%");
-			/- </table>
+			string extra = string_f("style=width:100%% placeholder='%s'",MSG_R(I_EMAIL));
+			field_string (w_email,extra.c_str());
+			/- <p>
 			button_submit();
 		</f>
 		<f validate>
@@ -442,16 +503,16 @@ static void webmain_real()
 		tlmpweb_title (MSG_R(T_BOLIXO_ORG_DIR));
 		tlmpweb_body ("white",NULL,"background=background.png");
 		bolixo_title(4);
-		DIV d; d.w(tlmpweb_ismobile() ? 90 : 50).marginauto().vmargins(30,0).vpaddings(10,10).paddings(10,10).border(1,"black").borderradius(5).bg("white").print();
+		DIV d; d.w(tlmpweb_ismobile() ? 90 : 50).marginauto().vmargins(100,0).vpaddings(10,10).paddings(10,10).border(1,"black").borderradius(5).bg("#ffefc1").print();
 		<call form>("create");
 		<f setup>
 			htmlprintf ("<center><div style=font-size:1.5em>%s</div></center>\n",MSG_R(I_CREATEACCT));
 			/-<p>
 			/-#I_SELECTNICKNAME Select a nickname you like and an available node will be found.
 			/-<p>
-			htmlout (MSG_R(I_NICKNAME));
-			/- <br>
-			field_string (w_nickname,"style=width:100%");
+			string extra = string_f("style=width:100%% placeholder='%s'",MSG_R(I_NICKNAME));
+			field_string (w_nickname,extra.c_str());
+			/- <p>
 			button_submit();
 		</f>
 		<f validate>
