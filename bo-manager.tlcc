@@ -479,7 +479,7 @@ static void generateconfig (
 	fprintf (fout,"# rules to connect to bod for monitoring\n");
 	for (auto t:config.bods){
 		const char *server = t.server.c_str();
-		for (unsigned i=0; i<t.workers; i++){
+		for (unsigned i=0; i<=t.workers; i++){
 			unsigned port = 9000+i;
 			fprintf (fout,"%s rule %s root unix %s/B-bod-%s-client-%u.sock %s bod /tmp/bod-client-%u.sock\n"
 				,bk_control,rootserver,sock_tests_dir,server,port,server,port);
@@ -526,7 +526,7 @@ static void generateconfig (
 			}
 		}
 	}
-	fprintf (fout,"# rules to connect web to bod\n");
+	fprintf (fout,"# rules to connect web to bod for most operations\n");
 	prefix = "";
 	for (auto w:config.webs){
 		for (auto t:config.bods){
@@ -535,7 +535,8 @@ static void generateconfig (
 					,bk_control,prefix,w.server.c_str(),t.server.c_str(),vs_bod,9000+i);
 				fprintf (fout,"%s %srule %s web-fail unix /dev/bod.sock %s %s /tmp/bod-client-%d.sock\n"
 					,bk_control,prefix,w.server.c_str(),t.server.c_str(),vs_bod,9000+i);
-				if (1 || devmode){
+				if (0){	// 1 || devmode){
+					// Old stuff, no more IP connections to reach bod
 					fprintf (fout,"%s %srule %s web_p ip0 9000 %s %s /tmp/bod-client-%d.sock\n"
 						,bk_control,prefix,w.server.c_str(),t.server.c_str(),vs_bod,9000+i);
 					fprintf (fout,"%s %srule %s sqlsource ip0 9000 %s %s /tmp/bod-client-%d.sock\n"
@@ -543,6 +544,17 @@ static void generateconfig (
 				}
 				prefix = "a";
 			}
+		}
+	}
+	fprintf (fout,"# rules to connect web to bod for public key retrieval\n");
+	prefix = "";
+	for (auto w:config.webs){
+		for (auto t:config.bods){
+			fprintf (fout,"%s %srule %s web unix /dev/bod-pubkey.sock %s %s /tmp/bod-client-%d.sock\n"
+				,bk_control,prefix,w.server.c_str(),t.server.c_str(),vs_bod,9000+t.workers);
+			fprintf (fout,"%s %srule %s web-fail unix /dev/bod-pubkey.sock %s %s /tmp/bod-client-%d.sock\n"
+				,bk_control,prefix,w.server.c_str(),t.server.c_str(),vs_bod,9000+t.workers);
+			prefix = "a";
 		}
 	}
 	fprintf (fout,"# rules to connect webadm to bod\n");
@@ -1002,7 +1014,7 @@ static void print_configs (
 			fprintf (fout,"# For bod system tests\n");
 			for (auto t:glocal.config->bods){
 				const char *server = t.server.c_str();
-				for (unsigned i=0; i<t.workers; i++){
+				for (unsigned i=0; i<=t.workers; i++){
 					unsigned port = 9000+i;
 					fprintf (fout,"%s --bind unix,%s/B-bod-%s-client-%u.sock,root\n"
 						,hc,sock_tests_dir,server,port);
@@ -1401,7 +1413,18 @@ static void print_configs (
 					<call savefile>("/var/lib/lxc/bod/bod.init",false);
 					<f dowrite>
 						fprintf (fout,"export BOD_PWD=%s\n",sql_bod_pwd);
-						for (int i=0; i<glocal.workers; i++){
+						/*
+							Important, we create one more bod process than specified (see the <=).
+							The last one is used only by webapi.hc for the getpubkey request.
+							This is done to avoid a dead-lock. The sequence is this.
+
+							A user add a remote account in his interest list. The bod serving the user
+							contact the remote site to register this site in the interest list of the
+							remote user. If this is the first time that we contact the remote site, it
+							will request our public key. And based on activities on all the bod servers,
+							this request might be served by the bod server doing the remote request. Dead-lock.
+						*/
+						for (int i=0; i<=glocal.workers; i++){
 							fprintf (fout,"%s/bod ",project_path);
 							fprintf (fout,"--tcpport %d --control %s/bod-%d.sock"
 								" --maxaccts %u"
@@ -1459,7 +1482,8 @@ static void print_configs (
 					</f>
 					</call>
 					fprintf (glocal.all_fout,"%s\n",startfile.c_str());
-					<call lxc_stop> ("bod","bod",project_path,glocal.workers,glocal.stopbod);
+					// +1 for the pubkey bod server
+					<call lxc_stop> ("bod","bod",project_path,glocal.workers+1,glocal.stopbod);
 					<f horizon>
 						fprintf (fout,"%s/horizon-control -p %s/horizon.sock unbindfd unix /dev/writed.sock %s\n"
 							,blackhole_path,sock_dir,name);
@@ -1470,8 +1494,8 @@ static void print_configs (
 					</f>
 					</call>
 					lxc_config ("bod",ip_bod,true);
-					lxc_status (project_path,"bod","bod",glocal.workers);
-					lxc_debug (project_path,"bod","bod",glocal.workers);
+					lxc_status (project_path,"bod","bod",glocal.workers+1);
+					lxc_debug (project_path,"bod","bod",glocal.workers+1);
 				}
 			}
 			// SERVICE writed
@@ -1672,6 +1696,9 @@ static void print_configs (
 							fprintf (fout,"%s/horizon-control -p %s/horizon.sock --bind unix,/dev/bod.sock:/var/lib/lxc/%s/rootfs/dev/bod.sock,%s\n"
 								,blackhole_path,sock_dir,name,name);
 							fprintf (fout,"chown 48 /var/lib/lxc/%s/rootfs/dev/bod.sock\n",name);
+							fprintf (fout,"%s/horizon-control -p %s/horizon.sock --bind unix,/dev/bod-pubkey.sock:/var/lib/lxc/%s/rootfs/dev/bod-pubkey.sock,%s\n"
+								,blackhole_path,sock_dir,name,name);
+							fprintf (fout,"chown 48 /var/lib/lxc/%s/rootfs/dev/bod-pubkey.sock\n",name);
 							fprintf (fout,"%s/horizon-control -p %s/horizon.sock --bind unix,/dev/sessiond.sock:/var/lib/lxc/%s/rootfs/dev/sessiond.sock,%s\n"
 								,blackhole_path,sock_dir,name,name);
 							fprintf (fout,"chown 48 /var/lib/lxc/%s/rootfs/dev/sessiond.sock\n",name);
@@ -1701,6 +1728,8 @@ static void print_configs (
 						<call lxc_stop> (w,NULL,NULL,-1,stopcmd);
 						<f horizon>
 							fprintf (fout,"%s/horizon-control -p %s/horizon.sock unbindfd unix /dev/bod.sock %s\n"
+								,blackhole_path,sock_dir,name);
+							fprintf (fout,"%s/horizon-control -p %s/horizon.sock unbindfd unix /dev/bod-pubkey.sock %s\n"
 								,blackhole_path,sock_dir,name);
 							fprintf (fout,"%s/horizon-control -p %s/horizon.sock unbindfd unix /dev/sessiond.sock %s\n"
 								,blackhole_path,sock_dir,name);

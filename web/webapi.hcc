@@ -37,13 +37,16 @@ extern "C" void tlmp_initmod()
 static void webmain_real()
 {
 	glocal CONNECT_INFO con;
+	glocal CONNECT_INFO con_pubkey;
 	glocal CONNECT_INFO con_sess;
 	glocal.con.port = "/dev/bod.sock";
+	glocal.con_pubkey.port = "/dev/bod-pubkey.sock";
 	glocal.con_sess.port = "/dev/sessiond.sock";
 	bool endserver,endclient;
 	REQUEST_JSON_INFO req;
 	glocal.con.secret = util_readsecret();
-	glocal.con_sess.secret = glocal.con_sess.secret;
+	glocal.con_pubkey.secret = glocal.con.secret;
+	glocal.con_sess.secret = glocal.con.secret;
 	const char *json = tlmpweb_getpost();
 	tlmpweb_flushheader();
 	<call webapi>(NULL, req, json, strlen(json), endserver, endclient);
@@ -286,7 +289,7 @@ static void webmain_real()
 		</call>
 	</f>
 	<f getpubkey> // nickname = pubkey
-		<call bod_client_getpubkey>(glocal.con,nickname);
+		<call bod_client_getpubkey>(glocal.con_pubkey,nickname);
 		<f ok>
 			glocal.webapi.rep_getpubkey(success,pubkey);
 		</f>
@@ -507,7 +510,7 @@ static void webmain_real()
 		</call>
 	</f>
 	<f systempubkey>
-		<call bod_client_systempubkey>(glocal.con);
+		<call bod_client_systempubkey>(glocal.con_pubkey);
 		<f ok>
 			glocal.webapi.rep_systempubkey(pubkey);
 		</f>
