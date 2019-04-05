@@ -3115,7 +3115,11 @@ int main (int argc, char *argv[])
 										glocal vector<unsigned> members;
 										<call sql_query>("select userid from group_members where groupid=%u",group_id);
 										<f onerow>
-											glocal.members.push_back(atoi(row[0]));
+											unsigned userid = atoi(row[0]);
+											// No notification needed to the author of the message
+											if (userid != glocal.userid){
+												glocal.members.push_back(userid);
+											}
 										</f>
 										</call>
 										{
@@ -3145,7 +3149,7 @@ int main (int argc, char *argv[])
 								</f>
 								</call>
 							}else if (to.size() > 0){
-								// No group, only recipient. We create the message in the first user inbox
+								// No group, only recipients. We create the message in the first user inbox
 								// and then link it into the other inboxes.
 								// Now, there is a problem with remote user. The message is copied on their server
 								// We remove the remote users from the uids vector and process with the remaining ones

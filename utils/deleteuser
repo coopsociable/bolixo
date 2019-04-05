@@ -1,0 +1,16 @@
+#!/bin/sh
+# Delete a user account and everything it owns
+# For now, if the account does not exist, it does nothing.
+if [ "$1" = "" ] ;then
+	echo deleteuser name
+else
+	bo files <<-EOF
+        	delete from id2name where name =  '$1';
+	EOF
+	bo users <<-EOF
+		delete from users where name = '$1';
+	EOF
+	bo deleteitems --verbose --doit
+	bo restart bod writed >/dev/null
+	bo syslog-clear
+fi
