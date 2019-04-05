@@ -165,6 +165,7 @@ int main (int argc, char *argv[])
 	<f main_noarg>
 		glocal set<string> vars;
 		glocal map<string,SESSION_INFO> sessions;
+		glocal map<unsigned,vector<NOTIFY>> notifies;
 		glocal map<string,string> admin_secrets;
 		glocal map<string,string> client_secrets;
 		glocal unsigned long nbrequest_admin = 0;
@@ -186,9 +187,28 @@ int main (int argc, char *argv[])
 					SESSION_INFO sess(userid, userid_str, name, email, lang, admin, dateformat,0);
 					sess.stats.lastvisit = lastvisit;
 					sess.stats.nbacc = nbacc;
-					for (auto &v:vars) sess.vars.push_back(v);
-					glocal.sessions[session] = sess;
+					for (auto &v:vars){
+						if (strcmp(v.name,VAR_NOTIFIES)==0){
+							// At first, the notificatio were part of the sesssion.
+							// Then we intruduced glocal.notifies
+							// This code only serve for migration.
+							auto &vn = glocal.notifies[userid];
+							for (auto &val:v.vals){
+								NOTIFY note;
+								note.key = val.sname;
+								note.when = time(NULL);
+								vn.push_back(move(note));
+							}
+						}else{
+							sess.vars.push_back(v);
+						}
+					}
+					glocal.sessions[session] = move(sess);
 					
+				</f>
+				<f notify>
+					auto &v = glocal.notifies[userid];
+					for (auto &n:notifies) v.push_back(n);
 				</f>
 				<f invalid>
 					tlmp_error ("Invalid entry, reading sessions.log\n");
@@ -248,6 +268,7 @@ int main (int argc, char *argv[])
 					}
 					tb.push_back(string_f ("nbanon=%lu",nbanon));
 					tb.push_back(string_f ("nbadmin=%lu",nbadmin));
+					tb.push_back(string_f ("nbnotifies=%lu",glocal.notifies.size()));
 					tb.push_back(string_f ("nbsesssions_created=%lu",glocal.nbsessions_created));
 					tb.push_back(string_f ("nbrequest_admin=%lu",glocal.nbrequest_admin));
 					tb.push_back(string_f ("nbrequest_client=%lu",glocal.nbrequest_client));
@@ -260,11 +281,14 @@ int main (int argc, char *argv[])
 				<f quit>
 					<call savefile>("/tmp/sessions.log",false);
 					<f dowrite>
-						for (auto &s:glocal.sessions){
+						for (auto const &s:glocal.sessions){
 							session_log_session(fout,s.first,s.second.userid,s.second.userid_str
 								,s.second.name,s.second.email,s.second.lang,s.second.admin
 								,s.second.dateformat
 								,s.second.stats.lastvisit,s.second.stats.nbacc,s.second.vars);
+						}
+						for (auto const &s:glocal.notifies){
+							session_log_notify(fout,s.first,s.second);
 						}
 						return 0;
 					</f>
@@ -305,7 +329,7 @@ int main (int argc, char *argv[])
 									,it.second.userid,it.second.admin,it.second.lang.c_str()
 									,it.second.dateformat,it.second.timezone);
 							}
-							tb.push_back(tmp);
+							tb.push_back(move(tmp));
 							for (auto &v:it.second.vars){
 								tmp = string_f("\t%s:[",v.name.c_str());
 								bool geometry = v.name == "geometry";
@@ -314,21 +338,24 @@ int main (int argc, char *argv[])
 									tmp += string_f (" %s=%s",vv.sname.c_str(),vv.sval.c_str());
 								}
 								tmp += "]";
-								tb.push_back(tmp);
+								tb.push_back(move(tmp));
 							}
+							auto note = glocal.notifies.find(it.second.userid);
+							if (note != glocal.notifies.end()){
+								tmp = string_f("\t%s:",VAR_NOTIFIES);
+								for (auto &n:note->second){
+									tmp += string_f(" %s,%u",n.key.c_str(),n.when);
+								}
+								tb.push_back(move(tmp));
+							}
+									
 						}
 						pos++;
 					}
 					rep_listsessions(tb);
 				</f>
 				<f resetnotifies>
-					for (auto &it:glocal.sessions){
-						for (auto &v:it.second.vars){
-							if (v.name == "notifies"){
-								v.vals.clear();
-							}
-						}
-					}
+					glocal.notifies.clear();
 				</f>
 				<f stuffsessions>
 					time_t t = time(NULL);
@@ -403,7 +430,19 @@ int main (int argc, char *argv[])
 					if (it != glocal.sessions.end()){
 						it->second.stats.lastvisit = time(NULL);
 						it->second.stats.nbacc++;
-						rep_getsessioninfovars(true,it->second.name,it->second.lang,it->second.dateformat,it->second.admin,it->second.userid,it->second.vars);
+						vector<VAR> vars = it->second.vars;
+						auto note = glocal.notifies.find(it->second.userid);
+						if (note != glocal.notifies.end()){
+							VAR var;
+							var.name = VAR_NOTIFIES;
+							for (auto &n:note->second){
+								SNAMEVAL val;
+								val.sname = n.key;
+								var.vals.push_back(val);
+							}
+							vars.push_back(var);
+						}
+						rep_getsessioninfovars(true,it->second.name,it->second.lang,it->second.dateformat,it->second.admin,it->second.userid,vars);
 					}else{
 						vector<VAR> vars;
 						rep_getsessioninfovars(false,"","",0,false,0,vars);
@@ -451,23 +490,15 @@ int main (int argc, char *argv[])
 					if (it == glocal.sessions.end()){
 						msg = "Invalid sessionid";
 					}else{
-						// Valid session, we apply the delnotify to all sessions of this user
-						for (auto &s:glocal.sessions){
-							if (s.second.userid == it->second.userid){
-								for (auto &v:s.second.vars){
-									if (v.name == VAR_NOTIFIES){
-										unsigned pos=0;
-										for (auto &vv:v.vals){
-											if (vv.sname == name){
-												v.vals.erase(v.vals.begin()+pos);
-												break;
-											}
-											pos++;
-										}
-										break;
-									}
+						auto note = glocal.notifies.find(it->second.userid);
+						if (note != glocal.notifies.end()){
+							for (auto vit=note->second.begin(); vit != note->second.end(); vit++){
+								if (vit->key == name){
+									note->second.erase(vit);
+									break;
 								}
 							}
+							if (note->second.size()==0) glocal.notifies.erase(note);
 						}
 						success = true;
 					}
@@ -508,30 +539,6 @@ int main (int argc, char *argv[])
 						tlmp_error ("setsession: %s does not exist\n",sessionid);
 					}else{
 						it->second = SESSION_INFO(userid,userid_str,name,email,lang,admin,dateformat,timezone);
-						// If notifies is empty, check if the user has another session running and copy
-						// the notifications from there.
-						if (notifies.empty()){
-							for (auto &s:glocal.sessions){
-								if (s.second.userid==userid){
-									for (auto &var:s.second.vars){
-										if (var.name == VAR_NOTIFIES){
-											it->second.vars.push_back(var);
-											break;
-										}
-									}
-									break;
-								}
-							}
-						}else{
-							VAR var;
-							var.name = VAR_NOTIFIES;
-							for (auto n:notifies){
-								SNAMEVAL val;
-								val.sname = n;
-								var.vals.push_back(val);
-							}
-							it->second.vars.push_back(var);
-						}
 					}
 				</f>
 				<f setlang>
@@ -553,39 +560,21 @@ int main (int argc, char *argv[])
 				</f>
 				<f setnotify>
 					// Assigned a notification to a list of userids
+					time_t now = time(NULL);
 					for (auto userid:userids){
-						for (auto &s:glocal.sessions){
-							if (s.second.userid==userid){
-								bool found_var = false;
-								for (auto &var:s.second.vars){
-									if (var.name == VAR_NOTIFIES){
-										found_var = true;
-										bool found = false;
-										for (auto &v:var.vals){
-											if (v.sname == name){
-												found = true;
-												break;
-											}
-										}
-										if (!found){
-											SNAMEVAL val;
-											val.sname = name;
-											var.vals.push_back(val);
-										}
-										break;
-									}
-								}
-								if (!found_var){
-									VAR var;
-									var.name = VAR_NOTIFIES;
-									SNAMEVAL val;
-									val.sname = name;
-									var.vals.push_back(val);
-									s.second.vars.push_back(var);
-								}
+						auto &v = glocal.notifies[userid];
+						bool found = false;
+						for (auto &n:v){
+							if (n.key == name){
+								found = true;
+								break;
 							}
-							// A user may be connected using several devices
-							// so no break.
+						}
+						if (!found){
+							NOTIFY n;
+							n.key = name;
+							n.when = now;
+							v.push_back(n);
 						}
 					}
 				</f>
