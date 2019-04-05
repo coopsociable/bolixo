@@ -2123,19 +2123,23 @@ int main (int argc, char *argv[])
 					glocal string email;
 					glocal string name;
 					glocal const char *confirmid = confirmid;
-					<call sql_query>(*glocal.usq,"select userid,name,email from users where userid_str='%s' and confirmed is null and disabled is null"
+					translat_selectlang(lang);
+					<call sql_query>(*glocal.usq,"select userid,name,email,confirmed from users where userid_str='%s' and disabled is null"
 						,confirmid);
 					<f onerow>
 						unsigned userid = atoi(row[0]);
 						glocal.name = row[1];
 						glocal.email = row[2];
-						if (bo_writed_confirmuser (glocal.ctx,userid,glocal.name,glocal.confirmid,glocal.msg)==-1){
-							glocal.msg = "Error, can't confirm new user";
+						// Check if already confirmed
+						if (row[3] != nullptr){
+							glocal.msg = MSG_U(E_ALREADYCONFIRMED,"Account is already confirmed");;
+						}else if (bo_writed_confirmuser (glocal.ctx,userid,glocal.name,glocal.confirmid,glocal.msg)==-1){
+							glocal.msg = MSG_U(E_CANTCONFIRM,"Error, can't confirm new user");
 						}
 					</f>
 					<f empty>
-						tlmp_error ("Confirm unknown users: %s\n",glocal.confirmid);
-						glocal.msg = "Error, unknown confirmation ID";
+						tlmp_error ("Confirm unknown users: confirmid=%s\n",glocal.confirmid);
+						glocal.msg = MSG_U(E_IVLDCONFIRMID,"Error, unknown confirmation ID, maybe the link in the email was truncated ?");
 					</f>
 					</call>
 					if (glocal.msg.size() > 0){

@@ -2,7 +2,7 @@ extern const char **_dictionary_bolixo;
 #ifndef DICTIONARY_REQUEST
 	#define DICTIONARY_REQUEST \
 	const char **_dictionary_bolixo;\
-	TRANSLATE_SYSTEM_REQ _dictionary_req_bolixo("bolixo",_dictionary_bolixo,495,16);\
+	TRANSLATE_SYSTEM_REQ _dictionary_req_bolixo("bolixo",_dictionary_bolixo,498,16);\
 	void dummy_dict_bolixo(){}
 #endif
 #ifndef MSG_U
@@ -508,3 +508,6 @@ extern const char **_dictionary_bolixo;
 #define E_EXPECTDHMS	492
 #define I_BOLIXOHOME	493
 #define I_HOME	494
+#define E_ALREADYCONFIRMED	495
+#define E_CANTCONFIRM	496
+#define E_IVLDCONFIRMID	497
