@@ -1004,6 +1004,7 @@ static void index_show_shortmsg(
 	glocal CONNECT_INFO *con_sess = &con_sess;
 	glocal const char *groupname = groupname.ptr;
 	glocal const char *groupowner = groupowner.ptr;
+	glocal bool is_inbox = strcmp(glocal.groupname,"inbox")==0;
 	glocal string path = string_f("/msgs/%s/short-inbox/%s",glocal.groupowner,glocal.groupname);
 	WEBID ID_TALK("talk",string_f("%s:%s",groupowner.ptr,groupname.ptr));
 	const char *table = ID_TALK.c_str();
@@ -1049,8 +1050,13 @@ static void index_show_shortmsg(
 						index_setcopyitem(*glocal.con_sess,glocal.fname,glocal.eventdate,glocal.suggested_name);
 					}else if (glocal.dropmenu == MENU_DOWNLOAD){
 						index_download (*glocal.con,m.file_type,glocal.fname);
+					}else if (glocal.dropmenu == MENU_REPLY){
+						if (glocal.is_inbox && userinfo.name != m.from){
+							tlmpweb_forcevar(w_recipients,m.from);
+						}else{
+							/-#E_REPLYTOYOU Can't reply to yourself
+						}
 					}else{
-						//htmlprintf ("uuid=%s<p>\n",m.uuid);
 						index_popup (*glocal.con,m.content,m.file_type,m.submit,m.from
 							,string_f("/msgs/%s/short-inbox/%s/%s"
 							,glocal.groupowner,glocal.groupname,m.uuid));
@@ -1061,13 +1067,16 @@ static void index_show_shortmsg(
 		}
 	</f>
 	<f load>
+		glocal unsigned rownum = nbskip;
 		// Defines all posible options for dropdown
+		if (glocal.is_inbox){
+			adddrop_opt (MENU_REPLY,MSG_U(M_REPLY,"Reply"));
+		}
 		adddrop_opt (MENU_COPY,MSG_R(M_COPY));
 		index_setpastemenu(this,glocal.path);
 		adddrop_opt (MENU_DELETE,MSG_R(M_DELETE));
 		adddrop_opt (MENU_UNDELETE,MSG_R(M_UNDELETE));
 		adddrop_opt (MENU_DOWNLOAD,MSG_R(M_DOWNLOAD));
-		glocal unsigned rownum = nbskip;
 		index_msgs_style(*this);
 		<call bod_client_list_talk>(*glocal.con,w_session.c_str(),"",glocal.groupname,glocal.groupowner,nbskip,nblines);
 		<f ok>
@@ -1097,6 +1106,13 @@ static void index_show_shortmsg(
 						glocal.webtable.setrow("hline",-1,"<div id=date0_7b>%s</div>\a\a\a",format_date(userinfo.dateformat,day).c_str());
 						glocal.webtable.resetdrop();
 						line_style=0;
+					}
+					if (glocal.is_inbox){
+						if (userinfo.name == m.from){
+							glocal.webtable.setdrop_disable(MENU_REPLY);
+						}else{
+							glocal.webtable.setdrop_enable(MENU_REPLY);
+						}
 					}
 					const char *func = "Popup";
 					string path = string_f("/msgs/%s/short-inbox/%s/%s",glocal.groupowner,glocal.groupname,m.uuid);
@@ -2608,107 +2624,113 @@ extern "C" void webmain_real()
 			if (n != 2) return;
 			glocal string groupowner = tb[0];
 			glocal string groupname = tb[1];
+			glocal const char *formid = formid;
 			util_delnotify (glocal.con_sess,"talks",id);
-			if (glocal.groupname != "anonymous"){
-				glocal bool private_inbox = glocal.groupname == "inbox";
-				DIV f; f.id(TAB_FORM).bg("#ffefc1").paddings(5,5).vpaddings(5,5).vmargins(5,0).borderradius(5).print();
-				<call form>(formid);
-				<f setup>
-					DIV d; d.dispflex().flowcol().print();
-					const unsigned vspace=tlmpweb_ismobile() ? 10: 3;
-					const unsigned hspace=3;
-					if (glocal.private_inbox){
-						DIV dd; dd.w(100).flexfixe().vmargins(vspace,0).print();
-						DIV ddd; ddd.dispflex().flowrow().print();
-						DIV dddd; dddd.flexfixe().margins(0,hspace).print();
-						/-#F_RECIPIENTS Recipients
-						dddd.end();
-						dddd.flexgrow().print();
-						field_string(w_recipients,"style=width:100%");
-					}
-					{
-						DIV dd; d.w(100).flexfixe().vmargins(vspace,vspace).print();
-						string place = string_f("placeholder='%s'",MSG_U(I_WRITEMSG,"Write a message"));
-						field_textarea (w_content,5,-100,place.c_str());
-					}
-					{
-						DIV dd; d.w(100).flexfixe().print();
-						DIV ddd; d.dispflex().flowrow().print();
-						DIV dddd; d.flexfixe().print();
-						field_file (w_upload);
-						dddd.end();
-						dddd.sfloatright().print();
-						button_submit (MSG_U(B_SEND,"Send"));
-					}
-					if (!glocal.private_inbox){
-						DIV dd; dd.w(100).flexfixe().vmargins(vspace,0).print();
-						DIV ddd; ddd.dispflex().flowrow().print();
-						DIV dddd; dddd.flexfixe().margins(0,hspace).print();
-						/-#F_EXTRARECIPIENTS Recipients(opt)
-						dddd.end();
-						dddd.flexgrow().print();
-						field_string(w_recipients,"style=width:100%");
-					}
-				</f>
-				<f validate>
-					bool ret = true;
-					if (glocal.private_inbox && w_recipients.size()==0){
-						/-#E_ONERECIPIENT You must specify at least one recipient
-						ret = false;
-					}
-					return ret;
-				</f>
-				<f process>
-					glocal bool fail = false;
-					glocal vector<string> recipients;
-					str_splitline(w_recipients.c_str(),' ',glocal.recipients);
-					if (w_content.size() > 0){
-						BOB_TYPE bob;
-						bob.setbuffer (w_content.c_str(),w_content.size(),false);
-						static vector<string> empty;
-						<call bod_client_sendtalk>(glocal.con,w_session.c_str(),"",glocal.recipients
-							,glocal.groupname,glocal.groupowner,bob,false,"","","");
-						<f ok>
-							if (!success){
-								htmlprintf (MSG_U(E_CANTSEND,"Can't send: %s<br>\n"),msg);
-								glocal.fail = true;
-							}
-						</f>
-						</call>
-					}
-					if (strcmp(w_upload.c_str(),"")!=0){
-						const char *tempname = tlmpweb_getfilename(w_upload);
-						<call sendfile>("",tempname,glocal.fail);
-						<f start>
-							static vector<string> empty;
-							<call bod_client_sendtalk>(glocal.con,w_session.c_str(),"",glocal.recipients,glocal.groupname,glocal.groupowner
-								,content,more,"","","");
+			<call webflip>();
+			<f first>
+				if (glocal.groupname != "anonymous"){
+					glocal bool private_inbox = glocal.groupname == "inbox";
+					DIV f; f.id(TAB_FORM).bg("#ffefc1").paddings(5,5).vpaddings(5,5).vmargins(5,0).borderradius(5).print();
+					<call form>(glocal.formid);
+					<f setup>
+						DIV d; d.dispflex().flowcol().print();
+						const unsigned vspace=tlmpweb_ismobile() ? 10: 3;
+						const unsigned hspace=3;
+						if (glocal.private_inbox){
+							DIV dd; dd.w(100).flexfixe().vmargins(vspace,0).print();
+							DIV ddd; ddd.dispflex().flowrow().print();
+							DIV dddd; dddd.flexfixe().margins(0,hspace).print();
+							/-#F_RECIPIENTS Recipients
+							dddd.end();
+							dddd.flexgrow().print();
+							field_string(w_recipients,"style=width:100%");
+						}
+						{
+							DIV dd; d.w(100).flexfixe().vmargins(vspace,vspace).print();
+							string place = string_f("placeholder='%s'",MSG_U(I_WRITEMSG,"Write a message"));
+							field_textarea (w_content,5,-100,place.c_str());
+						}
+						{
+							DIV dd; d.w(100).flexfixe().print();
+							DIV ddd; d.dispflex().flowrow().print();
+							DIV dddd; d.flexfixe().print();
+							field_file (w_upload);
+							dddd.end();
+							dddd.sfloatright().print();
+							button_submit (MSG_U(B_SEND,"Send"));
+						}
+						if (!glocal.private_inbox){
+							DIV dd; dd.w(100).flexfixe().vmargins(vspace,0).print();
+							DIV ddd; ddd.dispflex().flowrow().print();
+							DIV dddd; dddd.flexfixe().margins(0,hspace).print();
+							/-#F_EXTRARECIPIENTS Recipients(opt)
+							dddd.end();
+							dddd.flexgrow().print();
+							field_string(w_recipients,"style=width:100%");
+						}
+					</f>
+					<f validate>
+						bool ret = true;
+						if (glocal.private_inbox && w_recipients.size()==0){
+							/-#E_ONERECIPIENT You must specify at least one recipient
+							ret = false;
+						}
+						return ret;
+					</f>
+					<f process>
+						glocal bool fail = false;
+						glocal vector<string> recipients;
+						str_splitline(w_recipients.c_str(),' ',glocal.recipients);
+						if (w_content.size() > 0){
+							BOB_TYPE bob;
+							bob.setbuffer (w_content.c_str(),w_content.size(),false);
+							<call bod_client_sendtalk>(glocal.con,w_session.c_str(),"",glocal.recipients
+								,glocal.groupname,glocal.groupowner,bob,false,"","","");
 							<f ok>
-								glocal.sendfile.sethandle (handle);
-								glocal.sendfile.setresult (success,msg);
+								if (!success){
+									htmlprintf (MSG_U(E_CANTSEND,"Can't send: %s<br>\n"),msg);
+									glocal.fail = true;
+								}
 							</f>
 							</call>
-						</f>
-						<f rest>
-							<call bod_client_appendfile>(glocal.con,w_session.c_str(),handle,content,more);
-							<f ok>
-								glocal.sendfile.setresult (success,msg);
+						}
+						if (strcmp(w_upload.c_str(),"")!=0){
+							const char *tempname = tlmpweb_getfilename(w_upload);
+							<call sendfile>("",tempname,glocal.fail);
+							<f start>
+								<call bod_client_sendtalk>(glocal.con,w_session.c_str(),"",glocal.recipients,glocal.groupname,glocal.groupowner
+									,content,more,"","","");
+								<f ok>
+									glocal.sendfile.sethandle (handle);
+									glocal.sendfile.setresult (success,msg);
+								</f>
+								</call>
+							</f>
+							<f rest>
+								<call bod_client_appendfile>(glocal.con,w_session.c_str(),handle,content,more);
+								<f ok>
+									glocal.sendfile.setresult (success,msg);
+								</f>
+								</call>
 							</f>
 							</call>
-						</f>
-						</call>
-					}
-					fail = glocal.fail;
-					if (!fail){
-						w_recipients.setempty();
-						w_content.setempty();
-						w_upload.setempty();
-					}
-					keepediting = true;
-				</f>
-				</call>
-			}
-			index_show_shortmsg (glocal.con,glocal.con_sess,glocal.webtabs,glocal.groupname,glocal.groupowner);
+						}
+						fail = glocal.fail;
+						if (!fail){
+							w_recipients.setempty();
+							w_content.setempty();
+							w_upload.setempty();
+							glocal.webflip.reload_second();
+						}
+						keepediting = true;
+					</f>
+					</call>
+				}
+			</f>
+			<f second>
+				index_show_shortmsg (glocal.con,glocal.con_sess,glocal.webtabs,glocal.groupname,glocal.groupowner);
+			</f>
+			</call>
 		</f>
 		<f doctype2>
 			FILEINFO info;

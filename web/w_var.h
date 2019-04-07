@@ -61,6 +61,7 @@ const unsigned MENU_PREVIEW=4;
 const unsigned MENU_HELPPREVIEW=5;
 const unsigned MENU_UNDELETE=6;
 const unsigned MENU_RENAME=7;
+const unsigned MENU_REPLY=8;
 const unsigned MENU_DOWNLOAD=100;
 
 #define TAB_FORM "tab_form"
