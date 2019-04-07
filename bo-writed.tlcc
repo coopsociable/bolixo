@@ -2741,22 +2741,17 @@ int main (int argc, char *argv[])
 						rep_create_group (false,msg);
 					}
 				</f>
-				<f set_member>		// sessionid groupname user defaultaccess role owner = success:b msg
+				<f set_member>		// sessionid groupname user access role owner = success:b msg
 					glocal string msg;
 					glocal const char *groupname = groupname;
 					glocal const char *user = user;
 					//if (role[0] == '\0') role = NULL;
 					glocal const char *role = role;
-					glocal const char *access = access;
+					glocal string access = toupper(access);
 					glocal string username;
 					glocal unsigned userid = bo_writed_get_group_owner (glocal.con, sessionid, owner, glocal.username,glocal.msg);
-					if (access[0] != '\0'
-						&& strcmp(access," ")!=0
-						&& strcmp(access,"R")!=0
-						&& strcmp(access,"W")!=0
-						&& strcmp(access,"A")!=0
-						&& strcmp(access,"-")!=0){
-						glocal.msg = "Invalid default access (' ','R','W','A','-')";
+					if (is_not_in(glocal.access,""," ","R","W","A","-")){
+						glocal.msg = MSG_U(E_IVLDDEFACCESS,"Invalid access (' ','R','W','A','-')");
 					}else if (glocal.userid != 0){
 						<call sql_query>("select id from groups where ownerid=%u and name='%s'",glocal.userid,glocal.groupname);
 						<f empty>
@@ -2803,7 +2798,7 @@ int main (int argc, char *argv[])
 											}
 										}else if (sql_action("update group_members set access='%s',role='%s'"
 											" where groupid=%u and userid=%u"
-											,glocal.access,glocal.role,glocal.groupid,glocal.member_userid)==-1){
+											,glocal.access.c_str(),glocal.role,glocal.groupid,glocal.member_userid)==-1){
 											glocal.msg = "Internal error (group_members table)";
 										}else{
 											glocal.msg = "";
@@ -2813,7 +2808,7 @@ int main (int argc, char *argv[])
 										if (glocal.access[0] == '-'){
 											glocal.msg = "User was not a member of that group";
 										}else if (sql_action("insert into group_members (groupid,userid,access,role) values (%u,%u,'%s','%s')"
-											,glocal.groupid,glocal.member_userid,glocal.access,glocal.role)==-1){
+											,glocal.groupid,glocal.member_userid,glocal.access.c_str(),glocal.role)==-1){
 											glocal.msg = "Internal error (group_members table)";
 										}else{
 											glocal.msg = "";
