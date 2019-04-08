@@ -1575,7 +1575,8 @@ elif [ "$1" = "lxc0s" ] ; then # prod: generates lxc0 scripts for all components
 	$0 lxc0-mysql
 	$0 lxc0-exim
 elif [ "$1" = "webprodtest" ] ; then # P: Webtest on production
-	time -p $BOWEBTEST -h https://$PRODIP -n 50 -N 20
+	shift
+	webtest /index.hc https://alpha.bolixo.org -u alpha/admin $*
 elif [ "$1" = "webtest" ] ; then # P:
 	shift
 	webtest /index.hc http://192.168.4.1:9080 $*
