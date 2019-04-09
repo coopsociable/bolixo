@@ -264,6 +264,11 @@ elif [ "$1" = "listsessions" ] ; then # prod: list web sessions (offset)
 		OFF=$2
 	fi
 	bo-sessiond-control -p /var/lib/lxc/sessiond/rootfs/var/run/blackhole/bo-sessiond.sock listsessions $OFF 100
+elif [ "$1" = "who" ] ; then # prod: who is connected
+	$0 listsessions | grep 000 | grep @ | while read a b c d e f g
+	do
+		echo $f $d
+	done | sort
 elif [ "$1" = "mailctrl" ] ; then # config: Control writed sendmail
 	if [ $# != 3 ] ;then
 		echo "mailctrl 0|1 force_addr"
