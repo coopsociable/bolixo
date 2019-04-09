@@ -2808,6 +2808,36 @@ static int bod_main (
 				</f>
 				</call>
 			</f>
+			<f get_notification>	// sessionid owner key = success:b msg ui:b email:b digest:b
+				glocal string msg;
+				glocal bool ui = true;
+				glocal bool email = false;
+				glocal bool digest = false;
+				unsigned userid = bo_writed_get_group_owner (glocal.con_sess, sessionid, owner, glocal.msg);
+				if (userid != 0){
+					// If not found in the database, just return the defaults.
+					<call sql_query>("select ui,email,digest from notifications where userid=%u and notify_key='%s'"
+						,userid,key);
+					<f onerow>
+						glocal.ui = atoi(row[0]);
+						glocal.email = atoi(row[1]);
+						glocal.digest = atoi(row[2]);
+					</f>
+					</call>
+				}
+				if (glocal.msg.size() > 0){
+					rep_get_notification (false,glocal.msg,false,false,false);
+				}else{
+					rep_get_notification (true,"",glocal.ui,glocal.email,glocal.digest);
+				}
+			</f>
+			<f set_notification>	// sessionid owner key ui:b email:b digest:b = success:b msg
+				<call bo_writed_client_set_notification>(glocal.con,sessionid,owner,key,ui,email,digest);
+				<f ok>
+					glocal.bod_client.rep_set_notification(success,msg);
+				</f>
+				</call>
+			</f>
 			<f public_checkuser>	// username = success:b msg exist:b
 				string msg;
 				bool pubdir;

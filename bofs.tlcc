@@ -2761,6 +2761,12 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 	glocal const char *public_dir = NULL;
 	glocal const char *dateformat = NULL;
 	glocal const char *anon_messages = NULL;
+	glocal bool set_notification = false;
+	glocal bool get_notification = false;
+	glocal const char *notify_key = nullptr;
+	glocal bool notify_ui = false;
+	glocal bool notify_email = false;
+	glocal bool notify_digest = false;
 	glocal.ret = <call tlmpprogram>(argc,argv);
 	<f init>
 		setproginfo ("bomisc",VERSION
@@ -2782,6 +2788,8 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 
 		setarg ('v',"verifysign","Verify a message signature",glocal.verifysign,false);
 		setarg (' ',"getpubkey","Get the public key of a user",glocal.getpubkey,false);
+		setarg (' ',"set_notification",MSG_U(O_SET_NOTIFICATION,"Set notification configuration for a subject"),glocal.set_notification,false);
+		setarg (' ',"get_notification",MSG_U(O_GET_NOTIFICATION,"Get notification configuration for a subject"),glocal.get_notification,false);
 
 		setgrouparg (MSG_U(I_CONTACTMGMT,"contact management arguments"));
 		setarg ('i',"intro","Introduction message for contact request",glocal.intro,false);
@@ -2804,6 +2812,11 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 		setarg ('D',"public_dir",MSG_U(O_PUBLICDIR,"Select the sub-folder of the public project to display"),glocal.public_dir,false);
 		setarg ('A',"anonmsgs",MSG_U(O_ANONMSGS,"Accept anonymous messages (0 or 1)"),glocal.anon_messages,false);
 
+		setgrouparg (MSG_R(I_NOTIFICATIONS));
+		setarg ('K',"notify_key",MSG_U(O_NOTIFY_KEY,"Notification subject"),glocal.notify_key,false);
+		setarg (' ',"notify_ui",MSG_U(O_NOTIFY_UI,"User interface notification"),glocal.notify_ui,false);
+		setarg (' ',"notify_email",MSG_U(O_NOTIFY_EMAIL,"Send notification email"),glocal.notify_email,false);
+		setarg (' ',"notify_digest",MSG_U(O_NOTIFY_DIGEST,"Send notification digest"),glocal.notify_digest,false);
 		setgrouparg (MSG_R(I_MISC));
 		setarg ('O',"owner",MSG_R(O_OWNER),glocal.owner,false);
 		setarg (' ',"fulltext","Request full text for these messages",glocal.fulltext,false);
@@ -3091,6 +3104,35 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 						</f>
 						</call>
 					}
+				}
+			}
+		}else if (glocal.get_notification){
+			if (glocal.notify_key == nullptr){
+				tlmp_error (MSG_U(E_NOTIFY_KEY,"You must specify the notification subject, option --notify_key\n"));
+			}else if (glocal.ctx->login()!=-1){
+				if (glocal.ctx->is_internal()){
+					<call bod_client_get_notification>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner,glocal.notify_key);
+					<f ok>
+						printf ("set_notification success=%d msg=%s ui=%d email=%d digest=%d\n",success,msg,ui,email,digest);
+					</f>
+					</call>
+				}else{
+					notdone();
+				}
+			}
+		}else if (glocal.set_notification){
+			if (glocal.notify_key == nullptr){
+				tlmp_error (MSG_R(E_NOTIFY_KEY));
+			}else if (glocal.ctx->login()!=-1){
+				if (glocal.ctx->is_internal()){
+					<call bod_client_set_notification>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner
+						,glocal.notify_key,glocal.notify_ui,glocal.notify_email,glocal.notify_digest);
+					<f ok>
+						printf ("set_notification success=%d msg=%s\n",success,msg);
+					</f>
+					</call>
+				}else{
+					notdone();
 				}
 			}
 		}else{

@@ -659,6 +659,7 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 	EOF
 	$0 createdb-patch1
 	$0 createdb-patch2
+	$0 createdb-patch4
 	mysqladmin -uroot -S $SOCKN create $DBNAMET
 	mysql -uroot -S $SOCKN $DBNAMET <<-EOF
 		create table formids(
@@ -705,6 +706,18 @@ elif [ "$1" = "createdb-patch3" ]; then # db: add eventtime index to dirs_conten
 	ENGINE=myisam
 	mysql -uroot -S $SOCKN $DBNAME <<-EOF
 		create index dirs_content_eventtime on dirs_content (eventtime);
+	EOF
+elif [ "$1" = "createdb-patch4" ]; then # db: add notifications table
+	ENGINE=myisam
+	mysql -uroot -S $SOCKN $DBNAME <<-EOF
+		create table notifications(
+			userid int,
+			notify_key varchar(100),
+			ui tinyint unsigned default 1,
+			email tinyint unsigned default 0,
+			digest tinyint unsigned	default 0
+		)engine=$ENGINE;
+		create unique index notification_userid on notifications(userid,notify_key);
 	EOF
 elif [ "$1" = "generate-system-pubkey" ] ; then # config: Generate the system public key
 	echo Generate --system-- crypto key

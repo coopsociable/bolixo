@@ -2,7 +2,7 @@ extern const char **_dictionary_bolixo;
 #ifndef DICTIONARY_REQUEST
 	#define DICTIONARY_REQUEST \
 	const char **_dictionary_bolixo;\
-	TRANSLATE_SYSTEM_REQ _dictionary_req_bolixo("bolixo",_dictionary_bolixo,501,16);\
+	TRANSLATE_SYSTEM_REQ _dictionary_req_bolixo("bolixo",_dictionary_bolixo,508,16);\
 	void dummy_dict_bolixo(){}
 #endif
 #ifndef MSG_U
@@ -514,3 +514,10 @@ extern const char **_dictionary_bolixo;
 #define E_IVLDDEFACCESS	498
 #define M_REPLY	499
 #define E_REPLYTOYOU	500
+#define O_SET_NOTIFICATION	501
+#define O_GET_NOTIFICATION	502
+#define O_NOTIFY_KEY	503
+#define O_NOTIFY_UI	504
+#define O_NOTIFY_EMAIL	505
+#define O_NOTIFY_DIGEST	506
+#define E_NOTIFY_KEY	507

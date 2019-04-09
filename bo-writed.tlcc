@@ -34,6 +34,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <set>
 #include <tlmpnet.h>
 #include <tlmpsql.h>
 #include <trlitool.h>
@@ -1332,16 +1333,35 @@ static bool bo_writed_public_msg(const char *srcname)
 	return ret;
 }
 
+/*
+	Send notifications to the session manager about an event.
+	It checks the table notifications to filter out some notifications.
+
+	The notificartions table has this logic. If there is a record for a userid,key, then it applies.
+	If there is not record, then we assume that notification is on for the user interface (ui) and off for email and digest.
+*/
 <mod>
-static void bo_writed_notify (CONNECT_INFO &con_sess, PARAM_STRING key, vector<unsigned> &userids)
+static void bo_writed_notify (CONNECT_INFO &con_sess, PARAM_STRING key, const vector<unsigned> &userids)
 {
-	#if 0
-		string tmp;
-		for (auto u:userids) tmp += string_f(" %u",u);
-		tlmp_error ("bo_writed_notify key=%s userids=%s\n",key.ptr,tmp.c_str());
-	#endif
-	if (userids.size() > 0){
-		<call bo_sessiond_admin_setnotify>(con_sess,userids,key);
+	glocal vector<unsigned> userids;	// Will collect the userids which should be notified
+	glocal set<unsigned> userids_notseen;	// At the end, will contain userids not seen in the notifications table
+	for (auto u:userids) glocal.userids_notseen.insert(u);
+	NSQL_REQ req;
+	req.append ("select userid,ui,email from notifications where userid in");
+	req.appendlist(userids);
+	req.appendf (" and notify_key='%s'",key.ptr); 
+	<call sql_query>(req);
+	<f onerow>
+		unsigned userid = atoi(row[0]);
+		bool ui = atoi(row[1]) != 0;
+		//bool email = atoi(row[2]) != 0;
+		if (ui) glocal.userids.push_back(userid);
+		glocal.userids_notseen.erase(userid);
+	</f>
+	</call>
+	for (auto u:glocal.userids_notseen) glocal.userids.push_back(u);
+	if (glocal.userids.size() > 0){
+		<call bo_sessiond_admin_setnotify>(con_sess,glocal.userids,key);
 		<f ok>
 		</f>
 		</call>
@@ -3341,6 +3361,24 @@ int main (int argc, char *argv[])
 						rep_contact_manage (false,glocal.msg);
 					}else{
 						rep_contact_manage (true,"");
+					}
+				</f>
+				<f set_notification>	// sessionid owner key ui:b email:b digest:b = success:b msg
+					glocal string msg;
+					unsigned userid = bo_writed_get_group_owner (glocal.con, sessionid, owner,glocal.msg);
+					if (userid > 0){
+						if (sql_action("insert into notifications (userid,notify_key,ui,email,digest)"
+							" values (%u,'%s',%u,%u,%u)"
+							" on duplicate key update ui=%u,email=%u,digest=%u"
+							,userid,key,ui,email,digest
+							,ui,email,digest)==-1){
+							glocal.msg = "Internal error writing to table notifications";
+						}
+					}
+					if (glocal.msg.size() > 0){
+						rep_set_notification (false,glocal.msg);
+					}else{
+						rep_set_notification (true,"");
 					}
 				</f>
 				<f config_write>// sessionid owner config:U{CONFIG} = success:b msg
