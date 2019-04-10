@@ -714,6 +714,7 @@ elif [ "$1" = "createdb-patch4" ]; then # db: add notifications table
 			userid int,
 			notify_key varchar(100),
 			ui tinyint unsigned default 1,
+			active_ui tinyint unsigned default 0,
 			email tinyint unsigned default 0,
 			digest tinyint unsigned	default 0
 		)engine=$ENGINE;

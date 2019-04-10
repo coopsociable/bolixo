@@ -1343,28 +1343,30 @@ static bool bo_writed_public_msg(const char *srcname)
 <mod>
 static void bo_writed_notify (CONNECT_INFO &con_sess, PARAM_STRING key, const vector<unsigned> &userids)
 {
-	glocal vector<unsigned> userids;	// Will collect the userids which should be notified
-	glocal set<unsigned> userids_notseen;	// At the end, will contain userids not seen in the notifications table
-	for (auto u:userids) glocal.userids_notseen.insert(u);
-	NSQL_REQ req;
-	req.append ("select userid,ui,email from notifications where userid in");
-	req.appendlist(userids);
-	req.appendf (" and notify_key='%s'",key.ptr); 
-	<call sql_query>(req);
-	<f onerow>
-		unsigned userid = atoi(row[0]);
-		bool ui = atoi(row[1]) != 0;
-		//bool email = atoi(row[2]) != 0;
-		if (ui) glocal.userids.push_back(userid);
-		glocal.userids_notseen.erase(userid);
-	</f>
-	</call>
-	for (auto u:glocal.userids_notseen) glocal.userids.push_back(u);
-	if (glocal.userids.size() > 0){
-		<call bo_sessiond_admin_setnotify>(con_sess,glocal.userids,key);
-		<f ok>
+	if (userids.size() > 0){
+		glocal vector<unsigned> userids;	// Will collect the userids which should be notified
+		glocal set<unsigned> userids_notseen;	// At the end, will contain userids not seen in the notifications table
+		for (auto u:userids) glocal.userids_notseen.insert(u);
+		NSQL_REQ req;
+		req.append ("select userid,ui,email from notifications where userid in");
+		req.appendlist(userids);
+		req.appendf (" and notify_key='%s'",key.ptr); 
+		<call sql_query>(req);
+		<f onerow>
+			unsigned userid = atoi(row[0]);
+			bool ui = atoi(row[1]) != 0;
+			//bool email = atoi(row[2]) != 0;
+			if (ui) glocal.userids.push_back(userid);
+			glocal.userids_notseen.erase(userid);
 		</f>
 		</call>
+		for (auto u:glocal.userids_notseen) glocal.userids.push_back(u);
+		if (glocal.userids.size() > 0){
+			<call bo_sessiond_admin_setnotify>(con_sess,glocal.userids,key);
+			<f ok>
+			</f>
+			</call>
+		}
 	}
 }
 </mod>

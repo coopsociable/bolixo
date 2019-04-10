@@ -115,6 +115,9 @@ W_SSTRING w_fax("fax");
 W_SSTRING w_website("website");
 W_SSTRING w_interest("interest");
 
+static W_UNSIGNED w_notify_ui("note_ui");
+static W_UNSIGNED w_notify_email("note_email");
+
 static void index_field (_F_form *c, bool newline,unsigned colspan, const char *title, W_SSTRING &var, unsigned size)
 {
 	if (newline) htmlout ("<tr>");
@@ -834,6 +837,11 @@ static void index_paste(CONNECT_INFO &con, PARAM_STRING path)
 		if (type != ENTRY_NONE){
 			<call form>("pasterename");
 			<f setup>
+				<?#I_ALREADYEXIST An entry with that name already exists in this folder.
+					<br>
+					Please select a new name.
+				?>
+				/- <p>
 				/- <table border=0>
 				/- <tr><td>
 				htmlout (MSG_R(F_OLDNAME));
@@ -2580,7 +2588,69 @@ extern "C" void webmain_real()
 			sethelp();
 			static WEBID id("tab:talk");
 			<call webtable>(id,currents[id.c_str()]);
+			<f click>
+				if (dropmenu == MENU_NOTIFICATIONS){
+					glocal vector<string> keys;
+					glocal.keys.push_back(string_f("talks:%s:inbox",userinfo.name.c_str()));
+					<call bod_client_list_groups>(glocal.con,w_session.c_str(),"",false);
+					<f ok>
+						for (auto &g:groups){
+							if (userinfo.name != g.owner
+								|| is_not_in(g.name,"inbox","anonymous")){
+								glocal.keys.push_back(string_f("talks:%s:%s",g.owner,g.name));
+							}
+						}
+					</f>
+					</call>
+					glocal.keys.push_back(string_f("talks:%s:anonymous",userinfo.name.c_str()));
+					if (noline < glocal.keys.size()){
+						glocal const char *key = glocal.keys[noline].c_str();
+tlmp_error ("avant key=%s\n",glocal.key);
+						<call form>("notifications");
+						<f load>
+tlmp_error ("load key=%s\n",glocal.key);
+							<call bod_client_get_notification>(glocal.con,w_session.c_str(),"",glocal.key);
+							<f ok>
+								if (success){
+									w_notify_ui = ui;
+									w_notify_email = email;
+								}
+							</f>
+							</call>
+						</f>
+						<f setup>
+tlmp_error ("setup key=%s\n",glocal.key);
+							// active_ui and digest are not done, even if they are in the database
+							// and the procotol set/get_notification supports it.
+							glocal.webtable.set_errortitle(MSG_R(I_NOTIFICATIONS));
+							/- <table border=0>
+							/- <tr><td>
+							/-#F_PASSIVENOTIFY Passive UI notifications
+							/- <td>
+							field_checkbox (w_notify_ui,"");
+							/- <tr><td>
+							/-#F_EMAILNOTIFY Email notification
+							/- <td>
+							field_checkbox (w_notify_email,"");
+							/- <tr><td>
+							button_submit();
+							/- </table>
+						</f>
+						<f validate>
+							return true;
+						</f>
+						<f process>
+							<call bod_client_set_notification>(glocal.con,w_session.c_str(),"",glocal.key,w_notify_ui,false,w_notify_email,false);
+							<f ok>
+							</f>
+							</call>
+						</f>
+						</call>
+					}
+				}
+			</f>
 			<f load>
+				adddrop_opt(MENU_NOTIFICATIONS,MSG_U(M_NOTIFICATIONS,"Notifications"));
 				sethead (MSG_U(H_TALKS,"\tOwner\tGroup"));
 				<call bod_client_list_groups>(glocal.con,w_session.c_str(),"",false);
 				<f ok>
