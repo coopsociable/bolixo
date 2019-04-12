@@ -1,0 +1,146 @@
+/*
+	This file is part of Bolixo.
+
+	Bolixo is free software: you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation, either version 3 of the License, or
+	(at your option) any later version.
+
+	Bolixo is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+	GNU General Public License for more details.
+
+	You should have received a copy of the GNU General Public License
+	along with Bolixo.  If not, see <https://www.gnu.org/licenses/>.
+*/
+/*
+	This is a small server that acts as an email server. It support the SMTP protocol minimally
+	and log everthing it receives in a file.
+
+	This is used for testing and preproduction where we do not want test email to go out, yet we want
+	to test the complete sequence (even exim configuration).
+*/
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <tlmplib.h>
+#include <tlmpnet.h>
+#include <string>
+#include "../helper.h"
+
+using namespace std;
+
+
+struct HANDLE_INFO: public ARRAY_OBJ{
+	enum class STATE { init, helo, from, to, data, quit} state = STATE::init;
+	string from;
+	string to;
+	string data;
+};
+
+static const char *ivld500 = "500 unrecognized command\r\n";
+
+<mod>
+int main (int argc, char *argv[])
+{
+	glocal int ret = -1;
+	glocal const char *port = "2025";
+	glocal const char *logfile = "/var/log/email-log.log";
+	glocal.ret = <call tlmpprogram>(argc,argv);
+	<f init>
+		setproginfo ("email-log",VERSION,"Listen on port 25 and log everything received");
+		setarg ('l',"logfile","Log file path",glocal.logfile,false);
+		setarg ('p',"port","TCP port",glocal.port,false);
+	</f>
+	<f main_noarg>
+		int ret = -1;
+		glocal FILE *flog = fopen (glocal.logfile,"a");
+		if (glocal.flog == NULL){
+			tlmp_error ("Can't open log file %s (%s)\n",glocal.logfile,strerror(errno));
+			exit(-1);
+		}
+		<obj TCPSERVER o>(glocal.port,10);
+		<f newclient>
+			info.data = new HANDLE_INFO;
+			send ("220 email-log SMTP\r\n");
+		</f>
+		<f endclient>
+			HANDLE_INFO *c = (HANDLE_INFO*)info.data;
+			fprintf (glocal.flog,"-------\nfrom: %s\nto: %s\ndata\n%s\n"
+				,c->from.c_str(),c->to.c_str(),c->data.c_str());
+			fflush (glocal.flog);
+		</f>
+		<f receive>
+			HANDLE_INFO *c = (HANDLE_INFO*)info.data;
+			if (strcmp(line,"quit")==0){
+				endclient = true;
+			}else{
+				const char *pt;
+				switch(c->state){
+				case HANDLE_INFO::STATE::init:
+					if (is_start_any_ofnc(line,pt,"helo","ehlo")){
+						sendf ("250 helo %s email-log\r\n",pt);
+						c->state = HANDLE_INFO::STATE::helo;
+					}else{
+						send (ivld500);
+					}
+					break;
+				case HANDLE_INFO::STATE::helo:
+					if (is_start_any_ofnc(line,pt,"mail from:")){
+						send ("250 OK\r\n");
+						c->state = HANDLE_INFO::STATE::from;
+						c->from = pt;
+					}else{
+						send (ivld500);
+					}
+					break;
+				case HANDLE_INFO::STATE::from:
+					if (is_start_any_ofnc(line,pt,"rcpt to:")){
+						send ("250 Accepted\r\n");
+						c->state = HANDLE_INFO::STATE::to;
+						c->to = pt;
+					}else{
+						send (ivld500);
+					}
+					break;
+				case HANDLE_INFO::STATE::to:
+					if (strcasecmp(line,"data")==0){
+						send ("354 Enter message, ending with \".\" on a line by itself\r\n");
+						c->state = HANDLE_INFO::STATE::data;
+					}else{
+						send (ivld500);
+					}
+					break;
+				case HANDLE_INFO::STATE::data:
+					if (strcmp(line,".")==0){
+						send ("250 OK id=1hF33o-0002JA-4g\r\n");
+						c->state = HANDLE_INFO::STATE::quit;
+					}else{
+						c->data += line;
+						c->data += "\r\n";
+					}
+					break;
+				case HANDLE_INFO::STATE::quit:
+					if (strcasecmp(line,"quit")==0){
+						send ("221 closing connection\r\n");
+						endclient = true;
+					}else{
+						send (ivld500);
+					}
+					break;
+				}
+			}
+		</f>
+		</obj>
+		if (o.is_ok()){
+			o.loop();
+		}
+		return ret;
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+

@@ -1182,7 +1182,11 @@ static void print_configs (
 					fprintf (fout,"iptables --flush -t nat\n");
 					fprintf (fout,"iptables --delete-chain\n");
 					fprintf (fout,"iptables -t nat --delete-chain\n");
-					fprintf (fout,"#iptables -t nat -A OUTPUT -s %s -p tcp -j REDIRECT --to-port 8080\n",ip_exim);
+					if (preprodmode){
+						fprintf (fout,"iptables -t nat -A PREROUTING -s %s -p tcp -j REDIRECT --to-port 2025\n",ip_exim);
+					}else{
+						fprintf (fout,"#iptables -t nat -A PREROUTING -s %s -p tcp -j REDIRECT --to-port 8080\n",ip_exim);
+					}
 					fprintf (fout,"iptables -t nat -A POSTROUTING -o eth0 -s %s -j MASQUERADE\n",ip_exim);
 					fprintf (fout,"iptables -t nat -A POSTROUTING -o eth0 -s %s -j MASQUERADE\n",ip_bod);
 					fprintf (fout,"iptables -t nat -A POSTROUTING -o eth0 -s %s -j MASQUERADE\n",ip_bolixod);

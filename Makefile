@@ -8,7 +8,7 @@ endif
 PROGS=_dict.o bod bod-client bod-control bo-writed bo-writed-control bo-sessiond bo-sessiond-control \
       bo-manager bofs ssltestsign bo-keysd bo-keysd-control bolixod bolixod-control perfsql \
       bo-mon bo-mon-control utils/eximexec utils/helpspell publishd publishd-control bo-webtest \
-      documentd documentd-control rssd rssd-control deleteitems utils/cacheurl
+      documentd documentd-control rssd rssd-control deleteitems utils/cacheurl utils/email-log
 #bo-log bo-log-control \
 DOCS=
 OPTIONS=$(DINSTRUMENT) -funsigned-char -O2 -Wall -g -DVERSION=\"$(PACKAGE_REV)\" -I/usr/include/tlmp -I/usr/include/trlitool
@@ -109,6 +109,9 @@ utils/helpspell: utils/helpspell.tlcc
 
 utils/cacheurl: utils/cacheurl.tlcc
 	cctlcc $(OPTIONS) utils/cacheurl.tlcc -o utils/cacheurl -lstdc++
+
+utils/email-log: utils/email-log.tlcc
+	cctlcc $(OPTIONS) utils/email-log.tlcc -o utils/email-log -lstdc++
 
 proto/publishd_control.protoh: proto/publishd_control.proto
 	build-protocol --arg "int no" --arg "HANDLE_INFO *c" --name publishd_control \
@@ -317,6 +320,7 @@ install: msg.eng msg.fr
 	install -m755 utils/eximrm $(RPM_BUILD_ROOT)/usr/sbin/eximrm
 	install -m755 utils/eximexec $(RPM_BUILD_ROOT)/usr/lib/eximexec
 	install -m755 utils/cacheurl $(RPM_BUILD_ROOT)/usr/lib/cacheurl
+	install -m755 utils/email-log $(RPM_BUILD_ROOT)/usr/lib/email-log
 	install -m755 utils/summary $(RPM_BUILD_ROOT)/usr/sbin/summary
 	install -m755 utils/nbusers $(RPM_BUILD_ROOT)/usr/sbin/nbusers
 	install -m755 utils/pendingusers $(RPM_BUILD_ROOT)/usr/sbin/pendingusers

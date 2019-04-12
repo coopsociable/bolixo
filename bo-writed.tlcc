@@ -1344,9 +1344,17 @@ static bool bo_writed_public_msg(const char *srcname)
 	If there is not record, then we assume that notification is on for the user interface (ui) and off for email and digest.
 */
 <mod>
-static void bo_writed_notify (CONTEXT &ctx, CONNECT_INFO &con_sess, PARAM_STRING key, const vector<unsigned> &userids)
+static void bo_writed_notify (
+	CONTEXT &ctx,
+	CONNECT_INFO &con_sess,
+	PARAM_STRING key,
+	const vector<unsigned> &userids,
+	const string &email_title,
+	const string &email_content)
 {
 	if (userids.size() > 0){
+		glocal const char *email_title = email_title.c_str();
+		glocal const char *email_content = email_content.c_str();
 		glocal CONTEXT *ctx = &ctx;
 		glocal const char *key = key.ptr;
 		glocal vector<unsigned> userids_ui;	// Will collect the userids which should be notified passivly by the UI
@@ -1384,23 +1392,34 @@ static void bo_writed_notify (CONTEXT &ctx, CONNECT_INFO &con_sess, PARAM_STRING
 			<f onerow>
 				fdpass_sendmail (glocal.ctx->mailserver,glocal.ctx->mailport,glocal.ctx->mailfrom
 					,row[0]
-					,MSG_U(I_EMAILNOTIFICATION,"Bolixo.org notification")
-					,glocal.key);
+					,glocal.email_title,glocal.email_content);
 			</f>
 			</call>
 		}
 	}
 }
 </mod>
-static void bo_writed_notify (CONTEXT &ctx, CONNECT_INFO &con_sess, PARAM_STRING key, unsigned userid)
+static void bo_writed_notify (
+	CONTEXT &ctx,
+	CONNECT_INFO &con_sess,
+	PARAM_STRING key,
+	unsigned userid,
+	const string &email_title,
+	const string &email_content)
 {
 	vector<unsigned> userids={userid};
-	bo_writed_notify (ctx,con_sess,key,userids);
+	bo_writed_notify (ctx,con_sess,key,userids,email_title,email_content);
 }
-static void bo_writed_notify_talk_inbox(CONTEXT &ctx, CONNECT_INFO &con_sess, PARAM_STRING user, unsigned userid)
+static void bo_writed_notify_talk_inbox(
+	CONTEXT &ctx,
+	CONNECT_INFO &con_sess,
+	PARAM_STRING user,
+	unsigned userid,
+	const string &email_title,
+	const string &email_content)
 {
 	string tmp = string_f("talks:%s:inbox",user.ptr);
-	bo_writed_notify(ctx,con_sess,tmp,userid);
+	bo_writed_notify(ctx,con_sess,tmp,userid,email_title,email_content);
 }
 
 struct FOLDERITEMS{
@@ -1411,6 +1430,23 @@ struct FOLDERITEMS{
 		:itemid(_itemid), modified(_modified), eventtime(_eventtime)
 		{}
 };
+/*
+	Compose the message for an email notification sent for a small message.
+*/
+static void bo_writed_set_email_notify (
+	const char *groupowner,
+	const char *groupname,
+	FILE_TYPE file_type,
+	const BOB_TYPE &content,
+	string &email_title,
+	string &email_content)
+{
+	email_title = string_f(MSG_U(T_EMAILNOTIFY,"There is a new message in group %s/%s"),groupowner,groupname);
+	if (file_type == FILE_TEXT){
+		email_content = string((const char*)content.getbuffer(),content.getsize());
+		email_content += string_f("\r\n\r\n%s/index.hc?webstep=9&webtab_add=1:%s:%s",nodename,groupowner,groupname);
+	}
+}
 
 <mod>
 int main (int argc, char *argv[])
@@ -1433,7 +1469,6 @@ int main (int argc, char *argv[])
 	glocal const char *sessionhost = "127.0.0.4";
 	glocal const char *sessionport = "9200";
 	glocal const char *sessionbind = "";
-	glocal const char *computeport = "/dev/compute.sock";
 	glocal const char *keysdport = "/dev/keysd.sock";
 	glocal const char *publishdport = "/dev/publishd.sock";
 	glocal const char *sql_tcpport = NULL;
@@ -1442,8 +1477,6 @@ int main (int argc, char *argv[])
 	glocal const char *mailfrom = NULL;
 	glocal bool daemon = false;
 	glocal const char *pidfile = "/var/run/bo-writed.pid";
-	glocal bool writeonce_proof = false;
-	glocal bool writeonce_comment = false;
 	glocal const char *force_addr = NULL;
 	glocal const char *bob_dir = "/var/lib/bolixo";
 	glocal bool private_site = false;
@@ -1462,8 +1495,6 @@ int main (int argc, char *argv[])
 		setarg (' ',"sessionport","Port to reach the bo-sessiond server",glocal.sessionport,false);
 		setarg (' ',"sessionbind","Bind to this IP to talk to bo-sessiond",glocal.sessionbind,false);
 		setarg (' ',"mysecret","Secret used to talk to sessiond",glocal.mysecret,true);
-		setgrouparg ("Compute server");
-		setarg (' ',"computeport","Port to reach the bo-log compute server",glocal.computeport,false);
 		setgrouparg ("RSA key server");
 		setarg (' ',"keysdport","Port to reach the bo-keysd server",glocal.keysdport,false);
 		setgrouparg ("Publish server");
@@ -3048,8 +3079,10 @@ int main (int argc, char *argv[])
 									,*glocal.content,glocal.more,sign
 									,info,glocal.msg);
 								glocal.handle = info.handle;
+								string email_title,email_content;
+								bo_writed_set_email_notify (username,"anonymous",info.file_type,*glocal.content,email_title,email_content);
 								string tmp = string_f("talks:%s:anonymous",username);
-								bo_writed_notify(glocal.ctx,glocal.con,tmp,userid);
+								bo_writed_notify(glocal.ctx,glocal.con,tmp,userid,email_title,email_content);
 							}
 						}
 					</f>
@@ -3112,6 +3145,8 @@ int main (int argc, char *argv[])
 											,*glocal.content,glocal.more,glocal.sign
 											,info,glocal.msg);
 										glocal.handle = info.handle;
+										string email_title,email_content;
+										bo_writed_set_email_notify (glocal.groupowner,glocal.groupname,info.file_type,*glocal.content,email_title,email_content);
 										bool remote_user = bo_writed_remote_user(glocal.username);
 										if (remote_user){
 											if (created){
@@ -3138,7 +3173,8 @@ int main (int argc, char *argv[])
 													glocal.interested.push_back(atoi(row[0]));
 												</f>
 												</call>
-												bo_writed_notify(glocal.ctx,glocal.con,"main",glocal.interested);
+												string empty_title,empty_content;	// No email notification for the main screen.
+												bo_writed_notify(glocal.ctx,glocal.con,"main",glocal.interested,email_title,empty_content);
 											}
 										}
 										// We send a notification to each members of the group
@@ -3154,7 +3190,7 @@ int main (int argc, char *argv[])
 										</call>
 										{
 											string tmp = string_f("talks:%s:%s",bd_group_owner,bd_group_name);
-											bo_writed_notify (glocal.ctx,glocal.con,tmp,glocal.members);
+											bo_writed_notify (glocal.ctx,glocal.con,tmp,glocal.members,email_title,email_content);
 										}
 										// Now that we have created the message in the group, we
 										// simply link the message in all recipients, except remote user.
@@ -3167,7 +3203,7 @@ int main (int argc, char *argv[])
 														tlmp_error ("Insert in short user inbox, internal error %s\n",u.first.c_str());
 														break;
 													}
-													bo_writed_notify_talk_inbox(glocal.ctx,glocal.con,u.first,u.second);
+													bo_writed_notify_talk_inbox(glocal.ctx,glocal.con,u.first,u.second,email_title,email_content);
 												}else{
 													tlmp_error ("Insert in short user inbox, missing inbox, internal error %s\n",u.first.c_str());
 													break;
@@ -3201,8 +3237,10 @@ int main (int argc, char *argv[])
 										bo_writed_addfile_bob (glocal.ctx.con_keys,glocal.sessionid,NULL,ENTRY_MSG,dirid,glocal.userid
 											,*glocal.content,glocal.more,glocal.sign
 											,info,glocal.msg);
+										string email_title,email_content;
+										bo_writed_set_email_notify (glocal.groupowner,glocal.groupname,info.file_type,*glocal.content,email_title,email_content);
 										glocal.handle = info.handle;
-										bo_writed_notify_talk_inbox(glocal.ctx,glocal.con,uid0.first,uid0.second);
+										bo_writed_notify_talk_inbox(glocal.ctx,glocal.con,uid0.first,uid0.second,email_title,email_content);
 										glocal.uids.erase(glocal.uids.begin());
 										for (auto &u:glocal.uids){
 											bool created;
@@ -3212,7 +3250,7 @@ int main (int argc, char *argv[])
 													tlmp_error ("Insert in short user inbox, internal error %s\n",u.first.c_str());
 													break;
 												}
-												bo_writed_notify_talk_inbox(glocal.ctx,glocal.con,u.first,u.second);
+												bo_writed_notify_talk_inbox(glocal.ctx,glocal.con,u.first,u.second,email_title,email_content);
 											}else{
 												tlmp_error ("Insert in short user inbox, missing inbox, internal error %s\n",u.first.c_str());
 												break;
@@ -3316,7 +3354,9 @@ int main (int argc, char *argv[])
 									,glocal.target_userid,glocal.userid,glocal.intro)==-1){
 									glocal.msg = "Can't insert in contact_request";
 								}
-								bo_writed_notify(glocal.ctx,glocal.con,"profile:Contacts",glocal.target_userid);
+								string email_title = MSG_U(I_EMAILNOTIFICATION,"Bolixo.org notification");
+								string email_content = "profile:Contacts";
+								bo_writed_notify(glocal.ctx,glocal.con,"profile:Contacts",glocal.target_userid,email_title,email_content);
 							</f>
 							</call>
 						}
@@ -3370,7 +3410,9 @@ int main (int argc, char *argv[])
 									if (!bo_writed_remote_user(glocal.target_user)){
 										bo_writed_send_admin_msg (glocal.ctx.con_keys,glocal.target_userid,glocal.target_user,message);
 									}
-									bo_writed_notify(glocal.ctx,glocal.con,"profile:Contact-req",glocal.target_userid);
+									string email_title = MSG_R(I_EMAILNOTIFICATION);
+									string email_content;	// Not done
+									bo_writed_notify(glocal.ctx,glocal.con,"profile:Contact-req",glocal.target_userid,email_title,email_content);
 								}
 							</f>
 							</call>

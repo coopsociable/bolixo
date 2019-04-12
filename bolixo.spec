@@ -70,6 +70,7 @@ make install
 /usr/sbin/create-rss-accounts
 /usr/lib/eximexec
 /usr/lib/cacheurl
+/usr/lib/email-log
 /usr/bin/bofs
 /usr/lib/tlmp/help.eng/bolixo.eng
 /usr/lib/tlmp/help.fr/bolixo.fr
