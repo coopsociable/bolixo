@@ -1482,24 +1482,31 @@ extern "C" void webmain_real()
 			for (auto &form:currentforms){
 				FORMVARS f;
 				glocal const char *id = form.id.c_str();
+				// tlmp_error ("saveform id=%s\n",glocal.id);
 				f.id = form.id;
 				for (auto &v:form.vars){
-					FORMVAR var;
-					var.name = v;
-					var.val = t_varstr(v.c_str());
-					f.vars.push_back(var);
-				}
-				<call bod_client_form_savevar>(glocal.con,w_session.c_str(),f);
-				<f ok>
-					if (!success){
-						if (internal_error){
-							tlmp_error ("internal_error saveform currentform %s\n",glocal.id);
-						}else{
-							tlmp_error (MSG_U(E_SAVEFORM,"saveform currentform %s: %s\n"),glocal.id,msg);
-						}
+					bool is_def;
+					const char *val = t_varstr(v.c_str(),is_def);
+					if (is_def){
+						FORMVAR var;
+						var.name = v;
+						var.val = val;
+						f.vars.push_back(var);
 					}
-				</f>
-				</call>
+				}
+				if (f.vars.size() > 0){
+					<call bod_client_form_savevar>(glocal.con,w_session.c_str(),f);
+					<f ok>
+						if (!success){
+							if (internal_error){
+								tlmp_error ("internal_error saveform currentform %s\n",glocal.id);
+							}else{
+								tlmp_error (MSG_U(E_SAVEFORM,"saveform currentform %s: %s\n"),glocal.id,msg);
+							}
+						}
+					</f>
+					</call>
+				}
 			}
 		}
 	</f>
@@ -2605,10 +2612,8 @@ extern "C" void webmain_real()
 					glocal.keys.push_back(string_f("talks:%s:anonymous",userinfo.name.c_str()));
 					if (noline < glocal.keys.size()){
 						glocal const char *key = glocal.keys[noline].c_str();
-tlmp_error ("avant key=%s\n",glocal.key);
 						<call form>("notifications");
 						<f load>
-tlmp_error ("load key=%s\n",glocal.key);
 							<call bod_client_get_notification>(glocal.con,w_session.c_str(),"",glocal.key);
 							<f ok>
 								if (success){
@@ -2619,7 +2624,6 @@ tlmp_error ("load key=%s\n",glocal.key);
 							</call>
 						</f>
 						<f setup>
-tlmp_error ("setup key=%s\n",glocal.key);
 							// active_ui and digest are not done, even if they are in the database
 							// and the procotol set/get_notification supports it.
 							glocal.webtable.set_errortitle(MSG_R(I_NOTIFICATIONS));
