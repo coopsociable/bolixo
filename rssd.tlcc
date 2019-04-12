@@ -424,6 +424,16 @@ static int rssd_parseurl (PARAM_STRING purl, string &baseurl, string &hostname, 
 	return ret;
 }
 
+static string url1,url2,state;
+static bool signal_seen = false;
+static unsigned signal_count = 0;
+
+static void fct_alarm(int)
+{
+	signal_seen = true;
+	signal_count++;
+	tlmp_error ("Alarm state=%s url1=%s url2=%s\n",state.c_str(),url1.c_str(),url2.c_str());
+}
 
 <mod>
 static int rssd_getrss(PARAM_STRING url, string &rss)
@@ -432,7 +442,13 @@ static int rssd_getrss(PARAM_STRING url, string &rss)
 	glocal int ret = -1;
 	glocal string newlocation = url.ptr;
 
+	signal_seen = false;
+	url1 = glocal.newlocation;
+	signal (SIGALRM,fct_alarm);
+	alarm (10);
 	while (glocal.newlocation.size() > 0){
+		state = "connecting";
+		url2 = glocal.newlocation;	// For alarm
 		glocal bool relocated = false;
 		glocal CONNECT_HTTP_INFO con;
 		glocal unsigned received = 0;
@@ -447,9 +463,13 @@ static int rssd_getrss(PARAM_STRING url, string &rss)
 		buf += string_f ("Content-Type: text/html; charset=UTF-8\r\n\r\n");
 		glocal.con.send (buf.c_str());
 		debug_printf (D_HEADER,"%s-----\n",buf.c_str());
+		if (signal_seen) break;
+		state = "reading";
+		alarm (10);
 		<call streamp>();
 		<f fill>
 			int ret = glocal.con.receive (buf,size);
+			if (signal_seen) tlmp_error ("signal_seen ret=%d\n",ret);
 			if (ret <= 0){
 				debug_printf (D_GETRSS,"fill received=%u ret=%d size=%u %d(%s)\n",glocal.received,ret,size,errno,strerror(errno));
 				ret = 0;
@@ -507,6 +527,7 @@ static int rssd_getrss(PARAM_STRING url, string &rss)
 		}
 		glocal.ret = 0;
 	}
+	alarm (0);
 	return glocal.ret;
 }
 </mod>
@@ -949,7 +970,8 @@ int main (int argc, char *argv[])
 					break;
 				}
 			}
-			printf (MSG_U(I_PROCESSED,"Processed %u accounts: new messages %u, old messages %u\n"),nbproc,stats.newmsgs,stats.keepmsgs);
+			printf (MSG_U(I_PROCESSED,"Processed %u accounts: new messages %u, old messages %u, failures %u\n")
+				,nbproc,stats.newmsgs,stats.keepmsgs,signal_count);
 		}else if (glocal.testmode){
 			for (int i=0; i<argc; i++){
 				const char *arg = argv[i];
