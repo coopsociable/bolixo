@@ -769,6 +769,14 @@ static void bo_writed_update_dirdate(unsigned dirid)
 		tlmp_error (MSG_U(E_CANTUPDDATEDIR,"Can't update directory modification date\n"));
 	}
 }
+struct ADDFILE_INFO{
+	FILE_TYPE file_type=FILE_UNKNOWN;
+	string fileuuid;
+	string handle;
+	int fileid=0;
+	DATEASC modified;
+};
+
 <mod>
 static int bo_writed_addfile_bob (
 	CONNECT_INFO &con_keys,
@@ -780,22 +788,19 @@ static int bo_writed_addfile_bob (
 	const BOB_TYPE &content,
 	bool more,
 	string &sign,		// Either contain the Pre-signed content or will contain the new signature
-	string &fileuuid,
-	string &msg,
-	string &handle,
-	int &fileid,
-	DATEASC &modified)
+	ADDFILE_INFO &info,
+	string &msg)
 {
-	fileid = fs_newid (userid,0,'r',msg,fileuuid);
-	if (fileid != -1){
+	info.fileid = fs_newid (userid,0,'r',msg,info.fileuuid);
+	if (info.fileid != -1){
 		const char *basename = name.ptr;
-		if (basename == NULL) basename = fileuuid.c_str();
-		fs_set_now(modified);
-		FILE_TYPE file_type = bo_writed_file_type (basename,content,more);
+		if (basename == NULL) basename = info.fileuuid.c_str();
+		fs_set_now(info.modified);
+		info.file_type = bo_writed_file_type (basename,content,more);
 		const char *content_str = NULL;
 		string tmp;
 		if (!more){
-			if (file_type == FILE_TEXT){
+			if (info.file_type == FILE_TEXT){
 				tmp = string((const char *) content.getbuffer(),content.getsize());
 				content_str = tmp.c_str();
 			}
@@ -819,14 +824,14 @@ static int bo_writed_addfile_bob (
 			}
 		}
 		if (msg.size()==0){
-			if (fs_insert_entry(dirid,fileid,modified.buf,basename,type)==-1){
+			if (fs_insert_entry(dirid,info.fileid,info.modified.buf,basename,type)==-1){
 				msg = "Internal error (dirs_files table)";
 			}else if (sql_action("insert into files (id,modified,filetype,content,signature) values (%d,'%s',%u,'%s','%s')"
-				,fileid,modified.buf,file_type,content_str,sign.c_str())==-1){
+				,info.fileid,info.modified.buf,info.file_type,content_str,sign.c_str())==-1){
 				msg = "Internal error (files table)";
 			}else{
 				if (content_str == NULL){
-					FILE *fout = fs_alloc_file_handle (fileid,modified.buf,"w",handle,sessionid);
+					FILE *fout = fs_alloc_file_handle (info.fileid,info.modified.buf,"w",info.handle,sessionid);
 					if (fout == NULL){
 						tlmp_error ("Can't open file (%s)\n",strerror(errno));
 						msg = "Internal error (1-writing data)";
@@ -843,7 +848,7 @@ static int bo_writed_addfile_bob (
 			}
 		}
 	}
-	return fileid;
+	return info.fileid;
 }
 </mod>
 /*
@@ -1299,13 +1304,11 @@ static void bo_writed_send_admin_msg (
 		if (adminid == -1){
 			tlmp_error ("Can't get admin userid\n");
 		}else{
-			int fileid;
-			string msgid,handle;
-			DATEASC modified;
+			ADDFILE_INFO info;
 			BOB_TYPE content(message.ptr,strlen(message.ptr),false);
 			string sign;
 			bo_writed_addfile_bob (con_keys,NULL,NULL,ENTRY_MSG,dirid,adminid
-				,content,false,sign,msgid,msg,handle,fileid,modified);
+				,content,false,sign,info,msg);
 		}
 	}
 }
@@ -2389,23 +2392,20 @@ int main (int argc, char *argv[])
 					if (bo_writed_findentry (glocal.con,sessionid,name,entry,false)==-1){
 						rep_addfile_bob (false,"",entry.msg);
 					}else{
-						string msg;
-						string handle;
-						string msgid,sign;
-						int fileid;
-						DATEASC modified;
+						string msg,sign;
+						ADDFILE_INFO info;
 						bo_writed_addfile_bob (glocal.ctx.con_keys,sessionid,entry.basename,ENTRY_FILE,entry.dirid,entry.userid
 								,content,more,sign
-								,msgid,msg,handle,fileid,modified);
+								,info,msg);
 						if (msg.size() > 0){
 							rep_addfile_bob (false,"",msg);
-							fs_delete_handle(handle);
+							fs_delete_handle(info.handle);
 						}else{
 							if (!more){
-								fs_delete_handle(handle);
-								handle.clear();
+								fs_delete_handle(info.handle);
+								info.handle.clear();
 							}
-							rep_addfile_bob (true,handle,"Ok");
+							rep_addfile_bob (true,info.handle,"Ok");
 						}
 						
 					}
@@ -3042,12 +3042,12 @@ int main (int argc, char *argv[])
 							bool created;
 							int dirid = fs_find_short_inbox (userid,glocal.to,"anonymous",glocal.msg,true,created);
 							if (dirid != -1){
-								int fileid;
-								string msgid,sign;
-								DATEASC modified;
+								string sign;
+								ADDFILE_INFO info;
 								bo_writed_addfile_bob (glocal.ctx.con_keys,glocal.sessionid,NULL,ENTRY_MSG,dirid,userid
 									,*glocal.content,glocal.more,sign
-									,msgid,glocal.msg,glocal.handle,fileid,modified);
+									,info,glocal.msg);
+								glocal.handle = info.handle;
 								string tmp = string_f("talks:%s:anonymous",username);
 								bo_writed_notify(glocal.ctx,glocal.con,tmp,userid);
 							}
@@ -3106,13 +3106,12 @@ int main (int argc, char *argv[])
 									const char *bd_group_owner = row[3];
 									int dirid = fs_find_short_inbox (ownerid,bd_group_owner,bd_group_name,glocal.msg,true,created);
 									if (dirid != -1){
-										int fileid;
-										string msgid;
-										DATEASC modified;
+										ADDFILE_INFO info;
 										const char *ptr_name = glocal.filename[0] != '\0' ? glocal.filename : NULL;
 										bo_writed_addfile_bob (glocal.ctx.con_keys,glocal.sessionid,ptr_name,ENTRY_MSG,dirid,glocal.userid
 											,*glocal.content,glocal.more,glocal.sign
-											,msgid,glocal.msg,glocal.handle,fileid,modified);
+											,info,glocal.msg);
+										glocal.handle = info.handle;
 										bool remote_user = bo_writed_remote_user(glocal.username);
 										if (remote_user){
 											if (created){
@@ -3123,13 +3122,13 @@ int main (int argc, char *argv[])
 											if (strcmp(bd_group_name,"public")==0){
 												if (!glocal.more){
 													<call publishd_client_sendmessage>(glocal.ctx.con_publish,ownerid
-														,dirid,fileid,modified.buf,msgid);
+														,dirid,info.fileid,info.modified.buf,info.fileuuid);
 													<f ok>
 														if (!success) tlmp_error ("publishd_client_sendmessage: %s\n",msg);
 													</f>
 													</call>
 												}else{
-													fs_file_handle_addextra (glocal.handle,ownerid,dirid,msgid);
+													fs_file_handle_addextra (glocal.handle,ownerid,dirid,info.fileuuid);
 												}
 												// Add notification for the main page for those who have interests
 												// for this user
@@ -3164,7 +3163,7 @@ int main (int argc, char *argv[])
 											if (!bo_writed_remote_user(u.first)){
 												int udirid = fs_find_short_inbox (u.second,u.first,"inbox",glocal.msg,true,created);
 												if (udirid != -1){
-													if (fs_insert_entry(udirid,fileid,modified.buf,msgid,ENTRY_MSG,ownerid)==-1){
+													if (fs_insert_entry(udirid,info.fileid,info.modified.buf,info.fileuuid,ENTRY_MSG,ownerid)==-1){
 														tlmp_error ("Insert in short user inbox, internal error %s\n",u.first.c_str());
 														break;
 													}
@@ -3198,19 +3197,18 @@ int main (int argc, char *argv[])
 									auto &uid0 = glocal.uids[0];
 									int dirid = fs_find_short_inbox (uid0.second,uid0.first,"inbox",glocal.msg,true,created);
 									if (dirid != -1){
-										int fileid;
-										string msgid;
-										DATEASC modified;
+										ADDFILE_INFO info;
 										bo_writed_addfile_bob (glocal.ctx.con_keys,glocal.sessionid,NULL,ENTRY_MSG,dirid,glocal.userid
 											,*glocal.content,glocal.more,glocal.sign
-											,msgid,glocal.msg,glocal.handle,fileid,modified);
+											,info,glocal.msg);
+										glocal.handle = info.handle;
 										bo_writed_notify_talk_inbox(glocal.ctx,glocal.con,uid0.first,uid0.second);
 										glocal.uids.erase(glocal.uids.begin());
 										for (auto &u:glocal.uids){
 											bool created;
 											int udirid = fs_find_short_inbox (u.second,u.first,"inbox",glocal.msg,true,created);
 											if (udirid != -1){
-												if (fs_insert_entry(udirid,fileid,modified.buf,msgid,ENTRY_MSG,glocal.userid)==-1){
+												if (fs_insert_entry(udirid,info.fileid,info.modified.buf,info.fileuuid,ENTRY_MSG,glocal.userid)==-1){
 													tlmp_error ("Insert in short user inbox, internal error %s\n",u.first.c_str());
 													break;
 												}
