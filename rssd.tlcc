@@ -433,6 +433,7 @@ static void fct_alarm(int)
 	signal_seen = true;
 	signal_count++;
 	tlmp_error ("Alarm state=%s url1=%s url2=%s\n",state.c_str(),url1.c_str(),url2.c_str());
+	alarm (10);
 }
 
 <mod>
@@ -465,12 +466,12 @@ static int rssd_getrss(PARAM_STRING url, string &rss)
 		debug_printf (D_HEADER,"%s-----\n",buf.c_str());
 		if (signal_seen) break;
 		state = "reading";
-		alarm (10);
 		<call streamp>();
 		<f fill>
 			int ret = glocal.con.receive (buf,size);
-			if (signal_seen) tlmp_error ("signal_seen ret=%d\n",ret);
-			if (ret <= 0){
+			if (signal_seen){
+				ret = -1;
+			}else if (ret <= 0){
 				debug_printf (D_GETRSS,"fill received=%u ret=%d size=%u %d(%s)\n",glocal.received,ret,size,errno,strerror(errno));
 				ret = 0;
 			}else{

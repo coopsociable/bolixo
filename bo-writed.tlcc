@@ -189,7 +189,7 @@ static int writed_mail_newaccount(
 {
 	string tmp = writed_format_mail_newacct(nickname,id_str);
 	return fdpass_sendmail (mailserver,mailport,mailfrom,email
-		,"Account confirmation on bolixo.org"
+		,MSG_U(T_ACCTCONFIRM,"Account confirmation on bolixo.org")
 		,tmp);
 };
 static int bo_writed_findentry (CONNECT_INFO &con, const char *sessionid, const char *name, const char *threshold, ENTRY &entry, bool expect_exist, bool force_admin)
@@ -1341,11 +1341,15 @@ static bool bo_writed_public_msg(const char *srcname)
 	If there is not record, then we assume that notification is on for the user interface (ui) and off for email and digest.
 */
 <mod>
-static void bo_writed_notify (CONNECT_INFO &con_sess, PARAM_STRING key, const vector<unsigned> &userids)
+static void bo_writed_notify (CONTEXT &ctx, CONNECT_INFO &con_sess, PARAM_STRING key, const vector<unsigned> &userids)
 {
 	if (userids.size() > 0){
-		glocal vector<unsigned> userids;	// Will collect the userids which should be notified
+		glocal CONTEXT *ctx = &ctx;
+		glocal const char *key = key.ptr;
+		glocal vector<unsigned> userids_ui;	// Will collect the userids which should be notified passivly by the UI
+		glocal vector<unsigned> userids_email;	// Will collect the userids which should be notified by email
 		glocal set<unsigned> userids_notseen;	// At the end, will contain userids not seen in the notifications table
+							// So the default notification is used (passive UI)
 		for (auto u:userids) glocal.userids_notseen.insert(u);
 		NSQL_REQ req;
 		req.append ("select userid,ui,email from notifications where userid in");
@@ -1355,30 +1359,45 @@ static void bo_writed_notify (CONNECT_INFO &con_sess, PARAM_STRING key, const ve
 		<f onerow>
 			unsigned userid = atoi(row[0]);
 			bool ui = atoi(row[1]) != 0;
-			//bool email = atoi(row[2]) != 0;
-			if (ui) glocal.userids.push_back(userid);
+			bool email = atoi(row[2]) != 0;
+			if (email) glocal.userids_email.push_back(userid);
+			if (ui) glocal.userids_ui.push_back(userid);
 			glocal.userids_notseen.erase(userid);
 		</f>
 		</call>
-		for (auto u:glocal.userids_notseen) glocal.userids.push_back(u);
-		if (glocal.userids.size() > 0){
-			<call bo_sessiond_admin_setnotify>(con_sess,glocal.userids,key);
+		for (auto u:glocal.userids_notseen) glocal.userids_ui.push_back(u);
+		if (glocal.userids_ui.size() > 0){
+			<call bo_sessiond_admin_setnotify>(con_sess,glocal.userids_ui,key);
 			<f ok>
+			</f>
+			</call>
+		}
+		if (glocal.userids_email.size() > 0){
+			req.clear();
+			req.append ("select email from users where userid in");
+			req.appendlist(glocal.userids_email);
+			req.append (" and disabled is null");
+			<call sql_query>(*ctx.usq,req);
+			<f onerow>
+				fdpass_sendmail (glocal.ctx->mailserver,glocal.ctx->mailport,glocal.ctx->mailfrom
+					,row[0]
+					,MSG_U(I_EMAILNOTIFICATION,"Bolixo.org notification")
+					,glocal.key);
 			</f>
 			</call>
 		}
 	}
 }
 </mod>
-static void bo_writed_notify (CONNECT_INFO &con_sess, PARAM_STRING key, unsigned userid)
+static void bo_writed_notify (CONTEXT &ctx, CONNECT_INFO &con_sess, PARAM_STRING key, unsigned userid)
 {
 	vector<unsigned> userids={userid};
-	bo_writed_notify (con_sess,key,userids);
+	bo_writed_notify (ctx,con_sess,key,userids);
 }
-static void bo_writed_notify_talk_inbox(CONNECT_INFO &con_sess, PARAM_STRING user, unsigned userid)
+static void bo_writed_notify_talk_inbox(CONTEXT &ctx, CONNECT_INFO &con_sess, PARAM_STRING user, unsigned userid)
 {
 	string tmp = string_f("talks:%s:inbox",user.ptr);
-	bo_writed_notify(con_sess,tmp,userid);
+	bo_writed_notify(ctx,con_sess,tmp,userid);
 }
 
 struct FOLDERITEMS{
@@ -3030,7 +3049,7 @@ int main (int argc, char *argv[])
 									,*glocal.content,glocal.more,sign
 									,msgid,glocal.msg,glocal.handle,fileid,modified);
 								string tmp = string_f("talks:%s:anonymous",username);
-								bo_writed_notify(glocal.con,tmp,userid);
+								bo_writed_notify(glocal.ctx,glocal.con,tmp,userid);
 							}
 						}
 					</f>
@@ -3120,7 +3139,7 @@ int main (int argc, char *argv[])
 													glocal.interested.push_back(atoi(row[0]));
 												</f>
 												</call>
-												bo_writed_notify(glocal.con,"main",glocal.interested);
+												bo_writed_notify(glocal.ctx,glocal.con,"main",glocal.interested);
 											}
 										}
 										// We send a notification to each members of the group
@@ -3136,7 +3155,7 @@ int main (int argc, char *argv[])
 										</call>
 										{
 											string tmp = string_f("talks:%s:%s",bd_group_owner,bd_group_name);
-											bo_writed_notify (glocal.con,tmp,glocal.members);
+											bo_writed_notify (glocal.ctx,glocal.con,tmp,glocal.members);
 										}
 										// Now that we have created the message in the group, we
 										// simply link the message in all recipients, except remote user.
@@ -3149,7 +3168,7 @@ int main (int argc, char *argv[])
 														tlmp_error ("Insert in short user inbox, internal error %s\n",u.first.c_str());
 														break;
 													}
-													bo_writed_notify_talk_inbox(glocal.con,u.first,u.second);
+													bo_writed_notify_talk_inbox(glocal.ctx,glocal.con,u.first,u.second);
 												}else{
 													tlmp_error ("Insert in short user inbox, missing inbox, internal error %s\n",u.first.c_str());
 													break;
@@ -3185,7 +3204,7 @@ int main (int argc, char *argv[])
 										bo_writed_addfile_bob (glocal.ctx.con_keys,glocal.sessionid,NULL,ENTRY_MSG,dirid,glocal.userid
 											,*glocal.content,glocal.more,glocal.sign
 											,msgid,glocal.msg,glocal.handle,fileid,modified);
-										bo_writed_notify_talk_inbox(glocal.con,uid0.first,uid0.second);
+										bo_writed_notify_talk_inbox(glocal.ctx,glocal.con,uid0.first,uid0.second);
 										glocal.uids.erase(glocal.uids.begin());
 										for (auto &u:glocal.uids){
 											bool created;
@@ -3195,7 +3214,7 @@ int main (int argc, char *argv[])
 													tlmp_error ("Insert in short user inbox, internal error %s\n",u.first.c_str());
 													break;
 												}
-												bo_writed_notify_talk_inbox(glocal.con,u.first,u.second);
+												bo_writed_notify_talk_inbox(glocal.ctx,glocal.con,u.first,u.second);
 											}else{
 												tlmp_error ("Insert in short user inbox, missing inbox, internal error %s\n",u.first.c_str());
 												break;
@@ -3299,7 +3318,7 @@ int main (int argc, char *argv[])
 									,glocal.target_userid,glocal.userid,glocal.intro)==-1){
 									glocal.msg = "Can't insert in contact_request";
 								}
-								bo_writed_notify(glocal.con,"profile:Contacts",glocal.target_userid);
+								bo_writed_notify(glocal.ctx,glocal.con,"profile:Contacts",glocal.target_userid);
 							</f>
 							</call>
 						}
@@ -3353,7 +3372,7 @@ int main (int argc, char *argv[])
 									if (!bo_writed_remote_user(glocal.target_user)){
 										bo_writed_send_admin_msg (glocal.ctx.con_keys,glocal.target_userid,glocal.target_user,message);
 									}
-									bo_writed_notify(glocal.con,"profile:Contact-req",glocal.target_userid);
+									bo_writed_notify(glocal.ctx,glocal.con,"profile:Contact-req",glocal.target_userid);
 								}
 							</f>
 							</call>
