@@ -697,6 +697,18 @@ elif [ "$1" = "install-sequence-publish" ] ; then # config: Complete install-seq
 	ADMINH=admin@`hostname`
 	echo bofs bolixoapi recordemail $THISNODE admin $ADMINH
 	bofs bolixoapi recordemail $THISNODE admin $ADMINH
+elif [ "$1" = "running" ] ; then # prod: Enable/Disable all crond tasks
+	shift
+	RUNFILE=/etc/bolixo/running
+	if [ "$1" = "on" ] ; then
+		echo Create control file $RUNFILE
+		touch $RUNFILE
+	elif [ "$1" = "off" ] ; then
+		echo Remove control file $RUNFILE
+		rm -f $RUNFILE
+	else
+		echo on or off
+	fi
 else
 	echo Invalid command
 fi
