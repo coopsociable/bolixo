@@ -23,10 +23,10 @@
 #include <string>
 #include <tlmpweb.h>
 #include <set>
-#define DEFINE_USERINFO
-#include "util.h"
 #define DEFINE_TBFTYPE
 #include "../bolixo.h"
+#define DEFINE_USERINFO
+#include "util.h"
 #include <translat.h>
 #include "../bolixo.m"
 #include "../helper.h"
@@ -60,7 +60,6 @@ string w_session;
 #define bod_client_mkdir_NOTNEED
 #define bod_client_rmdir_NOTNEED
 #define bod_client_listdir_NOTNEED
-#define bod_client_stat_NOTNEED
 #define bod_client_set_access_NOTNEED
 #define bod_client_markview_NOTNEED
 #define bod_client_create_group_list_NOTNEED
@@ -1694,4 +1693,21 @@ void util_delnotify(CONNECT_INFO &con_sess, PARAM_STRING prefix, PARAM_STRING id
 {
 	string tmp = string_f("%s:%s",prefix.ptr,id.ptr);
 	util_delnotify(con_sess,tmp);
+}
+<mod>
+ENTRY_TYPE util_entrytype(CONNECT_INFO &con,PARAM_STRING path, FILEINFO &info)
+{
+	glocal FILEINFO *info = &info;
+	<call bod_client_stat>(con,w_session.c_str(),path,"");
+	<f ok>
+		(*glocal.info) = file;
+	</f>
+	</call>
+	return info.type;
+}
+</mod>
+ENTRY_TYPE util_entrytype(CONNECT_INFO &con,PARAM_STRING path)
+{
+	FILEINFO info;
+	return util_entrytype(con,path,info);
 }

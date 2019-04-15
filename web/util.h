@@ -1,3 +1,5 @@
+#include "../bolixo.h"
+
 #ifdef DEFINE_USERINFO
 struct USERLOGINFO{
 	std::string name;
@@ -141,3 +143,5 @@ void util_endscript(PARAM_STRING urlparam);
 string util_clickable_img (PARAM_STRING url, unsigned image_width);
 void util_clickable_img (PARAM_STRING url, const char *image_width, unsigned border);
 void util_print_span(PARAM_STRING url);
+ENTRY_TYPE util_entrytype(CONNECT_INFO &con,PARAM_STRING path, FILEINFO &info);
+ENTRY_TYPE util_entrytype(CONNECT_INFO &con,PARAM_STRING path);
