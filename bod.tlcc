@@ -451,6 +451,7 @@ static unsigned keepdays = 7;
 
 <mod>
 static void bod_list_talk (
+	unsigned userid,	// We are reading for this user, useful for read marks
 	vector<SHORTMSG> &msgs,
 	unsigned ownerid,
 	const char *groupowner,
@@ -477,13 +478,15 @@ static void bod_list_talk (
 		}
 		<call sql_query>("select dirs_content.name,dirs_content.modified,id2name.name,id2name_copy.name,files.filetype"
 			",dirs_content.itemid,files.content,dirs_content.eventtime,dirs_content.type,files.signature,dirs_content.eventtime"
+			",marks.modified"
 			" from dirs_content"
 			" join files on files.id = dirs_content.itemid and files.modified = dirs_content.modified"
 			" join ids on dirs_content.itemid = ids.id"
 			" join id2name on ids.ownerid = id2name.userid"
 			" left join id2name as id2name_copy on dirs_content.copiedby = id2name_copy.userid"
+			" left join marks on marks.itemid=dirs_content.itemid and marks.userid=%u"
 			" where dirid = %d and dirs_content.eventtime > '%s' and (type=%u or type=%u) order by eventtime"
-			,dirid,keepdate_ptr,ENTRY_MSG,ENTRY_DELETED);
+			,userid,dirid,keepdate_ptr,ENTRY_MSG,ENTRY_DELETED);
 		<f onerow>
 			SHORTMSG msg;
 			msg.uuid = row[0];
@@ -501,6 +504,7 @@ static void bod_list_talk (
 			}
 			msg.signature = row[9];
 			msg.eventdate = row[10];
+			msg.viewed = bod_readviewed(row[11],modified);
 			if (row[6] != NULL){
 				// Limit the number of lines if more than one message was requested
 				// Note the size is the complete size of the message, but what is sent may by few lines.
@@ -2474,20 +2478,21 @@ static int bod_main (
 				glocal unsigned total = 0;	// Total number of records
 				glocal string msg;
 				glocal vector<SHORTMSG> msgs;
+				glocal unsigned userid;
 				string username;
-				unsigned userid = bo_writed_get_group_owner (glocal.con_sess, sessionid, owner, username, glocal.msg);
-				if (userid != 0){
+				glocal.userid = bo_writed_get_group_owner (glocal.con_sess, sessionid, owner, username, glocal.msg);
+				if (glocal.userid != 0){
 					// Is the current user a member of the group
 					<call sql_query>("select groups.ownerid from groups"
 						" join id2name on id2name.userid=groups.ownerid"
 						" join group_members on group_members.groupid = groups.id"
 						" where id2name.name='%s' and groups.name='%s' and group_members.userid=%u"
-						,groupowner,groupname,userid);
+						,groupowner,groupname,glocal.userid);
 					<f empty>
 						glocal.msg = MSG_U(E_GROUPPROBLEMS,"Unknown group name, empty group, or user not a member");
 					</f>
 					<f onerow>
-						bod_list_talk (glocal.msgs,atoi(row[0]),glocal.groupowner,glocal.groupname
+						bod_list_talk (glocal.userid,glocal.msgs,atoi(row[0]),glocal.groupowner,glocal.groupname
 							,glocal.offset,glocal.nb,glocal.deletes,glocal.total,glocal.msg,false);
 					</f>
 					</call>
@@ -3024,7 +3029,7 @@ static int bod_main (
 				if (userid != (unsigned)-1){
 					bool deletes;
 					unsigned total;
-					bod_list_talk (msgs,userid,username,"public",offset,nb,deletes,total,msg,true);
+					bod_list_talk (userid,msgs,userid,username,"public",offset,nb,deletes,total,msg,true);
 				}
 				if (msg.size() > 0){
 					msgs.clear();

@@ -988,15 +988,11 @@ static void index_download (CONNECT_INFO &con, FILE_TYPE file_type, PARAM_STRING
 
 static void index_msgs_style(_F_webtable &c)
 {
-	if (1 || is_mobile){
-		c.setrowstyle ("sep","bgcolor=ghostwhite valign=top\t\t\talign=right");
-		c.setrowstyle ("sep+current","bgcolor=lightblue valign=top\t\t\talign=right");
-		c.setrowstyle ("sep1","bgcolor=white valign=top\t\t\talign=right");
-		c.setrowstyle ("sep1+current","bgcolor=lightblue valign=top\t\t\talign=right");
-		c.sethead (MSG_U(H_TALKMOBILE,"From\t\tSubmit"));
-	}else{
-		c.sethead (MSG_U(H_TALK,"From\t\tSubmit\tMessage"));
-	}
+	c.setrowstyle ("sep","bgcolor=ghostwhite valign=top\t\t\talign=right");
+	c.setrowstyle ("sep+current","bgcolor=lightblue valign=top\t\t\talign=right");
+	c.setrowstyle ("sep1","bgcolor=white valign=top\t\t\talign=right");
+	c.setrowstyle ("sep1+current","bgcolor=lightblue valign=top\t\t\talign=right");
+	c.sethead (MSG_U(H_TALKMOBILE,"From\t\tSubmit"));
 }
 
 <mod>
@@ -1100,10 +1096,12 @@ static void index_show_shortmsg(
 				glocal unsigned image_width = 200;
 				unsigned mini_image_width = 40;
 				unsigned video_size = 200;
+				unsigned icon_height = 20;
 				if (is_mobile){
 					glocal.image_width = 700;
 					mini_image_width = 60;
 					video_size = 700;
+					icon_height=40;
 				}
 				for (auto &m:messages){
 					string now = string(m.submit,10);
@@ -1169,7 +1167,13 @@ static void index_show_shortmsg(
 						</f>
 						</call>
 					}
-					string time = string_f("<div id=date0_7>%s</div>",format_date(userinfo.dateformat,m.submit).c_str());
+					string email_icon;
+					if (userinfo.name != m.from){
+						// Message not written by you so we put an icon showing if you have read it
+						email_icon = string_f("<img height=%u src=/%s>",icon_height
+							,m.viewed == VIEWED_NEW ? "email-outline.svg" : "email-open-outline.svg");
+					}
+					string time = string_f("<div id=date0_7>%s</div>%s",format_date(userinfo.dateformat,m.submit).c_str(),email_icon.c_str());
 					const char *style = line_styles[line_style];
 					line_style++;
 					if (line_style == 2) line_style = 0;
@@ -2816,11 +2820,13 @@ extern "C" void webmain_real()
 				DIV d("webtable"); d.print();
 				index_doc(glocal.docpointers[SECTION_NONE],section_none);
 			}else if (file_is_image(info.file_type)){
+				index_markview (glocal.con,id);
 				DIV d("webtable"); d.print();
 				string img = index_img(step_image,"max-width:100%; max-height:100%;",id,info.modified);
 				/- <br>
 				htmlout (img);
 			}else if (file_is_text(info.file_type)){
+				index_markview (glocal.con,id);
 				DIV d("",TAB_FORM); d.print();
 				/- <table border=0>
 				vector<string> tb;
