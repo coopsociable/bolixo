@@ -153,6 +153,31 @@ static void delete_fileids (vector<unsigned> &fileids)
 		}
 	}
 }
+struct MARKID{
+	unsigned userid;
+	unsigned itemid;
+	MARKID(unsigned _userid, unsigned _itemid)
+		:userid(_userid),itemid(_itemid){}
+};
+static void delete_marks (vector<MARKID> &markids)
+{
+	if (markids.size() > 0){
+		NSQL_REQ req;
+		req.appendf ("delete from marks where ( ");
+		auto it=markids.begin();
+		req.appendf ("(userid=%u and itemid=%d)",it->userid,it->itemid);
+		for (it++; it != markids.end(); it++){
+			req.appendf (" or (userid=%u and itemid=%d)",it->userid,it->itemid);
+		}
+		req.append (')');
+		markids.clear();
+		//tlmp_error ("delete_markids %s\n",req.c_str());
+		if (sql_action(req)==-1){
+			tlmp_error ("Delete fail in table marks, aborting: %s\n",query_getdefaultdb()->error());
+			exit (-1);
+		}
+	}
+}
 <mod>
 int main (int argc, char *argv[])
 {
@@ -354,6 +379,7 @@ int main (int argc, char *argv[])
 			</f>
 			</call>
 			// Other table just related to userid
+			// While cleaning those tables, we collect other ids which will make orphans in other tables.
 			set<unsigned> group_ids;
 			set<unsigned> group_list_ids;
 			struct TABLESPEC { const char *table; const char *field; set<unsigned> *collect;} tables[]={
@@ -361,7 +387,6 @@ int main (int argc, char *argv[])
 				{"contact_requests","reqid",nullptr},
 				{"interests","userid",nullptr},
 				{"interests_remote","userid",nullptr},
-				{"marks","userid",nullptr},
 				{"notifications","userid",nullptr},
 				{"userinfo","userid",nullptr},
 				{"group_members","userid",nullptr},
@@ -416,6 +441,24 @@ int main (int argc, char *argv[])
 					}
 				}
 			}
+			// Table marks may bve associated with missing userids and missing itemids
+			glocal vector<MARKID> markids;
+			<call sql_query>("select userid,itemid from marks");
+			<f onerow>
+				unsigned userid = atoi(row[0]);
+				unsigned itemid = atoi(row[1]);
+				if (glocal.userids.notin(userid) || glocal.itemids.notin(itemid)){
+					if (verbose){
+						printf ("Table makrs: userid %5u itemid %5u must go\n",userid,itemid);
+					}
+					if (doit){
+						glocal.markids.emplace_back(userid,itemid);
+						if (glocal.markids.size() > 100) delete_marks(glocal.markids);
+					}
+				}
+			</f>
+			</call>
+			delete_marks (glocal.markids);
 		}
 		return ret;
 	</f>
