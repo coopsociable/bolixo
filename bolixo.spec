@@ -122,6 +122,8 @@ make install
 /var/www/html/inbox-ui-fr.jpg
 /var/www/html/group-inbox-ui.jpg
 /var/www/html/group-inbox-ui-fr.jpg
+/var/www/html/email-open-outline.svg
+/var/www/html/email-outline.svg
 /usr/lib/bolixo-test.sh
 /usr/sbin/bolixo-production
 /usr/sbin/bo
