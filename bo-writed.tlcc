@@ -1434,6 +1434,7 @@ struct FOLDERITEMS{
 	Compose the message for an email notification sent for a small message.
 */
 static void bo_writed_set_email_notify (
+	PARAM_STRING author,
 	PARAM_STRING groupowner,
 	const char *groupname,
 	FILE_TYPE file_type,
@@ -1441,11 +1442,23 @@ static void bo_writed_set_email_notify (
 	string &email_title,
 	string &email_content)
 {
-	email_title = string_f(MSG_U(T_EMAILNOTIFY,"There is a new message in group %s/%s"),groupowner.ptr,groupname);
+	if (author.ptr[0] != '\0'){
+		email_title = string_f(MSG_U(T_EMAILNOTIFYFROM,"There is a new message in group %s/%s from %s")
+			,groupowner.ptr,groupname,author.ptr);
+	}else{
+		email_title = string_f(MSG_U(T_EMAILNOTIFY,"There is a new message in group %s/%s")
+			,groupowner.ptr,groupname);
+	}
 	if (file_type == FILE_TEXT){
 		email_content = string((const char*)content.getbuffer(),content.getsize());
 		email_content += string_f("\r\n\r\n%s/index.hc?webstep=9&webtab_add=1:%s:%s"
 			,nodename,groupowner.ptr,groupname);
+	}else if (file_is_sound(file_type)){
+		email_content = MSG_U(I_EMAILNOTIFYSOUND,"The author sent a sound file");
+	}else if (file_is_image(file_type)){
+		email_content = MSG_U(I_EMAILNOTIFYIMAGE,"The author sent an image");
+	}else if (file_is_video(file_type)){
+		email_content = MSG_U(I_EMAILNOTIFYVIDEO,"The author sent a video");
 	}
 }
 
@@ -3081,7 +3094,7 @@ int main (int argc, char *argv[])
 									,info,glocal.msg);
 								glocal.handle = info.handle;
 								string email_title,email_content;
-								bo_writed_set_email_notify (username,"anonymous",info.file_type,*glocal.content,email_title,email_content);
+								bo_writed_set_email_notify ("",username,"anonymous",info.file_type,*glocal.content,email_title,email_content);
 								string tmp = string_f("talks:%s:anonymous",username);
 								bo_writed_notify(glocal.ctx,glocal.con,tmp,userid,email_title,email_content);
 							}
@@ -3147,7 +3160,8 @@ int main (int argc, char *argv[])
 											,info,glocal.msg);
 										glocal.handle = info.handle;
 										string email_title,email_content;
-										bo_writed_set_email_notify (glocal.groupowner,glocal.groupname,info.file_type,*glocal.content,email_title,email_content);
+										bo_writed_set_email_notify (glocal.username,glocal.groupowner,glocal.groupname,info.file_type,*glocal.content
+											,email_title,email_content);
 										bool remote_user = bo_writed_remote_user(glocal.username);
 										if (remote_user){
 											if (created){
@@ -3204,7 +3218,7 @@ int main (int argc, char *argv[])
 														tlmp_error ("Insert in short user inbox, internal error %s\n",u.first.c_str());
 														break;
 													}
-													bo_writed_set_email_notify (u.first,"inbox",info.file_type,*glocal.content,email_title,email_content);
+													bo_writed_set_email_notify (glocal.username,u.first,"inbox",info.file_type,*glocal.content,email_title,email_content);
 													bo_writed_notify_talk_inbox(glocal.ctx,glocal.con,u.first,u.second,email_title,email_content);
 												}else{
 													tlmp_error ("Insert in short user inbox, missing inbox, internal error %s\n",u.first.c_str());
@@ -3240,7 +3254,7 @@ int main (int argc, char *argv[])
 											,*glocal.content,glocal.more,glocal.sign
 											,info,glocal.msg);
 										string email_title,email_content;
-										bo_writed_set_email_notify (uid0.first,"inbox",info.file_type,*glocal.content,email_title,email_content);
+										bo_writed_set_email_notify (glocal.username,uid0.first,"inbox",info.file_type,*glocal.content,email_title,email_content);
 										glocal.handle = info.handle;
 										bo_writed_notify_talk_inbox(glocal.ctx,glocal.con,uid0.first,uid0.second,email_title,email_content);
 										glocal.uids.erase(glocal.uids.begin());
@@ -3252,7 +3266,8 @@ int main (int argc, char *argv[])
 													tlmp_error ("Insert in short user inbox, internal error %s\n",u.first.c_str());
 													break;
 												}
-												bo_writed_set_email_notify (u.first,"inbox",info.file_type,*glocal.content,email_title,email_content);
+												bo_writed_set_email_notify (glocal.username,u.first,"inbox",info.file_type,*glocal.content
+													,email_title,email_content);
 												bo_writed_notify_talk_inbox(glocal.ctx,glocal.con,u.first,u.second,email_title,email_content);
 											}else{
 												tlmp_error ("Insert in short user inbox, missing inbox, internal error %s\n",u.first.c_str());
