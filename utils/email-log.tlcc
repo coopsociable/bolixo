@@ -48,11 +48,17 @@ int main (int argc, char *argv[])
 	glocal int ret = -1;
 	glocal const char *port = "2025";
 	glocal const char *logfile = "/var/log/email-log.log";
+	glocal const char *user = "bolixo";
+	glocal bool daemon = false;
+	glocal const char *pidfile = "/var/run/email-log.pid";
 	glocal.ret = <call tlmpprogram>(argc,argv);
 	<f init>
 		setproginfo ("email-log",VERSION,"Listen on port 25 and log everything received");
 		setarg ('l',"logfile","Log file path",glocal.logfile,false);
 		setarg ('p',"port","TCP port",glocal.port,false);
+		setarg (' ',"user","Run the program as this user",glocal.user,false);
+		setarg (' ',"daemon","Run in background",glocal.daemon,false);
+		setarg (' ',"pidfile","File holding the PID of the process",glocal.pidfile,false);
 	</f>
 	<f main_noarg>
 		int ret = -1;
@@ -135,6 +141,9 @@ int main (int argc, char *argv[])
 		</f>
 		</obj>
 		if (o.is_ok()){
+			if (glocal.daemon){
+				daemon_init(glocal.pidfile,glocal.user);
+			}
 			o.loop();
 		}
 		return ret;
