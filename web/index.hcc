@@ -1103,6 +1103,34 @@ static void index_show_shortmsg(
 							glocal.webtable.setdrop_enable(MENU_REPLY);
 						}
 					}
+					const char *style = line_styles[line_style];
+					line_style++;
+					if (line_style == 2) line_style = 0;
+					{
+						// Print the first line of the message (from date)
+						// The first line does not trigger the popup or display of the message.
+						// It just makes the message current and flip its status to read.
+						string email_icon;
+						if (userinfo.name != m.from){
+							// Message not written by you so we put an icon showing if you have read it
+							email_icon = string_f("<img height=%u src=/%s>",icon_height
+								,m.viewed == VIEWED_NEW ? "email-outline.svg" : "email-open-outline.svg");
+						}
+						string time = string_f("<div id=date0_7>%s</div>%s",format_date(userinfo.dateformat,m.submit).c_str(),email_icon.c_str());
+						string img;
+						if (strcmp(m.from,userinfo.name.c_str())!=0){
+							if (strcmp(m.from,"admin")==0){
+								// admin is not in the contact list of everyone, but has a public page
+								img = "<img src=/public/admin/project/mini-photo.jpg>";
+							}else{
+								string dir = string_f("/projects/%s/public",m.from);
+								img = index_img(step_image,mini_image_width,dir,"mini-photo.jpg","");
+							}
+						}
+						glocal.webtable.setclickopt (true,"","");
+						glocal.webtable.setrow (style,glocal.rownum,"%s\t%s\t%s"
+							,img.c_str(),m.from,time.c_str());
+					}
 					const char *func = "Popup";
 					string path = string_f("/msgs/%s/short-inbox/%s/%s",glocal.groupowner,glocal.groupname,m.uuid);
 					if (glocal.webtabs->selected(path)) glocal.webtable.setcurrent(glocal.rownum);
@@ -1150,28 +1178,6 @@ static void index_show_shortmsg(
 						</f>
 						</call>
 					}
-					string email_icon;
-					if (userinfo.name != m.from){
-						// Message not written by you so we put an icon showing if you have read it
-						email_icon = string_f("<img height=%u src=/%s>",icon_height
-							,m.viewed == VIEWED_NEW ? "email-outline.svg" : "email-open-outline.svg");
-					}
-					string time = string_f("<div id=date0_7>%s</div>%s",format_date(userinfo.dateformat,m.submit).c_str(),email_icon.c_str());
-					const char *style = line_styles[line_style];
-					line_style++;
-					if (line_style == 2) line_style = 0;
-					string img;
-					if (strcmp(m.from,userinfo.name.c_str())!=0){
-						if (strcmp(m.from,"admin")==0){
-							// admin is not in the contact list of everyone, but has a public page
-							img = "<img src=/public/admin/project/mini-photo.jpg>";
-						}else{
-							string dir = string_f("/projects/%s/public",m.from);
-							img = index_img(step_image,mini_image_width,dir,"mini-photo.jpg","");
-						}
-					}
-					glocal.webtable.setrow (style,glocal.rownum,"%s\t%s\t%s"
-						,img.c_str(),m.from,time.c_str());
 					glocal.webtable.setrow (style,glocal.rownum,"\t%s\a",content.c_str());
 					glocal.rownum++;
 				}
@@ -1351,10 +1357,13 @@ extern "C" void webmain_real()
 			vector<string> tb;
 			int n = str_splitline (tableid+5,':',tb);
 			if (n == 2){
+				glocal string dir = string_f("/msgs/%s/short-inbox/%s",tb[0].c_str(),tb[1].c_str());
 				<call bod_client_list_talk>(glocal.con,w_session.c_str(),"",tb[1],tb[0],current_row,1);
 				<f ok>
 					if (messages.size()==1){
 						glocal.valid = true;
+						string fname = string_f("%s/%s",glocal.dir.c_str(),messages[0].uuid);
+						index_markview (glocal.con,fname);
 					}
 				</f>
 				</call>
@@ -2804,13 +2813,11 @@ extern "C" void webmain_real()
 				DIV d("webtable"); d.print();
 				index_doc(glocal.docpointers[SECTION_NONE],section_none);
 			}else if (file_is_image(info.file_type)){
-				index_markview (glocal.con,id);
 				DIV d("webtable"); d.print();
 				string img = index_img(step_image,"max-width:100%; max-height:100%;",id,info.modified);
 				/- <br>
 				htmlout (img);
 			}else if (file_is_text(info.file_type)){
-				index_markview (glocal.con,id);
 				DIV d("",TAB_FORM); d.print();
 				/- <table border=0>
 				vector<string> tb;
