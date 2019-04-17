@@ -145,3 +145,33 @@ void util_clickable_img (PARAM_STRING url, const char *image_width, unsigned bor
 void util_print_span(PARAM_STRING url);
 ENTRY_TYPE util_entrytype(CONNECT_INFO &con,PARAM_STRING path, FILEINFO &info);
 ENTRY_TYPE util_entrytype(CONNECT_INFO &con,PARAM_STRING path);
+
+struct _F_sendfile_common {
+	string handle;
+	bool success;
+	void sethandle (PARAM_STRING handle);
+	void setresult (bool success, PARAM_STRING msg);
+};
+
+#define _TLMP_sendfile
+struct _F_sendfile: public _F_sendfile_common {
+	#define _F_sendfile_start(x) void x start(const char *filepath, const BOB_TYPE &content, bool more)
+	virtual _F_sendfile_start( )=0;
+	#define _F_sendfile_rest(x) void x rest(const string &handle, const BOB_TYPE &content, bool more)
+	virtual _F_sendfile_rest( )=0;
+};
+void sendfile(_F_sendfile &c, PARAM_STRING filepath, PARAM_STRING localfile, bool &fail);
+
+#define _TLMP_sendfile_var
+struct _F_sendfile_var: public _F_sendfile_common {
+	#define _F_sendfile_var_start(x) void x start(const char *filepath, const BOB_TYPE &content, bool more)
+	virtual _F_sendfile_var_start( )=0;
+	#define _F_sendfile_var_rest(x) void x rest(const string &handle, const BOB_TYPE &content, bool more)
+	virtual _F_sendfile_var_rest( )=0;
+};
+void sendfile_var(_F_sendfile_var &c, PARAM_STRING filepath, const W_SSTRING &var_content, bool &fail);
+std::string util_img(unsigned step, unsigned width, PARAM_STRING dirpath, PARAM_STRING filename, PARAM_STRING date);
+std::string util_img(unsigned step, const char *style, PARAM_STRING filepath, PARAM_STRING date);
+void util_popup (CONNECT_INFO &con, int step, const char *content, FILE_TYPE file_type, PARAM_STRING modified, PARAM_STRING from, PARAM_STRING filepath);
+void util_popup (CONNECT_INFO &con, const char *content, FILE_TYPE file_type, PARAM_STRING modified, PARAM_STRING from, PARAM_STRING filepath);
+void util_markview (CONNECT_INFO &con, PARAM_STRING fname);

@@ -44,6 +44,7 @@ extern void bolixo_doc (DOCUMENT_POINTER &, DOC_ID &jump, const char *username, 
 extern void bolixo_doc_fr (DOCUMENT_POINTER &, DOC_ID &jump, const char *username, bool display_full, bool index);
 extern void profile(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER> &docpointers);
 extern void mail(CONNECT_INFO &con, vector<DOCUMENT_POINTER> &docpointers);
+extern void projects(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER> &docpointers);
 
 static WEBID ID_MAIL("mail");
 static WEBID ID_FOLLOW("follow");
@@ -185,97 +186,6 @@ W_SSTRING w_confirm("confirm");
 
 #include "steps.h"
 
-struct _F_sendfile_common {
-	string handle;
-	bool success;
-	void sethandle (PARAM_STRING handle);
-	void setresult (bool success, PARAM_STRING msg);
-};
-void _F_sendfile_common::sethandle (PARAM_STRING _handle)
-{
-	handle = _handle.ptr;
-}
-void _F_sendfile_common::setresult (bool _success, PARAM_STRING msg)
-{
-	success = _success;
-	if (!success) htmlprintf ("sendfile failed: %s<br>\n",msg.ptr);
-}
-
-#define _TLMP_sendfile
-struct _F_sendfile: public _F_sendfile_common {
-	#define _F_sendfile_start(x) void x start(const char *filepath, const BOB_TYPE &content, bool more)
-	virtual _F_sendfile_start( )=0;
-	#define _F_sendfile_rest(x) void x rest(const string &handle, const BOB_TYPE &content, bool more)
-	virtual _F_sendfile_rest( )=0;
-};
-
-static void sendfile(_F_sendfile &c, PARAM_STRING filepath, PARAM_STRING localfile, bool &fail)
-{
-	c.success = true;
-	FILE *fin = fopen (localfile.ptr,"r");
-	if (fin == NULL){
-		htmlprintf ("Internal error reading temp file: :%s:<br>\n",localfile.ptr);
-		fail = true;
-	}else{
-		char buf[40000];
-		size_t nb = fread (buf,1,sizeof(buf),fin);
-		bool more = (nb == sizeof(buf));
-		c.start (filepath.ptr,BOB_TYPE(buf,nb,false),more);
-		if (more && c.success){
-			if (c.handle.empty()){
-				tlmp_error ("sendfile: handle is empty for file %s\n",filepath.ptr);
-				htmlprintf ("Internal error, sendfile has not handle<br>\n");
-			}else{
-				while (more && c.success){
-					nb = fread (buf,1,sizeof(buf),fin);
-					more = (nb == sizeof(buf));
-					c.rest (c.handle,BOB_TYPE(buf,nb,false),more);
-				}
-			}
-		}
-		fclose (fin);
-	}
-	if (!c.success) fail = true;
-}
-#define _TLMP_sendfile_var
-struct _F_sendfile_var: public _F_sendfile_common {
-	#define _F_sendfile_var_start(x) void x start(const char *filepath, const BOB_TYPE &content, bool more)
-	virtual _F_sendfile_var_start( )=0;
-	#define _F_sendfile_var_rest(x) void x rest(const string &handle, const BOB_TYPE &content, bool more)
-	virtual _F_sendfile_var_rest( )=0;
-};
-static void sendfile_var(_F_sendfile_var &c, PARAM_STRING filepath, const W_SSTRING &var_content, bool &fail)
-{
-	const char *content = var_content.c_str();
-	c.success = true;
-	unsigned len = strlen(content);
-	unsigned nb = len;
-	bool more = false;
-	if (nb > 40000){
-		nb = 40000;
-		more = true;
-	}
-	c.start (filepath.ptr,BOB_TYPE(content,nb,false),more);
-	if (more && c.success){
-		if (c.handle.empty()){
-			tlmp_error ("sendfile: handle is empty for file %s\n",filepath.ptr);
-			htmlprintf ("Internal error, sendfile has not handle<br>\n");
-		}else{
-			unsigned offset = nb;
-			while (offset < len && c.success){
-				nb = len - offset;
-				more = false;
-				if (nb > 40000){
-					nb = 40000;
-					more = true;
-				}
-				c.rest (c.handle,BOB_TYPE(content+offset,nb,false),more);
-				offset += nb;
-			}
-		}
-	}
-	if (!c.success) fail = true;
-}
 	
 static bool is_mobile = false;
 static bool private_site = false;
@@ -658,139 +568,9 @@ static void web_updatecurrents(CONNECT_INFO &con_sess)
 	</call>
 }
 </mod>
-/*
-	Format an <img tag
-*/
-static string index_img(unsigned step, unsigned width, PARAM_STRING dirpath, PARAM_STRING filename, PARAM_STRING date)
-{
-	string tmp = util_flipspaces(date);
-	const char *sep = "/";
-	if (dirpath.ptr[0] == '\0') sep = "";
-	return string_f ("<img width=%u src=%s?webstep=%u&image=%s%s%s&mod=%s>"
-		,width,tlmpweb_curpage(),step,dirpath.ptr,sep,filename.ptr,tmp.c_str());
-}
-static string index_img(unsigned step, const char *style, PARAM_STRING filepath, PARAM_STRING date)
-{
-	string tmp = util_flipspaces(date);
-	return string_f ("<img width=100%% style='%s' src=%s?webstep=%u&image=%s&mod=%s>"
-		,style,tlmpweb_curpage(),step,filepath.ptr,tmp.c_str());
-}
-
-<mod>
-static int index_loadfile(CONNECT_INFO &con, PARAM_STRING filename, string &text)
-{
-	glocal CONNECT_INFO *con = &con;
-	glocal string *text = &text;
-	glocal int ret = 0;
-	text.clear();
-	<call bod_client_readfile_bob>(con,w_session.c_str(),filename,"",false);
-	<f ok>
-		if (!success){
-			htmlprintf ("Can't read file: %s\n",msg);
-			glocal.ret = -1;
-		}else{
-			(*glocal.text) = string((const char*)content.getbuffer(),content.getsize());
-			glocal bool more = more;
-			while (glocal.more && glocal.ret != -1){
-				<call bod_client_readmore>(*glocal.con,w_session.c_str(),handle);
-				<f ok>
-					if (!success){
-						glocal.ret = -1;
-						htmlprintf ("Can't read file: %s\n",msg);
-					}else{
-						(*glocal.text) += string((const char*)content.getbuffer(),content.getsize());
-					}
-					glocal.more = more;
-				</f>
-				</call>
-			}	
-		}
-	</f>
-	</call>
-	return glocal.ret;
-}
-</mod>
-
-static int index_loadfile(CONNECT_INFO &con, PARAM_STRING filename, W_SSTRING &text)
-{
-	string tmp;
-	int ret = index_loadfile(con,filename,tmp);
-	text = tmp;
-	return ret;
-}
 
 
-static void index_format_large_text(const BOB_TYPE &content)
-{
-	string tmp = string((const char*)content.getbuffer(),content.getsize());
-	tmp = util_format_shortmsg (tmp.c_str(),800);
-	htmlwrite (tmp.c_str(),tmp.size());
-}
-<mod>
-static void index_popup (CONNECT_INFO &con, int step, const char *content, FILE_TYPE file_type, PARAM_STRING modified, PARAM_STRING from, PARAM_STRING filepath)
-{
-	glocal CONNECT_INFO *con = &con;
-	const char *path = filepath.ptr;
-	util_defstyles();
-	tlmpweb_body("white",NULL);
-	DIV d; d.w(100).h(100).dispflex().flowcol().print();
-	DIV dd; dd.flexfixe().w(100).print();
-	htmlprintf ("%s: %s<br>\n",MSG_R(I_FROM),from.ptr);
-	htmlprintf ("%s: %s<br>\n",MSG_R(I_DATE),modified.ptr);
-	dd.end();
-	dd.flexfixe().w(100).h(95).vpaddings(5,5).bordertop(1,"black").print();	
-	DIV ddd; ddd.marginauto().w(99).print();	
-	if (content[0] != '\0'){
-		htmlout (util_format_shortmsg (content,800));
-	}else if (file_is_sound(file_type)){
-		htmlprintf ("<audio controls>\n"
-			"<source src=\"%s?webstep=%u&image=%s\" type=\"audio/%s\">\n"
-			"</audio>"
-			,tlmpweb_curpage(),step,path,tbftype[file_type]);
-	}else if (file_is_video(file_type)){
-		htmlprintf ("<video width=\"800\" height=\"600\" controls>\n"
-			"<source src=\"%s?webstep=%u&image=%s\" type=\"video/mp4\">\n"
-			"Your browser does not support the video tag.\n"
-			"</video>\n"
-			,tlmpweb_curpage(),step,path);
-	}else if (file_is_image(file_type)){
-		string img = index_img (step,"",path,modified);
-		htmlout (img);
-	}else if (file_is_text(file_type)){
-		<call bod_client_readfile_bob>(con,w_session.c_str(),path,"",false);
-		<f ok>
-			if (!success){
-				htmlprintf ("Can't read file: %s\n",msg);
-			}else{
-				index_format_large_text (content);
-				glocal bool more = more;
-				while (glocal.more){
-					<call bod_client_readmore>(*glocal.con,w_session.c_str(),handle);
-					<f ok>
-						index_format_large_text (content);
-						glocal.more = more;
-					</f>
-					</call>
-				}	
-			}
-		</f>
-		</call>
-	}
-}
-</mod>
-static void index_popup (CONNECT_INFO &con, const char *content, FILE_TYPE file_type, PARAM_STRING modified, PARAM_STRING from, PARAM_STRING filepath)
-{
-	index_popup (con,step_image,content,file_type,modified,from,filepath);
-}
-<mod>
-static void index_markview (CONNECT_INFO &con, PARAM_STRING fname)
-{
-	<call bod_client_markview>(con,w_session.c_str(),fname);
-	<f ok>
-	</f>
-	</call>
-}
-</mod>
+
 <mod>
 static int index_paste_copy (CONNECT_INFO &con, PARAM_STRING newfname)
 {
@@ -808,7 +588,7 @@ static int index_paste_copy (CONNECT_INFO &con, PARAM_STRING newfname)
 	return glocal.ret;
 }
 <mod>
-static void index_paste(CONNECT_INFO &con, PARAM_STRING path)
+void index_paste(CONNECT_INFO &con, PARAM_STRING path)
 {
 	if (fcopy.path.size() == 0){
 		htmlout (MSG_U(E_NOTHINGTOPASTE,"Nothing to paste<br>\n"));
@@ -873,7 +653,7 @@ static void index_paste(CONNECT_INFO &con, PARAM_STRING path, PARAM_STRING group
 }
 </mod>
 // Set the MENU_PASTE menu, make it gray out sens
-static void index_setpastemenu (_F_webtable *c, PARAM_STRING path)
+void index_setpastemenu (_F_webtable *c, PARAM_STRING path)
 {
 	bool disable = false;
 	string paste = MSG_U(M_PASTE,"Paste");
@@ -904,7 +684,7 @@ static void index_setpastemenu (_F_webtable *c, PARAM_STRING path)
 	if (disable) c->setdrop_disable(MENU_PASTE);
 }
 <mod>
-static void index_setcopyitem(CONNECT_INFO &con_sess, PARAM_STRING path, PARAM_STRING modified, PARAM_STRING name)
+void index_setcopyitem(CONNECT_INFO &con_sess, PARAM_STRING path, PARAM_STRING modified, PARAM_STRING name)
 {
 	VAR var;
 	var.name = "copy";
@@ -996,7 +776,7 @@ static void index_show_shortmsg(
 	WEBID ID_TALK("talk",string_f("%s:%s",groupowner.ptr,groupname.ptr));
 	const char *table = ID_TALK.c_str();
 	if (offsets[table] == 0){
-		index_markview (con,glocal.path);
+		util_markview (con,glocal.path);
 	}
 	<call webtable>(ID_TALK,currents[table],offsets[table],5);
 	<f click>
@@ -1044,7 +824,7 @@ static void index_show_shortmsg(
 							/-#E_REPLYTOYOU Can't reply to yourself
 						}
 					}else{
-						index_popup (*glocal.con,m.content,m.file_type,m.submit,m.from
+						util_popup (*glocal.con,m.content,m.file_type,m.submit,m.from
 							,string_f("/msgs/%s/short-inbox/%s/%s"
 							,glocal.groupowner,glocal.groupname,m.uuid));
 					}
@@ -1124,7 +904,7 @@ static void index_show_shortmsg(
 								img = "<img src=/public/admin/project/mini-photo.jpg>";
 							}else{
 								string dir = string_f("/projects/%s/public",m.from);
-								img = index_img(step_image,mini_image_width,dir,"mini-photo.jpg","");
+								img = util_img(step_image,mini_image_width,dir,"mini-photo.jpg","");
 							}
 						}
 						glocal.webtable.setclickopt (true,"","");
@@ -1154,7 +934,7 @@ static void index_show_shortmsg(
 							"</audio>"
 							,tlmpweb_curpage(),step_image,path.c_str(),tmp.c_str(),tbftype[m.file_type]);
 					}else if (file_is_image(m.file_type)){
-						content = index_img (step_image,glocal.image_width,"",path,m.submit);
+						content = util_img (step_image,glocal.image_width,"",path,m.submit);
 					}else if (file_is_video(m.file_type)){
 						string tmp = util_flipspaces(m.submit);
 						content = string_f(
@@ -1322,7 +1102,7 @@ extern "C" void webmain_real()
 				if (files.size()==1){
 					glocal.valid = true;
 					string fname = string_f("%s/%s",glocal.dir.c_str(),files[0].name);
-					index_markview (glocal.con,fname);
+					util_markview (glocal.con,fname);
 				}
 			</f>
 			</call>
@@ -1334,7 +1114,7 @@ extern "C" void webmain_real()
 				if (messages.size()==1){
 					glocal.valid = true;
 					string fname = index_format_mail_fname(messages[0],userinfo.name);
-					index_markview (glocal.con,fname);
+					util_markview (glocal.con,fname);
 				}
 			</f>
 			</call>
@@ -1363,7 +1143,7 @@ extern "C" void webmain_real()
 					if (messages.size()==1){
 						glocal.valid = true;
 						string fname = string_f("%s/%s",glocal.dir.c_str(),messages[0].uuid);
-						index_markview (glocal.con,fname);
+						util_markview (glocal.con,fname);
 					}
 				</f>
 				</call>
@@ -1647,7 +1427,7 @@ extern "C" void webmain_real()
 						<f ok>
 							unsigned rownum = 0;
 							unsigned mini_image_width = is_mobile ? 60 : 40;
-							string img = index_img(step_public,mini_image_width,"admin","project/mini-photo.jpg","");
+							string img = util_img(step_public,mini_image_width,"admin","project/mini-photo.jpg","");
 							string add = string_f("webstep=%d&webtab_add=1:%s:inbox&recipients=admin",step_talks,userinfo.name.c_str());
 							glocal.webtable.setclickopt (true,"",add);
 							glocal.webtable.setrow("white",rownum,"%s\tadmin",img.c_str());
@@ -1657,7 +1437,7 @@ extern "C" void webmain_real()
 									,step_talks,userinfo.name.c_str(),m);
 								glocal.webtable.setclickopt (true,"",add);
 								string dir = string_f("/projects/%s/public",m);
-								img = index_img(step_image,mini_image_width,dir,"mini-photo.jpg","");
+								img = util_img(step_image,mini_image_width,dir,"mini-photo.jpg","");
 								glocal.webtable.setrow("white",rownum,"%s\t%s",img.c_str(),m);
 								rownum++;
 							}
@@ -1693,7 +1473,7 @@ extern "C" void webmain_real()
 							string msg_name = string_f("/msgs/%s/short-inbox/public/%s",m.from,m.uuid);
 							index_setcopyitem(glocal.con_sess,msg_name,"",suggested_name);
 						}else{
-							index_popup (glocal.con,step_public,m.content,m.file_type,m.submit,m.from
+							util_popup (glocal.con,step_public,m.content,m.file_type,m.submit,m.from
 								,fname);
 						}
 					}
@@ -1750,7 +1530,7 @@ extern "C" void webmain_real()
 							img = string_f("<img width=%u src=https://%s/public/%s/project/mini-photo.jpg>\n"
 								,mini_image_width,pt+1,user.c_str());
 						}else{
-							img = index_img(step_public,mini_image_width,m.from,"project/mini-photo.jpg","");
+							img = util_img(step_public,mini_image_width,m.from,"project/mini-photo.jpg","");
 						}
 						string path = string_f("%s/msg/%s",m.from,m.uuid);
 						string content;
@@ -1763,7 +1543,7 @@ extern "C" void webmain_real()
 								"</audio>"
 								,tlmpweb_curpage(),step_public,path.c_str(),tmp.c_str(),tbftype[m.file_type]);
 						}else if (file_is_image(m.file_type)){
-							content = index_img (step_public,image_width,"",path,m.submit);
+							content = util_img (step_public,image_width,"",path,m.submit);
 						}else if (file_is_video(m.file_type)){
 							string tmp = util_flipspaces(m.submit);
 							content = string_f(
@@ -2054,529 +1834,8 @@ extern "C" void webmain_real()
 		noend();
 	</f>
 	<f step7> // TAB Projects
-		//HTMLDEBUG d1("t1");
-		//HTMLDEBUG d2("t2");
 		bolixo_title (MSG_R(M_PROJECTS),this);
-		static unsigned size[5]={15,35,50,0,0};
-		<call webtabs>(MSG_R(M_PROJECTS),tabs,size);
-		<f documents>
-			sethelp();
-			// List projects
-			static WEBID id("tab:projects");
-			<call webtable>(id,currents[id.c_str()]);
-			<f load>
-				sethead (MSG_U(H_PROJECTS,"Owner\tProject"));
-				<call bod_client_list_inboxes>(glocal.con,w_session.c_str(),"",false);
-				<f ok>
-					unsigned rownum=0;
-					for (auto &inb:inboxes){
-						string id = string_f("%s/%s",inb.manager,inb.project);
-						const char *style = "white";
-						if (glocal.webtabs.selected(id)) glocal.webtable.setcurrent(rownum);
-						string add = string_f("webtab_add=1:%s/%s",inb.manager,inb.project);
-						glocal.webtable.setclickopt (true,"",add);
-						glocal.webtable.setrow (style,rownum,"%s\t%s",inb.manager,inb.project);
-						rownum++;
-					}
-				</f>
-				</call>
-			</f>
-			</call>
-		</f>
-		<f docmain>
-			glocal const char *id = id;
-			glocal string path = string_f ("/projects/%s",id);
-			glocal bool is_public = false;
-			glocal bool is_public_sub = false;
-			const char *pt = strchr(id,'/');
-			if (pt != NULL){
-				// is_public is true for the public project
-				// and for sub-directories (direct child) of the public project
-				if (strcmp(pt,"/public")==0){
-					glocal.is_public = true;
-				}else if (strncmp(pt,"/public/",8)==0 && strchr(pt+8,'/') == NULL){
-					glocal.is_public = true;
-					glocal.is_public_sub = true;
-				}
-			}
-			{
-			DIV f; f.id(TAB_FORM).print();
-			<call form>(formid);
-			<f setup>
-				DIV d; d.dispflex().flowcol().print();
-				const unsigned vspace=tlmpweb_ismobile() ? 10: 3;
-				const unsigned hspace=3;
-				{
-					DIV dd; dd.w(100).flexfixe().vmargins(vspace,0).print();
-					DIV ddd; ddd.dispflex().flowrow().print();
-					DIV dddd; dddd.flexfixe().margins(0,hspace).print();
-					/-#I_NEW_FOLDER New folder
-					dddd.end();
-					dddd.flexgrow().print();
-					field_string (w_folder,"style=width:100%");
-				}
-				{
-					DIV dd; dd.w(100).flexfixe().vmargins(vspace,vspace).print();
-					url_self (string_f("webtab_add=2:%s%c%ld~%s",glocal.id,WEBTAB_MARK,time(NULL),MSG_U(I_NEWDOC,"New_document"))
-						,MSG_U(I_CREATENEWDOC,"Create a new document"));
-				}
-				{
-					DIV dd; dd.w(100).flexfixe().print();
-					DIV ddd; ddd.dispflex().flowrow().print();
-					DIV dddd; dddd.flexfixe().print();
-					field_file (w_upload);
-					dddd.end();
-					dddd.flexgrow().print();
-					DIV ddddd; ddddd.sfloatright().print();
-					button_submit();
-				}
-			</f>
-			<f validate>
-				return true;
-			</f>
-			<f process>
-				glocal bool fail = false;
-				if (strcmp(w_folder.c_str(),"")!=0){
-					string filepath = string_f("%s/%s",glocal.path.c_str(),w_folder.c_str());
-					<call bod_client_mkdir>(glocal.con,w_session.c_str(),filepath);
-					<f ok>
-						if (!success){
-							glocal.fail = true;
-							htmlprintf (MSG_U(E_CREATEFOLDER,"Can't create folder: %s<br>\n"),msg);
-						}else{
-							w_folder.setempty();
-						}
-					</f>
-					</call>
-				}
-				if (strcmp(w_upload.c_str(),"")!=0){
-					const char *tempname = tlmpweb_getfilename(w_upload);
-					string filepath = string_f("%s/%s",glocal.path.c_str(),w_upload.c_str());
-					<call sendfile>(filepath,tempname,glocal.fail);
-					<f start>
-						<call bod_client_addfile_bob>(glocal.con,w_session.c_str(),filepath,content,more);
-						<f ok>
-							glocal.sendfile.sethandle(handle);
-							glocal.sendfile.setresult(success,msg);
-						</f>
-						</call>
-					</f>
-					<f rest>
-						<call bod_client_appendfile>(glocal.con,w_session.c_str(),handle,content,more);
-						<f ok>
-							glocal.sendfile.setresult(success,msg);
-						</f>
-						</call>
-					</f>
-					</call>
-				}
-				keepediting = true;
-				fail = glocal.fail;
-			</f>
-			</call>
-			}
-			WEBID ID_PROJECT("project",id);
-			<call webtable>(ID_PROJECT,currents[ID_PROJECT.c_str()],offsets[ID_PROJECT.c_str()],5);
-			<f click>
-				glocal unsigned dropmenu = dropmenu;
-				if (dropmenu == MENU_HELPPREVIEW){
-					glocal.webtabs.addtab("2:helppreview",MSG_U(I_HELPPREVIEW,"Preview"));
-				}else if (dropmenu == MENU_UNDELETE){
-					<call bod_client_undelete> (glocal.con,w_session.c_str(),glocal.path);
-					<f ok>
-						if (!success) htmlprintf (MSG_U(E_CANTUNDELETEENTRY,"Can't undelete: %s<br>\n"),msg);
-					</f>
-					</call>
-				}else if (dropmenu == MENU_PASTE){
-					index_paste(glocal.con,glocal.path);
-				}else if (dropmenu == MENU_PREVIEW && glocal.is_public && noline == (unsigned)-1){
-					glocal.webtabs.addtab(string_f("2:preview-%s",glocal.id),glocal.id);
-				}else{
-					if (dropmenu == 0) tlmpweb_flushheader();
-					<call bod_client_listdir>(glocal.con,w_session.c_str(),glocal.path,"",false,noline,1);
-					<f ok>
-						if (files.size()!=1){
-							htmlprintf (MSG_U(E_INTERNAL,"Internal error: %s\n"),msg);
-						}else{
-							auto &f = files[0];
-							glocal FILE_TYPE file_type = f.file_type;
-							glocal string fname = string_f("%s/%s",glocal.path.c_str(),f.name);
-							if (glocal.dropmenu == MENU_DELETE){
-								glocal bool ok = false;
-								if (f.type == ENTRY_FILE){
-									<call bod_client_delfile> (glocal.con,w_session.c_str(),glocal.fname);
-									<f ok>
-										if (!success) htmlprintf (MSG_U(E_CANTDELETEENTRY,"Can't delete: %s<br>\n"),msg);
-										glocal.ok = success;
-									</f>
-									</call>
-								}else{
-									<call bod_client_rmdir> (glocal.con,w_session.c_str(),glocal.fname);
-									<f ok>
-										if (!success) htmlprintf (MSG_U(E_CANTDELETEDIR,"Can't delete folder: %s<br>\n"),msg);
-										glocal.ok = success;
-									</f>
-									</call>
-								}
-								if (glocal.ok) index_setcopyitem(glocal.con_sess,glocal.fname,f.eventdate,f.name);
-							}else if (glocal.dropmenu == MENU_COPY){
-								index_setcopyitem(glocal.con_sess,glocal.fname,f.eventdate,f.name);
-							}else if (glocal.dropmenu == MENU_RENAME){
-								glocal const char *oldname = f.name;
-								<call form>("rename");
-								<f setup>
-									/- <table border=0>
-									/- <tr><td>
-									/-#F_OLDNAME Entry current name
-									/- <td>
-									htmlout(glocal.oldname);
-									/- <tr><td>
-									/-#F_NEWNAME New name
-									/- <td>
-									field_string (w_name,"");
-									/- </table>
-								</f>
-								<f validate>
-									return true;
-								</f>
-								<f process>
-									glocal bool fail = false;
-									string newname = string_f("%s/%s",glocal.path.c_str(),w_name.c_str());
-									<call bod_client_rename>(glocal.con,w_session.c_str(),glocal.fname,newname.c_str());
-									<f ok>
-										if (!success){
-											glocal.fail = true;
-											htmlprintf (MSG_U(E_RENAME,"Rename failed: %s<br>\n"),msg);
-										}
-									</f>
-									</call>
-									fail = glocal.fail;
-								</f>
-								</call>
-							}else if (glocal.dropmenu == MENU_DOWNLOAD){
-								tlmpweb_header ("Content-Disposition"," attachment; filename=%s",f.name);
-								util_sendfile (glocal.con,w_session.c_str(),glocal.fname);
-							}else if (glocal.dropmenu == MENU_PREVIEW){
-								if (glocal.is_public && f.type == ENTRY_DIR){
-									string tmp = string_f("%s/%s",glocal.id,f.name);
-									glocal.webtabs.addtab(string_f("2:preview-%s",tmp.c_str()),tmp);
-								}
-							}else if (glocal.dropmenu != 0){
-								if (file_is_text(f.file_type)){
-									if (f.islarge){
-										util_sendfile (glocal.con,w_session.c_str(),glocal.fname);
-									}else{
-										<call bod_client_readfile>(glocal.con,w_session.c_str(),glocal.fname,"");
-										<f ok>
-											if (!success){
-												index_popup (glocal.con,msg,glocal.file_type,info.modified,info.owner,glocal.fname);
-											}else{
-												index_popup (glocal.con,content,glocal.file_type,info.modified,info.owner,glocal.fname);
-											}
-										</f>
-										</call>
-									}
-								}
-							}else{
-								index_popup (glocal.con,"",f.file_type,f.modified,f.owner,glocal.fname);
-							}
-						}
-					</f>
-					</call>
-				}
-			</f>
-			<f load>
-				glocal unsigned status_width=20;	// Size of the small icon at the start of each line (new,seen,modified)
-				glocal unsigned rownum = nbskip;
-				// Defines all posible options for dropdown
-				adddrop_opt (MENU_COPY,MSG_U(M_COPY,"Copy"));
-				index_setpastemenu (this,glocal.path);
-				adddrop_opt (MENU_DELETE,MSG_U(M_DELETE,"Delete"));
-				adddrop_opt (MENU_UNDELETE,MSG_U(M_UNDELETE,"Undelete"));
-				adddrop_opt (MENU_RENAME,MSG_U(M_RENAME,"Rename"));
-				adddrop_opt (MENU_DOWNLOAD,MSG_U(M_DOWNLOAD,"Download"));
-				adddrop_opt (MENU_PREVIEW,MSG_U(M_PREVIEWPUB,"Public preview"));
-				adddrop_opt (MENU_HELPPREVIEW,MSG_U(M_HELPPREVIEW,"Preview help"));
-				if (!glocal.is_public) setdrop_hidden (MENU_HELPPREVIEW);
-				if (glocal.is_public){
-					glocal.webtable.setdrop_default({MENU_PASTE,MENU_PREVIEW,MENU_HELPPREVIEW});
-				}else{
-					glocal.webtable.setdrop_default({MENU_PASTE});
-				}
-				if (is_mobile){
-					hide_columns ({2,4});
-					glocal.status_width=60;
-				}else if (width != 0 && width < 400){
-					hide_columns ({2,4});
-				}
-				sethead (MSG_U(H_FOLDER,"\tName\tModified\tOwner\tSize"));
-				<call bod_client_listdir>(glocal.con,w_session.c_str(),glocal.path,"",false,nbskip,nblines);
-				<f ok>
-					if (!success) htmlprintf (MSG_U(E_READDIR,"Can't read directory %s: %s<br>\n"),glocal.path.c_str(),msg);
-					if (!deletes) glocal.webtable.setdrop_disable(MENU_UNDELETE);
-					const char *func = "Popup";
-					for (auto &f:files){
-						string path = string_f ("%s/%s",glocal.id,f.name);
-						glocal.webtable.setdrop_hidden (MENU_PREVIEW);
-						if (bolixo_isdir(f.type)){
-							if (glocal.is_public && !glocal.is_public_sub){
-								glocal.webtable.setdrop_visible (MENU_PREVIEW);
-							}
-							glocal.webtable.setclickopt (true,"",string_f("webtab_add=1:%s",path.c_str()));
-						}else if (file_is_image(f.file_type)){
-							glocal.webtable.setclickopt (true,"",string_f("webtab_add=2:%s~%s",path.c_str(),f.name));
-						}else if (file_is_video(f.file_type)){
-							glocal.webtable.setclickopt (true,func,"800,800");
-						}else if (file_is_sound(f.file_type)){
-							glocal.webtable.setclickopt (true,func,"350,50");
-						}else if (file_is_text(f.file_type)){
-							glocal.webtable.setclickopt (true,"",string_f("webtab_add=2:%s~%s",path.c_str(),f.name));
-						}
-						if (glocal.webtabs.selected(path)) glocal.webtable.setcurrent(glocal.rownum);
-						//static TRANS_NOTLOAD *tbviewed[]={P_MSG_U(I_NEW,"new"),P_MSG_U(I_BLK,"&nbsp;&nbsp;&nbsp;"),P_MSG_U(I_MOD,"mod")};
-						static const char *tbviewed[]={"new.png","seen.png","modified.png"};
-						char sizestr[20];
-						if (bolixo_isdir(f.type)){
-							sizestr[0] = '\0';
-						}else{
-							snprintf (sizestr,sizeof(sizestr)-1,"%u",f.size);
-						}
-						glocal.webtable.setrow ("white",glocal.rownum,"<img width=%u src=/%s>\t%s%s\t%s\t%s/%s:%s\t%s"
-							,glocal.status_width
-							,tbviewed[f.viewed]
-							,f.name,bolixo_isdir(f.type) ? "/" : ""
-							,format_date(userinfo.dateformat,f.modified).c_str()
-							,f.owner,f.listname,f.listmode,sizestr);
-						glocal.rownum++;
-					}
-				</f>
-				</call>
-			</f>
-			</call>
-		</f>
-		<f doctype2>
-			glocal const char *filename = id;
-			glocal string path = string_f("/projects/%s",glocal.filename);
-			glocal bool newdocument = false;
-			FILEINFO info;
-			if (util_entrytype(glocal.con,glocal.path,info)==ENTRY_DIR){
-				glocal.newdocument = true;
-				info.file_type = FILE_TEXT;
-			}
-			if (strcmp(id,"help")==0){
-				DIV d("webtable"); d.print();
-				index_doc(glocal.docpointers[SECTION_PROJECT],section_project);
-			}else if (strcmp(id,"helppreview")==0){
-				DIV d("webtable"); d.print();
-				index_doc(glocal.docpointers[SECTION_PREVIEW],section_preview);
-			}else if (strcmp(id,"helpmain")==0){
-				DIV d("webtable"); d.print();
-				index_doc(glocal.docpointers[SECTION_NONE],section_none);
-			}else if (strncmp(id,"preview-",8)==0){
-				glocal const char *base = id+8;
-				glocal string groupowner;
-				const char *pt = strchr(glocal.base,'/');
-				if (pt != NULL) glocal.groupowner = string(glocal.base,pt-glocal.base);;
-				DIV dd; dd.id(TAB_FORM).bg("#F1F1F1").paddings(5,5).print();
-				htmlprintf (MSG_U(I_PREVIEW,"Preview of the folder %s"),glocal.base);
-				/- <br>
-				dd.end();
-				// DIV d("wwebtable"); d.print();
-				<call public_page>();
-				<f list_talk>
-					glocal vector<SHORTMSG> *msgs = &msgs;
-					glocal int ret = -1;
-					<call bod_client_list_talk>(glocal.con,w_session.c_str(),"","public",glocal.groupowner,offset,nb);
-					<f ok>
-						if (success){
-							glocal.ret = 0;
-							glocal.msgs->clear();
-							for (auto &m:messages) glocal.msgs->push_back(m);
-						}
-					</f>
-					</call>
-					return glocal.ret;
-				</f>
-				<f listdir>
-					glocal int ret = -1;
-					glocal vector<FILEINFO> *files = &files;
-					string fname;
-					if (strcmp(path.ptr,"/")==0){
-						fname = string_f("/projects/%s",glocal.base);
-					}else{
-						fname = string_f("/projects/%s%s",glocal.base,path.ptr);
-					}
-					<call bod_client_listdir>(glocal.con,w_session.c_str(),fname,"",false,offset,nb);
-					<f ok>
-						if (success){
-							glocal.ret = 0;
-							glocal.files->clear();
-							for (auto &f:files) glocal.files->push_back(f);
-						}
-					</f>
-					</call>
-					return glocal.ret;
-				</f>
-				<f readfile>
-					glocal int ret = -1;
-					glocal BOB_TYPE *content = &content;
-					string fname = string_f("/projects/%s/%s",glocal.base,path.ptr);
-					<call bod_client_readfile_bob>(glocal.con,w_session.c_str(),fname,"",true);
-					<f ok>
-						if (success){
-							glocal.ret = 0;
-							*glocal.content = content;
-						}
-					</f>
-					</call>
-					return glocal.ret;
-				</f>
-				<f projecturl>
-					string ret;
-					string tmp = util_flipspaces(modified.ptr);
-					if (is_any_of(name.ptr,"/photo.jpg","/mini-photo.jpg")){
-						// Those tow are located in the public folder directly
-						ret = string_f("%s?webstep=%d&image=/projects/%s/public%s&mod=%s"
-							,tlmpweb_curpage(),step_image,glocal.groupowner.c_str(),name.ptr,tmp.c_str());
-					}else if (is_image){
-						const char *slash = name.ptr[0] == '/' ? "" : "/";
-						ret = string_f("%s?webstep=%d&image=/projects/%s%s%s&mod=%s"
-							,tlmpweb_curpage(),step_image,glocal.base,slash,name.ptr,tmp.c_str());
-					}else{
-						string hidden;
-						form_gethidden(hidden);
-						ret = string_f("%s?file=%s&%s",tlmpweb_curpage(),name.ptr,hidden.c_str());
-					}
-					return ret;
-				</f>
-				<f msgurl>
-					string ret;
-					const char *pt = strchr(glocal.base,'/');
-					if (pt != NULL){
-						string user (glocal.base,pt-glocal.base);
-						string tmp = util_flipspaces(modified.ptr);
-						ret = string_f("%s?webstep=%d&image=/msgs/%s/short-inbox/public/%s&mod=%s"
-							,tlmpweb_curpage(),step_image,user.c_str(),name.ptr,tmp.c_str());
-					}
-					return ret;
-				</f>
-				<f process>
-					glocal string website;
-					glocal string interest;
-					<call bod_client_info_read>(glocal.con,w_session.c_str(),"");
-					<f ok>
-						if (success && info.publish){
-							glocal.website = info.website;
-							glocal.interest = info.interest;
-						}
-					</f>
-					</call>
-					public_display (*this,glocal.con,userinfo.name,true,glocal.website,glocal.interest);
-				</f>
-				<f sendfile>
-					string fname = string_f("/projects/%s/%s",glocal.base,name.ptr);
-					tlmp_error ("sendfile %s\n",fname.c_str());
-					util_sendfile(glocal.con,w_session.c_str(),fname);
-				</f>
-				</call>
-			}else if (file_is_image(info.file_type)){
-				DIV d("webtable"); d.print();
-				DIV dd; dd.id(TAB_FORM).bg("#F1F1F1").paddings(5,5).print();
-				htmlprintf (MSG_R(I_DOCNAME),glocal.filename);
-				/- <br>
-				dd.end();
-				htmlout (index_img(step_image,"max-width:100%; max-height=100%;",glocal.path,info.modified));
-			}else if (info.file_type == FILE_TEXT){
-				<call form>(formid);
-				<f load>
-					if (!glocal.newdocument){
-						index_loadfile(glocal.con,glocal.path,w_content);
-					}
-				</f>
-				<f setup>
-					{
-						DIV f; f.id(TAB_FORM).w(100).print();
-						const unsigned vspace=3;
-						DIV d; d.dispflex().flowrow().print();
-						DIV dd; dd.flexfixe().vmargins(vspace,0).print();
-						if (glocal.newdocument){
-							/-#I_NEWDOCNAME Name&nbsp;
-							field_string (w_filename,"size=25");	
-						}else{
-							const char *filename = glocal.filename;
-							if (tlmpweb_ismobile()){
-								const char *pt = strrchr(filename,'/');
-								if (pt != NULL) filename = pt+1;
-							}
-							htmlprintf (MSG_U(I_DOCNAME,"Document name:&nbsp;%s"),filename);
-						}
-						dd.end();
-						dd.flexgrow().print();
-						DIV ddd; ddd.sfloatright().print();
-						button_submit(MSG_U(B_SAVE,"Save"));
-					}
-					WEBID id ("prjtext",glocal.filename);
-					field_textarea(w_content,id,-100,"style=\"border:none\"");
-				</f>
-				<f validate>
-					bool ret = true;
-					if (glocal.newdocument){
-						if (strcmp(w_filename.c_str(),"")==0){
-							/- You must provide a file name
-							ret = false;
-						}else if (util_entrytype(glocal.con,string_f("%s/%s",glocal.path.c_str(),w_filename.c_str()))!=ENTRY_NONE){
-							/- Document already exist
-							ret = false;
-						}
-					}
-					return ret;
-				</f>
-				<f process>
-					<call sendfile_var>(glocal.path,w_content,fail);	
-					<f start>
-						if (glocal.newdocument){
-							glocal.path = string_f("%s/%s",glocal.path.c_str(),w_filename.c_str());
-							<call bod_client_addfile_bob>(glocal.con,w_session.c_str(),glocal.path,content,more);
-							<f ok>
-								glocal.sendfile_var.setresult(success,msg);
-								glocal.sendfile_var.sethandle(handle);
-							</f>
-							</call>
-						}else{
-							<call bod_client_modifyfile_bob>(glocal.con,w_session.c_str(),filepath,content,more);
-							<f ok>
-								glocal.sendfile_var.setresult(success,msg);
-								glocal.sendfile_var.sethandle(handle);
-							</f>
-							</call>
-						}
-					</f>
-					<f rest>
-						<call bod_client_appendfile>(glocal.con,w_session.c_str(),handle,content,more);
-						<f ok>
-							glocal.sendfile_var.setresult(success,msg);
-						</f>
-						</call>
-					</f>
-					</call>
-					if (!fail){
-						if (glocal.newdocument){
-							glocal.webtabs.setid (string_f("%s/%s",glocal.filename,w_filename.c_str()));
-							glocal.webtabs.settitle (w_filename.c_str());
-							glocal.webtabs.redotab();
-							resetstate();
-							// We have to mark this document as viewed (we just created it)
-							index_markview (glocal.con,glocal.path);
-						}else{
-							keepediting = true;
-						}
-					}
-				</f>
-				</call>
-			}
-		</f>
-		</call>
-		/- </table>
+		projects (glocal.con,glocal.con_sess,glocal.docpointers);
 	</f>
 	<f step8> // TAB Mails
 		bolixo_title (MSG_U(T_MAILS,"Mails"),this);
@@ -2814,7 +2073,7 @@ extern "C" void webmain_real()
 				index_doc(glocal.docpointers[SECTION_NONE],section_none);
 			}else if (file_is_image(info.file_type)){
 				DIV d("webtable"); d.print();
-				string img = index_img(step_image,"max-width:100%; max-height:100%;",id,info.modified);
+				string img = util_img(step_image,"max-width:100%; max-height:100%;",id,info.modified);
 				/- <br>
 				htmlout (img);
 			}else if (file_is_text(info.file_type)){

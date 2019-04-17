@@ -33,6 +33,7 @@
 #define INSTRUMENT_EXTERN
 #include "../instrument.h"
 #include "w_var.h"
+#include "steps.h"
 
 using namespace std;
 USERLOGINFO userinfo;
@@ -61,7 +62,6 @@ string w_session;
 #define bod_client_rmdir_NOTNEED
 #define bod_client_listdir_NOTNEED
 #define bod_client_set_access_NOTNEED
-#define bod_client_markview_NOTNEED
 #define bod_client_create_group_list_NOTNEED
 #define bod_client_create_group_NOTNEED
 #define bod_client_set_group_NOTNEED
@@ -1285,16 +1285,6 @@ void public_page (_F_public_page &c)
 {
 	c.process();
 }
-#if 0
-static string util_img(unsigned step, unsigned width, PARAM_STRING dirpath, PARAM_STRING filename, PARAM_STRING date)
-{
-	string tmp = util_flipspaces(date);
-	const char *sep = "/";
-	if (dirpath.ptr[0] == '\0') sep = "";
-	return string_f ("<img width=%u src=%s?webstep=%u&image=%s%s%s&mod=%s>"
-		,width,tlmpweb_curpage(),step,dirpath.ptr,sep,filename.ptr,tmp.c_str());
-}
-#endif
 static void util_urls (_F_public_page &c, const SHORTMSG &m, string &content, bool large)
 {
 	string url = c.msgurl(m.uuid,m.submit);
@@ -1711,3 +1701,161 @@ ENTRY_TYPE util_entrytype(CONNECT_INFO &con,PARAM_STRING path)
 	FILEINFO info;
 	return util_entrytype(con,path,info);
 }
+
+void _F_sendfile_common::sethandle (PARAM_STRING _handle)
+{
+	handle = _handle.ptr;
+}
+void _F_sendfile_common::setresult (bool _success, PARAM_STRING msg)
+{
+	success = _success;
+	if (!success) htmlprintf ("sendfile failed: %s<br>\n",msg.ptr);
+}
+void sendfile(_F_sendfile &c, PARAM_STRING filepath, PARAM_STRING localfile, bool &fail)
+{
+	c.success = true;
+	FILE *fin = fopen (localfile.ptr,"r");
+	if (fin == NULL){
+		htmlprintf ("Internal error reading temp file: :%s:<br>\n",localfile.ptr);
+		fail = true;
+	}else{
+		char buf[40000];
+		size_t nb = fread (buf,1,sizeof(buf),fin);
+		bool more = (nb == sizeof(buf));
+		c.start (filepath.ptr,BOB_TYPE(buf,nb,false),more);
+		if (more && c.success){
+			if (c.handle.empty()){
+				tlmp_error ("sendfile: handle is empty for file %s\n",filepath.ptr);
+				htmlprintf ("Internal error, sendfile has not handle<br>\n");
+			}else{
+				while (more && c.success){
+					nb = fread (buf,1,sizeof(buf),fin);
+					more = (nb == sizeof(buf));
+					c.rest (c.handle,BOB_TYPE(buf,nb,false),more);
+				}
+			}
+		}
+		fclose (fin);
+	}
+	if (!c.success) fail = true;
+}
+void sendfile_var(_F_sendfile_var &c, PARAM_STRING filepath, const W_SSTRING &var_content, bool &fail)
+{
+	const char *content = var_content.c_str();
+	c.success = true;
+	unsigned len = strlen(content);
+	unsigned nb = len;
+	bool more = false;
+	if (nb > 40000){
+		nb = 40000;
+		more = true;
+	}
+	c.start (filepath.ptr,BOB_TYPE(content,nb,false),more);
+	if (more && c.success){
+		if (c.handle.empty()){
+			tlmp_error ("sendfile: handle is empty for file %s\n",filepath.ptr);
+			htmlprintf ("Internal error, sendfile has not handle<br>\n");
+		}else{
+			unsigned offset = nb;
+			while (offset < len && c.success){
+				nb = len - offset;
+				more = false;
+				if (nb > 40000){
+					nb = 40000;
+					more = true;
+				}
+				c.rest (c.handle,BOB_TYPE(content+offset,nb,false),more);
+				offset += nb;
+			}
+		}
+	}
+	if (!c.success) fail = true;
+}
+/*
+	Format an <img tag
+*/
+string util_img(unsigned step, unsigned width, PARAM_STRING dirpath, PARAM_STRING filename, PARAM_STRING date)
+{
+	string tmp = util_flipspaces(date);
+	const char *sep = "/";
+	if (dirpath.ptr[0] == '\0') sep = "";
+	return string_f ("<img width=%u src=%s?webstep=%u&image=%s%s%s&mod=%s>"
+		,width,tlmpweb_curpage(),step,dirpath.ptr,sep,filename.ptr,tmp.c_str());
+}
+string util_img(unsigned step, const char *style, PARAM_STRING filepath, PARAM_STRING date)
+{
+	string tmp = util_flipspaces(date);
+	return string_f ("<img width=100%% style='%s' src=%s?webstep=%u&image=%s&mod=%s>"
+		,style,tlmpweb_curpage(),step,filepath.ptr,tmp.c_str());
+}
+static void index_format_large_text(const BOB_TYPE &content)
+{
+	string tmp = string((const char*)content.getbuffer(),content.getsize());
+	tmp = util_format_shortmsg (tmp.c_str(),800);
+	htmlwrite (tmp.c_str(),tmp.size());
+}
+<mod>
+void util_popup (CONNECT_INFO &con, int step, const char *content, FILE_TYPE file_type, PARAM_STRING modified, PARAM_STRING from, PARAM_STRING filepath)
+{
+	glocal CONNECT_INFO *con = &con;
+	const char *path = filepath.ptr;
+	util_defstyles();
+	tlmpweb_body("white",NULL);
+	DIV d; d.w(100).h(100).dispflex().flowcol().print();
+	DIV dd; dd.flexfixe().w(100).print();
+	htmlprintf ("%s: %s<br>\n",MSG_R(I_FROM),from.ptr);
+	htmlprintf ("%s: %s<br>\n",MSG_R(I_DATE),modified.ptr);
+	dd.end();
+	dd.flexfixe().w(100).h(95).vpaddings(5,5).bordertop(1,"black").print();	
+	DIV ddd; ddd.marginauto().w(99).print();	
+	if (content[0] != '\0'){
+		htmlout (util_format_shortmsg (content,800));
+	}else if (file_is_sound(file_type)){
+		htmlprintf ("<audio controls>\n"
+			"<source src=\"%s?webstep=%u&image=%s\" type=\"audio/%s\">\n"
+			"</audio>"
+			,tlmpweb_curpage(),step,path,tbftype[file_type]);
+	}else if (file_is_video(file_type)){
+		htmlprintf ("<video width=\"800\" height=\"600\" controls>\n"
+			"<source src=\"%s?webstep=%u&image=%s\" type=\"video/mp4\">\n"
+			"Your browser does not support the video tag.\n"
+			"</video>\n"
+			,tlmpweb_curpage(),step,path);
+	}else if (file_is_image(file_type)){
+		string img = util_img (step,"",path,modified);
+		htmlout (img);
+	}else if (file_is_text(file_type)){
+		<call bod_client_readfile_bob>(con,w_session.c_str(),path,"",false);
+		<f ok>
+			if (!success){
+				htmlprintf ("Can't read file: %s\n",msg);
+			}else{
+				index_format_large_text (content);
+				glocal bool more = more;
+				while (glocal.more){
+					<call bod_client_readmore>(*glocal.con,w_session.c_str(),handle);
+					<f ok>
+						index_format_large_text (content);
+						glocal.more = more;
+					</f>
+					</call>
+				}	
+			}
+		</f>
+		</call>
+	}
+}
+</mod>
+void util_popup (CONNECT_INFO &con, const char *content, FILE_TYPE file_type, PARAM_STRING modified, PARAM_STRING from, PARAM_STRING filepath)
+{
+	util_popup (con,step_image,content,file_type,modified,from,filepath);
+}
+<mod>
+void util_markview (CONNECT_INFO &con, PARAM_STRING fname)
+{
+	<call bod_client_markview>(con,w_session.c_str(),fname);
+	<f ok>
+	</f>
+	</call>
+}
+</mod>
