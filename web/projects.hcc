@@ -390,6 +390,7 @@ void projects(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER
 		</call>
 	</f>
 	<f doctype2>
+		glocal const char *formid = formid;
 		glocal const char *filename = id;
 		glocal string path = string_f("/projects/%s",glocal.filename);
 		glocal bool newdocument = false;
@@ -550,7 +551,7 @@ void projects(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER
 					DIV ddd; ddd.sfloatright().print();
 					button_submit(MSG_U(B_SAVE,"Save"));
 				}
-				WEBID id ("prjtext",glocal.filename);
+				WEBID id ("prjtext",glocal.formid);
 				field_textarea(w_content,id,-100,"style=\"border:none\"");
 			</f>
 			<f validate>
@@ -596,12 +597,16 @@ void projects(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER
 				</call>
 				if (!fail){
 					if (glocal.newdocument){
-						glocal.webtabs.setid (string_f("%s/%s",glocal.filename,w_filename.c_str()));
+						WEBID oldid ("prjtext",glocal.formid);
+						string newtabid = string_f("%s/%s",glocal.filename,w_filename.c_str());
+						glocal.webtabs.setid (newtabid);
 						glocal.webtabs.settitle (w_filename.c_str());
 						glocal.webtabs.redotab();
 						resetstate();
 						// We have to mark this document as viewed (we just created it)
 						util_markview (glocal.con,glocal.path);
+						WEBID newid ("prjtext",newtabid);
+						webtable_rename_scroll(oldid.c_str(),newid.c_str());
 					}else{
 						keepediting = true;
 					}
