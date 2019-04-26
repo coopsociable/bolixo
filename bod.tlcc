@@ -460,22 +460,13 @@ static void bod_list_talk (
 	unsigned nb,
 	bool &deletes,
 	unsigned &total,
-	string &msg,
-	bool public_page)	// keepdays do not apply to public pages
+	string &msg)
 {
 	glocal unsigned nb = nb;
 	glocal map<string,SHORTMSG> mp;
 	glocal bool deletes = false;
 	int dirid = fs_find_short_inbox (ownerid,groupowner,groupname,msg);
 	if (dirid != -1){
-		DATEASC keepdate;
-		const char *keepdate_ptr;
-		if (public_page){
-			 keepdate_ptr = "2018/12/13";	// Start of bolixo
-		}else{	
-			fdpass_asctime(time(NULL)-keepdays*24*60*60,keepdate);
-			keepdate_ptr = keepdate.buf;
-		}
 		<call sql_query>("select dirs_content.name,dirs_content.modified,id2name.name,id2name_copy.name,files.filetype"
 			",dirs_content.itemid,files.content,dirs_content.eventtime,dirs_content.type,files.signature,dirs_content.eventtime"
 			",marks.modified"
@@ -485,8 +476,8 @@ static void bod_list_talk (
 			" join id2name on ids.ownerid = id2name.userid"
 			" left join id2name as id2name_copy on dirs_content.copiedby = id2name_copy.userid"
 			" left join marks on marks.itemid=dirs_content.itemid and marks.userid=%u"
-			" where dirid = %d and dirs_content.eventtime > '%s' and (type=%u or type=%u) order by eventtime"
-			,userid,dirid,keepdate_ptr,ENTRY_MSG,ENTRY_DELETED);
+			" where dirid = %d and (type=%u or type=%u) order by eventtime"
+			,userid,dirid,ENTRY_MSG,ENTRY_DELETED);
 		<f onerow>
 			SHORTMSG msg;
 			msg.uuid = row[0];
@@ -2493,7 +2484,7 @@ static int bod_main (
 					</f>
 					<f onerow>
 						bod_list_talk (glocal.userid,glocal.msgs,atoi(row[0]),glocal.groupowner,glocal.groupname
-							,glocal.offset,glocal.nb,glocal.deletes,glocal.total,glocal.msg,false);
+							,glocal.offset,glocal.nb,glocal.deletes,glocal.total,glocal.msg);
 					</f>
 					</call>
 				}
@@ -3029,7 +3020,7 @@ static int bod_main (
 				if (userid != (unsigned)-1){
 					bool deletes;
 					unsigned total;
-					bod_list_talk (userid,msgs,userid,username,"public",offset,nb,deletes,total,msg,true);
+					bod_list_talk (userid,msgs,userid,username,"public",offset,nb,deletes,total,msg);
 				}
 				if (msg.size() > 0){
 					msgs.clear();
