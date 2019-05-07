@@ -1337,11 +1337,11 @@ static bool bo_writed_public_msg(const char *srcname)
 }
 
 /*
-	Send notifications to the session manager about an event.
+	Send notifications (session manager and email) about an event.
 	It checks the table notifications to filter out some notifications.
 
 	The notificartions table has this logic. If there is a record for a userid,key, then it applies.
-	If there is not record, then we assume that notification is on for the user interface (ui) and off for email and digest.
+	If there is no record, then we assume that notification is on for the user interface (ui) and off for email and digest.
 */
 <mod>
 static void bo_writed_notify (
@@ -1376,6 +1376,7 @@ static void bo_writed_notify (
 			glocal.userids_notseen.erase(userid);
 		</f>
 		</call>
+		// Userids not found in the query get the default behavior
 		for (auto u:glocal.userids_notseen) glocal.userids_ui.push_back(u);
 		if (glocal.userids_ui.size() > 0){
 			<call bo_sessiond_admin_setnotify>(con_sess,glocal.userids_ui,key);
@@ -3373,7 +3374,7 @@ int main (int argc, char *argv[])
 									glocal.msg = "Can't insert in contact_request";
 								}
 								string email_title = MSG_U(I_EMAILNOTIFICATION,"Bolixo.org notification");
-								string email_content = "profile:Contacts";
+								string email_content = NOTIFY_PROFILE_CONTACTS;
 								bo_writed_notify(glocal.ctx,glocal.con,"profile:Contacts",glocal.target_userid,email_title,email_content);
 							</f>
 							</call>
@@ -3430,7 +3431,7 @@ int main (int argc, char *argv[])
 									}
 									string email_title = MSG_R(I_EMAILNOTIFICATION);
 									string email_content;	// Not done
-									bo_writed_notify(glocal.ctx,glocal.con,"profile:Contact-req",glocal.target_userid,email_title,email_content);
+									bo_writed_notify(glocal.ctx,glocal.con,NOTIFY_PROFILE_CONTACT_REQ,glocal.target_userid,email_title,email_content);
 								}
 							</f>
 							</call>

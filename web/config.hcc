@@ -34,6 +34,7 @@
 #include "../instrument.h"
 #include "../proto/bod_client.protoch"
 #include "w_var.h"
+#include "../helper.h"
 
 void index_doc (DOCUMENT_POINTER &pt, DOC_ID &jump, bool index);
 void index_doc (DOCUMENT_POINTER &pt, DOC_ID &jump);
@@ -145,6 +146,16 @@ static const char *profile_notify_icon (const string &id)
 	string tmp = string("profile:")+id;
 	return userinfo.notifies.count(tmp) > 0 ? "/new.png" : "/seen.png";
 }
+/*
+	Set the check boxes for the notitications dialog
+*/
+static void profile_set_notifies (_F_form &f, PARAM_STRING key)
+{
+	/- <td align=center>
+	f.field_checkbox(w_notify_ui,key,"");
+	/- <td align=center>
+	f.field_checkbox(w_notify_email,key,"");
+}
 
 <mod>
 void profile(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER> &docpointers)
@@ -161,6 +172,7 @@ void profile(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER>
 			sethead (MSG_U(H_PROFILE,"\tProfiles"));
 			vector<tuple<string,string,string>> t={
 				{"Account",MSG_U(T_ACCOUNT,"Account"),MSG_R(T_ACCOUNT)},
+				{"Notifications",MSG_U(T_NOTIFICATIONS,"Notifications"),MSG_R(T_NOTIFICATIONS)},
 				{"Interests",MSG_U(T_INTERESTS,"Interests"),MSG_R(T_INTERESTS)},
 				{"Contacts",MSG_U(T_CONTACTS,"Contacts"),MSG_U(T_CONTACTSTOYOU,"Contact requests to you")},
 				{"Contact-req",MSG_U(T_CONTACT_REQS,"Requests"),MSG_U(T_REQUESTSBYYOU,"Contact requests from you")},
@@ -193,6 +205,8 @@ void profile(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER>
 			index_doc((*glocal.docpointers)[SECTION_ACCOUNT],section_account);
 		}else if (strcmp(id,"helpinterests")==0){
 			index_doc((*glocal.docpointers)[SECTION_INTERESTS],section_interests);
+		}else if (strcmp(id,"helpnotifications")==0){
+			index_doc((*glocal.docpointers)[SECTION_NOTIFICATIONS],section_notifications);
 		}else if (strcmp(id,"helpmain")==0){
 			index_doc((*glocal.docpointers)[SECTION_NONE],section_none);
 		}else if (strncmp(id,"project:",8)==0){
@@ -360,7 +374,7 @@ void profile(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER>
 							w_desc = g.description;
 							w_content = "";
 							for (unsigned i=0; i<g.users.size(); i++){
-								w_content.appendf ("%s:%s:%s\n",g.users[i],g.access[i],g.roles[i]);
+								w_content += string_f ("%s:%s:%s\n",g.users[i],g.access[i],g.roles[i]);
 							}
 							break;
 						}
@@ -821,6 +835,85 @@ void profile(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER>
 					}
 				</f>
 				</call>
+			</f>
+			</call>
+		}else if (strcmp(id,"Notifications")==0){ // CONF notifications
+			glocal string status = "&nbsp;";
+			sethelp("helpnotifications",MSG_U(I_HELPNOTIF,"Notifications"));
+			DIV d("webtable"); d.autoscroll().print();
+			glocal vector<string> keys;
+			glocal.keys.push_back(NOTIFY_PROFILE_CONTACTS);
+			glocal.keys.push_back(NOTIFY_PROFILE_CONTACT_REQ);
+			<call bod_client_list_groups>(glocal.con,w_session.c_str(),"",false);
+			<f ok>
+				for (auto &g:groups){
+					glocal.keys.push_back(string_f("talks:%s:%s",g.owner,g.name));
+				}
+			</f>
+			</call>
+			<call form>(id);
+			<f top>
+				/- <table border=0>
+				htmlprintf ("<tr><td colspan=4>%s",glocal.status.c_str());
+			</f>
+			<f bottom>
+				/- </table>
+			</f>
+			<f load>
+				for (auto &k:glocal.keys){
+					glocal const char *key = k.c_str();
+					<call bod_client_get_notification>(glocal.con,w_session.c_str(),"",k);
+					<f ok>
+						// tlmp_warning ("notify load key=%s ui=%u email=%u\n",glocal.key,ui,email);
+						w_notify_ui[glocal.key] = ui;
+						w_notify_email[glocal.key] = email;
+					</f>
+					</call>
+				}
+			</f>
+			<f setup>
+				<call bod_client_list_groups>(glocal.con,w_session.c_str(),"",false);
+				<f ok>
+					htmlprintf ("<tr><td colspan=2 align=center><b>%s</b>\n",MSG_R(H_MESSAGES));
+					htmlprintf ("<tr><td><b>%s</b><td><b>%s</b><td><b>%s&nbsp;&nbsp;</b><td><b>%s</b>\n"
+						,MSG_U(I_OWNER,"Owner"),MSG_R(I_GROUP)
+						,MSG_U(I_PASSIVENOTIF,"Passive"),MSG_U(I_EMAILNOTIF,"Email"));
+					htmlprintf ("<tr><td><td>%s",MSG_R(I_SHORTINBOX));
+					profile_set_notifies(glocal.form,string_f("talks:%s:inbox",userinfo.name.c_str()));
+					for (auto &g:groups){
+						if (userinfo.name != g.owner
+							|| is_not_in(g.name,"inbox","anonymous")){
+							htmlprintf ("<tr><td>%s<td>%s",g.owner,g.name);
+							profile_set_notifies (glocal.form,string_f("talks:%s:%s",g.owner,g.name));
+						}
+					}
+					htmlprintf ("<tr><td><td>%s",MSG_R(I_ANONINBOX));
+					profile_set_notifies (glocal.form,string_f("talks:%s:anonymous",userinfo.name.c_str()));
+				</f>
+				</call>
+				/- <tr><td>&nbsp;
+				htmlprintf ("<tr><td colspan=2 align=center><b>%s</b><td><b>%s&nbsp;&nbsp;</b><td><b>%s</b>\n"
+					,MSG_U(H_CONTACTNOTIFS,"Contacts")
+					,MSG_R(I_PASSIVENOTIF),MSG_R(I_EMAILNOTIF));
+				htmlprintf ("<tr><td colspan=2>%s",MSG_R(T_CONTACTSTOYOU));
+				profile_set_notifies (*this,NOTIFY_PROFILE_CONTACTS);
+				htmlprintf ("<tr><td colspan=2>%s",MSG_R(T_REQUESTSBYYOU));
+				profile_set_notifies (*this,NOTIFY_PROFILE_CONTACT_REQ);
+				/- <tr><td>
+				button_submit();
+			</f>
+			<f validate>
+				return true;
+			</f>
+			<f process>
+				for (auto &k:glocal.keys){
+					<call bod_client_set_notification>(glocal.con,w_session.c_str(),"",k,w_notify_ui[k],false,w_notify_email[k],false);
+					<f ok>
+					</f>
+					</call>
+				}
+				glocal.status = MSG_R(I_CONFIGUPDATED);
+				keepediting = true;
 			</f>
 			</call>
 		}else if (strcmp(id,"Account")==0){ // CONF account

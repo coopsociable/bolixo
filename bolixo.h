@@ -89,5 +89,8 @@ enum CONTACT_STATUS{
 	CONTACT_REJECTED
 };
 
+#define NOTIFY_PROFILE_CONTACTS "profile:Contacts"
+#define NOTIFY_PROFILE_CONTACT_REQ "profile:Contact-req"
+
 #endif
 

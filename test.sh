@@ -670,7 +670,7 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 		create unique index formids_formid on formids(formid,sessionid);
 		create table formvars(
 			id int,
-			name char(30),
+			name varchar(100),
 			val text
 		)engine=$ENGINE;
 		create index formvars_id on formvars(id);
@@ -719,6 +719,11 @@ elif [ "$1" = "createdb-patch4" ]; then # db: add notifications table
 			digest tinyint unsigned	default 0
 		)engine=$ENGINE;
 		create unique index notification_userid on notifications(userid,notify_key);
+	EOF
+elif [ "$1" = "createdb-patch5" ]; then # db: make formvars name varchar(100)
+	ENGINE=myisam
+	mysql -uroot -S $SOCKN $DBNAMET <<-EOF
+		alter table formvars modify name varchar(100);
 	EOF
 elif [ "$1" = "generate-system-pubkey" ] ; then # config: Generate the system public key
 	echo Generate --system-- crypto key
