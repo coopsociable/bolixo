@@ -909,6 +909,7 @@ elif [ "$1" = "cmp-sequence" ] ; then # S: Execute QA tests
 			OPT=jacques-A
 		fi
 		$0 syslog-clear
+		echo test=$test
 		./scripts/access.sh $test $OPT >$CMPDIR/$test.out 2>$CMPDIR/$test.err
 		$0 syslog-logs >$CMPDIR/$test.log
 	done
@@ -1476,6 +1477,10 @@ elif [ "$1" = "lxc0-webssl" ]; then # prod:
 			-e /var/www/html/narrowscreen.jpg \
 			-e /var/www/html/email-outline.svg \
 			-e /var/www/html/email-open-outline.svg \
+			-e /var/www/html/notifications.jpg \
+			-e /var/www/html/notifypopup.jpg \
+			-e /var/www/html/notifications-fr.jpg \
+			-e /var/www/html/notifypopup-fr.jpg \
 			-i /usr/sbin/trli-init \
 			-l $LOG \
 			-n $w -p /usr/sbin/httpd >/var/lib/lxc/$w/$w-lxc0.sh

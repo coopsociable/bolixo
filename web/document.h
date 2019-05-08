@@ -34,6 +34,7 @@ EXTERN DOC_ID section_profile;
 void jump2app (int step, PARAM_STRING webtab_add);
 void jump2app (int step, int tab);
 void jump_config_account();
+void jump_config_notifications();
 void jump_config_interests();
 void jump_config_contacts();
 void jump_config_contact_req();
