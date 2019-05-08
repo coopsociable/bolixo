@@ -124,7 +124,7 @@ make install
 /var/www/html/group-inbox-ui-fr.jpg
 /var/www/html/email-open-outline.svg
 /var/www/html/email-outline.svg
-var/www/html/notifications.jpg
+/var/www/html/notifications.jpg
 /var/www/html/notifypopup.jpg
 /var/www/html/notifications-fr.jpg
 /var/www/html/notifypopup-fr.jpg
