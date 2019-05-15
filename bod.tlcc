@@ -164,17 +164,19 @@ struct SESSION_CACHE{
 	unsigned userid;
 	bool is_admin;
 	string lang;
+	string timezone;
 	SESSION_CACHE(){
 		userid = 0;
 		is_admin = false;
 		start = 0;
 	}
-	SESSION_CACHE(const char *_name, unsigned _userid, bool _is_admin, const char *_lang){
+	SESSION_CACHE(const char *_name, unsigned _userid, bool _is_admin, const char *_lang, const char *_timezone){
 		start = time(NULL);
 		name = _name;
 		userid = _userid;
 		is_admin = _is_admin;
 		lang = _lang;
+		timezone = _timezone;
 	}
 };
 static map<string,SESSION_CACHE> sessions;
@@ -190,6 +192,7 @@ static void bod_sessions_clean()
 		}
 	}
 }
+static string user_timezone="system";	// timezone of the current user
 /*
 	Get the userid associated with the sessionid
 */
@@ -202,6 +205,7 @@ static unsigned trli_getsessionuser (CONNECT_INFO &con, const char *sessionid, b
 		userid = s->second.userid;
 		name = s->second.name;
 		is_admin = s->second.is_admin;
+		user_timezone = s->second.timezone;
 		translat_selectlang(s->second.lang.c_str());
 	}else{
 		glocal const char *sessionid = sessionid;
@@ -218,7 +222,9 @@ static unsigned trli_getsessionuser (CONNECT_INFO &con, const char *sessionid, b
 				glocal.is_admin = admin;
 				(*glocal.name) = name;
 				translat_selectlang(lang);
-				sessions[glocal.sessionid] = SESSION_CACHE(name,userid,admin,lang);
+				if (timezone[0] == '\0') timezone = "system";
+				user_timezone = timezone;
+				sessions[glocal.sessionid] = SESSION_CACHE(name,userid,admin,lang,timezone);
 			}
 		</f>
 		</call>
@@ -468,7 +474,7 @@ static void bod_list_talk (
 	int dirid = fs_find_short_inbox (ownerid,groupowner,groupname,msg);
 	if (dirid != -1){
 		<call sql_query>("select dirs_content.name,dirs_content.modified,id2name.name,id2name_copy.name,files.filetype"
-			",dirs_content.itemid,files.content,dirs_content.eventtime,dirs_content.type,files.signature,dirs_content.eventtime"
+			",dirs_content.itemid,files.content,convert_tz(dirs_content.eventtime,'system','%s'),dirs_content.type,files.signature,dirs_content.eventtime"
 			",marks.modified"
 			" from dirs_content"
 			" join files on files.id = dirs_content.itemid and files.modified = dirs_content.modified"
@@ -477,14 +483,18 @@ static void bod_list_talk (
 			" left join id2name as id2name_copy on dirs_content.copiedby = id2name_copy.userid"
 			" left join marks on marks.itemid=dirs_content.itemid and marks.userid=%u"
 			" where dirid = %d and (type=%u or type=%u) order by eventtime"
-			,userid,dirid,ENTRY_MSG,ENTRY_DELETED);
+			,user_timezone.c_str(),userid,dirid,ENTRY_MSG,ENTRY_DELETED);
 		<f onerow>
 			SHORTMSG msg;
 			msg.uuid = row[0];
 			const char *modified = row[1];
-			msg.submit = string(row[7],19);		// The file modification time is not useful for message
-								// An image paste into a message list will keep its
-								// modification time. So we use the eventtime.
+			// tlmp_error ("eventtime=%s timezone=%s\n",row[7],user_timezone.c_str());
+			if (row[7] != nullptr){
+				// eventtime can't be null, unless the timezone is invalid.
+				msg.submit = string(row[7],19);		// The file modification time is not useful for message
+									// An image paste into a message list will keep its
+									// modification time. So we use the eventtime.
+			}
 			msg.from = row[3] != NULL ? row[3] : row[2];	// We pick copiedby instead of the file owner if not NULL
 			ENTRY_TYPE type = (ENTRY_TYPE)atoi(row[8]);
 			if (type == ENTRY_DELETED){
@@ -1921,10 +1931,13 @@ static int bod_main (
 						entry.msg = MSG_U(E_NOTALLOWEDLIST,"Not allowed to list");
 					}else{
 						if (threshold[0] == '\0') threshold = END_OF_TIME;
+						// We read dirs_content.modified twice because we let MariaDB perform the timezone conversion
+						// but we need the original date as well
 						<call sql_query>("select dirs_content.name,dirs_content.modified,type,id2name.name"
 							",group_list_id,group_lists.name,ids.listmode"
 							",length(files.content),dirs_content.itemid,files.title,dirs_content.eventtime"
 							",files.filetype,files.content is null,marks.modified,id2name2.name"
+							",convert_tz(dirs_content.modified,'system','%s')"
 							" from dirs_content"
 							" join ids on dirs_content.itemid=ids.id"
 							" join id2name on ids.ownerid=id2name.userid"
@@ -1933,7 +1946,7 @@ static int bod_main (
 							" left join id2name id2name2 on files.modifiedby=id2name2.userid"
 							" left join marks on marks.itemid=dirs_content.itemid and marks.userid=%u"
 							" where dirid=%d and dirs_content.eventtime <= '%s' order by eventtime"
-							,entry.userid,entry.entryid,threshold);
+							,user_timezone.c_str(),entry.userid,entry.entryid,threshold);
 						<f onerow>
 							#ifdef INSTRUMENT
 							if (rownum==0 && f_instrument != NULL){
@@ -1970,6 +1983,7 @@ static int bod_main (
 							bool islarge = atoi(row[12])!=0;
 							VIEWED_STATUS viewed = bod_readviewed(row[13],modified);
 							const char *modifiedby = row[14] != NULL ? row[14] : "";
+							modified = row[15] != nullptr ? row[15] : "";
 							if (glocal.history){
 								FILEINFO info;
 								info.name = name;
@@ -2608,7 +2622,7 @@ static int bod_main (
 				glocal CONFIG config;
 				unsigned userid = bo_writed_get_group_owner (glocal.con_sess, sessionid, owner, glocal.msg);
 				if (userid != 0){
-					<call sql_query>("select lang,dateformat,public_view,public_dir,anon_messages from config where userid=%u",userid);
+					<call sql_query>("select lang,dateformat,public_view,public_dir,anon_messages,timezone from config where userid=%u",userid);
 					<f empty>
 						glocal.msg = "Internal error, no configuration for user";
 					</f>
@@ -2618,6 +2632,7 @@ static int bod_main (
 						glocal.config.public_view = atoi(row[2]);
 						glocal.config.public_dir = row[3];
 						glocal.config.anon_messages = atoi(row[4]);
+						glocal.config.timezone = row[5];
 					</f>
 					</call>
 				}	
@@ -2734,7 +2749,8 @@ static int bod_main (
 					#endif
 					DATEASC keepdate;
 					fdpass_asctime(time(NULL)-keepdays*24*60*60,keepdate);
-					<call sql_query>("select id2name.name,dirs2.name,dirs2.modified,files.filetype,dirs2.itemid,files.content,dirs2.type,files.signature"
+					<call sql_query>("select id2name.name,dirs2.name,convert_tz(dirs2.modified,'system','%s')"
+						",files.filetype,dirs2.itemid,files.content,dirs2.type,files.signature"
 						" from interests"
 						" join id2name on id2name.userid = interests.check_userid"
 						" left join dirs_content dirs2 on interests.dirid=dirs2.dirid and dirs2.eventtime > '%s'"
@@ -2742,7 +2758,7 @@ static int bod_main (
 						//" left join marks on marks.userid=%u and marks.itemid=interests.dirid"
 						//" left join dirs_content dirs2 on interests.dirid = dirs2.dirid and (marks.modified is null or dirs2.modified > marks.modified)"
 						" join files on dirs2.itemid = files.id and dirs2.modified = files.modified"
-						" where interests.userid=%u order by dirs2.eventtime",keepdate.buf,userid);	//,userid);
+						" where interests.userid=%u order by dirs2.eventtime",user_timezone.c_str(),keepdate.buf,userid);	//,userid);
 					<f onerow>
 						#ifdef INSTRUMENT
 						if (rownum==0 && f_instrument != NULL){
@@ -2756,7 +2772,7 @@ static int bod_main (
 							SHORTMSG msg;
 							msg.from = row[0];
 							msg.uuid = row[1];
-							const char *modified = row[2];
+							const char *modified = row[2] != nullptr ? row[2] : "";
 							msg.submit = modified;
 							ENTRY_TYPE type = row[6] == NULL ? ENTRY_DELETED : (ENTRY_TYPE)atoi(row[6]);
 							if (type == ENTRY_DELETED){

@@ -2761,6 +2761,7 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 	glocal const char *public_dir = NULL;
 	glocal const char *dateformat = NULL;
 	glocal const char *anon_messages = NULL;
+	glocal const char *timezone = NULL;
 	glocal bool set_notification = false;
 	glocal bool get_notification = false;
 	glocal const char *notify_key = nullptr;
@@ -2812,6 +2813,7 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 		setarg ('V',"public_view",MSG_U(O_PUBLICVIEW,"Enable public view (anonymous) 0 or 1"),glocal.public_view,false);
 		setarg ('D',"public_dir",MSG_U(O_PUBLICDIR,"Select the sub-folder of the public project to display"),glocal.public_dir,false);
 		setarg ('A',"anonmsgs",MSG_U(O_ANONMSGS,"Accept anonymous messages (0 or 1)"),glocal.anon_messages,false);
+		setarg ('T',"timezone",MSG_U(O_TIMEZONE,"Time zone (file in /usr/share/zoneinfo)"),glocal.timezone,false);
 
 		setgrouparg (MSG_R(I_NOTIFICATIONS));
 		setarg ('K',"notify_key",MSG_U(O_NOTIFY_KEY,"Notification subject"),glocal.notify_key,false);
@@ -3073,9 +3075,9 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 			if (glocal.ctx->login()!=-1){
 				CONFIG config;
 				if (bofs_config_read (*glocal.ctx,config,glocal.owner)!=-1){
-					printf ("lang=%s dateformat=%u public_view=%d public_dir=%s anon_messages=%d\n"
+					printf ("lang=%s dateformat=%u public_view=%d public_dir=%s anon_messages=%d timezone=%s\n"
 						,config.lang.c_str(),config.dateformat,config.public_view
-						,config.public_dir.c_str(),config.anon_messages);
+						,config.public_dir.c_str(),config.anon_messages,config.timezone.c_str());
 				}
 			}
 		}else if (glocal.writeconfig){
@@ -3089,6 +3091,7 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 					if (glocal.public_view != NULL) newconfig.public_view = atoi(glocal.public_view);
 					if (glocal.public_dir != NULL) newconfig.public_dir = glocal.public_dir;
 					if (glocal.anon_messages != NULL) newconfig.anon_messages = atoi(glocal.anon_messages);
+					if (glocal.timezone != NULL) newconfig.timezone = glocal.timezone;
 					if (glocal.ctx->is_internal()){
 						<call bod_client_config_write>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner,newconfig);
 						<f ok>

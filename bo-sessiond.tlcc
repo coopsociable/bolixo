@@ -52,6 +52,7 @@ struct HANDLE_INFO: public ARRAY_OBJ{
 #include "proto/bo-sessiond_control.protoh"
 #include "proto/bo-sessiond_client.protoh"
 #include "proto/bo-sessiond_admin.protoh"
+#define session_log_session_NOTNEED
 #include "proto/session_log.protoch"
 #include "proto/session_log.protoh"
 
@@ -73,7 +74,7 @@ struct SESSION_INFO{
 	string email;
 	string lang;
 	unsigned char dateformat;
-	unsigned char timezone;
+	string timezone;
 	bool admin;
 	vector<VAR> vars;
 	struct {
@@ -86,7 +87,6 @@ struct SESSION_INFO{
 		stats.nbacc = 0;
 		admin = false;
 		dateformat = 0;
-		timezone = 0;
 	}
 	SESSION_INFO (unsigned _userid,
 		const string &_userid_str,
@@ -95,7 +95,7 @@ struct SESSION_INFO{
 		const char *_lang,
 		bool _admin,
 		unsigned _dateformat,
-		unsigned _timezone){
+		const char *_timezone){
 		userid = _userid;
 		userid_str = _userid_str;
 		name = _name;
@@ -184,7 +184,15 @@ int main (int argc, char *argv[])
 			if (fin != NULL){
 				<call session_log>(fin);
 				<f session>
-					SESSION_INFO sess(userid, userid_str, name, email, lang, admin, dateformat,0);
+					SESSION_INFO sess(userid, userid_str, name, email, lang, admin, dateformat,"");
+					sess.stats.lastvisit = lastvisit;
+					sess.stats.nbacc = nbacc;
+					for (auto &v:vars) sess.vars.push_back(v);
+					glocal.sessions[session] = move(sess);
+					
+				</f>
+				<f sessionv1>
+					SESSION_INFO sess(userid, userid_str, name, email, lang, admin, dateformat,timezone);
 					sess.stats.lastvisit = lastvisit;
 					sess.stats.nbacc = nbacc;
 					for (auto &v:vars) sess.vars.push_back(v);
@@ -267,8 +275,8 @@ int main (int argc, char *argv[])
 					<call savefile>("/tmp/sessions.log",false);
 					<f dowrite>
 						for (auto const &s:glocal.sessions){
-							session_log_session(fout,s.first,s.second.userid,s.second.userid_str
-								,s.second.name,s.second.email,s.second.lang,s.second.admin
+							session_log_sessionv1(fout,s.first,s.second.userid,s.second.userid_str
+								,s.second.name,s.second.email,s.second.lang,s.second.timezone,s.second.admin
 								,s.second.dateformat
 								,s.second.stats.lastvisit,s.second.stats.nbacc,s.second.vars);
 						}
@@ -308,11 +316,11 @@ int main (int argc, char *argv[])
 								tmp = string_f ("%07u: %s anonymous %s %u",pos,it.first.c_str()
 									,datetime.buf,it.second.stats.nbacc);
 							}else{
-								tmp = string_f ("%07u: %s %d-%s %s %s %s %u %u %d %s %u %u",pos,it.first.c_str()
+								tmp = string_f ("%07u: %s %d-%s %s %s %s %u %u %d %s %u %s",pos,it.first.c_str()
 									,it.second.userid,it.second.userid_str.c_str(),it.second.name.c_str(),it.second.email.c_str()
 									,datetime.buf,it.second.stats.nbacc
 									,it.second.userid,it.second.admin,it.second.lang.c_str()
-									,it.second.dateformat,it.second.timezone);
+									,it.second.dateformat,it.second.timezone.c_str());
 							}
 							tb.push_back(move(tmp));
 							for (auto &v:it.second.vars){
@@ -405,9 +413,10 @@ int main (int argc, char *argv[])
 					if (it != glocal.sessions.end()){
 						it->second.stats.lastvisit = time(NULL);
 						it->second.stats.nbacc++;
-						rep_getsessioninfo(true,it->second.name,it->second.lang,it->second.dateformat,it->second.admin,it->second.userid);
+						rep_getsessioninfo(true,it->second.name,it->second.lang,it->second.dateformat
+							,it->second.admin,it->second.userid,it->second.timezone);
 					}else{
-						rep_getsessioninfo(false,"","",0,false,0);
+						rep_getsessioninfo(false,"","",0,false,0,"");
 					}
 				</f>
 				<f getsessioninfovars>

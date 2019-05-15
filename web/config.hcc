@@ -936,6 +936,7 @@ void profile(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER>
 					w_public_view = config.public_view;
 					w_public_dir = config.public_dir;
 					w_anon_messages = config.anon_messages;
+					w_timezone = config.timezone;
 				</f>
 				</call>
 				<call bod_client_info_read>(glocal.con,w_session.c_str(),"");
@@ -975,6 +976,15 @@ void profile(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER>
 				field_list(w_dateformat,"");
 				field_list_item ("0",MSG_U(I_ENGDATE,"Month DD YYYY HH:MMam/pm"));
 				field_list_item ("1",MSG_U(I_ISODATE,"YYYY/MM/DD HH:MM:SS"));
+				field_list_end();
+				/-#I_TIMEZONE <tr><td>Time zone<td>
+				field_list(w_timezone,"");
+				<call loadfile>("/etc/timezones.lst",true);
+				<f oneline>
+					glocal.form.field_list_item(line);
+					return 0;
+				</f>
+				</call>
 				field_list_end();
 
 				/-#I_ENABLEPUB <tr><td>Enable public view<td>
@@ -1065,6 +1075,7 @@ void profile(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER>
 				config.public_view = w_public_view;
 				config.public_dir = w_public_dir.c_str();
 				config.anon_messages = w_anon_messages;
+				config.timezone = w_timezone.c_str();
 				<call bod_client_config_write>(glocal.con,w_session.c_str(),"",config);
 				<f ok>
 					if (!success){

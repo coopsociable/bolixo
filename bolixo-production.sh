@@ -691,6 +691,8 @@ elif [ "$1" = "install-sequence" ] ; then # config: Interative sequence to start
 	step syslog-clear
 	step syslog-reset
 	step test-system
+elif [ "$1" = "load-timezones" ]; then # db: load timezone definitions
+	$0 calltest load-timezones
 elif [ "$1" = "install-sequence-publish" ] ; then # config: Complete install-sequence once everything is running
 	step registernode
 	echo Register admin for this node in the directory

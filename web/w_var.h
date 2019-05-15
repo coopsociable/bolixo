@@ -44,6 +44,7 @@ extern W_SSTRING w_public_dir;
 extern W_UNSIGNED w_public_view;
 extern W_SSTRING w_dateformat;
 extern W_UNSIGNED w_anon_messages;
+extern W_SSTRING w_timezone;
 
 extern W_SSTRING w_recipients;
 extern W_SSTRING w_folder;

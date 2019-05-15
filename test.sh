@@ -660,6 +660,7 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 	$0 createdb-patch1
 	$0 createdb-patch2
 	$0 createdb-patch4
+	$0 createdb-patch6
 	mysqladmin -uroot -S $SOCKN create $DBNAMET
 	mysql -uroot -S $SOCKN $DBNAMET <<-EOF
 		create table formids(
@@ -725,6 +726,13 @@ elif [ "$1" = "createdb-patch5" ]; then # db: make formvars name varchar(100)
 	mysql -uroot -S $SOCKN $DBNAMET <<-EOF
 		alter table formvars modify name varchar(100);
 	EOF
+elif [ "$1" = "createdb-patch6" ]; then # db: add zone field to table config
+	ENGINE=myisam
+	mysql -uroot -S $SOCKN $DBNAME <<-EOF
+		alter table config add timezone varchar(30) default 'system';
+	EOF
+elif [ "$1" = "load-timezones" ]; then # db: load timezone definitions
+	mysql_tzinfo_to_sql /usr/share/zoneinfo | mysql -uroot -S $SOCKN mysql
 elif [ "$1" = "generate-system-pubkey" ] ; then # config: Generate the system public key
 	echo Generate --system-- crypto key
 	$0 bo-keysd-control genkey --system--
@@ -912,6 +920,11 @@ elif [ "$1" = "cmp-sequence" ] ; then # S: Execute QA tests
 		echo test=$test
 		./scripts/access.sh $test $OPT >$CMPDIR/$test.out 2>$CMPDIR/$test.err
 		$0 syslog-logs >$CMPDIR/$test.log
+		if [ "$2" != "" ] ; then
+			$0 test-system
+			echo -n "Enter to continue "
+			read line
+		fi
 	done
 	cd ../cmp-test
 	NBREF=`ls | wc -l`
@@ -926,7 +939,7 @@ elif [ "$1" = "cmp-sequence" ] ; then # S: Execute QA tests
 	fi
 elif [ "$1" = "eraseanon-lxc" ] ; then # prod: [  time [ anonymous normal admin ] ]
 	export LXCSOCK=on
-	OLD=0
+	OLD=0d
 	ANONYMOUS=1
 	NORMAL=0
 	ADMIN=0

@@ -1495,6 +1495,7 @@ int main (int argc, char *argv[])
 	glocal const char *force_addr = NULL;
 	glocal const char *bob_dir = "/var/lib/bolixo";
 	glocal bool private_site = false;
+	glocal const char *ftimezones = "/etc/timezones.lst";
 
 	static const char *tbdict[]={"bolixo","tlmpsql",NULL};
 	translat_setlang ("eng,fr");
@@ -1524,6 +1525,7 @@ int main (int argc, char *argv[])
 		setarg (' ',"bob_dir","Binary file directory",glocal.bob_dir,false);
 		setarg (' ',"private_site","Local users may interact without doing contact request",glocal.private_site,false);
 		setarg (' ',"nodename",MSG_R(O_NODENAME),nodename,true);
+		setarg (' ',"timezones",MSG_U(O_TIMEZONES,"File holding valid time zone names"),glocal.ftimezones,false);
 		setgrouparg ("Mail");
 		setarg (' ',"mailserver","Mail relay to use",glocal.mailserver,false);
 		setarg (' ',"mailport","TCP port of the relay (or unix socket)",glocal.mailport,false);
@@ -1560,11 +1562,19 @@ int main (int argc, char *argv[])
 		}
 	</f>
 	<f main_noarg>
+		glocal set<string> timezones;
 		glocal unsigned long nbrequest_client = 0;
 		glocal NSQL *usq;		// SQL handle for the users database
 		glocal CONNECT_INFO con;	// Connection to the session manager
 		glocal CONTEXT ctx;
 		glocal map<string,string> secrets;
+
+		<call loadfile>(glocal.ftimezones,true);
+		<f oneline>
+			glocal.timezones.insert(line);
+			return 0;
+		</f>
+		</call>
 		const char *passwd = getenv("BO_WRITED_PWD");
 		glocal.ctx.mailserver = glocal.mailserver;
 		glocal.ctx.mailfrom = glocal.mailfrom;
@@ -1848,12 +1858,14 @@ int main (int argc, char *argv[])
 						glocal const char *email = row[3];
 						glocal string lang = "eng";
 						glocal unsigned dateformat=0;
+						glocal string timezone;
 						debug_printf (D_PROTO,"login ok\n");
 						int userid = atoi(row[0]);
-						<call sql_query>("select lang,dateformat from config where userid=%d",userid);
+						<call sql_query>("select lang,dateformat,timezone from config where userid=%d",userid);
 						<f onerow>
 							glocal.lang = row[0];
 							glocal.dateformat = atoi(row[1]);
+							glocal.timezone = row[2];
 						</f>
 						</call>
 						<call bo_sessiond_admin_createsession>(glocal.con,glocal.newsession);
@@ -1867,7 +1879,7 @@ int main (int argc, char *argv[])
 						</call>
 						if (glocal.msg.empty()){
 							<call bo_sessiond_admin_setsession>(glocal.con,glocal.newsession,userid,row[1],row[2],row[3]
-								,glocal.lang,atoi(row[4]),glocal.dateformat,0);
+								,glocal.lang,atoi(row[4]),glocal.dateformat,glocal.timezone);
 							<f ok>
 								if (internal_error){
 									glocal.msg = "Internal error";
@@ -2041,7 +2053,7 @@ int main (int argc, char *argv[])
 								}else{
 									// We preserve the nodename. userid==-2 means not logged yet.
 									<call bo_sessiond_admin_setsession>(glocal.con,glocal.sessionid
-										,-2,glocal.nodename,"","","",false,0,0);
+										,-2,glocal.nodename,"","","",false,0,"system");
 									<f ok>
 										if (internal_error){
 											glocal.msg = "Internal error";
@@ -2085,7 +2097,7 @@ int main (int argc, char *argv[])
 									}else{
 										// We switch userid to -1, it means login completed
 										<call bo_sessiond_admin_setsession>(glocal.con,glocal.session
-											,-1,glocal.nodename,"","","",false,0,0);
+											,-1,glocal.nodename,"","","",false,0,"system");
 										<f ok>
 											if (internal_error){
 												glocal.msg = "Internal error";
@@ -2134,7 +2146,7 @@ int main (int argc, char *argv[])
 									glocal.msg = MSG_R(E_SIGNOMATCH);
 								}else{
 									<call bo_sessiond_admin_setsession>(glocal.con,glocal.sessionid,userid,"",glocal.user,""
-										,"eng",false,0,0);
+										,"eng",false,0,"system");
 									<f ok>
 										if (internal_error){
 											glocal.msg = "Internal error";
@@ -2292,16 +2304,18 @@ int main (int argc, char *argv[])
 						}else{
 							glocal string lang = "eng";
 							glocal unsigned dateformat=0;
+							glocal string timezone;
 							debug_printf (D_PROTO,"login ok\n");
 							int userid = atoi(row[0]);
-							<call sql_query>("select lang,dateformat from config where userid=%d",userid);
+							<call sql_query>("select lang,dateformat,timezone from config where userid=%d",userid);
 							<f onerow>
 								glocal.lang = row[0];
 								glocal.dateformat = atoi(row[1]);
+								glocal.timezone = row[2];
 							</f>
 							</call>
 							<call bo_sessiond_admin_setsession>(glocal.con,glocal.sessionid,userid,row[1],row[2],row[3]
-								,glocal.lang,atoi(row[4]),glocal.dateformat,0);
+								,glocal.lang,atoi(row[4]),glocal.dateformat,glocal.timezone);
 							<f ok>
 								if (internal_error){
 									glocal.bo_writed_client.rep_login (false,false);
@@ -3478,13 +3492,18 @@ int main (int argc, char *argv[])
 								glocal.msg = MSG_U(E_PUBDIRNOTDIR,"public_dir is not a directory");
 							}
 						}
+						if (glocal.msg.size() == 0 && glocal.timezones.count(config.timezone)==0){
+							glocal.msg = MSG_U(E_IVLDTIMEZONE,"Invalid/Unknown time zone");
+						}
 						if (glocal.msg.size() == 0){
-							if (sql_action("update config set lang='%s',dateformat=%u,public_view=%d,public_dir='%s',anon_messages=%u where userid=%u"
+							if (sql_action("update config"
+								" set lang='%s',dateformat=%u,public_view=%d,public_dir='%s',anon_messages=%u,timezone='%s'"
+								" where userid=%u"
 								,config.lang,config.dateformat,config.public_view,config.public_dir
-								,config.anon_messages,glocal.userid)==-1){
+								,config.anon_messages,config.timezone,glocal.userid)==-1){
 								glocal.msg = "Internal error, config table";
 							}else{
-								<call bo_sessiond_admin_setlang>(glocal.con,sessionid,config.lang,config.dateformat,0);
+								<call bo_sessiond_admin_setlang>(glocal.con,sessionid,config.lang,config.dateformat,config.timezone);
 								<f ok>
 								</f>
 								</call>
