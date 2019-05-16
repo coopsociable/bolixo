@@ -789,6 +789,8 @@ static unsigned trli_atou(const string &s)
 	return atoi(s.c_str());
 }
 
+static const char *zoneinfo_cmd = "(cd /usr/share/zoneinfo && find -type f | grep -v ./posix/ | grep -v ./right/ | sed s':^./::'; echo system)  | sort";
+
 /*
 	Print all configururation for services running on a given server
 */
@@ -1569,7 +1571,7 @@ static void print_configs (
 					</f>
 					<f insert>
 						// Generate the list of time zones
-						fprintf (fout,"(cd /usr/share/zoneinfo && find -type f | sed s':^./::'; echo system) >/var/lib/lxc/%s/rootfs/etc/timezones.lst\n",name);
+						fprintf (fout,"%s >/var/lib/lxc/%s/rootfs/etc/timezones.lst\n",zoneinfo_cmd,name);
 						fprintf (fout,"mkdir -p /var/lib/lxc/%s/rootfs/var/log/bolixo\n",name);
 						fprintf (fout,"chown %s /var/lib/lxc/%s/rootfs/var/log/bolixo\n",trli_user,name);
 					</f>
@@ -1716,7 +1718,7 @@ static void print_configs (
 							tlmpweb_conf (fout,name);
 							fprintf (fout,"#!/bin/sh\n");
 							// Generate the list of time zones
-							fprintf (fout,"(cd /usr/share/zoneinfo && find -type f | sed s':^./::'; echo system) | sort >/var/lib/lxc/%s/rootfs/etc/timezones.lst\n",name);
+							fprintf (fout,"%s >/var/lib/lxc/%s/rootfs/etc/timezones.lst\n",zoneinfo_cmd,name);
 							fprintf (fout,"cat <<-EOF >/var/lib/lxc/%s/rootfs/var/www/html/static.html\n",name);
 							fprintf (fout,"<html>\n");
 							fprintf (fout,"this is a test\n");
