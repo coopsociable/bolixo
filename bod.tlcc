@@ -455,6 +455,25 @@ static bool msg_compare (const SHORTMSG &s1, const SHORTMSG &s2)
 
 static unsigned keepdays = 7;
 
+/*
+	Remove new messages up to firstseen from the list.
+*/
+static unsigned bod_firstseen (vector<SHORTMSG> &msgs, const char *firstseen)
+{
+	unsigned nbnew = 0;
+	if (firstseen[0] != '\0'){
+		unsigned count = 0;
+		for (auto &m:msgs){
+			if (m.uuid == firstseen) break;
+			count++;
+		}
+		if (count > 0 && count != msgs.size()){
+			msgs.erase(msgs.begin(),msgs.begin()+count);
+			nbnew = count;
+		}
+	}
+	return nbnew;
+}
 <mod>
 static void bod_list_talk (
 	unsigned userid,	// We are reading for this user, useful for read marks
@@ -464,8 +483,10 @@ static void bod_list_talk (
 	const char *groupname,
 	unsigned offset,
 	unsigned nb,
+	const char *firstseen,
 	bool &deletes,
 	unsigned &total,
+	unsigned &nbnew,
 	string &msg)
 {
 	glocal unsigned nb = nb;
@@ -529,8 +550,9 @@ static void bod_list_talk (
 			msgs.push_back(move(m.second));
 		}
 	}
-	total = msgs.size();
 	sort (msgs.begin(),msgs.end(),msg_compare);
+	nbnew = bod_firstseen (msgs,firstseen);
+	total = msgs.size();
 	bod_trim (msgs,offset,nb);
 	deletes = glocal.deletes;
 }
@@ -2474,13 +2496,27 @@ static int bod_main (
 				</f>
 				</call>
 			</f>
-			<f list_talk>	// sessionid owner groupname groupowner offset:u nb:u = success:b msg messages:U{MESSAGE}v
+			<f list_talk>	// sessionid owner groupname groupowner offset:u nb:u firstseen = success:b msg messages:U{MESSAGE}v deletes:b total:u nbnew:u
+				/*
+					firstseen is ID of the message which was the first the last time with made this call.
+					This establish a context for the current call. The result produced won't be influenced by new
+					messages which may have shown between this call and the previous. nbnew will show how many
+					new messages are "hidden".
+
+					This functionnality make the user interface more predictable. If you are clicking on the second message of the third
+					page, the UI will refresh the content to show that the message was viewed. But even if new messages came, the current
+					message will be the second message of the third page.
+
+					The UI present the number of new messages in the header. Clicking on it simply resets firstseen (set to empty string).
+				*/
 				glocal const char *groupname = groupname;
 				glocal const char *groupowner = groupowner;
 				glocal unsigned offset = offset;
 				glocal unsigned nb = nb;
 				glocal bool deletes = false;	// Is there some deleted entries
 				glocal unsigned total = 0;	// Total number of records
+				glocal unsigned nbnew = 0;
+				glocal firstseen;
 				glocal string msg;
 				glocal vector<SHORTMSG> msgs;
 				glocal unsigned userid;
@@ -2498,15 +2534,15 @@ static int bod_main (
 					</f>
 					<f onerow>
 						bod_list_talk (glocal.userid,glocal.msgs,atoi(row[0]),glocal.groupowner,glocal.groupname
-							,glocal.offset,glocal.nb,glocal.deletes,glocal.total,glocal.msg);
+							,glocal.offset,glocal.nb,glocal.firstseen,glocal.deletes,glocal.total,glocal.nbnew,glocal.msg);
 					</f>
 					</call>
 				}
 				if (glocal.msg.size()>0){
 					glocal.msgs.clear();
-					rep_list_talk(false,glocal.msg,glocal.msgs,false,0);
+					rep_list_talk(false,glocal.msg,glocal.msgs,false,0,0);
 				}else{
-					rep_list_talk(true,glocal.msg,glocal.msgs,glocal.deletes,glocal.total);
+					rep_list_talk(true,glocal.msg,glocal.msgs,glocal.deletes,glocal.total,glocal.nbnew);
 				}
 			</f>
 			<f contact_request>	// sessionid owner user intro = success:b msg
@@ -2736,7 +2772,7 @@ static int bod_main (
 					rep_interest_list (true,glocal.msg,glocal.users);
 				}
 			</f>
-			<f interest_check> // sessionid owner fulltext:v offset:u nb:u = success:b msg messages:U{SHORTMSG}v total:u
+			<f interest_check> // sessionid owner fulltext:v offset:u nb:u firstseen = success:b msg messages:U{SHORTMSG}v total:u nbnew:u
 				glocal unsigned nb = nb;
 				glocal string msg;
 				glocal map<string,SHORTMSG> mp;
@@ -2800,17 +2836,18 @@ static int bod_main (
 				}	
 				vector<SHORTMSG> msgs;
 				if (glocal.msg.size() > 0){
-					rep_interest_check (false,glocal.msg,msgs,0);
+					rep_interest_check (false,glocal.msg,msgs,0,0);
 				}else{
 					for (auto &m:glocal.mp){
 						if (m.second.file_type != FILE_UNKNOWN){
 							msgs.push_back(move(m.second));
 						}
 					}
-					unsigned total = msgs.size();
 					sort (msgs.begin(),msgs.end(),msg_compare);
+					unsigned nbnew = bod_firstseen (msgs,firstseen);
+					unsigned total = msgs.size();
 					bod_trim (msgs,offset,nb);
-					rep_interest_check (true,glocal.msg,msgs,total);
+					rep_interest_check (true,glocal.msg,msgs,total,nbnew);
 				}
 			</f>
 			<f config_write>// sessionid owner config:U{CONFIG} = success:b msg
@@ -3036,7 +3073,8 @@ static int bod_main (
 				if (userid != (unsigned)-1){
 					bool deletes;
 					unsigned total;
-					bod_list_talk (userid,msgs,userid,username,"public",offset,nb,deletes,total,msg);
+					unsigned nbnew;
+					bod_list_talk (userid,msgs,userid,username,"public",offset,nb,"",deletes,total,nbnew,msg);
 				}
 				if (msg.size() > 0){
 					msgs.clear();

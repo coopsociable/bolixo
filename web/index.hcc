@@ -119,6 +119,7 @@ W_SSTRING w_interest("interest");
 
 W_UNSIGNED w_notify_ui("note_ui");
 W_UNSIGNED w_notify_email("note_email");
+W_UNSIGNED w_showhidden("showhidden");
 
 static void index_field (_F_form *c, bool newline,unsigned colspan, const char *title, W_SSTRING &var, unsigned size)
 {
@@ -247,6 +248,7 @@ struct CURRENTFORM{
 	vector<string> vars;
 };
 static vector<CURRENTFORM> currentforms;
+static map<string,string> firstseens;
 static string org("Bolixo.org");
 <mod>
 static void bolixo_title (const char *title, _F_websteps *c)
@@ -405,6 +407,11 @@ static void trli_getsessioninfo(CONNECT_INFO &con, CONNECT_INFO &con_sess, vecto
 					}
 					if (form.id.size()>0){
 						currentforms.push_back(form);
+					}
+				}else if (strcmp(var.name,"firstseen")==0){
+					firstseens.clear();
+					for (auto &v:var.vals){
+						firstseens[v.sname] = v.sval;
 					}
 				}else if (strcmp(var.name,"geometry")==0){
 					// We receive 4 values: id,height,width,scroll_top
@@ -575,6 +582,29 @@ static void web_updatecurrents(CONNECT_INFO &con_sess)
 }
 </mod>
 
+<mod>
+static void web_update_firstseen(CONNECT_INFO &con_sess, const char *tablename, const char *key)
+{
+	auto &val = firstseens[tablename];
+	if (val != key){
+		val = key;
+		VAR var;
+		var.name = "firstseen";
+		for (auto &v:firstseens){
+			SNAMEVAL val;
+			val.sname = v.first;
+			val.sval = v.second;
+			var.vals.push_back(val);
+		}
+		add_to_instrument ("setvar updatefirstseens");
+		<call bo_sessiond_client_setvar>(con_sess,w_session.c_str(),var);
+		<f ok>
+			if (!success) tlmp_error ("Can't set variable firstseen: %s\n",msg);
+		</f>
+		</call>
+	}
+}
+</mod>
 
 
 <mod>
@@ -780,11 +810,11 @@ static void index_show_shortmsg(
 	glocal bool is_inbox = strcmp(glocal.groupname,"inbox")==0;
 	glocal string path = string_f("/msgs/%s/short-inbox/%s",glocal.groupowner,glocal.groupname);
 	WEBID ID_TALK("talk",string_f("%s:%s",groupowner.ptr,groupname.ptr));
-	const char *table = ID_TALK.c_str();
-	if (offsets[table] == 0){
+	glocal const char *table = ID_TALK.c_str();
+	if (offsets[glocal.table] == 0){
 		util_markview (con,glocal.path);
 	}
-	<call webtable>(ID_TALK,currents[table],offsets[table],5);
+	<call webtable>(ID_TALK,currents[glocal.table],offsets[glocal.table],5);
 	<f click>
 		glocal unsigned dropmenu = dropmenu;
 		if (dropmenu == 0) tlmpweb_flushheader();
@@ -797,7 +827,7 @@ static void index_show_shortmsg(
 		}else if (dropmenu == MENU_PASTE){
 			index_paste (*glocal.con,glocal.path,glocal.groupowner,glocal.groupname);
 		}else{
-			<call bod_client_list_talk>(*glocal.con,w_session.c_str(),"",glocal.groupname,glocal.groupowner,noline,1);
+			<call bod_client_list_talk>(*glocal.con,w_session.c_str(),"",glocal.groupname,glocal.groupowner,noline,1,firstseens[glocal.table]);
 			<f ok>
 				if (messages.size()!=1){
 					htmlprintf ("Internal error: %s\n",msg);
@@ -851,13 +881,20 @@ static void index_show_shortmsg(
 		adddrop_opt (MENU_UNDELETE,MSG_R(M_UNDELETE));
 		adddrop_opt (MENU_DOWNLOAD,MSG_R(M_DOWNLOAD));
 		index_msgs_style(*this);
-		<call bod_client_list_talk>(*glocal.con,w_session.c_str(),"",glocal.groupname,glocal.groupowner,nbskip,nblines);
+		if (w_showhidden == 1) firstseens[glocal.table] = "";
+		<call bod_client_list_talk>(*glocal.con,w_session.c_str(),"",glocal.groupname,glocal.groupowner
+			,nbskip,nblines,firstseens[glocal.table]);
 		<f ok>
 			glocal.webtable.setdrop_default({MENU_PASTE,MENU_UNDELETE});
 			if (!success){
 				//htmlprintf ("Error: %s %s<br>",internal_error?"Internal error":"",msg);
 			}else{
 				glocal.webtable.settotal(total);
+				glocal.webtable.sethiddens(nbnew);
+				glocal.webtable.sethidden_title (MSG_U(I_NEWMESSAGES,"new messages"));
+				if (glocal.rownum == 0 && nbnew == 0){
+					web_update_firstseen(*glocal.con_sess,glocal.table,messages.size()>0 ? messages[0].uuid : "");
+				}
 				string day;
 				static const char *line_styles[]={"sep","sep1"};
 				unsigned line_style = 0;
@@ -1144,7 +1181,7 @@ extern "C" void webmain_real()
 			int n = str_splitline (tableid+5,':',tb);
 			if (n == 2){
 				glocal string dir = string_f("/msgs/%s/short-inbox/%s",tb[0].c_str(),tb[1].c_str());
-				<call bod_client_list_talk>(glocal.con,w_session.c_str(),"",tb[1],tb[0],current_row,1);
+				<call bod_client_list_talk>(glocal.con,w_session.c_str(),"",tb[1],tb[0],current_row,1,"");
 				<f ok>
 					if (messages.size()==1){
 						glocal.valid = true;
@@ -1458,12 +1495,12 @@ extern "C" void webmain_real()
 				d.print();
 			}
 
-			const char *table = ID_FOLLOW.c_str();
-			<call webtable>(ID_FOLLOW,currents[table],offsets[table],5);
+			glocal const char *table = ID_FOLLOW.c_str();
+			<call webtable>(ID_FOLLOW,currents[glocal.table],offsets[glocal.table],5);
 			<f click>
 				glocal unsigned dropmenu = dropmenu;
 				vector<string> empty;
-				<call bod_client_interest_check>(glocal.con,w_session.c_str(),"",empty,noline,1);
+				<call bod_client_interest_check>(glocal.con,w_session.c_str(),"",empty,noline,1,firstseens[glocal.table]);
 				<f ok>
 					if (messages.size()!=1){
 						htmlprintf ("Internal error: %s\n",msg);
@@ -1493,7 +1530,8 @@ extern "C" void webmain_real()
 				adddrop_opt (MENU_DOWNLOAD,MSG_R(M_DOWNLOAD));
 				index_msgs_style (*this);
 				glocal unsigned rownum = nbskip;
-				<call bod_client_interest_check>(glocal.con,w_session.c_str(),"",fulltext,nbskip,nblines);
+				if (w_showhidden == 1) firstseens[glocal.table] = "";
+				<call bod_client_interest_check>(glocal.con,w_session.c_str(),"",fulltext,nbskip,nblines,firstseens[glocal.table]);
 				<f ok>
 					// success:b msg messages:U{SHORTMSG}v
 					static const char *func = "Popup";
@@ -1509,6 +1547,11 @@ extern "C" void webmain_real()
 						video_size = 700;
 					}
 					glocal.webtable.settotal(total);
+					glocal.webtable.sethiddens(nbnew);
+					glocal.webtable.sethidden_title(MSG_R(I_NEWMESSAGES));
+					if (glocal.rownum == 0 && nbnew == 0){
+						web_update_firstseen(glocal.con_sess,glocal.table,messages.size()>0 ? messages[0].uuid : "");
+					}
 					for (auto &m:messages){
 						string now = string (m.submit,10);
 						if (now != day){

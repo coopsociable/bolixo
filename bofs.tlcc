@@ -2209,23 +2209,31 @@ static void bofs_list_msgs(_F_bofs_list_msgs &c, CONTEXT &ctx, const char *owner
 </mod>
 #define _TLMP_bofs_list_talk
 struct _F_bofs_list_talk {
-	#define _F_bofs_list_talk_ok(x) void x ok(bool internal_error, bool success, const char *msg, const vector<SHORTMSG_receive> &messages)
+	#define _F_bofs_list_talk_ok(x) void x ok(bool internal_error, bool success, const char *msg, const vector<SHORTMSG_receive> &messages, bool deletes, unsigned total, unsigned nbnew)
 	virtual _F_bofs_list_talk_ok( )=0;
 };
 <mod>
-static void bofs_list_talk(_F_bofs_list_talk &c, CONTEXT &ctx, const char *owner, const char *groupname, const char *groupowner, unsigned offset, unsigned chunk)
+static void bofs_list_talk(
+	_F_bofs_list_talk &c,
+	CONTEXT &ctx,
+	const char *owner,
+	const char *groupname,
+	const char *groupowner,
+	unsigned offset,
+	unsigned chunk,
+	const char *firstseen)
 {
 	glocal _F_bofs_list_talk *c = &c;
 	if (ctx.is_internal()){
-		<call bod_client_list_talk>(ctx.con,ctx.sessionid,owner,groupname,groupowner,offset,chunk);
+		<call bod_client_list_talk>(ctx.con,ctx.sessionid,owner,groupname,groupowner,offset,chunk,firstseen);
 		<f ok>
-			glocal.c->ok(internal_error,success,msg,messages);
+			glocal.c->ok(internal_error,success,msg,messages,deletes,total,nbnew);
 		</f>
 		</call>
 	}else{
-		<call webapi_list_talk>(ctx.hcon,ctx.hsessionid,owner,groupname,groupowner,offset,chunk);
+		<call webapi_list_talk>(ctx.hcon,ctx.hsessionid,owner,groupname,groupowner,offset,chunk,firstseen);
 		<f ok>
-			glocal.c->ok(internal_error,success,msg,messages);
+			glocal.c->ok(internal_error,success,msg,messages,deletes,total,nbnew);
 		</f>
 		</call>
 	}
@@ -2476,6 +2484,7 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 	glocal const char *title = "";
 	glocal const char *content = NULL;
 	glocal const char *msgid = NULL;
+	glocal const char *firstseen = "";
 	glocal bool full = false;
 
 	glocal.ret = <call tlmpprogram>(argc,argv);
@@ -2507,6 +2516,7 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 		setarg ('T',"title",MSG_U(O_TITLE,"Title of the message"),glocal.title,false);
 		setarg ('C',"content",MSG_U(O_BODY,"body of the message"),glocal.content,false);
 		setarg ('L',"bolixofile",MSG_U(O_BOFILEPATH,"Bolixo file path"),glocal.filename,false);
+		setarg (' ',"firstseen",MSG_U(O_FIRSTSEEN,"First visible message"),glocal.firstseen,false);
 		setgrouparg (MSG_R(I_MISC));
 		setarg ('O',"owner",MSG_U(O_OWNER,"Apply the command on behalf of this owner, must be admin"),glocal.owner,false);
 		setarg (' ',"full",MSG_U(O_FULL,"Display the full content of small messages"),glocal.full,false);
@@ -2548,7 +2558,7 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 			if (glocal.ctx->login()!=-1){
 				while (!glocal.stop){
 					<call bofs_list_talk>(*glocal.ctx,glocal.owner,glocal.groupname,glocal.groupowner
-						,glocal.offset,glocal.chunk);
+						,glocal.offset,glocal.chunk,glocal.firstseen);
 					<f ok>
 						if (!success){
 							bofs_error ("msgs",internal_error,msg);
@@ -2556,6 +2566,7 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 						}else{
 							vector<SHORTMSG_receive> copy;
 							bofs_copysort (messages,copy);
+							if (nbnew > 0) printf (MSG_U(I_HIDDENNEWMESSAGES,"%u hidden new messages\n"),nbnew);
 							bofs_listshortmsgs(*glocal.ctx,copy,glocal.full);
 							glocal.stop = messages.size() < glocal.chunk;
 							glocal.offset += glocal.chunk;
@@ -2769,6 +2780,7 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 	glocal bool notify_active_ui = false;
 	glocal bool notify_email = false;
 	glocal bool notify_digest = false;
+	glocal const char *firstseen = "";
 	glocal.ret = <call tlmpprogram>(argc,argv);
 	<f init>
 		setproginfo ("bomisc",VERSION
@@ -2824,6 +2836,7 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 		setgrouparg (MSG_R(I_MISC));
 		setarg ('O',"owner",MSG_R(O_OWNER),glocal.owner,false);
 		setarg (' ',"fulltext","Request full text for these messages",glocal.fulltext,false);
+		setarg (' ',"firstseen",MSG_R(O_FIRSTSEEN),glocal.firstseen,false);
 	</f>
 	<f main>
 		glocal int ret = -1;
@@ -3037,7 +3050,7 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 				glocal unsigned chunk=20;
 				while (!glocal.stop){
 					<call bod_client_interest_check>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner
-						,glocal.fulltext,glocal.offset,glocal.chunk);
+						,glocal.fulltext,glocal.offset,glocal.chunk,glocal.firstseen);
 					<f ok>
 						if (!success){
 							bofs_error ("interest_check",internal_error,msg);
@@ -3045,6 +3058,7 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 						}else{
 							vector<SHORTMSG_receive> copy;
 							bofs_copysort (messages,copy);
+							if (nbnew > 0) printf (MSG_R(I_HIDDENNEWMESSAGES),nbnew);
 							for (auto &m:copy){
 								int linelen = 0;
 								if (m.content[0] != '\0'){
