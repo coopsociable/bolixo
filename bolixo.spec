@@ -128,6 +128,8 @@ make install
 /var/www/html/notifypopup.jpg
 /var/www/html/notifications-fr.jpg
 /var/www/html/notifypopup-fr.jpg
+/var/www/html/list-infoline.jpg
+/var/www/html/list-infoline-fr.jpg
 /usr/lib/bolixo-test.sh
 /usr/sbin/bolixo-production
 /usr/sbin/bo

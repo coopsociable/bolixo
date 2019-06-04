@@ -922,6 +922,12 @@ elif [ "$1" = "cmp-sequence" ] ; then # S: Execute QA tests
 		$0 syslog-logs >$CMPDIR/$test.log
 		if [ "$2" != "" ] ; then
 			$0 test-system
+			echo == $test.out
+			diff -c ../cmp-test/$test.out /tmp/cmp-test/$test.out
+			echo == $test.err
+			diff -c ../cmp-test/$test.err /tmp/cmp-test/$test.err
+			echo == $test.log
+			diff -c ../cmp-test/$test.log /tmp/cmp-test/$test.log
 			echo -n "Enter to continue "
 			read line
 		fi
@@ -1494,6 +1500,8 @@ elif [ "$1" = "lxc0-webssl" ]; then # prod:
 			-e /var/www/html/notifypopup.jpg \
 			-e /var/www/html/notifications-fr.jpg \
 			-e /var/www/html/notifypopup-fr.jpg \
+			-e /var/www/html/list-infoline.jpg \
+			-e /var/www/html/list-infoline-fr.jpg \
 			-i /usr/sbin/trli-init \
 			-l $LOG \
 			-n $w -p /usr/sbin/httpd >/var/lib/lxc/$w/$w-lxc0.sh
