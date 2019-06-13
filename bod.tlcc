@@ -29,6 +29,7 @@
 #include <tlmplib.h>
 #include <tlmpnet.h>
 #include <string>
+#include <vector>
 #include <memory>
 #include <set>
 #include <algorithm>
@@ -155,6 +156,7 @@ struct DIRENTRY{
 
 #include "proto/webapi.protoch"
 
+
 #include "proto/bod_control.protoh"
 #include "proto/bod_client.protoh"
 #include "proto/bod_admin.protoh"
@@ -163,6 +165,7 @@ using namespace std;
 
 
 #include "proto/bo-writed_client.protoch"
+#include "proto/documentd_client.protoch"
 #define bo_sessiond_client_getsessioninfovars_NOTNEED
 #define bo_sessiond_client_setvar_NOTNEED
 #define bo_sessiond_client_delnotify_NOTNEED
@@ -1352,6 +1355,7 @@ static int bod_main (
 	const char *control,	// Unix socket
 	const CONNECT_INFO &con,
 	const CONNECT_INFO &con_sess,
+	const CONNECT_INFO &con_doc,
 	const char *user,
 	const char *pidfile,
 	bool daemon,
@@ -1367,6 +1371,7 @@ static int bod_main (
 	glocal const char *dirserver = dirserver;
 	glocal CONNECT_INFO con = con;
 	glocal CONNECT_INFO con_sess = con_sess;
+	glocal CONNECT_INFO con_doc = con_doc;
 	glocal const map<string,string> *admin_secrets = &admin_secrets;
 	glocal const map<string,string> *client_secrets = &client_secrets;
 	glocal unsigned long nbrequest_client = 0;
@@ -3396,6 +3401,11 @@ static int bod_main (
 					bod_publish (glocal.con,username,info,glocal.dirserver,glocal.nodename);
 				}
 			</f>
+			<f playstep> // sessionid owner path steps:U{VARVAL}v = success:b msg res:U{VARVAL}v
+				/*
+					In a single operation, we request the presentation of a document, and apply a command to it.
+				*/
+			</f>
 			<f invalid>
 				tlmp_error ("CLIENT: Invalid command: %s\n",line);
 				endclient = true;
@@ -3416,6 +3426,7 @@ static int bod_main (
 				glocal bool publish_dbfiles = false;
 				glocal bool publish_fsok = false;
 				glocal bool internal_error1 = false;
+				glocal bool documentd = false;
 				<call bo_sessiond_client_test>(glocal.con_sess);
 				<f ok>
 					glocal.internal_error1 = internal_error;
@@ -3439,10 +3450,15 @@ static int bod_main (
 					glocal.bdfiles1=true;
 				</f>
 				</call>
+				<call documentd_client_test>(glocal.con_doc);
+				<f ok>
+					glocal.documentd = success;
+				</f>
+				</call>
 				glocal.bod_admin.rep_test(glocal.internal_error1
 					,glocal.writed,glocal.bdfiles1,glocal.bdfiles2,glocal.bdusers
 					,glocal.sessiond1,glocal.sessiond2,glocal.keysd,glocal.fsok
-					,glocal.publish_dbfiles,glocal.publish_fsok);
+					,glocal.publish_dbfiles,glocal.publish_fsok,glocal.documentd);
 			</f>
 			<f invalid>
 				tlmp_error ("ADMIN: Invalid command: %s\n",line);
@@ -3489,6 +3505,7 @@ int main (int argc, char *argv[])
 	glocal const char *adminport = "9100";
 	glocal const char *sesshost = "127.0.0.4";
 	glocal const char *sessport = "9200";
+	glocal const char *docport = "/dev/documentd.sock";
 	glocal const char *user = "bolixo";
 	glocal const char *mysecret = NULL;
 	glocal const char *dbserv = "localhost";
@@ -3561,18 +3578,22 @@ int main (int argc, char *argv[])
 	<f main_noarg>
 		glocal CONNECT_INFO con;
 		glocal CONNECT_INFO con_sess;
+		glocal CONNECT_INFO con_doc;
 		glocal map<string,string> admin_secrets;
 		glocal map<string,string> client_secrets;
 		fdpass_readsecrets (glocal.client_secretfile,glocal.client_secrets);
 		fdpass_readsecrets (glocal.admin_secretfile,glocal.admin_secrets);
-		//glocal.con.host = glocal.adminhost;
+
 		glocal.con.port = glocal.adminport;
 		glocal.con.secret = glocal.mysecret;
 		glocal.con.bind = glocal.bind;
-		//glocal.con_sess.host = glocal.sesshost;
+
 		glocal.con_sess.port = glocal.sessport;
 		glocal.con_sess.secret = glocal.mysecret;
 		glocal.con_sess.bind = glocal.bind;
+
+		glocal.con_doc.port = glocal.docport;
+		glocal.con_doc.secret = glocal.mysecret;
 		if (glocal.sql_tcpport != NULL) nsql_settcpport (atoi(glocal.sql_tcpport));
 		{
 			const char *dbpass = getenv("BOD_PWD");
@@ -3586,7 +3607,7 @@ int main (int argc, char *argv[])
 		int ret = -1;
 		if (glocal.workers==1){
 			ret = bod_main (glocal.bind,glocal.port,glocal.control
-				,glocal.con,glocal.con_sess,glocal.user,glocal.pidfile,glocal.daemon
+				,glocal.con,glocal.con_sess,glocal.con_doc,glocal.user,glocal.pidfile,glocal.daemon
 				,glocal.admin_secrets,glocal.client_secrets,glocal.nodename,glocal.dirserver
 				,glocal.maxaccts);
 		}else{
@@ -3598,7 +3619,7 @@ int main (int argc, char *argv[])
 				pid_t pid = fork();
 				if (pid == (pid_t)0){
 					ret = bod_main (glocal.bind,portstr,control.c_str()
-						,glocal.con,glocal.con_sess,glocal.user,glocal.pidfile,false
+						,glocal.con,glocal.con_sess,glocal.con_doc,glocal.user,glocal.pidfile,false
 						,glocal.admin_secrets,glocal.client_secrets,glocal.nodename,glocal.dirserver
 						,glocal.maxaccts);
 				}else if (pid == (pid_t)-1){

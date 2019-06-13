@@ -351,7 +351,7 @@ int main (int argc, char *argv[])
 	glocal const char *clientsock = "/tmp/publishd_client.sock";
 	glocal const char *user = "bolixo";
 	glocal bool daemon = false;
-	glocal const char *admin_secretfile = "/etc/bolixo/secrets.admin";
+	glocal const char *client_secretfile = "/etc/bolixo/secrets.client";
 	glocal const char *pidfile = "/var/run/publishd.pid";
 	glocal const char *hostname = NULL;
 	glocal const char *keysdsock = "/dev/keysd.sock";
@@ -370,7 +370,7 @@ int main (int argc, char *argv[])
 		setgrouparg ("Misc.");
 		setarg (' ',"hostname",MSG_U(O_HOSTNAME,"Host name"),glocal.hostname,true);
 		setarg (' ',"keysdsock","Port to reach the bo-keysd server",glocal.keysdsock,false);
-		setarg (' ',"admin_secrets",MSG_R(O_ADMINSECRETS),glocal.admin_secretfile,false);
+		setarg (' ',"client_secrets",MSG_R(O_CLIENTSECRETS),glocal.client_secretfile,false);
 		setarg (' ',"user","Run the program as this user",glocal.user,false);
 		setarg (' ',"daemon","Run in background",glocal.daemon,false);
 		setarg (' ',"pidfile","File holding the PID of the process",glocal.pidfile,false);
@@ -396,7 +396,7 @@ int main (int argc, char *argv[])
 		glocal string controlport = string_f("unix:%s",glocal.control);
 		glocal string clientport = string_f("unix:%s",glocal.clientsock);
 		glocal deque<PUBLISH_MESSAGE> messages;
-		glocal map<string,string> admin_secrets;
+		glocal map<string,string> client_secrets;
 		glocal pid_t pid = (pid_t)-1;
 		glocal NSQL *sub_sq = NULL;
 		const char *passwd = getenv("PUBLISHD_PWD");
@@ -404,7 +404,7 @@ int main (int argc, char *argv[])
 			tlmp_error ("Can't get database password from environment, aborting\n");
 			exit (-1);
 		} 
-		fdpass_readsecrets (glocal.admin_secretfile,glocal.admin_secrets);
+		fdpass_readsecrets (glocal.client_secretfile,glocal.client_secrets);
 		query_setdefaultdb (glocal.data_dbserv,glocal.data_dbname,glocal.data_dbuser,passwd);
 		query_getdefaultdb()->showerrormode(true);
 		// Connection for the sub-process
@@ -420,7 +420,7 @@ int main (int argc, char *argv[])
 			if (string_cmp(info.port,glocal.controlport)==0){
 				n->type = TYPE_CONTROL;
 			}else if (string_cmp(info.port,glocal.clientport)==0){
-				n->req.secret = fdpass_findsecret (glocal.admin_secrets,info.port);
+				n->req.secret = fdpass_findsecret (glocal.client_secrets,info.port);
 				n->type = TYPE_CLIENT;
 			}
 		</f>

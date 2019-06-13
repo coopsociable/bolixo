@@ -74,6 +74,12 @@ struct HANDLE_INFO: public ARRAY_OBJ{
 #define bolixod_client_readfile_NOTNEED
 #include "proto/bolixod_client.protoch"
 
+#define publishd_client_sendmessage_NOTNEED
+#include "proto/publishd_client.protoch"
+
+#define documentd_client_playstep_NOTNEED
+#include "proto/documentd_client.protoch"
+
 #define bo_keysd_control_genkey_NOTNEED
 #define bo_keysd_control_setpassphrase_NOTNEED
 #define bo_keysd_control_checkpassphrase_NOTNEED
@@ -139,8 +145,19 @@ static int test_system(vector<string> &out)
 }
 </mod>
 
+struct SECRETS{
+	string bod;
+	string bolixod;
+	string publishd;
+	string documentd;
+};
+
 <mod>
-static int test_loop (const vector<string> &socks, const char *bod_secret, const char *bolixod_secret, bool debug, vector<string> &out)
+static int test_loop (
+	const vector<string> &socks,
+	const SECRETS &secrets,
+	bool debug,
+	vector<string> &out)
 {
 	glocal int ret = 0;
 	glocal vector<string> *out = &out;
@@ -155,7 +172,7 @@ static int test_loop (const vector<string> &socks, const char *bod_secret, const
 		//out.push_back(string_f("Try to connect to %s",glocal.path));
 		if (strstr(glocal.path,"-sessiond")!=NULL){
 			if (strstr(glocal.path,"-admin")!=NULL){
-				con.secret = bod_secret;
+				con.secret = secrets.bod;
 				<call bo_sessiond_client_test>(con);
 				<f ok>
 					glocal.out->push_back(string_f("%s%s: internal_error=%d success=%d"
@@ -166,7 +183,7 @@ static int test_loop (const vector<string> &socks, const char *bod_secret, const
 				</call>
 			}
 		}else if (strstr(glocal.path,"-bolixod")!=NULL){
-			con.secret = bolixod_secret;
+			con.secret = secrets.bolixod;
 			<call bolixod_client_test>(con);
 			<f ok>
 				const char *marker = ok_marker;
@@ -176,6 +193,40 @@ static int test_loop (const vector<string> &socks, const char *bod_secret, const
 				}
 				glocal.out->emplace_back(string_f("%s%s: internal_error=%d sessiond=%d db=%d fsok=%d msg=%s"
 					,marker,glocal.path,internal_error,sessiond,db,fsok,msg));
+			</f>
+			</call>
+		}else if (strstr(glocal.path,"-publishd")!=NULL){
+			con.secret = secrets.publishd;
+			glocal string secret = con.secret;
+			string testfile = string_f("/var/lib/bolixo/test-%ld",time(NULL));
+			<call savefile>(testfile,false);
+			<f dowrite>
+				return 0;
+			</f>
+			</call>
+			<call publishd_client_test>(con,testfile);
+			<f ok>
+				const char *marker = ok_marker;
+				if (internal_error || !dbfiles || !fsok){
+					glocal.ret = -1;
+					marker = err_marker;
+				}
+				glocal.out->emplace_back(string_f("%s%s: internal_error=%d dbfiles=%d fsok=%d"
+					,marker,glocal.path,internal_error,dbfiles,fsok));
+			</f>
+			</call>
+			unlink (testfile.c_str());
+		}else if (strstr(glocal.path,"-documentd")!=NULL){
+			con.secret = secrets.documentd;
+			<call documentd_client_test>(con);
+			<f ok>
+				const char *marker = ok_marker;
+				if (internal_error || !success){
+					glocal.ret = -1;
+					marker = err_marker;
+				}
+				glocal.out->emplace_back(string_f("%s%s: internal_error=%d success=%d"
+					,marker,glocal.path,internal_error,success));
 			</f>
 			</call>
 		}else if (strstr(glocal.path,"-keysd")!=NULL){
@@ -205,7 +256,7 @@ static int test_loop (const vector<string> &socks, const char *bod_secret, const
 			</call>
 		}else if (strstr(glocal.path,"-bod")!=NULL){
 			if (strstr(glocal.path,"-admin")!=NULL){
-				con.secret = bod_secret;
+				con.secret = secrets.bod;
 				<call bod_admin_test>(con);
 				<f ok>
 					if (internal_error){
@@ -223,17 +274,18 @@ static int test_loop (const vector<string> &socks, const char *bod_secret, const
 							|| !keysd
 							|| !fsok
 							|| !publish_dbfiles
-							|| !publish_fsok){
+							|| !publish_fsok
+							|| !documentd){
 							glocal.ret = -1;
 							ok = false;
 						}
 						glocal.out->push_back(string_f("%s%s: internal_error1=%d writed=%d bdfiles1=%d"
 							" bdfiles2=%d bdusers=%d sessiond1=%d sessiond2=%d keysd=%d fsok=%d"
-							" publish_dbfiles=%d publish_fsok=%d"
+							" publish_dbfiles=%d publish_fsok=%d documentd=%d"
 							,ok ? ok_marker : err_marker
 							,glocal.path,internal_error1,writed,bdfiles1
 							,bdfiles2,bdusers,sessiond1,sessiond2,keysd,fsok
-							,publish_dbfiles,publish_fsok));
+							,publish_dbfiles,publish_fsok,documentd));
 					}
 				</f>
 				</call>
@@ -316,8 +368,7 @@ int main (int argc, char *argv[])
 	glocal const char *admins_conf = "/etc/bolixo/admins.conf";
 	glocal const char *control = "/var/run/blackhole/bo-mon.sock";
 	glocal const char *sock_dir = NULL;
-	glocal const char *bod_secret = NULL;
-	glocal const char *bolixod_secret = NULL;
+	glocal SECRETS secrets;
 	glocal bool verbose = false;
 	glocal bool daemon = false;
 	glocal const char *user = "trli";
@@ -328,8 +379,10 @@ int main (int argc, char *argv[])
 	<f init>
 		setproginfo ("bo-mon",VERSION,MSG_U(I_BO_MON,"Monitoring service for Bolixo"));
 		setarg ('d',"sock_dir","Directoy holding the unix socket to connect to all services",glocal.sock_dir,true);
-		setarg (' ',"bod-secret","Secret needed to connect to bod",glocal.bod_secret,true);
-		setarg (' ',"bolixod-secret","Secret needed to connect to bolixod",glocal.bolixod_secret,true);
+		setarg (' ',"bod-secret","Secret needed to connect to bod",glocal.secrets.bod,true);
+		setarg (' ',"bolixod-secret","Secret needed to connect to bolixod",glocal.secrets.bolixod,true);
+		setarg (' ',"publishd-secret","Secret needed to connect to publishd",glocal.secrets.publishd,true);
+		setarg (' ',"documentd-secret","Secret needed to connect to documentd",glocal.secrets.documentd,true);
 		setarg ('v',"verbose","Display more information",glocal.verbose,false);
 		setarg (' ',"control","Unix socket path",glocal.control,false);
 		setarg (' ',"alarmcmd","Command used to send an alarm",glocal.command,false);
@@ -372,7 +425,7 @@ int main (int argc, char *argv[])
 			tlmp_error ("No socket found in directory %s\n",glocal.sock_dir);
 		}else if (!glocal.daemon){
 			vector<string> out;
-			glocal.ret = test_loop (glocal.socks,glocal.bod_secret,glocal.bolixod_secret,false,out);
+			glocal.ret = test_loop (glocal.socks,glocal.secrets,false,out);
 			if (glocal.verbose) for (auto &x:out) printf ("%s\n",x.c_str());
 		}else{
 			glocal unsigned long nbtest = 0;
@@ -452,7 +505,7 @@ int main (int argc, char *argv[])
 					</f>
 					<f test>
 						vector<string> out;
-						if (test_loop(glocal.socks,glocal.bod_secret,glocal.bolixod_secret,debug,out)==-1){
+						if (test_loop(glocal.socks,glocal.secrets,debug,out)==-1){
 							rep_test (false,out);
 						}else{
 							rep_test (true,out);
@@ -460,7 +513,7 @@ int main (int argc, char *argv[])
 					</f>
 					<f testmail>
 						vector<string> out;
-						int ok = test_loop(glocal.socks,glocal.bod_secret,glocal.bolixod_secret,false,out);
+						int ok = test_loop(glocal.socks,glocal.secrets,false,out);
 						out.insert (out.begin(),string_f("ok=%d",ok == -1 ? 0 : 1));
 						int ret = trli_mon_sendmail (glocal.mailserver,glocal.mailport,glocal.admins_conf,"test email monitoring",out);
 						rep_testmail (ret == -1 ? false:true);
@@ -504,7 +557,7 @@ int main (int argc, char *argv[])
 							if (pid == (pid_t)0){
 								close (tb[0]);
 								vector<string> out;
-								int ok = test_loop(glocal.socks,glocal.bod_secret,glocal.bolixod_secret,false,out);
+								int ok = test_loop(glocal.socks,glocal.secrets,false,out);
 								trli_mon_sendline (tb[1],string_f("ok=%d",ok));
 								for (auto l:out) trli_mon_sendline(tb[1],l);
 								_exit (0);

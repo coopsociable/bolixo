@@ -3779,6 +3779,72 @@ static int bofs_bolixoapi (CONTEXT &ctx, int argc, char *argv[])
 }
 </mod>
 
+<mod>
+static int bofs_documents (CONTEXT &ctx, int argc, char *argv[])
+{
+	glocal int ret = -1;
+	glocal ctx;
+	glocal bool playstep = false;
+	glocal vector<string> steps;
+	glocal const char *docname = nullptr;
+
+	glocal.ret = <call tlmpprogram>(argc,argv);
+	<f init>
+		setproginfo ("bofs documents",VERSION
+			,MSG_U(I_DOCUMENTS
+				,"Command line tool to test documents\n"
+				 "\n"
+				 "bofs documents command ...\n"
+				 "\n"
+				 "Commands are:\n"
+				 "\ttest\n"
+				 "\tplaystep\n"
+				)
+			);
+		setarg ('p',"playstep",MSG_U(O_PLAYSTEP,"Send some commands to a document"),glocal.playstep,false);
+		setarg ('s',"step",MSG_U(O_STEP,"Command (command=value) to send to document"),glocal.steps,false);
+		setarg ('d',"docname",MSG_U(O_DOCNAME,"Document name"),glocal.docname,false);
+	</f>
+	<f main>
+		int ret = -1;
+		if (glocal.playstep){
+			if (glocal.docname == nullptr){
+				tlmp_error (MSG_U(E_NODOCNAME,"Document name required\n"));
+			}else{
+				vector<VARVAL> steps;
+				for (auto const &s:glocal.steps){
+					const char *step = s.c_str();
+					const char *pt = strchr(step,'=');
+					if (pt == NULL){
+						tlmp_error (MSG_U(E_NOEQSIGN,"No equal sign in step\n"));
+						exit (-1);
+					}
+					VARVAL var;
+					var.var = string(step,pt-step);
+					var.val = pt+1;
+					steps.push_back(var);
+				}
+				<call bod_client_playstep>(glocal.ctx.con,glocal.ctx.sessionid,"",glocal.docname,steps);
+				<f ok>
+					if (!success){
+						bofs_error ("document",internal_error,MSG_U(E_PLAYSTEP,"Error while doing playstep msg=%s\n"),msg);
+					}else{
+						for (auto &r:res){
+							printf ("r=var=%s r.val=%s\n",r.var,r.val);
+						}
+					}
+				</f>
+				</call>
+			}
+		}else{
+			usage();
+		}
+		return ret;
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
 static void strip_blank (string &s)
 {
 	const char *pt = s.c_str();
@@ -3884,6 +3950,7 @@ int main (int argc, char *argv[])
 			 "\tbofs bolixoapi ...\n"
 			 "\tbofs cat ...\n"
 			 "\tbofs cp ...\n"
+			 "\tbofs documents ...\n"
 			 "\tbofs groups ...\n"
 			 "\tbofs ls ...\n"
 			 "\tbofs misc ...\n"
@@ -4039,6 +4106,8 @@ int main (int argc, char *argv[])
 					ret = bofs_undelete (glocal.ctx,argc,argv);
 				}else if (strcmp(argv[0],"bolixoapi")==0){
 					ret = bofs_bolixoapi (glocal.ctx,argc,argv);
+				}else if (strcmp(argv[0],"documents")==0){
+					ret = bofs_documents (glocal.ctx,argc,argv);
 				}else{
 					tlmp_error (MSG_U(E_IVLDCOMMAND,"Invalid command: %s\n"),argv[0]);
 					usage();

@@ -52,6 +52,7 @@ struct HANDLE_INFO: public ARRAY_OBJ{
 		type = TYPE_NONE;
 	}
 };
+#include "proto/bod_client.protodef"
 #include "proto/documentd_control.protoh"
 #include "proto/documentd_client.protoh"
 
@@ -587,6 +588,27 @@ void CHECKERS::exec (const char *var, const char *val, vector<VARVAL> &res)
 }
 
 
+static bool documentd_playstep (
+	map<string,GAME_P> &games,
+	const char *gameid,
+	const vector<VARVAL_receive> &steps,
+	vector<VARVAL> &res,
+	string &msg)
+{
+	bool success = false;
+	auto g = games.find(gameid);
+	if (g != games.end()){
+		success = true;
+		for (auto &v:steps){
+			g->second->exec(v.var,v.val,res);
+		}
+		g->second->testwin(res);
+	}else{
+		msg = "Unknown game id";
+	}
+	return success;
+}
+
 <mod>
 int main (int argc, char *argv[])
 {
@@ -595,7 +617,7 @@ int main (int argc, char *argv[])
 	glocal const char *clientsock = "/tmp/documentd_client.sock";
 	glocal const char *user = "bolixo";
 	glocal bool daemon = false;
-	glocal const char *admin_secretfile = "/etc/bolixo/secrets.client";
+	glocal const char *client_secretfile = "/etc/bolixo/secrets.client";
 	glocal const char *pidfile = "/var/run/documentd.pid";
 	glocal const char *hostname = NULL;
 
@@ -610,7 +632,7 @@ int main (int argc, char *argv[])
 		setarg (' ',"user","Run the program as this user",glocal.user,false);
 		setarg (' ',"daemon","Run in background",glocal.daemon,false);
 		setarg (' ',"pidfile","File holding the PID of the process",glocal.pidfile,false);
-		setarg (' ',"admin-secrets","File holding admin secrets for communication",glocal.admin_secretfile,false);
+		setarg (' ',"client-secrets","File holding client secrets for communication",glocal.client_secretfile,false);
 	</f>
 	<f showerror>
 		if (glocal.daemon){
@@ -632,9 +654,9 @@ int main (int argc, char *argv[])
 		glocal unsigned messages_sent = 0;
 		glocal string controlport = string_f("unix:%s",glocal.control);
 		glocal string clientport = string_f("unix:%s",glocal.clientsock);
-		glocal map<string,string> admin_secrets;
+		glocal map<string,string> client_secrets;
 		glocal pid_t pid = (pid_t)-1;
-		fdpass_readsecrets (glocal.admin_secretfile,glocal.admin_secrets);
+		fdpass_readsecrets (glocal.client_secretfile,glocal.client_secrets);
 		signal (SIGCHLD,SIG_IGN);
 		<obj TCPSERVER s>(glocal.clientport,5);
 		<f newclient>
@@ -644,7 +666,7 @@ int main (int argc, char *argv[])
 			if (string_cmp(info.port,glocal.controlport)==0){
 				n->type = TYPE_CONTROL;
 			}else if (string_cmp(info.port,glocal.clientport)==0){
-				n->req.secret = fdpass_findsecret (glocal.admin_secrets,info.port);
+				n->req.secret = fdpass_findsecret (glocal.client_secrets,info.port);
 				n->type = TYPE_CLIENT;
 			}
 		</f>
@@ -735,18 +757,8 @@ int main (int argc, char *argv[])
 				</f>
 				<f playstep>	// gameid steps:U{VARVAL}v = success:b msg res:U{VARVAL}v
 					vector<VARVAL> res;
-					bool success = true;
 					string msg;
-					auto g = glocal.games.find(gameid);
-					if (g != glocal.games.end()){
-						success = true;
-						for (auto &v:steps){
-							g->second->exec(v.var,v.val,res);
-						}
-						g->second->testwin(res);
-					}else{
-						msg = "Unknown game id";
-					}
+					bool success = documentd_playstep (glocal.games,gameid,steps,res,msg);
 					rep_playstep(success,msg,res);
 				</f>
 				<f save> // gameid = success:b msg
@@ -812,7 +824,13 @@ int main (int argc, char *argv[])
 			}else if (c->type == TYPE_CLIENT){
 				<call documentd_client>(this,c->req,line,info.linelen, endserver, endclient,no,c);
 				<f test>
-					rep_test(false);
+					rep_test(true);
+				</f>
+				<f playstep>
+					vector<VARVAL> res;
+					string msg;
+					bool success = documentd_playstep (glocal.games,gameid,steps,res,msg);
+					rep_playstep(success,msg,res);
 				</f>
 				<f invalid>
 					tlmp_error ("Invalid command: %s\n",line);

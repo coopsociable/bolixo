@@ -43,6 +43,7 @@ if [ "$LXCSOCK" == "on" ] ; then
 	BOLIXOD_SOCK=/var/lib/lxc/bolixod/rootfs/var/run/blackhole/bolixod-0.sock
 	BOLIXOD_SOCKS=/var/lib/lxc/bolixod/rootfs/var/run/blackhole/bolixod-*.sock
 	PUBLISHD_SOCK=/var/lib/lxc/publishd/rootfs/var/run/blackhole/publishd.sock
+	DOCUMENTD_SOCK=/var/lib/lxc/documentd/rootfs/var/run/blackhole/documentd.sock
 	BOD_SOCK=/var/lib/lxc/bod/rootfs/var/run/blackhole/bod-2.sock
 	BOD_SOCKS=/var/lib/lxc/bod/rootfs/var/run/blackhole/bod-*.sock
 	WRITED_SOCK=/var/lib/lxc/writed/rootfs/var/run/blackhole/bo-writed-0.sock
@@ -53,6 +54,7 @@ if [ "$LXCSOCK" == "on" ] ; then
 elif [ "$BOD_SOCK" = "" ] ; then
 	BOLIXOD_SOCK=/tmp/bolixod.sock
 	PUBLISHD_SOCK=/tmp/publishd.sock
+	DOCUMENTD_SOCK=/tmp/documentd.sock
 	BOD_SOCK=/tmp/bod.sock
 	WRITED_SOCK=/tmp/bo-writed.sock
 	SESSIOND_SOCK=/tmp/bo-sessiond.sock
@@ -209,6 +211,12 @@ publishd_save(){
 publishd_restore(){
 	bod_restore $*
 }
+documentd_save(){
+	bod_save $*
+}
+documentd_restore(){
+	bod_restore $*
+}
 if [ "$1" = "" ] ; then
 	if [ -x /usr/sbin/menutest ] ; then
 		/usr/sbin/menutest -s $0
@@ -275,9 +283,31 @@ elif [ "$1" = "bolixod" ] ; then # A: Runs bolixod
 			$BOLIXOPATH/bolixod $WOPTIONS
 		done
 	fi
+elif [ "$1" = "documentd" ] ; then # A: Runs bolixod
+	OPTIONS="--user $USER \
+		--client-secrets $BOLIXOCONF/secrets.client \
+		"
+	shift
+	WORKERS=1
+	while [ $# -gt 0 ]; do
+		if [ "$1" = "debug" ] ; then
+			OPTIONS="--debug $OPTIONS"
+		elif [ "$1" = "lxc0" ] ; then
+			STRACE="strace -o /tmp/log -f"
+		fi
+		shift
+	done
+	OPTIONS="$OPTIONS --control $DOCUMENTD_SOCK"
+	if [ "$SILENT" = "on" ] ; then
+		echo documentd
+	else
+		echo $BOLIXOPATH/documentd $OPTIONS
+	fi
+	mkdir -p /var/lib/lxc/documentd/rootfs/var/run/blackhole
+	$STRACE $BOLIXOPATH/documentd $OPTIONS
 elif [ "$1" = "publishd" ] ; then # A: Runs bolixod
 	OPTIONS="--user $USER \
-		--hostname test1.bolixo.org --admin_secrets $BOLIXOCONF/secrets.admin \
+		--hostname test1.bolixo.org --client_secrets $BOLIXOCONF/secrets.client \
 		--dbserv $BOD_DBSERV --dbuser $BOD_DBUSER --dbname $BOD_DBNAME  \
 		"
 	shift
@@ -333,7 +363,7 @@ elif [ "$1" = "bod" ] ; then # A: Runs bod
 	fi
 elif [ "$1" = "bo-writed" ] ; then # A: Runs writed
 	OPTIONS="--logfile $BOLIXOLOG/bo-writed.log --user $USER --secrets $BOLIXOCONF/secrets.client \
-		--mysecret adm --data_dbserv $BO_WRITED_DBSERV --data_dbuser $BO_WRITED_DBUSER --data_dbname $BO_WRITED_DBNAME \
+		--mysecret adm --mypubsecret cli --data_dbserv $BO_WRITED_DBSERV --data_dbuser $BO_WRITED_DBUSER --data_dbname $BO_WRITED_DBNAME \
 		--users_dbserv $BO_WRITED_DBSERV --users_dbuser $BO_WRITED_DBUSER --users_dbname $BO_WRITED_DBNAMEU \
 		--mailfrom no-reply@solucorp.qc.ca --nodename $THISNODE \
 		--sessionhost $HORIZONIP1 --sqltcpport 3307"
@@ -436,6 +466,9 @@ elif [ "$1" = "bolixod-controls" ] ; then # A: Talks to all bolixod
 	do
 		$BOLIXOPATH/bolixod-control --control $sock $*
 	done
+elif [ "$1" = "documentd-control" ] ; then # A: Talks to publishd
+	shift
+	$BOLIXOPATH/documentd-control --control $DOCUMENTD_SOCK $*
 elif [ "$1" = "publishd-control" ] ; then # A: Talks to publishd
 	shift
 	$BOLIXOPATH/publishd-control --control $PUBLISHD_SOCK $*
@@ -808,6 +841,7 @@ elif [ "$1" = "test-monitor" ] ; then # T: Tests all bods
 	if [ "$2" = verbose ] ; then
 		OPT=-v
 	fi
+	export LXCSOCK=off
 	if $0 bo-mon-control test
 	then
 		echo ok
@@ -1282,6 +1316,22 @@ elif [ "$1" = "lxc0-publishd" ]; then # prod:
 	chmod +x /var/lib/lxc/publishd/publishd-lxc0.sh
 	publishd_save publishd
 	publishd_restore publishd
+elif [ "$1" = "lxc0-documentd" ]; then # prod:
+	export LANG=eng
+	$0 documentd lxc0 &
+	sleep 1
+	$0 documentd-control quit
+	mkdir -p /var/lib/lxc/documentd
+	trli-lxc0 $LXC0USELINK \
+		--filelist /var/lib/lxc/documentd/publishd.files \
+		--savefile /var/lib/lxc/documentd/documentd.save \
+		--restorefile /var/lib/lxc/documentd/documentd.restore \
+		$EXTRALXCPROG \
+		$INCLUDELANGS \
+		-i /usr/sbin/trli-init -l /tmp/log -n documentd -p $BOLIXOPATH/documentd >/var/lib/lxc/documentd/documentd-lxc0.sh
+	chmod +x /var/lib/lxc/documentd/documentd-lxc0.sh
+	documentd_save documentd
+	documentd_restore documentd
 elif [ "$1" = "lxc0-bod" ]; then # prod:
 	export LANG=eng
 	$0 bod lxc0 &
@@ -1611,6 +1661,7 @@ elif [ "$1" = "lxc0s" ] ; then # prod: generates lxc0 scripts for all components
 	$0 checks
 	export SILENT=on
 	$0 lxc0-bolixod
+	$0 lxc0-documentd
 	$0 lxc0-publishd
 	$0 lxc0-bod
 	$0 lxc0-writed
