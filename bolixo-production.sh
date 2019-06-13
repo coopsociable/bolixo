@@ -337,7 +337,7 @@ elif [ "$1" = "restart-nolock" ] ; then # prod: restart without locking some ser
 		do
 			if [ "$serv" = "internals" ] ; then
 				SERVICES="$SERVICES bo-mon trli-syslog"
-				for std in bolixod bod writed sessiond keysd publishd protocheck
+				for std in bolixod bod writed sessiond keysd publishd documentd protocheck
 				do
 					if [ -d /var/lib/lxc/$std/rootfs ] ; then
 						SERVICES="$SERVICES $std"
