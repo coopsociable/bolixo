@@ -49,6 +49,8 @@ make install
 /usr/sbin/bolixod-control
 /usr/sbin/publishd
 /usr/sbin/publishd-control
+/usr/sbin/documentd
+/usr/sbin/documentd-control
 /usr/sbin/bo-keysd
 /usr/sbin/bo-keysd-control
 /usr/sbin/bo-manager

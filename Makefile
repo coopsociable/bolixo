@@ -307,6 +307,8 @@ install: msg.eng msg.fr
 	install -m755 bolixod-control $(RPM_BUILD_ROOT)/usr/sbin/bolixod-control
 	install -m755 publishd $(RPM_BUILD_ROOT)/usr/sbin/publishd
 	install -m755 publishd-control $(RPM_BUILD_ROOT)/usr/sbin/publishd-control
+	install -m755 documentd $(RPM_BUILD_ROOT)/usr/sbin/documentd
+	install -m755 documentd-control $(RPM_BUILD_ROOT)/usr/sbin/documentd-control
 	install -m755 rssd $(RPM_BUILD_ROOT)/usr/sbin/rssd
 	install -m755 rssd-control $(RPM_BUILD_ROOT)/usr/sbin/rssd-control
 	install -m755 utils/rss-scan $(RPM_BUILD_ROOT)/usr/sbin/rss-scan
