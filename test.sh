@@ -212,10 +212,19 @@ publishd_restore(){
 	bod_restore $*
 }
 documentd_save(){
-	bod_save $*
+	ROOTFS=/var/lib/lxc/$1/rootfs
+	SAVE=/var/lib/lxc/$1/$1.save
+	DATA=/var/lib/lxc/$1/data
+	echo "#!/bin/sh" > $SAVE
+	echo "mkdir -p $DATA" >>$SAVE
+	chmod +x $SAVE
 }
 documentd_restore(){
-	bod_restore $*
+	ROOTFS=/var/lib/lxc/$1/rootfs
+	REST=/var/lib/lxc/$1/$1.restore
+	DATA=/var/lib/lxc/$1/data
+	echo "#!/bin/sh" > $REST
+	chmod +x $REST
 }
 if [ "$1" = "" ] ; then
 	if [ -x /usr/sbin/menutest ] ; then
