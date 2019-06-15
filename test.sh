@@ -217,6 +217,8 @@ documentd_save(){
 	DATA=/var/lib/lxc/$1/data
 	echo "#!/bin/sh" > $SAVE
 	echo "mkdir -p $DATA" >>$SAVE
+	echo "rm -f $DATA/game.*" >>$SAVE
+	echo "test -f $ROOTFS/tmp/game.0 && mv -f $ROOTFS/tmp/game.* $DATA/." >>$SAVE
 	chmod +x $SAVE
 }
 documentd_restore(){
@@ -224,6 +226,8 @@ documentd_restore(){
 	REST=/var/lib/lxc/$1/$1.restore
 	DATA=/var/lib/lxc/$1/data
 	echo "#!/bin/sh" > $REST
+	echo "test -f $DATA/game.0 && cp -f $DATA/game.* $ROOTFS/tmp/." >>$REST
+	echo "chmod 666 $ROOTFS/tmp/game.*" >>$REST
 	chmod +x $REST
 }
 if [ "$1" = "" ] ; then
@@ -1331,13 +1335,15 @@ elif [ "$1" = "lxc0-documentd" ]; then # prod:
 	sleep 1
 	$0 documentd-control quit
 	mkdir -p /var/lib/lxc/documentd
+	strace -o /tmp/log.qqwing qqwing --generate 1 --compact --solution --difficulty easy >/dev/null
 	trli-lxc0 $LXC0USELINK \
 		--filelist /var/lib/lxc/documentd/publishd.files \
 		--savefile /var/lib/lxc/documentd/documentd.save \
 		--restorefile /var/lib/lxc/documentd/documentd.restore \
 		$EXTRALXCPROG \
 		$INCLUDELANGS \
-		-i /usr/sbin/trli-init -l /tmp/log -n documentd -p $BOLIXOPATH/documentd >/var/lib/lxc/documentd/documentd-lxc0.sh
+		-e /bin/sh \
+		-i /usr/sbin/trli-init -l /tmp/log -l /tmp/log.qqwing -n documentd -p $BOLIXOPATH/documentd >/var/lib/lxc/documentd/documentd-lxc0.sh
 	chmod +x /var/lib/lxc/documentd/documentd-lxc0.sh
 	documentd_save documentd
 	documentd_restore documentd

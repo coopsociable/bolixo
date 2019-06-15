@@ -3405,6 +3405,33 @@ static int bod_main (
 				/*
 					In a single operation, we request the presentation of a document, and apply a command to it.
 				*/
+				glocal vector<VARVAL> res;
+				glocal string msg;
+				glocal bool success = false;
+				string username;
+				unsigned userid = bo_writed_get_group_owner (glocal.con_sess, sessionid, "", username,glocal.msg);
+				if (userid != 0){
+					vector<VARVAL> vsteps;
+					for (auto &s:steps) vsteps.push_back(s);
+					<call documentd_client_startgame>(glocal.con_doc,"sudoku",path);
+					<f ok>
+						tlmp_warning ("startgame success=%d msg=%s\n",success,msg);
+					</f>
+					</call>
+					<call documentd_client_playstep>(glocal.con_doc,path,vsteps);
+					<f ok>
+						glocal.success = success;
+						glocal.msg = msg;
+						for (auto &r:res) glocal.res.push_back(r);
+					</f>
+					</call>
+				}
+				if (glocal.msg.size() != 0){
+					glocal.res.clear();
+					rep_playstep(false,glocal.msg,glocal.res);
+				}else{
+					rep_playstep(glocal.success,"",glocal.res);
+				}
 			</f>
 			<f invalid>
 				tlmp_error ("CLIENT: Invalid command: %s\n",line);

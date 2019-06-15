@@ -416,8 +416,14 @@ void SUDOKU::exec (const char *var, const char *val, vector<VARVAL> &res)
 				}
 				return 0;
 			</f>
+			<f oneerr>
+				tlmp_error ("sudoku command=%s line=%s\n",command,line);
+				return 0;
+			</f>
 			</call>
 		}
+	}else{
+		tlmp_error ("sudoku invalid command %s\n",var);
 	}
 }
 </mod>
@@ -609,6 +615,53 @@ static bool documentd_playstep (
 	return success;
 }
 
+static bool documentd_startgame(
+	map<string,GAME_P> &games,
+	const char *gamename,
+	const char *gameid,
+	string &msg)
+{
+	bool ret = false;
+	auto g = games.find(gameid);
+	if (g != games.end()){
+		msg = "Game already exist";
+	}else{
+		GAME_P p;
+		if (strcmp(gamename,"tictacto")==0){
+			p = make_shared<TICTACTO>();
+		}else if (strcmp(gamename,"sudoku")==0){
+			p = make_shared<SUDOKU>();
+		}else if (strcmp(gamename,"wordproc")==0){
+			p = make_shared<WORDPROC>();
+		}else if (strcmp(gamename,"checkers")==0){
+			p = make_shared<CHECKERS>();
+		}
+		if (p != nullptr){
+			games[gameid] = p;
+			games[gameid]->resetgame();
+			ret = true;
+		}else{
+			msg = "unknown game";
+		}
+	}
+	return ret;
+}
+static bool documentd_endgame (
+	map<string,GAME_P> &games,
+	const char *gameid,
+	string &msg)
+{
+	bool ret = false;
+	auto g = games.find(gameid);
+	if (g != games.end()){
+		ret = true;
+		games.erase (g);
+	}else{
+		msg = "Unknown game id";
+	}
+	return ret;
+}
+
 <mod>
 int main (int argc, char *argv[])
 {
@@ -692,6 +745,20 @@ int main (int argc, char *argv[])
 					toggle_instrument_file(on);
 				</f>
 				<f quit>
+					// Save all games/documents in a file
+					unsigned num=0;
+					for (auto &g:glocal.games){
+						glocal GAME_P game = g.second;
+						glocal const char *gameid = g.first.c_str();
+						<call savefile>(string_f("/tmp/game.%u",num),false);
+						<f dowrite>
+							fprintf (fout,"%s\n%s\n",glocal.gameid,glocal.game->getclass());
+							glocal.game->save(fout);
+							return 0;
+						</f>
+						</call>
+						num++;
+					}
 					endserver = true;
 				</f>
 				<f debug>
@@ -706,41 +773,12 @@ int main (int argc, char *argv[])
 				</f>
 				<f startgame>	// gamename gameid = success:b msg
 					string msg;
-					bool success = false;
-					auto g = glocal.games.find(gameid);
-					if (g != glocal.games.end()){
-						msg = "Game already exist";
-					}else{
-						GAME_P p;
-						if (strcmp(gamename,"tictacto")==0){
-							p = make_shared<TICTACTO>();
-						}else if (strcmp(gamename,"sudoku")==0){
-							p = make_shared<SUDOKU>();
-						}else if (strcmp(gamename,"wordproc")==0){
-							p = make_shared<WORDPROC>();
-						}else if (strcmp(gamename,"checkers")==0){
-							p = make_shared<CHECKERS>();
-						}
-						if (p != NULL){
-							glocal.games[gameid] = p;
-							glocal.games[gameid]->resetgame();
-							success = true;
-						}else{
-							msg = "unknown game";
-						}
-					}
+					bool success = documentd_startgame(glocal.games,gamename,gameid,msg);
 					rep_startgame(success,msg);
 				</f>
 				<f endgame>	// gameid = success:b msg
-					bool success = false;
 					string msg;
-					auto g = glocal.games.find(gameid);
-					if (g != glocal.games.end()){
-						success = true;
-						glocal.games.erase (g);
-					}else{
-						msg = "Unknown game id";
-					}
+					bool success = documentd_endgame(glocal.games,gameid,msg);
 					rep_endgame (success,msg);
 				</f>
 				<f resetgame>	// gameid = success:b msg
@@ -826,6 +864,16 @@ int main (int argc, char *argv[])
 				<f test>
 					rep_test(true);
 				</f>
+				<f startgame>	// gamename gameid = success:b msg
+					string msg;
+					bool success = documentd_startgame(glocal.games,gamename,gameid,msg);
+					rep_startgame(success,msg);
+				</f>
+				<f endgame>	// gameid = success:b msg
+					string msg;
+					bool success = documentd_endgame(glocal.games,gameid,msg);
+					rep_endgame (success,msg);
+				</f>
 				<f playstep>
 					vector<VARVAL> res;
 					string msg;
@@ -846,6 +894,34 @@ int main (int argc, char *argv[])
 		}
 
 		if (!some_errors && s.is_ok()){
+			// Load saved games/documents
+			if (file_type("/tmp/game.0")==0){
+				<call walkfs>("/tmp");
+				<f onefile>
+					if (strncmp(basename,"game.",5)==0){
+						FILE *fin = fopen (path,"r");
+						if (fin == nullptr){
+							tlmp_error ("Can't open saved game %s (%s)\n",path,strerror(errno));
+						}else{
+							char buf1[1000],buf2[1000];
+							if (fgets(buf1,sizeof(buf1)-1,fin)!=nullptr
+								&& fgets(buf2,sizeof(buf2)-1,fin)!=nullptr){
+								strip_end (buf1);
+								strip_end (buf2);
+								string msg;
+								if (!documentd_startgame(glocal.games,buf2,buf1,msg)){
+									tlmp_error ("Can't initialise game %s/%s (%s)\n",buf1,buf2,msg.c_str());
+								}else{
+									glocal.games[buf1]->load(fin);
+								}
+							}
+							fclose (fin);
+						}
+						unlink (path);
+					}
+				</f>
+				</call>
+			}
 			chmod (glocal.clientsock,0666);
 			s.setrawmode(true);
 			if (glocal.daemon){
