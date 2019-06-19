@@ -232,6 +232,7 @@ struct SUDOKU_CELL{
 class SUDOKU: public GAME{
 	SUDOKU_CELL grid[9][9];	
 	unsigned line,column;	// Currently selected 3x3 area
+	unsigned seldig;	// Selected digit used when setting a value
 public:
 	const char *getclass(){
 		return "sudoku";
@@ -270,6 +271,7 @@ void SUDOKU::load (FILE *fin)
 void SUDOKU::resetgame()
 {
 	line = column = 0;
+	seldig = 0;
 	for (auto &g:grid){
 		for (auto &gg:g){
 			gg.reset();
@@ -318,70 +320,123 @@ void SUDOKU::exec (const char *var, const char *val, vector<VARVAL> &res)
 		}
 	}else if (strcmp(var,"print")==0){
 		string lines;
-		static const char *dashes = "\t+---+---+---+---+---+---+---+---+---+\n";	
-		unsigned nol = 0;
-		static const char *white = "\033[01;37m";
-		static const char *green = "\033[01;32m";
-		static const char *blue = "\033[01;34m";
-		static const char *red = "\033[01;31m";
-		static const char *bgblue = "\033[01;44m";
-		static const char *normal = "\033[00m";
-		for (auto &g:grid){
-			if (nol % 3 == 0){
-				lines += blue;
-				lines += dashes;
-				lines += normal;
-			}else{
-				lines += '\t';
-				for (unsigned i=0; i<9; i++){
-					if (i % 3 == 0){
-						lines += blue;
-					}else{
-						lines += green;
-					}
-					lines += '+';
-					lines += green;
-					lines += "---";
-				}
-				lines += blue;
-				lines += '+';
-				lines += normal;
-				lines += '\n';
-			}
-			lines += "\t";
-			unsigned pos = 0;
-			for (auto &gg:g){
-				if (pos % 3 == 0){
+		if (strcmp(val,"console")==0){
+			static const char *dashes = "\t+---+---+---+---+---+---+---+---+---+\n";	
+			unsigned nol = 0;
+			static const char *white = "\033[01;37m";
+			static const char *green = "\033[01;32m";
+			static const char *blue = "\033[01;34m";
+			static const char *red = "\033[01;31m";
+			static const char *bgblue = "\033[01;44m";
+			static const char *normal = "\033[00m";
+			for (auto &g:grid){
+				if (nol % 3 == 0){
 					lines += blue;
-					lines += '|';
-				}else{
-					lines += green;
-					lines += '|';
-				}
-				lines += normal;
-				if (nol / 3 == line && pos / 3 == column) lines += bgblue;
-				if (gg.visible){
-					lines += string_f("%s %c %s",white,gg.value+'0',normal);
-				}else if (gg.user_value != 0){
-					if (gg.user_value != gg.value){
-						lines += red;
-					}
-					lines += string_f(" %c ",gg.user_value+'0');
+					lines += dashes;
 					lines += normal;
 				}else{
-					lines += "   ";
+					lines += '\t';
+					for (unsigned i=0; i<9; i++){
+						if (i % 3 == 0){
+							lines += blue;
+						}else{
+							lines += green;
+						}
+						lines += '+';
+						lines += green;
+						lines += "---";
+					}
+					lines += blue;
+					lines += '+';
+					lines += normal;
+					lines += '\n';
 				}
+				lines += "\t";
+				unsigned pos = 0;
+				for (auto &gg:g){
+					if (pos % 3 == 0){
+						lines += blue;
+						lines += '|';
+					}else{
+						lines += green;
+						lines += '|';
+					}
+					lines += normal;
+					if (nol / 3 == line && pos / 3 == column) lines += bgblue;
+					if (gg.visible){
+						lines += string_f("%s %c %s",white,gg.value+'0',normal);
+					}else if (gg.user_value != 0){
+						if (gg.user_value != gg.value){
+							lines += red;
+						}
+						lines += string_f(" %c ",gg.user_value+'0');
+						lines += normal;
+					}else{
+						lines += "   ";
+					}
+					lines += normal;
+					pos++;
+				}
+				lines += blue;
+				lines += "|\n";
 				lines += normal;
-				pos++;
+				nol++;
 			}
 			lines += blue;
-			lines += "|\n";
+			lines += dashes;
 			lines += normal;
-			nol++;
+		}else{
+			unsigned width = 500 - 500 % 9;
+			unsigned height = 500 - 500 % 9;
+			
+			lines += "<p>\n";
+			lines += "<div>\n";
+			lines += "<svg width='50px' height='450px' viewbox='0 0 30 270'>\n";
+			for (unsigned i=0; i<9; i++){
+				lines += string_f("<path stroke='black' stroke-width='2' fill='%s' d='M1,%u H29 v29 H1 Z'/>\n",i==seldig ? "pink" : "white"
+					,i*30);
+				lines += string_f("<text x='10' y='%u' style='stroke:%s;fill:%s;font-size:20;font-family: Times New Roman;'>%u</text>\n",i*30+20,"black","black",i+1);
+			}
+			lines += "</svg>\n";
+			lines += "&nbsp;&nbsp;&nbsp;";
+			lines += string_f("<svg width='%upx' height='%upx' viewbox='0 0 %u %u'>\n",width,height,width,height);
+			if (1){
+			lines += string_f("<path stroke='green' stroke-width='2' fill='white' d='M1 1 H %u V %u H 1 Z'/>\n",width-1,height-1);
+			}
+			unsigned line = 0;
+			unsigned h9 = height/9;
+			unsigned w9 = width/9;
+			for (auto &g:grid){
+				if (1){	
+				lines += string_f("<path stroke=%s stroke-width=1 d='M0,%u H %u'/>\n",line%3==0 ? "green" : "lightgray"
+					,h9*line,width);
+				}
+				//lines += string_f("<text x='73' y='%u' style='stroke:%s;fill:%s;font-size:20;font-family: Times New Roman;'>%u</text>\n",line*30+20,"black","black",line+1);
+				unsigned col = 0;
+				//lines += string_f("<text X='%u' Y='%u' style='stroke:%s;fill:%s;font-size:20;font-family: Times New Roman;'>%u</text>\n",w9*col+w9/3,h9*line+2*h9/3,"black","black",99);
+				for (auto &&gg:g){
+					if (1){
+					lines += string_f("<path stroke=%s stroke-width=1 d='M%u,0 V %u'/>\n",col%3==0 ? "green" : "lightgray"
+						,w9*col,height);
+					}
+					if (gg.visible || gg.user_value != 0){
+						const char *color = "gray";
+						unsigned value = gg.value;
+						if (!gg.visible){
+							color = "black";
+							value = gg.user_value;
+							if (gg.user_value != gg.value) color = "red";
+						}
+						lines += string_f("<text X='%u' Y='%u' style='stroke:%s;fill:%s;font-size:20;font-family: Times New Roman;'>%u</text>\n",w9*col+w9/3,h9*line+2*h9/3
+							,color,color,value);
+					}
+					col++;
+				}
+				line++;
+			}
+			lines += "</svg>\n";
+			lines += "</div>\n";
 		}
-		lines += blue;
-		lines += dashes;
-		lines += normal;
 		VARVAL v;
 		v.var = "content";
 		v.val = lines;

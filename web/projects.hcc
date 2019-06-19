@@ -360,6 +360,8 @@ void projects(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER
 						glocal.webtable.setclickopt (true,"",string_f("webtab_add=1:%s",path.c_str()));
 					}else if (file_is_image(f.file_type)){
 						glocal.webtable.setclickopt (true,"",string_f("webtab_add=2:%s~%s",path.c_str(),f.name));
+					}else if (file_is_doc(f.file_type)){
+						glocal.webtable.setclickopt (true,"",string_f("webtab_add=2:%s~%s",path.c_str(),f.name));
 					}else if (file_is_video(f.file_type)){
 						glocal.webtable.setclickopt (true,func,"800,800");
 					}else if (file_is_sound(f.file_type)){
@@ -613,6 +615,22 @@ void projects(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER
 				}
 			</f>
 			</call>
+		}else if (file_is_doc(info.file_type)){
+			vector<VARVAL> steps;
+			VARVAL var;
+			var.var = "print";
+			steps.push_back(var);
+			<call bod_client_playstep>(glocal.con,w_session.c_str(),"",glocal.path,steps);
+			<f ok>
+				for (auto &r:res){
+					if (strcmp(r.var,"content")==0){
+						htmlout (r.val);
+					}
+				}
+			</f>
+			</call>
+		}else{
+			tlmp_error ("No rule to display document type %d\n",info.file_type);
 		}
 	</f>
 	</call>

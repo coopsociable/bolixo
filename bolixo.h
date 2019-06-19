@@ -55,6 +55,9 @@ inline bool file_is_image (FILE_TYPE type){
 inline bool file_is_video (FILE_TYPE type){
 	return type == FILE_VIDEO;
 }
+inline bool file_is_doc (FILE_TYPE type){
+	return type == FILE_DOC_SUDOKU || type == FILE_DOC_CHECKER || type == FILE_DOC_CHESS;
+}
 #ifdef DEFINE_TBTYPE
 static char tbtype[]={' ','_','D','F','M','C'};
 #endif
@@ -67,7 +70,10 @@ const char *tbftype[]={
 	"jpg",	//FILE_IMAGE_JPG,
 	"png",	//FILE_IMAGE_PNG,
 	"gif",	//FILE_IMAGE_GIF,
-	"vid"	//FILE_VIDEO,
+	"vid",	//FILE_VIDEO,
+	"sud",	//FILE_DOC_SUDOKU
+	"chk",	//FILE_DOC_CHECK
+	"chs",	//FILE_DOC_CHESS
 };
 #else
 extern const char *tbftype[];
