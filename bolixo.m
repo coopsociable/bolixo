@@ -2,7 +2,7 @@ extern const char **_dictionary_bolixo;
 #ifndef DICTIONARY_REQUEST
 	#define DICTIONARY_REQUEST \
 	const char **_dictionary_bolixo;\
-	TRANSLATE_SYSTEM_REQ _dictionary_req_bolixo("bolixo",_dictionary_bolixo,541,17);\
+	TRANSLATE_SYSTEM_REQ _dictionary_req_bolixo("bolixo",_dictionary_bolixo,546,17);\
 	void dummy_dict_bolixo(){}
 #endif
 #ifndef MSG_U
@@ -554,3 +554,8 @@ extern const char **_dictionary_bolixo;
 #define O_DOCNAME	538
 #define E_NODOCNAME	539
 #define E_PLAYSTEP	540
+#define I_NEWGAME	541
+#define I_SIMPLE	542
+#define I_EASY	543
+#define I_INTERMEDIATE	544
+#define I_EXPERT	545

@@ -54,6 +54,8 @@ extern W_SSTRING w_user;
 extern W_SSTRING w_name;
 extern W_SSTRING w_image;
 
+extern W_SSTRING w_action;
+
 extern W_UNSIGNED w_notify_ui;
 extern W_UNSIGNED w_notify_email;
 

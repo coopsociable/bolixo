@@ -165,6 +165,7 @@ using namespace std;
 
 
 #include "proto/bo-writed_client.protoch"
+#define documentd_client_endgame_NOTNEED
 #include "proto/documentd_client.protoch"
 #define bo_sessiond_client_getsessioninfovars_NOTNEED
 #define bo_sessiond_client_setvar_NOTNEED
@@ -245,6 +246,7 @@ static void bod_sessions_erase(PARAM_STRING session, const char *control)
 }
 </mod>
 static string user_timezone="system";	// timezone of the current user
+static string current_lang;
 /*
 	Get the userid associated with the sessionid
 */
@@ -258,7 +260,8 @@ static unsigned trli_getsessionuser (CONNECT_INFO &con, const char *sessionid, b
 		name = s->second.name;
 		is_admin = s->second.is_admin;
 		user_timezone = s->second.timezone;
-		translat_selectlang(s->second.lang.c_str());
+		current_lang = s->second.lang;
+		translat_selectlang(current_lang.c_str());
 	}else{
 		glocal const char *sessionid = sessionid;
 		glocal unsigned userid = 0;
@@ -273,7 +276,8 @@ static unsigned trli_getsessionuser (CONNECT_INFO &con, const char *sessionid, b
 				glocal.userid = userid;
 				glocal.is_admin = admin;
 				(*glocal.name) = name;
-				translat_selectlang(lang);
+				current_lang = lang;
+				translat_selectlang(current_lang.c_str());
 				if (timezone[0] == '\0') timezone = "system";
 				user_timezone = timezone;
 				sessions[glocal.sessionid] = SESSION_CACHE(name,userid,admin,lang,timezone);
@@ -3413,12 +3417,12 @@ static int bod_main (
 				if (userid != 0){
 					vector<VARVAL> vsteps;
 					for (auto &s:steps) vsteps.push_back(s);
-					<call documentd_client_startgame>(glocal.con_doc,"sudoku",path);
+					<call documentd_client_startgame>(glocal.con_doc,"sudoku",path,current_lang);
 					<f ok>
 						tlmp_warning ("startgame success=%d msg=%s\n",success,msg);
 					</f>
 					</call>
-					<call documentd_client_playstep>(glocal.con_doc,path,vsteps);
+					<call documentd_client_playstep>(glocal.con_doc,path,vsteps,current_lang);
 					<f ok>
 						glocal.success = success;
 						glocal.msg = msg;
