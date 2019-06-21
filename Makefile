@@ -163,6 +163,14 @@ proto/bo-writed_client.protoh: proto/bo-writed_client.proto
 	build-protocol $(INSTRUMENT) --secretmode --arg "int no" --arg "HANDLE_INFO *c" --arg "const char *host" --name bo_writed_client \
 		--protoch proto/bo-writed_client.protoch proto/bo-writed_client.proto >proto/bo-writed_client.protoh
 
+proto/documentd_sudoku.protoh: proto/documentd_sudoku.proto
+	build-protocol --file_mode --name documentd_sudoku \
+		--protoch proto/documentd_sudoku.protoch proto/documentd_sudoku.proto >proto/documentd_sudoku.protoh
+
+proto/documentd_tictacto.protoh: proto/documentd_tictacto.proto
+	build-protocol --file_mode --name documentd_tictacto \
+		--protoch proto/documentd_tictacto.protoch proto/documentd_tictacto.proto >proto/documentd_tictacto.protoh
+
 proto/bo-log.protoh: proto/bo-log.proto
 	build-protocol --add_timestamp --file_mode --name bo_log \
 		--protoch proto/bo-log.protoch proto/bo-log.proto >proto/bo-log.protoh
@@ -196,7 +204,9 @@ proto/bolixoapi.protoh: proto/bolixoapi.proto proto/bolixod_client.protoh
 	build-protocol $(INSTRUMENT) --request_obj REQUEST_JSON --request_info_obj REQUEST_JSON_INFO \
 		--connect_info_obj CONNECT_HTTP_INFO --name bolixoapi \
 		--protoch proto/bolixoapi.protoch proto/bolixoapi.proto >proto/bolixoapi.protoh
-documentd: documentd.tlcc proto/documentd_control.protoh proto/documentd_client.protoh _dict.o
+documentd: documentd.tlcc proto/documentd_control.protoh proto/documentd_client.protoh _dict.o \
+	proto/documentd_tictacto.protoh \
+	proto/documentd_sudoku.protoh
 	cctlcc -Wall $(OPTIONS) documentd.tlcc _dict.o -o documentd $(LIBS)
 
 documentd-control: documentd-control.tlcc proto/documentd_control.protoh _dict.o

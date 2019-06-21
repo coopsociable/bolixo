@@ -3410,29 +3410,55 @@ static int bod_main (
 					In a single operation, we request the presentation of a document, and apply a command to it.
 				*/
 				glocal vector<VARVAL> res;
-				glocal string msg;
 				glocal bool success = false;
-				string username;
-				unsigned userid = bo_writed_get_group_owner (glocal.con_sess, sessionid, "", username,glocal.msg);
-				if (userid != 0){
-					vector<VARVAL> vsteps;
-					for (auto &s:steps) vsteps.push_back(s);
-					<call documentd_client_startgame>(glocal.con_doc,"sudoku",path,current_lang);
-					<f ok>
-						tlmp_warning ("startgame success=%d msg=%s\n",success,msg);
-					</f>
-					</call>
-					<call documentd_client_playstep>(glocal.con_doc,path,vsteps,current_lang);
-					<f ok>
-						glocal.success = success;
-						glocal.msg = msg;
-						for (auto &r:res) glocal.res.push_back(r);
-					</f>
-					</call>
+				glocal ENTRY entry;
+				if (bod_findentry (glocal.con_sess,sessionid,path,glocal.entry,"")!=-1){
+					if (!bolixo_isfile(glocal.entry.type)){
+						glocal.entry.msg = MSG_R(E_NOTAFILE);
+					}else{
+						glocal FILE_TYPE file_type = FILE_UNKNOWN;
+						<call sql_query>("select filetype from files where id=%d and modified='%s'"
+							,glocal.entry.entryid,glocal.entry.modified.c_str());
+						<f onerow>
+							glocal.file_type = (FILE_TYPE)atoi(row[0]);
+						</f>
+						<f empty>
+							glocal.entry.msg = "Internal error, reading table files";
+						</f>
+						</call>
+						if (!file_is_doc(glocal.file_type)){
+							glocal.entry.msg = MSG_U(E_NOTADOC,"File is not a game or document");
+						}else{
+							const char *doctype = "unknown";
+							if (glocal.file_type == FILE_DOC_SUDOKU){
+								doctype = "sudoku";
+							}else if (glocal.file_type == FILE_DOC_CHECKER){
+								doctype = "checker";
+							}else if (glocal.file_type == FILE_DOC_CHESS){
+								doctype = "chess";
+							}else if (glocal.file_type == FILE_DOC_TICTACTO){
+								doctype = "tictacto";
+							}
+							vector<VARVAL> vsteps;
+							for (auto &s:steps) vsteps.push_back(s);
+							<call documentd_client_startgame>(glocal.con_doc,doctype,path,current_lang);
+							<f ok>
+								tlmp_warning ("startgame success=%d msg=%s\n",success,msg);
+							</f>
+							</call>
+							<call documentd_client_playstep>(glocal.con_doc,path,vsteps,current_lang);
+							<f ok>
+								glocal.success = success;
+								glocal.entry.msg = msg;
+								for (auto &r:res) glocal.res.push_back(r);
+							</f>
+							</call>
+						}
+					}
 				}
-				if (glocal.msg.size() != 0){
+				if (glocal.entry.msg.size() != 0){
 					glocal.res.clear();
-					rep_playstep(false,glocal.msg,glocal.res);
+					rep_playstep(false,glocal.entry.msg,glocal.res);
 				}else{
 					rep_playstep(glocal.success,"",glocal.res);
 				}

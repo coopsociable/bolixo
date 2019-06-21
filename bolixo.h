@@ -35,6 +35,7 @@ enum FILE_TYPE {
 	FILE_DOC_SUDOKU,
 	FILE_DOC_CHECKER,
 	FILE_DOC_CHESS,
+	FILE_DOC_TICTACTO,
 };
 
 enum VIEWED_STATUS{
@@ -56,7 +57,7 @@ inline bool file_is_video (FILE_TYPE type){
 	return type == FILE_VIDEO;
 }
 inline bool file_is_doc (FILE_TYPE type){
-	return type == FILE_DOC_SUDOKU || type == FILE_DOC_CHECKER || type == FILE_DOC_CHESS;
+	return type == FILE_DOC_SUDOKU || type == FILE_DOC_CHECKER || type == FILE_DOC_CHESS || type == FILE_DOC_TICTACTO;
 }
 #ifdef DEFINE_TBTYPE
 static char tbtype[]={' ','_','D','F','M','C'};

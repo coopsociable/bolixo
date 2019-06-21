@@ -53,6 +53,10 @@ struct HANDLE_INFO: public ARRAY_OBJ{
 		type = TYPE_NONE;
 	}
 };
+#include "proto/documentd_tictacto.protoh"
+#include "proto/documentd_tictacto.protoch"
+#include "proto/documentd_sudoku.protoh"
+#include "proto/documentd_sudoku.protoch"
 #include "proto/bod_client.protodef"
 #include "proto/documentd_control.protoh"
 #include "proto/documentd_client.protoh"
@@ -79,7 +83,7 @@ class GAME{
 public:
 	virtual const char *getclass()=0;
 	virtual void save(FILE *fout)=0;
-	virtual void load(FILE *fin)=0;
+	virtual void load(FILE *fin, string &msg)=0;
 	virtual void resetgame() = 0;
 	virtual void testwin(vector<VARVAL> &res) = 0;
 	virtual void exec (const char *var, const char *val, vector<VARVAL> &res) = 0;
@@ -88,25 +92,43 @@ public:
 
 using GAME_P = shared_ptr<GAME>;
 
+<mod>
 class TICTACTO: public GAME{
+	bool x_is_player;
 	unsigned char grid[3][3];
 public:
 	void save(FILE *fout){
+		documentd_tictacto_player(fout,x_is_player);
+		unsigned row=0;
 		for (auto &g:grid){
-			fprintf (fout,"%u %u %u\n",g[0],g[1],g[2]);
+			documentd_tictacto_row(fout,row,g[0],g[1],g[2]);
+			row++;
 		}
 	}
-	void load(FILE *fin){
-		for (auto &g:grid){
-			unsigned v0,v1,v2;
-			if (fscanf(fin,"%u %u %u\n",&v0,&v1,&v2)==3){
-				g[0] = v0;
-				g[1] = v1;
-				g[2] = v2;
+	void load(FILE *fin, string &msg){
+		glocal x_is_player;
+		glocal grid;
+		glocal msg;
+		<call documentd_tictacto>(fin);
+		<f player>
+			glocal.x_is_player = x_is_player;
+		</f>
+		<f row>
+			if (rownum > 3){
+				glocal.msg = string_f("Invalid row number for tictacto file: %u",rownum);
+			}else{
+				glocal.grid[rownum][0] = c1;
+				glocal.grid[rownum][1] = c2;
+				glocal.grid[rownum][2] = c3;
 			}
-		}
+		</f>
+		<f invalid>
+			glocal.msg = "Invalid format for tictacto file";
+		</f>
+		</call>
 	}
 	void resetgame(){
+		x_is_player = true;
 		memset (grid,0,sizeof(grid));
 	}
 	TICTACTO(){
@@ -169,30 +191,45 @@ public:
 			res.push_back(v);
 		}
 	}
+	void draw_x(string &lines, unsigned x, unsigned y, unsigned len){
+		const char *color = "black";
+		const unsigned off = len/4;
+		x += off;
+		y += off;
+		len -= off*2;
+		lines += string_f("<path stroke='black' stroke-width='2' fill='%s' d='M%u,%u L%u %u'/>\n"
+			,color,x,y,x+len,y+len);
+		lines += string_f("<path stroke='black' stroke-width='2' fill='%s' d='M%u,%u L%u %u'/>\n"
+			,color,x,y+len,x+len,y);
+	}
+	void draw_o(string &lines, unsigned x, unsigned y, unsigned len){
+		const unsigned off = len/4;
+		x += off;
+		y += off;
+		len -= off*2;
+		lines += string_f("<circle stroke='black' stroke-width='2' fill='none' cx='%u' cy='%u' r='%u'/>\n"
+			,x+len/2,y+len/2,len/2);
+	}
 	void exec (const char *var, const char *val, vector<VARVAL> &res){
 		if (strcmp(var,"place")==0){
 			bool ok = false;
-			unsigned i=atoi(val);
+			unsigned x=atoi(val);
 			const char *pt = str_skipdig(val);
 			const char *msg = "Invalid syntax";
 			if (*pt == ','){
 				pt++;
-				unsigned j=atoi(pt);
+				unsigned y=atoi(pt);
 				pt = str_skipdig(pt);
-				if (*pt == ','){
-					pt++;
-					unsigned value=atoi(pt);
-					msg = "Out of range";
-					if (i < 3 && j < 3){
-						msg = "Invalid value";	
-						if (value > 0 && value < 3){
-							unsigned char &g = grid[i][j];
-							if (g == 0){
-								grid[i][j] = value;
-								ok = true;
-							}else{
-								msg = "Location already played";
-							}
+				if (*pt == '\0'){
+					msg = "Invalid values";
+					if (x < 3 && y < 3){
+						unsigned char &g = grid[y][x];
+						if (g == 0){
+							g = x_is_player ? 1 : 2;
+							x_is_player = !x_is_player;
+							ok = true;
+						}else{
+							msg = "Location already played";
 						}
 					}
 				}
@@ -200,23 +237,60 @@ public:
 			if (!ok){
 				documentd_error (res,string_f("Invalid command %s=%s: %s",var,val,msg));
 			}
+		}else if (strcmp(var,"newgame")==0){
+			resetgame();
 		}else if (strcmp(var,"print")==0){
 			string lines;
-			const char *linesep = NULL;
-			for (auto &g:grid){
-				if (linesep != NULL) lines += linesep;
-				linesep = "-----------\n";
-				char sep = '\0';
-				for (auto &gg:g){
-					static char tbcar[]={' ','X','O'};
-					if (sep != '\0') lines += sep;
-					lines += ' ';
-					lines += tbcar[gg];
-					lines += ' ';
-					sep = '|';
-				}
-				lines += '\n';
+			unsigned width = 500 - 500 % 3;
+			unsigned height = 500 - 500 % 3;
+			unsigned h3 = height/3;
+			unsigned w3 = width/3;
+			
+			lines += "<script>\n";
+			lines += "function gameplace(event){\n";
+			lines += "\tvar elm = document.getElementById('gametictgrid');\n";
+			lines += "\tvar rect = elm.getBoundingClientRect();\n";
+			lines += string_f("\tgameaction('place='+Math.floor((event.clientY-rect.top)/%u)+','+Math.floor((event.clientX-rect.left)/%u));\n",h3,w3);
+			lines += "}\n";
+			lines += "</script>\n";
+			
+			lines += "<p>\n";
+			lines += "<form>\n";
+			lines += MSG_R(I_NEWGAME);
+			documentd_button (lines,0,MSG_U(I_RESTART,"Restart"));
+			lines += "</form>\n";
+			lines += "<p>";
+			lines += "<div>\n";
+			lines += "<svg width='50px' height='200px' viewbox='0 0 50 200'>\n";
+			draw_x (lines,0,0,50);
+			draw_o (lines,0,100,50);
+			lines += string_f("<path stroke='black' stroke-width='2' fill='none' d='M0,%u h50 v50 h-50 z'/>\n"
+				,x_is_player ? 0 : 100);
+			lines += "</svg>\n";
+			lines += "&nbsp;&nbsp;&nbsp;";
+			lines += "<a href='#' onclick=gameplace(event)>\n";
+			lines += string_f("<svg id='gametictgrid' width='%upx' height='%upx' viewbox='0 0 %u %u'>\n",width,height,width,height);
+			// Draw the board
+			for (unsigned i=1; i<3; i++){
+				lines += string_f("<path stroke='black' stroke-width='2' fill='black' d='M%u,1 L%u %u'/>\n"
+					,i*w3,i*w3,height);
+				lines += string_f("<path stroke='black' stroke-width='2' fill='black' d='M1,%u L%u %u'/>\n"
+					,i*h3,width,i*h3);
+
 			}
+			// Draw the content
+			for (unsigned x=0; x<3; x++){
+				for (unsigned y=0; y<3; y++){
+					unsigned val = grid[x][y];
+					if (val == 1){
+						draw_x (lines,x*h3,y*h3,h3);
+					}else if (val == 2){
+						draw_o (lines,x*h3,y*h3,h3);
+					}
+				}
+			}
+			lines += "</svg>\n";
+			lines += "</a>\n";
 			VARVAL v;
 			v.var = "content";
 			v.val = lines;
@@ -225,6 +299,7 @@ public:
 		}
 	}
 };
+</mod>
 struct SUDOKU_CELL{
 	unsigned char visible;
 	unsigned char value;
@@ -248,7 +323,7 @@ public:
 		resetgame();
 	}
 	void save(FILE *fout);
-	void load(FILE *fin);
+	void load(FILE *fin, string &msg);
 	void resetgame();
 	void testwin(vector<VARVAL> &res);
 	void exec (const char *var, const char *val, vector<VARVAL> &res);
@@ -257,23 +332,35 @@ public:
 void SUDOKU::save (FILE *fout)
 {
 	for (auto &g:grid){
-		for (auto &gg:g) fprintf (fout,"%u,%u,%u\n",gg.visible,gg.value,gg.user_value);
+		for (auto &gg:g) documentd_sudoku_cell(fout,gg.visible,gg.value,gg.user_value);
 	}
 }
-void SUDOKU::load (FILE *fin)
+<mod>
+void SUDOKU::load (FILE *fin, string &msg)
 {
+	glocal grid;
+	glocal msg;
+	glocal unsigned x=0;
+	glocal unsigned y=0;
 	resetgame();
-	for (auto &g:grid){
-		for (auto &gg:g){
-			unsigned visible,value,user_value;
-			if (fscanf(fin,"%u,%u,%u\n",&visible,&value,&user_value)==3){
-				gg.visible = visible;
-				gg.value = value;
-				gg.user_value = user_value;
-			}
+	<call documentd_sudoku>(fin);
+	<f cell>
+		if (glocal.x > 8){
+			glocal.msg = "Too many cells in the sodoku files";
+			end  = true;
+		}else{
+			SUDOKU_CELL &gg = glocal.grid[glocal.x][glocal.y];
+			gg.visible = visible;
+			gg.value = value;
+			gg.user_value = user_value;
+			glocal.y = (glocal.y+1)%9;
+			if (glocal.y == 0) glocal.x++;
 		}
-	}
-	
+	</f>
+	<f invalid>
+		glocal.msg = "Invalid format for sudoku file";
+	</f>
+	</call>
 }
 void SUDOKU::resetgame()
 {
@@ -519,7 +606,7 @@ public:
 		return "wordproc";
 	}
 	void save(FILE *fout);
-	void load(FILE *fin);
+	void load(FILE *fin, string &msg);
 	void resetgame();
 	void testwin(vector<VARVAL> &res);
 	void exec (const char *var, const char *val, vector<VARVAL> &res);
@@ -528,7 +615,7 @@ public:
 void WORDPROC::save(FILE *fout)
 {
 }
-void WORDPROC::load(FILE *fin)
+void WORDPROC::load(FILE *fin, string &msg)
 {
 }
 void WORDPROC::resetgame()
@@ -548,7 +635,7 @@ public:
 		return "checkers";
 	}
 	void save(FILE *fout);
-	void load(FILE *fin);
+	void load(FILE *fin, string &msg);
 	void resetgame();
 	void testwin(vector<VARVAL> &res);
 	void exec (const char *var, const char *val, vector<VARVAL> &res);
@@ -563,7 +650,7 @@ void CHECKERS::save(FILE *fout)
 		fprintf (fout,"\n");
 	}
 }
-void CHECKERS::load(FILE *fin)
+void CHECKERS::load(FILE *fin, string &msg)
 {
 	resetgame();
 	for (auto &g:grid){
@@ -931,8 +1018,8 @@ int main (int argc, char *argv[])
 							}
 							if (p != NULL){
 								glocal.games[gameid] = p;
-								p->load (fin);
-								success = true;
+								p->load (fin,msg);
+								success = msg.size() == 0 ? true : false;
 							}
 						}
 						fclose (fin);
@@ -1000,7 +1087,7 @@ int main (int argc, char *argv[])
 								if (!documentd_startgame(glocal.games,buf2,buf1,msg)){
 									tlmp_error ("Can't initialise game %s/%s (%s)\n",buf1,buf2,msg.c_str());
 								}else{
-									glocal.games[buf1]->load(fin);
+									glocal.games[buf1]->load(fin,msg);
 								}
 							}
 							fclose (fin);
