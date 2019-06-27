@@ -712,6 +712,27 @@ elif [ "$1" = "running" ] ; then # prod: Enable/Disable all crond tasks
 	else
 		echo on or off
 	fi
+elif [ "$1" = "sqlfixe" ] ; then # prod: Repair SQL after an unclean shutdown
+	for sql in data user bolixo
+	do
+		cd /var/lib/lxc/bosqld$sql || exit -1
+		if lxc-info bosqld$sql 2>/dev/null | grep -q RUNNING
+		then
+			echo SQL $sql is running
+		elif [ ! -d data/mysql ] ;then
+			echo Recupere bosqld$sql/data/mysql
+			mv rootfs/var/lib/mysql data/mysql
+			mv rootfs/var/log/mariadb/mariadb.log data/mariadb.log
+		else
+			echo SQL $sql is not running, clean shutdown
+		fi
+	done
+	if [ "$2" = "start" ]; then
+		for sql in data user bolixo
+		do
+			/var/lib/lxc/bosqld$sql/bosqld$sql.start
+		done
+	fi
 else
 	echo Invalid command
 fi
