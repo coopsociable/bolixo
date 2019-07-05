@@ -602,7 +602,7 @@ elif [ "$1" = "certificate-install" ]; then # prod: Install the SSL certificate
 	rm -f $ADD
 elif [ "$1" = "certificates" ] ; then # prod: Show SSL certifcates status
 	certbot certificates
-elif [ "$1" = "certificate-renew" ] ; then # prod: Renew the SSL certificate
+elif [ "$1" = "certificate-renew" ] ; then # prod: Renew the SSL certificate: test|doit [ host-name ]
 	# Do a backup
 	cd /etc
 	tar zcf /tmp/letsencrypt-`date +%Y-%m-%d_%H:%M:%S`.tar.gz letsencrypt
