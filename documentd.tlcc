@@ -46,13 +46,86 @@ static DEBUG_KEY D_PROTO ("proto","Protocol information");
 
 enum CONNECT_TYPE { TYPE_NONE, TYPE_CONTROL, TYPE_CLIENT, TYPE_WORKER};
 
+// Load and save may be spread over several calls
+// We save the gameid to make sure
+struct LOADSAVE{
+	vector<string> lines;
+};
+
 struct HANDLE_INFO: public ARRAY_OBJ{
 	CONNECT_TYPE type;
 	REQUEST_INFO req;
+	map<string,LOADSAVE> bufs;	// Used to handle save and load request from bod
+					// The string is the gameid
 	HANDLE_INFO(){
 		type = TYPE_NONE;
 	}
 };
+class DOC_WRITER{
+	FILE *fout = nullptr;
+	vector<string> lines;
+public:
+	DOC_WRITER(){}
+	DOC_WRITER(FILE *_fout): fout(_fout){
+	}
+	int write (const char *buf, unsigned len){
+		int ret = -1;
+		if (fout != nullptr){
+			ret = fwrite (buf,1,len,fout);
+		}else{
+			lines.push_back(string(buf));
+			ret = 0;
+		}
+		return ret;
+	}
+	int write (const string &l){
+		return write (l.c_str(),l.size());
+	}
+	BOB_TYPE getcontent () const {
+		size_t size = 0;
+		for (auto &s:lines) size += s.size();
+		BOB_TYPE ret (size);
+		char *buf = (char*)ret.getbuffer();
+		for (auto &s:lines){
+			memcpy(buf,s.c_str(),s.size());
+			buf += s.size();
+		}
+		return ret;
+	}
+};
+
+static void fflush (DOC_WRITER *){}
+
+
+class DOC_READER{
+public:
+	FILE *fin = nullptr;
+	const char *bufptr = nullptr;
+	DOC_READER(FILE *_fin) : fin(_fin){}
+	DOC_READER(const char *ptr) : bufptr(ptr){}
+	DOC_READER(){}
+};	
+static char *fgets(char *s, int size, DOC_READER *r)
+{
+	char *ret = nullptr;
+	if (r->fin != nullptr){
+		ret = fgets(s,size,r->fin);
+	}else if (r->bufptr != nullptr){
+		const char *end = r->bufptr;
+		if (*end != '\0'){
+			while (*end != '\0' && *end != '\n') end++;
+			int len = end - r->bufptr;
+			if (len < size){
+				ret = s;
+				memcpy (s,r->bufptr,len);
+				s[len] = '\0';
+			}
+			if (*end == '\n') end++;
+			r->bufptr = end;
+		}
+	}
+	return ret;
+}
 #include "proto/documentd_tictacto.protoh"
 #include "proto/documentd_tictacto.protoch"
 #include "proto/documentd_sudoku.protoh"
@@ -79,14 +152,16 @@ static void documentd_button (string &lines, unsigned command, const char *txt)
 	lines += string_f("<input form=\"form\" type=submit value='%s' onclick=gameaction('newgame=%u')>\n",txt,command);
 }
 
+
+
 class GAME{
 public:
 	virtual const char *getclass()=0;
-	virtual void save(FILE *fout)=0;
-	virtual void load(FILE *fin, string &msg)=0;
+	virtual void save(DOC_WRITER &writer)=0;
+	virtual void load(DOC_READER &reader, string &msg)=0;
 	virtual void resetgame() = 0;
 	virtual void testwin(vector<VARVAL> &res) = 0;
-	virtual void exec (const char *var, const char *val, vector<VARVAL> &res) = 0;
+	virtual void exec (const char *var, const char *val, bool maywrite, vector<VARVAL> &res) = 0;
 	virtual ~GAME(){};
 };
 
@@ -97,19 +172,19 @@ class TICTACTO: public GAME{
 	bool x_is_player;
 	unsigned char grid[3][3];
 public:
-	void save(FILE *fout){
-		documentd_tictacto_player(fout,x_is_player);
+	void save(DOC_WRITER &w){
+		documentd_tictacto_player(&w,x_is_player);
 		unsigned row=0;
 		for (auto &g:grid){
-			documentd_tictacto_row(fout,row,g[0],g[1],g[2]);
+			documentd_tictacto_row(&w,row,g[0],g[1],g[2]);
 			row++;
 		}
 	}
-	void load(FILE *fin, string &msg){
+	void load(DOC_READER &r, string &msg){
 		glocal x_is_player;
 		glocal grid;
 		glocal msg;
-		<call documentd_tictacto>(fin);
+		<call documentd_tictacto>(&r);
 		<f player>
 			glocal.x_is_player = x_is_player;
 		</f>
@@ -135,7 +210,7 @@ public:
 		resetgame();
 	}
 	const char *getclass(){
-		return "tictacto";
+		return "TICT";
 	}
 	void testwin(vector<VARVAL> &res){
 		bool won = false;
@@ -210,8 +285,8 @@ public:
 		lines += string_f("<circle stroke='black' stroke-width='2' fill='none' cx='%u' cy='%u' r='%u'/>\n"
 			,x+len/2,y+len/2,len/2);
 	}
-	void exec (const char *var, const char *val, vector<VARVAL> &res){
-		if (strcmp(var,"place")==0){
+	void exec (const char *var, const char *val, bool maywrite, vector<VARVAL> &res){
+		if (strcmp(var,"place")==0 && maywrite){
 			bool ok = false;
 			unsigned x=atoi(val);
 			const char *pt = str_skipdig(val);
@@ -237,7 +312,7 @@ public:
 			if (!ok){
 				documentd_error (res,string_f("Invalid command %s=%s: %s",var,val,msg));
 			}
-		}else if (strcmp(var,"newgame")==0){
+		}else if (strcmp(var,"newgame")==0 && maywrite){
 			resetgame();
 		}else if (strcmp(var,"print")==0){
 			string lines;
@@ -317,33 +392,33 @@ class SUDOKU: public GAME{
 	unsigned seldig;	// Selected digit used when setting a value
 public:
 	const char *getclass(){
-		return "sudoku";
+		return "SUDO";
 	}
 	SUDOKU(){
 		resetgame();
 	}
-	void save(FILE *fout);
-	void load(FILE *fin, string &msg);
+	void save(DOC_WRITER &fout);
+	void load(DOC_READER &r, string &msg);
 	void resetgame();
 	void testwin(vector<VARVAL> &res);
-	void exec (const char *var, const char *val, vector<VARVAL> &res);
+	void exec (const char *var, const char *val, bool maywrite, vector<VARVAL> &res);
 };
 
-void SUDOKU::save (FILE *fout)
+void SUDOKU::save (DOC_WRITER &w)
 {
 	for (auto &g:grid){
-		for (auto &gg:g) documentd_sudoku_cell(fout,gg.visible,gg.value,gg.user_value);
+		for (auto &gg:g) documentd_sudoku_cell(&w,gg.visible,gg.value,gg.user_value);
 	}
 }
 <mod>
-void SUDOKU::load (FILE *fin, string &msg)
+void SUDOKU::load (DOC_READER &r, string &msg)
 {
 	glocal grid;
 	glocal msg;
 	glocal unsigned x=0;
 	glocal unsigned y=0;
 	resetgame();
-	<call documentd_sudoku>(fin);
+	<call documentd_sudoku>(&r);
 	<f cell>
 		if (glocal.x > 8){
 			glocal.msg = "Too many cells in the sodoku files";
@@ -388,9 +463,9 @@ void SUDOKU::testwin(vector<VARVAL> &res)
 	}
 }
 <mod>
-void SUDOKU::exec (const char *var, const char *val, vector<VARVAL> &res)
+void SUDOKU::exec (const char *var, const char *val, bool maywrite, vector<VARVAL> &res)
 {
-	if (strcmp(var,"place")==0){
+	if (strcmp(var,"place")==0 && maywrite){
 		unsigned lo,co,v;
 		int n = sscanf(val,"%u,%u,%u",&lo,&co,&v);
 		if (n == 2){
@@ -557,7 +632,7 @@ void SUDOKU::exec (const char *var, const char *val, vector<VARVAL> &res)
 		v.var = "content";
 		v.val = lines;
 		res.push_back(v);
-	}else if (strcmp(var,"newgame")==0){
+	}else if (strcmp(var,"newgame")==0 && maywrite){
 		glocal SUDOKU_CELL (*grid)[9][9] = &grid;
 		unsigned difficulty = atoi(val);
 		if (difficulty > 3){
@@ -603,19 +678,19 @@ class WORDPROC: public GAME{
 	vector<string> lines;
 public:
 	const char *getclass(){
-		return "wordproc";
+		return "WORD";
 	}
-	void save(FILE *fout);
-	void load(FILE *fin, string &msg);
+	void save(DOC_WRITER &w);
+	void load(DOC_READER &r, string &msg);
 	void resetgame();
 	void testwin(vector<VARVAL> &res);
-	void exec (const char *var, const char *val, vector<VARVAL> &res);
+	void exec (const char *var, const char *val, bool maywrite, vector<VARVAL> &res);
 };
 
-void WORDPROC::save(FILE *fout)
+void WORDPROC::save(DOC_WRITER &w)
 {
 }
-void WORDPROC::load(FILE *fin, string &msg)
+void WORDPROC::load(DOC_READER &r, string &msg)
 {
 }
 void WORDPROC::resetgame()
@@ -625,33 +700,36 @@ void WORDPROC::resetgame()
 void WORDPROC::testwin(vector<VARVAL> &res)
 {
 }
-void WORDPROC::exec (const char *var, const char *val, vector<VARVAL> &res)
+void WORDPROC::exec (const char *var, const char *val, bool maywrite, vector<VARVAL> &res)
 {
 }
 class CHECKERS: public GAME{
 	unsigned char grid[8][8];
 public:
 	const char *getclass(){
-		return "checkers";
+		return "CHEC";
 	}
-	void save(FILE *fout);
-	void load(FILE *fin, string &msg);
+	void save(DOC_WRITER &w);
+	void load(DOC_READER &r, string &msg);
 	void resetgame();
 	void testwin(vector<VARVAL> &res);
-	void exec (const char *var, const char *val, vector<VARVAL> &res);
+	void exec (const char *var, const char *val, bool maywrite, vector<VARVAL> &res);
 };
 
-void CHECKERS::save(FILE *fout)
+void CHECKERS::save(DOC_WRITER &w)
 {
+	#if 0
 	for (auto &g:grid){
 		for (auto &gg:g){
 			fprintf (fout," %u",gg);
 		}
 		fprintf (fout,"\n");
 	}
+	#endif
 }
-void CHECKERS::load(FILE *fin, string &msg)
+void CHECKERS::load(DOC_READER &r, string &msg)
 {
+	#if 0
 	resetgame();
 	for (auto &g:grid){
 		unsigned v[8];
@@ -659,6 +737,7 @@ void CHECKERS::load(FILE *fin, string &msg)
 			for (unsigned i=0; i<8; i++) g[i] = v[i];
 		}
 	}
+	#endif
 }
 void CHECKERS::resetgame()
 {
@@ -691,7 +770,7 @@ static const char *cnv (const char *val, unsigned &posx, unsigned &posy)
 	return val+2;
 }
 		
-void CHECKERS::exec (const char *var, const char *val, vector<VARVAL> &res)
+void CHECKERS::exec (const char *var, const char *val, bool maywrite, vector<VARVAL> &res)
 {
 	if (strcmp(var,"print")==0){
 		string lines;
@@ -769,21 +848,42 @@ static bool documentd_playstep (
 	map<string,GAME_P> &games,
 	const char *gameid,
 	const vector<VARVAL_receive> &steps,
+	bool maywrite,
 	vector<VARVAL> &res,
-	string &msg)
+	string &msg,
+	bool &unknown)
 {
 	bool success = false;
+	unknown = false;
 	auto g = games.find(gameid);
 	if (g != games.end()){
 		success = true;
 		for (auto &v:steps){
-			g->second->exec(v.var,v.val,res);
+			g->second->exec(v.var,v.val,maywrite,res);
 		}
 		g->second->testwin(res);
 	}else{
 		msg = "Unknown game id";
+		unknown = true;
 	}
 	return success;
+}
+
+static GAME_P documentd_newgame(const char *type, string &msg)
+{
+	GAME_P p = nullptr;
+	if (strncmp(type,"boBOTICT",8)==0){
+		p = make_shared<TICTACTO>();
+	}else if (strncmp(type,"boBOSUDO",8)==0){
+		p = make_shared<SUDOKU>();
+	}else if (strncmp(type,"boBOWORD",8)==0){
+		p = make_shared<WORDPROC>();
+	}else if (strncmp(type,"boBOCHEC",8)==0){
+		p = make_shared<CHECKERS>();
+	}else{
+		msg = "Unknown game or document type";
+	}
+	return p;
 }
 
 static bool documentd_startgame(
@@ -797,22 +897,11 @@ static bool documentd_startgame(
 	if (g != games.end()){
 		msg = "Game already exist";
 	}else{
-		GAME_P p;
-		if (strcmp(gamename,"tictacto")==0){
-			p = make_shared<TICTACTO>();
-		}else if (strcmp(gamename,"sudoku")==0){
-			p = make_shared<SUDOKU>();
-		}else if (strcmp(gamename,"wordproc")==0){
-			p = make_shared<WORDPROC>();
-		}else if (strcmp(gamename,"checkers")==0){
-			p = make_shared<CHECKERS>();
-		}
+		GAME_P p = documentd_newgame(gamename,msg);
 		if (p != nullptr){
 			games[gameid] = p;
 			games[gameid]->resetgame();
 			ret = true;
-		}else{
-			msg = "unknown game";
 		}
 	}
 	return ret;
@@ -924,8 +1013,9 @@ int main (int argc, char *argv[])
 						glocal const char *gameid = g.first.c_str();
 						<call savefile>(string_f("/tmp/game.%u",num),false);
 						<f dowrite>
-							fprintf (fout,"%s\n%s\n",glocal.gameid,glocal.game->getclass());
-							glocal.game->save(fout);
+							fprintf (fout,"%s\nboBO%s\n",glocal.gameid,glocal.game->getclass());
+							DOC_WRITER doc(fout);
+							glocal.game->save(doc);
 							return 0;
 						</f>
 						</call>
@@ -968,8 +1058,9 @@ int main (int argc, char *argv[])
 				<f playstep>	// gameid steps:U{VARVAL}v = success:b msg res:U{VARVAL}v
 					vector<VARVAL> res;
 					string msg;
-					bool success = documentd_playstep (glocal.games,gameid,steps,res,msg);
-					rep_playstep(success,msg,res);
+					bool unknown;
+					bool success = documentd_playstep (glocal.games,gameid,steps,true,res,msg,unknown);
+					rep_playstep(success,unknown,msg,res);
 				</f>
 				<f save> // gameid = success:b msg
 					bool success = false;
@@ -980,8 +1071,9 @@ int main (int argc, char *argv[])
 						success = true;
 						<call savefile>(documentd_path(gameid),false);
 						<f dowrite>
-							fprintf (fout,"%s\n",glocal.game->getclass());
-							glocal.game->save(fout);
+							fprintf (fout,"boBO%s\n",glocal.game->getclass());
+							DOC_WRITER doc(fout);
+							glocal.game->save(doc);
 							return 0;
 						</f>
 						</call>
@@ -1004,21 +1096,11 @@ int main (int argc, char *argv[])
 					}else{
 						char buf[100];
 						if (fgets(buf,sizeof(buf)-1,fin)!=NULL){
-							GAME_P p;
-							if (strcmp(buf,"sudoku\n")==0){
-								p = GAME_P(new SUDOKU);
-							}else if (strcmp(buf,"tictacto\n")==0){
-								p = GAME_P(new TICTACTO);
-							}else if (strcmp(buf,"wordproc\n")==0){
-								p = GAME_P(new WORDPROC);
-							}else if (strcmp(buf,"checkers\n")==0){
-								p = GAME_P(new CHECKERS);
-							}else{
-								msg = string_f("Unknown game type %s",buf);
-							}
+							GAME_P p = documentd_newgame(buf,msg);
 							if (p != NULL){
 								glocal.games[gameid] = p;
-								p->load (fin,msg);
+								DOC_READER doc(fin);
+								p->load (doc,msg);
 								success = msg.size() == 0 ? true : false;
 							}
 						}
@@ -1052,8 +1134,56 @@ int main (int argc, char *argv[])
 					vector<VARVAL> res;
 					string msg;
 					translat_selectlang(lang);
-					bool success = documentd_playstep (glocal.games,gameid,steps,res,msg);
-					rep_playstep(success,msg,res);
+					bool unknown;
+					bool success = documentd_playstep (glocal.games,gameid,steps,maywrite,res,msg,unknown);
+					rep_playstep(success,unknown,msg,res);
+				</f>
+				<f save>
+					string msg;
+					BOB_TYPE content;
+					auto g = glocal.games.find(gameid);
+					if (g != glocal.games.end()){
+						GAME_P game = g->second;
+						DOC_WRITER doc;
+						doc.write (string_f("boBO%s\n",game->getclass()));
+						game->save(doc);
+						content = doc.getcontent();
+					}else{
+						msg = "Unknown game id";
+					}
+					if (msg.size() > 0){
+						content.clear();
+						rep_save(false,msg,content,false);
+					}else{
+						rep_save (true,"",content,false);
+					}
+				</f>
+				<f savemore>
+					BOB_TYPE content;
+					rep_savemore (false,"Not inplemented",content,false);
+				</f>
+				<f load>
+					string msg;
+					auto g = glocal.games.find(gameid);
+					const char *type = (const char *)content.getbuffer();
+					GAME_P game = nullptr;
+					if (g != glocal.games.end()){
+						game = g->second;
+					}else{
+						game = documentd_newgame(type,msg);
+					}
+					if (game != nullptr){
+						glocal.games[gameid] = game;
+						DOC_READER doc(type+9);
+						game->load(doc,msg);
+					}
+					if (msg.size() > 0){
+						rep_load (false,msg);
+					}else{
+						rep_load (true,"");
+					}
+				</f>
+				<f loadmore>
 				</f>
 				<f invalid>
 					tlmp_error ("Invalid command: %s\n",line);
@@ -1087,7 +1217,8 @@ int main (int argc, char *argv[])
 								if (!documentd_startgame(glocal.games,buf2,buf1,msg)){
 									tlmp_error ("Can't initialise game %s/%s (%s)\n",buf1,buf2,msg.c_str());
 								}else{
-									glocal.games[buf1]->load(fin,msg);
+									DOC_READER doc(fin);
+									glocal.games[buf1]->load(doc,msg);
 								}
 							}
 							fclose (fin);

@@ -164,11 +164,11 @@ proto/bo-writed_client.protoh: proto/bo-writed_client.proto
 		--protoch proto/bo-writed_client.protoch proto/bo-writed_client.proto >proto/bo-writed_client.protoh
 
 proto/documentd_sudoku.protoh: proto/documentd_sudoku.proto
-	build-protocol --file_mode --name documentd_sudoku \
+	build-protocol --file_mode --req_reader_type DOC_READER --req_writer_type DOC_WRITER --name documentd_sudoku \
 		--protoch proto/documentd_sudoku.protoch proto/documentd_sudoku.proto >proto/documentd_sudoku.protoh
 
 proto/documentd_tictacto.protoh: proto/documentd_tictacto.proto
-	build-protocol --file_mode --name documentd_tictacto \
+	build-protocol --file_mode --req_reader_type DOC_READER --req_writer_type DOC_WRITER --name documentd_tictacto \
 		--protoch proto/documentd_tictacto.protoch proto/documentd_tictacto.proto >proto/documentd_tictacto.protoh
 
 proto/bo-log.protoh: proto/bo-log.proto

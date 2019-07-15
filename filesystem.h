@@ -39,6 +39,7 @@ FILE *fs_get_file (const std::string &handle, const char *sessionid);
 void fs_delete_handle (PARAM_STRING handle);
 void fs_file_handle_addextra (PARAM_STRING handle, int ownerid, int dirid, PARAM_STRING name);
 int fs_file_handle_getextra (PARAM_STRING handle, int &ownerid, int &dirid, int &fileid, std::string &modified, std::string &name);
+FILE *fs_open_file (int fileid, PARAM_STRING modified, const char *mode);
 std::string fs_makeid ();
 unsigned fs_getnbhandle();
 void fs_list_inboxes (unsigned userid, std::vector<INBOX> &inboxes, std::vector<unsigned> &listids, bool showroles);

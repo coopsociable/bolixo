@@ -218,7 +218,11 @@ documentd_save(){
 	echo "#!/bin/sh" > $SAVE
 	echo "mkdir -p $DATA" >>$SAVE
 	echo "rm -f $DATA/game.*" >>$SAVE
-	echo "test -f $ROOTFS/tmp/game.0 && mv -f $ROOTFS/tmp/game.* $DATA/." >>$SAVE
+	echo "if [ -f $ROOTFS/tmp/game.0 ]; then" >>$SAVE
+       	echo "    mv -f $ROOTFS/tmp/game.* $DATA/." >>$SAVE
+	echo "else" >>$SAVE
+	echo "    true" >>$SAVE
+	echo "fi" >>$SAVE
 	chmod +x $SAVE
 }
 documentd_restore(){
@@ -226,8 +230,12 @@ documentd_restore(){
 	REST=/var/lib/lxc/$1/$1.restore
 	DATA=/var/lib/lxc/$1/data
 	echo "#!/bin/sh" > $REST
-	echo "test -f $DATA/game.0 && cp -f $DATA/game.* $ROOTFS/tmp/." >>$REST
-	echo "chmod 666 $ROOTFS/tmp/game.*" >>$REST
+	echo "if [ -f $DATA/game.0 ];then" >>$REST
+       	echo "    cp -f $DATA/game.* $ROOTFS/tmp/." >>$REST
+	echo "    chmod 666 $ROOTFS/tmp/game.*" >>$REST
+	echo "else" >>$REST
+	echo "    true" >>$REST
+	echo "fi" >>$REST
 	chmod +x $REST
 }
 if [ "$1" = "" ] ; then

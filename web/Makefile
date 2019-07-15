@@ -2,7 +2,7 @@ DINSTRUMENT:=$(shell test -f ../../instrument && echo -DINSTRUMENT)
 OPTIONS=$(DINSTRUMENT) -funsigned-char -O2 -Wall -g -DVERSION=\"$(PACKAGE_REV)\" -I/usr/include/tlmp -I/usr/include/trlitool
 all: webtabs.os util.os document.os document_fr.os index.os bolixoapi.os webapi.os public.os journey.os bolixo.os  \
 	config.os mail.os projects.os index.hc webapi.hc public.hc journey.hc bolixoapi.hc bolixo.hc
-.suffixes: .hcc .hc
+.suffixes: .hcc .hc 
 FLAGS=-Wall -Wno-unused-function
 
 index.hc: index.os /usr/lib64/trlitool/trlitool.pic.a util.os webtabs.os document.os document_fr.os \
