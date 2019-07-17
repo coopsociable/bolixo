@@ -69,6 +69,15 @@ template<typename T1, typename ... Ts>
 bool is_start_any_of(const std::string &t, NONEED_T no, T1 t1, Ts ... ts){
 	return is_start_any_of(t.c_str(),no,t1,ts...);
 }
+// Specialisation for char *
+template<typename T1, typename ... Ts>
+bool is_start_any_of(char *t, const char *&pt, T1 t1, Ts ... ts){
+	return is_start_any_of((const char*)t,pt,t1,ts...);
+}
+template<typename T1, typename ... Ts>
+bool is_start_any_of(char *t, NONEED_T no, T1 t1, Ts ... ts){
+	return is_start_any_of((const char *)t,no,t1,ts...);
+}
 
 // Case insensitive
 inline bool is_start_any_ofnc (const char *a, const char *&pt, const char *b)
@@ -106,6 +115,15 @@ bool is_start_any_ofnc(const std::string &t, const char *&pt, T1 t1, Ts ... ts){
 template<typename T1, typename ... Ts>
 bool is_start_any_ofnc(const std::string &t, NONEED_T no, T1 t1, Ts ... ts){
 	return is_start_any_ofnc(t.c_str(),no,t1,ts...);
+}
+// Specialisation for char *
+template<typename T1, typename ... Ts>
+bool is_start_any_ofnc(char *t, const char *&pt, T1 t1, Ts ... ts){
+	return is_start_any_ofnc((const char *)t,pt,t1,ts...);
+}
+template<typename T1, typename ... Ts>
+bool is_start_any_ofnc(char *t, NONEED_T no, T1 t1, Ts ... ts){
+	return is_start_any_ofnc((const char *)t,no,t1,ts...);
 }
 
 #endif

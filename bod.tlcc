@@ -1129,13 +1129,20 @@ static void bod_document_save (
 	const char *path)
 {
 	glocal con;
+	glocal con_doc;
 	glocal path;
 	glocal sessionid;
-	<call documentd_client_save>(con_doc,path);
+	<call documentd_client_is_modified>(con_doc,path);
 	<f ok>
-		if (success){
-			<call bo_writed_client_modifyfile_bob>(glocal.con,glocal.sessionid,glocal.path,content,false);
+		if (modified){
+			<call documentd_client_save>(glocal.con_doc,glocal.path);
 			<f ok>
+				if (success){
+					<call bo_writed_client_modifyfile_bob>(glocal.con,glocal.sessionid,glocal.path,content,false);
+					<f ok>
+					</f>
+					</call>
+				}
 			</f>
 			</call>
 		}
@@ -1910,6 +1917,7 @@ static int bod_main (
 					if (!bolixo_isfile(glocal.entry.type)){
 						glocal.entry.msg = MSG_R(E_NOTAFILE);
 					}else{
+						bod_document_save(glocal.con,glocal.con_doc,sessionid,name);
 						<call sql_query>("select content,title,signature,filetype,modifiedby from files where id=%d and modified='%s'"
 							,glocal.entry.entryid,glocal.entry.modified.c_str());
 						<f onerow>

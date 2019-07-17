@@ -38,6 +38,7 @@
 #include "bolixo.m"
 #define INSTRUMENT_DONOTOPEN
 #include "instrument.h"
+#include "helper.h"
 
 static DEBUG_KEY D_SUDOKU("sudoku","sudoku game");
 
@@ -48,6 +49,7 @@ enum CONNECT_TYPE { TYPE_NONE, TYPE_CONTROL, TYPE_CLIENT, TYPE_WORKER};
 
 // Load and save may be spread over several calls
 // We save the gameid to make sure
+// This will be needed when loadmore is implemented
 struct LOADSAVE{
 	vector<string> lines;
 };
@@ -73,8 +75,11 @@ public:
 		if (fout != nullptr){
 			ret = fwrite (buf,1,len,fout);
 		}else{
+			FILE *f = fopen ("/tmp/save.log","a");
+			fprintf (f,"%s",buf);
+			fclose (f);
 			lines.push_back(string(buf));
-			ret = 0;
+			ret = len;
 		}
 		return ret;
 	}
@@ -155,7 +160,33 @@ static void documentd_button (string &lines, unsigned command, const char *txt)
 
 
 class GAME{
+	time_t modified = (time_t)0;
+	time_t last_activity = time(nullptr);
 public:
+	void setactivity(){
+		last_activity = time(nullptr);
+	}
+	void setactivity(time_t act){
+		last_activity = act;
+	}
+	void setmodified(){
+		modified = time(nullptr);
+	}
+	void setmodified(time_t mod){
+		modified = mod;
+	}
+	void resetmodified(){
+		modified = (time_t)0;
+	}
+	bool is_modified() const{
+		return modified != (time_t)0;
+	}
+	time_t get_modified() const {
+		return modified;
+	}
+	time_t get_last_activity() const {
+		return last_activity;
+	}
 	virtual const char *getclass()=0;
 	virtual void save(DOC_WRITER &writer)=0;
 	virtual void load(DOC_READER &reader, string &msg)=0;
@@ -286,6 +317,7 @@ public:
 			,x+len/2,y+len/2,len/2);
 	}
 	void exec (const char *var, const char *val, bool maywrite, vector<VARVAL> &res){
+		setactivity();
 		if (strcmp(var,"place")==0 && maywrite){
 			bool ok = false;
 			unsigned x=atoi(val);
@@ -303,6 +335,7 @@ public:
 							g = x_is_player ? 1 : 2;
 							x_is_player = !x_is_player;
 							ok = true;
+							setmodified();
 						}else{
 							msg = "Location already played";
 						}
@@ -314,6 +347,7 @@ public:
 			}
 		}else if (strcmp(var,"newgame")==0 && maywrite){
 			resetgame();
+			setmodified();
 		}else if (strcmp(var,"print")==0){
 			string lines;
 			unsigned width = 500 - 500 % 3;
@@ -406,6 +440,7 @@ public:
 
 void SUDOKU::save (DOC_WRITER &w)
 {
+	documentd_sudoku_select(&w,seldig);
 	for (auto &g:grid){
 		for (auto &gg:g) documentd_sudoku_cell(&w,gg.visible,gg.value,gg.user_value);
 	}
@@ -417,6 +452,7 @@ void SUDOKU::load (DOC_READER &r, string &msg)
 	glocal msg;
 	glocal unsigned x=0;
 	glocal unsigned y=0;
+	glocal seldig;
 	resetgame();
 	<call documentd_sudoku>(&r);
 	<f cell>
@@ -431,6 +467,9 @@ void SUDOKU::load (DOC_READER &r, string &msg)
 			glocal.y = (glocal.y+1)%9;
 			if (glocal.y == 0) glocal.x++;
 		}
+	</f>
+	<f select>
+		glocal.seldig = value;
 	</f>
 	<f invalid>
 		glocal.msg = "Invalid format for sudoku file";
@@ -465,6 +504,7 @@ void SUDOKU::testwin(vector<VARVAL> &res)
 <mod>
 void SUDOKU::exec (const char *var, const char *val, bool maywrite, vector<VARVAL> &res)
 {
+	setactivity();
 	if (strcmp(var,"place")==0 && maywrite){
 		unsigned lo,co,v;
 		int n = sscanf(val,"%u,%u,%u",&lo,&co,&v);
@@ -482,6 +522,7 @@ void SUDOKU::exec (const char *var, const char *val, bool maywrite, vector<VARVA
 					gg.user_value = 0;
 				}
 			}
+			setmodified();
 		}else{
 			documentd_error (res,"Invalid place command (need 2 value)");
 		}
@@ -667,6 +708,7 @@ void SUDOKU::exec (const char *var, const char *val, bool maywrite, vector<VARVA
 				return 0;
 			</f>
 			</call>
+			setmodified();
 		}
 	}else{
 		tlmp_error ("sudoku invalid command %s\n",var);
@@ -900,7 +942,7 @@ static bool documentd_startgame(
 		GAME_P p = documentd_newgame(gamename,msg);
 		if (p != nullptr){
 			games[gameid] = p;
-			games[gameid]->resetgame();
+			p->resetgame();
 			ret = true;
 		}
 	}
@@ -998,7 +1040,11 @@ int main (int argc, char *argv[])
 					tb.push_back(string_f ("Version %s",VERSION));
 					instrument_status(tb);
 					for (auto g:glocal.games){
-						tb.push_back(string_f("gameid: %s",g.first.c_str()));
+						DATEASC act,mod;
+						fdpass_asctime(g.second->get_last_activity(),act);
+						if (g.second->is_modified()) fdpass_asctime(g.second->get_modified(),mod);
+						tb.push_back(string_f("gameid: %s last_activity=%s modified=%s",g.first.c_str()
+							,act.buf,mod.buf));
 					}
 					rep_status(tb);
 				</f>
@@ -1013,7 +1059,10 @@ int main (int argc, char *argv[])
 						glocal const char *gameid = g.first.c_str();
 						<call savefile>(string_f("/tmp/game.%u",num),false);
 						<f dowrite>
-							fprintf (fout,"%s\nboBO%s\n",glocal.gameid,glocal.game->getclass());
+							fprintf (fout,"%s\nmodified=%lu\nactivity=%lu\nboBO%s\n"
+								,glocal.gameid,glocal.game->get_modified()
+								,glocal.game->get_last_activity()
+								,glocal.game->getclass());
 							DOC_WRITER doc(fout);
 							glocal.game->save(doc);
 							return 0;
@@ -1148,6 +1197,7 @@ int main (int argc, char *argv[])
 						doc.write (string_f("boBO%s\n",game->getclass()));
 						game->save(doc);
 						content = doc.getcontent();
+						game->resetmodified();
 					}else{
 						msg = "Unknown game id";
 					}
@@ -1185,6 +1235,21 @@ int main (int argc, char *argv[])
 				</f>
 				<f loadmore>
 				</f>
+				<f is_modified> // gameid = success:b msg modified:b
+					bool modified = false;
+					string msg;
+					auto g = glocal.games.find(gameid);
+					if (g != glocal.games.end()){
+						modified = g->second->is_modified();
+					}else{
+						msg = "Unknown document";
+					}
+					if (msg.size() > 0){
+						rep_is_modified(false,msg,false);
+					}else{
+						rep_is_modified(true,"",modified);
+					}
+				</f>
 				<f invalid>
 					tlmp_error ("Invalid command: %s\n",line);
 					endclient = true;
@@ -1212,13 +1277,27 @@ int main (int argc, char *argv[])
 							if (fgets(buf1,sizeof(buf1)-1,fin)!=nullptr
 								&& fgets(buf2,sizeof(buf2)-1,fin)!=nullptr){
 								strip_end (buf1);
+								const char *pt;
+								time_t mod = 0;
+								if (is_start_any_of(buf2,pt,"modified=")){
+									mod = atoi(pt);
+									fgets(buf2,sizeof(buf2)-1,fin);
+								}
+								time_t act = 0;
+								if (is_start_any_of(buf2,pt,"activity=")){
+									act = atoi(pt);
+									fgets(buf2,sizeof(buf2)-1,fin);
+								}
 								strip_end (buf2);
 								string msg;
 								if (!documentd_startgame(glocal.games,buf2,buf1,msg)){
 									tlmp_error ("Can't initialise game %s/%s (%s)\n",buf1,buf2,msg.c_str());
 								}else{
 									DOC_READER doc(fin);
-									glocal.games[buf1]->load(doc,msg);
+									auto g = glocal.games[buf1];
+									g->load(doc,msg);
+									g->setmodified(mod);
+									g->setactivity(act);
 								}
 							}
 							fclose (fin);
