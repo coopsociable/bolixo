@@ -240,7 +240,7 @@ elif [ "$1" = "instrument" ] ; then # prod: Turn instrumentation on and off
 		echo "bolixo-production instrument 0|1"
 		exit 1
 	fi
-	for cmd in bod-controls bo-mon-control bo-writed-control bo-sessiond-control bolixod-controls publishd-control
+	for cmd in bod-controls bo-mon-control bo-writed-control bo-sessiond-control bolixod-controls publishd-control documentd-control
 	do
 		$0 calltest $cmd instrument $2
 	done
