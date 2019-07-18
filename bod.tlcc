@@ -1122,12 +1122,13 @@ static void bod_document_load (
 	Retrieve the content of a game or document from documentd and save it.
 */
 <mod>
-static void bod_document_save (
+static bool bod_document_save (
 	CONNECT_INFO &con,
 	CONNECT_INFO &con_doc,
 	const char *sessionid,
 	const char *path)
 {
+	glocal bool ret = false;
 	glocal con;
 	glocal con_doc;
 	glocal path;
@@ -1145,9 +1146,11 @@ static void bod_document_save (
 				}
 			</f>
 			</call>
+			glocal.ret = true;
 		}
 	</f>
 	</call>
+	return glocal.ret;
 }
 </mod>
 /*
@@ -1868,7 +1871,8 @@ static int bod_main (
 				glocal bool nomore = nomore;
 				glocal READINFO info;
 				glocal ENTRY entry;
-				glocal const char *sessionid = sessionid;
+				glocal name;
+				glocal sessionid;
 				// Are we trying to read /projects/user@remote_node/...
 				// In general, you are trying to read the public photo of the user.
 				string remote_user,remote,remote_name;
@@ -1913,58 +1917,68 @@ static int bod_main (
 							rep_readfile_bob (true,"",bob,info,handle,more);
 						}
 					}
-				}else if (bod_findentry (glocal.con_sess,sessionid,name,glocal.entry,threshold)!=-1){
-					if (!bolixo_isfile(glocal.entry.type)){
-						glocal.entry.msg = MSG_R(E_NOTAFILE);
-					}else{
-						bod_document_save(glocal.con,glocal.con_doc,sessionid,name);
-						<call sql_query>("select content,title,signature,filetype,modifiedby from files where id=%d and modified='%s'"
-							,glocal.entry.entryid,glocal.entry.modified.c_str());
-						<f onerow>
-							glocal.info.title = row[1] != NULL ? row[1] : "";
-							glocal.info.signature = row[2] != NULL ? row[2] : "";
-							glocal.info.modified = glocal.entry.modified;
-							glocal.info.file_type = (FILE_TYPE)atoi(row[3]);
-							glocal.info.owner = bod_getname (glocal.entry.ownerid);
-							unsigned ownerid = atoi(row[4]);
-							glocal.info.modifiedby = bod_getname (ownerid);
-							if (row[0] != NULL){
-								unsigned len = strlen(row[0]);
-								glocal.info.size = len;
-								BOB_TYPE bob (row[0],len,false);
-								glocal.bod_client.rep_readfile_bob (true,"",bob,glocal.info,"",false);
+				}else{
+					glocal bool redo = false;
+					do{
+						glocal.redo = false;
+						if (bod_findentry (glocal.con_sess,sessionid,name,glocal.entry,threshold)!=-1){
+							if (!bolixo_isfile(glocal.entry.type)){
+								glocal.entry.msg = MSG_R(E_NOTAFILE);
 							}else{
-								string handle;
-								FILE *fin = fs_alloc_file_handle (glocal.entry.entryid,glocal.entry.modified,"r",handle,glocal.sessionid);
-								if (fin == NULL){
-									glocal.entry.msg == "Internal error, reading content file";
-									fs_delete_handle (handle);
-								}else{
-									struct stat64 st;
-									if (fstat64(fileno(fin),&st)==-1){
-										glocal.entry.msg = "Internal error, getting file size";
-										fs_delete_handle (handle);
+								<call sql_query>("select content,title,signature,filetype,modifiedby from files where id=%d and modified='%s'"
+									,glocal.entry.entryid,glocal.entry.modified.c_str());
+								<f onerow>
+									glocal.info.title = row[1] != NULL ? row[1] : "";
+									glocal.info.signature = row[2] != NULL ? row[2] : "";
+									glocal.info.modified = glocal.entry.modified;
+									glocal.info.file_type = (FILE_TYPE)atoi(row[3]);
+									glocal.info.owner = bod_getname (glocal.entry.ownerid);
+									unsigned ownerid = atoi(row[4]);
+									glocal.info.modifiedby = bod_getname (ownerid);
+									if (row[0] != NULL){
+										unsigned len = strlen(row[0]);
+										glocal.info.size = len;
+										BOB_TYPE bob (row[0],len,false);
+										glocal.bod_client.rep_readfile_bob (true,"",bob,glocal.info,"",false);
 									}else{
-										char buf[REQ_CONTENT_CHUNK];
-										int len = fread (buf,1,sizeof(buf),fin);
-										BOB_TYPE bob (buf,len,false);
-										bool more = len==REQ_CONTENT_CHUNK;
-										if (!more || glocal.nomore){
-											fs_delete_handle(handle);
-											handle.clear();
+										if (file_is_doc(glocal.info.file_type)){
+											glocal.redo = bod_document_save(glocal.con,glocal.con_doc,glocal.sessionid,glocal.name);
 										}
-										glocal.info.size = st.st_size;
-										glocal.bod_client.rep_readfile_bob (true,""
-											,bob,glocal.info,handle,more);
+										if (!glocal.redo){
+											string handle;
+											FILE *fin = fs_alloc_file_handle (glocal.entry.entryid,glocal.entry.modified,"r",handle,glocal.sessionid);
+											if (fin == NULL){
+												glocal.entry.msg == "Internal error, reading content file";
+												fs_delete_handle (handle);
+											}else{
+												struct stat64 st;
+												if (fstat64(fileno(fin),&st)==-1){
+													glocal.entry.msg = "Internal error, getting file size";
+													fs_delete_handle (handle);
+												}else{
+													char buf[REQ_CONTENT_CHUNK];
+													int len = fread (buf,1,sizeof(buf),fin);
+													BOB_TYPE bob (buf,len,false);
+													bool more = len==REQ_CONTENT_CHUNK;
+													if (!more || glocal.nomore){
+														fs_delete_handle(handle);
+														handle.clear();
+													}
+													glocal.info.size = st.st_size;
+													glocal.bod_client.rep_readfile_bob (true,""
+														,bob,glocal.info,handle,more);
+												}
+											}
+										}
 									}
-								}
+								</f>
+								<f empty>
+									glocal.entry.msg = "Internal error, reading table files";
+								</f>
+								</call>
 							}
-						</f>
-						<f empty>
-							glocal.entry.msg = "Internal error, reading table files";
-						</f>
-						</call>
-					}
+						}
+					}while (glocal.redo);
 				}
 				if (glocal.entry.msg.size()!=0){
 					rep_readfile_bob(false,glocal.entry.msg,BOB_TYPE(),glocal.info,"",false);

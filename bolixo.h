@@ -1,6 +1,8 @@
 #ifndef BOLIXO_H
 #define BOLIXO_H
 
+#include "helper.h"
+
 enum ENTRY_TYPE{
 	ENTRY_NONE,
 	ENTRY_DELETED,
@@ -48,16 +50,16 @@ inline bool file_is_text (FILE_TYPE type){
 	return type == FILE_TEXT;
 }
 inline bool file_is_sound (FILE_TYPE type){
-	return type == FILE_SOUND_MP3 || type == FILE_SOUND_OGG;
+	return is_any_of(type,FILE_SOUND_MP3,FILE_SOUND_OGG);
 }
 inline bool file_is_image (FILE_TYPE type){
-	return type == FILE_IMAGE_JPG || type == FILE_IMAGE_GIF || type == FILE_IMAGE_PNG;
+	return is_any_of (type,FILE_IMAGE_JPG,FILE_IMAGE_GIF,FILE_IMAGE_PNG);
 }
 inline bool file_is_video (FILE_TYPE type){
 	return type == FILE_VIDEO;
 }
 inline bool file_is_doc (FILE_TYPE type){
-	return type == FILE_DOC_SUDOKU || type == FILE_DOC_CHECKER || type == FILE_DOC_CHESS || type == FILE_DOC_TICTACTO;
+	return is_any_of(type,FILE_DOC_SUDOKU,FILE_DOC_CHECKER,FILE_DOC_CHESS,FILE_DOC_TICTACTO);
 }
 #ifdef DEFINE_TBTYPE
 static char tbtype[]={' ','_','D','F','M','C'};
