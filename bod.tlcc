@@ -295,19 +295,19 @@ static unsigned trli_getsessionuser (CONNECT_INFO &con, const char *sessionid, b
 	return userid;
 }
 </mod>
-static unsigned trli_getsessionuser (CONNECT_INFO &con, const char *sessionid, bool &is_admin, string &msg)
-{
-	string username;
-	return trli_getsessionuser (con,sessionid,is_admin,username,msg);
-}
-static int bod_findentry (CONNECT_INFO &con, const char *sessionid, PARAM_STRING name, ENTRY &entry, const char *threshold)
+static int bod_findentry (CONNECT_INFO &con, const char *sessionid, PARAM_STRING name, ENTRY &entry, const char *threshold, string &username)
 {
 	int ret = -1;
-	entry.userid = trli_getsessionuser(con,sessionid,entry.is_admin,entry.msg);
+	entry.userid = trli_getsessionuser(con,sessionid,entry.is_admin,username,entry.msg);
 	if (entry.userid != 0){
 		ret = fs_findentry(name,entry,true,threshold);
 	}
 	return ret;
+}
+static int bod_findentry (CONNECT_INFO &con, const char *sessionid, PARAM_STRING name, ENTRY &entry, const char *threshold)
+{
+	string username;
+	return bod_findentry(con,sessionid,name,entry,threshold,username);
 }
 /*
 	Identify the userid who will perform some group administration.
@@ -1136,10 +1136,11 @@ static bool bod_document_save (
 	<call documentd_client_is_modified>(con_doc,path);
 	<f ok>
 		if (modified){
+			glocal modified_by;
 			<call documentd_client_save>(glocal.con_doc,glocal.path);
 			<f ok>
 				if (success){
-					<call bo_writed_client_modifyfile_bob>(glocal.con,glocal.sessionid,glocal.path,content,false);
+					<call bo_writed_client_modifyfile_bob>(glocal.con,glocal.sessionid,glocal.path,content,false,glocal.modified_by);
 					<f ok>
 					</f>
 					</call>
@@ -1474,6 +1475,7 @@ static int bod_main (
 	glocal string unixportclient = string_f("unix:/tmp/bod-client-%s.sock",portstr);
 	glocal string unixportadmin = string_f("unix:/tmp/bod-admin-%s.sock",portstr);
 	glocal unsigned maxaccts = maxaccts;
+	glocal string admin_sessionid;
 	glocal string instrument_file = string_f("/tmp/instrument-%s.log",portstr);
 	<obj TCPSERVER s>(bind,glocal.unixportclient,5);
 	<f newclient>
@@ -1755,9 +1757,9 @@ static int bod_main (
 				</f>
 				</call>
 			</f>
-			<f addfile_bob> // sessionid name content:o more:b = success:b fileid msg
+			<f addfile_bob> // sessionid name content:o more:b owner = success:b fileid msg
 				debug_printf ("bob size=%lu\n",content.getsize());
-				<call bo_writed_client_addfile_bob>(glocal.con,sessionid,name,content,more);
+				<call bo_writed_client_addfile_bob>(glocal.con,sessionid,name,content,more,owner);
 				<f ok>
 					glocal.bod_client.rep_addfile_bob(success,handle,msg);
 				</f>
@@ -1810,8 +1812,8 @@ static int bod_main (
 				</f>
 				</call>
 			</f>
-			<f modifyfile_bob> // sessionid name content:o more:b = success:b handle msg
-				<call bo_writed_client_modifyfile_bob>(glocal.con,sessionid,name,content,more);
+			<f modifyfile_bob> // sessionid name content:o more:b owner = success:b handle msg
+				<call bo_writed_client_modifyfile_bob>(glocal.con,sessionid,name,content,more,owner);
 				<f ok>
 					glocal.bod_client.rep_modifyfile_bob(success,handle,msg);
 				</f>
@@ -1942,7 +1944,8 @@ static int bod_main (
 										glocal.bod_client.rep_readfile_bob (true,"",bob,glocal.info,"",false);
 									}else{
 										if (file_is_doc(glocal.info.file_type)){
-											glocal.redo = bod_document_save(glocal.con,glocal.con_doc,glocal.sessionid,glocal.name);
+											glocal.redo = bod_document_save(glocal.con,glocal.con_doc
+												,glocal.admin_sessionid.c_str(),glocal.name);
 										}
 										if (!glocal.redo){
 											string handle;
@@ -3516,7 +3519,8 @@ static int bod_main (
 				glocal vector<VARVAL> res;
 				glocal bool success = false;
 				glocal ENTRY entry;
-				if (bod_findentry (glocal.con_sess,sessionid,path,glocal.entry,"")!=-1){
+				string username;
+				if (bod_findentry (glocal.con_sess,sessionid,path,glocal.entry,"",username)!=-1){
 					if (!bolixo_isfile(glocal.entry.type)){
 						glocal.entry.msg = MSG_R(E_NOTAFILE);
 					}else{
@@ -3539,7 +3543,8 @@ static int bod_main (
 							glocal unsigned pass = 0;
 							do{
 								glocal.pass++;
-								<call documentd_client_playstep>(glocal.con_doc,path,vsteps,current_lang,true);
+								<call documentd_client_playstep>(glocal.con_doc,path,vsteps,current_lang
+									,glocal.entry.may_modify,username);
 								<f ok>
 									if (!success){
 										if (unknown){

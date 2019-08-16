@@ -162,6 +162,7 @@ static void documentd_button (string &lines, unsigned command, const char *txt)
 class GAME{
 	time_t modified = (time_t)0;
 	time_t last_activity = time(nullptr);
+	string modified_by;
 public:
 	void setactivity(){
 		last_activity = time(nullptr);
@@ -169,20 +170,26 @@ public:
 	void setactivity(time_t act){
 		last_activity = act;
 	}
-	void setmodified(){
+	void setmodified(const char *_modified_by){
 		modified = time(nullptr);
+		modified_by = _modified_by;
 	}
-	void setmodified(time_t mod){
+	void setmodified(time_t mod, const char *_modified_by){
 		modified = mod;
+		modified_by = _modified_by;
 	}
 	void resetmodified(){
 		modified = (time_t)0;
+		modified_by.clear();
 	}
 	bool is_modified() const{
 		return modified != (time_t)0;
 	}
 	time_t get_modified() const {
 		return modified;
+	}
+	const char *get_modified_by() const {
+		return modified_by.c_str();
 	}
 	time_t get_last_activity() const {
 		return last_activity;
@@ -192,7 +199,7 @@ public:
 	virtual void load(DOC_READER &reader, string &msg)=0;
 	virtual void resetgame() = 0;
 	virtual void testwin(vector<VARVAL> &res) = 0;
-	virtual void exec (const char *var, const char *val, bool maywrite, vector<VARVAL> &res) = 0;
+	virtual void exec (const char *var, const char *val, const char *username, bool maywrite, vector<VARVAL> &res) = 0;
 	virtual ~GAME(){};
 };
 
@@ -316,7 +323,7 @@ public:
 		lines += string_f("<circle stroke='black' stroke-width='2' fill='none' cx='%u' cy='%u' r='%u'/>\n"
 			,x+len/2,y+len/2,len/2);
 	}
-	void exec (const char *var, const char *val, bool maywrite, vector<VARVAL> &res){
+	void exec (const char *var, const char *val, const char *username, bool maywrite, vector<VARVAL> &res){
 		setactivity();
 		if (strcmp(var,"place")==0 && maywrite){
 			bool ok = false;
@@ -335,7 +342,7 @@ public:
 							g = x_is_player ? 1 : 2;
 							x_is_player = !x_is_player;
 							ok = true;
-							setmodified();
+							setmodified(username);
 						}else{
 							msg = "Location already played";
 						}
@@ -347,7 +354,7 @@ public:
 			}
 		}else if (strcmp(var,"newgame")==0 && maywrite){
 			resetgame();
-			setmodified();
+			setmodified(username);
 		}else if (strcmp(var,"print")==0){
 			string lines;
 			unsigned width = 500 - 500 % 3;
@@ -435,7 +442,7 @@ public:
 	void load(DOC_READER &r, string &msg);
 	void resetgame();
 	void testwin(vector<VARVAL> &res);
-	void exec (const char *var, const char *val, bool maywrite, vector<VARVAL> &res);
+	void exec (const char *var, const char *val, const char *username, bool maywrite, vector<VARVAL> &res);
 };
 
 void SUDOKU::save (DOC_WRITER &w)
@@ -502,7 +509,7 @@ void SUDOKU::testwin(vector<VARVAL> &res)
 	}
 }
 <mod>
-void SUDOKU::exec (const char *var, const char *val, bool maywrite, vector<VARVAL> &res)
+void SUDOKU::exec (const char *var, const char *val, const char *username, bool maywrite, vector<VARVAL> &res)
 {
 	setactivity();
 	if (strcmp(var,"place")==0 && maywrite){
@@ -522,7 +529,7 @@ void SUDOKU::exec (const char *var, const char *val, bool maywrite, vector<VARVA
 					gg.user_value = 0;
 				}
 			}
-			setmodified();
+			setmodified(username);
 		}else{
 			documentd_error (res,"Invalid place command (need 2 value)");
 		}
@@ -530,7 +537,7 @@ void SUDOKU::exec (const char *var, const char *val, bool maywrite, vector<VARVA
 		unsigned sel = atoi(val);
 		if (sel > 0 && sel < 10){
 			seldig = sel-1;
-			setmodified();
+			setmodified(username);
 		}
 	}else if (strcmp(var,"print")==0){
 		string lines;
@@ -711,7 +718,7 @@ void SUDOKU::exec (const char *var, const char *val, bool maywrite, vector<VARVA
 				return 0;
 			</f>
 			</call>
-			setmodified();
+			setmodified(username);
 		}
 	}else{
 		tlmp_error ("sudoku invalid command %s\n",var);
@@ -729,7 +736,7 @@ public:
 	void load(DOC_READER &r, string &msg);
 	void resetgame();
 	void testwin(vector<VARVAL> &res);
-	void exec (const char *var, const char *val, bool maywrite, vector<VARVAL> &res);
+	void exec (const char *var, const char *val, const char *username, bool maywrite, vector<VARVAL> &res);
 };
 
 void WORDPROC::save(DOC_WRITER &w)
@@ -745,7 +752,7 @@ void WORDPROC::resetgame()
 void WORDPROC::testwin(vector<VARVAL> &res)
 {
 }
-void WORDPROC::exec (const char *var, const char *val, bool maywrite, vector<VARVAL> &res)
+void WORDPROC::exec (const char *var, const char *val, const char *username, bool maywrite, vector<VARVAL> &res)
 {
 }
 class CHECKERS: public GAME{
@@ -758,7 +765,7 @@ public:
 	void load(DOC_READER &r, string &msg);
 	void resetgame();
 	void testwin(vector<VARVAL> &res);
-	void exec (const char *var, const char *val, bool maywrite, vector<VARVAL> &res);
+	void exec (const char *var, const char *val, const char *username, bool maywrite, vector<VARVAL> &res);
 };
 
 void CHECKERS::save(DOC_WRITER &w)
@@ -815,7 +822,7 @@ static const char *cnv (const char *val, unsigned &posx, unsigned &posy)
 	return val+2;
 }
 		
-void CHECKERS::exec (const char *var, const char *val, bool maywrite, vector<VARVAL> &res)
+void CHECKERS::exec (const char *var, const char *val, const char *username, bool maywrite, vector<VARVAL> &res)
 {
 	if (strcmp(var,"print")==0){
 		string lines;
@@ -885,6 +892,7 @@ void CHECKERS::exec (const char *var, const char *val, bool maywrite, vector<VAR
 			grid[fromx][fromy] = 0;
 			grid[tox][toy] = value;
 		}
+		setmodified (username);
 	}
 }
 
@@ -893,6 +901,7 @@ static bool documentd_playstep (
 	map<string,GAME_P> &games,
 	const char *gameid,
 	const vector<VARVAL_receive> &steps,
+	const char *username,
 	bool maywrite,
 	vector<VARVAL> &res,
 	string &msg,
@@ -904,7 +913,7 @@ static bool documentd_playstep (
 	if (g != games.end()){
 		success = true;
 		for (auto &v:steps){
-			g->second->exec(v.var,v.val,maywrite,res);
+			g->second->exec(v.var,v.val,username,maywrite,res);
 		}
 		g->second->testwin(res);
 	}else{
@@ -1046,8 +1055,8 @@ int main (int argc, char *argv[])
 						DATEASC act,mod;
 						fdpass_asctime(g.second->get_last_activity(),act);
 						if (g.second->is_modified()) fdpass_asctime(g.second->get_modified(),mod);
-						tb.push_back(string_f("gameid: %s last_activity=%s modified=%s",g.first.c_str()
-							,act.buf,mod.buf));
+						tb.push_back(string_f("gameid: %s last_activity=%s modified=%s modified_by=%s",g.first.c_str()
+							,act.buf,mod.buf,g.second->get_modified_by()));
 					}
 					rep_status(tb);
 				</f>
@@ -1062,8 +1071,9 @@ int main (int argc, char *argv[])
 						glocal const char *gameid = g.first.c_str();
 						<call savefile>(string_f("/tmp/game.%u",num),false);
 						<f dowrite>
-							fprintf (fout,"%s\nmodified=%lu\nactivity=%lu\nboBO%s\n"
+							fprintf (fout,"%s\nmodified=%lu\nmodified_by=%s\nactivity=%lu\nboBO%s\n"
 								,glocal.gameid,glocal.game->get_modified()
+								,glocal.game->get_modified_by()
 								,glocal.game->get_last_activity()
 								,glocal.game->getclass());
 							DOC_WRITER doc(fout);
@@ -1111,7 +1121,7 @@ int main (int argc, char *argv[])
 					vector<VARVAL> res;
 					string msg;
 					bool unknown;
-					bool success = documentd_playstep (glocal.games,gameid,steps,true,res,msg,unknown);
+					bool success = documentd_playstep (glocal.games,gameid,steps,"admin",true,res,msg,unknown);
 					rep_playstep(success,unknown,msg,res);
 				</f>
 				<f save> // gameid = success:b msg
@@ -1187,7 +1197,7 @@ int main (int argc, char *argv[])
 					string msg;
 					translat_selectlang(lang);
 					bool unknown;
-					bool success = documentd_playstep (glocal.games,gameid,steps,maywrite,res,msg,unknown);
+					bool success = documentd_playstep (glocal.games,gameid,steps,username,maywrite,res,msg,unknown);
 					rep_playstep(success,unknown,msg,res);
 				</f>
 				<f save>
@@ -1240,17 +1250,19 @@ int main (int argc, char *argv[])
 				</f>
 				<f is_modified> // gameid = success:b msg modified:b
 					bool modified = false;
+					const char *modified_by = "";
 					string msg;
 					auto g = glocal.games.find(gameid);
 					if (g != glocal.games.end()){
 						modified = g->second->is_modified();
+						modified_by = g->second->get_modified_by();
 					}else{
 						msg = "Unknown document";
 					}
 					if (msg.size() > 0){
-						rep_is_modified(false,msg,false);
+						rep_is_modified(false,msg,false,"");
 					}else{
-						rep_is_modified(true,"",modified);
+						rep_is_modified(true,"",modified,modified_by);
 					}
 				</f>
 				<f invalid>
@@ -1286,6 +1298,12 @@ int main (int argc, char *argv[])
 									mod = atoi(pt);
 									fgets(buf2,sizeof(buf2)-1,fin);
 								}
+								string mod_by;
+								if (is_start_any_of(buf2,pt,"modified_by=")){
+									mod_by = pt;
+									strip_end (mod_by);
+									fgets(buf2,sizeof(buf2)-1,fin);
+								}
 								time_t act = 0;
 								if (is_start_any_of(buf2,pt,"activity=")){
 									act = atoi(pt);
@@ -1299,7 +1317,7 @@ int main (int argc, char *argv[])
 									DOC_READER doc(fin);
 									auto g = glocal.games[buf1];
 									g->load(doc,msg);
-									g->setmodified(mod);
+									g->setmodified(mod,mod_by.c_str());
 									g->setactivity(act);
 								}
 							}

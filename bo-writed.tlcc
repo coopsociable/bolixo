@@ -192,25 +192,62 @@ static int writed_mail_newaccount(
 		,MSG_U(T_ACCTCONFIRM,"Account confirmation on bolixo.org")
 		,tmp);
 };
-static int bo_writed_findentry (CONNECT_INFO &con, const char *sessionid, const char *name, const char *threshold, ENTRY &entry, bool expect_exist, bool force_admin)
+<mod>
+static void bo_writed_override_user (const char *owner, unsigned &userid, string &username, bool &is_admin, string &msg)
+{
+	glocal userid;
+	glocal.userid = -1;
+	<call sql_query>("select userid from id2name where name='%s'",owner);
+	<f onerow>
+		glocal.userid = atoi(row[0]);
+	</f>
+	<f empty>
+		glocal.userid = 0;
+	</f>
+	</call>
+	if (glocal.userid == 0) msg = MSG_U(E_UNKNOWNOWNER,"Unknown owner");
+	username = owner;
+	is_admin = false;
+}
+</mod>
+
+struct FINDENTRY_OPTS{
+	bool force_admin = false;
+	bool expect_exist = false;
+	const char *owner = "";
+	const char *threshold = "";
+};
+
+static int bo_writed_findentry (CONNECT_INFO &con, const char *sessionid, const char *name, ENTRY &entry, const FINDENTRY_OPTS &opts)
 {
 	int ret = -1;
 	entry.userid = trli_getsessionuser(con,sessionid,entry.is_admin);
 	if (entry.userid == 0){
 		entry.msg = "Invalid session";
 	}else{
-		if (force_admin) entry.is_admin = true;
-		ret = fs_findentry(name,entry,expect_exist,threshold);
+		if (opts.force_admin) entry.is_admin = true;
+		ret = fs_findentry(name,entry,opts.expect_exist,opts.threshold);
+		if (ret != -1 && entry.is_admin && opts.owner[0] != '\0'){
+			string username;
+			bo_writed_override_user (opts.owner,entry.userid,username,entry.is_admin,entry.msg);
+		}
 	}
 	return ret;
 }
-static int bo_writed_findentry (CONNECT_INFO &con, const char *sessionid, const char *name, const char *threshold, ENTRY &entry, bool expect_exist)
+static int bo_writed_findentry (CONNECT_INFO &con, const char *sessionid, const char *name, const char *threshold, ENTRY &entry, bool expect_exist, bool force_admin)
 {
-	return bo_writed_findentry (con,sessionid,name,threshold,entry,expect_exist,false);
+	FINDENTRY_OPTS opts;
+	opts.expect_exist = expect_exist;
+	opts.force_admin = force_admin;
+	opts.threshold = threshold;
+	return bo_writed_findentry(con,sessionid,name,entry,opts);
 }
+
 static int bo_writed_findentry (CONNECT_INFO &con, const char *sessionid, const char *name, ENTRY &entry, bool expect_exist)
 {
-	return bo_writed_findentry(con,sessionid,name,"",entry,expect_exist);
+	FINDENTRY_OPTS opts;
+	opts.expect_exist = expect_exist;
+	return bo_writed_findentry(con,sessionid,name,entry,opts);
 }
 struct DIRENTRY{
 	int itemid;
@@ -297,17 +334,7 @@ static unsigned bo_writed_get_group_owner (CONNECT_INFO &con, const char *sessio
 	glocal string *msg = &msg;
 	glocal unsigned userid = trli_getsessionuser (con,sessionid,is_admin);
 	if (is_admin && owner[0] != '\0'){
-		<call sql_query>("select userid from id2name where name='%s'",owner);
-		<f onerow>
-			glocal.userid = atoi(row[0]);
-		</f>
-		<f empty>
-			glocal.userid = 0;
-		</f>
-		</call>
-		if (glocal.userid == 0) msg = MSG_U(E_UNKNOWNOWNER,"Unknown owner");
-		username = owner;
-		is_admin = false;
+		bo_writed_override_user (owner,glocal.userid,username,is_admin,msg);
 	}else if (glocal.userid != 0){
 		<call sql_query>("select name from id2name where userid=%u",glocal.userid);
 		<f onerow>
@@ -2462,7 +2489,9 @@ int main (int argc, char *argv[])
 				</f>
 				<f addfile_bob>
 					ENTRY entry;
-					if (bo_writed_findentry (glocal.con,sessionid,name,entry,false)==-1){
+					FINDENTRY_OPTS opts;
+					opts.owner = owner;
+					if (bo_writed_findentry (glocal.con,sessionid,name,entry,opts)==-1){
 						rep_addfile_bob (false,"",entry.msg);
 					}else{
 						string msg,sign;
@@ -2564,7 +2593,7 @@ int main (int argc, char *argv[])
 					if (bo_writed_findentry (glocal.con,sessionid,name,entry,true)==-1){
 						rep_modifyfile (false,entry.msg);
 					}else if (!entry.may_add){
-						rep_modifyfile_bob (false,"",MSG_R(E_NOTALLOWED));
+						rep_modifyfile (false,MSG_R(E_NOTALLOWED));
 					}else{
 						// tlmp_error ("userid=%d name=%s may_add=%d\n",entry.userid,name,entry.may_add);
 						if (!bolixo_isfile(entry.type)){
@@ -2652,9 +2681,12 @@ int main (int argc, char *argv[])
 						rep_set_access (true,"");
 					}
 				</f>
-				<f modifyfile_bob> // sessionid name content:o more:b = success:b handle msg
+				<f modifyfile_bob> // sessionid name content:o more:b owner = success:b handle msg
 					ENTRY entry;
-					if (bo_writed_findentry (glocal.con,sessionid,name,entry,true)==-1){
+					FINDENTRY_OPTS opts;
+					opts.expect_exist = true;
+					opts.owner = owner;
+					if (bo_writed_findentry (glocal.con,sessionid,name,entry,opts)==-1){
 						rep_modifyfile_bob (false,"",entry.msg);
 					}else if (!entry.may_add){
 						rep_modifyfile_bob (false,"",MSG_R(E_NOTALLOWED));

@@ -525,17 +525,17 @@ struct _F_bofs_addfile_bob {
 	virtual _F_bofs_addfile_bob_ok( )=0;
 };
 <mod>
-static void bofs_addfile_bob(_F_bofs_addfile_bob &c, CONTEXT &ctx, PARAM_STRING path, const BOB_TYPE &content, bool more)
+static void bofs_addfile_bob(_F_bofs_addfile_bob &c, CONTEXT &ctx, PARAM_STRING path, const BOB_TYPE &content, bool more, const char *owner)
 {
 	glocal _F_bofs_addfile_bob *c = &c;
 	if (ctx.is_internal()){
-		<call bod_client_addfile_bob>(ctx.con,ctx.sessionid,path,content,more);
+		<call bod_client_addfile_bob>(ctx.con,ctx.sessionid,path,content,more,owner);
 		<f ok>
 			glocal.c->ok(internal_error,success,msg,handle);
 		</f>
 		</call>
 	}else{
-		<call webapi_addfile_bob>(ctx.hcon,ctx.hsessionid,path,content,more);
+		<call webapi_addfile_bob>(ctx.hcon,ctx.hsessionid,path,content,more,owner);
 		<f ok>
 			glocal.c->ok(internal_error,success,msg,handle);
 		</f>
@@ -549,17 +549,17 @@ struct _F_bofs_modifyfile_bob {
 	virtual _F_bofs_modifyfile_bob_ok( )=0;
 };
 <mod>
-static void bofs_modifyfile_bob(_F_bofs_modifyfile_bob &c, CONTEXT &ctx, PARAM_STRING path, const BOB_TYPE &content, bool more)
+static void bofs_modifyfile_bob(_F_bofs_modifyfile_bob &c, CONTEXT &ctx, PARAM_STRING path, const BOB_TYPE &content, bool more, const char *owner)
 {
 	glocal _F_bofs_modifyfile_bob *c = &c;
 	if (ctx.is_internal()){
-		<call bod_client_modifyfile_bob>(ctx.con,ctx.sessionid,path,content,more);
+		<call bod_client_modifyfile_bob>(ctx.con,ctx.sessionid,path,content,more,owner);
 		<f ok>
 			glocal.c->ok(internal_error,success,msg,handle);
 		</f>
 		</call>
 	}else{
-		<call webapi_modifyfile_bob>(ctx.hcon,ctx.hsessionid,path,content,more);
+		<call webapi_modifyfile_bob>(ctx.hcon,ctx.hsessionid,path,content,more,owner);
 		<f ok>
 			glocal.c->ok(internal_error,success,msg,handle);
 		</f>
@@ -1007,7 +1007,7 @@ static int bofs_cat_bofile (CONTEXT &ctx, const char *path, FILE *fout)
 }
 </mod>
 <mod>
-static int bofs_write_bofile(CONTEXT &ctx, PARAM_STRING path, FILE *fin, const char *command)
+static int bofs_write_bofile(CONTEXT &ctx, PARAM_STRING path, FILE *fin, const char *command, const char *owner)
 {
 	glocal const char *command = command;
 	glocal int ret = 0;
@@ -1019,7 +1019,7 @@ static int bofs_write_bofile(CONTEXT &ctx, PARAM_STRING path, FILE *fin, const c
 	int len = fread (buf,1,sizeof(buf),fin);
 	glocal bool more = len == sizeof(buf);
 	if (bofs_stat(ctx,path,type)==-1){
-		<call bofs_addfile_bob> (ctx,path,BOB_TYPE(buf,len,false),glocal.more);
+		<call bofs_addfile_bob> (ctx,path,BOB_TYPE(buf,len,false),glocal.more,owner);
 		<f ok>
 			if (!success){
 				bofs_error (glocal.command,internal_error,msg);
@@ -1032,7 +1032,7 @@ static int bofs_write_bofile(CONTEXT &ctx, PARAM_STRING path, FILE *fin, const c
 	}else if (!bolixo_isfile(type)){
 		tlmp_error (MSG_U(E_CANTMODIFY,"Can't modify %s, not a file\n"),path.ptr);
 	}else{ 
-		<call bofs_modifyfile_bob> (ctx,path,BOB_TYPE(buf,len,false),glocal.more);
+		<call bofs_modifyfile_bob> (ctx,path,BOB_TYPE(buf,len,false),glocal.more,owner);
 		<f ok>
 			if (!success){
 				bofs_error (glocal.command,internal_error,msg);
@@ -1052,8 +1052,9 @@ static int bofs_cat (CONTEXT &ctx, int argc, char *argv[])
 {
 	glocal int ret = -1;
 	glocal CONTEXT *ctx = &ctx;
-	glocal const char *pipeto = NULL;
-	glocal const char *threshold = NULL;
+	glocal const char *pipeto = nullptr;
+	glocal const char *threshold = nullptr;
+	glocal const char *owner = "";
 	glocal.ret = <call tlmpprogram>(argc,argv);
 	<f init>
 		setproginfo ("bocat",VERSION
@@ -1062,6 +1063,8 @@ static int bofs_cat (CONTEXT &ctx, int argc, char *argv[])
 			 "bofs cat  ...\n"
 			);
 		setarg ('p',"pipeto","Pipe input to this file",glocal.pipeto,false);
+		setgrouparg (MSG_R(I_MISC));
+		setarg ('O',"owner",MSG_R(O_OWNER),glocal.owner,false);
 		setarg ('t',"threshold","Date threshold, only older-or-equal entries are shown/used (aaaa/mm/jj-hh:mm:ss)",glocal.threshold,false);
 	</f>
 	<f main_noarg>
@@ -1072,10 +1075,10 @@ static int bofs_cat (CONTEXT &ctx, int argc, char *argv[])
 			char *argv[1] = {(char*)glocal.pipeto};
 			ret = <call bofs_split>(*glocal.ctx,1,argv);
 			<f bo_file>
-				return bofs_write_bofile (*glocal.ctx,path,stdin,"cat");
+				return bofs_write_bofile (*glocal.ctx,path,stdin,"cat",glocal.owner);
 			</f>
 			<f https_file>
-				return bofs_write_bofile (*glocal.ctx,path,stdin,"cat");
+				return bofs_write_bofile (*glocal.ctx,path,stdin,"cat",glocal.owner);
 			</f>
 			<f local_file>
 				return system (string_f("cat >%s",path).c_str());
@@ -1125,7 +1128,7 @@ struct BO_ARGTYPE{
 };
 
 <mod>
-static int bofs_copy_file(CONTEXT &ctx, PARAM_STRING path0, BO_SOURCE src0, PARAM_STRING path1, BO_SOURCE src1)
+static int bofs_copy_file(CONTEXT &ctx, PARAM_STRING path0, BO_SOURCE src0, PARAM_STRING path1, BO_SOURCE src1, const char *owner)
 {
 	glocal CONTEXT *ctx = &ctx;
 	glocal int ret = -1;
@@ -1140,7 +1143,7 @@ static int bofs_copy_file(CONTEXT &ctx, PARAM_STRING path0, BO_SOURCE src0, PARA
 				bofs_error ("cp",false,"Can't open file %s (%s)",path0.ptr,strerror(errno));
 				glocal.ret = -1;
 			}else{
-				glocal.ret = bofs_write_bofile (*glocal.ctx,path1,fin,"cp");
+				glocal.ret = bofs_write_bofile (*glocal.ctx,path1,fin,"cp",owner);
 				fclose (fin);
 			}
 		}
@@ -1213,9 +1216,10 @@ static int bofs_mkdir (CONTEXT &ctx, PARAM_STRING path)
 }
 </mod>
 <mod>
-static int bofs_copy_dir(CONTEXT &ctx, PARAM_STRING path0, BO_SOURCE src0, PARAM_STRING path1, BO_SOURCE src1)
+static int bofs_copy_dir(CONTEXT &ctx, PARAM_STRING path0, BO_SOURCE src0, PARAM_STRING path1, BO_SOURCE src1, const char *owner)
 {
 	glocal CONTEXT *ctx = &ctx;
+	glocal owner;
 	glocal int ret = -1;
 	if (src0 == LOCAL_ENTRY){
 		if (src1 == LOCAL_ENTRY){
@@ -1237,7 +1241,7 @@ static int bofs_copy_dir(CONTEXT &ctx, PARAM_STRING path0, BO_SOURCE src0, PARAM
 							glocal.ret = -1;
 						}else{
 							if (verbose) printf (MSG_U(I_COPY,"copy %s %s\n"),path,dstpath.c_str());
-							glocal.ret = bofs_write_bofile (*glocal.ctx,dstpath,fin,"cp");
+							glocal.ret = bofs_write_bofile (*glocal.ctx,dstpath,fin,"cp",glocal.owner);
 							fclose (fin);
 						}
 					}
@@ -1279,7 +1283,7 @@ static int bofs_copy_dir(CONTEXT &ctx, PARAM_STRING path0, BO_SOURCE src0, PARAM
 							}else{
 								string dst = string_f("%s/%s",glocal.path1.c_str(),f.name);
 								if (verbose) printf ("copy %s -> %s\n",path.c_str(),dst.c_str()); 
-								glocal.ret = bofs_copy_file (*glocal.ctx,path,BO_ENTRY,dst,LOCAL_ENTRY);
+								glocal.ret = bofs_copy_file (*glocal.ctx,path,BO_ENTRY,dst,LOCAL_ENTRY,glocal.owner);
 							}
 						}
 						glocal.stop = files.size() < 500;
@@ -1356,6 +1360,7 @@ static int bofs_cp (CONTEXT &ctx, int argc, char *argv[])
 {
 	glocal int ret = -1;
 	glocal CONTEXT *ctx = &ctx;
+	glocal const char *owner = "";
 	glocal.ret = <call tlmpprogram>(argc,argv);
 	<f init>
 		setproginfo ("bocp",VERSION
@@ -1364,6 +1369,8 @@ static int bofs_cp (CONTEXT &ctx, int argc, char *argv[])
 			 "bofs cp ...\n")
 			);
 		setarg ('v',"verbose",MSG_U(I_VERBOSE,"Display files as they are copied"),verbose,false);
+		setgrouparg (MSG_R(I_MISC));
+		setarg ('O',"owner",MSG_R(O_OWNER),glocal.owner,false);
 	</f>
 	<f main>
 		int ret = 0;
@@ -1396,9 +1403,9 @@ static int bofs_cp (CONTEXT &ctx, int argc, char *argv[])
 					const char *name = args[i].name.c_str();
 					string dest = string_f("%s/%s",dir,name);
 					if (bolixo_isdir(args[i].type)){
-						ret = bofs_copy_dir (*glocal.ctx,args[i].path,args[i].source,dest,dest_source);
+						ret = bofs_copy_dir (*glocal.ctx,args[i].path,args[i].source,dest,dest_source,glocal.owner);
 					}else{
-						ret = bofs_copy_file (*glocal.ctx,args[i].path,args[i].source,dest,dest_source);
+						ret = bofs_copy_file (*glocal.ctx,args[i].path,args[i].source,dest,dest_source,glocal.owner);
 					}
 				}
 			}else if (args_size != 2){
@@ -1413,12 +1420,12 @@ static int bofs_cp (CONTEXT &ctx, int argc, char *argv[])
 					string path = string_f("%s/%s",args[1].path.c_str(),args[0].name.c_str());
 					ret = bofs_copy_dir (*glocal.ctx
 						,args[0].path,args[0].source
-						,path,args[1].source);
+						,path,args[1].source,glocal.owner);
 				}else{
 					// Copy dir1 into dir2, but dir2 does not exist
 					ret = bofs_copy_dir (*glocal.ctx
 						,args[0].path,args[0].source
-						,args[1].path,args[1].source);
+						,args[1].path,args[1].source,glocal.owner);
 				}
 			}else if (bolixo_isfile(args[0].type)){
 				if (bolixo_isdir(args[1].type)){
@@ -1426,12 +1433,12 @@ static int bofs_cp (CONTEXT &ctx, int argc, char *argv[])
 					string path = string_f("%s/%s",args[1].path.c_str(),args[1].name.c_str());
 					ret = bofs_copy_file (*glocal.ctx
 						,args[0].path,args[0].source
-						,path,args[1].source);
+						,path,args[1].source,glocal.owner);
 				}else{
 					// Ok, we copy a file onto a file
 					ret = bofs_copy_file (*glocal.ctx
 						,args[0].path,args[0].source
-						,args[1].path,args[1].source);
+						,args[1].path,args[1].source,glocal.owner);
 				}
 				ret = -1;
 			}else{
