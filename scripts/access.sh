@@ -233,6 +233,17 @@ elif [ "$1" = "notifications" ] ; then # test: test notifications to session man
 	./bofs --logout --session $SESSIONA
 	./bofs --logout --session $SESSIONB
 	./bofs --logout --session $SESSIONC
+elif [ "$1" = "cp-admin" ] ; then # test: admin writes files on behalf of another user
+	echo hello >/tmp/admin.txt
+	./bofs -u admin cp -O jacques-A /tmp/admin.txt bo://projects/jacques-A/public/admin.txt
+	./bofs -t -u jacques-A ls -l bo://projects/jacques-A/public
+	./bofs -u admin cp -O jacques-B /tmp/admin.txt bo://projects/jacques-A/public/admin.txt
+	./bofs -t -u jacques-A ls -l bo://projects/jacques-A/public
+	./bofs -u admin cp -O unknown /tmp/admin.txt bo://projects/jacques-A/public/admin.txt
+	./bofs -t -u jacques-A ls -l bo://projects/jacques-A/public
+	./bofs -u admin cp -O jacques-D /tmp/admin.txt bo://projects/jacques-A/public/admin.txt
+	./bofs -t -u jacques-A ls -l bo://projects/jacques-A/public
+	rm -f /tmp/admin.txt
 else
 	echo command
 fi
