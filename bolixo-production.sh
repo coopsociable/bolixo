@@ -402,10 +402,15 @@ elif [ "$1" = "restart-nolock" ] ; then # prod: restart without locking some ser
 				fi
 			done
 			# Process delayed scripts
+			MUSTSLEEP=1
 			for serv in $SERVICES
 			do
 				DELAYED=/var/lib/lxc/$serv/$serv.start-delayed
 				if [ -x $DELAYED ] ; then
+					if [ "$MUSTSLEEP" = 1 ] ; then
+						sleep 2
+						MUSTSLEEP=0
+					fi
 					$DELAYED
 				fi
 			done
