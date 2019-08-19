@@ -1214,6 +1214,7 @@ static void print_configs (
 	<call savefile>(bo_start,false);
 	<f dowrite>
 		glocal FILE *all_fout = fout;
+		glocal vector<string> delayed;
 		fprintf (fout,"#!/usr/bin/sh\n");
 		{
 			// SERVICE iptables
@@ -1501,106 +1502,6 @@ static void print_configs (
 					lxc_debug (project_path,"publishd","publishd",-1);
 				}
 			}
-			// SERVICE bod
-			for (auto t:glocal.config->bods){
-				if (t.server == glocal.server){
-					mkdir ("/var/lib/lxc/bod",0755);
-					glocal const char *secret = t.secret.c_str();
-					glocal int workers = t.workers;
-					glocal unsigned maxaccts = t.maxaccts;
-					<call savefile>("/var/lib/lxc/bod/bod.init",false);
-					<f dowrite>
-						fprintf (fout,"export BOD_PWD=%s\n",sql_bod_pwd);
-						/*
-							Important, we create one more bod process than specified (see the <=).
-							The last one is used only by webapi.hc for the getpubkey request.
-							This is done to avoid a dead-lock. The sequence is this.
-
-							A user add a remote account in his interest list. The bod serving the user
-							contact the remote site to register this site in the interest list of the
-							remote user. If this is the first time that we contact the remote site, it
-							will request our public key. And based on activities on all the bod servers,
-							this request might be served by the bod server doing the remote request. Dead-lock.
-						*/
-						for (int i=0; i<=glocal.workers; i++){
-							fprintf (fout,"%s/bod ",project_path);
-							fprintf (fout,"--tcpport %d --control %s/bod-%d.sock"
-								" --maxaccts %u"
-								" --adminhost %s --adminport /dev/writed.sock --sesshost %s --sessport /dev/sessiond.sock"
-								" --dbserv %s --dbname files --dbuser %s"
-								" --admin_secrets %s/secrets.admin --client_secrets %s/secrets.client"
-								" --mysecret %s --user %s --sqltcpport 3307 --daemon"
-								" --pidfile /tmp/bod-%d.pid"
-								,9000+i,lxcsock_dir,i
-								,glocal.maxaccts
-								,horizon_ip,horizon_ip
-								,"localhost",sql_bod_user
-								,config_dir,config_dir
-								,glocal.secret,trli_user
-								,i);
-							fprintf (fout," --nodename %s --dirserver %s",glocal.nodename,glocal.dirserver);
-							if (glocal.devmode || preprodmode){
-								fprintf (fout," --nonstrict --usehttp test1.bolixo.org");
-							}
-							fprintf (fout,"\n");
-						}
-						return 0;
-					</f>
-					</call>
-					string startfile;	
-					<call lxc_start> ("bod",ip_bod,startfile,trli_user,trli_userid);
-					<f horizon>
-						fprintf (fout,"%s/horizon-control -p %s/horizon.sock --bind unix,/dev/writed.sock:/var/lib/lxc/%s/rootfs/dev/writed.sock,%s\n"
-							,blackhole_path,sock_dir,name,name);
-						fprintf (fout,"chown %s /var/lib/lxc/%s/rootfs/dev/writed.sock\n",trli_user,name);
-						fprintf (fout,"%s/horizon-control -p %s/horizon.sock --bind unix,/dev/sessiond.sock:/var/lib/lxc/%s/rootfs/dev/sessiond.sock,%s\n"
-							,blackhole_path,sock_dir,name,name);
-						fprintf (fout,"chown %s /var/lib/lxc/%s/rootfs/dev/sessiond.sock\n",trli_user,name);
-						fprintf (fout,"%s/horizon-control -p %s/horizon.sock --bind unix,/dev/documentd.sock:/var/lib/lxc/%s/rootfs/dev/documentd.sock,%s\n"
-							,blackhole_path,sock_dir,name,name);
-						fprintf (fout,"chown %s /var/lib/lxc/%s/rootfs/dev/documentd.sock\n",trli_user,name);
-						fprintf (fout,"mkdir -p /var/lib/lxc/%s/rootfs/var/lib/mysql\n",name);
-						fprintf (fout,"%s/horizon-control -p %s/horizon.sock --bind unix,/var/lib/mysql/mysql.sock:/var/lib/lxc/%s/rootfs/var/lib/mysql/mysql.sock,%s\n"
-							,blackhole_path,sock_dir,name,name);
-						fprintf (fout,"chown %s /var/lib/lxc/%s/rootfs/var/lib/mysql/mysql.sock\n",trli_user,name);
-					</f>
-					<f insert>
-						fprintf (fout,"echo nameserver %s >/var/lib/lxc/bod/rootfs/etc/resolv.conf\n"
-							,horizon_ip);
-						if (glocal.devmode){
-							fprintf (fout,"echo %s test1.bolixo.org >>/var/lib/lxc/bod/rootfs/etc/hosts\n"
-								,ip0_webssl);
-							fprintf (fout,"echo %s preprod.bolixo.org >>/var/lib/lxc/bod/rootfs/etc/hosts\n"
-								,ip_preprod);
-						}else if (preprodmode){
-							fprintf (fout,"echo %s test1.bolixo.org >>/var/lib/lxc/bod/rootfs/etc/hosts\n"
-								,ip0_webssl);
-							fprintf (fout,"echo %s alpha.bolixo.org >>/var/lib/lxc/bod/rootfs/etc/hosts\n"
-								,ip_preprod);
-							fprintf (fout,"echo %s bolixo.org >>/var/lib/lxc/bod/rootfs/etc/hosts\n"
-								,ip_preprod);
-						}
-					</f>
-					</call>
-					fprintf (glocal.all_fout,"%s\n",startfile.c_str());
-					// +1 for the pubkey bod server
-					<call lxc_stop> ("bod","bod",project_path,glocal.workers+1,glocal.stopbod);
-					<f horizon>
-						fprintf (fout,"%s/horizon-control -p %s/horizon.sock unbindfd unix /dev/writed.sock %s\n"
-							,blackhole_path,sock_dir,name);
-						fprintf (fout,"%s/horizon-control -p %s/horizon.sock unbindfd unix /dev/sessiond.sock %s\n"
-							,blackhole_path,sock_dir,name);
-						fprintf (fout,"%s/horizon-control -p %s/horizon.sock unbindfd unix /dev/documentd.sock %s\n"
-							,blackhole_path,sock_dir,name);
-						fprintf (fout,"%s/horizon-control -p %s/horizon.sock unbindfd unix /var/lib/mysql/mysql.sock %s\n"
-							,blackhole_path,sock_dir,name);
-					</f>
-					</call>
-					lxc_config ("bod",ip_bod,true);
-					lxc_status (project_path,"bod","bod",glocal.workers+1);
-					lxc_debug (project_path,"bod","bod",glocal.workers+1);
-				}
-			}
 			// SERVICE writed
 			for (auto t:glocal.config->writeds){
 				if (t.server == glocal.server){
@@ -1699,6 +1600,122 @@ static void print_configs (
 					lxc_config ("writed",ip_writed);
 					lxc_status (project_path,"writed","bo-writed",glocal.workers);
 					lxc_debug (project_path,"writed","bo-writed",glocal.workers);
+				}
+			}
+			// SERVICE bod
+			for (auto t:glocal.config->bods){
+				if (t.server == glocal.server){
+					mkdir ("/var/lib/lxc/bod",0755);
+					glocal const char *secret = t.secret.c_str();
+					glocal int workers = t.workers;
+					glocal unsigned maxaccts = t.maxaccts;
+					<call savefile>("/var/lib/lxc/bod/bod.init",false);
+					<f dowrite>
+						fprintf (fout,"export BOD_PWD=%s\n",sql_bod_pwd);
+						/*
+							Important, we create one more bod process than specified (see the <=).
+							The last one is used only by webapi.hc for the getpubkey request.
+							This is done to avoid a dead-lock. The sequence is this.
+
+							A user add a remote account in his interest list. The bod serving the user
+							contact the remote site to register this site in the interest list of the
+							remote user. If this is the first time that we contact the remote site, it
+							will request our public key. And based on activities on all the bod servers,
+							this request might be served by the bod server doing the remote request. Dead-lock.
+						*/
+						for (int i=0; i<=glocal.workers; i++){
+							fprintf (fout,"%s/bod ",project_path);
+							fprintf (fout,"--tcpport %d --control %s/bod-%d.sock"
+								" --maxaccts %u"
+								" --adminhost %s --adminport /dev/writed.sock --sesshost %s --sessport /dev/sessiond.sock"
+								" --dbserv %s --dbname files --dbuser %s"
+								" --admin_secrets %s/secrets.admin --client_secrets %s/secrets.client"
+								" --mysecret %s --user %s --sqltcpport 3307 --daemon"
+								" --pidfile /tmp/bod-%d.pid"
+								,9000+i,lxcsock_dir,i
+								,glocal.maxaccts
+								,horizon_ip,horizon_ip
+								,"localhost",sql_bod_user
+								,config_dir,config_dir
+								,glocal.secret,trli_user
+								,i);
+							fprintf (fout," --nodename %s --dirserver %s",glocal.nodename,glocal.dirserver);
+							if (glocal.devmode || preprodmode){
+								fprintf (fout," --nonstrict --usehttp test1.bolixo.org");
+							}
+							fprintf (fout,"\n");
+						}
+						return 0;
+					</f>
+					</call>
+					string startfile,delayfile;	
+					<call lxc_start> ("bod",ip_bod,startfile,delayfile,trli_user,trli_userid);
+					<f horizon>
+						fprintf (fout,"%s/horizon-control -p %s/horizon.sock --bind unix,/dev/writed.sock:/var/lib/lxc/%s/rootfs/dev/writed.sock,%s\n"
+							,blackhole_path,sock_dir,name,name);
+						fprintf (fout,"chown %s /var/lib/lxc/%s/rootfs/dev/writed.sock\n",trli_user,name);
+						fprintf (fout,"%s/horizon-control -p %s/horizon.sock --bind unix,/dev/sessiond.sock:/var/lib/lxc/%s/rootfs/dev/sessiond.sock,%s\n"
+							,blackhole_path,sock_dir,name,name);
+						fprintf (fout,"chown %s /var/lib/lxc/%s/rootfs/dev/sessiond.sock\n",trli_user,name);
+						fprintf (fout,"%s/horizon-control -p %s/horizon.sock --bind unix,/dev/documentd.sock:/var/lib/lxc/%s/rootfs/dev/documentd.sock,%s\n"
+							,blackhole_path,sock_dir,name,name);
+						fprintf (fout,"chown %s /var/lib/lxc/%s/rootfs/dev/documentd.sock\n",trli_user,name);
+						fprintf (fout,"mkdir -p /var/lib/lxc/%s/rootfs/var/lib/mysql\n",name);
+						fprintf (fout,"%s/horizon-control -p %s/horizon.sock --bind unix,/var/lib/mysql/mysql.sock:/var/lib/lxc/%s/rootfs/var/lib/mysql/mysql.sock,%s\n"
+							,blackhole_path,sock_dir,name,name);
+						fprintf (fout,"chown %s /var/lib/lxc/%s/rootfs/var/lib/mysql/mysql.sock\n",trli_user,name);
+					</f>
+					<f insert>
+						fprintf (fout,"echo nameserver %s >/var/lib/lxc/bod/rootfs/etc/resolv.conf\n"
+							,horizon_ip);
+						if (glocal.devmode){
+							fprintf (fout,"echo %s test1.bolixo.org >>/var/lib/lxc/bod/rootfs/etc/hosts\n"
+								,ip0_webssl);
+							fprintf (fout,"echo %s preprod.bolixo.org >>/var/lib/lxc/bod/rootfs/etc/hosts\n"
+								,ip_preprod);
+						}else if (preprodmode){
+							fprintf (fout,"echo %s test1.bolixo.org >>/var/lib/lxc/bod/rootfs/etc/hosts\n"
+								,ip0_webssl);
+							fprintf (fout,"echo %s alpha.bolixo.org >>/var/lib/lxc/bod/rootfs/etc/hosts\n"
+								,ip_preprod);
+							fprintf (fout,"echo %s bolixo.org >>/var/lib/lxc/bod/rootfs/etc/hosts\n"
+								,ip_preprod);
+						}
+					</f>
+					<f delayed>
+						fprintf (fout,"SESSION=`%s/bo-writed-control -p /var/lib/lxc/writed/rootfs/var/run/blackhole/bo-writed-0.sock login admin`\n"
+							,project_path);
+						fprintf (fout,"for file in /var/lib/lxc/bod/rootfs/var/run/blackhole/bod-*.sock\n");
+						fprintf (fout,"do\n");
+						fprintf (fout,"\t%s/bod-control -p $file set_admin_session $SESSION\n",project_path);
+						fprintf (fout,"done\n");
+					</f>
+					</call>
+					fprintf (glocal.all_fout,"%s\n",startfile.c_str());
+					glocal.delayed.push_back(delayfile);
+					// +1 for the pubkey bod server
+					<call lxc_stop> ("bod","bod",project_path,glocal.workers+1,glocal.stopbod);
+					<f horizon>
+						fprintf (fout,"%s/horizon-control -p %s/horizon.sock unbindfd unix /dev/writed.sock %s\n"
+							,blackhole_path,sock_dir,name);
+						fprintf (fout,"%s/horizon-control -p %s/horizon.sock unbindfd unix /dev/sessiond.sock %s\n"
+							,blackhole_path,sock_dir,name);
+						fprintf (fout,"%s/horizon-control -p %s/horizon.sock unbindfd unix /dev/documentd.sock %s\n"
+							,blackhole_path,sock_dir,name);
+						fprintf (fout,"%s/horizon-control -p %s/horizon.sock unbindfd unix /var/lib/mysql/mysql.sock %s\n"
+							,blackhole_path,sock_dir,name);
+					</f>
+					<f pre_insert>
+						fprintf (fout,"SESSION=`%s/bod-control -p /var/lib/lxc/bod/rootfs/var/run/blackhole/bod-0.sock status | grep admin_sessionid: | ( read a b; echo $b)`\n"
+							,project_path);
+						fprintf (fout,"%s/bo-writed-control -p /var/lib/lxc/writed/rootfs/var/run/blackhole/bo-writed-0.sock logout $SESSION\n"
+							,project_path);
+
+					</f>
+					</call>
+					lxc_config ("bod",ip_bod,true);
+					lxc_status (project_path,"bod","bod",glocal.workers+1);
+					lxc_debug (project_path,"bod","bod",glocal.workers+1);
 				}
 			}
 			// SERVICE keysd
@@ -2216,6 +2233,12 @@ static void print_configs (
 			</f>
 			</call>
 			trli_chmod (glocal.stopcompute,0755);
+		}
+		if (glocal.delayed.size() > 0){
+			fprintf (fout,"sleep 2 # Gives some time for database services to start\n");
+			for (auto &s:glocal.delayed){
+				fprintf (fout,"%s\n",s.c_str());
+			}
 		}
 		// In production mode, the passphrase has to be entered by the operator.
 		if (glocal.devmode){

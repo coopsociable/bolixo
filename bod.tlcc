@@ -110,6 +110,7 @@ struct DIRENTRY{
 #define bod_control_nodelogout_NOTNEED
 #define bod_control_instrument_NOTNEED
 #define bod_control_keepmsgs_NOTNEED
+#define bod_control_set_admin_session_NOTNEED
 #include "proto/bod_control.protoch"
 
 #define bolixoapi_test_NOTNEED
@@ -1142,6 +1143,7 @@ static bool bod_document_save (
 				if (success){
 					<call bo_writed_client_modifyfile_bob>(glocal.con,glocal.sessionid,glocal.path,content,false,glocal.modified_by);
 					<f ok>
+						if (!success) tlmp_error ("bod_document_save %s: %s\n",glocal.path,msg);
 					</f>
 					</call>
 				}
@@ -1548,6 +1550,7 @@ static int bod_main (
 				tb.push_back(string_f("filehandle %u",fs_getnbhandle()));
 				tb.push_back(string_f("rem_filehandle %lu",rem_handles.size()));
 				tb.push_back(string_f("sessions %lu",sessions.size()));
+				tb.push_back(string_f("admin_sessionid: %s",glocal.admin_sessionid.c_str()));
 				string useline = "usehttp:";
 				for (auto &s:usehttp) useline += string(" ") + s;
 				tb.push_back(useline);
@@ -1649,6 +1652,9 @@ static int bod_main (
 				hcon.init (node);
 				bod_nodelogout(hcon,session);
 				rep_nodelogout (true);
+			</f>
+			<f set_admin_session>
+				glocal.admin_sessionid = session;
 			</f>
 			<f instrument>
 				toggle_instrument_file(on,glocal.instrument_file);

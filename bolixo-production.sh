@@ -401,6 +401,14 @@ elif [ "$1" = "restart-nolock" ] ; then # prod: restart without locking some ser
 					fi
 				fi
 			done
+			# Process delayed scripts
+			for serv in $SERVICES
+			do
+				DELAYED=/var/lib/lxc/$serv/$serv.start-delayed
+				if [ -x $DELAYED ] ; then
+					$DELAYED
+				fi
+			done
 			if [ "$keysd_restarted" != "" ] ; then
 				echo Service keysd was restarted, passphrase in place
 				if /usr/sbin/bo-keysd-control -p /var/lib/lxc/keysd/rootfs/var/run/blackhole/bo-keysd.sock setpassphrase $KEYSDPASS
