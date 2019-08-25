@@ -3597,12 +3597,21 @@ static int bod_main (
 				glocal bool publish_fsok = false;
 				glocal bool internal_error1 = false;
 				glocal bool documentd = false;
+				glocal unsigned admin_sess_valid = 0;
 				<call bo_sessiond_client_test>(glocal.con_sess);
 				<f ok>
 					glocal.internal_error1 = internal_error;
 					glocal.sessiond1 = success;
 				</f>
 				</call>
+				if (glocal.admin_sessionid.size() > 0){
+					glocal.admin_sess_valid = 1;
+					<call bo_sessiond_client_getsessioninfo>(glocal.con_sess,glocal.admin_sessionid);
+					<f ok>
+						if (success) glocal.admin_sess_valid = 2;
+					</f>
+					</call>
+				}
 				<call bo_writed_client_test>(glocal.con);
 				<f ok>
 					glocal.writed = !internal_error;
@@ -3628,7 +3637,8 @@ static int bod_main (
 				glocal.bod_admin.rep_test(glocal.internal_error1
 					,glocal.writed,glocal.bdfiles1,glocal.bdfiles2,glocal.bdusers
 					,glocal.sessiond1,glocal.sessiond2,glocal.keysd,glocal.fsok
-					,glocal.publish_dbfiles,glocal.publish_fsok,glocal.documentd);
+					,glocal.publish_dbfiles,glocal.publish_fsok,glocal.documentd
+					,glocal.admin_sess_valid);
 			</f>
 			<f invalid>
 				tlmp_error ("ADMIN: Invalid command: %s\n",line);
