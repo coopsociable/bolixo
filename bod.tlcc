@@ -1848,7 +1848,8 @@ static int bod_main (
 					if (!bolixo_isfile(glocal.entry.type)){
 						glocal.entry.msg = MSG_U(E_NOTAFILE,"Entry is not a file");
 					}else{
-						<call sql_query>("select content,title,signature,filetype,modifiedby from files where id=%d and modified='%s'"
+						// See readfile_bob for the limit 1 here. This is a patch.
+						<call sql_query>("select content,title,signature,filetype,modifiedby from files where id=%d and modified='%s' limit 1"
 							,glocal.entry.entryid,glocal.entry.modified.c_str());
 						<f onerow>
 							if (row[0] != NULL){
@@ -1933,7 +1934,15 @@ static int bod_main (
 							if (!bolixo_isfile(glocal.entry.type)){
 								glocal.entry.msg = MSG_R(E_NOTAFILE);
 							}else{
-								<call sql_query>("select content,title,signature,filetype,modifiedby from files where id=%d and modified='%s'"
+								// limit 1 is there because there is a flaw in the bolixo database schema.
+								// The key to the table files is the id and the modified
+								// The modified field has a resolution of one second (it is a normal date)
+								// so if a file is modified twice in the same second, we end up with 2 entries
+								// with the same key, so the following query would return two values and rep_readfile_bob would
+								// be called twice.
+								// So the limit 1 is just a patch to prevent the application from repeating the rep_readfile_bob twice
+								// (and cause a protocol issue)
+								<call sql_query>("select content,title,signature,filetype,modifiedby from files where id=%d and modified='%s' limit 1"
 									,glocal.entry.entryid,glocal.entry.modified.c_str());
 								<f onerow>
 									glocal.info.title = row[1] != NULL ? row[1] : "";
