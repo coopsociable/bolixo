@@ -1244,12 +1244,20 @@ static int bo_writed_set_member (int groupid, const char *groupname, unsigned us
 }
 </mod>
 <mod>
-static int bo_writed_confirmuser (CONTEXT &ctx, unsigned userid, PARAM_STRING name, PARAM_STRING confirmid, string &msg)
+static int bo_writed_confirmuser (
+	CONTEXT &ctx,
+	unsigned userid,
+	PARAM_STRING name,
+	PARAM_STRING confirmid,
+	const map<string,set<string>> &default_interests,
+	string &msg)
 {
 	int ret = -1;
 	if (sql_action(*ctx.usq,"update users set confirmed=now() where userid=%u",userid)!=-1){
+		glocal string lang;
 		<call sql_query>("select lang from config where userid=%u",userid);
 		<f onerow>
+			glocal.lang = row[0];
 			translat_selectlang(row[0]);
 		</f>
 		</call>
@@ -1272,7 +1280,12 @@ static int bo_writed_confirmuser (CONTEXT &ctx, unsigned userid, PARAM_STRING na
 			bo_writed_set_group(userid,"public","public","R",msg);
 			bo_writed_set_member (groupid,"public",userid,name);
 		}
-		bo_writed_interest_set (userid,"admin",msg);
+		// bo_writed_interest_set (userid,"admin",msg);
+		for (auto &i:default_interests){
+			if (i.first.size() == 0 || i.first == glocal.lang){
+				for (auto &s:i.second) bo_writed_interest_set (userid,s.c_str(),msg);
+			}
+		}
 		groupid = bo_writed_create_group (userid,"inbox",true,MSG_U(I_PRIVINBOX,"Private inbox"),msg);
 		if (groupid != -1){
 			bo_writed_set_member (groupid,"inbox",userid,name);
@@ -1609,6 +1622,7 @@ int main (int argc, char *argv[])
 		glocal CONNECT_INFO con;	// Connection to the session manager
 		glocal CONTEXT ctx;
 		glocal map<string,string> secrets;
+		glocal map<string,set<string>> default_interests;
 
 		<call loadfile>(glocal.ftimezones,true);
 		<f oneline>
@@ -1685,6 +1699,14 @@ int main (int argc, char *argv[])
 					tb.push_back(string_f("filehandle %u",fs_getnbhandle()));
 					tb.push_back(string_f("nodename: %s",nodename));
 					tb.push_back(string_f("private_site: %s",glocal.private_site ? "yes" : "no"));
+					for (auto &i:glocal.default_interests){
+						string ints;
+						for (auto &s:i.second){
+							ints += " ";
+							ints += s;
+						}
+						tb.push_back(string_f("default_interest[%s]:%s",i.first.c_str(),ints.c_str()));
+					}
 					instrument_status(tb);
 					rep_status (tb);
 				</f>
@@ -1832,7 +1854,7 @@ int main (int argc, char *argv[])
 							glocal.msg = "Account disabled";
 						}else{
 							unsigned userid = atoi(row[0]);
-							if (bo_writed_confirmuser (glocal.ctx,userid,glocal.name,"",glocal.msg)==-1){
+							if (bo_writed_confirmuser (glocal.ctx,userid,glocal.name,"",glocal.default_interests,glocal.msg)==-1){
 								glocal.msg = "Can't confirm";
 							}
 						}
@@ -2038,6 +2060,42 @@ int main (int argc, char *argv[])
 						rep_deleteoldmsgs (false,glocal.msg,glocal.stats);
 					}else{
 						rep_deleteoldmsgs (true,"",glocal.stats);
+					}
+				</f>
+				<f add_interest>	// user interest = success:b msg
+					string msg;
+					int userid = fs_rec_getid("select userid from id2name where name='%s'",user);
+					if (userid > 0){
+						bo_writed_interest_set (userid,interest,msg);
+					}
+					if (msg.size() > 0){
+						rep_add_interest (false,msg);
+					}else{
+						rep_add_interest (true,msg);
+					}
+				</f>
+				<f add_default_interest> // interest = success:b msg
+					// Add a default interest used at account creation (may be repeated, lost when process is restarted)
+					// interest is [lang:]account[@some-bolixo-server]
+					string msg;
+					string lang;
+					const char *account = interest;
+					const char *pt = strchr(interest,':');
+					if (pt != nullptr){
+						lang = string(interest,pt-interest);
+						account = pt+1;
+					}
+					// Validate if the account exist
+					int userid = fs_rec_getid("select userid from id2name where name='%s'",account);
+					if (userid > 0){
+						glocal.default_interests[lang].insert(account);
+					}else{
+						msg = string_f("Unknown account: %s",interest);
+					}
+					if (msg.size() > 0){
+						rep_add_default_interest(false,msg);
+					}else{
+						rep_add_default_interest(true,"");
 					}
 				</f>
 				<f invalid>
@@ -2258,9 +2316,9 @@ int main (int argc, char *argv[])
 						}
 					}
 					if (glocal.msg.size() > 0){
-						rep_remote_interest_set(false,glocal.msg);
+						rep_remote_interest_unset(false,glocal.msg);
 					}else{
-						rep_remote_interest_set(true,"");
+						rep_remote_interest_unset(true,"");
 					}
 				</f>
 				<f confirmuser>
@@ -2278,7 +2336,7 @@ int main (int argc, char *argv[])
 						// Check if already confirmed
 						if (row[3] != nullptr){
 							glocal.msg = MSG_U(E_ALREADYCONFIRMED,"Account is already confirmed");;
-						}else if (bo_writed_confirmuser (glocal.ctx,userid,glocal.name,glocal.confirmid,glocal.msg)==-1){
+						}else if (bo_writed_confirmuser (glocal.ctx,userid,glocal.name,glocal.confirmid,glocal.default_interests,glocal.msg)==-1){
 							glocal.msg = MSG_U(E_CANTCONFIRM,"Error, can't confirm new user");
 						}
 					</f>

@@ -1541,8 +1541,8 @@ static void print_configs (
 						return 0;
 					</f>
 					</call>
-					string startfile;	
-					<call lxc_start> ("writed",ip_writed,startfile,trli_user,trli_userid);
+					string startfile,delayfile;	
+					<call lxc_start> ("writed",ip_writed,startfile,delayfile,trli_user,trli_userid);
 					<f horizon>
 						fprintf (fout,"%s/horizon-control -p %s/horizon.sock --bind unix,/dev/compute.sock:/var/lib/lxc/%s/rootfs/dev/compute.sock,%s\n"
 							,blackhole_path,sock_dir,name,name);
@@ -1574,8 +1574,22 @@ static void print_configs (
 						fprintf (fout,"mkdir -p /var/lib/lxc/%s/rootfs/var/log/bolixo\n",name);
 						fprintf (fout,"chown %s /var/lib/lxc/%s/rootfs/var/log/bolixo\n",trli_user,name);
 					</f>
+					<f delayed>
+						// Load the list of default interests
+						fprintf (fout,"FILE=/etc/bolixo/default_interests.lst\n");
+						fprintf (fout,"if [ -f $FILE ] ; then\n");
+						fprintf (fout,"\tcat $FILE | while read line\n");
+						fprintf (fout,"\tdo\n");
+						fprintf (fout,"\t\tif [ \"$line\" != \"\" ] ;then\n");
+						fprintf (fout,"\t\t\t%s/bo-writed-control -p /var/lib/lxc/%s/rootfs/var/run/blackhole/bo-writed-0.sock add_default_interest $line\n"
+								,project_path,name);
+						fprintf (fout,"\t\tfi\n");
+						fprintf (fout,"\tdone\n");
+						fprintf (fout,"fi\n");
+					</f>
 					</call>
 					fprintf (glocal.all_fout,"%s\n",startfile.c_str());
+					glocal.delayed.push_back(delayfile);
 					<call lxc_stop> ("writed","bo-writed",project_path,glocal.workers,glocal.stopwrited);
 					<f horizon>
 						fprintf (fout,"%s/horizon-control -p %s/horizon.sock unbindfd unix /dev/compute.sock %s\n"
