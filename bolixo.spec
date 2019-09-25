@@ -136,6 +136,7 @@ make install
 /usr/sbin/bolixo-production
 /usr/sbin/bo
 /etc/bolixo/http_check.conf
+%config(noreplace) /etc/bolixo/default_interests.lst
 /etc/init.d/bolixoserv
 /var/www/html/about.html
 /var/www/html/favicon.ico
