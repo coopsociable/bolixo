@@ -270,6 +270,16 @@ elif [ "$1" = "who" ] ; then # prod: who is connected
 	do
 		echo $f $d
 	done | sort
+elif [ "$1" = "listusers" ] ; then # prod: list user accounts
+	shift
+	listusers "$@"
+elif [ "$1" = "show-interest" ] ; then # prod: show the interest table
+	$0 files --column-names --table <<-EOF
+	select id2name.name as User,id2.name as Interest from interests
+		join id2name on id2name.userid=interests.userid
+		join id2name as id2 on id2.userid=interests.check_userid
+		order by id2name.name,id2.name;
+	EOF
 elif [ "$1" = "mailctrl" ] ; then # config: Control writed sendmail
 	if [ $# != 3 ] ;then
 		echo "mailctrl 0|1 force_addr"

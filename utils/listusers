@@ -1,5 +1,19 @@
 #!/bin/sh
-if [ "$1" = "--name" ] ; then
+usage(){
+	echo "Display bolixo accounts"
+	echo "By default, display all accounts except rss: accounts"
+	echo
+	echo "--all"
+	echo "    Display all accounts"
+	echo "-n --numeric"
+	echo "    Ordered by userid"
+	echo "--name"
+	echo "    Display only account names"
+	exit 1
+}
+if [ "$1" = "--help" -o "$1" = "-h" ] ; then
+	usage
+elif [ "$1" = "--name" ] ; then
 	bolixo-production users --silent <<-EOF
 	select name from users where userid > 0 order by name;
 	EOF
@@ -7,9 +21,15 @@ elif [ "$1" = "--all" ]; then
 	bolixo-production users -t <<-EOF
 	select userid,name,email,created,confirmed,lastaccess,nbfail from users where userid != -2 order by name;
 	EOF
-else
+elif [ "$1" = "-n" -o "$1" = "--numeric" ] ; then
+	bolixo-production users -t <<-EOF
+	select userid,name,email,created,confirmed,lastaccess,nbfail from users where userid != -2 and name not like 'rss:%' order by userid;
+	EOF
+elif [ "$1" = "" ] ; then
 	bolixo-production users -t <<-EOF
 	select userid,name,email,created,confirmed,lastaccess,nbfail from users where userid != -2 and name not like 'rss:%' order by name;
 	EOF
+else
+	usage
 fi
 
