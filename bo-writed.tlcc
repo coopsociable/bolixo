@@ -1054,10 +1054,27 @@ static void bo_writed_group_member (unsigned userid, const char *groupname, unsi
 		}
 	}
 }
-static void bo_writed_update_interest_table(unsigned userid, int dirid)
+static void bo_writed_update_interest_public(unsigned userid, int dirid)
 {
-	if (sql_action("update interests set dirid=%d where check_userid=%u",dirid,userid)==-1){
-		tlmp_error ("Fail to update interests table for %u/%d\n",userid,dirid);
+	/*
+		Patch
+		In the interests table, we generally monitor the public inbox of a users.
+		But we also monitor the private inbox of a user. So we have this situation
+
+		if userid != check_id, the dirid is the id of the public inbox of user check_id.
+		if userid == check_id, the dirid is the private inbox of this user.
+	*/
+	if (sql_action("update interests set dirid=%d where check_userid=%u and userid!=%u",dirid,userid,userid)==-1){
+		tlmp_error ("Fail to update interests table public for %u/%d\n",userid,dirid);
+	}
+}
+static void bo_writed_update_interest_inbox(unsigned userid, int dirid)
+{
+	/*
+		Patch, see comment about in bo_writed_update_interest_public.
+	*/
+	if (sql_action("update interests set dirid=%d where check_userid=%u and userid=%u",dirid,userid,userid)==-1){
+		tlmp_error ("Fail to update interests table inbox for %u/%d\n",userid,dirid);
 	}
 }
 /*
@@ -1078,7 +1095,7 @@ static void bo_writed_update_interest(
 		<call sql_query>("select public_view from config where userid=%u",userid);
 		<f onerow>
 			if (atoi(row[0])>0){
-				bo_writed_update_interest_table (glocal.userid,glocal.dirid);
+				bo_writed_update_interest_public (glocal.userid,glocal.dirid);
 			}
 		</f>
 		</call>
@@ -1100,7 +1117,7 @@ static void bo_writed_update_interest(
 		string msg;
 		dirid = fs_find_short_inbox (userid,username,"public",msg);
 	}
-	bo_writed_update_interest_table (userid,dirid);
+	bo_writed_update_interest_public (userid,dirid);
 }
 struct CONTEXT {
 	CONNECT_INFO con_keys;	// Connection to the bo-keysd server
@@ -1188,7 +1205,7 @@ static void bo_writed_adduser (CONTEXT &ctx, const char *lang, const char *name,
 	msg = glocal.msg;
 }
 <mod>
-static void bo_writed_interest_set(unsigned userid, const char *user, string &msg)
+static void bo_writed_interest_set(unsigned userid, const char *user, const char *inbox, string &msg)
 {
 	glocal unsigned userid = userid;
 	glocal const char *user = user;
@@ -1198,7 +1215,7 @@ static void bo_writed_interest_set(unsigned userid, const char *user, string &ms
 		*glocal.msg = MSG_U(E_IVLDUSER,"unknown user");
 	}else{
 		glocal int dirid;
-		glocal.dirid = fs_find_short_inbox(glocal.check_id,glocal.user,"public",*glocal.msg);
+		glocal.dirid = fs_find_short_inbox(glocal.check_id,glocal.user,inbox,*glocal.msg);
 		if (glocal.dirid == -1){
 			// No public short inbox for this user. We register the interest
 			// When the short inbox will be created, we will update the interest on the fly.
@@ -1232,6 +1249,10 @@ static void bo_writed_interest_set(unsigned userid, const char *user, string &ms
 	}
 }
 </mod>
+static void bo_writed_interest_set(unsigned userid, const char *user, string &msg)
+{
+	bo_writed_interest_set (userid, user,"public",msg);
+}
 static int bo_writed_set_member (int groupid, const char *groupname, unsigned userid, PARAM_STRING username)
 {
 	int ret = 0;
@@ -1270,7 +1291,8 @@ static int bo_writed_confirmuser (
 			Create a group named "public"
 			Make this group member of project "public"
 			Make this user member of his group "public"
-			Add interest for user admin
+			Add interest for various users (taken from default_interests).
+			Add interest for the user own private inbox.
 		*/
 		bo_writed_create_group_list(userid,name,"public",MSG_U(I_PUBLICVIEW,"Public view"),msg);
 		bo_writed_create_group (userid,"contacts",false,"",msg);
@@ -1280,10 +1302,13 @@ static int bo_writed_confirmuser (
 			bo_writed_set_group(userid,"public","public","R",msg);
 			bo_writed_set_member (groupid,"public",userid,name);
 		}
-		for (auto &i:default_interests){
-			if (i.first.size() == 0 || i.first == glocal.lang){
-				for (auto &s:i.second) bo_writed_interest_set (userid,s.c_str(),msg);
+		if (strcmp(name.ptr,"admin")!=0){
+			for (auto &i:default_interests){
+				if (i.first.size() == 0 || i.first == glocal.lang){
+					for (auto &s:i.second) bo_writed_interest_set (userid,s.c_str(),msg);
+				}
 			}
+			bo_writed_interest_set (userid,name.ptr,"inbox",msg);
 		}
 		groupid = bo_writed_create_group (userid,"inbox",true,MSG_U(I_PRIVINBOX,"Private inbox"),msg);
 		if (groupid != -1){
@@ -1360,6 +1385,9 @@ static void bo_writed_send_admin_msg (
 			string sign;
 			bo_writed_addfile_bob (con_keys,NULL,NULL,ENTRY_MSG,dirid,adminid
 				,content,false,sign,info,msg);
+		}
+		if (created){
+			bo_writed_update_interest_inbox (userid,dirid);
 		}
 	}
 }
@@ -3289,7 +3317,7 @@ int main (int argc, char *argv[])
 										bool remote_user = bo_writed_remote_user(glocal.username);
 										if (remote_user){
 											if (created){
-												bo_writed_update_interest_table(ownerid,dirid);
+												bo_writed_update_interest_public(ownerid,dirid);
 											}
 										}else{
 											bo_writed_update_interest(created,bd_group_name,ownerid,dirid);

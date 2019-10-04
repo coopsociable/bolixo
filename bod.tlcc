@@ -168,6 +168,8 @@ using namespace std;
 #include "proto/bo-writed_client.protoch"
 #define documentd_client_endgame_NOTNEED
 #define documentd_client_startgame_NOTNEED
+#define documentd_client_loadmore_NOTNEED	// For now, incomplete
+#define documentd_client_savemore_NOTNEED	// For now, incomplete
 #include "proto/documentd_client.protoch"
 #define bo_sessiond_client_getsessioninfovars_NOTNEED
 #define bo_sessiond_client_setvar_NOTNEED
@@ -506,17 +508,21 @@ static VIEWED_STATUS bod_readviewed(const char *mark_modified, const char *modif
 	}
 	return ret;
 }
-static bool msg_compare (const SHORTMSG &s1, const SHORTMSG &s2)
+#if 0
+template<class T>
+static bool msg_compare (const T &s1, const T &s2)
 {
 	return s2.eventdate < s1.eventdate;
 }
+#endif
 
 static unsigned keepdays = 200;
 
 /*
 	Remove new messages up to firstseen from the list.
 */
-static unsigned bod_firstseen (vector<SHORTMSG> &msgs, const char *firstseen)
+template<typename T>
+static unsigned bod_firstseen (vector<T> &msgs, const char *firstseen)
 {
 	unsigned nbnew = 0;
 	if (firstseen[0] != '\0'){
@@ -608,7 +614,7 @@ static void bod_list_talk (
 			msgs.push_back(move(m.second));
 		}
 	}
-	sort (msgs.begin(),msgs.end(),msg_compare);
+	sort (msgs.begin(),msgs.end(),[](const SHORTMSG &s1, const SHORTMSG &s2){return s2.eventdate<s1.eventdate;});
 	nbnew = bod_firstseen (msgs,firstseen);
 	total = msgs.size();
 	bod_trim (msgs,offset,nb);
@@ -2959,11 +2965,11 @@ static int bod_main (
 			<f interest_check> // sessionid owner fulltext:v offset:u nb:u firstseen = success:b msg messages:U{SHORTMSG}v total:u nbnew:u
 				glocal unsigned nb = nb;
 				glocal string msg;
-				glocal map<string,SHORTMSG> mp;
+				glocal map<string,MAINMSG> mp;
 				glocal set<string> fulltext;
+				glocal unsigned userid = bo_writed_get_group_owner (glocal.con_sess, sessionid, owner, glocal.msg);
 				for (auto f:fulltext) glocal.fulltext.insert(f);
-				unsigned userid = bo_writed_get_group_owner (glocal.con_sess, sessionid, owner, glocal.msg);
-				if (userid != 0){
+				if (glocal.userid != 0){
 					#ifdef INSTRUMENT
 					glocal long long start = fdpass_getnow();
 					#endif
@@ -2971,6 +2977,7 @@ static int bod_main (
 					fdpass_asctime(time(NULL)-keepdays*24*60*60,keepdate);
 					<call sql_query>("select id2name.name,dirs2.name,convert_tz(dirs2.modified,'system','%s')"
 						",files.filetype,dirs2.itemid,files.content,dirs2.type,files.signature,dirs2.eventtime"
+						",interests.check_userid,id2owner.name"
 						" from interests"
 						" join id2name on id2name.userid = interests.check_userid"
 						" left join dirs_content dirs2 on interests.dirid=dirs2.dirid and dirs2.eventtime > '%s'"
@@ -2978,7 +2985,9 @@ static int bod_main (
 						//" left join marks on marks.userid=%u and marks.itemid=interests.dirid"
 						//" left join dirs_content dirs2 on interests.dirid = dirs2.dirid and (marks.modified is null or dirs2.modified > marks.modified)"
 						" join files on dirs2.itemid = files.id and dirs2.modified = files.modified"
-						" where interests.userid=%u order by dirs2.eventtime",user_timezone.c_str(),keepdate.buf,userid);	//,userid);
+						" join ids on dirs2.itemid = ids.id"
+						" join id2name id2owner on ids.ownerid = id2owner.userid"
+						" where interests.userid=%u order by dirs2.eventtime",user_timezone.c_str(),keepdate.buf,glocal.userid);	//,userid);
 					<f onerow>
 						#ifdef INSTRUMENT
 						if (rownum==0 && f_instrument != NULL){
@@ -2989,8 +2998,16 @@ static int bod_main (
 						// If the dirid is -1 in interests, there nothing to show
 						// row[1] is null
 						if (row[1] != NULL){
-							SHORTMSG msg;
-							msg.from = row[0];
+							MAINMSG msg;
+							// PATCH. When interest.userid==interest.check_userid, it is the user own inbox
+							unsigned check_userid = atoi(row[9]);
+							if (check_userid == glocal.userid){
+								msg.from = row[10];
+								msg.inbox = true;
+							}else{
+								msg.from = row[0];
+								msg.inbox = false;
+							}
 							msg.uuid = row[1];
 							const char *modified = row[2] != nullptr ? row[2] : "";
 							msg.submit = modified;
@@ -3019,7 +3036,7 @@ static int bod_main (
 					</f>
 					</call>
 				}	
-				vector<SHORTMSG> msgs;
+				vector<MAINMSG> msgs;
 				if (glocal.msg.size() > 0){
 					rep_interest_check (false,glocal.msg,msgs,0,0);
 				}else{
@@ -3028,7 +3045,7 @@ static int bod_main (
 							msgs.push_back(move(m.second));
 						}
 					}
-					sort (msgs.begin(),msgs.end(),msg_compare);
+					sort (msgs.begin(),msgs.end(),[](const MAINMSG &s1, const MAINMSG &s2){return s2.eventdate<s1.eventdate;});
 					unsigned nbnew = bod_firstseen (msgs,firstseen);
 					unsigned total = msgs.size();
 					bod_trim (msgs,offset,nb);

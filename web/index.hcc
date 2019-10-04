@@ -1511,7 +1511,14 @@ extern "C" void webmain_real()
 						string filename,extension;
 						index_msg_name(m.file_type,filename,extension);
 						string suggested_name = string_f("%s.%s",filename.c_str(),extension.c_str());
-						string fname = string_f("/%s/msg/%s",m.from,m.uuid);
+						string fname;
+						unsigned step = step_image;
+						if (m.inbox){
+							fname = string_f("/msgs/%s/short-inbox/inbox/%s",m.from,m.uuid);
+						}else{
+							fname = string_f("/%s/msg/%s",m.from,m.uuid);
+							step = step_public;
+						}
 						if (glocal.dropmenu == MENU_DOWNLOAD){
 							tlmpweb_header ("Content-Disposition"," attachment; filename=%s"
 								,suggested_name.c_str());
@@ -1519,8 +1526,14 @@ extern "C" void webmain_real()
 						}else if (glocal.dropmenu == MENU_COPY){
 							string msg_name = string_f("/msgs/%s/short-inbox/public/%s",m.from,m.uuid);
 							index_setcopyitem(glocal.con_sess,msg_name,"",suggested_name);
+						}else if (glocal.dropmenu == MENU_REPLY){
+							if (userinfo.name != m.from){
+								tlmpweb_forcevar(w_recipients,m.from);
+							}else{
+								htmlprintf (MSG_R(E_REPLYTOYOU));
+							}
 						}else{
-							util_popup (glocal.con,step_public,m.content,m.file_type,m.submit,m.from
+							util_popup (glocal.con,step,m.content,m.file_type,m.submit,m.from
 								,fname);
 						}
 					}
@@ -1530,12 +1543,13 @@ extern "C" void webmain_real()
 			<f load>
 				adddrop_opt (MENU_COPY,MSG_R(M_COPY));
 				adddrop_opt (MENU_DOWNLOAD,MSG_R(M_DOWNLOAD));
+				//adddrop_opt (MENU_REPLY,MSG_R(M_REPLY));
 				index_msgs_style (*this);
 				glocal unsigned rownum = nbskip;
 				if (w_showhidden == 1) firstseens[glocal.table] = "";
 				<call bod_client_interest_check>(glocal.con,w_session.c_str(),"",fulltext,nbskip,nblines,firstseens[glocal.table]);
 				<f ok>
-					// success:b msg messages:U{SHORTMSG}v
+					// success:b msg messages:U{MAINMSG}v
 					static const char *func = "Popup";
 					string day;
 					static const char *line_styles[]={"sep","sep1"};
@@ -1556,6 +1570,13 @@ extern "C" void webmain_real()
 					}
 					for (auto &m:messages){
 						string now = string (m.submit,10);
+						if (0){
+							if (m.inbox && userinfo.name != m.from){
+								glocal.webtable.setdrop_visible(MENU_REPLY);
+							}else{
+								glocal.webtable.setdrop_hidden(MENU_REPLY);
+							}
+						}
 						if (now != day){
 							day = now;
 							glocal.webtable.setclickopt (true,"","");
@@ -1566,17 +1587,9 @@ extern "C" void webmain_real()
 						const char *style = line_styles[line_style];
 						line_style++;
 						if (line_style == 2) line_style = 0;
-						if (file_is_sound(m.file_type)){
-							glocal.webtable.setclickopt (true,func,"400,100");
-						}else if (file_is_video(m.file_type)){
-							glocal.webtable.setclickopt (true,func,"800,800");
-						}else if (file_is_image(m.file_type)){
-							glocal.webtable.setclickopt (true,func,"800,800");
-						}else{
-							glocal.webtable.setclickopt (true,"",string_f("fullt=%s",m.uuid));
-						}
 						string time = string_f("<div id=date0_7>%s</div>",format_date(userinfo.dateformat,m.submit).c_str());
-						string img;
+						string img;	// Mini-photo
+						// Public message from interest list
 						const char *pt = strchr(m.from,'@');
 						if (pt!=NULL){
 							string user(m.from,pt-m.from);
@@ -1585,7 +1598,20 @@ extern "C" void webmain_real()
 						}else{
 							img = util_img(step_public,mini_image_width,m.from,"project/mini-photo.jpg","");
 						}
-						string path = string_f("%s/msg/%s",m.from,m.uuid);
+						string path;
+						unsigned step = step_image;
+						if (m.inbox){
+							// Private message
+							string add = string_f("webstep=%d&webtab_add=1:%s:inbox&recipients=%s"
+								,step_talks,userinfo.name.c_str(),m.from);
+							glocal.webtable.setclickopt (true,"",add);
+							path = string_f("/msgs/%s/short-inbox/inbox/%s",m.from,m.uuid);
+						}else{
+							glocal.webtable.setclickopt (true,"","");
+							// Public message in the interest list
+							path = string_f("%s/msg/%s",m.from,m.uuid);
+							step = step_public;
+						}
 						string content;
 						if (m.content[0] != '\0'){
 							content = string_f("<div class=smsg>%s</div>",util_format_shortmsg (m.content,0,m.size,image_width).c_str());
@@ -1594,9 +1620,9 @@ extern "C" void webmain_real()
 							content = string_f("<audio controls>\n"
 								"<source src=\"%s?webstep=%u&image=%s&mod=%s\" type=\"audio/%s\">\n"
 								"</audio>"
-								,tlmpweb_curpage(),step_public,path.c_str(),tmp.c_str(),tbftype[m.file_type]);
+								,tlmpweb_curpage(),step,path.c_str(),tmp.c_str(),tbftype[m.file_type]);
 						}else if (file_is_image(m.file_type)){
-							content = util_img (step_public,image_width,"",path,m.submit);
+							content = util_img (step,image_width,"",path,m.submit);
 						}else if (file_is_video(m.file_type)){
 							string tmp = util_flipspaces(m.submit);
 							content = string_f(
@@ -1605,23 +1631,36 @@ extern "C" void webmain_real()
 								"Your browser does not support the video tag.\n"
 								"</video>"
 								,video_size,video_size
-								,tlmpweb_curpage(),step_public,path.c_str(),tmp.c_str());
+								,tlmpweb_curpage(),step,path.c_str(),tmp.c_str());
 						}
-						if (1 || is_mobile){
-							const char *pt = strchr(m.from,'@');
-							string link;
-							if (pt == NULL){
-								link = string_f("/public/%s",m.from);
+						{
+							const char *private_msg = "";
+							string from;
+							if (m.inbox){
+								private_msg = MSG_U(I_PRIVATE,"(private)");
+								from = m.from;
 							}else{
-								link = string_f("https://%s/public/%s",pt+1,string(m.from,pt-m.from).c_str());
+								const char *pt = strchr(m.from,'@');
+								string link;
+								if (pt == NULL){
+									link = string_f("/public/%s",m.from);
+								}else{
+									link = string_f("https://%s/public/%s",pt+1,string(m.from,pt-m.from).c_str());
+								}
+								from = string_f("<span style=color:blue onclick=openintab(event,'%s')>%s</span>",link.c_str(),m.from);
 							}
-							string from = string_f("<span style=color:blue onclick=openintab(event,'%s')>%s</span>",link.c_str(),m.from);
-							glocal.webtable.setrow (style,glocal.rownum,"%s\t%s\t%s",img.c_str(),from.c_str()
+							glocal.webtable.setrow (style,glocal.rownum,"%s\t%s %s\t%s",img.c_str(),private_msg,from.c_str()
 								,time.c_str());
+							if (file_is_sound(m.file_type)){
+								glocal.webtable.setclickopt (true,func,"400,100");
+							}else if (file_is_video(m.file_type)){
+								glocal.webtable.setclickopt (true,func,"800,800");
+							}else if (file_is_image(m.file_type)){
+								glocal.webtable.setclickopt (true,func,"800,800");
+							}else{
+								glocal.webtable.setclickopt (true,"",string_f("fullt=%s",m.uuid));
+							}
 							glocal.webtable.setrow (style,glocal.rownum,"\t%s\a",content.c_str());
-						}else{
-							glocal.webtable.setrow (style,glocal.rownum,"%s\t%s\t%s\t%s",img.c_str(),m.from
-								,time.c_str(),content.c_str());
 						}
 						glocal.rownum++;
 					}
