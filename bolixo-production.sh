@@ -275,7 +275,7 @@ elif [ "$1" = "listusers" ] ; then # prod: list user accounts
 	listusers "$@"
 elif [ "$1" = "show-interest" ] ; then # prod: show the interest table
 	$0 files --column-names --table <<-EOF
-	select id2name.name as User,id2.name as Interest from interests
+	select id2name.name as User,id2.name as Interest, dirid from interests
 		join id2name on id2name.userid=interests.userid
 		join id2name as id2 on id2.userid=interests.check_userid
 		order by id2name.name,id2.name;
@@ -598,7 +598,10 @@ elif [ "$1" = "loadfail" ] ; then # prod: Switch web access (normal,backup,split
 elif [ "$1" = "deleteitems" ] ; then # db: Delete items and check integrity
 	export DELETEITEMS_PWD=$BO_WRITED_PWD
 	shift
-	deleteitems --data_socket /var/lib/lxc/bosqlddata/rootfs/var/lib/mysql/mysql.sock --data_dbserv localhost --data_dbname files --data_dbuser bowrited --integrity $@
+	MAXUSER=`$0 users -s <<-EOF
+		SELECT auto_increment FROM information_schema.tables WHERE table_name = 'users' AND table_schema = 'users';
+	EOF`
+	deleteitems --data_socket /var/lib/lxc/bosqlddata/rootfs/var/lib/mysql/mysql.sock --data_dbserv localhost --data_dbname files --data_dbuser bowrited --maxuserid $MAXUSER --integrity $@
 elif [ "$1" = "deleteoldmsgs" ] ; then # prod: Delete old msgs
 	shift
 	flock --close /var/run/bolixo-restart.lock /usr/sbin/deleteoldmsgs $*

@@ -68,6 +68,10 @@ struct BOOLSET{
 		ids.clear();
 	}
 	void setmaxid(const char *tablename);
+	void setmaxid(unsigned _maxid){
+		maxid_fixed = true;
+		maxid = _maxid;
+	}
 };
 /*
 	Query the database to get the maximum auto-increment value for that table
@@ -187,6 +191,7 @@ int main (int argc, char *argv[])
 	glocal const char *data_dbserv = "localhost";
 	glocal const char *data_dbname = "files";
 	glocal const char *data_dbuser = nullptr;
+	glocal unsigned maxuserid = 0;
 
 	static const char *tb[]={"bolixo","tlmpsql",nullptr};
 	glocal.ret = <call tlmpprogram>(argc,argv,tb);
@@ -203,6 +208,7 @@ int main (int argc, char *argv[])
 		setarg (' ',"data_socket","Database unix socket",glocal.data_socket,false);
 		setgrouparg(MSG_R(I_MISC));
 		setarg ('v',"verbose",MSG_U(O_VERBOPER,"Verbose operation"),verbose,false);
+		setarg ('M',"maxuserid",MSG_U(O_MAXUSERID,"Maximum allocated user id from table users"),glocal.maxuserid,false);
 		
 	</f>
 	<f main_noarg>
@@ -218,7 +224,7 @@ int main (int argc, char *argv[])
 		if (glocal.integrity){
 			glocal BOOLSET userids;
 			glocal BOOLSET itemids;
-			glocal.userids.setmaxid("id2name");
+			if (glocal.maxuserid > 0) glocal.userids.setmaxid(glocal.maxuserid);
 			glocal.itemids.setmaxid("ids");
 			// Find all userids
 			<call sql_query>("select userid from id2name");
@@ -459,6 +465,7 @@ int main (int argc, char *argv[])
 			</f>
 			</call>
 			delete_marks (glocal.markids);
+			ret = 0;
 		}
 		return ret;
 	</f>

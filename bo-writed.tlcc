@@ -1119,6 +1119,20 @@ static void bo_writed_update_interest(
 	}
 	bo_writed_update_interest_public (userid,dirid);
 }
+/*
+	Locate (or create) the user inbox.
+	Register its id in the interests table as needed.
+*/
+static int bo_writed_find_short_inbox (unsigned userid, PARAM_STRING name, string &msg)
+{
+	bool created;
+	int ret = fs_find_short_inbox (userid,name,"inbox",msg,true,created);
+	if (ret != -1 && created){
+		bo_writed_update_interest_inbox (userid,ret);
+	}
+	return ret;
+}
+
 struct CONTEXT {
 	CONNECT_INFO con_keys;	// Connection to the bo-keysd server
 	CONNECT_INFO con_publish;// Connection to the publishd server
@@ -1372,9 +1386,8 @@ static void bo_writed_send_admin_msg (
 	PARAM_STRING username,
 	PARAM_STRING message)
 {
-	bool created;
 	string msg;
-	int dirid = fs_find_short_inbox (userid,username,"inbox",msg,true,created);
+	int dirid = bo_writed_find_short_inbox (userid,username,msg);
 	if (dirid != -1){
 		int adminid = fs_rec_getid("select userid from id2name where name='admin'");
 		if (adminid == -1){
@@ -1385,9 +1398,6 @@ static void bo_writed_send_admin_msg (
 			string sign;
 			bo_writed_addfile_bob (con_keys,NULL,NULL,ENTRY_MSG,dirid,adminid
 				,content,false,sign,info,msg);
-		}
-		if (created){
-			bo_writed_update_interest_inbox (userid,dirid);
 		}
 	}
 }
@@ -3362,15 +3372,15 @@ int main (int argc, char *argv[])
 										// Now that we have created the message in the group, we
 										// simply link the message in all recipients, except remote user.
 										for (auto &u:glocal.uids){
-											bool created;
 											if (!bo_writed_remote_user(u.first)){
-												int udirid = fs_find_short_inbox (u.second,u.first,"inbox",glocal.msg,true,created);
+												int udirid = bo_writed_find_short_inbox (u.second,u.first,glocal.msg);
 												if (udirid != -1){
 													if (fs_insert_entry(udirid,info.fileid,info.modified.buf,info.fileuuid,ENTRY_MSG,ownerid)==-1){
 														tlmp_error ("Insert in short user inbox, internal error %s\n",u.first.c_str());
 														break;
 													}
-													bo_writed_set_email_notify (glocal.username,u.first,"inbox",info.file_type,*glocal.content,email_title,email_content);
+													bo_writed_set_email_notify (glocal.username,u.first,"inbox",info.file_type
+														,*glocal.content,email_title,email_content);
 													bo_writed_notify_talk_inbox(glocal.ctx,glocal.con,u.first,u.second,email_title,email_content);
 												}else{
 													tlmp_error ("Insert in short user inbox, missing inbox, internal error %s\n",u.first.c_str());
@@ -3397,9 +3407,8 @@ int main (int argc, char *argv[])
 									}
 								}
 								if (glocal.uids.size() > 0){
-									bool created;
 									auto &uid0 = glocal.uids[0];
-									int dirid = fs_find_short_inbox (uid0.second,uid0.first,"inbox",glocal.msg,true,created);
+									int dirid = bo_writed_find_short_inbox (uid0.second,uid0.first,glocal.msg);
 									if (dirid != -1){
 										ADDFILE_INFO info;
 										bo_writed_addfile_bob (glocal.ctx.con_keys,glocal.sessionid,NULL,ENTRY_MSG,dirid,glocal.userid
@@ -3411,8 +3420,7 @@ int main (int argc, char *argv[])
 										bo_writed_notify_talk_inbox(glocal.ctx,glocal.con,uid0.first,uid0.second,email_title,email_content);
 										glocal.uids.erase(glocal.uids.begin());
 										for (auto &u:glocal.uids){
-											bool created;
-											int udirid = fs_find_short_inbox (u.second,u.first,"inbox",glocal.msg,true,created);
+											int udirid = bo_writed_find_short_inbox (u.second,u.first,glocal.msg);
 											if (udirid != -1){
 												if (fs_insert_entry(udirid,info.fileid,info.modified.buf,info.fileuuid,ENTRY_MSG,glocal.userid)==-1){
 													tlmp_error ("Insert in short user inbox, internal error %s\n",u.first.c_str());
