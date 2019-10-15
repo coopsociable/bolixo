@@ -965,7 +965,7 @@ elif [ "$1" = "cmp-sequence" ] ; then # S: Execute QA tests
 	CMPDIR=/tmp/cmp-test
 	rm -fr $CMPDIR
 	mkdir $CMPDIR
-	for test in directory createsubdir projects msgs ivldsession public remote-contact remote-interest contact-utf8 notifications remote-sendlarge cp-admin
+	for test in directory createsubdir projects msgs ivldsession public remote-contact remote-interest contact-utf8 notifications remote-sendlarge cp-admin badnames
 	do
 		OPT=
 		if [ "$test" = "public" ]; then

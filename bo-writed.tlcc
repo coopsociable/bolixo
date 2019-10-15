@@ -136,8 +136,7 @@ static bool bo_writed_lex_check(const char *groupname, string &msg, const char s
 		if (*pt <= ' '){
 			ret = false;
 			break;
-		}else if (*pt == special || *pt == '@' || *pt == '#' || *pt == ';'
-			|| *pt == '"' || *pt == '\'' || *pt == '*' || *pt == '?' || *pt == '%' || *pt == '`'){
+		}else if (is_any_of(*pt,special,'@','#',';','"','\'','*','?','%','`')){
 			ret = false;
 			break;
 		}
@@ -150,13 +149,15 @@ static bool bo_writed_lex_check(const char *groupname, string &msg, const char s
 	}
 	return ret;
 }
+#if 0
 static bool bo_writed_lex_check(const char *name, string &msg)
 {
 	return bo_writed_lex_check (name,msg,'/');
 }
+#endif
 static bool bo_writed_group_check(const char *groupname, string &msg)
 {
-	return bo_writed_lex_check (groupname,msg,'/');
+	return bo_writed_lex_check (groupname,msg,'/') && !is_any_of(groupname,"inbox");
 }
 static bool bo_writed_fname_check(const char *name, string &msg)
 {
@@ -1161,7 +1162,7 @@ static void bo_writed_adduser (CONTEXT &ctx, const char *lang, const char *name,
 	glocal const char *name = name;
 	glocal const char *email = email;
 	glocal const char *password = password;
-	if (bo_writed_lex_check(name,glocal.msg)){
+	if (bo_writed_group_check(name,glocal.msg)){
 		<call sql_query>(*ctx.usq,"select email from users where email='%s'",email);
 		<f onerow>
 			// Email already exist

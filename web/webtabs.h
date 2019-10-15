@@ -129,4 +129,5 @@ void webtabs(_F_webtabs &c,
 	unsigned size[5]);
 
 unsigned webtabs_getsubtab();
+void webtabs_forcevar(PARAM_STRING val);
 #endif

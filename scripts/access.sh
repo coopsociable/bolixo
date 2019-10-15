@@ -245,6 +245,11 @@ elif [ "$1" = "cp-admin" ] ; then # test: admin writes files on behalf of anothe
         ./bofs -u admin cp -O jacques-D /tmp/$NAME bo://projects/jacques-A/public/$NAME
         ./bofs -t -u jacques-A ls -l bo://projects/jacques-A/public
         rm -f /tmp/$NAME
+elif [ "$1" = "badnames" ] ; then # test: Try to use bad names for users, projects and groups
+	./bofs groups -g -G "to#to"
+	./bofs groups -g -G "inbox"
+	./bofs groups -l -L "to#to"
+	./bofs groups -l -L "inbox"
 else
 	echo command
 fi

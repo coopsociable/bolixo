@@ -1422,22 +1422,25 @@ extern "C" void webmain_real()
 		}
 	</f>
 	<f step1>
-		bolixo_title ("",this);
 		if (userinfo.name.size() == 0){
 			// Anonymous, present public news ?
 			// /- So far no public content
 			if (!is_mobile){
+				bolixo_title ("",this);
 				DIV d; d.w(50).marginauto().vmargins(30,0).vpaddings(10,10).paddings(10,10).border(1,"black").borderradius(5).bg("white").print();
 				htmlout (MSG_R(I_BOLIXO));
 				/-<p>
 				htmlprintf ("<a href=%s?webstep=12>%s</a>\n",tlmpweb_curpage(),MSG_R(I_COMPLETEDOC));
 			}
 		}else{
+			glocal bool junk_output = false; // If the user hit "reply" in the drop down menu, we ditch everything
+			vector<GRABLINE> output;
+			tlmpweb_pushgrab(output);
 			util_delnotify(glocal.con_sess,"main");
+			// We use DIV to split the main screen into 3 areas: contacts, messages and notifications
+			// Based on the width of the screen, we drop some areas. On mobiles, we only show the messages
 			DIV h; h.w(100).dispflex().flowrow().print();
-			DIV l("tabs");
 			DIV d("tabs");
-			DIV r("tabs");
 			unsigned center_w = 100;
 			unsigned left_side_w = 0;
 			unsigned right_side_w = 0;
@@ -1461,6 +1464,7 @@ extern "C" void webmain_real()
 			}
 			if (center_w < 100){
 				if (left_side_w > 0){
+					DIV l("tabs");
  					l.flexfixe().w(left_side_w).border(1,"black").borderradius(5).margins(5,5).vmargins(5,5).paddings(5,5).print();
 					DIV f; f.id(TAB_FORM).print();
 					htmlprintf ("<center><div style=font-size:1.5em>%s</div></center>\n",MSG_U(I_CONTACTS,"Contacts"));
@@ -1501,6 +1505,7 @@ extern "C" void webmain_real()
 			<call webtable>(ID_FOLLOW,currents[glocal.table],offsets[glocal.table],5);
 			<f click>
 				glocal unsigned dropmenu = dropmenu;
+				glocal exit_webtable;
 				vector<string> empty;
 				<call bod_client_interest_check>(glocal.con,w_session.c_str(),"",empty,noline,1,firstseens[glocal.table]);
 				<f ok>
@@ -1529,6 +1534,10 @@ extern "C" void webmain_real()
 						}else if (glocal.dropmenu == MENU_REPLY){
 							if (userinfo.name != m.from){
 								tlmpweb_forcevar(w_recipients,m.from);
+								webtabs_forcevar(string_f("1:%s:inbox~%s",userinfo.name.c_str(),MSG_R(I_SHORTINBOX)));
+								glocal.websteps.gotostep(step_talks);
+								glocal.exit_webtable = true;
+								glocal.junk_output = true;
 							}else{
 								htmlprintf (MSG_R(E_REPLYTOYOU));
 							}
@@ -1543,7 +1552,7 @@ extern "C" void webmain_real()
 			<f load>
 				adddrop_opt (MENU_COPY,MSG_R(M_COPY));
 				adddrop_opt (MENU_DOWNLOAD,MSG_R(M_DOWNLOAD));
-				//adddrop_opt (MENU_REPLY,MSG_R(M_REPLY));
+				adddrop_opt (MENU_REPLY,MSG_R(M_REPLY));
 				index_msgs_style (*this);
 				glocal unsigned rownum = nbskip;
 				if (w_showhidden == 1) firstseens[glocal.table] = "";
@@ -1570,7 +1579,7 @@ extern "C" void webmain_real()
 					}
 					for (auto &m:messages){
 						string now = string (m.submit,10);
-						if (0){
+						if (1){
 							if (m.inbox && userinfo.name != m.from){
 								glocal.webtable.setdrop_visible(MENU_REPLY);
 							}else{
@@ -1670,6 +1679,7 @@ extern "C" void webmain_real()
 			</call>
 			d.end();
 			if (right_side_w > 0){
+				DIV r("tabs");
  				r.flexfixe().w(right_side_w).border(1,"black").borderradius(5).margins(5,5).vmargins(5,5).paddings(5,5).autoscroll().print();
 				htmlprintf ("<center><div style=font-size:1.5em>%s</div></center><br>\n",MSG_U(I_NOTIFICATIONS,"Notifications"));
 				for (auto n:userinfo.notifies){
@@ -1706,6 +1716,12 @@ extern "C" void webmain_real()
 						}
 					}
 				}
+			}
+			h.end();
+			tlmpweb_popgrab();
+			if (!glocal.junk_output){
+				bolixo_title ("",this);
+				htmlout (output);
 			}
 		}
 	</f>
