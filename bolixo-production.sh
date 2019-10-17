@@ -759,6 +759,13 @@ elif [ "$1" = "sqlfixe" ] ; then # prod: Repair SQL after an unclean shutdown
 			/var/lib/lxc/bosqld$sql/bosqld$sql.start
 		done
 	fi
+elif [ "$1" = "exim-runq" ] ; then # prod: Execute runq on te exim container
+	lxc-attach -n exim runq
+elif [ "$1" = "exim-rm" ] ; then # prod: Remove some message from exim queue
+	shift
+	eximrm $@
+elif [ "$1" = "exim-mailq" ] ; then # prod: Print exim queue
+	lxc-attach -n exim mailq
 else
 	echo Invalid command
 fi
