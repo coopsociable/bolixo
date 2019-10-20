@@ -8,7 +8,8 @@ endif
 PROGS=_dict.o bod bod-client bod-control bo-writed bo-writed-control bo-sessiond bo-sessiond-control \
       bo-manager bofs ssltestsign bo-keysd bo-keysd-control bolixod bolixod-control perfsql \
       bo-mon bo-mon-control utils/eximexec utils/helpspell publishd publishd-control bo-webtest \
-      documentd documentd-control rssd rssd-control deleteitems utils/cacheurl utils/email-log
+      documentd documentd-control rssd rssd-control deleteitems utils/cacheurl utils/email-log \
+      utils/show-notifies
 #bo-log bo-log-control \
 DOCS=
 OPTIONS=$(DINSTRUMENT) -funsigned-char -O2 -Wall -g -DVERSION=\"$(PACKAGE_REV)\" -I/usr/include/tlmp -I/usr/include/trlitool
@@ -112,6 +113,9 @@ utils/cacheurl: utils/cacheurl.tlcc
 
 utils/email-log: utils/email-log.tlcc
 	cctlcc $(OPTIONS) utils/email-log.tlcc -o utils/email-log -lstdc++
+
+utils/show-notifies: utils/show-notifies.tlcc
+	cctlcc $(OPTIONS) utils/show-notifies.tlcc -o utils/show-notifies -lstdc++
 
 proto/publishd_control.protoh: proto/publishd_control.proto
 	build-protocol --arg "int no" --arg "HANDLE_INFO *c" --name publishd_control \

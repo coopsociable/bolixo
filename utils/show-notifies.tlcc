@@ -1,0 +1,49 @@
+/*
+	Read the output of listsessions and extract the notifies: by placing the user id in front
+	The program reads its standard input
+*/
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <tlmplib.h>
+#include <string>
+#include <vector>
+#include <misc.h>
+#include "../helper.h"
+
+using namespace std;
+
+<mod>
+int main (int argc, char *argv[])
+{
+	glocal int ret = -1;
+	glocal.ret = <call tlmpprogram>(argc,argv);
+	<f init>
+		setproginfo ("show-notifies","0.0","...");
+	</f>
+	<f main_noarg>
+		glocal string userid;
+		int ret = 0;
+		<call loadfile>("-",true);
+		<f oneline>
+			const char *pt = str_skip(line);
+			if (strncmp(line,"000",3)==0){
+				//printf ("%s\n",line);
+				vector<string> tb;
+				int n = str_splitline(line,' ',tb);
+				if (n > 3){
+					glocal.userid=tb[3];
+				}
+			}else if (is_start_any_of (pt,NONEED,"notifies:")){
+				printf ("%s %s\n",glocal.userid.c_str(),pt);
+			}
+			return 0;
+		</f>
+		</call>
+		return ret;
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+

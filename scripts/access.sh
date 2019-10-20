@@ -229,7 +229,7 @@ elif [ "$1" = "notifications" ] ; then # test: test notifications to session man
 		./bofs -u jacques-Y misc --contact_manage -u jacques-$user
 	done
 	#./test.sh listsessions | grep ^0
-	./test.sh listsessions | grep notifies: | sort | uniq
+	./test.sh listsessions | utils/show-notifies | sort | uniq
 	./bofs --logout --session $SESSIONA
 	./bofs --logout --session $SESSIONB
 	./bofs --logout --session $SESSIONC
