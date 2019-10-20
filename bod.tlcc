@@ -2890,8 +2890,9 @@ static int bod_main (
 				if (userid != 0){
 					glocal string remote_user;
 					glocal string remote;
-					string local_user;
-					if (bod_check_remote_user(glocal.con,user,glocal.nodename,glocal.msg
+					string local_user(user);
+					// PATCH: The interest_set use user=inbox to set interest to the user own private inbox
+					if (strcmp(user,"inbox")==0 || bod_check_remote_user(glocal.con,user,glocal.nodename,glocal.msg
 						,local_user,glocal.remote_user,glocal.remote)!=-1){
 						<call bo_writed_client_interest_set>(glocal.con,sessionid,local_user,owner);
 						<f ok>
@@ -2940,7 +2941,8 @@ static int bod_main (
 			<f interest_list> // sessionid owner = success:b users:v
 				glocal string msg;
 				glocal vector<INTUSER> users;
-				unsigned userid = bo_writed_get_group_owner (glocal.con_sess, sessionid, owner, glocal.msg);
+				glocal string username;
+				unsigned userid = bo_writed_get_group_owner (glocal.con_sess, sessionid, owner, glocal.username, glocal.msg);
 				if (userid != 0){
 					<call sql_query>("select id2name.name,public_view,interests.since from interests"
 						" join id2name on id2name.userid = interests.check_userid"
@@ -2948,7 +2950,13 @@ static int bod_main (
 						" where interests.userid=%u order by id2name.name",userid);
 					<f onerow>
 						INTUSER u;
-						u.name = row[0];
+						if (glocal.username == row[0]){
+							// PATCH: The table encode interest for the private inbox
+							// when check_userid == the current user.
+							u.name = "inbox";
+						}else{
+							u.name = row[0];
+						}
 						u.visible = row[1] == NULL ? 1 : atoi(row[1]) != 0;
 						u.since = row[2];
 						glocal.users.push_back(u);

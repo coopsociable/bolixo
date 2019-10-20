@@ -3668,7 +3668,12 @@ int main (int argc, char *argv[])
 					string username;
 					unsigned userid = bo_writed_get_group_owner (glocal.con, sessionid, owner, username,msg);
 					if (userid > 0){
-						bo_writed_interest_set (userid,user,msg);
+						const char *inbox = "public";
+						if (strcmp(user,"inbox")==0){
+							inbox = "inbox";
+							user = username.c_str();
+						}
+						bo_writed_interest_set (userid,user,inbox,msg);
 					}
 					if (msg.size() > 0){
 						rep_interest_set (false,msg);
@@ -3681,7 +3686,12 @@ int main (int argc, char *argv[])
 					string username;
 					glocal unsigned userid = bo_writed_get_group_owner (glocal.con, sessionid, owner, username,glocal.msg);
 					if (glocal.userid > 0){
-						glocal int check_id = fs_rec_getid ("select userid from id2name where name='%s'",user);
+						glocal int check_id;
+						if (strcmp(user,"inbox")==0){
+							glocal.check_id = glocal.userid;
+						}else{
+							glocal.check_id = fs_rec_getid ("select userid from id2name where name='%s'",user);
+						}
 						if (glocal.check_id == -1){
 							glocal.msg = MSG_R(E_IVLDUSER);
 						}else{
