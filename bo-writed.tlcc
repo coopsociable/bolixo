@@ -1279,6 +1279,71 @@ static int bo_writed_set_member (int groupid, const char *groupname, unsigned us
 	return ret;
 }
 </mod>
+/*
+	Send a message to a user from the admin
+*/
+static void bo_writed_send_admin_msg (
+	CONNECT_INFO &con_keys,
+	unsigned userid,
+	PARAM_STRING username,
+	PARAM_STRING message)
+{
+	string msg;
+	int dirid = bo_writed_find_short_inbox (userid,username,msg);
+	if (dirid != -1){
+		int adminid = fs_rec_getid("select userid from id2name where name='admin'");
+		if (adminid == -1){
+			tlmp_error ("Can't get admin userid\n");
+		}else{
+			ADDFILE_INFO info;
+			BOB_TYPE content(message.ptr,strlen(message.ptr),false);
+			string sign;
+			bo_writed_addfile_bob (con_keys,NULL,NULL,ENTRY_MSG,dirid,adminid
+				,content,false,sign,info,msg);
+		}
+	}
+}
+<mod>
+/*
+	Send the greeting messages to a new user.
+	File /etc/bolixo/greeting contains a list of text file to send.
+	The extension is used to select the language.
+*/
+static void bo_writed_send_greeting (CONNECT_INFO &con_keys, unsigned userid, PARAM_STRING username)
+{
+	glocal vector<string> files;	// We read all file names
+					// and we are sending them in reverse order
+					// so the show in the correct order on the screen
+	<call loadfile>("/etc/bolixo/greetings.lst",true);
+	<f oneline>
+		const char *pt = str_skip(line);
+		if (*pt != '\0' && *pt != '#'){
+			glocal.files.push_back(pt);
+		}
+		return 0;
+	</f>
+	<f missing>
+		// The file in optional
+	</f>
+	</call>
+	for (auto s=glocal.files.rbegin(); s!=glocal.files.rend(); s++){
+		glocal string message;
+		<call loadfile>(*s,false);
+		<f oneline>
+			glocal.message += line;
+			return 0;
+		</f>
+		<f missing>
+			tlmp_error ("Missing greeting file: %s\n",fname);
+		</f>
+		</call>
+		if (glocal.message.size() > 0){
+			bo_writed_send_admin_msg (con_keys,userid,username,glocal.message);
+		}
+	}
+}
+</mod>
+
 <mod>
 static int bo_writed_confirmuser (
 	CONTEXT &ctx,
@@ -1333,6 +1398,7 @@ static int bo_writed_confirmuser (
 		if (groupid != -1){
 			bo_writed_set_member (groupid,"anonymous",userid,name);
 		}
+		if (strcmp(name.ptr,"admin")!=0) bo_writed_send_greeting (ctx.con_keys,userid,name);
 	}else{
 		msg = "Error, can't confirm new user";
 	}
@@ -1378,30 +1444,6 @@ static int bod_sessionstate(
 	return glocal.ret;
 }
 </mod>
-/*
-	Send a message to a user from the admin
-*/
-static void bo_writed_send_admin_msg (
-	CONNECT_INFO &con_keys,
-	unsigned userid,
-	PARAM_STRING username,
-	PARAM_STRING message)
-{
-	string msg;
-	int dirid = bo_writed_find_short_inbox (userid,username,msg);
-	if (dirid != -1){
-		int adminid = fs_rec_getid("select userid from id2name where name='admin'");
-		if (adminid == -1){
-			tlmp_error ("Can't get admin userid\n");
-		}else{
-			ADDFILE_INFO info;
-			BOB_TYPE content(message.ptr,strlen(message.ptr),false);
-			string sign;
-			bo_writed_addfile_bob (con_keys,NULL,NULL,ENTRY_MSG,dirid,adminid
-				,content,false,sign,info,msg);
-		}
-	}
-}
 
 /*
 	Check if this file is /msgs/some_user/short-inbox/public/...

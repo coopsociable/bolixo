@@ -1573,6 +1573,20 @@ static void print_configs (
 						fprintf (fout,"%s >/var/lib/lxc/%s/rootfs/etc/timezones.lst\n",zoneinfo_cmd,name);
 						fprintf (fout,"mkdir -p /var/lib/lxc/%s/rootfs/var/log/bolixo\n",name);
 						fprintf (fout,"chown %s /var/lib/lxc/%s/rootfs/var/log/bolixo\n",trli_user,name);
+						// Copy the new account greeting messages
+						fprintf (fout,"FILE=/etc/bolixo/greetings.lst\n");
+						fprintf (fout,"if [ -f $FILE ] ; then\n");
+						fprintf (fout,"\tmkdir -p /var/lib/lxc/%s/rootfs/etc/bolixo\n",name);
+						fprintf (fout,"\tcp $FILE /var/lib/lxc/%s/rootfs/etc/bolixo\n",name);
+						fprintf (fout,"\tcat $FILE | grep -v '#' | while read line\n");
+						fprintf (fout,"\tdo\n");
+						fprintf (fout,"\t\tif [ \"$line\" != \"\" ]; then\n");
+						fprintf (fout,"\t\t\tdir=`dirname $line`\n");
+						fprintf (fout,"\t\t\tmkdir -p /var/lib/lxc/%s/rootfs/$dir\n",name);
+						fprintf (fout,"\t\t\tcp $line /var/lib/lxc/%s/rootfs/$dir\n",name);
+						fprintf (fout,"\t\tfi\n");
+						fprintf (fout,"\tdone\n");
+						fprintf (fout,"fi\n");
 					</f>
 					<f delayed>
 						// Load the list of default interests
