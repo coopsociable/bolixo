@@ -3,6 +3,7 @@
 #endif
 
 EXTERN DOC_ID section_none;
+EXTERN DOC_ID section_main;
 EXTERN DOC_ID section_talk;
 EXTERN DOC_ID section_project;
 EXTERN DOC_ID section_account;
@@ -29,7 +30,8 @@ EXTERN DOC_ID section_profile;
 #define SECTION_CONTACT_REQ 9
 #define SECTION_PREVIEW 10
 #define SECTION_NOTIFICATIONS 11
-#define SECTION_NBSECTIONS 12
+#define SECTION_MAIN 12
+#define SECTION_NBSECTIONS 13
 
 void jump2app (int step, PARAM_STRING webtab_add);
 void jump2app (int step, int tab);

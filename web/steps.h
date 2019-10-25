@@ -11,4 +11,5 @@ static const int step_confirm=10;
 static const int step_profile=11;
 static const int step_doc=12;
 static const int step_incomplete=13;
+static const int step_docmain=14;
 
