@@ -20,6 +20,7 @@ EXTERN DOC_ID section_why;
 EXTERN DOC_ID section_profile;
 EXTERN DOC_ID section_started;
 EXTERN DOC_ID section_ui;
+EXTERN DOC_ID section_publish;
 
 #define SECTION_NONE 0
 #define SECTION_TALK 1
