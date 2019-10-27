@@ -3,6 +3,7 @@
 #endif
 
 EXTERN DOC_ID section_none;
+EXTERN DOC_ID section_intro;
 EXTERN DOC_ID section_main;
 EXTERN DOC_ID section_talk;
 EXTERN DOC_ID section_project;
@@ -17,6 +18,8 @@ EXTERN DOC_ID section_interests;
 EXTERN DOC_ID section_preview;
 EXTERN DOC_ID section_why;
 EXTERN DOC_ID section_profile;
+EXTERN DOC_ID section_started;
+EXTERN DOC_ID section_ui;
 
 #define SECTION_NONE 0
 #define SECTION_TALK 1
@@ -30,8 +33,7 @@ EXTERN DOC_ID section_profile;
 #define SECTION_CONTACT_REQ 9
 #define SECTION_PREVIEW 10
 #define SECTION_NOTIFICATIONS 11
-#define SECTION_MAIN 12
-#define SECTION_NBSECTIONS 13
+#define SECTION_NBSECTIONS 12
 
 void jump2app (int step, PARAM_STRING webtab_add);
 void jump2app (int step, int tab);

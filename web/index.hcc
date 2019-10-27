@@ -71,6 +71,7 @@ struct COPY{
 static COPY fcopy;		// Cut buffer, holding a file path
 static vector<string> fulltext;	// For interest_check, list of message with full text required
 static W_SSTRING w_fulltext("fullt");
+static W_SSTRING w_topic("topic");
 W_SSTRING w_lang("lang");
 W_SSTRING w_public_dir("public_dir");
 W_UNSIGNED w_public_view("public_view");
@@ -1550,7 +1551,7 @@ extern "C" void webmain_real()
 				</call>
 			</f>
 			<f load>
-				sethelp(string_f("webstep=%d",step_docmain));
+				sethelp(string_f("webstep=%d&topic=main",step_doctopic));
 				adddrop_opt (MENU_COPY,MSG_R(M_COPY));
 				adddrop_opt (MENU_DOWNLOAD,MSG_R(M_DOWNLOAD));
 				adddrop_opt (MENU_REPLY,MSG_R(M_REPLY));
@@ -2252,10 +2253,39 @@ extern "C" void webmain_real()
 		htmlprintf ("<a href=/index.hc?webstep=1>%s</a>\n",MSG_R(I_BACKTOLOGIN));
 	</f>
 	<f step14>
-		// Jump to main tab documentation
+		// This is used to jump to a specific area in the document by encoding a URL webstep=14&topic=some_name
+		// This is used in the help for the main screen and to encode _HELP= tag in short message (greeting
+		// for new account).
 		bolixo_title (MSG_R(M_DOCUM),this);
 		DIV d("tabs","tab"); d.w(100).print();
-		index_doc(glocal.docpointers[SECTION_MAIN],section_main,true);
+		DOC_ID *ptdoc = nullptr;
+		if (strcmp(w_topic.c_str(),"main")==0){
+			ptdoc = &section_main;
+		}else if (strcmp(w_topic.c_str(),"interests")==0){
+			ptdoc = &section_interests;
+		}else if (strcmp(w_topic.c_str(),"contactreq")==0){
+			ptdoc = &section_contact_req;
+		}else if (strcmp(w_topic.c_str(),"started")==0){
+			ptdoc = &section_started;
+		}else if (strcmp(w_topic.c_str(),"intro")==0){
+			ptdoc = &section_intro;
+		}else if (strcmp(w_topic.c_str(),"talk")==0){
+			ptdoc = &section_talk;
+		}else if (strcmp(w_topic.c_str(),"project")==0){
+			ptdoc = &section_project;
+		}else if (strcmp(w_topic.c_str(),"profile")==0){
+			ptdoc = &section_profile;
+		}else if (strcmp(w_topic.c_str(),"ui")==0){
+			ptdoc = &section_ui;
+		}
+		if (ptdoc != nullptr){
+			// When a topic is selected, we reset the document pointer
+			// so the requested section is used.
+			glocal.docpointers[SECTION_NONE].reset();
+		}else{
+			ptdoc = &section_none;
+		}
+		index_doc(glocal.docpointers[SECTION_NONE],*ptdoc,true);
 	</f>
 	<f step15>
 	</f>
