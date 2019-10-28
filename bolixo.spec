@@ -137,6 +137,8 @@ make install
 /usr/sbin/bo
 /etc/bolixo/http_check.conf
 %config(noreplace) /etc/bolixo/default_interests.lst
+%config(noreplace) /etc/bolixo/greetings.lst
+/usr/share/bolixo/greetings/*
 /etc/init.d/bolixoserv
 /var/www/html/about.html
 /var/www/html/favicon.ico
