@@ -1309,8 +1309,9 @@ static void bo_writed_send_admin_msg (
 	File /etc/bolixo/greeting contains a list of text file to send.
 	The extension is used to select the language.
 */
-static void bo_writed_send_greeting (CONNECT_INFO &con_keys, unsigned userid, PARAM_STRING username)
+static void bo_writed_send_greeting (CONNECT_INFO &con_keys, unsigned userid, PARAM_STRING username, PARAM_STRING lang)
 {
+	glocal const char *lang = lang.ptr;
 	glocal vector<string> files;	// We read all file names
 					// and we are sending them in reverse order
 					// so the show in the correct order on the screen
@@ -1318,7 +1319,10 @@ static void bo_writed_send_greeting (CONNECT_INFO &con_keys, unsigned userid, PA
 	<f oneline>
 		const char *pt = str_skip(line);
 		if (*pt != '\0' && *pt != '#'){
-			glocal.files.push_back(pt);
+			const char *dot = strrchr(pt,'.');
+			if (dot != nullptr && strcmp(dot+1,glocal.lang)==0){
+				glocal.files.push_back(pt);
+			}
 		}
 		return 0;
 	</f>
@@ -1351,6 +1355,7 @@ static int bo_writed_confirmuser (
 	PARAM_STRING name,
 	PARAM_STRING confirmid,
 	const map<string,set<string>> &default_interests,
+	const char *lang,
 	string &msg)
 {
 	int ret = -1;
@@ -1398,7 +1403,7 @@ static int bo_writed_confirmuser (
 		if (groupid != -1){
 			bo_writed_set_member (groupid,"anonymous",userid,name);
 		}
-		if (strcmp(name.ptr,"admin")!=0) bo_writed_send_greeting (ctx.con_keys,userid,name);
+		if (strcmp(name.ptr,"admin")!=0) bo_writed_send_greeting (ctx.con_keys,userid,name,lang);
 	}else{
 		msg = "Error, can't confirm new user";
 	}
@@ -1934,7 +1939,8 @@ int main (int argc, char *argv[])
 							glocal.msg = "Account disabled";
 						}else{
 							unsigned userid = atoi(row[0]);
-							if (bo_writed_confirmuser (glocal.ctx,userid,glocal.name,"",glocal.default_interests,glocal.msg)==-1){
+							if (bo_writed_confirmuser (glocal.ctx,userid,glocal.name,""
+								,glocal.default_interests,"eng",glocal.msg)==-1){
 								glocal.msg = "Can't confirm";
 							}
 						}
@@ -2406,6 +2412,7 @@ int main (int argc, char *argv[])
 					glocal string email;
 					glocal string name;
 					glocal const char *confirmid = confirmid;
+					glocal lang;
 					translat_selectlang(lang);
 					<call sql_query>(*glocal.usq,"select userid,name,email,confirmed from users where userid_str='%s' and disabled is null"
 						,confirmid);
@@ -2416,7 +2423,8 @@ int main (int argc, char *argv[])
 						// Check if already confirmed
 						if (row[3] != nullptr){
 							glocal.msg = MSG_U(E_ALREADYCONFIRMED,"Account is already confirmed");;
-						}else if (bo_writed_confirmuser (glocal.ctx,userid,glocal.name,glocal.confirmid,glocal.default_interests,glocal.msg)==-1){
+						}else if (bo_writed_confirmuser (glocal.ctx,userid,glocal.name,glocal.confirmid
+							,glocal.default_interests,glocal.lang,glocal.msg)==-1){
 							glocal.msg = MSG_U(E_CANTCONFIRM,"Error, can't confirm new user");
 						}
 					</f>
