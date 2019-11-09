@@ -221,6 +221,21 @@ static void bolixo_title(int called_from_step)
 
 extern W_UNSIGNED w_robot;
 
+static void bolixo_logsearch (FILE *fout, const char *fieldname, const W_SSTRING &value)
+{
+	fprintf (fout,"%s: ",fieldname);
+	const char *pt = value.c_str();
+	while (*pt != '\0'){
+		if (*pt < ' '){
+			fprintf (fout,"0x%02x",*pt);
+		}else{
+			fputc(*pt,fout);
+		}
+		pt++;
+	}
+	fputc ('\n',fout);
+}
+
 <mod>
 static void webmain_real()
 {
@@ -347,6 +362,20 @@ static void webmain_real()
 		filter.state = w_state.c_str();
 		filter.country = w_country.c_str();
 		filter.interest = w_interest.c_str();
+		// Curious about the search done. Not really useful.
+		<call savefile>("/tmp/search.log",true);
+		<f dowrite>
+			fputs ("---------\n",fout);
+			bolixo_logsearch (fout,"user",w_user);
+			bolixo_logsearch (fout,"fullname",w_fullname);
+			bolixo_logsearch (fout,"address",w_address);
+			bolixo_logsearch (fout,"city",w_city);
+			bolixo_logsearch (fout,"state",w_state);
+			bolixo_logsearch (fout,"country",w_country);
+			bolixo_logsearch (fout,"interest",w_interest);
+			return 0;
+		</f>
+		</call>
 		<call bolixod_client_pub_search>(glocal.con,filter,w_offset,10);
 		<f ok>
 			bool is_mobile = tlmpweb_ismobile();
