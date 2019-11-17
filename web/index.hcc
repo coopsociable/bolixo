@@ -1435,6 +1435,7 @@ extern "C" void webmain_real()
 			}
 		}else{
 			glocal bool junk_output = false; // If the user hit "reply" in the drop down menu, we ditch everything
+								// Also used for download
 			vector<GRABLINE> output;
 			tlmpweb_pushgrab(output);
 			util_delnotify(glocal.con_sess,"main");
@@ -1520,17 +1521,28 @@ extern "C" void webmain_real()
 						string fname;
 						unsigned step = step_image;
 						if (m.inbox){
-							fname = string_f("/msgs/%s/short-inbox/inbox/%s",m.from,m.uuid);
+							fname = string_f("/msgs/%s/short-inbox/inbox/%s",userinfo.name.c_str(),m.uuid);
 						}else{
 							fname = string_f("/%s/msg/%s",m.from,m.uuid);
 							step = step_public;
 						}
 						if (glocal.dropmenu == MENU_DOWNLOAD){
+							tlmpweb_popgrab();
 							tlmpweb_header ("Content-Disposition"," attachment; filename=%s"
 								,suggested_name.c_str());
-							util_sendpublicfile (glocal.con,fname);
+							if (m.inbox){
+								util_sendfile (glocal.con,w_session.c_str(),fname);
+							}else{
+								util_sendpublicfile (glocal.con,fname);
+							}
+							glocal.junk_output = true;
 						}else if (glocal.dropmenu == MENU_COPY){
-							string msg_name = string_f("/msgs/%s/short-inbox/public/%s",m.from,m.uuid);
+							string msg_name;
+							if (m.inbox){
+								msg_name = fname;
+							}else{
+								msg_name = string_f("/msgs/%s/short-inbox/public/%s",m.from,m.uuid);
+							}
 							index_setcopyitem(glocal.con_sess,msg_name,"",suggested_name);
 						}else if (glocal.dropmenu == MENU_REPLY){
 							if (userinfo.name != m.from){
@@ -1543,6 +1555,8 @@ extern "C" void webmain_real()
 								htmlprintf (MSG_R(E_REPLYTOYOU));
 							}
 						}else{
+							tlmpweb_popgrab();
+							glocal.junk_output = true;
 							util_popup (glocal.con,step,m.content,m.file_type,m.submit,m.from
 								,fname);
 						}
@@ -1616,7 +1630,7 @@ extern "C" void webmain_real()
 							string add = string_f("webstep=%d&webtab_add=1:%s:inbox&recipients=%s"
 								,step_talks,userinfo.name.c_str(),m.from);
 							glocal.webtable.setclickopt (true,"",add);
-							path = string_f("/msgs/%s/short-inbox/inbox/%s",m.from,m.uuid);
+							path = string_f("/msgs/%s/short-inbox/inbox/%s",userinfo.name.c_str(),m.uuid);
 						}else{
 							glocal.webtable.setclickopt (true,"","");
 							// Public message in the interest list
@@ -1722,6 +1736,7 @@ extern "C" void webmain_real()
 			h.end();
 			tlmpweb_popgrab();
 			if (!glocal.junk_output){
+				tlmpweb_ctrloutput(true);
 				bolixo_title ("",this);
 				htmlout (output);
 			}
