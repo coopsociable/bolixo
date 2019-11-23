@@ -1,0 +1,116 @@
+/*
+	Program to format business like card explaining Bolixo, or quick text that fold.
+*/
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <misc.h>
+#include <tlmplib.h>
+#include <string>
+#include "../helper.h"
+
+using namespace std;
+
+const unsigned box_width=220;
+const unsigned box_height=220;
+const unsigned font_size=10;
+
+static void vertical_marker()
+{
+	printf ("<div style='display:flex; flex-flow: row;'>\n");
+	for (int i=0; i<4; i++){
+		printf ("<div style='width:%upx;'>\n",box_width+20);
+		printf ("</div>\n");
+		if (i < 3) printf ("|");
+	}
+	printf ("</div>\n");
+}
+static void horizontal_marker()
+{
+	// Put an horizontal marker to help cut the paper
+	printf ("<div style='display:flex; flex-flow: row;'>\n");
+	printf ("-\n");
+	printf ("<div style='width:%upx;'>\n",4*(box_width+20));
+	printf ("</div>\n");
+	printf ("-\n");
+	printf ("</div>\n");
+}
+
+<mod>
+int main (int argc, char *argv[])
+{
+	glocal int ret = -1;
+	glocal.ret = <call tlmpprogram>(argc,argv);
+	<f init>
+		setproginfo ("","0.0","...");
+	</f>
+	<f main>
+		int ret = -1;
+		if (argc == 1){
+			printf ("<html>\n");
+			printf ("<head>\n");
+			printf ("<style>\n");
+			printf ("ul{\n");
+			printf ("\tmargin-left:-27px;\n");
+			printf ("}\n");
+			printf ("</style>\n");
+			printf ("</head>\n");
+			printf ("<body>\n");
+			vertical_marker();
+			printf ("<p>\n");
+			for (int i=0; i<3; i++){
+				horizontal_marker();
+				glocal bool div_open = false;
+				<call loadfile>(argv[0],true);
+				<f oneline>
+					const char *pt;
+					if (line[0] == '\0' || line[0] == '#'){
+						// do nothing
+					}else if (is_start_any_of(line,pt,"TITLE")){
+						pt = str_skip(pt);
+						printf ("<div style=width:%upx;>\n",4*box_width);
+						printf ("<center>%s</center>\n",pt);
+						printf ("</div>\n");
+					}else if (strcmp(line,"FRONT")==0){
+						printf ("<div style='display:flex; flex-flow: row;'>\n");
+					}else if (strcmp(line,"BACK")==0){
+						if (glocal.div_open){
+							printf ("</div>\n");
+							glocal.div_open = false;
+						}
+						printf ("</div>\n");
+						printf ("<div style='display:flex; flex-flow: row;'>\n");
+					}else if (strcmp(line,"DIV")==0){
+						if (glocal.div_open) printf ("</div>\n");
+						printf ("<div style='border:2px solid black; width:%upx; height:%upx; border-radius:5px;",box_width,box_height);
+						printf (" font-size: %upx;",font_size);
+						printf (" padding-left:5px; padding-right:5px; padding-top:5px;");
+						printf (" margin-left:5px; margin-right:5px; margin-top:5px; margin-bottom:5px;");
+						printf ("'>\n");
+						glocal.div_open = true;
+					}else{
+						printf ("\t%s\n",line);
+					}
+					return 0;
+				</f>
+				</call>
+				if (glocal.div_open) printf ("</div>\n");
+				printf ("</div>\n");
+				printf ("<p>\n");
+			}
+			printf ("<p>\n");
+			horizontal_marker();
+			vertical_marker();
+			printf ("</body>\n");
+			printf ("</html>\n");
+			ret = 0;
+		}else{
+			usage();
+		}
+		return ret;
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+
