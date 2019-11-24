@@ -41,6 +41,7 @@ string w_session;
 
 #define bo_sessiond_client_test_NOTNEED
 #define bo_sessiond_client_getsessioninfovars_NOTNEED
+#define bo_sessiond_client_waitevent_NOTNEED
 #define bod_client_createsession_NOTNEED
 #define bod_client_login_NOTNEED
 #define bod_client_logout_NOTNEED
@@ -742,8 +743,14 @@ void util_defstyles()
 		"	return false;\n"
 		"}\n"
 		"function openintab(event,href){\n"
-		"	window.open(href,'_blank');\n"
-		"	event.stopPropagation();\n"
+		"	if (event.which == 1){\n"
+		"		window.open(href,'_blank');\n"
+		"		event.stopPropagation();\n"
+		"	}else if (event.which == 2){\n"
+		"		window.open(href,'_blank');\n"
+		"		window.focus();\n"
+		"		event.stopPropagation();\n"
+		"	}\n"
 		"	return false;\n"
 		"}\n"
 		"function subformsubmit(event,href){\n"
@@ -1112,7 +1119,7 @@ void util_print_span(PARAM_STRING url)
 */
 static string util_span(PARAM_STRING url)
 {
-	return string("<span style=color:blue;cursor:pointer onclick=openintab(event,'") + url.ptr + "')>" + url.ptr + "</span>";
+	return string("<span style=color:blue;cursor:pointer onmouseup=openintab(event,'") + url.ptr + "') onclick=openintab(event,'" + url.ptr + "')>" + url.ptr + "</span>";
 }
 /*
 	Format an open <span> ... with openitab()
@@ -1120,14 +1127,18 @@ static string util_span(PARAM_STRING url)
 */
 static string util_open_span(PARAM_STRING url)
 {
-	return string("<span style=color:blue;cursor:pointer onclick=openintab(event,'") + url.ptr + "')>";
+	return string("<span style=color:blue;cursor:pointer onmouseup=openintab(event,'") + url.ptr + "') onclick=openintab(event,'" + url.ptr + "')>";
 }
 void util_clickable_img (PARAM_STRING url, const char *image_width, unsigned border)
 {
-	htmlout ("<span style=color:blue onclick=openintab(event,'");
+	htmlout ("<span style=color:blue");
+	htmlout (" onclick=openintab(event,'");
 	htmlout (url.ptr);
-	htmlout ("')>");
-	htmlprintf ("<img width=%s border=%u src=%s>",image_width,border,url.ptr);
+	htmlout ("')");
+	htmlout (" onmouseup=openintab(event,'");
+	htmlout (url.ptr);
+	htmlout ("')");
+	htmlprintf ("><img width=%s border=%u src=%s>",image_width,border,url.ptr);
 	htmlout ("</span>");
 }
 /*
