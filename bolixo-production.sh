@@ -657,7 +657,7 @@ elif [ "$1" = "certificate-renew" ] ; then # prod: Renew the SSL certificate: te
 			$0 restart exim
 		fi
 	else
-        	echo test ou doit
+        	echo test or doit [ host-name ]
 		rm -f $ADD
 		exit 1
 	fi
