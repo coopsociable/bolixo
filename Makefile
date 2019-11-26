@@ -9,7 +9,7 @@ PROGS=_dict.o bod bod-client bod-control bo-writed bo-writed-control bo-sessiond
       bo-manager bofs ssltestsign bo-keysd bo-keysd-control bolixod bolixod-control perfsql \
       bo-mon bo-mon-control utils/eximexec utils/helpspell publishd publishd-control bo-webtest \
       documentd documentd-control rssd rssd-control deleteitems utils/cacheurl utils/email-log \
-      utils/show-notifies
+      utils/show-notifies utils/business-card waitevent
 #bo-log bo-log-control \
 DOCS=
 OPTIONS=$(DINSTRUMENT) -funsigned-char -O2 -Wall -g -DVERSION=\"$(PACKAGE_REV)\" -I/usr/include/tlmp -I/usr/include/trlitool
@@ -51,6 +51,9 @@ bod: bod.tlcc filesystem.o proto/bod_control.protoh proto/bod_client.protoh prot
 bod-client: bod-client.tlcc proto/bod_client.protoh proto/bod_admin.protoh \
 	proto/bo-sessiond_admin.protoh
 	cctlcc -Wall $(OPTIONS) bod-client.tlcc -o bod-client $(LIBS)
+
+waitevent: waitevent.tlcc proto/bo-sessiond_client.protoh
+	cctlcc -Wall $(OPTIONS) waitevent.tlcc -o waitevent $(LIBS)
 
 bod-control: bod-control.tlcc proto/bod_control.protoh
 	cctlcc -Wall $(OPTIONS) bod-control.tlcc _dict.o -o bod-control $(LIBS)
@@ -101,6 +104,9 @@ publishd-control: publishd-control.tlcc proto/publishd_control.protoh
 
 perfsql: perfsql.tlcc
 	cctlcc -Wall $(OPTIONS) perfsql.tlcc -o perfsql $(LIBS) -ltlmpsql -L/usr/lib64/mysql -lmysqlclient
+
+utils/business-card: utils/business-card.tlcc
+	cctlcc -Wall utils/business-card.tlcc -o utils/business-card -lstdc++
 
 utils/eximexec: utils/eximexec.cc
 	g++ -Wall utils/eximexec.cc -o utils/eximexec

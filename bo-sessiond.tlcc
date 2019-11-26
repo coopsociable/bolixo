@@ -39,20 +39,20 @@ static DEBUG_KEY D_PROTO ("proto","Protocol information");
 enum CONNECT_TYPE { TYPE_NONE, TYPE_CONTROL, TYPE_CLIENT, TYPE_ADMIN };
 
 struct HANDLE_INFO: public ARRAY_OBJ{
-	CONNECT_TYPE type;
-	int no;
+	CONNECT_TYPE type = TYPE_NONE;
+	int no = -1;
 	std::string host;
 	REQUEST_INFO req;
-	HANDLE_INFO(){
-		no = -1;
-		type = TYPE_NONE;
-	}
+	int wait_userid = -1;
 };
 
 #include "proto/bo-sessiond_control.protoh"
+#define bo_sessiond_client_rep_waitevent_NEEDED
 #include "proto/bo-sessiond_client.protoh"
 #include "proto/bo-sessiond_admin.protoh"
 #define session_log_session_NOTNEED
+#define session_log_notify_NOTNEED
+#define session_log_notify_v1_NOTNEED
 #include "proto/session_log.protoch"
 #include "proto/session_log.protoh"
 
@@ -110,6 +110,10 @@ struct SESSION_INFO{
 };
 
 static const char *VAR_NOTIFIES = "notifies";
+struct NOTIFIES{
+	unsigned sequence = 0;
+	vector<NOTIFY> notes;
+};
 
 <mod>
 int main (int argc, char *argv[])
@@ -125,6 +129,7 @@ int main (int argc, char *argv[])
 	glocal bool daemon = false;
 	glocal const char *pidfile = "/var/run/bo-sessiond.pid";
 	glocal vector<string> variables;
+	glocal unsigned maxhandles = 10000;
 
 	glocal.ret = <call tlmpprogram>(argc,argv,"tlmpsql");
 	<f init>
@@ -140,6 +145,7 @@ int main (int argc, char *argv[])
 		setarg (' ',"user","Run the program as this user",glocal.user,false);
 		setarg (' ',"daemon","Run in background",glocal.daemon,false);
 		setarg (' ',"pidfile","File holding the PID of the process",glocal.pidfile,false);
+		setarg (' ',"maxhandles","Maximum number of file handle supported",glocal.maxhandles,false);
 	</f>
 	<f showerror>
 		glocal const char *msg = msg;
@@ -165,7 +171,8 @@ int main (int argc, char *argv[])
 	<f main_noarg>
 		glocal set<string> vars;
 		glocal map<string,SESSION_INFO> sessions;
-		glocal map<unsigned,vector<NOTIFY>> notifies;
+		glocal map<unsigned,NOTIFIES> notifies;
+		glocal map<unsigned,vector<int>> waiting;	// Connections waiting for events
 		glocal map<string,string> admin_secrets;
 		glocal map<string,string> client_secrets;
 		glocal unsigned long nbrequest_admin = 0;
@@ -201,7 +208,27 @@ int main (int argc, char *argv[])
 				</f>
 				<f notify>
 					auto &v = glocal.notifies[userid];
-					for (auto &n:notifies) v.push_back(n);
+					// Old format, when must assign a sequence number
+					for (auto &n:notifies){
+						NOTIFY nn;
+						nn.key = n.key;
+						nn.when = n.when;
+						nn.sequence = ++v.sequence;
+						v.notes.push_back(nn);
+					}
+				</f>
+				<f notify_v1>
+					auto &v = glocal.notifies[userid];
+					v.sequence = 0;
+					for (auto &n:notifies){
+						if (v.sequence < n.sequence) v.sequence = n.sequence;
+						v.notes.push_back(n);
+					}
+				</f>
+				<f notify_v2>
+					auto &v = glocal.notifies[userid];
+					v.sequence = sequence;
+					for (auto &n:notifies) v.notes.push_back(n);
 				</f>
 				<f invalid>
 					tlmp_error ("Invalid entry, reading sessions.log\n");
@@ -241,6 +268,17 @@ int main (int argc, char *argv[])
 			}
 		</f>
 		<f endclient>
+			HANDLE_INFO *n = (HANDLE_INFO*)info.data;
+tlmp_error ("endclient no=%d wait_userid=%d",no,n->wait_userid);
+			if (n->wait_userid != -1){
+				auto &w = glocal.waiting[n->wait_userid];
+				for (auto it=w.begin(); it != w.end(); it++){
+					if (*it == no){
+						w.erase(it);
+						break;
+					}
+				}
+			}
 		</f>
 		<f receive>
 			debug_printf (D_PROTO,"receive line: %s\n",line);
@@ -265,6 +303,11 @@ int main (int argc, char *argv[])
 					tb.push_back(string_f ("nbsesssions_created=%lu",glocal.nbsessions_created));
 					tb.push_back(string_f ("nbrequest_admin=%lu",glocal.nbrequest_admin));
 					tb.push_back(string_f ("nbrequest_client=%lu",glocal.nbrequest_client));
+					unsigned long nbwaiting=0;
+					for (auto &ww:glocal.waiting){
+						nbwaiting += ww.second.size();
+					}
+					tb.push_back(string_f("nbwaiting=%lu",nbwaiting));
 					instrument_status (tb);
 					rep_status(tb);
 				</f>
@@ -281,7 +324,7 @@ int main (int argc, char *argv[])
 								,s.second.stats.lastvisit,s.second.stats.nbacc,s.second.vars);
 						}
 						for (auto const &s:glocal.notifies){
-							session_log_notify(fout,s.first,s.second);
+							session_log_notify_v2(fout,s.first,s.second.sequence,s.second.notes);
 						}
 						return 0;
 					</f>
@@ -336,8 +379,9 @@ int main (int argc, char *argv[])
 							auto note = glocal.notifies.find(it.second.userid);
 							if (note != glocal.notifies.end()){
 								tmp = string_f("\t%s:",VAR_NOTIFIES);
-								for (auto &n:note->second){
-									tmp += ' ' + n.key;
+								tmp += string_f(" %u",note->second.sequence);
+								for (auto &n:note->second.notes){
+									tmp += string_f(" %s,%u,%u",n.key.c_str(),n.when,n.sequence);
 								}
 								tb.push_back(move(tmp));
 							}
@@ -389,6 +433,14 @@ int main (int argc, char *argv[])
 					}
 					rep_eraseold(deletedanon,deleteduser,deletedadmin);
 				</f>
+				<f disconnect_waitings>
+					for (auto &w:glocal.waiting){
+						for (auto &c:w.second){
+							glocal.TCPSERVER.closeclient(c);
+						}
+					}
+					glocal.waiting.clear();
+				</f>
 				<f debug>
 					if (on){
 						debug_seton();
@@ -429,7 +481,7 @@ int main (int argc, char *argv[])
 						if (note != glocal.notifies.end()){
 							VAR var;
 							var.name = VAR_NOTIFIES;
-							for (auto &n:note->second){
+							for (auto &n:note->second.notes){
 								SNAMEVAL val;
 								val.sname = n.key;
 								var.vals.push_back(val);
@@ -486,17 +538,57 @@ int main (int argc, char *argv[])
 					}else{
 						auto note = glocal.notifies.find(it->second.userid);
 						if (note != glocal.notifies.end()){
-							for (auto vit=note->second.begin(); vit != note->second.end(); vit++){
+							for (auto vit=note->second.notes.begin(); vit != note->second.notes.end(); vit++){
 								if (vit->key == name){
-									note->second.erase(vit);
+									note->second.notes.erase(vit);
 									break;
 								}
 							}
-							if (note->second.size()==0) glocal.notifies.erase(note);
+							// We must keep the entry around to keep the sequence number.
+							//if (note->second.notes.size()==0) glocal.notifies.erase(note);
 						}
 						success = true;
 					}
 					rep_delnotify(success,msg);
+				</f>
+				<f waitevent>	// sessionid sequence = success:b msg content sequence
+					auto it = glocal.sessions.find(sessionid);
+					if (it == glocal.sessions.end()){
+						rep_waitevent (false,"Invalid sessionid","",0);
+					}else if (it->second.userid == (unsigned)-1){
+						rep_waitevent (false,"Anonymous session","",0);
+					}else{
+						// We do not respond immediatly, only if there is an event
+						auto n = glocal.notifies.find(it->second.userid);
+						unsigned next_sequence = (unsigned)-1;
+						string name;
+						if (n != glocal.notifies.end()){
+							// We have to find the next event with the closest smallest
+							// sequence number, yet larger than the received sequence parameter.
+							for (auto &nn:n->second.notes){
+								if (nn.sequence > sequence
+									&& nn.sequence < next_sequence){
+									next_sequence = nn.sequence;
+									name = nn.key;
+								}
+							}
+						}
+						if (next_sequence != (unsigned)-1){
+							rep_waitevent (true,"",name,next_sequence);
+						}else{
+							// We record the request and set_notify will reply
+							c->wait_userid = it->second.userid;
+							auto &w = glocal.waiting[it->second.userid];
+							bool found = false;
+							for (auto u:w){
+								if (u==no){
+									found = true;
+									break;
+								}
+							}
+							if (!found) w.push_back(no);
+						}
+					}
 				</f>
 				<f test>
 					rep_test (true);
@@ -558,17 +650,31 @@ int main (int argc, char *argv[])
 					for (auto userid:userids){
 						auto &v = glocal.notifies[userid];
 						bool found = false;
-						for (auto &n:v){
+						unsigned sequence = ++v.sequence;
+						for (auto &n:v.notes){
 							if (n.key == name){
 								found = true;
+								n.sequence = sequence;
+								n.when = now;
 								break;
 							}
 						}
+tlmp_error ("setnotify name=%s userid=%u found=%d",name,userid,found);
 						if (!found){
 							NOTIFY n;
 							n.key = name;
 							n.when = now;
-							v.push_back(n);
+							n.sequence = sequence;
+							v.notes.push_back(n);
+						}
+						auto w = glocal.waiting.find(userid);
+tlmp_error ("waiting find %d",w != glocal.waiting.end());
+						if (w != glocal.waiting.end()){
+							for (auto fd:w->second){
+tlmp_error ("rep_waiting %d",fd);
+								bo_sessiond_client_rep_waitevent (fd,true,"",name,sequence);
+							}
+							glocal.waiting.erase(w);
 						}
 					}
 				</f>
@@ -623,6 +729,7 @@ int main (int argc, char *argv[])
 		if (!some_errors && s.is_ok()){
 			chmod (clientport.c_str()+5,0666);
 			chmod (adminport.c_str()+5,0666);
+			s.setmaxclients (glocal.maxhandles);
 			s.setrawmode(true);
 			if (glocal.daemon){
 				daemon_init(glocal.pidfile,glocal.user);

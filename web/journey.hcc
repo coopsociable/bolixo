@@ -398,7 +398,7 @@ void scrollbar()
 	/- </div>
 }
 </mod>
-static void draw_tab (unsigned width, unsigned height, const char *fill, bool close, const char *title, bool drawx, const char *href, const char *xref)
+static void draw_tab (const char *pathid, unsigned width, unsigned height, const char *fill, bool close, const char *title, bool drawx, const char *href, const char *xref)
 {
 	if (width == 0){
 		width = strlen(title)*9;
@@ -406,7 +406,7 @@ static void draw_tab (unsigned width, unsigned height, const char *fill, bool cl
 	}
 	htmlprintf ("<svg width=%u height=%u>\n",width,height);
 	htmlprintf ("<a href=%s>\n",href);
-	htmlprintf ("<path fill='%s' stroke=black stroke-width=1\n",fill);
+	htmlprintf ("<path id='%s' fill='%s' stroke=black stroke-width=1\n",pathid,fill);
 	htmlout ("d=\"\n");
 	htmlprintf ("M0,%u\n",height);
 	htmlout ("H1\n");
@@ -432,17 +432,19 @@ static void draw_tab (unsigned width, unsigned height, const char *fill, bool cl
 	}
 	htmlout ("</svg>\n");
 }
+#if 0
 static void draw_tab (unsigned width, unsigned height, const char *fill, bool close, const char *title)
 {
 	draw_tab (width,height,fill,close,title,false,"","");
 }
+#endif
 <mod>
 void draw_left_arrow(bool visible, const char *xref)
 {
 	htmlout ("<svg width=20 height=30>\n");
 	if (visible){
 		static unsigned id=0;
-		htmlprintf ("<a href='%s' onmouseover=changefill('larrow%u','#D0D0D0') onmouseout=changefill('larrow%u','none')>\n",xref,id,id);
+		htmlprintf ("<a href='%s' onclick=changefill('id:1:1','pink') onmouseover=changefill('larrow%u','#D0D0D0') onmouseout=changefill('larrow%u','none')>\n",xref,id,id);
 		htmlprintf ("<rect id='larrow%u' x=2 y=2 rx=2 ry=2 width=16 height=26 fill=none />\n",id);
 		id++;
 	}
@@ -493,10 +495,13 @@ static void tabs (int nbrep, bool arrow_left, bool arrow_right)
 			} tb[]={{"Messages",false},{"Projects",true},{"Mails",true}};
 			DIV d; d.dispflex().flowrow().bg("none").overflow("hidden").print();
 			DIV c;
+			int j=0;
 			for (int i=0; i<nbrep; i++){
 				for (auto x:tb){
 					c.print();
-					draw_tab(0,30,"white",false,x.s,x.dox,"https://truelies.news","https://solucorp.solutions");
+					string tmp = string_f("id:%d:%d",nbrep,j);
+					draw_tab(tmp.c_str(),0,30,"white",false,x.s,x.dox,"https://truelies.news","https://solucorp.solutions");
+					j++;
 				}
 			}
 			c.print();
@@ -1047,12 +1052,12 @@ extern "C" void webmain()
 	//newtags();
 	//form_space();
 	//scrollbar();
-	//tabs();
+	tabs();
 	//popup();
 	//webtable_dropdown();
 	//webtable_popup();
 	//journey_setscroll();
 	//journey_subtabs();
-	journey_click();
+	//journey_click();
 }
 

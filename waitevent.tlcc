@@ -1,0 +1,58 @@
+/*
+	Perform a waitevent with sessiond.
+	This is a test program.
+*/
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <tlmplib.h>
+#include <string>
+#include <trlitool.h>
+#include "instrument.h"
+
+using namespace std;
+
+#define bo_sessiond_client_getsessioninfovars_NOTNEED
+#define bo_sessiond_client_getsessioninfo_NOTNEED
+#define bo_sessiond_client_setvar_NOTNEED
+#define bo_sessiond_client_delnotify_NOTNEED
+#define bo_sessiond_client_test_NOTNEED
+#include "proto/bo-sessiond_client.protoch"
+
+<mod>
+int main (int argc, char *argv[])
+{
+	glocal int ret = -1;
+	glocal const char *session = nullptr;
+	glocal const char *port = "/var/lib/lxc/sessiond/rootfs/tmp/sessiond-client-9200.sock";
+	glocal const char *secret = "foo";
+	glocal unsigned sequence = 0;
+	glocal bool loop = false;
+	glocal.ret = <call tlmpprogram>(argc,argv);
+	<f init>
+		setproginfo ("waitevent",VERSION,"test program to develop bo-sessiond waitevent functionality");
+		setarg ('l',"loop","Loop forever",glocal.loop,false);
+		setarg ('s',"session","Session ID to monitor",glocal.session,true);
+		setarg ('S',"sequence","Sequence number of event to retrieve",glocal.sequence,false);
+	</f>
+	<f main_noarg>
+		int ret = -1;
+		CONNECT_INFO con;
+		con.port = glocal.port;
+		con.secret = glocal.secret;
+		do{
+			<call bo_sessiond_client_waitevent>(con,glocal.session,glocal.sequence);
+			<f ok>
+				printf ("success=%d msg=%s content=%s sequence=%u\n",success,msg,content,sequence);
+				glocal.sequence = sequence;
+				if (!success) glocal.loop = false;
+			</f>
+			</call>
+		} while (glocal.loop);
+		return ret;
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+
