@@ -1738,6 +1738,11 @@ elif [ "$1" = "stop-status" ] ; then # P: status of trli-stop
 	#/usr/sbin/trli-stop-control -p /var/lib/lxc/webadm/rootfs/tmp/trli-stop.sock status
 elif [ "$1" = "stop-stop" ] ; then # P: stop the web
 	echo stop-stop: Block internal services
+	# We block new requests
+	/usr/sbin/trli-stop-control -p /var/lib/lxc/web/rootfs/tmp/trli-stop.sock stop-nowait
+	# then end all waiting processes (for notifications)
+	/usr/sbin/bo-sessiond-control -p -p /var/lib/lxc/sessiond/rootfs/var/run/blackhole/bo-sessiond.sock disconnect_waitings
+	# Then wait for every in flight process to end
 	/usr/sbin/trli-stop-control -p /var/lib/lxc/web/rootfs/tmp/trli-stop.sock stop
 	#echo webadm
 	#/usr/sbin/trli-stop-control -p /var/lib/lxc/webadm/rootfs/tmp/trli-stop.sock stop
