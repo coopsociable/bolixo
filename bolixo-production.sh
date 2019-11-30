@@ -571,6 +571,8 @@ elif [ "$1" = "loadfail" ] ; then # prod: Switch web access (normal,backup,split
 	blackhole-control setweight $THISSERVER webssl-fail$VSOURCE 443 $W2
 	# Now we wait for the connections to vanish on the normal or backup side
 	if [ "$$1" != "" ] ; then
+		# kill all notification sockets. Those socket takes a long time to end normally.
+		/usr/sbin/bo-sessiond-control -p /var/lib/lxc/sessiond/rootfs/var/run/blackhole/bo-sessiond.sock disconnect_waitings
 		echo -n "Waiting for $WAIT connections to end : "
 		COUNT=0
 		while true
