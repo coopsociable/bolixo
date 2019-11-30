@@ -35,7 +35,23 @@ int main (int argc, char *argv[])
 					glocal.userid=tb[3];
 				}
 			}else if (is_start_any_of (pt,NONEED,"notifies:")){
-				printf ("%s %s\n",glocal.userid.c_str(),pt);
+				// We must remove the timestamp and keep the sequence number
+				vector<string> words;
+				str_splitline(pt,' ',words);
+				for (unsigned i=2; i<words.size(); i++){
+					string &w = words[i];
+					vector<string> args;
+					if (str_splitline(w.c_str(),',',args)!=3){
+						tlmp_error ("Invalid notify item: %s\n",w.c_str());
+					}else{
+						w = args[0] + ',' + args[2];
+					}
+				}
+				printf ("%s",glocal.userid.c_str());
+				for (auto const &w:words){
+					printf (" %s",w.c_str());
+				}
+				printf ("\n");
 			}
 			return 0;
 		</f>
