@@ -13,6 +13,7 @@ struct WEBTAB{
 	WEBTAB_TYPE type;
 	string tab;	// Name of this tab in the webtab
 	string title;
+	string id;
 	int selorder;
 	bool locked;	// Can't be deleted
 	string state;	// It is a string set by the application and preserved

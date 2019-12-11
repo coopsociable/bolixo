@@ -135,6 +135,7 @@ static unsigned draw_tab_height()
 	return height+2;	// Keep some space at the top
 }
 unsigned draw_tab (
+	const char *id_suffix,	// id suffix to assemble the ID of the SVG path
 	unsigned width,		// TAB width or 0 (computed from the title)
 	const char *fill,	// Fill color
 	const char *fill_in, 	// Fill color for mouseover
@@ -146,7 +147,15 @@ unsigned draw_tab (
 {
 	unsigned height = draw_tab_height();
 	static STATIC_ID alloc_id;
-	unsigned id = alloc_id++;
+	unsigned idnum = alloc_id++;
+	/- <script>
+	if (idnum == 0){
+		htmlout ("var tabcolor=[];\n");
+	}
+	string id = string_f("tabrect%s",id_suffix);
+	string ids = string_f("tabsrect%s",id_suffix);
+	htmlprintf ("tabcolor['%s'] = '%s';\n",id.c_str(),fill);
+	/- </script>
 	if (width == 0){
 		width = tlmpweb_displaylen(title,small_size);	// See the .small css entry above
 		if (drawx){
@@ -157,9 +166,9 @@ unsigned draw_tab (
 		}
 	}
 	htmlprintf ("<svg width=%u height=%u>\n",width,height);
-	htmlprintf ("<a href='#' onclick=formsubmit('%s') onmouseover=changefill2('tabrect%u','tabsrect%u','%s')"
-		" onmouseout=changefill2('tabrect%u','tabsrect%u','%s')"
-		,href.ptr,id,id,fill_in,id,id,fill);
+	htmlprintf ("<a href='#' onclick=formsubmit('%s') onmouseover=changefill2('%s','%s','%s')"
+		" onmouseout=changefill2('%s','%s',tabcolor['%s'])"
+		,href.ptr,id.c_str(),ids.c_str(),fill_in,id.c_str(),ids.c_str(),id.c_str());
 	if (drawx){
 		// For mobile, it is difficult (impossible) to reach the X to close a tab. So we do not even try to draw it.
 		// But we use a trick. We use the oncontextmenu, normally used to popup a ... context menu.
@@ -169,7 +178,7 @@ unsigned draw_tab (
 		// On instead of poping a menu, we execute the action
 		htmlprintf (" oncontextmenu='formsubmit(\"%s\"); return false;'",xref.ptr);
 	}
-	htmlprintf (">\n<path id=tabrect%u fill='%s' stroke=black stroke-width=1\n",id,fill);
+	htmlprintf (">\n<path id='%s' fill='%s' stroke=black stroke-width=1\n",id.c_str(),fill);
 	htmlout ("d=\"\n");
 	htmlprintf ("M0,%u\n",height);
 	htmlout ("H1\n");
@@ -185,16 +194,16 @@ unsigned draw_tab (
 	htmlout ("</a>\n");
 	if (drawx && !tlmpweb_ismobile()){
 		unsigned x=width-17;
-		htmlprintf ("<a href='#' onclick=formsubmit('%s') onmouseover=changefill('tabxrect%u','#D0D0D0') onmouseout=changefill('tabxrect%u','none')>\n",xref.ptr,id,id);
+		htmlprintf ("<a href='#' onclick=formsubmit('%s') onmouseover=changefill('tabxrect%u','#D0D0D0') onmouseout=changefill('tabxrect%u','none')>\n",xref.ptr,idnum,idnum);
 		// First rect is there to make the a tag larger. fill=none does not work. So we have to give it the same color
 		// as the tab and changefill2 will change the color of the tab and this rect.
 		// The second rect is used to highlit the X
-		htmlprintf ("<rect id='tabsrect%u' x=%u y=%u width=16 height=%u fill=%s />\n",id,x-5,4,height-6,fill);
+		htmlprintf ("<rect id='%s' x=%u y=%u width=16 height=%u fill=%s />\n",ids.c_str(),x-5,4,height-6,fill);
 		unsigned hmiddle = height/2+2;
 		unsigned h14 = height-8;
 		unsigned h8=height/3;
 		if (h8 & 1) h8++;	// Make sure h8 is even.
-		htmlprintf ("<rect id='tabxrect%u' x=%u y=%u rx=2 ry=2 width=%u height=%u fill=none />\n",id,x-3,4,h14,height-4);
+		htmlprintf ("<rect id='tabxrect%u' x=%u y=%u rx=2 ry=2 width=%u height=%u fill=none />\n",idnum,x-3,4,h14,height-4);
 		htmlprintf ("<path stroke=black stroke-width=1 d='M%u,%u l%u,%u M%u,%u l%u,-%u'/>\n"
 			,x,hmiddle-h8/2,h8,h8
 			,x,hmiddle+h8/2,h8,h8);
@@ -204,9 +213,9 @@ unsigned draw_tab (
 	return width;
 }
 // Same thing with no X
-unsigned draw_tab (unsigned width, const char *fill, const char *fill_in, bool close, const char *title, PARAM_STRING href)
+unsigned draw_tab (const char *id_suffix, unsigned width, const char *fill, const char *fill_in, bool close, const char *title, PARAM_STRING href)
 {
-	return draw_tab (width,fill,fill_in,close,title,false,href,"");
+	return draw_tab (id_suffix,width,fill,fill_in,close,title,false,href,"");
 }
 void draw_left_arrow(bool visible, PARAM_STRING xref)
 {
@@ -245,88 +254,33 @@ void draw_right_arrow(bool visible, PARAM_STRING xref)
 	htmlout ("</svg>\n");	
 }
 
-static void print_href_c (const char *title, PARAM_STRING href, const char *color)
+static void print_href_c (const char *id_suffix, const char *title, PARAM_STRING href, const char *color)
 {
 	bool close = strcmp(color,"white")==0 ? false : true;
-	draw_tab (0,color,color,close,title,href);
+	draw_tab (id_suffix,0,color,color,close,title,href);
 }
-void print_href (const char *title, PARAM_STRING href, bool notify)
+void print_href (const char *id_suffix,const char *title, PARAM_STRING href, bool notify)
 {
-	print_href_c(title, href,notify ? "pink" : "#EAEAEA");
+	print_href_c(id_suffix,title, href,notify ? "pink" : "#EAEAEA");
 }
-void print_aref (const char *page, const char *title, int step, bool notify)
-{
-	string href = string_f ("%s?webstep=%d",page,step);
-	print_href (title,href,notify);
-}
-void print_aref (const char *title, int step, bool notify)
-{
-	print_aref (tlmpweb_curpage(),title,step,notify);
-}
-void print_aref_selected (const char *page, const char *title, int step)
+void print_aref (const char *id_suffix, const char *page, const char *title, int step, bool notify)
 {
 	string href = string_f ("%s?webstep=%d",page,step);
-	print_href_c (title,href,"white");
+	print_href (id_suffix,title,href,notify);
 }
-void print_aref_selected (const char *title, int step)
+void print_aref (const char *id_suffix,const char *title, int step, bool notify)
 {
-	print_aref_selected (tlmpweb_curpage(),title,step);
+	print_aref (id_suffix,tlmpweb_curpage(),title,step,notify);
 }
-#if 0
-void print_aref_selected (const char *page, const char *title, int step, W_VAR &var)
+void print_aref_selected (const char *id_suffix, const char *page, const char *title, int step)
 {
-	SSTRING val;
-	var.getvalstr(val);
-	string href = string_f ("%s?webstep=%d&%s=%s",page,step,var.getname(),val.c_str());
-	print_href_c (title,href,"#220022");
+	string href = string_f ("%s?webstep=%d",page,step);
+	print_href_c (id_suffix,title,href,"white");
 }
-void print_aref_selected (const char *title, int step, W_VAR &var)
+void print_aref_selected (const char *id_suffix, const char *title, int step)
 {
-	print_aref_selected (tlmpweb_curpage(),title,step,var);
+	print_aref_selected (id_suffix,tlmpweb_curpage(),title,step);
 }
-void print_aref (const char *page, const char *title, int step, W_VAR &var)
-{
-	SSTRING val;
-	var.getvalstr(val);
-	string href = string_f ("%s?webstep=%d&%s=%s",page,step,var.getname(),val.c_str());
-	print_href (title,href);
-}
-void print_aref (const char *title, int step, W_VAR &var)
-{
-	print_aref (tlmpweb_curpage(),title,step,var);
-}
-void print_aref (const char *title, int step, W_VAR &var1, W_VAR &var2)
-{
-	SSTRING val1,val2;
-	var1.getvalstr(val1);
-	var2.getvalstr(val2);
-	string href = string_f ("%s?webstep=%d&%s=%s&%s=%s",tlmpweb_curpage(),step
-		,var1.getname(),val1.c_str()
-		,var2.getname(),val2.c_str());
-	print_href (title,href);
-}
-void print_aref (const char *title, int step, W_VAR &var1, const char *varname2, const char *val2)
-{
-	SSTRING val1;
-	var1.getvalstr(val1);
-	string href = string_f ("%s?webstep=%d&%s=%s&%s=%s",tlmpweb_curpage(),step
-		,var1.getname(),val1.c_str()
-		,varname2,val2);
-	print_href (title,href);
-}
-void print_aref (const char *title, int step, W_VAR &var1, W_VAR &var2, W_VAR &var3)
-{
-	SSTRING val1,val2,val3;
-	var1.getvalstr(val1);
-	var2.getvalstr(val2);
-	var3.getvalstr(val3);
-	string href = string_f ("%s?webstep=%d&%s=%s&%s=%s&%s=%s",tlmpweb_curpage(),step
-		,var1.getname(),val1.c_str()
-		,var2.getname(),val2.c_str()
-		,var3.getname(),val3.c_str());
-	print_href (title,href);
-}
-#endif
 const char *format_line (const char *s)
 {
 	while (*s != '\0' && *s != '\n'){

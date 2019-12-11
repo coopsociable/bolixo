@@ -170,6 +170,8 @@ static void webtab_notify()
 			if (isdigit(*name) && name[1] == ':') name += 2;
 			string tmp = string_f("%s:%s",tname,name);
 			if (userinfo.notifies.count(tmp) > 0) t.notify = true;
+			t.id = tmp;	// We record the notification id, it will be used
+					// as the ID in javascript
 		}
 	}
 }
@@ -238,12 +240,12 @@ static void show_buttons_right(_F_websteps *c)
 static unsigned subject = 0;
 const unsigned max_subject=7;
 
-static void print_button (const char *title, int step, int curstep, bool notify)
+static void print_button (const char *id_suffix, const char *title, int step, int curstep, bool notify)
 {
 	if (step == curstep){
-		print_aref_selected (title,step);
+		print_aref_selected (id_suffix,title,step);
 	}else{
-		print_aref (title,step,notify);
+		print_aref (id_suffix,title,step,notify);
 	}
 }
 struct CURRENTFORM{
@@ -291,15 +293,15 @@ static void bolixo_title (const char *title, _F_websteps *c)
 		<call button_row>(0,newscolor,false);
 		<f draw>
 			split();
-			print_button (MSG_U(M_MAIN,"Main"),1,glocal.step,userinfo.main_notify);
+			print_button ("main",MSG_U(M_MAIN,"Main"),1,glocal.step,userinfo.main_notify);
 			split();
-			print_button (MSG_U(M_TALK,"Talk"),step_talks,glocal.step,userinfo.talk_notify);
+			print_button ("talks",MSG_U(M_TALK,"Talk"),step_talks,glocal.step,userinfo.talk_notify);
 			#if 0
 			split();
 			print_button (MSG_U(M_MAIL,"Mail"),step_mails,glocal.step,userinfo.mail_notify);
 			#endif
 			split();
-			print_button (MSG_U(M_PROJECTS,"Projects"),step_projects,glocal.step,false);
+			print_button ("projects",MSG_U(M_PROJECTS,"Projects"),step_projects,glocal.step,false);
 			split();
 			vector<DOTMENU> menu;
 			menu.emplace_back(DOTMENU(MSG_U(M_PROFILE,"Profile"),step_profile));
@@ -451,6 +453,8 @@ static void trli_getsessioninfo(CONNECT_INFO &con, CONNECT_INFO &con_sess, vecto
 							userinfo.mail_notify=true;
 						}else if (strcmp(v.sname,"main")==0){
 							userinfo.main_notify=true;
+						}else if (strcmp(v.sname,"notify_sequence")==0){
+							userinfo.notify_sequence=atoi(v.sval);
 						}
 						userinfo.notifies.insert(v.sname);
 					}
@@ -1421,6 +1425,36 @@ extern "C" void webmain_real()
 				</call>
 			}
 		}
+		// Generate the javascript to retrieve the notification code
+		/- <script>
+		/- const Http = new XMLHttpRequest();
+		htmlprintf ("var sequence=%u;\n",userinfo.notify_sequence);
+		<?
+		Http.open("GET", location.protocol + '//' + location.hostname + '/index.hc?webstep=15&sequence=' + sequence);
+		Http.send();
+		var httpstarted = Date.now();
+
+		Http.onreadystatechange = function(){
+			if (this.readyState == 4){
+				if (this.status == 200){
+					console.log (Http.responseText);
+					eval (Http.responseText);
+					Http.open("GET", location.protocol + '//' + location.hostname + '/index.hc?webstep=15&sequence=' + sequence);
+					Http.send();
+				}else if ((this.status == 502 || this.status == 504) && Date.now()-httpstarted > 30000){
+					console.log ("notification timeout, resend "+(Date.now()-httpstarted).toString());
+					Http.open("GET", location.protocol + '//' + location.hostname + '/index.hc?webstep=15&sequence=' + sequence);
+					Http.send();
+					httpstarted = Date.now();
+				}else{
+					console.log ("Notification, connection error, stopped");
+				}
+			}else{
+				console.log ("readyState="+this.readyState+" status="+this.status);
+			}
+		}
+		</script>
+		?>
 	</f>
 	<f step1>
 		if (userinfo.name.size() == 0){
@@ -2304,7 +2338,40 @@ extern "C" void webmain_real()
 		}
 		index_doc(glocal.docpointers[SECTION_NONE],*ptdoc,true);
 	</f>
-	<f step15>
+	<f step15> // Handle notification
+		<call bo_sessiond_client_waitevent>(glocal.con_sess,w_session.c_str(),userinfo.notify_sequence);
+		<f ok>
+			const char *pt;
+			if (is_start_any_of(content,pt,"talks","projects")){
+				string tmp(content,pt-content);
+				htmlprintf ("var e = document.getElementById('tabrect%s');\n",tmp.c_str());
+			<?
+			console.log ("e " + e != null);
+			if (e!=null){
+				e.setAttribute('fill', 'pink');
+				/- htmlprintf("tabcolor['tabrect%s'] = 'pink';\n",tmp.c_str());
+			}
+			?>
+			}
+			htmlprintf ("var e = document.getElementById('tabrect%s');\n",content);
+			<?
+			console.log ("e " + e != null);
+			if (e!=null){
+				e.setAttribute('fill', 'pink');
+				/- htmlprintf("tabcolor['tabrect%s'] = 'pink';\n",content);
+			}
+			?>
+			htmlprintf ("e = document.getElementById('tabsrect%s');\n",content);
+			<?
+			console.log ("e " + e != null);
+			if (e!=null){
+				e.setAttribute('fill', 'pink');
+			}
+			?>
+			htmlprintf ("sequence=%u;\n",sequence);
+		</f>
+		</call>
+		noend();
 	</f>
 	</call>
 }

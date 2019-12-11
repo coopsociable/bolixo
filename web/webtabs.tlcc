@@ -123,7 +123,7 @@ void _F_webtabs::addtab (PARAM_STRING id, PARAM_STRING title_txt)
 	}
 	changed = true;
 }
-static unsigned webtab_href_c (const char *title, int tab, int nox, const char *color, const char *color_in, bool close)
+static unsigned webtab_href_c (PARAM_STRING id_suffix, const char *title, int tab, int nox, const char *color, const char *color_in, bool close)
 {
 	unsigned ret = 0;
 	string hidden;
@@ -132,20 +132,20 @@ static unsigned webtab_href_c (const char *title, int tab, int nox, const char *
 	string href = string_f ("%s?%s%swebtab=%d",tlmpweb_curpage(),hidden.c_str(),sep,tab);
 	if (nox != 0){
 		string xref = string_f ("%s?%s%swebtab=%d",tlmpweb_curpage(),hidden.c_str(),sep,nox);
-		ret = draw_tab (0,color,color_in,close,title,true,href,xref);
+		ret = draw_tab (id_suffix.ptr,0,color,color_in,close,title,true,href,xref);
 	}else{
-		ret = draw_tab (0,color,color_in,close,title,href);
+		ret = draw_tab (id_suffix.ptr,0,color,color_in,close,title,href);
 	}
 	return ret;
 }
-static unsigned webtab_aref_selected (const char *title, int tab, int nox)
+static unsigned webtab_aref_selected (PARAM_STRING id_suffix, const char *title, int tab, int nox)
 {
-	return webtab_href_c (title,tab,nox,"white","#F0F0F0",false);
+	return webtab_href_c (id_suffix,title,tab,nox,"white","#F0F0F0",false);
 }
-static unsigned webtab_aref (const char *title, int tab, int nox, bool notify)
+static unsigned webtab_aref (PARAM_STRING id_suffix, const char *title, int tab, int nox, bool notify)
 {
 	const char *color = notify ? "pink" : "#EAEAEA";
-	return webtab_href_c (title,tab,nox,color,"#E0E0E0",true);
+	return webtab_href_c (id_suffix, title,tab,nox,color,"#E0E0E0",true);
 }
 void _F_webtabs::documents()
 {
@@ -585,7 +585,7 @@ static void webtabs(_F_webtabs &c,
 										nodel = no+1;
 									}
 									if (&t == glocal.ptsel){
-										width += webtab_aref_selected (name,no,nodel);
+										width += webtab_aref_selected (t.id,name,no,nodel);
 										if (width > glocal.tab_width){
 											glocal.ctrl->offsets[glocal.type]++;
 											glocal.changed = true;
@@ -593,7 +593,7 @@ static void webtabs(_F_webtabs &c,
 											break;
 										}
 									}else{
-										width += webtab_aref (name,no,nodel,t.notify);
+										width += webtab_aref (t.id,name,no,nodel,t.notify);
 									}
 								}
 							}

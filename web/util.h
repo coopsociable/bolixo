@@ -10,6 +10,7 @@ struct USERLOGINFO{
 	bool mail_notify;
 	bool main_notify;
 	std::set<std::string> notifies;
+	unsigned notify_sequence = 0;
 	void reset(){
 		name.clear();
 		lang = "eng";
@@ -34,17 +35,10 @@ struct DOTMENU{
 };
 void util_dotmenu(const std::vector<DOTMENU> &menu, bool is_active);
 int util_getsessioninfo (CONNECT_INFO &con, CONNECT_INFO &con_sess, std::string &session, const char *varname, unsigned &varval);
-void print_href (const char *title, PARAM_STRING href, bool notify);
-void print_aref (const char *title, int step, bool notify);
-void print_aref_selected (const char *title, int step);
+void print_href (const char *id_suffix, const char *title, PARAM_STRING href, bool notify);
+void print_aref (const char *id_suffix, const char *title, int step, bool notify);
+void print_aref_selected (const char *id_suffix, const char *title, int step);
 
-#if 0
-void print_aref (const char *title, int step, W_VAR &var);
-void print_aref_selected (const char *title, int step, W_VAR &var);
-void print_aref (const char *title, int step, W_VAR &var1, W_VAR &var2);
-void print_aref (const char *title, int step, W_VAR &var1, const char *varname2, const char *val2);
-void print_aref (const char *title, int step, W_VAR &var1, W_VAR &var2, W_VAR &var3);
-#endif
 
 const char *format_line (const char *s);
 const char *format_url(const char *s);
@@ -61,8 +55,8 @@ void printhref_raw(const char *url, const char *text, bool largewindow);
 std::string format_date (unsigned format, PARAM_STRING date);
 std::string format_time (unsigned format, PARAM_STRING time);
 void util_formanchor();
-unsigned draw_tab (unsigned width, const char *fill, const char *fill_in, bool close, const char *title, bool drawx, PARAM_STRING href, PARAM_STRING xref);
-unsigned draw_tab (unsigned width, const char *fill, const char *fill_in, bool close, const char *title, PARAM_STRING href);
+unsigned draw_tab (const char *id_suffix, unsigned width, const char *fill, const char *fill_in, bool close, const char *title, bool drawx, PARAM_STRING href, PARAM_STRING xref);
+unsigned draw_tab (const char *id_suffix, unsigned width, const char *fill, const char *fill_in, bool close, const char *title, PARAM_STRING href);
 
 #define _TLMP_button_row
 struct _F_button_row{
