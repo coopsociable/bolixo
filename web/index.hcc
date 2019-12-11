@@ -267,7 +267,7 @@ static void bolixo_title (const char *title, _F_websteps *c)
 	tlmpweb_body("white",NULL);
 	
 	DIV main; main.id("main").h(100).w(100).dispflex().flowcol().print();
-	DIV head; head.id("head").flexfixe().style("background-image","linear-gradient(to right, #ff6666 , yellow)").print();
+	DIV head; head.id("head").flexfixe().style("background-image","linear-gradient(to right, #03a9f4 , #ffffff)").print();
 	/- <table border=0 width=100% cellpadding=0 cellspacing=0>
 	htmlprintf ("<table border=0 width=100%% cellspacing=0 cellpadding=0><tr><td rowspan=2 align=left>\n");	//,newscolor);
 	if (is_mobile){
@@ -307,7 +307,7 @@ static void bolixo_title (const char *title, _F_websteps *c)
 			menu.emplace_back(DOTMENU(MSG_U(M_PROFILE,"Profile"),step_profile));
 			menu.emplace_back(DOTMENU(MSG_U(M_DOCUM,"Documentation"),step_doc));
 			menu.emplace_back(DOTMENU(MSG_U(I_LOGOUT,"Logout"),step_logout));
-			util_dotmenu(menu,is_any_of(glocal.step,step_profile,step_doc));
+			util_dotmenu(menu,is_any_of(glocal.step,step_profile,step_doc),glocal.step==step_profile ? false : userinfo.menu_notify);
 		</f>
 		</call>
 	}
@@ -451,6 +451,8 @@ static void trli_getsessioninfo(CONNECT_INFO &con, CONNECT_INFO &con_sess, vecto
 							userinfo.talk_notify=true;
 						}else if (strncmp(v.sname,"mail:",5)==0){
 							userinfo.mail_notify=true;
+						}else if (is_start_any_of(v.sname,NONEED,"profile:")){
+							userinfo.menu_notify=true;
 						}else if (strcmp(v.sname,"main")==0){
 							userinfo.main_notify=true;
 						}else if (strcmp(v.sname,"notify_sequence")==0){
@@ -2118,7 +2120,7 @@ extern "C" void webmain_real()
 			<f first>
 				if (glocal.groupname != "anonymous"){
 					glocal bool private_inbox = glocal.groupname == "inbox";
-					DIV f; f.id(TAB_FORM).bg("#ffefc1").paddings(5,5).vpaddings(5,5).vmargins(5,0).borderradius(5).print();
+					DIV f; f.id(TAB_FORM).bg("#a0a0a0").paddings(5,5).vpaddings(5,5).vmargins(5,0).borderradius(5).print();
 					<call form>(glocal.formid);
 					<f setup>
 						DIV d; d.dispflex().flowcol().print();
@@ -2341,12 +2343,19 @@ extern "C" void webmain_real()
 	<f step15> // Handle notification
 		<call bo_sessiond_client_waitevent>(glocal.con_sess,w_session.c_str(),userinfo.notify_sequence);
 		<f ok>
+			if (is_start_any_of(content,NONEED,"profile:")){
+				htmlprintf ("var e = document.getElementById('rectdotmenu');\n");
+			<?
+			if (e!=null){
+				e.setAttribute('fill', 'pink');
+			}
+			?>
+			}
 			const char *pt;
 			if (is_start_any_of(content,pt,"talks","projects")){
 				string tmp(content,pt-content);
 				htmlprintf ("var e = document.getElementById('tabrect%s');\n",tmp.c_str());
 			<?
-			console.log ("e " + e != null);
 			if (e!=null){
 				e.setAttribute('fill', 'pink');
 				/- htmlprintf("tabcolor['tabrect%s'] = 'pink';\n",tmp.c_str());
@@ -2355,7 +2364,6 @@ extern "C" void webmain_real()
 			}
 			htmlprintf ("var e = document.getElementById('tabrect%s');\n",content);
 			<?
-			console.log ("e " + e != null);
 			if (e!=null){
 				e.setAttribute('fill', 'pink');
 				/- htmlprintf("tabcolor['tabrect%s'] = 'pink';\n",content);
@@ -2363,7 +2371,6 @@ extern "C" void webmain_real()
 			?>
 			htmlprintf ("e = document.getElementById('tabsrect%s');\n",content);
 			<?
-			console.log ("e " + e != null);
 			if (e!=null){
 				e.setAttribute('fill', 'pink');
 			}

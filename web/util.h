@@ -6,9 +6,10 @@ struct USERLOGINFO{
 	bool is_admin;
 	unsigned dateformat;
 	std::string lang;
-	bool talk_notify;
-	bool mail_notify;
-	bool main_notify;
+	bool talk_notify = false;
+	bool mail_notify = false;
+	bool main_notify = false;
+	bool menu_notify = false;
 	std::set<std::string> notifies;
 	unsigned notify_sequence = 0;
 	void reset(){
@@ -17,7 +18,6 @@ struct USERLOGINFO{
 		is_admin = false;
 		dateformat = 0;
 		notifies.clear();
-		talk_notify = main_notify = mail_notify = false;
 	}
 	USERLOGINFO(){
 		reset();
@@ -33,7 +33,7 @@ struct DOTMENU{
 		step = _step;
 	}
 };
-void util_dotmenu(const std::vector<DOTMENU> &menu, bool is_active);
+void util_dotmenu(const std::vector<DOTMENU> &menu, bool is_active, bool notify);
 int util_getsessioninfo (CONNECT_INFO &con, CONNECT_INFO &con_sess, std::string &session, const char *varname, unsigned &varval);
 void print_href (const char *id_suffix, const char *title, PARAM_STRING href, bool notify);
 void print_aref (const char *id_suffix, const char *title, int step, bool notify);

@@ -719,7 +719,7 @@ void util_defstyles()
 /*
 	Draw a 3 dots menu and the associated popup.
 */
-void util_dotmenu (const vector<DOTMENU> &menu, bool is_active)
+void util_dotmenu (const vector<DOTMENU> &menu, bool is_active, bool notify)
 {
 	static const char *id_dropdown = "dropdown-dot";
 	static const char *id_menu = "dotmenu";
@@ -738,14 +738,19 @@ void util_dotmenu (const vector<DOTMENU> &menu, bool is_active)
 	unsigned height = draw_tab_height();
 	unsigned width = height;
 	if (tlmpweb_ismobile()) width *= 2;
-	unsigned w2 = width/2;
-	unsigned ray=tlmpweb_ismobile() ? 2 : 1;
-	htmlprintf ("<a href=# onclick='return dropmenu(\"%s\",\"%s\",%u);'>",id_dropdown,id_menu,popup_width);
-	htmlprintf ("<svg width=%u height=%u>",width,height);
-	htmlprintf ("<circle cx=%u cy=%u r=%u stroke=black stroke-width=1 fill=black />",w2,height/4,ray);
-	htmlprintf ("<circle cx=%u cy=%u r=%u stroke=black stroke-width=1 fill=black />",w2,height/2,ray);
-	htmlprintf ("<circle cx=%u cy=%u r=%u stroke=black stroke-width=1 fill=black />",w2,height*3/4,ray);
-	if (!is_active) htmlprintf ("<path stroke=black stroke-width=1 d='M0,%u h%u' />",height,width);
+	htmlprintf ("<a href=# onclick='return dropmenu(\"%s\",\"%s\",%u);'>\n",id_dropdown,id_menu,popup_width);
+	htmlprintf ("<svg width=%u height=%u>\n",width,height);
+	htmlprintf ("<rect id='rect%s' stroke=black stroke-width=1 x=0 y=0 width=%u height=%u fill=%s />\n",id_menu,width,height,notify ? "pink" : "white");
+	unsigned line_x = 5;
+	unsigned line_y = 7;	
+	for (int i=0; i<3; i++){
+		htmlprintf ("<line x1=%u y1=%u x2=%u y2=%u style='stroke:black;stroke-width:2'></line>\n"
+			,line_x,line_y,width-5,line_y);
+		line_y += 5;
+	}
+	//htmlprintf ("<line x1=5 y1=12 x2=18 y2=12 style='stroke:black;stroke-width:2'></line>\n");
+	//htmlprintf ("<line x1=5 y1=17 x2=18 y2=17 style='stroke:black;stroke-width:2'></line>\n");
+	htmlprintf ("<path stroke=%s stroke-width=2 d='M0,%u h%u' />",is_active ? "white" : "black",height,width);
 	htmlout ("</svg>");
 	htmlout ("</a>\n");
 }
