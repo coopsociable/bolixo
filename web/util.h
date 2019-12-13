@@ -164,6 +164,7 @@ struct _F_sendfile_var: public _F_sendfile_common {
 	virtual _F_sendfile_var_rest( )=0;
 };
 void sendfile_var(_F_sendfile_var &c, PARAM_STRING filepath, const W_SSTRING &var_content, bool &fail);
+std::string util_mini_img(unsigned step, unsigned width, PARAM_STRING dirpath, PARAM_STRING filename, PARAM_STRING date);
 std::string util_img(unsigned step, unsigned width, PARAM_STRING dirpath, PARAM_STRING filename, PARAM_STRING date);
 std::string util_img(unsigned step, const char *style, PARAM_STRING filepath, PARAM_STRING date);
 void util_popup (CONNECT_INFO &con, int step, const char *content, FILE_TYPE file_type, PARAM_STRING modified, PARAM_STRING from, PARAM_STRING filepath);
