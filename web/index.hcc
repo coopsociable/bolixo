@@ -101,6 +101,8 @@ W_SSTRING w_name("name");
 W_SSTRING w_image("image");
 W_SSTRING w_action("action");
 
+static W_UNSIGNED w_sequence("sequence");
+
 extern W_SSTRING w_webtable;
 map<string,unsigned> offsets;
 map<string,unsigned> currents;
@@ -1430,24 +1432,24 @@ extern "C" void webmain_real()
 		// Generate the javascript to retrieve the notification code
 		/- <script>
 		/- const Http = new XMLHttpRequest();
+		/- var httpstarted = Date.now();
 		htmlprintf ("var sequence=%u;\n",userinfo.notify_sequence);
 		<?
-		Http.open("GET", location.protocol + '//' + location.hostname + '/index.hc?webstep=15&sequence=' + sequence);
-		Http.send();
-		var httpstarted = Date.now();
+		function callnotify(){
+			Http.open("GET", location.protocol + '//' + location.hostname + '/index.hc?webstep=15&sequence=' + sequence);
+			Http.send();
+			httpstarted = Date.now();
+		}
+		callnotify();
 
 		Http.onreadystatechange = function(){
 			if (this.readyState == 4){
 				if (this.status == 200){
 					console.log (Http.responseText);
 					eval (Http.responseText);
-					Http.open("GET", location.protocol + '//' + location.hostname + '/index.hc?webstep=15&sequence=' + sequence);
-					Http.send();
 				}else if ((this.status == 502 || this.status == 504) && Date.now()-httpstarted > 30000){
 					console.log ("notification timeout, resend "+(Date.now()-httpstarted).toString());
-					Http.open("GET", location.protocol + '//' + location.hostname + '/index.hc?webstep=15&sequence=' + sequence);
-					Http.send();
-					httpstarted = Date.now();
+					callnotify();
 				}else{
 					console.log ("Notification, connection error, stopped");
 				}
@@ -2341,8 +2343,15 @@ extern "C" void webmain_real()
 		index_doc(glocal.docpointers[SECTION_NONE],*ptdoc,true);
 	</f>
 	<f step15> // Handle notification
-		<call bo_sessiond_client_waitevent>(glocal.con_sess,w_session.c_str(),userinfo.notify_sequence);
+		// tlmp_error ("step15 start %s sequence %u",w_session.c_str(),w_sequence.getval());
+		<call bo_sessiond_client_waitevent>(glocal.con_sess,w_session.c_str(),w_sequence.getval());
 		<f ok>
+			if (!success){
+				// tlmp_error ("waitevent failed");
+				tlmpweb_closeconnection();
+				tlmpweb_flushheader();
+				return;
+			}
 			if (is_start_any_of(content,NONEED,"profile:")){
 				htmlprintf ("var e = document.getElementById('rectdotmenu');\n");
 			<?
@@ -2376,9 +2385,11 @@ extern "C" void webmain_real()
 			}
 			?>
 			htmlprintf ("sequence=%u;\n",sequence);
+			/- callnotify();
 		</f>
 		</call>
 		noend();
+		//tlmp_error ("step15 end %s",w_session.c_str());
 	</f>
 	</call>
 }

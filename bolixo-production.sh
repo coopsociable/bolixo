@@ -49,11 +49,11 @@ check_loadfail(){
 	fi
 	WF1=`blackhole-control connectload | grep "$2 $3" | (read a b c d w f; echo $w)`
 	if [ "$W1" = 100 -a "$WF1" = 1 ] ; then
-		echo "   " $1 $2 normal
+		echo "   " $1 $2 $3 normal
 	elif [ "$W1" = 1 -a "$WF1" = 100 ] ; then
-		echo "   " $1 $2 backup
+		echo "   " $1 $2 $3 backup
 	elif [ "$W1" = 100 -a "$WF1" = 100 ] ; then
-		echo "   " $1 $2 split
+		echo "   " $1 $2 $3 split
 	else
 		echo "***" $1 $2 strange state
 	fi
