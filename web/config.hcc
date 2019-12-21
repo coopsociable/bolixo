@@ -35,10 +35,12 @@
 #include "../proto/bod_client.protoch"
 #include "w_var.h"
 #include "../helper.h"
+#include "steps.h"
 
 void index_doc (DOCUMENT_POINTER &pt, DOC_ID &jump, bool index);
 void index_doc (DOCUMENT_POINTER &pt, DOC_ID &jump);
 
+static W_SSTRING w_upload2("upload2");
 static void index_field (_F_form *c, bool newline,unsigned colspan, const char *title, W_SSTRING &var, unsigned size)
 {
 	if (newline) htmlout ("<tr>");
@@ -156,7 +158,45 @@ static void profile_set_notifies (_F_form &f, PARAM_STRING key)
 	/- <td align=center>
 	f.field_checkbox(w_notify_email,key,"");
 }
+/*
+	Upload a file to the public folder
+*/
+<mod>
+static void profile_upload (CONNECT_INFO &con, W_SSTRING &var, const char *fname, bool &fail)
+{
+	glocal con;
+	const char *tempname = tlmpweb_getfilename(var);
+	string filepath = string_f("/projects/%s/public/%s",userinfo.name.c_str(),fname);
+	glocal bool file_exist = util_entrytype(con,filepath) == ENTRY_FILE; 
 
+	<call sendfile>(filepath,tempname,fail);
+	<f start>
+		if (glocal.file_exist){
+			<call bod_client_modifyfile_bob>(glocal.con,w_session.c_str(),filepath,content,more,"");
+			<f ok>
+				glocal.sendfile.sethandle(handle);
+				glocal.sendfile.setresult(success,msg);
+			</f>
+			</call>
+		}else{
+			<call bod_client_addfile_bob>(glocal.con,w_session.c_str(),filepath,content,more,"");
+			<f ok>
+				glocal.sendfile.sethandle(handle);
+				glocal.sendfile.setresult(success,msg);
+			</f>
+			</call>
+		}
+	</f>
+	<f rest>
+		<call bod_client_appendfile>(glocal.con,w_session.c_str(),handle,content,more);
+		<f ok>
+			glocal.sendfile.setresult(success,msg);
+		</f>
+		</call>
+	</f>
+	</call>
+}
+</mod>
 <mod>
 void profile(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER> &docpointers)
 {
@@ -972,12 +1012,12 @@ void profile(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER>
 				field_list_item ("eng",MSG_U(I_ENGLISH,"English"));
 				field_list_item ("fr",MSG_U(I_FRENCH,"French"));
 				field_list_end();
-				/-#I_DATEFORMAT <tr><td>Date format<td>
+				/-#I_DATEFORMAT <tr><td>Date format<td colspan=2>
 				field_list(w_dateformat,"");
 				field_list_item ("0",MSG_U(I_ENGDATE,"Month DD YYYY HH:MMam/pm"));
 				field_list_item ("1",MSG_U(I_ISODATE,"YYYY/MM/DD HH:MM:SS"));
 				field_list_end();
-				/-#I_TIMEZONE <tr><td>Time zone<td>
+				/-#I_TIMEZONE <tr><td>Time zone<td colspan=2>
 				field_list(w_timezone,"");
 				<call loadfile>("/etc/timezones.lst",true);
 				<f oneline>
@@ -989,7 +1029,7 @@ void profile(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER>
 
 				/-#I_ENABLEPUB <tr><td>Enable public view<td>
 				field_checkbox (w_public_view,"");
-				/-#I_PUBFOLDER <tr><td>Public folder<td>
+				/-#I_PUBFOLDER <tr><td>Public folder<td colspan=2>
 				field_list (w_public_dir,"");
 				field_list_item ("",MSG_U(I_NONE,"--none--"));
 				field_list_item ("/",MSG_U(I_ROOTDIR,"root"));
@@ -1005,6 +1045,21 @@ void profile(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER>
 				</call>
 				/-#I_ACCEPTANON <tr><td>Accept anonymous messages<td>
 				field_checkbox (w_anon_messages,"");
+				/-#MINI_PHOTO <tr><td>Mini photo 40x40<td>
+				string dir = string_f("/projects/%s/public",userinfo.name.c_str());
+				unsigned mini_image_width = tlmpweb_ismobile() ? 60 : 40;
+				FILEINFO info;
+				util_entrytype (glocal.con,string_f("%s/mini-photo.jpg",dir.c_str()),info);
+				string img = util_mini_img(step_image,mini_image_width,dir,"mini-photo.jpg",info.modified);
+				htmlout (img);
+				/-<td>
+				field_file(w_upload);
+				/-#PHOTO <tr><td>Photo 100x100<td>
+				util_entrytype (glocal.con,string_f("%s/photo.jpg",dir.c_str()),info);
+				img = util_img(step_image,100,dir,"photo.jpg",info.modified);
+				htmlout (img);
+				/-&nbsp<td>
+				field_file(w_upload2);
 				/- </table>
 				}
 				{
@@ -1087,6 +1142,13 @@ void profile(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER>
 					}
 				</f>
 				</call>
+				if (strcmp(w_upload.c_str(),"")!=0){
+					profile_upload (glocal.con,w_upload,"mini-photo.jpg",glocal.fail);
+				}
+				if (strcmp(w_upload2.c_str(),"")!=0){
+					profile_upload (glocal.con,w_upload2,"photo.jpg",glocal.fail);
+				}
+
 				USERPUBLICINFO info;
 				info.publish = w_publish.getval();
 				info.bosite_visible = w_bosite.getval();
