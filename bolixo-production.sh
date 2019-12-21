@@ -291,6 +291,7 @@ elif [ "$1" = "test-system" ]; then # prod: Perform a test loop using the bolixo
 elif [ "$1" = "monitor" ] ; then # prod: Reports last run of the bolixo monitor
 	bo-mon-control status	
 elif [ "$1" = "resetmsg" ] ; then # prod: Reset alarm in bolixo monitor
+	$0 syslog-reset
 	bo-mon-control resetmsg
 elif [ "$1" = "restart" ] ; then # prod: restart some services (webs, internals, ...)
 	shift

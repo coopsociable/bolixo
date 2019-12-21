@@ -25,6 +25,7 @@ inline bool bolixo_isdeleted(ENTRY_TYPE type)
 	return type == ENTRY_DELETED;
 }
 
+// Do not forget to edit the table tbftype below and tbhttptype in web/util.hcc
 enum FILE_TYPE {
 	FILE_UNKNOWN,
 	FILE_TEXT,
@@ -38,6 +39,8 @@ enum FILE_TYPE {
 	FILE_DOC_CHECKER,
 	FILE_DOC_CHESS,
 	FILE_DOC_TICTACTO,
+	FILE_ZIP,
+	FILE_TGZ,
 };
 
 enum VIEWED_STATUS{
@@ -61,6 +64,9 @@ inline bool file_is_video (FILE_TYPE type){
 inline bool file_is_doc (FILE_TYPE type){
 	return is_any_of(type,FILE_DOC_SUDOKU,FILE_DOC_CHECKER,FILE_DOC_CHESS,FILE_DOC_TICTACTO);
 }
+inline bool file_is_data (FILE_TYPE type){
+	return is_any_of(type,FILE_ZIP,FILE_TGZ);
+}
 #ifdef DEFINE_TBTYPE
 static char tbtype[]={' ','_','D','F','M','C'};
 #endif
@@ -77,6 +83,9 @@ const char *tbftype[]={
 	"sud",	//FILE_DOC_SUDOKU
 	"chk",	//FILE_DOC_CHECK
 	"chs",	//FILE_DOC_CHESS
+	"tic",	//FILE_DOC_TICTACTO
+	"zip",	//FILE_ZIP
+	"tgz",	//FILE_TGZ
 };
 #else
 extern const char *tbftype[];

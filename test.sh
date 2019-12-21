@@ -1530,6 +1530,7 @@ elif [ "$1" = "lxc0-webssl" ]; then # prod:
 			-e /var/www/html/favicon.ico \
 			-e /var/www/html/robots.txt \
 			-e /var/www/html/private.png \
+			-e /var/www/html/zip.png \
 			-e /var/www/html/bolixo.png \
 			-e /var/www/html/background.png \
 			-e /var/www/html/new.png \
