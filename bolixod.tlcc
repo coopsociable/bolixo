@@ -352,6 +352,26 @@ static void bolixod_setphotos(USERPUBINFO &info)
 	tmp = string_f("%s/%s-mini-photo.jpg",dir.c_str(),info.user.c_str());
 	if (stat(tmp.c_str(),&st)!=-1) info.mini_photo = true;
 }
+static string bolixod_getmodified(struct stat64 &st)
+{
+	struct tm *t = localtime(&st.st_mtime);
+	return string_f("%04d/%02d/%02d %2d:%2d:%2d"
+		,t->tm_year+1900,t->tm_mon+1,t->tm_mday
+		,t->tm_hour,t->tm_min,t->tm_sec);
+}
+
+// Set the status of the photos (they exist or not)
+// The status is the modified time. If empty, then the file is missing
+static void bolixod_setphotos(USERPUBINFO_V2 &info)
+{
+	string dir = bolixod_getnodedir(info.nodename);
+	string tmp = string_f("%s/%s-photo.jpg",dir.c_str(),info.user.c_str());
+	struct stat64 st;
+	if (stat64(tmp.c_str(),&st)!=-1) info.photo_modified = bolixod_getmodified(st);
+	tmp = string_f("%s/%s-mini-photo.jpg",dir.c_str(),info.user.c_str());
+	if (stat64(tmp.c_str(),&st)!=-1) info.mini_photo_modified = bolixod_getmodified(st);
+}
+
 <mod>
 int main (int argc, char *argv[])
 {
@@ -666,7 +686,7 @@ int main (int argc, char *argv[])
 						rep_nodelogout(true,"");
 					}
 				</f>
-				<f publish>	// session user info
+				<f publish>	// session info
 					// &USERINFO fullname address1 address2 city zipcode state country email phone fax interest
 					glocal const USERINFO_receive *info = &info;
 					glocal const char *user = info.user;
@@ -739,6 +759,113 @@ int main (int argc, char *argv[])
 						rep_publish(false,glocal.msg);
 					}else{
 						rep_publish(true,"");
+					}
+				</f>
+				<f publish_v2>		// session info
+					// &USERINFO_V2 fullname address1 address2 city zipcode state country email phone fax interest
+					glocal info;
+					glocal const char *user = info.user;
+					glocal string msg;
+					glocal string nodename;
+					int state = bolixod_sessionstate(glocal.con_sess,session,2,glocal.nodename,glocal.msg);
+					if (state == 2){
+						<call sql_query>("select nodes.nodeid,userid from nodes"
+							" left join users on users.nodeid=nodes.nodeid and users.name='%s'"
+							" where nodes.nodename='%s'",glocal.user,glocal.nodename.c_str());
+						<f onerow>
+							if (row[1] == NULL){
+								if (sql_action("insert into users (nodeid,name,fullname,address1,address2,city,state,country"
+									" ,zipcode,email,phone,fax,bolixosite,website,interest)"
+									" value (%s,'%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s')"
+									,row[0],glocal.user
+									,glocal.info.fullname
+									,glocal.info.address1
+									,glocal.info.address2
+									,glocal.info.city
+									,glocal.info.state
+									,glocal.info.country
+									,glocal.info.zipcode
+									,glocal.info.email
+									,glocal.info.phone
+									,glocal.info.fax
+									,glocal.info.bolixosite
+									,glocal.info.website
+									,glocal.info.interest
+									)==-1){
+									glocal.msg = "Internal error, insert in table";
+								}
+							}else{
+								if (sql_action("update users"
+									" set fullname='%s',address1='%s',address2='%s',city='%s',state='%s',country='%s'"
+									" ,zipcode='%s',email='%s',phone='%s',fax='%s'"
+									" ,bolixosite='%s',website='%s',interest='%s'"
+									" where userid=%s"
+									,glocal.info.fullname
+									,glocal.info.address1
+									,glocal.info.address2
+									,glocal.info.city
+									,glocal.info.state
+									,glocal.info.country
+									,glocal.info.zipcode
+									,glocal.info.email
+									,glocal.info.phone
+									,glocal.info.fax
+									,glocal.info.bolixosite
+									,glocal.info.website
+									,glocal.info.interest
+									,row[1])==-1){
+									glocal.msg = "Internal error, updating table";
+								}
+							}
+							// Copy or remove the photos
+							string dir = bolixod_getnodedir(glocal.nodename);
+							mkdir (dir.c_str(),0755);
+							string tmp = string_f("%s/%s-photo.jpg",dir.c_str(),glocal.user);
+							if (glocal.info.remove_photo) unlink (tmp.c_str());
+							//bolixod_updatephoto (tmp,glocal.info->photo);
+							tmp = string_f("%s/%s-mini-photo.jpg",dir.c_str(),glocal.user);
+							if (glocal.info.remove_mini_photo) unlink (tmp.c_str());
+							//bolixod_updatephoto (tmp,glocal.info->mini_photo);
+						</f>
+						<f empty>
+							glocal.msg = "Node not found";
+						</f>
+						</call>
+					}
+					if (glocal.msg.size() > 0){
+						rep_publish(false,glocal.msg);
+					}else{
+						rep_publish(true,"");
+					}
+				</f>
+				<f publish_file>	// session user name content:o more:b append:b
+					glocal string msg;
+					glocal string nodename;
+					int state = bolixod_sessionstate(glocal.con_sess,session,2,glocal.nodename,glocal.msg);
+					if (state == 2 && is_any_of(name,"photo.jpg","mini-photo.jpg")){
+						string dir = bolixod_getnodedir(glocal.nodename);
+						mkdir (dir.c_str(),0755);
+						string path = string_f("%s/%s-%s",dir.c_str(),user,name);
+						string path_new = path + "-new";
+						FILE *fout = fopen (path_new.c_str(),append ? "a" : "w");
+						if (fout == nullptr){
+							tlmp_error ("publish_file: can't open file %s (%s)",path_new.c_str(),strerror(errno));
+							glocal.msg = "Can't open photo file";
+						}else{
+							fwrite (content.getbuffer(),1,content.getsize(),fout);
+							fclose (fout);
+							if (!more){
+								if (rename (path_new.c_str(),path.c_str())==-1){
+									tlmp_error ("publish_file rename failed: %s",strerror(errno));
+									glocal.msg = "internal error, renaming";
+								}
+							}
+						} 
+					}
+					if (glocal.msg.size() > 0){
+						rep_publish_file (false,glocal.msg);
+					}else{
+						rep_publish_file (true,"");
 					}
 				</f>
 				<f remove> // session user
@@ -832,6 +959,74 @@ int main (int argc, char *argv[])
 						rep_pub_search (true,"",glocal.users);
 					}
 				</f>
+				<f pub_search_v2>	// filter:U{FILTER} offset:u nb:u = success:b msg users:v
+					glocal vector<USERPUBINFO_V2> users;
+					NSQL_REQ query;
+					query.append ("select name,fullname"
+							",address1,address2,city,state,country"
+							",zipcode,email,phone,fax,bolixosite,website,interest,nodename"
+							" from users join nodes on nodes.nodeid=users.nodeid"
+							" where ");
+					auto start_size = query.size();
+					static const char *sepand = " and ";
+					const char *sep = "";
+					if (filter.user[0] != '\0'){
+						query.appendf ("name like '%%%s%%'",filter.user);
+						sep = sepand;
+					}
+					if (filter.fullname[0] != '\0'){
+						query.appendf("%sfullname like '%%%s%%'",sep,filter.fullname);
+						sep = sepand;
+					}
+					if (filter.address[0] != '\0'){
+						query.appendf("%s(address1 like '%%%s%%' or address2 like '%%%s%%')"
+							,sep,filter.address,filter.address);
+						sep = sepand;
+					}
+					if (filter.city[0] != '\0'){
+						query.appendf("%scity like '%%%s%%'",sep,filter.city);
+						sep = sepand;
+					}
+					if (filter.state[0] != '\0'){
+						query.appendf("%sstate like '%%%s%%'",sep,filter.state);
+						sep = sepand;
+					}
+					if (filter.country[0] != '\0'){
+						query.appendf("%scountry like '%%%s%%'",sep,filter.country);
+						sep = sepand;
+					}
+					if (filter.interest[0] != '\0'){
+						query.appendf("%sinterest like '%%%s%%'",sep,filter.interest);
+					}
+					if (query.size() == start_size){
+						rep_pub_search_v2 (false,"No filter specified",glocal.users);
+					}else{
+						query.appendf (" order by name,nodename limit %u,%u",offset,nb);
+						<call sql_query>(query);
+						<f onerow>
+							USERPUBINFO_V2 info;
+							info.user = row[0];
+							info.fullname = row[1];
+							info.address1 = row[2];
+							info.address2 = row[3];
+							info.city = row[4];
+							info.state = row[5];
+							info.country = row[6];
+							info.zipcode = row[7];
+							info.email = row[8];
+							info.phone = row[9];
+							info.fax = row[10];
+							info.bolixosite = row[11];
+							info.website = row[12];
+							info.interest = row[13];
+							info.nodename = row[14];
+							bolixod_setphotos (info);
+							glocal.users.push_back(info);
+						</f>
+						</call>
+						rep_pub_search_v2 (true,"",glocal.users);
+					}
+				</f>
 				<f pub_list>	// prefix offset:u nb:u = success:b msg users:v
 					glocal vector<USERPUBINFO> users;
 					<call sql_query>("select users.name,fullname"
@@ -862,6 +1057,60 @@ int main (int argc, char *argv[])
 					</f>
 					</call>
 					rep_pub_list (true,"",glocal.users);
+				</f>
+				<f readfile_v2> // node user file offset:u = success:b msg modified content:o more:b
+					bool more = false;
+					string msg;
+					BOB_TYPE content;
+					string modified;
+					unsigned size = 0;
+					if (bolixod_validnode(node)==-1){
+						msg = "Invalid node name";
+					}else if (bolixod_validfile(user)==-1){
+						msg = "Invalid user";
+					}else if (bolixod_validfile(user)==-1){
+						msg = "Invalid file";
+					}else{
+						string dir = bolixod_getnodedir(node);
+						string path = string_f("%s/%s-%s",dir.c_str(),user,file);
+						FILE *fin = fopen(path.c_str(),"r");
+						struct stat64 st;
+						if (fin == NULL){
+							msg = "Internal error opening file";
+							tlmp_error ("readfile_v2: Can't open file %s (%s)\n",path.c_str(),strerror(errno));
+						}else if (fstat64(fileno(fin),&st)==-1){
+							msg = "Internal error getting file stats";
+							tlmp_error ("Can't stat file %s (%s)\n",path.c_str(),strerror(errno));
+						}else if (offset > st.st_size){
+							msg = "Offset out of range";
+							tlmp_error ("readfile_v2: offset out of range for file %s",path.c_str());
+						}else if (offset != 0 && fseek (fin,offset,SEEK_SET)==-1){
+							msg = "Can't seek";
+							tlmp_error ("readfile_v2: Can't seek to position %u for file %s (%s)\n",offset,path.c_str(),strerror(errno));
+						}else{
+							size = st.st_size;
+							char buf[REQ_CONTENT_CHUNK];
+							int len = fread(buf,1,sizeof(buf),fin);
+							if (len > 0){
+								struct tm *t = localtime(&st.st_mtime);
+								modified = string_f("%04d/%02d/%02d %2d:%2d:%2d"
+									,t->tm_year+1900,t->tm_mon+1,t->tm_mday
+									,t->tm_hour,t->tm_min,t->tm_sec);
+								content.setbuffer(buf,len,true);
+								more = st.st_size > offset + len;
+							}else{
+								msg = "Internal error reading file";
+								tlmp_error ("Error reading file %s (%s)\n",path.c_str(),strerror(errno));
+							}
+							fclose (fin);
+						}
+					} 
+					if (msg.size() > 0){
+						content.clear();
+						rep_readfile_v2(false,msg,"",content,false,0);
+					}else{
+						rep_readfile_v2(true,"",modified,content,more,size);
+					}
 				</f>
 				<f readfile> // node user file = success:b msg modified content:o
 					string msg;

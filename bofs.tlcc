@@ -3423,20 +3423,46 @@ static void bofs_bolixoapi_logout(CONNECT_HTTP_INFO &hcon, string &session)
 	</f>
 	</call>
 }
-static void bofs_loadimage (BOB_TYPE &img, const char *fname)
+static string dirserver("https://bolixo.org");
+/*
+	Send one image file to the bolixod server using http
+*/
+<mod>
+static void bofs_sendimage (CONNECT_HTTP_INFO &hcon, PARAM_STRING session, PARAM_STRING user, PARAM_STRING name, PARAM_STRING fname)
 {
-	img.clear();
-	FILE *fin = fopen (fname,"r");
-	if (fin != NULL){
-		char buf[100000];
-		int n = fread (buf,1,sizeof(buf),fin);
-		if (n>0){
-			img.setbuffer(buf,n,true);
+	FILE *fin = fopen (fname.ptr,"r");
+	if (fin == NULL){
+		tlmp_error (MSG_R(E_CANTOPEN),fname.ptr,strerror(errno));
+	}else{
+		struct stat64 st;
+		if (fstat64(fileno(fin),&st)==-1){
+			tlmp_error ("Can't stat file %s (%s)\n",fname.ptr,strerror(errno));
+		}else{
+			size_t size = st.st_size;
+			bool first = true;
+			while (size > 0){
+				char buf[REQ_CONTENT_CHUNK];
+				int n = fread (buf,1,sizeof(buf),fin);
+				if (n>0){
+					size -= n;
+					BOB_TYPE img;
+					img.setbuffer(buf,n,true);
+					<call bolixoapi_publish_file>(hcon,session,user,name,img,size > 0,!first);
+					<f ok>
+						if (!success) tlmp_error ("fs_sendimage publish_file internal_error=%d %s",internal_error,msg);
+					</f>
+					</call>
+					first = false;
+				}else{
+					tlmp_error (MSG_R(E_SENDIMAGE),fname.ptr,strerror(errno));
+					break;
+				}
+			}
 		}
 		fclose (fin);
 	}
 }
-static string dirserver("https://bolixo.org");
+</mod>
 <mod>
 static int bofs_bolixoapi (CONTEXT &ctx, int argc, char *argv[])
 {
@@ -3571,7 +3597,7 @@ static int bofs_bolixoapi (CONTEXT &ctx, int argc, char *argv[])
 			const char *user = argv[2];
 			string session;
 			if (bofs_bolixoapi_login (glocal.ctx->hcon,glocal.ctx->con,nodename,session)!=-1){
-				USERINFO info;
+				USERINFO_V2 info;
 				info.user = user;
 				if (glocal.filldummy){
 					info.fullname = string_f("full %s",user);
@@ -3589,8 +3615,8 @@ static int bofs_bolixoapi (CONTEXT &ctx, int argc, char *argv[])
 					for (unsigned i=0; i<5; i++){
 						info.interest += string_f("%s is interested in various topics such as this one<br>\n",user);
 					}
-					bofs_loadimage (info.photo,"/tmp/photo.jpg");
-					bofs_loadimage (info.mini_photo,"/tmp/mini-photo.jpg");
+					glocal.photo = "/tmp/photo.jpg";
+					glocal.mini_photo = "/tmp/mini-photo.jpg";
 				}else{
 					info.fullname = glocal.fullname;
 					info.address1 = glocal.address1;
@@ -3605,10 +3631,10 @@ static int bofs_bolixoapi (CONTEXT &ctx, int argc, char *argv[])
 					info.bolixosite = glocal.bolixosite;
 					info.website = glocal.website;
 					info.interest = glocal.interest;
-					if (glocal.photo != nullptr) bofs_loadimage (info.photo,glocal.photo);
-					if (glocal.mini_photo != nullptr) bofs_loadimage (info.mini_photo,glocal.mini_photo);
 				}
-				<call bolixoapi_publish> (glocal.ctx->hcon,session,info);
+				info.remove_photo = glocal.photo == nullptr;
+				info.remove_mini_photo = glocal.mini_photo == nullptr;
+				<call bolixoapi_publish_v2> (glocal.ctx->hcon,session,info);
 				<f ok>
 					debug_printf ("publish: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
 					if (!success){
@@ -3617,6 +3643,12 @@ static int bofs_bolixoapi (CONTEXT &ctx, int argc, char *argv[])
 					}
 				</f>
 				</call>
+				if (glocal.photo != nullptr){
+					bofs_sendimage (glocal.ctx->hcon,session.c_str(),user,"photo.jpg",glocal.photo);
+				}
+				if (glocal.mini_photo != nullptr){
+					bofs_sendimage (glocal.ctx->hcon,session.c_str(),user,"mini-photo.jpg",glocal.mini_photo);
+				}
 				bofs_bolixoapi_logout (glocal.ctx->hcon,session);
 			}
 		}else if (strcmp(arg,"remove")==0 && argc==3){

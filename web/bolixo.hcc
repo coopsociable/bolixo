@@ -376,7 +376,7 @@ static void webmain_real()
 			return 0;
 		</f>
 		</call>
-		<call bolixod_client_pub_search>(glocal.con,filter,w_offset,10);
+		<call bolixod_client_pub_search_v2>(glocal.con,filter,w_offset,10);
 		<f ok>
 			bool is_mobile = tlmpweb_ismobile();
 			if (!success){
@@ -428,8 +428,16 @@ static void webmain_real()
 						}
 						DIV d("col0"); d.margins(5,5).borderradius(5).border(1,"gray").print();
 						htmlprintf ("%s@%s<br>%s<br>\n",u.user,nodename,u.fullname);
-						if (u.photo) htmlprintf ("<img width=100 src=%s?webstep=2&user=%s&node=%s&file=photo.jpg>\n",tlmpweb_curpage(),u.user,u.nodename);
-						if (u.mini_photo) htmlprintf ("<img width=40 src=%s?webstep=2&user=%s&node=%s&file=mini-photo.jpg>\n",tlmpweb_curpage(),u.user,u.nodename);
+						if (u.photo_modified[0] != '\0'){
+							string tmp = util_flipspaces(u.photo_modified);
+							htmlprintf ("<img width=100 src=%s?webstep=2&user=%s&node=%s&file=photo.jpg&mod=%s>\n"
+								,tlmpweb_curpage(),u.user,u.nodename,tmp.c_str());
+						}
+						if (u.mini_photo_modified[0] != '\0'){
+							string tmp = util_flipspaces(u.mini_photo_modified);
+							htmlprintf ("<img width=40 src=%s?webstep=2&user=%s&node=%s&file=mini-photo.jpg&mod=%s>\n"
+								,tlmpweb_curpage(),u.user,u.nodename,tmp.c_str());
+						}
 					}
 					if (f(u.address1)  || f(u.address2) || f(u.city) || f(u.state) || f(u.country) || f(u.zipcode)){
 						DIV d("col1"); d.bg("lightblue").margins(2,2).paddings(4,4).borderradius(5).border(1,"gray").print();
@@ -473,21 +481,33 @@ static void webmain_real()
 		// /- </center>
 	</f>
 	<f step2>
-		<call bolixod_client_readfile>(glocal.con,w_node.c_str(),w_user.c_str(),w_file.c_str());
-		<f ok>
-			if (!success){
-				tlmpweb_title ("Error");
-				htmlprintf ("msg=%s<br>\n",msg);
-				htmlprintf ("node=%s<br>\n",w_node.c_str());
-				htmlprintf ("user=%s<br>\n",w_user.c_str());
-				htmlprintf ("file=%s<br>\n",w_file.c_str());
-			}else{
-				tlmpweb_setmodified(modified);
-				tlmpweb_doctype ("image/jpeg",content.getsize());
-				htmlwrite (content.getbuffer(),content.getsize());
-			}
-		</f>
-		</call>
+		glocal unsigned offset = 0;
+		glocal bool done = false;
+		do{
+			<call bolixod_client_readfile_v2>(glocal.con,w_node.c_str(),w_user.c_str(),w_file.c_str(),glocal.offset);
+			<f ok>
+				if (!success){
+					tlmpweb_title ("Error");
+					htmlprintf ("msg=%s<br>\n",msg);
+					htmlprintf ("node=%s<br>\n",w_node.c_str());
+					htmlprintf ("user=%s<br>\n",w_user.c_str());
+					htmlprintf ("file=%s<br>\n",w_file.c_str());
+					glocal.done = true;
+				}else{
+					if (glocal.offset == 0){
+						tlmpweb_setmodified(modified);
+						tlmpweb_doctype ("image/jpeg",size);
+					}
+					htmlwrite (content.getbuffer(),content.getsize());
+					if (more){
+						glocal.offset += content.getsize();
+					}else{
+						glocal.done = true;
+					}
+				}
+			</f>
+			</call>
+		}while (!glocal.done);
 		noend();
 	</f>
 	<f step3> // login
