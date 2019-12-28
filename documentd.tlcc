@@ -195,11 +195,11 @@ public:
 		return last_activity;
 	}
 	virtual const char *getclass()=0;
-	virtual void save(DOC_WRITER &writer)=0;
+	virtual void save(DOC_WRITER &writer, bool save_session_info)=0;
 	virtual void load(DOC_READER &reader, string &msg)=0;
 	virtual void resetgame() = 0;
 	virtual void testwin(vector<VARVAL> &res) = 0;
-	virtual void exec (const char *var, const char *val, const char *username, bool maywrite, unsigned width, unsigned height, vector<VARVAL> &res) = 0;
+	virtual void exec (const char *var, const char *val, const char *session, const char *username, bool maywrite, unsigned width, unsigned height, vector<VARVAL> &res) = 0;
 	virtual ~GAME(){};
 };
 
@@ -210,7 +210,7 @@ class TICTACTO: public GAME{
 	bool x_is_player;
 	unsigned char grid[3][3];
 public:
-	void save(DOC_WRITER &w){
+	void save(DOC_WRITER &w, bool){
 		documentd_tictacto_player(&w,x_is_player);
 		unsigned row=0;
 		for (auto &g:grid){
@@ -323,7 +323,7 @@ public:
 		lines += string_f("<circle stroke='black' stroke-width='2' fill='none' cx='%u' cy='%u' r='%u'/>\n"
 			,x+len/2,y+len/2,len/2);
 	}
-	void exec (const char *var, const char *val, const char *username, bool maywrite, unsigned win_width, unsigned win_height, vector<VARVAL> &res){
+	void exec (const char *var, const char *val, const char *session, const char *username, bool maywrite, unsigned win_width, unsigned win_height, vector<VARVAL> &res){
 		setactivity();
 		if (strcmp(var,"place")==0 && maywrite){
 			bool ok = false;
@@ -432,7 +432,7 @@ struct SUDOKU_CELL{
 class SUDOKU: public GAME{
 	SUDOKU_CELL grid[9][9];	
 	unsigned line,column;	// Currently selected 3x3 area
-	unsigned seldig;	// Selected digit used when setting a value
+	map<string,unsigned> seldigs; // Selected digit used when setting a value
 public:
 	const char *getclass(){
 		return "SUDO";
@@ -440,16 +440,20 @@ public:
 	SUDOKU(){
 		resetgame();
 	}
-	void save(DOC_WRITER &fout);
+	void save(DOC_WRITER &fout, bool save_session_info);
 	void load(DOC_READER &r, string &msg);
 	void resetgame();
 	void testwin(vector<VARVAL> &res);
-	void exec (const char *var, const char *val, const char *username, bool maywrite, unsigned width, unsigned height, vector<VARVAL> &res);
+	void exec (const char *var, const char *val, const char *session, const char *username, bool maywrite, unsigned width, unsigned height, vector<VARVAL> &res);
 };
 
-void SUDOKU::save (DOC_WRITER &w)
+void SUDOKU::save (DOC_WRITER &w, bool save_session_info)
 {
-	documentd_sudoku_select(&w,seldig);
+	if (save_session_info){
+		for (auto &s:seldigs){
+			documentd_sudoku_select(&w,s.first,s.second);
+		}
+	}
 	for (auto &g:grid){
 		for (auto &gg:g) documentd_sudoku_cell(&w,gg.visible,gg.value,gg.user_value);
 	}
@@ -461,7 +465,7 @@ void SUDOKU::load (DOC_READER &r, string &msg)
 	glocal msg;
 	glocal unsigned x=0;
 	glocal unsigned y=0;
-	glocal seldig;
+	glocal seldigs;
 	resetgame();
 	<call documentd_sudoku>(&r);
 	<f cell>
@@ -478,7 +482,7 @@ void SUDOKU::load (DOC_READER &r, string &msg)
 		}
 	</f>
 	<f select>
-		glocal.seldig = value;
+		glocal.seldigs[session] = value;
 	</f>
 	<f invalid>
 		glocal.msg = "Invalid format for sudoku file";
@@ -488,7 +492,7 @@ void SUDOKU::load (DOC_READER &r, string &msg)
 void SUDOKU::resetgame()
 {
 	line = column = 0;
-	seldig = 0;
+	seldigs.clear();
 	for (auto &g:grid){
 		for (auto &gg:g){
 			gg.reset();
@@ -511,7 +515,7 @@ void SUDOKU::testwin(vector<VARVAL> &res)
 	}
 }
 <mod>
-void SUDOKU::exec (const char *var, const char *val, const char *username, bool maywrite, unsigned win_width, unsigned win_height, vector<VARVAL> &res)
+void SUDOKU::exec (const char *var, const char *val, const char *session, const char *username, bool maywrite, unsigned win_width, unsigned win_height, vector<VARVAL> &res)
 {
 	setactivity();
 	if (strcmp(var,"place")==0 && maywrite){
@@ -524,7 +528,7 @@ void SUDOKU::exec (const char *var, const char *val, const char *username, bool 
 			}else{
 				// We can set a value. If it is wrong, it will show in red.
 				// If you click over again, it will erase itself.
-				unsigned newval = seldig+1;
+				unsigned newval = seldigs[session]+1;
 				if (gg.user_value == 0){
 					gg.user_value = newval;
 				}else if (gg.user_value == newval){
@@ -538,7 +542,7 @@ void SUDOKU::exec (const char *var, const char *val, const char *username, bool 
 	}else if (strcmp(var,"select")==0){
 		unsigned sel = atoi(val);
 		if (sel > 0 && sel < 10){
-			seldig = sel-1;
+			seldigs[session] = sel-1;
 			setmodified(username);
 		}
 	}else if (strcmp(var,"print")==0){
@@ -645,6 +649,7 @@ void SUDOKU::exec (const char *var, const char *val, const char *username, bool 
 			lines += "<div>\n";
 			lines += "<a href='#' onclick=gameselect(event)>\n";
 			lines += string_f("<svg id='gamesudosel' width='%upx' height='%upx' viewbox='0 0 30 270'>\n",w9,grid_height);
+			unsigned seldig = seldigs[session];
 			for (unsigned i=0; i<9; i++){
 				lines += string_f("<path stroke='black' stroke-width='2' fill='%s' d='M1,%u H29 v29 H1 Z'/>\n",i==seldig ? "pink" : "white"
 					,i*30);
@@ -736,14 +741,14 @@ public:
 	const char *getclass(){
 		return "WORD";
 	}
-	void save(DOC_WRITER &w);
+	void save(DOC_WRITER &w, bool save_session_info);
 	void load(DOC_READER &r, string &msg);
 	void resetgame();
 	void testwin(vector<VARVAL> &res);
-	void exec (const char *var, const char *val, const char *username, bool maywrite, unsigned width, unsigned height, vector<VARVAL> &res);
+	void exec (const char *var, const char *val, const char *session, const char *username, bool maywrite, unsigned width, unsigned height, vector<VARVAL> &res);
 };
 
-void WORDPROC::save(DOC_WRITER &w)
+void WORDPROC::save(DOC_WRITER &w, bool save_session_info)
 {
 }
 void WORDPROC::load(DOC_READER &r, string &msg)
@@ -756,7 +761,7 @@ void WORDPROC::resetgame()
 void WORDPROC::testwin(vector<VARVAL> &res)
 {
 }
-void WORDPROC::exec (const char *var, const char *val, const char *username, bool maywrite, unsigned width, unsigned height, vector<VARVAL> &res)
+void WORDPROC::exec (const char *var, const char *val, const char *session, const char *username, bool maywrite, unsigned width, unsigned height, vector<VARVAL> &res)
 {
 }
 class CHECKERS: public GAME{
@@ -765,14 +770,14 @@ public:
 	const char *getclass(){
 		return "CHEC";
 	}
-	void save(DOC_WRITER &w);
+	void save(DOC_WRITER &w, bool save_session_info);
 	void load(DOC_READER &r, string &msg);
 	void resetgame();
 	void testwin(vector<VARVAL> &res);
-	void exec (const char *var, const char *val, const char *username, bool maywrite, unsigned width, unsigned height, vector<VARVAL> &res);
+	void exec (const char *var, const char *val, const char *session, const char *username, bool maywrite, unsigned width, unsigned height, vector<VARVAL> &res);
 };
 
-void CHECKERS::save(DOC_WRITER &w)
+void CHECKERS::save(DOC_WRITER &w, bool save_session_info)
 {
 	#if 0
 	for (auto &g:grid){
@@ -826,7 +831,7 @@ static const char *cnv (const char *val, unsigned &posx, unsigned &posy)
 	return val+2;
 }
 		
-void CHECKERS::exec (const char *var, const char *val, const char *username, bool maywrite, unsigned width, unsigned height, vector<VARVAL> &res)
+void CHECKERS::exec (const char *var, const char *val, const char *session, const char *username, bool maywrite, unsigned width, unsigned height, vector<VARVAL> &res)
 {
 	if (strcmp(var,"print")==0){
 		string lines;
@@ -905,6 +910,7 @@ static bool documentd_playstep (
 	map<string,GAME_P> &games,
 	const char *gameid,
 	const vector<VARVAL_receive> &steps,
+	const char *session,
 	const char *username,
 	bool maywrite,
 	unsigned width,
@@ -919,7 +925,7 @@ static bool documentd_playstep (
 	if (g != games.end()){
 		success = true;
 		for (auto &v:steps){
-			g->second->exec(v.var,v.val,username,maywrite,width,height,res);
+			g->second->exec(v.var,v.val,session,username,maywrite,width,height,res);
 		}
 		g->second->testwin(res);
 	}else{
@@ -1083,7 +1089,7 @@ int main (int argc, char *argv[])
 								,glocal.game->get_last_activity()
 								,glocal.game->getclass());
 							DOC_WRITER doc(fout);
-							glocal.game->save(doc);
+							glocal.game->save(doc,true);
 							return 0;
 						</f>
 						</call>
@@ -1127,7 +1133,7 @@ int main (int argc, char *argv[])
 					vector<VARVAL> res;
 					string msg;
 					bool unknown;
-					bool success = documentd_playstep (glocal.games,gameid,steps,"admin",true,1000,1000,res,msg,unknown);
+					bool success = documentd_playstep (glocal.games,gameid,steps,"sessadmin","admin",true,1000,1000,res,msg,unknown);
 					rep_playstep(success,unknown,msg,res);
 				</f>
 				<f save> // gameid = success:b msg
@@ -1141,7 +1147,7 @@ int main (int argc, char *argv[])
 						<f dowrite>
 							fprintf (fout,"boBO%s\n",glocal.game->getclass());
 							DOC_WRITER doc(fout);
-							glocal.game->save(doc);
+							glocal.game->save(doc,true);
 							return 0;
 						</f>
 						</call>
@@ -1203,7 +1209,7 @@ int main (int argc, char *argv[])
 					string msg;
 					translat_selectlang(lang);
 					bool unknown;
-					bool success = documentd_playstep (glocal.games,gameid,steps,username,maywrite,width,height,res,msg,unknown);
+					bool success = documentd_playstep (glocal.games,gameid,steps,session,username,maywrite,width,height,res,msg,unknown);
 					rep_playstep(success,unknown,msg,res);
 				</f>
 				<f save>
@@ -1214,7 +1220,7 @@ int main (int argc, char *argv[])
 						GAME_P game = g->second;
 						DOC_WRITER doc;
 						doc.write (string_f("boBO%s\n",game->getclass()));
-						game->save(doc);
+						game->save(doc,false);
 						content = doc.getcontent();
 						game->resetmodified();
 					}else{
