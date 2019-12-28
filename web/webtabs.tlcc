@@ -150,13 +150,13 @@ static unsigned webtab_aref (PARAM_STRING id_suffix, const char *title, int tab,
 void _F_webtabs::documents()
 {
 }
-void _F_webtabs::doctype2(const char *id, const char *formid, const char *state, const char *title)
+void _F_webtabs::doctype2(const char *id, const char *formid, const char *state, const char *title, unsigned width, unsigned height)
 {
 }
-void _F_webtabs::doctype3(const char *id, const char *formid, const char *state)
+void _F_webtabs::doctype3(const char *id, const char *formid, const char *state, unsigned width, unsigned height)
 {
 }
-void _F_webtabs::doctype4(const char *id, const char *formid, const char *state)
+void _F_webtabs::doctype4(const char *id, const char *formid, const char *state, unsigned width, unsigned height)
 {
 }
 void _F_webtabs::init()
@@ -384,6 +384,10 @@ static void webtabs(_F_webtabs &c,
 		typeorder={3,2,1,0};
 	}
 	bool mobile_view = is_mobile || tlmpweb_screenwidth() < 900;
+	struct TABSPEC{
+		unsigned width=0,height=0;
+	};
+	TABSPEC tbspec[5];
 	while (typeorder.size() > 0){
 		FORM_HIDDEN t(w_subtab);
 		const unsigned type = typeorder.front();
@@ -422,16 +426,21 @@ static void webtabs(_F_webtabs &c,
 				}
 				c.curtab = ptt;
 				const char *state = ptt->state.c_str();
+				TABSPEC &spec = tbspec[type];
+				WEBID tabname(string_f("%s-tab%u",name,type));
+				tlmpweb_gettablegeometry(tabname,spec.width,spec.height);
+				if (spec.width == 0) spec.width = 2000;	// No need to correct TAB selection since
+									// we do not know the exact TAB width
 				if (type == WEBTAB_TYPE1){
-					c.docmain(id,formid,state);
+					c.docmain(id,formid,state,spec.width,spec.height);
 				}else if (type == WEBTAB_TYPE2){
-					c.doctype2(id,formid,state,ptt->title.c_str());
+					c.doctype2(id,formid,state,ptt->title.c_str(),spec.width,spec.height);
 				}else if (type == WEBTAB_TYPE3){
-					c.doctype3(id,formid,state);
+					c.doctype3(id,formid,state,spec.width,spec.height);
 				}else if (type == WEBTAB_TYPE4){
-					c.doctype4(id,formid,state);
+					c.doctype4(id,formid,state,spec.width,spec.height);
 				}else{
-					c.docmain(id,id,state);
+					c.docmain(id,id,state,spec.width,spec.height);
 				}
 				if (!draw_ok) break;
 				if (!c.redo) break;
@@ -505,13 +514,9 @@ static void webtabs(_F_webtabs &c,
 			}
 			//tlmp_error ("type=%u sz=%u subtab=%u\n",type,sz,w_subtab.getval());
 			if (sz != 0){
-				glocal unsigned tab_width = 0;
+				glocal unsigned tab_width = tbspec[type].width;
 				DIV dc; dc.flexfixe().w(sz).align("stretch").bg("white").print();
 				WEBID tabname(string_f("%s-tab%u",name,type));
-				unsigned tab_height=0,scroll_top,scroll_left;
-				tlmpweb_gettablegeometry(tabname,tab_height,glocal.tab_width,scroll_top,scroll_left);
-				if (glocal.tab_width == 0) glocal.tab_width = 2000;	// No need to correct TAB selection since
-											// we do not know the exact TAB width
 				DIV cc("tabs",tabname.c_str()); cc.dispflex().flowcol().bg(mcolor);
 				if (putborder){
 					cc.borderleft(1,"black");

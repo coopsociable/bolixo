@@ -199,7 +199,7 @@ public:
 	virtual void load(DOC_READER &reader, string &msg)=0;
 	virtual void resetgame() = 0;
 	virtual void testwin(vector<VARVAL> &res) = 0;
-	virtual void exec (const char *var, const char *val, const char *username, bool maywrite, vector<VARVAL> &res) = 0;
+	virtual void exec (const char *var, const char *val, const char *username, bool maywrite, unsigned width, unsigned height, vector<VARVAL> &res) = 0;
 	virtual ~GAME(){};
 };
 
@@ -323,7 +323,7 @@ public:
 		lines += string_f("<circle stroke='black' stroke-width='2' fill='none' cx='%u' cy='%u' r='%u'/>\n"
 			,x+len/2,y+len/2,len/2);
 	}
-	void exec (const char *var, const char *val, const char *username, bool maywrite, vector<VARVAL> &res){
+	void exec (const char *var, const char *val, const char *username, bool maywrite, unsigned win_width, unsigned win_height, vector<VARVAL> &res){
 		setactivity();
 		if (strcmp(var,"place")==0 && maywrite){
 			bool ok = false;
@@ -357,10 +357,12 @@ public:
 			setmodified(username);
 		}else if (strcmp(var,"print")==0){
 			string lines;
-			unsigned width = 500 - 500 % 3;
-			unsigned height = 500 - 500 % 3;
-			unsigned h3 = height/3;
-			unsigned w3 = width/3;
+			unsigned width = win_width - win_width % 4;
+			//unsigned height = win_height - win_height % 3;
+			unsigned w3 = width/4;
+			unsigned h3 = w3;
+			unsigned grid_width = w3*3;
+			unsigned grid_height = grid_width;
 			
 			lines += "<script>\n";
 			lines += "function gameplace(event){\n";
@@ -385,13 +387,13 @@ public:
 			lines += "</svg>\n";
 			lines += "&nbsp;&nbsp;&nbsp;";
 			lines += "<a href='#' onclick=gameplace(event)>\n";
-			lines += string_f("<svg id='gametictgrid' width='%upx' height='%upx' viewbox='0 0 %u %u'>\n",width,height,width,height);
+			lines += string_f("<svg id='gametictgrid' width='%upx' height='%upx' viewbox='0 0 %u %u'>\n",grid_width,grid_height,grid_width,grid_height);
 			// Draw the board
 			for (unsigned i=1; i<3; i++){
 				lines += string_f("<path stroke='black' stroke-width='2' fill='black' d='M%u,1 L%u %u'/>\n"
-					,i*w3,i*w3,height);
+					,i*w3,i*w3,grid_height);
 				lines += string_f("<path stroke='black' stroke-width='2' fill='black' d='M1,%u L%u %u'/>\n"
-					,i*h3,width,i*h3);
+					,i*h3,grid_width,i*h3);
 
 			}
 			// Draw the content
@@ -442,7 +444,7 @@ public:
 	void load(DOC_READER &r, string &msg);
 	void resetgame();
 	void testwin(vector<VARVAL> &res);
-	void exec (const char *var, const char *val, const char *username, bool maywrite, vector<VARVAL> &res);
+	void exec (const char *var, const char *val, const char *username, bool maywrite, unsigned width, unsigned height, vector<VARVAL> &res);
 };
 
 void SUDOKU::save (DOC_WRITER &w)
@@ -509,7 +511,7 @@ void SUDOKU::testwin(vector<VARVAL> &res)
 	}
 }
 <mod>
-void SUDOKU::exec (const char *var, const char *val, const char *username, bool maywrite, vector<VARVAL> &res)
+void SUDOKU::exec (const char *var, const char *val, const char *username, bool maywrite, unsigned win_width, unsigned win_height, vector<VARVAL> &res)
 {
 	setactivity();
 	if (strcmp(var,"place")==0 && maywrite){
@@ -607,10 +609,12 @@ void SUDOKU::exec (const char *var, const char *val, const char *username, bool 
 			lines += dashes;
 			lines += normal;
 		}else{
-			unsigned width = 500 - 500 % 9;
-			unsigned height = 500 - 500 % 9;
-			unsigned h9 = height/9;
-			unsigned w9 = width/9;
+			// The layout is a square, constrained by the width
+			unsigned width = win_width - win_width % 11;
+			unsigned w9 = width/11;
+			unsigned h9 = w9; 
+			unsigned grid_width = w9*9;
+			unsigned grid_height = grid_width;
 			
 			lines += "<script>\n";
 			lines += "function gameselect(event){\n";
@@ -620,7 +624,7 @@ void SUDOKU::exec (const char *var, const char *val, const char *username, bool 
 			//lines += "\tconsole.log('target='+rect.height);\n";
 			//lines += "\tconsole.log('left='+rect.left+' top='+rect.top+' bottom='+rect.bottom+' clientY='+event.clientY);\n";
 			//lines += "\tconsole.log('sel='+((event.clientY-rect.top)/50+1));\n";
-			lines += "\tgameaction('select='+Math.floor((event.clientY-rect.top)/50+1));\n";
+			lines += string_f("\tgameaction('select='+Math.floor((event.clientY-rect.top)/%u+1));\n",h9);
 			lines += "}\n";
 			lines += "function gameplace(event){\n";
 			lines += "\tvar elm = document.getElementById('gamesudogrid');\n";
@@ -640,7 +644,7 @@ void SUDOKU::exec (const char *var, const char *val, const char *username, bool 
 			lines += "<p>";
 			lines += "<div>\n";
 			lines += "<a href='#' onclick=gameselect(event)>\n";
-			lines += "<svg id='gamesudosel' width='50px' height='450px' viewbox='0 0 30 270'>\n";
+			lines += string_f("<svg id='gamesudosel' width='%upx' height='%upx' viewbox='0 0 30 270'>\n",w9,grid_height);
 			for (unsigned i=0; i<9; i++){
 				lines += string_f("<path stroke='black' stroke-width='2' fill='%s' d='M1,%u H29 v29 H1 Z'/>\n",i==seldig ? "pink" : "white"
 					,i*30);
@@ -650,16 +654,16 @@ void SUDOKU::exec (const char *var, const char *val, const char *username, bool 
 			lines += "</a>";
 			lines += "&nbsp;&nbsp;&nbsp;";
 			lines += "<a href='#' onclick=gameplace(event)>\n";
-			lines += string_f("<svg id='gamesudogrid' width='%upx' height='%upx' viewbox='0 0 %u %u'>\n",width,height,width,height);
-			lines += string_f("<path stroke='green' stroke-width='2' fill='white' d='M1 1 H %u V %u H 1 Z'/>\n",width-1,height-1);
+			lines += string_f("<svg id='gamesudogrid' width='%upx' height='%upx' viewbox='0 0 %u %u'>\n",grid_width,grid_height,grid_width,grid_height);
+			lines += string_f("<path stroke='green' stroke-width='2' fill='white' d='M1 1 H %u V %u H 1 Z'/>\n",grid_width-1,grid_height-1);
 			unsigned line = 0;
 			for (auto &g:grid){
 				lines += string_f("<path stroke=%s stroke-width=1 d='M0,%u H %u'/>\n",line%3==0 ? "green" : "lightgray"
-					,h9*line,width);
+					,h9*line,grid_width);
 				unsigned col = 0;
 				for (auto &&gg:g){
 					lines += string_f("<path stroke=%s stroke-width=1 d='M%u,0 V %u'/>\n",col%3==0 ? "green" : "lightgray"
-						,w9*col,height);
+						,w9*col,grid_height);
 					if (gg.visible || gg.user_value != 0){
 						const char *color = "gray";
 						unsigned value = gg.value;
@@ -736,7 +740,7 @@ public:
 	void load(DOC_READER &r, string &msg);
 	void resetgame();
 	void testwin(vector<VARVAL> &res);
-	void exec (const char *var, const char *val, const char *username, bool maywrite, vector<VARVAL> &res);
+	void exec (const char *var, const char *val, const char *username, bool maywrite, unsigned width, unsigned height, vector<VARVAL> &res);
 };
 
 void WORDPROC::save(DOC_WRITER &w)
@@ -752,7 +756,7 @@ void WORDPROC::resetgame()
 void WORDPROC::testwin(vector<VARVAL> &res)
 {
 }
-void WORDPROC::exec (const char *var, const char *val, const char *username, bool maywrite, vector<VARVAL> &res)
+void WORDPROC::exec (const char *var, const char *val, const char *username, bool maywrite, unsigned width, unsigned height, vector<VARVAL> &res)
 {
 }
 class CHECKERS: public GAME{
@@ -765,7 +769,7 @@ public:
 	void load(DOC_READER &r, string &msg);
 	void resetgame();
 	void testwin(vector<VARVAL> &res);
-	void exec (const char *var, const char *val, const char *username, bool maywrite, vector<VARVAL> &res);
+	void exec (const char *var, const char *val, const char *username, bool maywrite, unsigned width, unsigned height, vector<VARVAL> &res);
 };
 
 void CHECKERS::save(DOC_WRITER &w)
@@ -822,7 +826,7 @@ static const char *cnv (const char *val, unsigned &posx, unsigned &posy)
 	return val+2;
 }
 		
-void CHECKERS::exec (const char *var, const char *val, const char *username, bool maywrite, vector<VARVAL> &res)
+void CHECKERS::exec (const char *var, const char *val, const char *username, bool maywrite, unsigned width, unsigned height, vector<VARVAL> &res)
 {
 	if (strcmp(var,"print")==0){
 		string lines;
@@ -903,6 +907,8 @@ static bool documentd_playstep (
 	const vector<VARVAL_receive> &steps,
 	const char *username,
 	bool maywrite,
+	unsigned width,
+	unsigned height,
 	vector<VARVAL> &res,
 	string &msg,
 	bool &unknown)
@@ -913,7 +919,7 @@ static bool documentd_playstep (
 	if (g != games.end()){
 		success = true;
 		for (auto &v:steps){
-			g->second->exec(v.var,v.val,username,maywrite,res);
+			g->second->exec(v.var,v.val,username,maywrite,width,height,res);
 		}
 		g->second->testwin(res);
 	}else{
@@ -1117,11 +1123,11 @@ int main (int argc, char *argv[])
 					}
 					rep_endgame (success,msg);
 				</f>
-				<f playstep>	// gameid steps:U{VARVAL}v = success:b msg res:U{VARVAL}v
+				<f playstep>	// gameid steps:U{VARVAL}v width:u height:u = success:b msg res:U{VARVAL}v
 					vector<VARVAL> res;
 					string msg;
 					bool unknown;
-					bool success = documentd_playstep (glocal.games,gameid,steps,"admin",true,res,msg,unknown);
+					bool success = documentd_playstep (glocal.games,gameid,steps,"admin",true,1000,1000,res,msg,unknown);
 					rep_playstep(success,unknown,msg,res);
 				</f>
 				<f save> // gameid = success:b msg
@@ -1197,7 +1203,7 @@ int main (int argc, char *argv[])
 					string msg;
 					translat_selectlang(lang);
 					bool unknown;
-					bool success = documentd_playstep (glocal.games,gameid,steps,username,maywrite,res,msg,unknown);
+					bool success = documentd_playstep (glocal.games,gameid,steps,username,maywrite,width,height,res,msg,unknown);
 					rep_playstep(success,unknown,msg,res);
 				</f>
 				<f save>

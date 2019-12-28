@@ -107,13 +107,13 @@ struct _F_webtabs {
 	void addtab (PARAM_STRING id, PARAM_STRING txt);
 	#define _F_webtabs_documents(x) void x documents()
 	virtual _F_webtabs_documents( );
-	#define _F_webtabs_docmain(x) void x docmain(const char *id, const char *formid, const char *state)
+	#define _F_webtabs_docmain(x) void x docmain(const char *id, const char *formid, const char *state, unsigned tab_width, unsigned tab_height)
 	virtual _F_webtabs_docmain( )=0;
-	#define _F_webtabs_doctype2(x) void x doctype2(const char *id, const char *formid, const char *state, const char *title)
+	#define _F_webtabs_doctype2(x) void x doctype2(const char *id, const char *formid, const char *state, const char *title, unsigned tab_width, unsigned tab_height)
 	virtual _F_webtabs_doctype2( );
-	#define _F_webtabs_doctype3(x) void x doctype3(const char *id, const char *formid, const char *state)
+	#define _F_webtabs_doctype3(x) void x doctype3(const char *id, const char *formid, const char *state, unsigned tab_width, unsigned tab_height)
 	virtual _F_webtabs_doctype3( );
-	#define _F_webtabs_doctype4(x) void x doctype4(const char *id, const char *formid, const char *state)
+	#define _F_webtabs_doctype4(x) void x doctype4(const char *id, const char *formid, const char *state, unsigned tab_width, unsigned tab_height)
 	virtual _F_webtabs_doctype4( );
 	#define _F_webtabs_init(x) void x init()
 	virtual _F_webtabs_init( );
