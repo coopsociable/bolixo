@@ -130,7 +130,7 @@ static int fs_locate_entry (int dirid, PARAM_STRING fname, ENTRY_TYPE &type, str
 	glocal unsigned ownerid=(unsigned)-1;
 	glocal unsigned group_list_id=(unsigned)-1;
 	glocal char listmode = ' ';
-	glocal string *modified = &modified;
+	glocal modified;
 	<call sql_query>("select itemid,type,modified,ownerid,group_list_id,listmode from dirs_content"
 		" join ids on dirs_content.itemid=ids.id"
 		" where dirid=%d and name='%s' and eventtime <= '%s' order by eventtime desc limit 1"
@@ -140,7 +140,7 @@ static int fs_locate_entry (int dirid, PARAM_STRING fname, ENTRY_TYPE &type, str
 		if (type != ENTRY_DELETED){
 			glocal.ret = atoi(row[0]);
 			glocal.type = type;
-			(*glocal.modified)=row[2];
+			glocal.modified=row[2];
 			glocal.ownerid = atoi(row[3]);
 			glocal.group_list_id = row[4] != NULL ? atoi(row[4]) : (unsigned)-1;
 			glocal.listmode = row[5][0];
@@ -151,6 +151,7 @@ static int fs_locate_entry (int dirid, PARAM_STRING fname, ENTRY_TYPE &type, str
 	ownerid = glocal.ownerid;
 	group_list_id = glocal.group_list_id;
 	listmode = glocal.listmode;
+	// tlmp_error ("dirid=%u fname=%s -> ownerid=%u group_list_id=%u listmode=%c",dirid,fname.ptr,ownerid,group_list_id,listmode);
 	return glocal.ret;
 }
 </mod>
@@ -178,11 +179,14 @@ static bool fs_check_access(unsigned userid, unsigned ownerid, unsigned group_li
 			glocal.ret = true;
 			const char defaultaccess = toupper(row[0][0]);
 			const char access = toupper(row[1][0]);
-			if (access != '\0'){
-				if (access != 'R') glocal.may_modify = true;
-			}else if (defaultaccess != 'R'){
+			if (defaultaccess == 'W'){
 				glocal.may_modify = true;
+			}else if (defaultaccess != 'R'){
+				if (access != '\0'){
+					if (access != 'R') glocal.may_modify = true;
+				}
 			}
+			// tlmp_error ("check_access :%s: :%s: may_modify=%d",row[0],row[1],glocal.may_modify);
 		</f>
 		</call>
 		if (listmode == 'r') glocal.may_modify = false;
