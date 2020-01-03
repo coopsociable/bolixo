@@ -831,6 +831,8 @@ static int bo_writed_addfile_bob (
 	PARAM_STRING name,
 	ENTRY_TYPE type,
 	int dirid,
+	int listid,
+	char listmode,
 	unsigned userid,
 	const BOB_TYPE &content,
 	bool more,
@@ -838,7 +840,7 @@ static int bo_writed_addfile_bob (
 	ADDFILE_INFO &info,
 	string &msg)
 {
-	info.fileid = fs_newid (userid,0,'r',msg,info.fileuuid);
+	info.fileid = fs_newid (userid,listid,listmode,msg,info.fileuuid);
 	if (info.fileid != -1){
 		const char *basename = name.ptr;
 		if (basename == NULL) basename = info.fileuuid.c_str();
@@ -1305,7 +1307,7 @@ static void bo_writed_send_admin_msg (
 			ADDFILE_INFO info;
 			BOB_TYPE content(message.ptr,strlen(message.ptr),false);
 			string sign;
-			bo_writed_addfile_bob (con_keys,NULL,NULL,ENTRY_MSG,dirid,adminid
+			bo_writed_addfile_bob (con_keys,NULL,NULL,ENTRY_MSG,dirid,0,'r',adminid
 				,content,false,sign,info,msg);
 		}
 	}
@@ -1523,7 +1525,7 @@ static void bo_writed_notify (
 		// Userids not found in the query get the default behavior
 		for (auto u:glocal.userids_notseen) glocal.userids_ui.push_back(u);
 		if (glocal.userids_ui.size() > 0){
-			<call bo_sessiond_admin_setnotify>(con_sess,glocal.userids_ui,key);
+			<call bo_sessiond_admin_setnotify>(con_sess,glocal.userids_ui,key,"");
 			<f ok>
 			</f>
 			</call>
@@ -1609,6 +1611,27 @@ static void bo_writed_set_email_notify (
 	}
 }
 
+
+/*
+	Get the list id associated with a directory
+*/
+<mod>
+static void bo_writed_get_listid(unsigned dirid, int &listid, char &listmode, string &msg)
+{
+	glocal listid;
+	glocal listmode;
+	glocal msg;
+	<call sql_query>("select group_list_id,listmode from ids where id=%u",dirid);
+	<f empty>
+		glocal.msg = MSG_U(E_NOGROUPLISTID,"Internal error (no group_list_id)");
+	</f>
+	<f onerow>
+		glocal.listid = atoi(row[0]);
+		glocal.listmode = row[1][0];
+	</f>
+	</call>
+}
+</mod>
 <mod>
 int main (int argc, char *argv[])
 {
@@ -2585,15 +2608,7 @@ int main (int argc, char *argv[])
 								// root dir
 								glocal.listid = 0;
 							}else{
-								<call sql_query>("select group_list_id,listmode from ids where id=%u",glocal.entry.dirid);
-								<f empty>
-									glocal.entry.msg = MSG_U(E_NOGROUPLISTID,"Internal error (no group_list_id)");
-								</f>
-								<f onerow>
-									glocal.listid = atoi(row[0]);
-									glocal.listmode = row[1][0];
-								</f>
-								</call>
+								bo_writed_get_listid (glocal.entry.dirid,glocal.listid,glocal.listmode,glocal.entry.msg);
 							}
 							if (glocal.listid != -1){
 								int subdirid = fs_newid (glocal.entry.userid,glocal.listid,glocal.listmode,glocal.entry.msg);
@@ -2658,7 +2673,11 @@ int main (int argc, char *argv[])
 					}else{
 						string msg,sign;
 						ADDFILE_INFO info;
-						bo_writed_addfile_bob (glocal.ctx.con_keys,sessionid,entry.basename,ENTRY_FILE,entry.dirid,entry.userid
+tlmp_error ("addfile_bob listid=%u",entry.group_list_id);
+						int listid;
+						char listmode;
+						bo_writed_get_listid(entry.dirid,listid,listmode,entry.msg);
+						bo_writed_addfile_bob (glocal.ctx.con_keys,sessionid,entry.basename,ENTRY_FILE,entry.dirid,listid,listmode,entry.userid
 								,content,more,sign
 								,info,msg);
 						if (msg.size() > 0){
@@ -3311,7 +3330,7 @@ int main (int argc, char *argv[])
 							if (dirid != -1){
 								string sign;
 								ADDFILE_INFO info;
-								bo_writed_addfile_bob (glocal.ctx.con_keys,glocal.sessionid,NULL,ENTRY_MSG,dirid,userid
+								bo_writed_addfile_bob (glocal.ctx.con_keys,glocal.sessionid,NULL,ENTRY_MSG,dirid,0,'r',userid
 									,*glocal.content,glocal.more,sign
 									,info,glocal.msg);
 								glocal.handle = info.handle;
@@ -3377,7 +3396,8 @@ int main (int argc, char *argv[])
 									if (dirid != -1){
 										ADDFILE_INFO info;
 										const char *ptr_name = glocal.filename[0] != '\0' ? glocal.filename : NULL;
-										bo_writed_addfile_bob (glocal.ctx.con_keys,glocal.sessionid,ptr_name,ENTRY_MSG,dirid,glocal.userid
+										bo_writed_addfile_bob (glocal.ctx.con_keys,glocal.sessionid,ptr_name,ENTRY_MSG,dirid
+											,0,'r',glocal.userid
 											,*glocal.content,glocal.more,glocal.sign
 											,info,glocal.msg);
 										glocal.handle = info.handle;
@@ -3471,7 +3491,7 @@ int main (int argc, char *argv[])
 									int dirid = bo_writed_find_short_inbox (uid0.second,uid0.first,glocal.msg);
 									if (dirid != -1){
 										ADDFILE_INFO info;
-										bo_writed_addfile_bob (glocal.ctx.con_keys,glocal.sessionid,NULL,ENTRY_MSG,dirid,glocal.userid
+										bo_writed_addfile_bob (glocal.ctx.con_keys,glocal.sessionid,NULL,ENTRY_MSG,dirid,0,'r',glocal.userid
 											,*glocal.content,glocal.more,glocal.sign
 											,info,glocal.msg);
 										string email_title,email_content;
