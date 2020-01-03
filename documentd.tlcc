@@ -518,34 +518,8 @@ void SUDOKU::testwin(vector<VARVAL> &res)
 void SUDOKU::exec (const char *var, const char *val, const char *session, const char *username, bool maywrite, unsigned win_width, unsigned win_height, vector<VARVAL> &res)
 {
 	setactivity();
-	if (strcmp(var,"place")==0 && maywrite){
-		unsigned lo,co,v;
-		int n = sscanf(val,"%u,%u,%u",&lo,&co,&v);
-		if (n == 2){
-			auto &gg = grid[line*3+lo][column*3+co];
-			if (gg.visible){
-				documentd_error (res,"You can't set this cell");
-			}else{
-				// We can set a value. If it is wrong, it will show in red.
-				// If you click over again, it will erase itself.
-				unsigned newval = seldigs[session]+1;
-				if (gg.user_value == 0){
-					gg.user_value = newval;
-				}else if (gg.user_value == newval){
-					gg.user_value = 0;
-				}
-			}
-			setmodified(username);
-		}else{
-			documentd_error (res,"Invalid place command (need 2 value)");
-		}
-	}else if (strcmp(var,"select")==0){
-		unsigned sel = atoi(val);
-		if (sel > 0 && sel < 10){
-			seldigs[session] = sel-1;
-			setmodified(username);
-		}
-	}else if (strcmp(var,"print")==0){
+	//tlmp_error ("SUDOKU var %s val %s username %s maywrite %d",var,val,username,maywrite);
+	if (strcmp(var,"print")==0){
 		string lines;
 		if (strcmp(val,"console")==0){
 			static const char *dashes = "\t+---+---+---+---+---+---+---+---+---+\n";	
@@ -669,17 +643,19 @@ void SUDOKU::exec (const char *var, const char *val, const char *session, const 
 				for (auto &&gg:g){
 					lines += string_f("<path stroke=%s stroke-width=1 d='M%u,0 V %u'/>\n",col%3==0 ? "green" : "lightgray"
 						,w9*col,grid_height);
-					if (gg.visible || gg.user_value != 0){
-						const char *color = "gray";
-						unsigned value = gg.value;
-						if (!gg.visible){
-							color = "black";
-							value = gg.user_value;
-							if (gg.user_value != gg.value) color = "red";
-						}
-						lines += string_f("<text X='%u' Y='%u' style='stroke:%s;fill:%s;font-size:24;font-family: Times New Roman;'>%u</text>\n",w9*col+w9/3,h9*line+2*h9/3
-							,color,color,value);
+					const char *color = "white";
+					unsigned value = gg.value;
+					if (gg.visible){
+						color = "gray";
+					}else if(gg.user_value != 0){
+						color = "black";
+						value = gg.user_value;
+						if (gg.user_value != gg.value) color = "red";
 					}
+					lines += string_f("<text id='%u,%u' X='%u' Y='%u' style='stroke:%s;fill:%s;font-size:24;font-family: Times New Roman;'>%u</text>\n"
+						,line,col
+						,w9*col+w9/3,h9*line+2*h9/3
+						,color,color,value);
 					col++;
 				}
 				line++;
@@ -692,46 +668,104 @@ void SUDOKU::exec (const char *var, const char *val, const char *session, const 
 		v.var = "content";
 		v.val = lines;
 		res.push_back(v);
-	}else if (strcmp(var,"newgame")==0 && maywrite){
-		glocal SUDOKU_CELL (*grid)[9][9] = &grid;
-		unsigned difficulty = atoi(val);
-		if (difficulty > 3){
-			documentd_error (res,"Difficulty from 0 to 3");
-		}else{
-			static const char *tbdiff[]={"simple", "easy", "intermediate", "expert"};
-			<call walkpopen>(string_f("qqwing --generate 1 --compact --solution --difficulty %s",tbdiff[difficulty]),10);
-			<f oneline>
-				debug_printf (D_SUDOKU,"read qqwing %s\n",line);
-				if (noline < 9){
-					auto &g = (*glocal.grid)[noline];
-					for (unsigned i=0; i<9; i++){
-						char car = line[i];
-						auto &gg = g[i];
-						gg.reset();
-						if (car != '.'){
-							gg.visible = 1;
-							gg.value = car - '0';
+	}else if (maywrite){
+		if (strcmp(var,"place")==0){
+			unsigned lo,co,v;
+			int n = sscanf(val,"%u,%u,%u",&lo,&co,&v);
+			if (n == 2){
+				auto &gg = grid[line*3+lo][column*3+co];
+				if (gg.visible){
+					documentd_error (res,MSG_U(E_CANTSELTHISCELL,"You can't set this cell"));
+				}else{
+					// We can set a value. If it is wrong, it will show in red.
+					// If you click over again, it will erase itself.
+					unsigned newval = seldigs[session]+1;
+					const char *color = "black";
+					if (gg.user_value == 0){
+						gg.user_value = newval;
+						if (gg.user_value != gg.value) color = "red";
+					}else if (gg.user_value == newval){
+						gg.user_value = 0;
+						color = "white";
+					}
+					setmodified(username);
+					VARVAL var;
+					var.var = "notify";
+					var.val = string_f ("var e = document.getElementById('%u,%u');\n",lo,co);
+					var.val += string_f("e.style.fill = '%s';\n",color);
+					var.val += string_f("e.style.stroke = '%s';\n",color);
+					var.val += string_f("e.textContent = '%u';\n",newval);
+					res.push_back(var);
+				}
+			}else{
+				documentd_error (res,MSG_U(E_IVLDPLACESUD,"Invalid place command (need 2 value)"));
+			}
+		}else if (strcmp(var,"select")==0){
+			unsigned sel = atoi(val);
+			if (sel > 0 && sel < 10){
+				seldigs[session] = sel-1;
+				setmodified(username);
+			}
+		}else if (strcmp(var,"newgame")==0){
+			glocal SUDOKU_CELL (*grid)[9][9] = &grid;
+			unsigned difficulty = atoi(val);
+			if (difficulty > 3){
+				documentd_error (res,"Difficulty from 0 to 3");
+			}else{
+				static const char *tbdiff[]={"simple", "easy", "intermediate", "expert"};
+				<call walkpopen>(string_f("qqwing --generate 1 --compact --solution --difficulty %s",tbdiff[difficulty]),10);
+				<f oneline>
+					debug_printf (D_SUDOKU,"read qqwing %s\n",line);
+					if (noline < 9){
+						auto &g = (*glocal.grid)[noline];
+						for (unsigned i=0; i<9; i++){
+							char car = line[i];
+							auto &gg = g[i];
+							gg.reset();
+							if (car != '.'){
+								gg.visible = 1;
+								gg.value = car - '0';
+							}
 						}
 					}
+					if (noline >= 10 && noline < 19){
+						auto &g = (*glocal.grid)[noline-10];
+						for (unsigned i=0; i<9; i++){
+							g[i].value = line[i]-'0';
+						}				
+					}
+					return 0;
+				</f>
+				<f oneerr>
+					tlmp_error ("sudoku command=%s line=%s\n",command,line);
+					return 0;
+				</f>
+				</call>
+				setmodified(username);
+				VARVAL var;
+				var.var = "notify";
+				unsigned line = 0;
+				for (auto &g:grid){
+					unsigned col = 0;
+					for (auto &&gg:g){
+						var.val += string_f ("var e = document.getElementById('%u,%u');\n",line,col);
+						const char *color = gg.visible ? "gray" : "white";
+						var.val += string_f("e.style.fill = '%s';\n",color);
+						var.val += string_f("e.style.stroke = '%s';\n",color);
+						var.val += string_f("e.textContent = '%u';\n",gg.value);
+						col++;
+					}
+					line++;
 				}
-				if (noline >= 10 && noline < 19){
-					auto &g = (*glocal.grid)[noline-10];
-					for (unsigned i=0; i<9; i++){
-						g[i].value = line[i]-'0';
-					}				
-				}
-				return 0;
-			</f>
-			<f oneerr>
-				tlmp_error ("sudoku command=%s line=%s\n",command,line);
-				return 0;
-			</f>
-			</call>
-			setmodified(username);
+				res.push_back(var);
+			}
+		}else{
+			tlmp_error ("sudoku invalid command %s\n",var);
 		}
 	}else{
-		tlmp_error ("sudoku invalid command %s\n",var);
+		documentd_error (res,MSG_U(E_READONLY,"You do not have write access to this game"));
 	}
+		
 }
 </mod>
 

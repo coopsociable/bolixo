@@ -1833,6 +1833,13 @@ elif [ "$1" = "spellcheck" ] ; then # A: Spell check the bolixo.dic file
 elif [ "$1" = "spelldiff" ] ; then # A: Show differences after spell check
 	utils/helpspell bolixo.dic >/tmp/bolixo1.dic
 	diff -c /tmp/bolixo.dic /tmp/bolixo1.dic | less -S
+elif [ "$1" = "perfsql" ] ; then # A: run a performance test on a query
+	shift
+	if [ "$#" != 1 ] ; then
+		echo sql file
+		exit 1
+	fi
+	./perfsql -s localhost -p $MYSQL_PWD -Q $1
 else
 	echo test.sh command ...
 fi

@@ -53,6 +53,7 @@ struct HANDLE_INFO: public ARRAY_OBJ{
 #define session_log_session_NOTNEED
 #define session_log_notify_NOTNEED
 #define session_log_notify_v1_NOTNEED
+#define session_log_notify_v2_NOTNEED
 #include "proto/session_log.protoch"
 #include "proto/session_log.protoh"
 
@@ -114,7 +115,44 @@ struct NOTIFIES{
 	unsigned sequence = 0;
 	vector<NOTIFY> notes;
 };
-
+static void bo_sessiond_setnotify(
+	map<unsigned,NOTIFIES> &notifies,
+	map<unsigned,vector<int>> &waiting,
+	const vector<unsigned> &userids,
+	const char *name,
+	const char *script)
+{
+	time_t now = time(NULL);
+	for (auto userid:userids){
+		auto &v = notifies[userid];
+		bool found = false;
+		unsigned sequence = ++v.sequence;
+		for (auto &n:v.notes){
+			if (n.key == name){
+				found = true;
+				n.sequence = sequence;
+				n.script = script;
+				n.when = now;
+				break;
+			}
+		}
+		if (!found){
+			NOTIFY n;
+			n.key = name;
+			n.script = script;
+			n.when = now;
+			n.sequence = sequence;
+			v.notes.push_back(n);
+		}
+		auto w = waiting.find(userid);
+		if (w != waiting.end()){
+			for (auto fd:w->second){
+				bo_sessiond_client_rep_waitevent (fd,true,"",name,script,sequence);
+			}
+			waiting.erase(w);
+		}
+	}
+}
 <mod>
 int main (int argc, char *argv[])
 {
@@ -228,6 +266,17 @@ int main (int argc, char *argv[])
 				<f notify_v2>
 					auto &v = glocal.notifies[userid];
 					v.sequence = sequence;
+					for (auto &n:notifies){
+						NOTIFY note;
+						note.key = n.key;
+						note.when = n.when;
+						note.sequence = n.sequence;
+						v.notes.push_back(note);
+					}
+				</f>
+				<f notify_v3>
+					auto &v = glocal.notifies[userid];
+					v.sequence = sequence;
 					for (auto &n:notifies) v.notes.push_back(n);
 				</f>
 				<f invalid>
@@ -323,7 +372,7 @@ int main (int argc, char *argv[])
 								,s.second.stats.lastvisit,s.second.stats.nbacc,s.second.vars);
 						}
 						for (auto const &s:glocal.notifies){
-							session_log_notify_v2(fout,s.first,s.second.sequence,s.second.notes);
+							session_log_notify_v3(fout,s.first,s.second.sequence,s.second.notes);
 						}
 						return 0;
 					</f>
@@ -560,14 +609,15 @@ int main (int argc, char *argv[])
 				<f waitevent>	// sessionid sequence = success:b msg content sequence
 					auto it = glocal.sessions.find(sessionid);
 					if (it == glocal.sessions.end()){
-						rep_waitevent (false,"Invalid sessionid","",0);
+						rep_waitevent (false,"Invalid sessionid","","",0);
 					}else if (it->second.userid == (unsigned)-1){
-						rep_waitevent (false,"Anonymous session","",0);
+						rep_waitevent (false,"Anonymous session","","",0);
 					}else{
 						// We do not respond immediatly, only if there is an event
 						auto n = glocal.notifies.find(it->second.userid);
 						unsigned next_sequence = (unsigned)-1;
 						string name;
+						string script;
 						if (n != glocal.notifies.end()){
 							// We have to find the next event with the closest smallest
 							// sequence number, yet larger than the received sequence parameter.
@@ -576,11 +626,12 @@ int main (int argc, char *argv[])
 									&& nn.sequence < next_sequence){
 									next_sequence = nn.sequence;
 									name = nn.key;
+									script = nn.script;
 								}
 							}
 						}
 						if (next_sequence != (unsigned)-1){
-							rep_waitevent (true,"",name,next_sequence);
+							rep_waitevent (true,"",name,script,next_sequence);
 						}else{
 							// We record the request and set_notify will reply
 							c->wait_userid = it->second.userid;
@@ -595,6 +646,9 @@ int main (int argc, char *argv[])
 							if (!found) w.push_back(no);
 						}
 					}
+				</f>
+				<f setnotify>
+					bo_sessiond_setnotify(glocal.notifies,glocal.waiting,userids,name,script);
 				</f>
 				<f test>
 					rep_test (true);
@@ -652,34 +706,7 @@ int main (int argc, char *argv[])
 				</f>
 				<f setnotify>
 					// Assigned a notification to a list of userids
-					time_t now = time(NULL);
-					for (auto userid:userids){
-						auto &v = glocal.notifies[userid];
-						bool found = false;
-						unsigned sequence = ++v.sequence;
-						for (auto &n:v.notes){
-							if (n.key == name){
-								found = true;
-								n.sequence = sequence;
-								n.when = now;
-								break;
-							}
-						}
-						if (!found){
-							NOTIFY n;
-							n.key = name;
-							n.when = now;
-							n.sequence = sequence;
-							v.notes.push_back(n);
-						}
-						auto w = glocal.waiting.find(userid);
-						if (w != glocal.waiting.end()){
-							for (auto fd:w->second){
-								bo_sessiond_client_rep_waitevent (fd,true,"",name,sequence);
-							}
-							glocal.waiting.erase(w);
-						}
-					}
+					bo_sessiond_setnotify(glocal.notifies,glocal.waiting,userids,name,script);
 				</f>
 				<f deletesession>
 					auto it = glocal.sessions.find(sessionid);

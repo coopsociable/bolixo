@@ -3630,7 +3630,28 @@ static int bod_main (
 										glocal.pass = 2;
 										glocal.success = success;
 										glocal.entry.msg = msg;
-										for (auto &r:res) glocal.res.push_back(r);
+										for (auto &r:res){
+											if (strcmp(r.var,"notify")==0){
+												glocal vector<unsigned> userids;
+												<call sql_query>(
+													"select group_lists.ownerid, group_lists.name,groups.name,group_members.userid from group_lists"
+													" join group_list_members on group_lists.id = group_list_members.group_list_id"
+													" join groups on groups.id = group_list_members.groupid"
+													" join group_members on group_members.groupid = groups.id"
+													" where group_lists.id = %u"
+													,glocal.entry.group_list_id);
+												<f onerow>
+													glocal.userids.push_back(atoi(row[3]));
+												</f>
+												</call>
+												<call bo_sessiond_client_setnotify>(glocal.con_sess,glocal.userids,glocal.path,r.val);
+												<f ok>
+													if (internal_error) tlmp_error ("bo_sessiond_client_setnotify internal error");
+												</f>
+												</call>
+											}
+											glocal.res.push_back(r);
+										}
 									}
 								</f>
 								</call>
