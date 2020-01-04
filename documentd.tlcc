@@ -163,7 +163,12 @@ class GAME{
 	time_t modified = (time_t)0;
 	time_t last_activity = time(nullptr);
 	string modified_by;
+protected:
+	string gameid;
 public:
+	void setgameid(const char *_gameid){
+		gameid = _gameid;
+	}
 	void setactivity(){
 		last_activity = time(nullptr);
 	}
@@ -605,7 +610,7 @@ void SUDOKU::exec (const char *var, const char *val, const char *session, const 
 			lines += string_f("\tgameaction('select='+Math.floor((event.clientY-rect.top)/%u+1));\n",h9);
 			lines += "}\n";
 			lines += "function gameplace(event){\n";
-			lines += "\tvar elm = document.getElementById('gamesudogrid');\n";
+			lines += string_f("\tvar elm = document.getElementById('%s');\n",gameid.c_str());
 			lines += "\tvar rect = elm.getBoundingClientRect();\n";
 			lines += string_f("\tgameaction('place='+Math.floor((event.clientY-rect.top)/%u)+','+Math.floor((event.clientX-rect.left)/%u));\n",h9,w9);
 			lines += "}\n";
@@ -633,7 +638,7 @@ void SUDOKU::exec (const char *var, const char *val, const char *session, const 
 			lines += "</a>";
 			lines += "&nbsp;&nbsp;&nbsp;";
 			lines += "<a href='#' onclick=gameplace(event)>\n";
-			lines += string_f("<svg id='gamesudogrid' width='%upx' height='%upx' viewbox='0 0 %u %u'>\n",grid_width,grid_height,grid_width,grid_height);
+			lines += string_f("<svg id='%s' width='%upx' height='%upx' viewbox='0 0 %u %u'>\n",gameid.c_str(),grid_width,grid_height,grid_width,grid_height);
 			lines += string_f("<path stroke='green' stroke-width='2' fill='white' d='M1 1 H %u V %u H 1 Z'/>\n",grid_width-1,grid_height-1);
 			unsigned line = 0;
 			for (auto &g:grid){
@@ -691,10 +696,19 @@ void SUDOKU::exec (const char *var, const char *val, const char *session, const 
 					setmodified(username);
 					VARVAL var;
 					var.var = "notify";
-					var.val = string_f ("var e = document.getElementById('%u,%u');\n",lo,co);
-					var.val += string_f("e.style.fill = '%s';\n",color);
-					var.val += string_f("e.style.stroke = '%s';\n",color);
-					var.val += string_f("e.textContent = '%u';\n",newval);
+					var.val = string_f ("var doc = document.getElementById('%s');\n",gameid.c_str());
+					var.val += "if (doc != null){\n";
+					var.val += "\tvar txts = doc.getElementsByTagName('text');\n";
+					var.val += "\tfor(var i = 0; i< txts.length;i++){\n";
+					var.val += "\t\tvar e = txts[i];\n";
+					var.val += string_f("\t\tif (e.getAttribute('id') == '%u,%u'){\n",lo,co);
+					var.val += string_f("\t\t\te.style.fill = '%s';\n",color);
+					var.val += string_f("\t\t\te.style.stroke = '%s';\n",color);
+					var.val += string_f("\t\t\te.textContent = '%u';\n",newval);
+					var.val += "\t\t\tbreak;\n";
+					var.val += "\t\t}\n";
+					var.val += "\t}\n";
+					var.val += "}\n";
 					res.push_back(var);
 				}
 			}else{
@@ -744,19 +758,21 @@ void SUDOKU::exec (const char *var, const char *val, const char *session, const 
 				setmodified(username);
 				VARVAL var;
 				var.var = "notify";
-				unsigned line = 0;
+				var.val = string_f ("var doc = document.getElementById('%s');\n",gameid.c_str());
+				var.val += "if (doc != null){\n";
+				var.val += "\tvar txts = doc.getElementsByTagName('text');\n";
+				unsigned item = 0;
 				for (auto &g:grid){
-					unsigned col = 0;
 					for (auto &&gg:g){
-						var.val += string_f ("var e = document.getElementById('%u,%u');\n",line,col);
+						var.val += string_f ("\tvar e = txts[%u];\n",item);
 						const char *color = gg.visible ? "gray" : "white";
-						var.val += string_f("e.style.fill = '%s';\n",color);
-						var.val += string_f("e.style.stroke = '%s';\n",color);
-						var.val += string_f("e.textContent = '%u';\n",gg.value);
-						col++;
+						var.val += string_f("\te.style.fill = '%s';\n",color);
+						var.val += string_f("\te.style.stroke = '%s';\n",color);
+						var.val += string_f("\te.textContent = '%u';\n",gg.value);
+						item++;
 					}
-					line++;
 				}
+				var.val += "}\n";
 				res.push_back(var);
 			}
 		}else{
@@ -969,7 +985,7 @@ static bool documentd_playstep (
 	return success;
 }
 
-static GAME_P documentd_newgame(const char *type, string &msg)
+static GAME_P documentd_newgame(const char *type, const char *gameid, string &msg)
 {
 	GAME_P p = nullptr;
 	if (strncmp(type,"boBOTICT",8)==0){
@@ -983,6 +999,7 @@ static GAME_P documentd_newgame(const char *type, string &msg)
 	}else{
 		msg = "Unknown game or document type";
 	}
+	if (p != nullptr) p->setgameid(gameid);
 	return p;
 }
 
@@ -997,7 +1014,7 @@ static bool documentd_startgame(
 	if (g != games.end()){
 		msg = "Game already exist";
 	}else{
-		GAME_P p = documentd_newgame(gamename,msg);
+		GAME_P p = documentd_newgame(gamename,gameid,msg);
 		if (p != nullptr){
 			games[gameid] = p;
 			p->resetgame();
@@ -1204,7 +1221,7 @@ int main (int argc, char *argv[])
 					}else{
 						char buf[100];
 						if (fgets(buf,sizeof(buf)-1,fin)!=NULL){
-							GAME_P p = documentd_newgame(buf,msg);
+							GAME_P p = documentd_newgame(buf,gameid,msg);
 							if (p != NULL){
 								glocal.games[gameid] = p;
 								DOC_READER doc(fin);
@@ -1279,7 +1296,7 @@ int main (int argc, char *argv[])
 					if (g != glocal.games.end()){
 						game = g->second;
 					}else{
-						game = documentd_newgame(type,msg);
+						game = documentd_newgame(type,gameid,msg);
 					}
 					if (game != nullptr){
 						glocal.games[gameid] = game;
