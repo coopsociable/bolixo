@@ -82,8 +82,8 @@ struct _F_webtabs {
 	bool redo;
 	WEBTAB *curtab;
 	string selected_id;
-	string help_id;
-	string help_title;
+	string help_id[5];
+	string help_title[5];
 	vector<WEBTAB> *tabs;
 	int maxsel;
 	bool changed;
@@ -97,8 +97,10 @@ struct _F_webtabs {
 		added_tab = -1;
 	}
 	void setid (PARAM_STRING id);	// Change the ID of the active TAB
-	void sethelp();			// Set the context help button
+	void sethelp();			// Set the context help button for the content area (docmain)
 	void sethelp(PARAM_STRING id, PARAM_STRING title);
+	void sethelp2();			// Set the context help button for the document area (doctype2)
+	void sethelp2(PARAM_STRING id, PARAM_STRING title);
 	void settitle (PARAM_STRING title);	// Change the title of the active TAB
 	void setstate (PARAM_STRING val);// Record some value for the active TAB
 	const char *getstate() const;	// Return the state previously stored for the active TAB

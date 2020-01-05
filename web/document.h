@@ -11,6 +11,11 @@ EXTERN DOC_ID section_account;
 EXTERN DOC_ID section_notifications;
 EXTERN DOC_ID section_groups;
 EXTERN DOC_ID section_projects;
+EXTERN DOC_ID section_documents;
+EXTERN DOC_ID section_tictacto;
+EXTERN DOC_ID section_sudoku;
+EXTERN DOC_ID section_checker;
+EXTERN DOC_ID section_chess;
 EXTERN DOC_ID section_contacts;
 EXTERN DOC_ID section_contact_req;
 EXTERN DOC_ID section_mails;
@@ -34,7 +39,8 @@ EXTERN DOC_ID section_publish;
 #define SECTION_CONTACT_REQ 9
 #define SECTION_PREVIEW 10
 #define SECTION_NOTIFICATIONS 11
-#define SECTION_NBSECTIONS 12
+#define SECTION_DOCUMENTS 12
+#define SECTION_NBSECTIONS 13
 
 void jump2app (int step, PARAM_STRING webtab_add);
 void jump2app (int step, int tab);
