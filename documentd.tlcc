@@ -330,39 +330,10 @@ public:
 	}
 	void exec (const char *var, const char *val, const char *session, const char *username, bool maywrite, unsigned win_width, unsigned win_height, vector<VARVAL> &res){
 		setactivity();
-		if (strcmp(var,"place")==0 && maywrite){
-			bool ok = false;
-			unsigned x=atoi(val);
-			const char *pt = str_skipdig(val);
-			const char *msg = "Invalid syntax";
-			if (*pt == ','){
-				pt++;
-				unsigned y=atoi(pt);
-				pt = str_skipdig(pt);
-				if (*pt == '\0'){
-					msg = "Invalid values";
-					if (x < 3 && y < 3){
-						unsigned char &g = grid[y][x];
-						if (g == 0){
-							g = x_is_player ? 1 : 2;
-							x_is_player = !x_is_player;
-							ok = true;
-							setmodified(username);
-						}else{
-							msg = "Location already played";
-						}
-					}
-				}
-			}
-			if (!ok){
-				documentd_error (res,string_f("Invalid command %s=%s: %s",var,val,msg));
-			}
-		}else if (strcmp(var,"newgame")==0 && maywrite){
-			resetgame();
-			setmodified(username);
-		}else if (strcmp(var,"print")==0){
+		if (strcmp(var,"print")==0){
 			string lines;
-			unsigned width = win_width - win_width % 4;
+			unsigned dim = win_width < win_height ? win_width : win_height;
+			unsigned width = dim - dim % 4;
 			//unsigned height = win_height - win_height % 3;
 			unsigned w3 = width/4;
 			unsigned h3 = w3;
@@ -419,6 +390,40 @@ public:
 			v.val = lines;
 			res.push_back(v);
 					
+		}else if (maywrite){
+			if (strcmp(var,"place")==0){
+				bool ok = false;
+				unsigned x=atoi(val);
+				const char *pt = str_skipdig(val);
+				const char *msg = "Invalid syntax";
+				if (*pt == ','){
+					pt++;
+					unsigned y=atoi(pt);
+					pt = str_skipdig(pt);
+					if (*pt == '\0'){
+						msg = "Invalid values";
+						if (x < 3 && y < 3){
+							unsigned char &g = grid[y][x];
+							if (g == 0){
+								g = x_is_player ? 1 : 2;
+								x_is_player = !x_is_player;
+								ok = true;
+								setmodified(username);
+							}else{
+								msg = "Location already played";
+							}
+						}
+					}
+				}
+				if (!ok){
+					documentd_error (res,string_f("Invalid command %s=%s: %s",var,val,msg));
+				}
+			}else if (strcmp(var,"newgame")==0 && maywrite){
+				resetgame();
+				setmodified(username);
+			}
+		}else{
+			documentd_error (res,MSG_R(E_READONLY));
 		}
 	}
 };
@@ -593,7 +598,8 @@ void SUDOKU::exec (const char *var, const char *val, const char *session, const 
 			lines += normal;
 		}else{
 			// The layout is a square, constrained by the width
-			unsigned width = win_width - win_width % 11;
+			unsigned dim = win_width < win_height ? win_width : win_height;
+			unsigned width = dim - dim % 11;
 			unsigned w9 = width/11;
 			unsigned h9 = w9; 
 			unsigned grid_width = w9*9;
@@ -641,6 +647,7 @@ void SUDOKU::exec (const char *var, const char *val, const char *session, const 
 			lines += string_f("<svg id='%s' width='%upx' height='%upx' viewbox='0 0 %u %u'>\n",gameid.c_str(),grid_width,grid_height,grid_width,grid_height);
 			lines += string_f("<path stroke='green' stroke-width='2' fill='white' d='M1 1 H %u V %u H 1 Z'/>\n",grid_width-1,grid_height-1);
 			unsigned line = 0;
+			unsigned font_size = h9*2/3;
 			for (auto &g:grid){
 				lines += string_f("<path stroke=%s stroke-width=1 d='M0,%u H %u'/>\n",line%3==0 ? "green" : "lightgray"
 					,h9*line,grid_width);
@@ -657,10 +664,10 @@ void SUDOKU::exec (const char *var, const char *val, const char *session, const 
 						value = gg.user_value;
 						if (gg.user_value != gg.value) color = "red";
 					}
-					lines += string_f("<text id='%u,%u' X='%u' Y='%u' style='stroke:%s;fill:%s;font-size:24;font-family: Times New Roman;'>%u</text>\n"
+					lines += string_f("<text id='%u,%u' X='%u' Y='%u' style='stroke:%s;fill:%s;font-size:%u;font-family: Times New Roman;'>%u</text>\n"
 						,line,col
 						,w9*col+w9/3,h9*line+2*h9/3
-						,color,color,value);
+						,color,color,font_size,value);
 					col++;
 				}
 				line++;
