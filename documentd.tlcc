@@ -1270,6 +1270,28 @@ int main (int argc, char *argv[])
 					bool success = documentd_playstep (glocal.games,gameid,steps,session,username,maywrite,width,height,res,msg,unknown);
 					rep_playstep(success,unknown,msg,res);
 				</f>
+				<f rename>
+					string msg;
+					translat_selectlang(lang);
+					auto oldg = glocal.games.find(old_gameid);
+					if (oldg != glocal.games.end()){
+						// This is ok if the old document is missing
+						auto newg = glocal.games.find(new_gameid);
+						if (newg != glocal.games.end()){
+							msg = MSG_U(E_NEWEXIST,"Can't rename document, new name exist");
+						}else{
+							auto doc = oldg->second;
+							glocal.games.erase(oldg);
+							doc->setgameid(new_gameid);
+							glocal.games[new_gameid] = doc;
+						}
+					}
+					if (msg.size() > 0){
+						rep_rename (false,msg);
+					}else{
+						rep_rename (true,"");
+					}	
+				</f>
 				<f save>
 					string msg;
 					BOB_TYPE content;

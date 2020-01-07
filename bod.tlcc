@@ -1868,11 +1868,31 @@ static int bod_main (
 			</f>
 			<f rename> // sessionid oldname newname = success:b msg
 				// Rename file, directory or symlink
-				<call bo_writed_client_rename>(glocal.con,sessionid,oldname,newname);
-				<f ok>
-					glocal.bod_client.rep_rename(success,msg);
-				</f>
-				</call>
+				glocal oldname;
+				glocal newname;
+				bool is_admin;
+				string username;
+				string msg;
+				// We need this so current_lang is initialized
+				if (trli_getsessionuser (glocal.con, sessionid, is_admin, username, msg) == (unsigned)-1){
+					rep_rename (false,msg);
+				}else{
+					<call bo_writed_client_rename>(glocal.con,sessionid,oldname,newname);
+					<f ok>
+						glocal string msg;
+						if (success){
+							<call documentd_client_rename>(glocal.con_doc,glocal.oldname,glocal.newname,current_lang);
+							<f ok>
+								if (!success) tlmp_warning ("documentd_client_rename: %s",msg);
+								glocal.msg = msg;
+							</f>
+							</call>
+							msg = glocal.msg.c_str();
+						}
+						glocal.bod_client.rep_rename(success,msg);
+					</f>
+					</call>
+				}
 			</f>
 			<f copy> // sessionid srcname srcdate srcname = success:b msg
 				// Copy file, directory or symlink

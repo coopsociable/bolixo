@@ -103,6 +103,7 @@ struct _F_webtabs {
 	void sethelp2(PARAM_STRING id, PARAM_STRING title);
 	void settitle (PARAM_STRING title);	// Change the title of the active TAB
 	void setstate (PARAM_STRING val);// Record some value for the active TAB
+	int replacetab (PARAM_STRING oldid, PARAM_STRING newid, PARAM_STRING title);
 	const char *getstate() const;	// Return the state previously stored for the active TAB
 	void redotab ();		// Ask webtabs to redraw the current TAB
 	bool selected(PARAM_STRING id);
