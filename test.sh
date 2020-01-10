@@ -487,7 +487,7 @@ elif [ "$1" = "bolixod-controls" ] ; then # A: Talks to all bolixod
 	do
 		$BOLIXOPATH/bolixod-control --control $sock $*
 	done
-elif [ "$1" = "documentd-control" ] ; then # A: Talks to publishd
+elif [ "$1" = "documentd-control" ] ; then # A: Talks to documentd
 	shift
 	$BOLIXOPATH/documentd-control --control $DOCUMENTD_SOCK $*
 elif [ "$1" = "publishd-control" ] ; then # A: Talks to publishd
@@ -933,6 +933,7 @@ elif [ "$1" = "test-sequence" ] ; then # S: Reloads database (big,medium,real,no
 	$0 createbolixodb
 	rm -f /var/lib/bolixo/*
 	$0 resetdb 
+	$0 documentd-control endgames
 	$0 generate-system-pubkey
 	$0 test-system
 	$0 registernode
