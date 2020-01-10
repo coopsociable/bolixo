@@ -47,7 +47,6 @@ extern W_UNSIGNED w_anon_messages;
 extern W_SSTRING w_timezone;
 
 extern W_SSTRING w_recipients;
-extern W_SSTRING w_folder;
 extern W_SSTRING w_upload;
 extern W_SSTRING w_accept;
 extern W_SSTRING w_user;

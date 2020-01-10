@@ -519,12 +519,16 @@ void util_endscript(PARAM_STRING urlparam)
 	?>
 	webtable_setscroll();
 	if (tlmpweb_some_geometry_missing()){
-		const char *sep1 = "?";
-		const char *sep2 = "&";
-		if (urlparam.ptr[0] == '\0'){
-			sep1 = sep2 = "";
+		if (tlmpweb_is_repost()){
+			tlmp_error ("util_endscript geometry_missing repost=1");
+		}else{
+			const char *sep1 = "?";
+			const char *sep2 = "&";
+			if (urlparam.ptr[0] == '\0'){
+				sep1 = sep2 = "";
+			}
+			htmlprintf ("formsubmit(\"%s%s%s&repost=1\");\n",tlmpweb_curpage(),sep1,urlparam.ptr);
 		}
-		htmlprintf ("formsubmit(\"%s%s%s\");\n",tlmpweb_curpage(),sep1,urlparam.ptr);
 	}
 	<?
 		}
@@ -1741,9 +1745,9 @@ void sendfile(_F_sendfile &c, PARAM_STRING filepath, PARAM_STRING localfile, boo
 	}
 	if (!c.success) fail = true;
 }
-void sendfile_var(_F_sendfile_var &c, PARAM_STRING filepath, const W_SSTRING &var_content, bool &fail)
+void sendfile_var(_F_sendfile_var &c, PARAM_STRING filepath, PARAM_STRING var_content, bool &fail)
 {
-	const char *content = var_content.c_str();
+	const char *content = var_content.ptr;
 	c.success = true;
 	unsigned len = strlen(content);
 	unsigned nb = len;

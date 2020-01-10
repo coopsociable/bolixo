@@ -163,7 +163,7 @@ struct _F_sendfile_var: public _F_sendfile_common {
 	#define _F_sendfile_var_rest(x) void x rest(const string &handle, const BOB_TYPE &content, bool more)
 	virtual _F_sendfile_var_rest( )=0;
 };
-void sendfile_var(_F_sendfile_var &c, PARAM_STRING filepath, const W_SSTRING &var_content, bool &fail);
+void sendfile_var(_F_sendfile_var &c, PARAM_STRING filepath, PARAM_STRING var_content, bool &fail);
 std::string util_mini_img(unsigned step, unsigned width, PARAM_STRING dirpath, PARAM_STRING filename, PARAM_STRING date);
 std::string util_img(unsigned step, unsigned width, PARAM_STRING dirpath, PARAM_STRING filename, PARAM_STRING date);
 std::string util_img(unsigned step, const char *style, PARAM_STRING filepath, PARAM_STRING date);

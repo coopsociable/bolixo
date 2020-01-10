@@ -2,7 +2,7 @@ extern const char **_dictionary_bolixo;
 #ifndef DICTIONARY_REQUEST
 	#define DICTIONARY_REQUEST \
 	const char **_dictionary_bolixo;\
-	TRANSLATE_SYSTEM_REQ _dictionary_req_bolixo("bolixo",_dictionary_bolixo,567,19);\
+	TRANSLATE_SYSTEM_REQ _dictionary_req_bolixo("bolixo",_dictionary_bolixo,576,19);\
 	void dummy_dict_bolixo(){}
 #endif
 #ifndef MSG_U
@@ -580,3 +580,12 @@ extern const char **_dictionary_bolixo;
 #define T_TICTACTO	564
 #define T_SUDOKY	565
 #define E_NEWEXIST	566
+#define I_CREATE	567
+#define I_TEXTFILE	568
+#define I_SUDOKUGAME	569
+#define I_TICTACTOGAME	570
+#define I_NAME	571
+#define I_UPLOAD	572
+#define I_NOFOLDERNAME	573
+#define I_NONAME	574
+#define E_FILEEXIST	575

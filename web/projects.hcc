@@ -87,6 +87,54 @@ static int index_loadfile(CONNECT_INFO &con, PARAM_STRING filename, W_SSTRING &t
 }
 
 <mod>
+/*
+	Check if a name was supplied for a new file. Assign one if none was provided.
+	Check if the file already exists.
+
+	If the file already exists and was supplied by the user, return "" and msg contains a message.
+	The function iterate with a generated name until it finds one that does not exist.
+*/
+static string projects_autoname(CONNECT_INFO &con, PARAM_STRING dir, PARAM_STRING filename, const char *extension, string &msg)
+{
+	string ret;
+	unsigned count=0;
+	while (true){
+		string tmp;
+		const char *fname =  filename.ptr;
+		if (fname[0] == '\0'){
+			if (count == 0){
+				tmp = string_f("%s.%s",MSG_U(I_NONAME,"noname"),extension);
+			}else{
+				tmp = string_f("%s-%u.%s",MSG_R(I_NONAME),count,extension);
+			}
+			fname = tmp.c_str();
+		}
+		ret = string_f("%s/%s",dir.ptr,fname);
+		glocal bool found = false;
+		<call bod_client_stat>(con,w_session.c_str(),ret,"");
+		<f ok>
+			if (success){
+				glocal.found = true;
+			}
+		</f>
+		</call>
+		if (glocal.found){
+			if (filename.ptr[0] != '\0'){
+				msg = MSG_U(E_FILEEXIST,"File already exist"); 
+				ret = "";
+				break;
+			}else{
+				count++;
+			}
+		}else{
+			break;
+		}
+	}
+	return ret;
+}
+</mod>
+
+<mod>
 void projects(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER> &docpointers)
 {
 	glocal con;
@@ -141,24 +189,39 @@ void projects(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER
 				DIV d; d.dispflex().flowcol().print();
 				const unsigned vspace=tlmpweb_ismobile() ? 10: 3;
 				const unsigned hspace=3;
-				{
-					DIV dd; dd.w(100).flexfixe().vmargins(vspace,0).print();
-					DIV ddd; ddd.dispflex().flowrow().print();
-					DIV dddd; dddd.flexfixe().margins(0,hspace).print();
-					/-#I_NEW_FOLDER New folder
-					dddd.end();
-					dddd.flexgrow().print();
-					field_string (w_folder,"style=width:100%");
-				}
-				{
+				if (0){
 					DIV dd; dd.w(100).flexfixe().vmargins(vspace,vspace).print();
 					url_self (string_f("webtab_add=2:%s%c%ld~%s",glocal.id,WEBTAB_MARK,time(NULL),MSG_U(I_NEWDOC,"New_document"))
 						,MSG_U(I_CREATENEWDOC,"Create a new document"));
 				}
 				{
+					DIV dd; dd.w(100).flexfixe().vmargins(vspace,vspace).print();
+					DIV ddd; ddd.dispflex().flowrow().print();
+					DIV dddd; dddd.flexfixe().margins(0,hspace).print();
+					/-#I_CREATE Create
+					dddd.end();
+					dddd.flexfixe().margins(0,hspace).print();
+					field_list (w_action,"");
+					field_list_item ("","");
+					field_list_item ("dir",MSG_U(I_NEW_FOLDER,"New folder"));
+					field_list_item ("txt",MSG_U(I_TEXTFILE,"Text file"));
+					field_list_item ("sud",MSG_U(I_SUDOKUGAME,"Sudoku game"));
+					field_list_item ("tic",MSG_U(I_TICTACTOGAME,"TicTacTo game"));
+					field_list_end();
+					dddd.end();
+					dddd.flexfixe().margins(0,hspace).print();
+					/-#I_NAME Name
+					dddd.end();
+					dddd.flexgrow().print();
+					field_string (w_filename,"style=width:100%");
+				}
+				{
 					DIV dd; dd.w(100).flexfixe().print();
 					DIV ddd; ddd.dispflex().flowrow().print();
-					DIV dddd; dddd.flexfixe().print();
+					DIV dddd; dddd.flexfixe().margins(0,hspace).print();
+					/-#I_UPLOAD Upload
+					dddd.end();
+					dddd.flexfixe().margins(0,hspace).print();
 					field_file (w_upload);
 					dddd.end();
 					dddd.flexgrow().print();
@@ -171,18 +234,58 @@ void projects(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER
 			</f>
 			<f process>
 				glocal bool fail = false;
-				if (strcmp(w_folder.c_str(),"")!=0){
-					string filepath = string_f("%s/%s",glocal.path.c_str(),w_folder.c_str());
-					<call bod_client_mkdir>(glocal.con,w_session.c_str(),filepath);
-					<f ok>
-						if (!success){
-							glocal.fail = true;
-							htmlprintf (MSG_U(E_CREATEFOLDER,"Can't create folder: %s<br>\n"),msg);
-						}else{
-							w_folder.setempty();
-						}
-					</f>
-					</call>
+				const char *action = w_action.c_str();
+				if (strcmp(action,"dir")==0){
+					if (w_filename.size() == 0){
+						glocal.fail = true;
+						/-#I_NOFOLDERNAME No folder name provided
+						/- <br>
+					}else{
+						string filepath = string_f("%s/%s",glocal.path.c_str(),w_filename.c_str());
+						<call bod_client_mkdir>(glocal.con,w_session.c_str(),filepath);
+						<f ok>
+							if (!success){
+								glocal.fail = true;
+								htmlprintf (MSG_U(E_CREATEFOLDER,"Can't create folder: %s<br>\n"),msg);
+							}else{
+								w_filename.setempty();
+								w_action.setempty();
+							}
+						</f>
+						</call>
+					}
+				}else if (is_any_of(w_action.c_str(),"sud","tic","txt")){
+					string msg;
+					const char *magicline;
+					if (strcmp(w_action.c_str(),"sud")==0){
+						magicline = "boBOSUDO\n";
+					}else if (strcmp(w_action.c_str(),"tic")==0){
+						magicline = "boBOTICT\n";
+					}else{
+						magicline = "\n";
+					}
+					string path = projects_autoname(glocal.con,glocal.path,w_filename.c_str(),w_action.c_str(),msg);
+					if (msg.size() > 0){
+						glocal.fail = true;
+						htmlout (msg);
+						/- <br>
+					}else{
+						<call sendfile_var>(path,magicline,glocal.fail);
+						<f start>
+							<call bod_client_addfile_bob>(glocal.con,w_session.c_str(),filepath,content,more,"");
+							<f ok>
+								glocal.sendfile_var.setresult(success,msg);
+								if (success){
+									w_filename.setempty();
+									w_action.setempty();
+								}
+							</f>
+							</call>
+						</f>
+						<f rest>
+						</f>
+						</call>
+					}
 				}
 				if (strcmp(w_upload.c_str(),"")!=0){
 					const char *tempname = tlmpweb_getfilename(w_upload);
@@ -589,7 +692,7 @@ void projects(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER
 				return ret;
 			</f>
 			<f process>
-				<call sendfile_var>(glocal.path,w_content,fail);	
+				<call sendfile_var>(glocal.path,w_content.c_str(),fail);	
 				<f start>
 					if (glocal.newdocument){
 						glocal.path = string_f("%s/%s",glocal.path.c_str(),w_filename.c_str());
