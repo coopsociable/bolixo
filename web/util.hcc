@@ -1715,9 +1715,9 @@ void _F_sendfile_common::sethandle (PARAM_STRING _handle)
 void _F_sendfile_common::setresult (bool _success, PARAM_STRING msg)
 {
 	success = _success;
-	if (!success) htmlprintf ("sendfile failed: %s<br>\n",msg.ptr);
+	if (!success) errmsg = msg.ptr;
 }
-void sendfile(_F_sendfile &c, PARAM_STRING filepath, PARAM_STRING localfile, bool &fail)
+void sendfile(_F_sendfile &c, PARAM_STRING filepath, PARAM_STRING localfile, bool &fail, string &errmsg)
 {
 	c.success = true;
 	FILE *fin = fopen (localfile.ptr,"r");
@@ -1743,9 +1743,18 @@ void sendfile(_F_sendfile &c, PARAM_STRING filepath, PARAM_STRING localfile, boo
 		}
 		fclose (fin);
 	}
-	if (!c.success) fail = true;
+	if (!c.success){
+		errmsg = c.errmsg;
+		fail = true;
+	}
 }
-void sendfile_var(_F_sendfile_var &c, PARAM_STRING filepath, PARAM_STRING var_content, bool &fail)
+void sendfile(_F_sendfile &c, PARAM_STRING filepath, PARAM_STRING localfile, bool &fail)
+{
+	string errmsg;
+	sendfile (c,filepath,localfile,fail,errmsg);
+	if (errmsg.size() > 0) htmlprintf ("sendfile failed: %s<br>\n",errmsg.c_str());
+}
+void sendfile_var(_F_sendfile_var &c, PARAM_STRING filepath, PARAM_STRING var_content, bool &fail, string &errmsg)
 {
 	const char *content = var_content.ptr;
 	c.success = true;
@@ -1775,7 +1784,16 @@ void sendfile_var(_F_sendfile_var &c, PARAM_STRING filepath, PARAM_STRING var_co
 			}
 		}
 	}
-	if (!c.success) fail = true;
+	if (!c.success){
+		errmsg = c.errmsg;
+		fail = true;
+	}
+}
+void sendfile_var(_F_sendfile_var &c, PARAM_STRING filepath, PARAM_STRING var_content, bool &fail)
+{
+	string errmsg;
+	sendfile_var (c,filepath,var_content,fail,errmsg);
+	if (errmsg.size() > 0) htmlprintf ("sendfile_var failed: %s<br>\n",errmsg.c_str());
 }
 /*
 	Format an <img tag for a mini photo

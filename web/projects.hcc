@@ -171,6 +171,7 @@ void projects(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER
 		glocal string path = string_f ("/projects/%s",id);
 		glocal bool is_public = false;
 		glocal bool is_public_sub = false;
+		glocal string errmsg;
 		const char *pt = strchr(id,'/');
 		if (pt != NULL){
 			// is_public is true for the public project
@@ -195,7 +196,7 @@ void projects(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER
 						,MSG_U(I_CREATENEWDOC,"Create a new document"));
 				}
 				{
-					DIV dd; dd.w(100).flexfixe().vmargins(vspace,vspace).print();
+					DIV dd; dd.w(100).flexfixe().vmargins(vspace,0).print();
 					DIV ddd; ddd.dispflex().flowrow().print();
 					DIV dddd; dddd.flexfixe().margins(0,hspace).print();
 					/-#I_CREATE Create
@@ -216,7 +217,7 @@ void projects(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER
 					field_string (w_filename,"style=width:100%");
 				}
 				{
-					DIV dd; dd.w(100).flexfixe().print();
+					DIV dd; dd.w(100).flexfixe().vmargins(vspace,0).print();
 					DIV ddd; ddd.dispflex().flowrow().print();
 					DIV dddd; dddd.flexfixe().margins(0,hspace).print();
 					/-#I_UPLOAD Upload
@@ -225,8 +226,20 @@ void projects(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER
 					field_file (w_upload);
 					dddd.end();
 					dddd.flexgrow().print();
-					DIV ddddd; ddddd.sfloatright().print();
+					//DIV ddddd; ddddd.sfloatright().print();
+				}
+				{
+					DIV dd; dd.w(100).flexfixe().vmargins(vspace,0).print();
+					DIV ddd; ddd.dispflex().flowrow().print();
+					DIV dddd; dddd.flexfixe().margins(0,hspace).print();
 					button_submit();
+					dddd.end();
+					dddd.flexgrow().print();
+					if (glocal.errmsg.size() > 0){
+						/- <font color=red>
+						htmlout (glocal.errmsg);
+						/- </font>
+					}
 				}
 			</f>
 			<f validate>
@@ -238,15 +251,14 @@ void projects(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER
 				if (strcmp(action,"dir")==0){
 					if (w_filename.size() == 0){
 						glocal.fail = true;
-						/-#I_NOFOLDERNAME No folder name provided
-						/- <br>
+						glocal.errmsg = MSG_U(I_NOFOLDERNAME,"No folder name provided");
 					}else{
 						string filepath = string_f("%s/%s",glocal.path.c_str(),w_filename.c_str());
 						<call bod_client_mkdir>(glocal.con,w_session.c_str(),filepath);
 						<f ok>
 							if (!success){
 								glocal.fail = true;
-								htmlprintf (MSG_U(E_CREATEFOLDER,"Can't create folder: %s<br>\n"),msg);
+								glocal.errmsg = string_f (MSG_U(E_CREATEFOLDER,"Can't create folder: %s"),msg);
 							}else{
 								w_filename.setempty();
 								w_action.setempty();
@@ -264,13 +276,11 @@ void projects(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER
 					}else{
 						magicline = "\n";
 					}
-					string path = projects_autoname(glocal.con,glocal.path,w_filename.c_str(),w_action.c_str(),msg);
-					if (msg.size() > 0){
+					string path = projects_autoname(glocal.con,glocal.path,w_filename.c_str(),w_action.c_str(),glocal.errmsg);
+					if (glocal.errmsg.size() > 0){
 						glocal.fail = true;
-						htmlout (msg);
-						/- <br>
 					}else{
-						<call sendfile_var>(path,magicline,glocal.fail);
+						<call sendfile_var>(path,magicline,glocal.fail,glocal.errmsg);
 						<f start>
 							<call bod_client_addfile_bob>(glocal.con,w_session.c_str(),filepath,content,more,"");
 							<f ok>
@@ -290,7 +300,7 @@ void projects(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER
 				if (strcmp(w_upload.c_str(),"")!=0){
 					const char *tempname = tlmpweb_getfilename(w_upload);
 					string filepath = string_f("%s/%s",glocal.path.c_str(),w_upload.c_str());
-					<call sendfile>(filepath,tempname,glocal.fail);
+					<call sendfile>(filepath,tempname,glocal.fail,glocal.errmsg);
 					<f start>
 						<call bod_client_addfile_bob>(glocal.con,w_session.c_str(),filepath,content,more,"");
 						<f ok>
