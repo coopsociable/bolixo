@@ -33,6 +33,7 @@ struct DOTMENU{
 		step = _step;
 	}
 };
+void util_draw_dotmenu(const char *id_menu, bool is_active, bool notify);
 void util_dotmenu(const std::vector<DOTMENU> &menu, bool is_active, bool notify);
 int util_getsessioninfo (CONNECT_INFO &con, CONNECT_INFO &con_sess, std::string &session, const char *varname, unsigned &varval);
 void print_href (const char *id_suffix, const char *title, PARAM_STRING href, bool notify);

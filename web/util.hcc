@@ -721,7 +721,34 @@ void util_defstyles()
 		);
 	htmlout ("</script>\n");
 }
-
+/*
+	Draw the dot menu (3 bar in fact :-) ) only. No action or script attached.
+*/
+void util_draw_dotmenu(const char *id_menu, bool is_active, bool notify)
+{
+	unsigned height = draw_tab_height();
+	unsigned width = height;
+	unsigned thick = 2;
+	unsigned line_y = height/4;
+	unsigned skip_y = height/4;
+	unsigned line_x1 = 5;
+	unsigned line_x2 = width-5;
+	if (tlmpweb_ismobile()){
+		width *= 2;
+		thick = 4;
+		line_x1 = 20;
+		line_x2 = width-20;
+	}
+	htmlprintf ("<svg width=%u height=%u>\n",width,height);
+	htmlprintf ("<rect id='rect%s' stroke=black stroke-width=1 x=0 y=0 width=%u height=%u fill=%s />\n",id_menu,width,height,notify ? "orange" : "white");
+	for (int i=0; i<3; i++){
+		htmlprintf ("<line x1=%u y1=%u x2=%u y2=%u style='stroke:black;stroke-width:%u'></line>\n"
+			,line_x1,line_y,line_x2,line_y,thick);
+		line_y += skip_y;
+	}
+	htmlprintf ("<path stroke=%s stroke-width=2 d='M0,%u h%u' />",is_active ? "white" : "black",height,width);
+	htmlout ("</svg>");
+}
 /*
 	Draw a 3 dots menu and the associated popup.
 */
@@ -741,29 +768,8 @@ void util_dotmenu (const vector<DOTMENU> &menu, bool is_active, bool notify)
 	}
 
 	DIV d; d.id(id_menu).print();
-	unsigned height = draw_tab_height();
-	unsigned width = height;
-	unsigned thick = 2;
-	unsigned line_y = height/4;
-	unsigned skip_y = height/4;
-	unsigned line_x1 = 5;
-	unsigned line_x2 = width-5;
-	if (tlmpweb_ismobile()){
-		width *= 2;
-		thick = 4;
-		line_x1 = 20;
-		line_x2 = width-20;
-	}
 	htmlprintf ("<a href=# onclick='return dropmenu(\"%s\",\"%s\",%u);'>\n",id_dropdown,id_menu,popup_width);
-	htmlprintf ("<svg width=%u height=%u>\n",width,height);
-	htmlprintf ("<rect id='rect%s' stroke=black stroke-width=1 x=0 y=0 width=%u height=%u fill=%s />\n",id_menu,width,height,notify ? "orange" : "white");
-	for (int i=0; i<3; i++){
-		htmlprintf ("<line x1=%u y1=%u x2=%u y2=%u style='stroke:black;stroke-width:%u'></line>\n"
-			,line_x1,line_y,line_x2,line_y,thick);
-		line_y += skip_y;
-	}
-	htmlprintf ("<path stroke=%s stroke-width=2 d='M0,%u h%u' />",is_active ? "white" : "black",height,width);
-	htmlout ("</svg>");
+	util_draw_dotmenu (id_menu,is_active,notify);
 	htmlout ("</a>\n");
 }
 
