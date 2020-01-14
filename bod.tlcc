@@ -547,6 +547,7 @@ static void bod_list_talk (
 	unsigned ownerid,
 	const char *groupowner,
 	const char *groupname,
+	const vector<const char*> &fulltext,
 	unsigned offset,
 	unsigned nb,
 	const char *firstseen,
@@ -558,6 +559,8 @@ static void bod_list_talk (
 	glocal unsigned nb = nb;
 	glocal map<string,SHORTMSG> mp;
 	glocal bool deletes = false;
+	glocal set<string> fulltext;
+	for (auto f:fulltext) glocal.fulltext.insert(f);
 	int dirid = fs_find_short_inbox (ownerid,groupowner,groupname,msg);
 	if (dirid != -1){
 		<call sql_query>("select dirs_content.name,dirs_content.modified,id2name.name,id2name_copy.name,files.filetype"
@@ -597,7 +600,7 @@ static void bod_list_talk (
 				// Limit the number of lines if more than one message was requested
 				// Note the size is the complete size of the message, but what is sent may by few lines.
 				// So the application can tell this was truncated.
-				if (glocal.nb == 1){
+				if (glocal.nb == 1 || glocal.fulltext.count(msg.uuid)){
 					msg.content = row[6];
 					msg.size = msg.content.size();
 				}else{
@@ -2761,6 +2764,7 @@ static int bod_main (
 				glocal bool deletes = false;	// Is there some deleted entries
 				glocal unsigned total = 0;	// Total number of records
 				glocal unsigned nbnew = 0;
+				glocal fulltext;
 				glocal firstseen;
 				glocal string msg;
 				glocal vector<SHORTMSG> msgs;
@@ -2779,7 +2783,7 @@ static int bod_main (
 					</f>
 					<f onerow>
 						bod_list_talk (glocal.userid,glocal.msgs,atoi(row[0]),glocal.groupowner,glocal.groupname
-							,glocal.offset,glocal.nb,glocal.firstseen,glocal.deletes,glocal.total,glocal.nbnew,glocal.msg);
+							,glocal.fulltext,glocal.offset,glocal.nb,glocal.firstseen,glocal.deletes,glocal.total,glocal.nbnew,glocal.msg);
 					</f>
 					</call>
 				}
@@ -3341,7 +3345,8 @@ static int bod_main (
 					bool deletes;
 					unsigned total;
 					unsigned nbnew;
-					bod_list_talk (userid,msgs,userid,username,"public",offset,nb,"",deletes,total,nbnew,msg);
+					vector<const char*> fulltext;
+					bod_list_talk (userid,msgs,userid,username,"public",fulltext,offset,nb,"",deletes,total,nbnew,msg);
 				}
 				if (msg.size() > 0){
 					msgs.clear();

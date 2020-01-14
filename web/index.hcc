@@ -69,7 +69,8 @@ struct COPY{
 	}
 };
 static COPY fcopy;		// Cut buffer, holding a file path
-static vector<string> fulltext;	// For interest_check, list of message with full text required
+static vector<string> fulltext;	// For interest_check and talk, list of messages with full text required
+				// This list is shared by all message lists. It is simpler this way.
 static W_SSTRING w_fulltext("fullt");
 static W_SSTRING w_topic("topic");
 W_SSTRING w_lang("lang");
@@ -479,12 +480,19 @@ static void trli_getsessioninfo(CONNECT_INFO &con, CONNECT_INFO &con_sess, vecto
 		}
 	</f>
 	</call>
+}
+</mod>
+<mod>
+/*
+	The fulltext values control the visibility of entries in the main screen.
+	Normally, only a few lines are shown for each entries. Entries with their message id (UUID)
+	in fulltext[] are shown in full.
+	When we click on on entry, the variable w_fulltext is filled. It acts as a toggle.
+	If it is in fulltext[], it is removed, if not it is added.
+*/
+static void index_check_fulltext(CONNECT_INFO &con_sess)
+{
 	if (w_fulltext.is_filled()){
-		// The fulltext values control the visibility of entries in the main screen.
-		// Normally, only a few lines are shown for each entries. Entries with their message id (UUID)
-		// in fulltext[] are shown in full.
-		// When we click on on entry, the variable w_fulltext is filled. It acts as a toggle.
-		// If it is in fulltext[], it is removed, if not it is added.
 		const char *new_fulltext = w_fulltext.c_str();
 		auto p = find(fulltext.begin(),fulltext.end(),new_fulltext);
 		if (p == fulltext.end()){
@@ -844,7 +852,8 @@ static void index_show_shortmsg(
 		}else if (dropmenu == MENU_PASTE){
 			index_paste (*glocal.con,glocal.path,glocal.groupowner,glocal.groupname);
 		}else{
-			<call bod_client_list_talk>(*glocal.con,w_session.c_str(),"",glocal.groupname,glocal.groupowner,noline,1,firstseens[glocal.table]);
+			vector<string> fullt;
+			<call bod_client_list_talk>(*glocal.con,w_session.c_str(),"",glocal.groupname,glocal.groupowner,fullt,noline,1,firstseens[glocal.table]);
 			<f ok>
 				if (messages.size()!=1){
 					htmlprintf ("Internal error: %s\n",msg);
@@ -900,7 +909,7 @@ static void index_show_shortmsg(
 		index_msgs_style(*this);
 		if (w_showhidden == 1) firstseens[glocal.table] = "";
 		<call bod_client_list_talk>(*glocal.con,w_session.c_str(),"",glocal.groupname,glocal.groupowner
-			,nbskip,nblines,firstseens[glocal.table]);
+			,fulltext,nbskip,nblines,firstseens[glocal.table]);
 		<f ok>
 			glocal.webtable.setdrop_default({MENU_PASTE,MENU_UNDELETE});
 			if (!success){
@@ -981,12 +990,13 @@ static void index_show_shortmsg(
 					}else if (file_is_image(m.file_type)){
 						glocal.webtable.setclickopt (true,"",string_f("webtab_add=2:%s~%s",path.c_str(),MSG_U(I_IMAGE,"Image")));
 					}else if (file_is_text(m.file_type)){
-						glocal.webtable.setclickopt (true,"",string_f("webtab_add=2:%s~%s",path.c_str(),MSG_U(I_TEXT,"Text")));
+						glocal.webtable.setclickopt (true,"",string_f("fullt=%s",m.uuid));
+						//glocal.webtable.setclickopt (true,"",string_f("webtab_add=2:%s~%s",path.c_str(),MSG_U(I_TEXT,"Text")));
 					}
 					string content;
 					if (m.content[0] != '\0'){
-						content = string_f("<div class=smsg>%s</div>",util_format_shortmsg (m.content,5,m.size
-							,glocal.image_width).c_str());
+						content = string_f("<div class=smsg>%s</div>",util_format_shortmsg (m.content
+							,0,m.size,glocal.image_width).c_str());
 					}else if (file_is_sound(m.file_type)){
 						string tmp = util_flipspaces(m.submit);
 						content = string_f("<audio controls>\n"
@@ -1012,7 +1022,7 @@ static void index_show_shortmsg(
 								htmlprintf (MSG_U(E_CANTREADFILE,"Can't read file: %s\n"),msg);
 							}else{
 								string tmp = string((const char*)content.getbuffer(),content.getsize());
-								tmp = util_format_shortmsg (tmp.c_str(),5,info.size,glocal.image_width);
+								tmp = util_format_shortmsg (tmp.c_str(),0,info.size,glocal.image_width);
 								glocal.webtable.setrow("image",glocal.rownum,"\t%s\a",tmp.c_str());
 							}
 						</f>
@@ -1201,7 +1211,8 @@ extern "C" void webmain_real()
 			int n = str_splitline (tableid+5,':',tb);
 			if (n == 2){
 				glocal string dir = string_f("/msgs/%s/short-inbox/%s",tb[0].c_str(),tb[1].c_str());
-				<call bod_client_list_talk>(glocal.con,w_session.c_str(),"",tb[1],tb[0],current_row,1,"");
+				vector<string> fullt;
+				<call bod_client_list_talk>(glocal.con,w_session.c_str(),"",tb[1],tb[0],fullt,current_row,1,"");
 				<f ok>
 					if (messages.size()==1){
 						glocal.valid = true;
@@ -1396,6 +1407,7 @@ extern "C" void webmain_real()
 		</call>
 	</f>
 	</obj>
+	index_check_fulltext(glocal.con_sess);
 	<call websteps>();
 	<f setstep>
 		if (tlmpweb_isrobot() || w_robot==1){
