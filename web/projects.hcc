@@ -94,7 +94,7 @@ static int index_loadfile(CONNECT_INFO &con, PARAM_STRING filename, W_SSTRING &t
 	If the file already exists and was supplied by the user, return "" and msg contains a message.
 	The function iterate with a generated name until it finds one that does not exist.
 */
-static string projects_autoname(CONNECT_INFO &con, PARAM_STRING dir, PARAM_STRING filename, const char *extension, string &msg)
+static string projects_autoname(CONNECT_INFO &con, PARAM_STRING dir, PARAM_STRING filename, const char *extension, string &name, string &msg)
 {
 	string ret;
 	unsigned count=0;
@@ -127,6 +127,7 @@ static string projects_autoname(CONNECT_INFO &con, PARAM_STRING dir, PARAM_STRIN
 				count++;
 			}
 		}else{
+			name = fname;
 			break;
 		}
 	}
@@ -276,7 +277,8 @@ void projects(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER
 					}else{
 						magicline = "\n";
 					}
-					string path = projects_autoname(glocal.con,glocal.path,w_filename.c_str(),w_action.c_str(),glocal.errmsg);
+					glocal string name;
+					string path = projects_autoname(glocal.con,glocal.path,w_filename.c_str(),w_action.c_str(),glocal.name,glocal.errmsg);
 					if (glocal.errmsg.size() > 0){
 						glocal.fail = true;
 					}else{
@@ -288,6 +290,7 @@ void projects(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER
 								if (success){
 									w_filename.setempty();
 									w_action.setempty();
+									glocal.webtabs.addtab (string_f("2:%s/%s",glocal.id,glocal.name.c_str()),glocal.name);
 								}
 							</f>
 							</call>
