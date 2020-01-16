@@ -358,6 +358,7 @@ install: msg.eng msg.fr
 	install -m755 utils/deleteoldmsgs $(RPM_BUILD_ROOT)/usr/sbin/deleteoldmsgs
 	install -m755 deleteitems $(RPM_BUILD_ROOT)/usr/sbin/deleteitems
 	install -m755 utils/erase-oldsesssions.hourly  $(RPM_BUILD_ROOT)/etc/cron.hourly/erase-oldsesssions
+	install -m755 utils/document-save.hourly  $(RPM_BUILD_ROOT)/etc/cron.hourly/document-save
 	for file in web/images-doc/*.jpg; do install -m644 $$file $(RPM_BUILD_ROOT)/var/www/html/.; done
 
 #	install -m755 web/admin.hc $(RPM_BUILD_ROOT)/var/www/html/admin.hc

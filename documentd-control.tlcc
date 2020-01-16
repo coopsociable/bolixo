@@ -32,11 +32,28 @@ using namespace std;
 #include "proto/bod_client.protodef"
 #include "proto/documentd_control.protoch"
 
+#define bod_control_status_NOTNEED
+#define bod_control_quit_NOTNEED
+#define bod_control_debug_NOTNEED
+#define bod_control_debugfile_NOTNEED
+#define bod_control_helptest_NOTNEED
+#define bod_control_publishemail_NOTNEED
+#define bod_control_help_connect_NOTNEED
+#define bod_control_nodelogin_NOTNEED
+#define bod_control_nodelogout_NOTNEED
+#define bod_control_instrument_NOTNEED
+#define bod_control_keepmsgs_NOTNEED
+#define bod_control_erase_session_NOTNEED
+#define bod_control_set_admin_session_NOTNEED
+#include "proto/bod_control.protoch"
+
 <mod>
 int main (int argc, char *argv[])
 {
 	glocal int ret = -1;
-	glocal const char *control = "/var/run/documentd.sock";
+	glocal const char *control = "/var/lib/lxc/documentd/rootfs/var/run/blackhole/documentd.sock";
+	glocal const char *bod_control = "/var/lib/lxc/bod/rootfs/var/run/blackhole/bod-2.sock";
+	glocal unsigned idle_time = 60*60;	// One hour
 	glocal.ret = <call tlmpprogram>(argc,argv,"bolixo");
 	<f init>
 		setproginfo ("documentd-control",VERSION
@@ -45,74 +62,129 @@ int main (int argc, char *argv[])
 			 "\n"
 			 "\tdebug 0/1\n"
 			 "\tdebugfile filename\n"
-			 "\tendgame gameid\n"
+			 "\tdeleteoldgames\n"
+			 "\tendgame gameid revision\n"
 			 "\tendgames\n"
 			 "\tinstrument 0|1\n"
+			 "\tlistgames\n"
 			 "\tquit\n"
 			 "\tresetgame gameid\n"
 			 "\tstatus\n"
 			 "\tstartgame gameid\n"
 			));
 		setarg ('p',"control","Unix socket to reach documentd",glocal.control,false);
+		setarg (' ',"bod-control","Unix socket to reach bod",glocal.bod_control,false);
+		setarg (' ',"idle-time","Idle time for a game (deleted after that)",glocal.idle_time,false);
 	</f>
 	<f main>
 		glocal int ret = -1;
-		CONNECT_INFO con;
-		con.port = glocal.control;
+		glocal CONNECT_INFO con;
+		glocal CONNECT_INFO con_bod;
+		glocal.con.port = glocal.control;
+		glocal.con_bod.port = glocal.bod_control;
 		if (strcmp(argv[0],"status")==0 && argc==1){
-			<call documentd_control_status>(con);
+			<call documentd_control_status>(glocal.con);
 			<f ok>
 				if (!internal_error) glocal.ret = 0;
 				for (auto x:lines) printf ("%s\n",x);
 			</f>
 			</call>
+		}else if (strcmp(argv[0],"listgames")==0 && argc==1){
+			<call documentd_control_listgames>(glocal.con);
+			<f ok>
+				if (!internal_error) glocal.ret = 0;
+				for (auto x:stats){
+					printf ("gameid=%s modified=%u modified_by=%s last_activity=%u revision=%u\n"
+						,x.gameid,x.modified,x.modified_by,x.last_activity,x.revision);
+				}
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"deleteoldgames")==0 && argc==1){
+			<call documentd_control_listgames>(glocal.con);
+			<f ok>
+				if (!internal_error) glocal.ret = 0;
+				time_t old_now = time(nullptr) - glocal.idle_time;
+				for (auto x:stats){
+					glocal bool delete_ok = true;
+					glocal const char *gameid = x.gameid;
+					if (x.modified != 0 && x.modified < old_now){
+						// It was modified some time ago, must be saved using bod
+						<call bod_control_savegame>(glocal.con_bod,x.gameid);
+						<f ok>
+							if (!success){
+								tlmp_error (MSG_U(E_FAILSAVEGAME,"Can't save document/game %s: %s\n")
+									,glocal.gameid,msg);
+								glocal.delete_ok = false;
+							}
+						</f>
+						</call>
+					}
+					if (glocal.delete_ok){
+						if (x.last_activity < old_now){
+							// This game/document has not been accessed for some time
+							// We delete the game. The revision obtained by listgame
+							// must match when the deletion is executed in documentd.
+							// If it does not match, it means the game was modified
+							// while we were saving. So endgame fails.
+							// But failure is not a problem. The game continue to
+							// exist in documentd.
+							<call documentd_control_endgame>(glocal.con,x.gameid,x.revision);
+							<f ok>
+							</f>
+							</call>
+						}
+					}				
+					
+				}
+			</f>
+			</call>
 		}else if (strcmp(argv[0],"quit")==0 && argc==1){
-			<call documentd_control_quit>(con);
+			<call documentd_control_quit>(glocal.con);
 			<f ok>
 				if (!internal_error) glocal.ret = 0;
 			</f>
 			</call>
 		}else if (strcmp(argv[0],"debug")==0 && argc==2){
-			<call documentd_control_debug>(con,atoi(argv[1]));
+			<call documentd_control_debug>(glocal.con,atoi(argv[1]));
 			<f ok>
 			</f>
 			</call>
 		}else if (strcmp(argv[0],"debugfile")==0 && argc==2){
-			<call documentd_control_debugfile>(con,argv[1]);
+			<call documentd_control_debugfile>(glocal.con,argv[1]);
 			<f ok>
 			</f>
 			</call>
 		}else if (strcmp(argv[0],"load")==0 && argc == 2){
-			<call documentd_control_load>(con,argv[1]);
+			<call documentd_control_load>(glocal.con,argv[1]);
 			<f ok>
 				printf ("success=%d msg=%s\n",success,msg);
 			</f>
 			</call>
 		}else if (strcmp(argv[0],"save")==0 && argc == 2){
-			<call documentd_control_save>(con,argv[1]);
+			<call documentd_control_save>(glocal.con,argv[1]);
 			<f ok>
 				printf ("success=%d msg=%s\n",success,msg);
 			</f>
 			</call>
 		}else if (strcmp(argv[0],"startgame")==0 && argc == 3){
-			<call documentd_control_startgame>(con,argv[1],argv[2]);
+			<call documentd_control_startgame>(glocal.con,argv[1],argv[2]);
 			<f ok>
 				printf ("success=%d msg=%s\n",success,msg);
 			</f>
 			</call>
-		}else if (strcmp(argv[0],"endgame")==0 && argc == 2){
-			<call documentd_control_endgame>(con,argv[1]);
+		}else if (strcmp(argv[0],"endgame")==0 && argc == 3){
+			<call documentd_control_endgame>(glocal.con,argv[1],atoi(argv[2]));
 			<f ok>
 				printf ("success=%d msg=%s\n",success,msg);
 			</f>
 			</call>
 		}else if (strcmp(argv[0],"endgames")==0 && argc == 1){
-			<call documentd_control_endgames>(con);
+			<call documentd_control_endgames>(glocal.con);
 			<f ok>
 			</f>
 			</call>
 		}else if (strcmp(argv[0],"resetgame")==0 && argc == 2){
-			<call documentd_control_resetgame>(con,argv[1]);
+			<call documentd_control_resetgame>(glocal.con,argv[1]);
 			<f ok>
 				printf ("success=%d msg=%s\n",success,msg);
 			</f>
@@ -132,7 +204,7 @@ int main (int argc, char *argv[])
 					args.push_back(v);
 				}
 			}
-			<call documentd_control_playstep>(con,argv[1],args);
+			<call documentd_control_playstep>(glocal.con,argv[1],args);
 			<f ok>
 				if (!success){
 					printf ("success=%d unknown=%d msg=%s\n",success,unknown,msg);
@@ -148,7 +220,7 @@ int main (int argc, char *argv[])
 			</f>
 			</call>
 		}else if (strcmp(argv[0],"instrument")==0 && argc==2){
-			<call documentd_control_instrument>(con,atoi(argv[1]));
+			<call documentd_control_instrument>(glocal.con,atoi(argv[1]));
 			<f ok>
 			</f>
 			</call>

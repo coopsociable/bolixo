@@ -151,6 +151,7 @@ make install
 /etc/bash_completion.d/bolixo
 /usr/lib/bo-complete
 /etc/cron.hourly/erase-oldsesssions
+/etc/cron.hourly/document-save
 %attr(-,bolixo,bolixo)/var/lib/bolixo
 %attr(-,bolixo,bolixo)/var/lib/bolixod
 %doc utils/rss-scan.hourly

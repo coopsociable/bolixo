@@ -164,10 +164,17 @@ class GAME{
 	time_t last_activity = time(nullptr);
 	string modified_by;
 protected:
+	unsigned revision = 0;
 	string gameid;
 public:
 	void setgameid(const char *_gameid){
 		gameid = _gameid;
+	}
+	void set_revision(unsigned _revision){
+		revision = _revision;
+	}
+	unsigned get_revision() const {
+		return revision;
 	}
 	void setactivity(){
 		last_activity = time(nullptr);
@@ -178,6 +185,7 @@ public:
 	void setmodified(const char *_modified_by){
 		modified = time(nullptr);
 		modified_by = _modified_by;
+		revision++;
 	}
 	void setmodified(time_t mod, const char *_modified_by){
 		modified = mod;
@@ -216,6 +224,7 @@ class TICTACTO: public GAME{
 	unsigned char grid[3][3];
 public:
 	void save(DOC_WRITER &w, bool){
+		documentd_tictacto_header(&w,revision);
 		documentd_tictacto_player(&w,x_is_player);
 		unsigned row=0;
 		for (auto &g:grid){
@@ -226,8 +235,12 @@ public:
 	void load(DOC_READER &r, string &msg){
 		glocal x_is_player;
 		glocal grid;
+		glocal revision;
 		glocal msg;
 		<call documentd_tictacto>(&r);
+		<f header>
+			glocal.revision = revision;
+		</f>
 		<f player>
 			glocal.x_is_player = x_is_player;
 		</f>
@@ -459,6 +472,7 @@ public:
 
 void SUDOKU::save (DOC_WRITER &w, bool save_session_info)
 {
+	documentd_sudoku_header(&w,revision);
 	if (save_session_info){
 		for (auto &s:seldigs){
 			documentd_sudoku_select(&w,s.first,s.second);
@@ -476,8 +490,12 @@ void SUDOKU::load (DOC_READER &r, string &msg)
 	glocal unsigned x=0;
 	glocal unsigned y=0;
 	glocal seldigs;
+	glocal revision;
 	resetgame();
 	<call documentd_sudoku>(&r);
+	<f header>
+		glocal.revision = revision;
+	</f>
 	<f cell>
 		if (glocal.x > 8){
 			glocal.msg = "Too many cells in the sodoku files";
@@ -1034,13 +1052,18 @@ static bool documentd_startgame(
 static bool documentd_endgame (
 	map<string,GAME_P> &games,
 	const char *gameid,
+	unsigned revision,
 	string &msg)
 {
 	bool ret = false;
 	auto g = games.find(gameid);
 	if (g != games.end()){
-		ret = true;
-		games.erase (g);
+		if (g->second->get_revision() != revision){
+			msg = "Revision mismatch";
+		}else{
+			ret = true;
+			games.erase (g);
+		}
 	}else{
 		msg = "Unknown game id";
 	}
@@ -1126,10 +1149,23 @@ int main (int argc, char *argv[])
 						DATEASC act,mod;
 						fdpass_asctime(g.second->get_last_activity(),act);
 						if (g.second->is_modified()) fdpass_asctime(g.second->get_modified(),mod);
-						tb.push_back(string_f("gameid: %s last_activity=%s modified=%s modified_by=%s",g.first.c_str()
-							,act.buf,mod.buf,g.second->get_modified_by()));
+						tb.push_back(string_f("gameid: %s last_activity=%s modified=%s modified_by=%s revision=%u",g.first.c_str()
+							,act.buf,mod.buf,g.second->get_modified_by(),g.second->get_revision()));
 					}
 					rep_status(tb);
+				</f>
+				<f listgames>
+					vector<GAMESTAT> stats;
+					for (auto g:glocal.games){
+						GAMESTAT st;
+						st.gameid = g.first;
+						st.modified = g.second->is_modified() ? g.second->get_modified() : 0;
+						st.modified_by = g.second->get_modified_by();
+						st.last_activity = g.second->get_last_activity();
+						st.revision = g.second->get_revision();
+						stats.emplace_back(st);
+					}
+					rep_listgames(stats);
 				</f>
 				<f instrument>
 					toggle_instrument_file(on);
@@ -1173,7 +1209,7 @@ int main (int argc, char *argv[])
 				</f>
 				<f endgame>	// gameid = success:b msg
 					string msg;
-					bool success = documentd_endgame(glocal.games,gameid,msg);
+					bool success = documentd_endgame(glocal.games,gameid,revision,msg);
 					rep_endgame (success,msg);
 				</f>
 				<f endgames>
@@ -1263,7 +1299,7 @@ int main (int argc, char *argv[])
 				<f endgame>	// gameid = success:b msg
 					string msg;
 					translat_selectlang(lang);
-					bool success = documentd_endgame(glocal.games,gameid,msg);
+					bool success = documentd_endgame(glocal.games,gameid,revision,msg);
 					rep_endgame (success,msg);
 				</f>
 				<f playstep>
@@ -1356,9 +1392,9 @@ int main (int argc, char *argv[])
 						msg = "Unknown document";
 					}
 					if (msg.size() > 0){
-						rep_is_modified(false,msg,false,"");
+						rep_is_modified(false,msg,false,"",0);
 					}else{
-						rep_is_modified(true,"",modified,modified_by);
+						rep_is_modified(true,"",modified,modified_by,g->second->get_revision());
 					}
 				</f>
 				<f invalid>
