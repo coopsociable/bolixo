@@ -863,7 +863,7 @@ static void index_show_shortmsg(
 	PARAM_STRING groupname,
 	PARAM_STRING groupowner)
 {
-	glocal _F_webtabs *webtabs = &webtabs;
+	glocal webtabs;
 	glocal CONNECT_INFO *con = &con;
 	glocal CONNECT_INFO *con_sess = &con_sess;
 	glocal const char *groupname = groupname.ptr;
@@ -921,6 +921,8 @@ static void index_show_shortmsg(
 						}else{
 							/-#E_REPLYTOYOU Can't reply to yourself
 						}
+					}else if (glocal.dropmenu == MENU_OPENINTAB){
+						glocal.webtabs.addtab (string_f("2:%s",glocal.fname.c_str()),MSG_U(I_TEXT,"Text"));
 					}else{
 						util_popup (*glocal.con,m.content,m.file_type,m.submit,m.from
 							,string_f("/msgs/%s/short-inbox/%s/%s"
@@ -942,6 +944,7 @@ static void index_show_shortmsg(
 		adddrop_opt (MENU_DELETE,MSG_R(M_DELETE));
 		adddrop_opt (MENU_UNDELETE,MSG_R(M_UNDELETE));
 		adddrop_opt (MENU_DOWNLOAD,MSG_R(M_DOWNLOAD));
+		adddrop_opt (MENU_OPENINTAB,MSG_U(M_OPENINTAB,"Open in tab"));
 		index_msgs_style(*this);
 		if (w_showhidden == 1) firstseens[glocal.table] = "";
 		<call bod_client_list_talk>(*glocal.con,w_session.c_str(),"",glocal.groupname,glocal.groupowner
@@ -1016,7 +1019,7 @@ static void index_show_shortmsg(
 					}
 					const char *func = "Popup";
 					string path = string_f("/msgs/%s/short-inbox/%s/%s",glocal.groupowner,glocal.groupname,m.uuid);
-					if (glocal.webtabs->selected(path)) glocal.webtable.setcurrent(glocal.rownum);
+					if (glocal.webtabs.selected(path)) glocal.webtable.setcurrent(glocal.rownum);
 					if (file_is_sound(m.file_type)){
 						glocal.webtable.setclickopt (true,func,"400,100");
 					}else if (file_is_video(m.file_type)){
@@ -1025,7 +1028,7 @@ static void index_show_shortmsg(
 						glocal.webtable.setclickopt (true,"",string_f("webtab_add=2:%s~%s",path.c_str(),MSG_U(I_IMAGE,"Image")));
 					}else if (file_is_text(m.file_type)){
 						glocal.webtable.setclickopt (true,"",string_f("fullt=%s",m.uuid));
-						//glocal.webtable.setclickopt (true,"",string_f("webtab_add=2:%s~%s",path.c_str(),MSG_U(I_TEXT,"Text")));
+						//glocal.webtable.setclickopt (true,"",string_f("webtab_add=2:%s~%s",path.c_str(),MSG_R(I_TEXT)));
 					}
 					string content;
 					if (m.content[0] != '\0'){
