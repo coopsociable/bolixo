@@ -349,7 +349,35 @@ static void trli_initvar (VAR &var, PARAM_STRING name, PARAM_STRING val)
 	sval.sval = val.ptr;
 	var.vals.push_back(sval);
 }
-
+static unsigned subtab_talk=0;
+static unsigned subtab_projects=0;
+<mod>
+/*
+	Update the session information if the subtab was changed (from a user action).
+*/
+static void index_set_subtab(CONNECT_INFO &con_sess, unsigned &subtab)
+{
+	unsigned newval = webtabs_get_subtab();
+	if (newval != subtab){
+		subtab = newval;
+		VAR var;
+		var.name = "subtabs";
+		SNAMEVAL sval;
+		sval.sname = "talk";
+		sval.sval = string_f("%u",subtab_talk);
+		var.vals.push_back(sval);
+		sval.sname = "projects";
+		sval.sval = string_f("%u",subtab_projects);
+		var.vals.push_back(sval);
+		add_to_instrument ("setvar subtabs");
+		<call bo_sessiond_client_setvar>(con_sess,w_session.c_str(),var);
+		<f ok>
+			if (!success) tlmp_error ("Can't set variable subtabs: %s\n",msg);
+		</f>
+		</call>
+	}
+}
+</mod>
 <mod>
 static void trli_getsessioninfo(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER> &docpointers)
 {
@@ -464,6 +492,14 @@ static void trli_getsessioninfo(CONNECT_INFO &con, CONNECT_INFO &con_sess, vecto
 					}
 				}else if (strcmp(var.name,"fulltext")==0){
 					for (auto &v:var.vals) fulltext.push_back(v.sname);
+				}else if (strcmp(var.name,"subtabs")==0){
+					for (auto &v:var.vals){
+						if (strcmp(v.sname,"talk")==0){
+							subtab_talk = atoi(v.sval);
+						}else if (strcmp(v.sname,"projects")==0){
+							subtab_projects = atoi(v.sval);
+						}
+					}
 				}
 			}
 			webtab_notify();
@@ -515,7 +551,7 @@ static void index_check_fulltext(CONNECT_INFO &con_sess)
 		add_to_instrument ("setvar fulltext");
 		<call bo_sessiond_client_setvar>(con_sess,w_session.c_str(),var);
 		<f ok>
-			if (!success) tlmp_error ("Can't set variable offset: %s\n",msg);
+			if (!success) tlmp_error ("Can't set variable fulltext: %s\n",msg);
 		</f>
 		</call>
 	}
@@ -2017,7 +2053,9 @@ extern "C" void webmain_real()
 	</f>
 	<f step7> // TAB Projects
 		bolixo_title (MSG_R(M_PROJECTS),this);
+		webtabs_set_subtab (subtab_projects);
 		projects (glocal.con,glocal.con_sess,glocal.docpointers);
+		index_set_subtab (glocal.con_sess,subtab_projects);
 	</f>
 	<f step8> // TAB Mails
 		bolixo_title (MSG_U(T_MAILS,"Mails"),this);
@@ -2027,6 +2065,7 @@ extern "C" void webmain_real()
 		bolixo_title (MSG_U(T_TALKS,"Talks"),this);
 		static unsigned size[5]={15,40,45,0,0};
 		static unsigned size_mobile[5]={25,60,15,0,0};
+		webtabs_set_subtab (subtab_talk);
 		<call webtabs>("talks",tabs,is_mobile ? size_mobile : size);
 		<f documents>
 			sethelp();
@@ -2280,6 +2319,7 @@ extern "C" void webmain_real()
 			}
 		</f>
 		</call>
+		index_set_subtab (glocal.con_sess,subtab_talk);
 	</f>
 	<f step10> // Confirm user
 		if (w_confirm.empty()){
