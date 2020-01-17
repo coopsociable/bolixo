@@ -575,10 +575,10 @@ FILE *fs_open_file (int fileid, PARAM_STRING modified, const char *mode)
 }
 
 <mod>
-void fs_list_inboxes (unsigned userid, vector<INBOX> &inboxes, vector<unsigned> &listids, bool showroles)
+void fs_list_inboxes (unsigned userid, vector<INBOX> &inboxes, vector<unsigned> &listids, bool showroles, bool list_own_projects)
 {
-	glocal vector<INBOX> *inboxes = &inboxes;
-	glocal vector<unsigned> *listids = &listids;
+	glocal inboxes;
+	glocal listids;
 	glocal bool showroles = showroles;
 	const char *rolestr = showroles ? ",group_members.role" : "";
 	<call sql_query>("select distinct id2name.name,group_lists.name,group_lists.id%s"
@@ -595,10 +595,38 @@ void fs_list_inboxes (unsigned userid, vector<INBOX> &inboxes, vector<unsigned> 
 		inb.manager = row[0];
 		inb.project = row[1];
 		if (glocal.showroles && row[3] != NULL) inb.role = row[3];
-		glocal.inboxes->push_back(inb);
-		glocal.listids->push_back(atoi(row[2]));
+		glocal.inboxes.push_back(inb);
+		glocal.listids.push_back(atoi(row[2]));
 	</f>
 	</call>
+	if (list_own_projects){
+		// We are adding projects owned by the user
+		// but the user is not a member of any groups in the project (or this is a private project and there is no groups)
+		glocal string manager;
+		<call sql_query>("select name from id2name where userid=%u",userid);
+		<f onerow>
+			glocal.manager = row[0];
+		</f>
+		</call>
+		<call sql_query>("select id,name from group_lists where ownerid=%u and name not like '#%%'",userid);
+		<f onerow>
+			bool found = false;
+			for (auto &i:glocal.inboxes){
+				if (i.manager == glocal.manager && i.project == row[1]){
+					found = true;
+					break;
+				}
+			}
+			if (!found){
+				glocal.listids.push_back(atoi(row[0]));
+				INBOX inb;
+				inb.manager = glocal.manager;
+				inb.project = row[1];
+				glocal.inboxes.push_back(inb);
+			}
+		</f>
+		</call>
+	}
 }
 </mod>
 

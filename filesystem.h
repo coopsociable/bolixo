@@ -42,7 +42,7 @@ int fs_file_handle_getextra (PARAM_STRING handle, int &ownerid, int &dirid, int 
 FILE *fs_open_file (int fileid, PARAM_STRING modified, const char *mode);
 std::string fs_makeid ();
 unsigned fs_getnbhandle();
-void fs_list_inboxes (unsigned userid, std::vector<INBOX> &inboxes, std::vector<unsigned> &listids, bool showroles);
+void fs_list_inboxes (unsigned userid, std::vector<INBOX> &inboxes, std::vector<unsigned> &listids, bool showroles, bool list_own_projects);
 unsigned fs_find_inbox (unsigned ownerid, PARAM_STRING name, bool create, std::string &msg);
 //unsigned fs_find_short_inbox (unsigned ownerid, PARAM_STRING username, std::string &msg, bool create, bool &created);
 unsigned fs_find_short_inbox (unsigned ownerid, PARAM_STRING username, PARAM_STRING groupname, std::string &msg, bool create, bool &created);
