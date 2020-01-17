@@ -250,6 +250,30 @@ elif [ "$1" = "badnames" ] ; then # test: Try to use bad names for users, projec
 	./bofs groups -g -G "inbox"
 	./bofs groups -l -L "to#to"
 	./bofs groups -l -L "inbox"
+elif [ "$1" = "setaccess" ] ; then # test: set the access parameters of a file
+	# Create 2 projects
+	./bofs groups -l -L project1
+	./bofs groups -l -L project2
+	# Now create a file which will belong to jacques-A, project public
+	# Inherited from the parent directory
+	ls | ./bofs cat --pipeto bo://projects/jacques-A/public/file1
+	./bofs -t ls -l bo://projects/jacques-A/public
+	# Assign the file to project project1
+	./bofs groups --set-access -L project1 --listmode w /projects/jacques-A/public/file1
+	./bofs -t ls -l bo://projects/jacques-A/public
+	# Assign the file to another user
+	./bofs -u admin groups --set-access --user jacques-B /projects/jacques-A/public/file1
+	./bofs -t ls -l bo://projects/jacques-A/public
+	# Assign the file to a new project. This will fail because the file is now owned by jacques-B
+	./bofs groups --set-access -L project2 --listmode w /projects/jacques-A/public/file1
+	./bofs -t ls -l bo://projects/jacques-A/public
+	# Assign the file to a new project, but this time done by admin (It will work)
+	./bofs -u admin groups --set-access --listowner jacques-A -L project2 --listmode w /projects/jacques-A/public/file1
+	./bofs -t ls -l bo://projects/jacques-A/public
+	# Cleanup
+	./bofs -u admin rm bo://projects/jacques-A/public/file1
+	./bofs groups --delete-list -L project1
+	./bofs groups --delete-list -L project2
 else
 	echo command
 fi

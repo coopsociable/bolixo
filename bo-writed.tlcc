@@ -2812,10 +2812,13 @@ int main (int argc, char *argv[])
 						rep_markview (false,entry.msg);
 					}
 				</f>
-				<f set_access>	//  sessionid name listname listmode = success:b msg
+				<f set_access>	//  sessionid name listname listmode owner = success:b msg
 					glocal ENTRY entry;
 					glocal const char *listmode = listmode;
-					if (bo_writed_findentry (glocal.con,sessionid,name,glocal.entry,true)!=-1){
+					FINDENTRY_OPTS opts;
+					opts.owner = owner;
+					opts.expect_exist = true;
+					if (bo_writed_findentry (glocal.con,sessionid,name,glocal.entry,opts)!=-1){
 						if (glocal.entry.userid != glocal.entry.ownerid && !glocal.entry.is_admin){
 							glocal.entry.msg = "Only owner may assign access";
 						}else if (username[0] != '\0' && !glocal.entry.is_admin){
@@ -2834,16 +2837,30 @@ int main (int argc, char *argv[])
 									glocal.entry.msg = "";
 								}
 							}else if (listname[0] != '\0'){
-								int group_list_id = fs_rec_getid ("select id from group_lists where ownerid=%u and name='%s'",glocal.entry.userid,listname);
-								if (group_list_id == -1){
-									glocal.entry.msg = "Invalid list name";
-								}else if (sql_action("update ids set group_list_id=%d,listmode='%s' where id=%u",group_list_id,glocal.listmode,glocal.entry.entryid)==-1){
-									glocal.entry.msg = "Internal error (ids table)";
-								}else{
-									glocal.entry.msg = "";
+								int listowner_id = glocal.entry.userid;
+								if (listowner[0] != '\0'){
+									if (!glocal.entry.is_admin){
+										glocal.entry.msg = "Only admin may set the listname of another user";
+									}else{
+										listowner_id = fs_rec_getid ("select userid from id2name where name = '%s'",listowner);
+										if (listowner_id == -1){
+											glocal.entry.msg = "Invalid list owner";
+										}
+									}
+								}
+								if (glocal.entry.msg.size() == 0){
+									int group_list_id = fs_rec_getid ("select id from group_lists where ownerid=%u and name='%s'",listowner_id,listname);
+									if (group_list_id == -1){
+										glocal.entry.msg = "Invalid list name";
+									}else if (sql_action("update ids set group_list_id=%d,listmode='%s' where id=%u"
+										,group_list_id,glocal.listmode,glocal.entry.entryid)==-1){
+										glocal.entry.msg = "Internal error (ids table)";
+									}else{
+										glocal.entry.msg = "";
+									}
 								}
 							}else{
-								glocal.entry.msg = string_f("listname must be either a valid list name, - or %s",ALL_MAY_READ);
+								// glocal.entry.msg = string_f("listname must be either a valid list name, - or %s",ALL_MAY_READ);
 							}
 							if (glocal.entry.msg.size() == 0 && username[0] != '\0'){
 								int username_id = fs_rec_getid ("select userid from id2name where name='%s'",username);

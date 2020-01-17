@@ -82,7 +82,6 @@ using namespace std;
 #define webapi_modifyfile_NOTNEED
 #define webapi_rename_NOTNEED
 #define webapi_readfile_NOTNEED
-#define webapi_set_access_NOTNEED
 #define webapi_markview_NOTNEED
 #define webapi_sendattach_NOTNEED
 #define webapi_registernode_NOTNEED
@@ -1779,13 +1778,14 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 	glocal bool set_group_desc = false;
 	glocal bool set_list_desc = false;
 
-	glocal const char *description = NULL;
-	glocal const char *filename = NULL;
-	glocal const char *listname = NULL;
+	glocal const char *description = nullptr;
+	glocal const char *filename = nullptr;
+	glocal const char *listowner = nullptr;
+	glocal const char *listname = nullptr;
 	glocal const char *listmode = " ";
-	glocal const char *groupname = NULL;
+	glocal const char *groupname = nullptr;
 	glocal const char *access = "R";
-	glocal const char *user = NULL;
+	glocal const char *user = nullptr;
 	glocal const char *role = "";
 	glocal bool only_owner = false;
 
@@ -1819,6 +1819,7 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 		setarg ('D',"description","Description for set-group-desc and set-list-desc",glocal.description,false);
 		setarg ('P',"filename","File or directory path",glocal.filename,false);
 		setarg ('L',"listname","List name",glocal.listname,false);
+		setarg (' ',"listowner","List owner (admin only)",glocal.listowner,false);
 		setarg ('G',"groupname","Group name",glocal.groupname,false);
 		setarg ('U',"user","User/member of a group",glocal.user,false);
 		setarg ('A',"access","Access or default access",glocal.access,false);
@@ -2048,16 +2049,29 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 			if (glocal.ctx->login()!=-1){
 				const char *username = glocal.user == NULL ? "" : glocal.user;
 				const char *listname = glocal.listname == NULL ? "" : glocal.listname;
+				const char *listowner = glocal.listowner == NULL ? "" : glocal.listowner;
 				for (int i=0; i<argc; i++){
-					<call bod_client_set_access>(glocal.ctx->con,glocal.ctx->sessionid,argv[i],username,listname,glocal.listmode);
-					<f ok>
-						if (!success){
-							bofs_error ("groups",internal_error,"bofs groups: %s",msg);
-						}else{
-							glocal.ret = 0;
-						}
-					</f>
-					</call>
+					if (glocal.ctx->is_internal()){
+						<call bod_client_set_access>(glocal.ctx->con,glocal.ctx->sessionid,argv[i],username,listowner,listname,glocal.listmode,glocal.owner);
+						<f ok>
+							if (!success){
+								bofs_error ("groups",internal_error,"bofs groups: %s",msg);
+							}else{
+								glocal.ret = 0;
+							}
+						</f>
+						</call>
+					}else{
+						<call webapi_set_access>(glocal.ctx->hcon,glocal.ctx->hsessionid,argv[i],username,listowner,listname,glocal.listmode,glocal.owner);
+						<f ok>
+							if (!success){
+								bofs_error ("groups",internal_error,"bofs groups: %s",msg);
+							}else{
+								glocal.ret = 0;
+							}
+						</f>
+						</call>
+					}
 					if (glocal.ret != 0) break;
 				}
 			}
