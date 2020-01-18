@@ -348,6 +348,9 @@ void profile(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER>
 							glocal.fail = true;
 							htmlprintf ("Can't create list: %s\n",msg);
 						}else{
+							// The list has been added, the tab name will change.
+							glocal.webtabs.setid(string_f("project:%s",glocal.prjname));
+							glocal.webtabs.settitle(string_f("%s %s",MSG_R(I_PROJECT),glocal.prjname));
 						}
 					</f>
 					</call>
@@ -747,7 +750,14 @@ void profile(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER>
 							glocal.webtable.setrow ("sep",rownum,"%s\t%s\a",l.name,l.description);
 							glocal.webtable.setclickopt (false,"","");
 							for (unsigned i=0; i<l.groups.size(); i++){
-								glocal.webtable.setrow("white",-1,"\t%s\t%s",l.groups[i],l.access[i]);
+								const char access = l.access[i][0];
+								const char *access_str = MSG_R(I_INHERIT);
+								if (access == 'W'){
+									access_str = MSG_R(I_READWRITE);
+								}else if (access == 'R'){
+									access_str = MSG_R(I_READONLY);
+								}
+								glocal.webtable.setrow("white",-1,"\t%s\t%s",l.groups[i],access_str);
 							}
 						}
 						rownum++;
@@ -778,7 +788,14 @@ void profile(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER>
 						glocal.webtable.setrow ("sep",rownum,"%s\t%s\a\a",g.name,g.description);
 						glocal.webtable.setclickopt (false,"","");
 						for (unsigned i=0; i<g.users.size(); i++){
-							glocal.webtable.setrow("white",-1,"\t%s\t%s\t%s",g.users[i],g.access[i],g.roles[i]);
+							const char access = g.access[i][0];
+							const char *access_str = "";
+							if (access == 'W'){
+								access_str = MSG_R(I_READWRITE);
+							}else if (access == 'R'){
+								access_str = MSG_R(I_READONLY);
+							}
+							glocal.webtable.setrow("white",-1,"\t%s\t%s\t%s",g.users[i],access_str,g.roles[i]);
 						}
 						rownum++;
 					}
