@@ -41,6 +41,8 @@ enum FILE_TYPE {
 	FILE_DOC_TICTACTO,
 	FILE_ZIP,
 	FILE_TGZ,
+	FILE_DOC_WORDPROC,
+	FILE_DOC_WHITEBOARD,
 };
 
 enum VIEWED_STATUS{
@@ -62,7 +64,7 @@ inline bool file_is_video (FILE_TYPE type){
 	return type == FILE_VIDEO;
 }
 inline bool file_is_doc (FILE_TYPE type){
-	return is_any_of(type,FILE_DOC_SUDOKU,FILE_DOC_CHECKER,FILE_DOC_CHESS,FILE_DOC_TICTACTO);
+	return is_any_of(type,FILE_DOC_SUDOKU,FILE_DOC_CHECKER,FILE_DOC_CHESS,FILE_DOC_TICTACTO,FILE_DOC_WORDPROC,FILE_DOC_WHITEBOARD);
 }
 inline bool file_is_data (FILE_TYPE type){
 	return is_any_of(type,FILE_ZIP,FILE_TGZ);
@@ -86,6 +88,8 @@ const char *tbftype[]={
 	"tic",	//FILE_DOC_TICTACTO
 	"zip",	//FILE_ZIP
 	"tgz",	//FILE_TGZ
+	"wrd",	//FILE_DOC_WORDPROC
+	"whi",	//FILE_DOC_WHITEBOARD
 };
 #else
 extern const char *tbftype[];

@@ -14,13 +14,14 @@ using namespace std;
 
 #include "proto/documentd_sudoku.protoh"
 #define documentd_sudoku_cell_NOTNEED
+#define documentd_sudoku_header_NOTNEED
 #include "proto/documentd_sudoku.protoch"
 
 static DEBUG_KEY D_SUDOKU("sudoku","sudoku game");
 
 void SUDOKU::save (DOC_WRITER &w, bool save_session_info)
 {
-	documentd_sudoku_header(&w,revision);
+	documentd_sudoku_header2(&w,revision,difficulty);
 	if (save_session_info){
 		for (auto &s:seldigs){
 			documentd_sudoku_select(&w,s.first,s.second);
@@ -49,11 +50,16 @@ void SUDOKU::load (DOC_READER &r, string &msg)
 	glocal unsigned y=0;
 	glocal seldigs;
 	glocal revision;
+	glocal difficulty;
 	glocal prefs;
 	resetgame();
 	<call documentd_sudoku>(&r);
 	<f header>
 		glocal.revision = revision;
+	</f>
+	<f header2>
+		glocal.revision = revision;
+		glocal.difficulty = difficulty;
 	</f>
 	<f cell>
 		if (glocal.x > 8){
@@ -87,7 +93,7 @@ void SUDOKU::load (DOC_READER &r, string &msg)
 	</f>
 	<f userpref>
 		for (auto &u:prefs){
-			USERPREF &p = glocal.prefs[u.name];
+			auto &p = glocal.prefs[u.name];
 			p.color = u.avatar;
 			p.last_column = u.last_column;
 			p.last_line = u.last_line;
@@ -119,7 +125,7 @@ void SUDOKU::testwin(vector<VARVAL> &res)
 	}
 	if (nbok == 9*9){
 		VARVAL v;
-		v.var = "result";
+		v.var = VAR_RESULT;
 		v.val = MSG_U(I_COMPLETE,"Congratulation! You completed the puzzle");
 		res.push_back(v);
 	}
@@ -248,10 +254,10 @@ void SUDOKU::exec (const char *var, const char *val, const char *session, const 
 			lines += "<p>\n";
 			lines += "<form>\n";
 			lines += MSG_U(I_NEWGAME,"New game");
-			documentd_button (lines,0,MSG_U(I_SIMPLE,"Simple"));
-			documentd_button (lines,1,MSG_U(I_EASY,"Easy"));
-			documentd_button (lines,2,MSG_U(I_INTERMEDIATE,"Intermediate"));
-			documentd_button (lines,3,MSG_U(I_EXPERT,"Expert"));
+			documentd_button (lines,0,MSG_U(I_SIMPLE,"Simple"),difficulty==0);
+			documentd_button (lines,1,MSG_U(I_EASY,"Easy"),difficulty==1);
+			documentd_button (lines,2,MSG_U(I_INTERMEDIATE,"Intermediate"),difficulty==2);
+			documentd_button (lines,3,MSG_U(I_EXPERT,"Expert"),difficulty==3);
 			lines += "</form>\n";
 			lines += "<p>";
 			lines += "<div>\n";
@@ -339,7 +345,7 @@ void SUDOKU::exec (const char *var, const char *val, const char *session, const 
 			lines += "</div>\n";
 		}
 		VARVAL v;
-		v.var = "content";
+		v.var = VAR_CONTENT;
 		v.val = lines;
 		res.push_back(v);
 	}else if (maywrite){
@@ -356,7 +362,7 @@ void SUDOKU::exec (const char *var, const char *val, const char *session, const 
 					unsigned newval = seldigs[session]+1;
 					const char *color = "black";
 					VARVAL var;
-					var.var = "notify";
+					var.var = VAR_NOTIFY;
 					var.val = string_f ("var doc = document.getElementById('%s');\n",gameid.c_str());
 					var.val += "if (doc != null){\n";
 					if (gg.user_value == 0){
@@ -432,10 +438,11 @@ void SUDOKU::exec (const char *var, const char *val, const char *session, const 
 			}
 		}else if (strcmp(var,"newgame")==0){
 			glocal SUDOKU_CELL (*grid)[9][9] = &grid;
-			unsigned difficulty = atoi(val);
-			if (difficulty > 3){
+			unsigned uval = atoi(val);
+			if (uval > 3){
 				documentd_error (res,"Difficulty from 0 to 3");
 			}else{
+				difficulty = uval;
 				static const char *tbdiff[]={"simple", "easy", "intermediate", "expert"};
 				<call walkpopen>(string_f("qqwing --generate 1 --compact --solution --difficulty %s",tbdiff[difficulty]),10);
 				<f oneline>
@@ -467,7 +474,7 @@ void SUDOKU::exec (const char *var, const char *val, const char *session, const 
 				</call>
 				setmodified(username);
 				VARVAL var;
-				var.var = "notify";
+				var.var = VAR_NOTIFY;
 				var.val = string_f ("var doc = document.getElementById('%s');\n",gameid.c_str());
 				var.val += "if (doc != null){\n";
 				var.val += "\tvar circles = doc.getElementsByTagName('circle');\n";

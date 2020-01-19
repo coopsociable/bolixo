@@ -27,5 +27,85 @@ void WORDPROC::testwin(vector<VARVAL> &res)
 }
 void WORDPROC::exec (const char *var, const char *val, const char *session, const char *username, bool maywrite, unsigned width, unsigned height, vector<VARVAL> &res)
 {
+	setactivity();
+	auto &pref = prefs[username];
+	if (strcmp(var,"print")==0){
+		if (strcmp(val,"console")==0){
+			VARVAL v;
+			v.var = VAR_CONTENT;
+			unsigned line = 0;
+			const char cursor = pref.insertmode ? '^' : '_';
+			for (auto &l:lines){
+				if (line == pref.line){
+					if (l.size() > pref.column){
+						v.val += l.substr(0,pref.column) + cursor + l.substr(pref.column) + "|\n";
+					}else{
+						v.val += l;
+						for (unsigned i=l.size(); i<pref.column; i++) v.val += '.';
+						v.val += cursor;
+						v.val += "|\n";
+					}
+				}else{
+					v.val += l + "|\n";
+				}
+				line++;
+			}
+			res.emplace_back(v);
+		}else{
+			string lines;
+			for (auto &l:lines){
+				lines += l;
+				lines += "\n<br>\n";
+			}
+			VARVAL v;
+			v.var = VAR_CONTENT;
+			v.val = move(lines);
+			res.emplace_back(v);
+		}
+	}else if (maywrite){
+		if (strcmp(var,"insertmode")==0){
+			pref.insertmode = !pref.insertmode;
+		}else if (strcmp(var,"insertchar")==0){
+			while (lines.size() <= pref.line) lines.push_back("");
+			string &l = lines[pref.line];
+			while (l.size() < pref.column) l += ' ';
+			l.insert(pref.column,val);
+			pref.column += strlen(val);
+		}else if (strcmp(var,"break")==0){
+			while (lines.size() <= pref.line) lines.push_back("");
+			string &l = lines[pref.line];
+			auto nextline = lines.begin() + (pref.line+1);
+			if (l.size() > pref.column){
+				lines.insert(nextline,l.substr(pref.column));
+				lines[pref.line].resize(pref.column);
+			}else{
+				lines.insert(nextline,"");	
+			}
+			pref.line++;
+			pref.column=0;
+		}else if (strcmp(var,"deletechar")==0){
+		}else if (strcmp(var,"pagemove")==0){
+			// Change page up or down
+		}else if (strcmp(var,"movev")==0){
+			// Move cursor
+			int move = atoi(val);
+			if (move < 0 && abs(move) > pref.line) move = -pref.line;
+			pref.line += move;
+		}else if (strcmp(var,"moveh")==0){
+			int move = atoi(val);
+			if (move < 0 && abs(move) > pref.column) move = -pref.column;
+			pref.column += move;
+		}else if (strcmp(var,"home")==0){
+			pref.column = 0;
+		}else if (strcmp(var,"end")==0){
+			if (lines.size() > pref.line){
+				pref.column = lines[pref.line].size();
+			}else{
+				pref.column = 0;
+			}
+		}
+	}else{
+		documentd_error (res,MSG_R(E_READONLY));
+	}
 }
 

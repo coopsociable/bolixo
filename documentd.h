@@ -106,7 +106,7 @@ struct SUDOKU_CELL{
 		reset();
 	}
 };
-struct USERPREF{
+struct SUDO_USERPREF{
 	unsigned color = 0;
 	unsigned last_column = 10;	// Last solve cell coordinate
 	unsigned last_line = 10;
@@ -115,7 +115,8 @@ class SUDOKU: public GAME{
 	SUDOKU_CELL grid[9][9];	
 	//unsigned line,column;	// Currently selected 3x3 area
 	std::map<std::string,unsigned> seldigs; // Selected digit used when setting a value
-	std::map<std::string,USERPREF> prefs;	// Preferences associated with a user
+	std::map<std::string,SUDO_USERPREF> prefs;	// Preferences associated with a user
+	unsigned difficulty=0;	// What difficulty was used to initialize the game
 public:
 	const char *getclass() const{
 		return "SUDO";
@@ -130,8 +131,16 @@ public:
 	void exec (const char *var, const char *val, const char *session, const char *username, bool maywrite, unsigned width, unsigned height, std::vector<VARVAL> &res);
 };
 
+struct WORD_USERPREF{
+	unsigned page=0;
+	unsigned line=0;
+	unsigned column=0;
+	bool insertmode = true;
+};
+
 class WORDPROC: public GAME{
 	std::vector<std::string> lines;
+	std::map<std::string,WORD_USERPREF> prefs;
 public:
 	const char *getclass() const{
 		return "WORD";
@@ -156,8 +165,13 @@ public:
 	void exec (const char *var, const char *val, const char *session, const char *username, bool maywrite, unsigned width, unsigned height, std::vector<VARVAL> &res);
 };
 
+#define VAR_CONTENT	"content"
+#define VAR_ERROR	"error"
+#define VAR_RESULT	"result"
+#define VAR_NOTIFY	"notify"
+
 void documentd_error (std::vector<VARVAL> &res, PARAM_STRING s);
-void documentd_button (std::string &lines, unsigned command, const char *txt);
+void documentd_button (std::string &lines, unsigned command, const char *txt, bool highlit);
 void fflush (DOC_WRITER *);
 char *fgets(char *s, int size, DOC_READER *r);
 #endif
