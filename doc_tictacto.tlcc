@@ -1,0 +1,243 @@
+#include <string.h>
+#include <stdio.h>
+#include <trlitool.h>
+#include <string>
+#include <vector>
+#include "bolixo.h"
+#include "proto/bod_client.protodef"
+#include "documentd.h"
+#include "bolixo.m"
+
+using namespace std;
+
+#include "proto/documentd_tictacto.protoh"
+#include "proto/documentd_tictacto.protoch"
+
+void TICTACTO::save(DOC_WRITER &w, bool)
+{
+	documentd_tictacto_header(&w,revision);
+	documentd_tictacto_player(&w,x_is_player);
+	unsigned row=0;
+	for (auto &g:grid){
+		documentd_tictacto_row(&w,row,g[0],g[1],g[2]);
+		row++;
+	}
+}
+<mod>
+void TICTACTO::load(DOC_READER &r, string &msg)
+{
+	glocal x_is_player;
+	glocal grid;
+	glocal revision;
+	glocal msg;
+	<call documentd_tictacto>(&r);
+	<f header>
+		glocal.revision = revision;
+	</f>
+	<f player>
+		glocal.x_is_player = x_is_player;
+	</f>
+	<f row>
+		if (rownum > 3){
+			glocal.msg = string_f("Invalid row number for tictacto file: %u",rownum);
+		}else{
+			glocal.grid[rownum][0] = c1;
+			glocal.grid[rownum][1] = c2;
+			glocal.grid[rownum][2] = c3;
+		}
+	</f>
+	<f invalid>
+		glocal.msg = "Invalid format for tictacto file";
+	</f>
+	</call>
+}
+</mod>
+void TICTACTO::resetgame()
+{
+	x_is_player = true;
+	memset (grid,0,sizeof(grid));
+}
+TICTACTO::TICTACTO()
+{
+	resetgame();
+}
+const char *TICTACTO::getclass() const
+{
+	return "TICT";
+}
+void TICTACTO::testwin(vector<VARVAL> &res)
+{
+	bool won = false;
+	for (auto g:grid){
+		unsigned char v = g[0];
+		if (v != 0){
+			bool found = true;
+			for (unsigned j=1; j<3; j++){
+				if (v != g[j]){
+					found = false;
+					break;
+				}
+			}
+			if (found){
+				won = true;
+				break;
+			}
+		}
+	}
+	if (!won){
+		for (unsigned i=0; i<3; i++){
+			unsigned char v = grid[0][i];
+			if (v != 0){
+				bool found = true;
+				for (unsigned j=1; j<3; j++){
+					if (v != grid[j][i]){
+						found = false;
+						break;
+					}
+				}
+				if (found){
+					won = true;
+					break;
+				}
+			}
+		}
+		if (!won){
+			if (grid[0][0] != 0
+				&& grid[0][0] == grid[1][1]
+				&& grid[0][0] == grid[2][2]){
+				won = true;
+			}else if (grid[0][2] != 0
+				&& grid[0][2] == grid[1][1]
+				&& grid[0][2] == grid[2][0]){
+				won = true;
+			}
+		}
+	}
+	if (won){
+		VARVAL v;
+		v.var = "result";
+		v.val = MSG_U(I_WON,"Congratulation! You just won");
+		res.push_back(v);
+	}
+}
+void TICTACTO::draw_x(string &lines, unsigned x, unsigned y, unsigned len)
+{
+	const char *color = "black";
+	const unsigned off = len/4;
+	x += off;
+	y += off;
+	len -= off*2;
+	lines += string_f("<path stroke='black' stroke-width='2' fill='%s' d='M%u,%u L%u %u'/>\n"
+		,color,x,y,x+len,y+len);
+	lines += string_f("<path stroke='black' stroke-width='2' fill='%s' d='M%u,%u L%u %u'/>\n"
+		,color,x,y+len,x+len,y);
+}
+void TICTACTO::draw_o(string &lines, unsigned x, unsigned y, unsigned len)
+{
+	const unsigned off = len/4;
+	x += off;
+	y += off;
+	len -= off*2;
+	lines += string_f("<circle stroke='black' stroke-width='2' fill='none' cx='%u' cy='%u' r='%u'/>\n"
+		,x+len/2,y+len/2,len/2);
+}
+void TICTACTO::exec (const char *var, const char *val, const char *session, const char *username, bool maywrite, unsigned win_width, unsigned win_height, vector<VARVAL> &res)
+{
+	setactivity();
+	if (strcmp(var,"print")==0){
+		string lines;
+		unsigned dim = win_width < win_height ? win_width : win_height;
+		unsigned width = dim - dim % 4;
+		//unsigned height = win_height - win_height % 3;
+		unsigned w3 = width/4;
+		unsigned h3 = w3;
+		unsigned grid_width = w3*3;
+		unsigned grid_height = grid_width;
+		
+		lines += "<script>\n";
+		lines += "function gameplace(event){\n";
+		lines += "\tvar elm = document.getElementById('gametictgrid');\n";
+		lines += "\tvar rect = elm.getBoundingClientRect();\n";
+		lines += string_f("\tgameaction('place='+Math.floor((event.clientY-rect.top)/%u)+','+Math.floor((event.clientX-rect.left)/%u));\n",h3,w3);
+		lines += "}\n";
+		lines += "</script>\n";
+		
+		lines += "<p>\n";
+		lines += "<form>\n";
+		lines += MSG_R(I_NEWGAME);
+		documentd_button (lines,0,MSG_U(I_RESTART,"Restart"));
+		lines += "</form>\n";
+		lines += "<p>";
+		lines += "<div>\n";
+		lines += "<svg width='50px' height='200px' viewbox='0 0 50 200'>\n";
+		draw_x (lines,0,0,50);
+		draw_o (lines,0,100,50);
+		lines += string_f("<path stroke='black' stroke-width='2' fill='none' d='M0,%u h50 v50 h-50 z'/>\n"
+			,x_is_player ? 0 : 100);
+		lines += "</svg>\n";
+		lines += "&nbsp;&nbsp;&nbsp;";
+		lines += "<a href='#' onclick=gameplace(event)>\n";
+		lines += string_f("<svg id='gametictgrid' width='%upx' height='%upx' viewbox='0 0 %u %u'>\n",grid_width,grid_height,grid_width,grid_height);
+		// Draw the board
+		for (unsigned i=1; i<3; i++){
+			lines += string_f("<path stroke='black' stroke-width='2' fill='black' d='M%u,1 L%u %u'/>\n"
+				,i*w3,i*w3,grid_height);
+			lines += string_f("<path stroke='black' stroke-width='2' fill='black' d='M1,%u L%u %u'/>\n"
+				,i*h3,grid_width,i*h3);
+
+		}
+		// Draw the content
+		for (unsigned x=0; x<3; x++){
+			for (unsigned y=0; y<3; y++){
+				unsigned val = grid[x][y];
+				if (val == 1){
+					draw_x (lines,x*h3,y*h3,h3);
+				}else if (val == 2){
+					draw_o (lines,x*h3,y*h3,h3);
+				}
+			}
+		}
+		lines += "</svg>\n";
+		lines += "</a>\n";
+		VARVAL v;
+		v.var = "content";
+		v.val = lines;
+		res.push_back(v);
+				
+	}else if (maywrite){
+		if (strcmp(var,"place")==0){
+			bool ok = false;
+			unsigned x=atoi(val);
+			const char *pt = str_skipdig(val);
+			const char *msg = "Invalid syntax";
+			if (*pt == ','){
+				pt++;
+				unsigned y=atoi(pt);
+				pt = str_skipdig(pt);
+				if (*pt == '\0'){
+					msg = "Invalid values";
+					if (x < 3 && y < 3){
+						unsigned char &g = grid[y][x];
+						if (g == 0){
+							g = x_is_player ? 1 : 2;
+							x_is_player = !x_is_player;
+							ok = true;
+							setmodified(username);
+						}else{
+							msg = "Location already played";
+						}
+					}
+				}
+			}
+			if (!ok){
+				documentd_error (res,string_f("Invalid command %s=%s: %s",var,val,msg));
+			}
+		}else if (strcmp(var,"newgame")==0 && maywrite){
+			resetgame();
+			setmodified(username);
+		}
+	}else{
+		documentd_error (res,MSG_R(E_READONLY));
+	}
+}
+

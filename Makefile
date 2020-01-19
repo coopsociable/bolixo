@@ -214,10 +214,26 @@ proto/bolixoapi.protoh: proto/bolixoapi.proto proto/bolixod_client.protoh
 	build-protocol $(INSTRUMENT) --request_obj REQUEST_JSON --request_info_obj REQUEST_JSON_INFO \
 		--connect_info_obj CONNECT_HTTP_INFO --name bolixoapi \
 		--protoch proto/bolixoapi.protoch proto/bolixoapi.proto >proto/bolixoapi.protoh
-documentd: documentd.tlcc proto/documentd_control.protoh proto/documentd_client.protoh _dict.o \
-	proto/documentd_tictacto.protoh \
-	proto/documentd_sudoku.protoh
-	cctlcc -Wall $(OPTIONS) documentd.tlcc _dict.o -o documentd $(LIBS)
+
+DOCGAMES=doc_tictacto.o doc_sudoku.o doc_wordproc.o doc_checkers.o
+documentd: documentd.o _dict.o \
+	${DOCGAMES}
+	cctlcc -Wall $(OPTIONS) documentd.o ${DOCGAMES} _dict.o -o documentd $(LIBS)
+
+documentd.o: documentd.tlcc documentd.h proto/documentd_control.protoh proto/documentd_client.protoh 
+	cctlcc -Wall $(OPTIONS) -c documentd.tlcc -o documentd.o
+
+doc_checkers.o: doc_checkers.tlcc documentd.h
+	cctlcc -Wall $(OPTIONS) -c doc_checkers.tlcc -o doc_checkers.o
+
+doc_wordproc.o: doc_wordproc.tlcc documentd.h
+	cctlcc -Wall $(OPTIONS) -c doc_wordproc.tlcc -o doc_wordproc.o
+
+doc_sudoku.o: doc_sudoku.tlcc documentd.h proto/documentd_sudoku.protoh
+	cctlcc -Wall $(OPTIONS) -c doc_sudoku.tlcc -o doc_sudoku.o
+
+doc_tictacto.o: doc_tictacto.tlcc documentd.h proto/documentd_tictacto.protoh
+	cctlcc -Wall $(OPTIONS) -c doc_tictacto.tlcc -o doc_tictacto.o
 
 documentd-control: documentd-control.tlcc proto/documentd_control.protoh _dict.o
 	cctlcc -Wall $(OPTIONS) documentd-control.tlcc _dict.o -o documentd-control $(LIBS)

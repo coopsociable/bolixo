@@ -1,0 +1,144 @@
+#include <string.h>
+#include <stdio.h>
+#include <trlitool.h>
+#include <string>
+#include <vector>
+#include <map>
+#include <tlmplib.h>
+#include "bolixo.h"
+#include "proto/bod_client.protodef"
+#include "documentd.h"
+#include "bolixo.m"
+
+using namespace std;
+
+
+void CHECKERS::save(DOC_WRITER &w, bool save_session_info)
+{
+	#if 0
+	for (auto &g:grid){
+		for (auto &gg:g){
+			fprintf (fout," %u",gg);
+		}
+		fprintf (fout,"\n");
+	}
+	#endif
+}
+void CHECKERS::load(DOC_READER &r, string &msg)
+{
+	#if 0
+	resetgame();
+	for (auto &g:grid){
+		unsigned v[8];
+		if (fscanf(fin,"%u %u %u %u %u %u %u %u\n",&v[0],&v[1],&v[2],&v[3],&v[4],&v[5],&v[6],&v[7])==8){
+			for (unsigned i=0; i<8; i++) g[i] = v[i];
+		}
+	}
+	#endif
+}
+void CHECKERS::resetgame()
+{
+	for (auto &g:grid) for (auto &gg:g) gg=0;
+	for (unsigned i=0; i<3; i++){
+		unsigned start = (i+1)&1;
+		for (unsigned j=start; j<8; j+=2){
+			grid[i][j] = 1;
+		}
+		unsigned ii=5+i;
+		start = i&1;
+		for (unsigned j=start; j<8; j+=2){
+			grid[ii][j] = 2;
+		}
+	}
+}
+void CHECKERS::testwin(vector<VARVAL> &res)
+{
+}
+
+static const char *cnv (const char *val, unsigned &posx, unsigned &posy)
+{
+	val = str_skip(val);
+	if (islower(*val)){
+		posy = *val - 'a';
+	}else if (isupper(*val)){
+		posy = *val - 'A';
+	}
+	posx = 8-atoi(val+1);
+	return val+2;
+}
+		
+void CHECKERS::exec (const char *var, const char *val, const char *session, const char *username, bool maywrite, unsigned width, unsigned height, vector<VARVAL> &res)
+{
+	if (strcmp(var,"print")==0){
+		string lines;
+		//static const char *white = "\033[01;37m";
+		//static const char *green = "\033[01;32m";
+		//static const char *blue = "\033[01;34m";
+		//static const char *red = "\033[01;31m";
+		static const char *bgblue = "\033[01;44m";
+		static const char *bggreen = "\033[01;42m";
+		static const char *bgred = "\033[01;41m";
+		static const char *bgblack = "\033[01;40m";
+		static const char *normal = "\033[00m";
+		static const char *tbcolor[]={bgblack,bgblue};
+		unsigned nol = 0;
+		for (auto &g:grid){
+			static const char *tbl[]={
+				"%s    %s  %s    ",
+				"%s  %s      %s  ",
+				"%s %s        %s ",
+				"%s  %s      %s  ",
+				"%s    %s  %s    ",
+				//"%s          ",
+			};
+			for (unsigned i=0; i<5; i++){
+				unsigned color = nol & 1;
+				if (i == 2){
+					lines += string_f("\t%d ",8-nol);
+				}else{
+					lines += "\t  ";
+				}
+				for (auto &gg:g){
+					const char *bg = tbcolor[color];
+					color = (color+1)&1;
+					const char *bg1 = "";
+					if (gg == 0){
+						bg1 = bg;
+					}else if (gg == 1){
+						bg1 = bgred;
+					}else if (gg == 2){
+						bg1 = bggreen;
+					}
+					lines += string_f(tbl[i],bg,bg1,bg);
+				}
+				lines += normal;
+				lines += '\n';
+			}
+			nol++;
+		}	
+		lines += "\t  ";
+		for (unsigned i=0; i<8; i++) lines += string_f("    %c     ",i+'A');
+		lines += '\n';
+		VARVAL v;
+		v.var = "content";
+		v.val = lines;
+		res.push_back(v);
+	}else if (strcmp(var,"place")==0){
+		unsigned fromx,fromy,tox,toy;
+		const char *pt = cnv(val,fromx,fromy);
+		cnv(pt,tox,toy);
+		// printf ("from = %u %u to %u %u\n",fromx,fromy,tox,toy);
+		unsigned char value = grid[fromx][fromy];
+		if (value == 0){
+			documentd_error (res,"Invalid move");
+		}else if (grid[tox][toy] != 0){
+			documentd_error (res,"Destination used");
+		}else{
+			grid[fromx][fromy] = 0;
+			grid[tox][toy] = value;
+		}
+		setmodified (username);
+	}
+}
+
+
