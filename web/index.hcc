@@ -861,8 +861,11 @@ static void index_show_shortmsg(
 	CONNECT_INFO &con_sess,
 	_F_webtabs &webtabs,
 	PARAM_STRING groupname,
-	PARAM_STRING groupowner)
+	PARAM_STRING groupowner,
+	unsigned &offset,	// First row displayed
+	unsigned &nbhidden)	// How many message are not shown
 {
+	glocal nbhidden;
 	glocal webtabs;
 	glocal CONNECT_INFO *con = &con;
 	glocal CONNECT_INFO *con_sess = &con_sess;
@@ -875,7 +878,8 @@ static void index_show_shortmsg(
 	if (offsets[glocal.table] == 0){
 		util_markview (con,glocal.path);
 	}
-	<call webtable>(ID_TALK,currents[glocal.table],offsets[glocal.table],5);
+	offset = offsets[glocal.table];
+	<call webtable>(ID_TALK,currents[glocal.table],offset,5);
 	<f click>
 		glocal unsigned dropmenu = dropmenu;
 		if (dropmenu == 0) tlmpweb_flushheader();
@@ -954,6 +958,7 @@ static void index_show_shortmsg(
 			if (!success){
 				//htmlprintf ("Error: %s %s<br>",internal_error?"Internal error":"",msg);
 			}else{
+				glocal.nbhidden = nbnew;
 				glocal.webtable.settotal(total);
 				glocal.webtable.sethiddens(nbnew);
 				glocal.webtable.sethidden_title (tlmpweb_ismobile() ? MSG_U(I_NEWM,"new") : MSG_U(I_NEWMESSAGES,"new messages"));
@@ -2178,6 +2183,8 @@ extern "C" void webmain_real()
 			glocal string groupowner = tb[0];
 			glocal string groupname = tb[1];
 			glocal const char *formid = formid;
+			glocal unsigned offset = 0;	// First row displayed
+			glocal unsigned nbhidden = 0;	// Number of hidden message (not yet seen by the user)
 			util_delnotify (glocal.con_sess,"talks",id);
 			<call webflip>();
 			<f first>
@@ -2274,6 +2281,7 @@ extern "C" void webmain_real()
 							w_recipients.setempty();
 							w_content.setempty();
 							w_upload.setempty();
+							if (glocal.nbhidden == 0 && glocal.offset == 0) w_showhidden = 1; 
 							glocal.webflip.reload_second();
 						}
 						keepediting = true;
@@ -2282,7 +2290,7 @@ extern "C" void webmain_real()
 				}
 			</f>
 			<f second>
-				index_show_shortmsg (glocal.con,glocal.con_sess,glocal.webtabs,glocal.groupname,glocal.groupowner);
+				index_show_shortmsg (glocal.con,glocal.con_sess,glocal.webtabs,glocal.groupname,glocal.groupowner,glocal.offset,glocal.nbhidden);
 			</f>
 			</call>
 		</f>
