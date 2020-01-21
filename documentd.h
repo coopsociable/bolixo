@@ -132,7 +132,7 @@ public:
 };
 
 struct WORD_USERPREF{
-	unsigned page=0;
+	unsigned offset=0;	// First line displayed
 	unsigned line=0;
 	unsigned column=0;
 	bool insertmode = true;
