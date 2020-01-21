@@ -839,6 +839,7 @@ static int bo_writed_addfile_bob (
 	char listmode,
 	unsigned userid,
 	const BOB_TYPE &content,
+	PARAM_STRING recipients,
 	bool more,
 	string &sign,		// Either contain the Pre-signed content or will contain the new signature
 	ADDFILE_INFO &info,
@@ -879,10 +880,12 @@ static int bo_writed_addfile_bob (
 			}
 		}
 		if (msg.size()==0){
+			// If the recipients list is empty, we insert a null in the database
+			const char *recipients_ptr = recipients.ptr == nullptr || recipients.ptr[0] == '\0' ? nullptr : recipients.ptr;
 			if (fs_insert_entry(dirid,info.fileid,info.modified.buf,basename,type)==-1){
 				msg = "Internal error (dirs_files table)";
-			}else if (sql_action("insert into files (id,modified,filetype,content,signature) values (%d,'%s',%u,'%s','%s')"
-				,info.fileid,info.modified.buf,info.file_type,content_str,sign.c_str())==-1){
+			}else if (sql_action("insert into files (id,modified,filetype,content,signature,recipients) values (%d,'%s',%u,'%s','%s','%s')"
+				,info.fileid,info.modified.buf,info.file_type,content_str,sign.c_str(),recipients_ptr)==-1){
 				msg = "Internal error (files table)";
 			}else{
 				if (content_str == NULL){
@@ -1314,7 +1317,7 @@ static void bo_writed_send_admin_msg (
 			BOB_TYPE content(message.ptr,strlen(message.ptr),false);
 			string sign;
 			bo_writed_addfile_bob (con_keys,NULL,NULL,ENTRY_MSG,dirid,0,'r',adminid
-				,content,false,sign,info,msg);
+				,content,username,false,sign,info,msg);
 		}
 	}
 }
@@ -2684,7 +2687,7 @@ int main (int argc, char *argv[])
 						char listmode;
 						bo_writed_get_listid(entry.dirid,listid,listmode,entry.msg);
 						bo_writed_addfile_bob (glocal.ctx.con_keys,sessionid,entry.basename,ENTRY_FILE,entry.dirid,listid,listmode,entry.userid
-								,content,more,sign
+								,content,nullptr,more,sign
 								,info,msg);
 						if (msg.size() > 0){
 							rep_addfile_bob (false,"",msg);
@@ -3354,7 +3357,7 @@ int main (int argc, char *argv[])
 								string sign;
 								ADDFILE_INFO info;
 								bo_writed_addfile_bob (glocal.ctx.con_keys,glocal.sessionid,NULL,ENTRY_MSG,dirid,0,'r',userid
-									,*glocal.content,glocal.more,sign
+									,*glocal.content,nullptr,glocal.more,sign
 									,info,glocal.msg);
 								glocal.handle = info.handle;
 								string email_title,email_content;
@@ -3397,6 +3400,11 @@ int main (int argc, char *argv[])
 						if (to.size() == 0 && groupname[0] == '\0'){
 							glocal.msg = MSG_U(E_NODEST,"No recipient specified (users or group)");
 						}else if (glocal.msg.size() == 0){
+							glocal string recipients;
+							for (auto s:to){
+								if (glocal.recipients.size() > 0) glocal.recipients += " ";
+								glocal.recipients += s;
+							}
 							if (groupname[0] != '\0'){
 								// We store the message in the short inbox of the group owner (like mail sent to the project) 
 								// The query is to check if the user posting the message is a member of the group
@@ -3421,7 +3429,7 @@ int main (int argc, char *argv[])
 										const char *ptr_name = glocal.filename[0] != '\0' ? glocal.filename : NULL;
 										bo_writed_addfile_bob (glocal.ctx.con_keys,glocal.sessionid,ptr_name,ENTRY_MSG,dirid
 											,0,'r',glocal.userid
-											,*glocal.content,glocal.more,glocal.sign
+											,*glocal.content,glocal.recipients,glocal.more,glocal.sign
 											,info,glocal.msg);
 										glocal.handle = info.handle;
 										string email_title,email_content;
@@ -3515,7 +3523,7 @@ int main (int argc, char *argv[])
 									if (dirid != -1){
 										ADDFILE_INFO info;
 										bo_writed_addfile_bob (glocal.ctx.con_keys,glocal.sessionid,NULL,ENTRY_MSG,dirid,0,'r',glocal.userid
-											,*glocal.content,glocal.more,glocal.sign
+											,*glocal.content,glocal.recipients,glocal.more,glocal.sign
 											,info,glocal.msg);
 										string email_title,email_content;
 										bo_writed_set_email_notify (glocal.username,uid0.first,"inbox",info.file_type,*glocal.content,email_title,email_content);

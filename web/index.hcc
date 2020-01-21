@@ -920,8 +920,18 @@ static void index_show_shortmsg(
 					}else if (glocal.dropmenu == MENU_DOWNLOAD){
 						index_download (*glocal.con,m.file_type,glocal.fname);
 					}else if (glocal.dropmenu == MENU_REPLY){
-						if (glocal.is_inbox && userinfo.name != m.from){
-							tlmpweb_forcevar(w_recipients,m.from);
+						vector<string> tb;
+						str_splitline(m.recipients,' ',tb);
+						string tmp;
+						if (userinfo.name != m.from) tmp = m.from;
+						for (auto &t:tb){
+							if (t != m.from && t != userinfo.name){
+								if (tmp.size() > 0) tmp += " ";
+								tmp += t;
+							}
+						}
+						if (glocal.is_inbox && tmp.size() > 0){
+							tlmpweb_forcevar(w_recipients,tmp);
 						}else{
 							/-#E_REPLYTOYOU Can't reply to yourself
 						}
@@ -1072,6 +1082,19 @@ static void index_show_shortmsg(
 					}else if (file_is_data(m.file_type)){
 						content = string_f("<img width=%u height=%u src=/zip.png> %s"
 							,mini_image_width,mini_image_width,MSG_U(I_DATAFILE,"data files"));
+					}
+					if (m.recipients[0] != '\0'){
+						vector<string>tb;
+						str_splitline (m.recipients,' ',tb);
+						string tmp;
+						for (auto &t:tb){
+							if (t != userinfo.name){
+								tmp += " " + t;
+							}
+						}
+						if (tmp.size() > 0){
+							glocal.webtable.setrow (style,glocal.rownum,"\t%s\a",m.recipients);
+						}
 					}
 					glocal.webtable.setrow (style,glocal.rownum,"\t%s\a",content.c_str());
 					glocal.rownum++;
