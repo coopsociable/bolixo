@@ -81,6 +81,7 @@ W_UNSIGNED w_anon_messages("anonmsgs");
 W_SSTRING w_timezone("timezone");
 
 W_SSTRING w_recipients("recipients");
+W_SSTRING w_recipients2("recipients2");		// Allow override of w_recipients
 W_SSTRING w_upload("upload");
 W_SSTRING w_accept("accept");
 W_SSTRING w_user("user");
@@ -852,6 +853,8 @@ static void index_msgs_style(_F_webtable &c)
 	c.setrowstyle ("sep+current","bgcolor=lightblue valign=top\t\t\talign=right");
 	c.setrowstyle ("sep1","bgcolor=white valign=top\t\t\talign=right");
 	c.setrowstyle ("sep1+current","bgcolor=lightblue valign=top\t\t\talign=right");
+	c.setrowstyle ("septo","bgcolor=#F0F0F0 valign=top\t\t\talign=right");
+	c.setrowstyle ("septo+current","bgcolor=lightblue valign=top\t\tbgcolor=#F0F0F0\talign=right");
 	c.sethead (MSG_U(H_TALKMOBILE,"From\t\tSubmit"));
 }
 
@@ -1089,11 +1092,13 @@ static void index_show_shortmsg(
 						string tmp;
 						for (auto &t:tb){
 							if (t != userinfo.name){
-								tmp += " " + t;
+								string add = string_f("webstep=%d&webtab_add=1:%s:inbox&recipients2=%s"
+									,step_talks,userinfo.name.c_str(),t.c_str());
+								tmp += " " + util_subformsubmit(add,t);
 							}
 						}
 						if (tmp.size() > 0){
-							glocal.webtable.setrow (style,glocal.rownum,"\t%s\a",m.recipients);
+							glocal.webtable.setrow ("septo",glocal.rownum,"%s\t%s\a",MSG_U(I_TO,"To:"),tmp.c_str());
 						}
 					}
 					glocal.webtable.setrow (style,glocal.rownum,"\t%s\a",content.c_str());
@@ -2228,6 +2233,14 @@ extern "C" void webmain_real()
 							/-#F_RECIPIENTS Recipients
 							dddd.end();
 							dddd.flexgrow().print();
+							if (w_recipients2.size() > 0){
+								if (w_recipients.size() > 0){
+									string tmp = string_f("%s %s",w_recipients.c_str(),w_recipients2.c_str());
+									tlmpweb_forcevar(w_recipients,tmp);
+								}else{
+									tlmpweb_forcevar(w_recipients,w_recipients2.c_str());
+								}
+							}
 							field_string(w_recipients,"style=width:100%");
 						}
 						{

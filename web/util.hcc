@@ -631,6 +631,8 @@ void util_defstyles()
 			"var xDiff = null;\n"
 			"var yDown = null;\n"
 			"var yDiff = null;\n"
+			"var tabswipe = null;\n"
+			"var tabelm = '';\n"
 			"\n"
 			"function getTouches(evt) {\n"
 			"	return evt.touches ||\n"		// browser API
@@ -642,27 +644,35 @@ void util_defstyles()
 			"	xDown = firstTouch.clientX;\n"
 			"	yDown = firstTouch.clientY;\n"
 			"	var d = new Date();\n"
+			"	var elm = event.target || event.srcElement;\n"
+			"	tabswipe=0;\n"
+			"	if (elm != null && elm.id.substring(0,7)=='tabrect'){\n"
+			"		tabswipe=1;\n"
+			"		tabelm='&tabelm='+elm.id;\n"
+			"	}\n"
 			"	swipeStart = d.getTime();\n"
 			"}\n"                                                
 			"function handleTouchEnd(evt) {\n"
 			//"	console.log ('END xDiff = ' + xDiff);\n"
 			"	var d = new Date();\n"
 			"	var duration = d.getTime() - swipeStart;\n"
-			"	if (duration > 200){\n"
+			"	if (duration > 500){\n"
 					// Do nothing
-			"	}else if (xDiff > 400){\n"
-					// right swipe
-			"		if (swiperighthref) formsubmit(swiperighthref);\n"
-			"	}else if (xDiff < -400){\n"
-					// left swipe
-			"		if (swipelefthref) formsubmit(swipelefthref);\n"
-			"	}else if (Math.abs(yDiff) < 200){\n"
+			"	}else if (tabswipe == 1){\n"
 			"		if (xDiff > 0){\n"
 						// small right swipe
 			"			if (smallswiperighthref) formsubmit(smallswiperighthref);\n"
 			"		}else if (xDiff < 0){\n"
 						// small left swipe
 			"			if (smallswipelefthref) formsubmit(smallswipelefthref);\n"
+			"		}\n"
+			"	}else{\n"	// if (abs(yDiff) < 1000){\n"
+			"		if (xDiff > 400){\n"
+						// right swipe
+			"			if (swiperighthref) formsubmit(swiperighthref+tabelm);\n"
+			"		}else if (xDiff < -400){\n"
+						// left swipe
+			"			if (swipelefthref) formsubmit(swipelefthref+tabelm);\n"
 			"		}\n"
 			"	}\n"
 			"	xDown = null;\n"
@@ -1092,6 +1102,15 @@ static bool util_is_url(const char *txt, const char *&end,string &url)
 	return ret;
 }
 /*
+	Create a link to an internal part of the application using subformsubmit.
+	This works inside content being itself clickable.
+*/
+string util_subformsubmit (PARAM_STRING link, PARAM_STRING text)
+{
+	return string_f("<span style=color:blue;cursor:pointer onclick=subformsubmit(event,\"%s?%s\")>%s</span>\n"
+		,tlmpweb_curpage(),link.ptr,text.ptr);
+}
+/*
 	Format and print a <span> ... </span> with openitab()
 */
 void util_print_span(PARAM_STRING url)
@@ -1222,6 +1241,23 @@ string util_format_shortmsg (PARAM_STRING msg, unsigned nblines, size_t size, un
 				string tmp(pt,txt-pt);
 				ret += string_f("<span style=color:blue;cursor:pointer onclick=subformsubmit(event,\"%s?webstep=%d&topic=%s\")>%s</span>\n"
 					,tlmpweb_curpage(),step_doctopic,tmp.c_str(),MSG_U(I_LINK,"link"));
+			}else if (is_start_any_of(txt,pt,"_USER=")){
+				txt = pt;
+				while (*txt > ' ' && is_not_in(*txt,'"','>',',')) txt++;
+				string user(pt,txt-pt);
+				ret += " ";
+				if (user == "admin"){
+					// admin is not in the contact list of everyone, but has a public page
+					ret += "<img src=/public/admin/project/mini-photo.jpg>";
+				}else{
+					string dir = string_f("/projects/%s/public",user.c_str());
+					unsigned mini_image_width = tlmpweb_ismobile() ? 60 : 40;
+					ret += util_mini_img(step_image,mini_image_width,dir,"mini-photo.jpg","");
+				}
+				string add = string_f("webstep=%d&webtab_add=1:%s:inbox&recipients2=%s"
+					,step_talks,userinfo.name.c_str(),user.c_str());
+				ret += " ";
+				ret  += util_subformsubmit(add,user);
 			}else{
 				ret += *txt;
 				pos++;
