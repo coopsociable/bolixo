@@ -666,7 +666,7 @@ void util_defstyles()
 						// small left swipe
 			"			if (smallswipelefthref) formsubmit(smallswipelefthref);\n"
 			"		}\n"
-			"	}else{\n"	// if (abs(yDiff) < 1000){\n"
+			"	}else if (Math.abs(yDiff) < 100){\n"
 			"		if (xDiff > 400){\n"
 						// right swipe
 			"			if (swiperighthref) formsubmit(swiperighthref+tabelm);\n"
@@ -1245,19 +1245,32 @@ string util_format_shortmsg (PARAM_STRING msg, unsigned nblines, size_t size, un
 				txt = pt;
 				while (*txt > ' ' && is_not_in(*txt,'"','>',',')) txt++;
 				string user(pt,txt-pt);
-				ret += " ";
-				if (user == "admin"){
-					// admin is not in the contact list of everyone, but has a public page
-					ret += "<img src=/public/admin/project/mini-photo.jpg>";
+				if (user.size() == 0){
+					ret += "_USER=";
 				}else{
-					string dir = string_f("/projects/%s/public",user.c_str());
-					unsigned mini_image_width = tlmpweb_ismobile() ? 60 : 40;
-					ret += util_mini_img(step_image,mini_image_width,dir,"mini-photo.jpg","");
+					const char *dot = "";
+					auto last = user.size()-1;
+					if (user[last] == '.'){
+						// The user id ends with a period. It is probably not part of the ID.
+						user.resize(last);
+						dot = ".";
+					}
+					ret += " ";
+					if (user == "admin"){
+						// admin is not in the contact list of everyone, but has a public page
+						ret += "<img src=/public/admin/project/mini-photo.jpg>";
+					}else{
+						string dir = string_f("/projects/%s/public",user.c_str());
+						unsigned mini_image_width = tlmpweb_ismobile() ? 60 : 40;
+						ret += util_mini_img(step_image,mini_image_width,dir,"mini-photo.jpg","");
+					}
+					string add = string_f("webstep=%d&webtab_add=1:%s:inbox~%s&recipients2=%s"
+						,step_talks,userinfo.name.c_str(),MSG_R(I_SHORTINBOX),user.c_str());
+					ret += " ";
+					ret += util_subformsubmit(add,user);
+					ret += dot;
 				}
-				string add = string_f("webstep=%d&webtab_add=1:%s:inbox&recipients2=%s"
-					,step_talks,userinfo.name.c_str(),user.c_str());
-				ret += " ";
-				ret  += util_subformsubmit(add,user);
+				txt--;
 			}else{
 				ret += *txt;
 				pos++;
