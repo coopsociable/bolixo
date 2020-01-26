@@ -98,9 +98,13 @@ struct SUDOKU_CELL{
 	unsigned char value;
 	unsigned char user_value;
 	std::string username;		// User who solved this cell.
+	unsigned char user_guess;	// When trying to solve complex puzzle, a user
+					// may enter a guess in a cell to help his memory
+	unsigned char guess_color;	
 	void reset(){
 		visible = value = user_value = 0;
 		username.clear();
+		user_guess = guess_color = 0;
 	}
 	SUDOKU_CELL(){
 		reset();
@@ -117,6 +121,7 @@ class SUDOKU: public GAME{
 	std::map<std::string,unsigned> seldigs; // Selected digit used when setting a value
 	std::map<std::string,SUDO_USERPREF> prefs;	// Preferences associated with a user
 	unsigned difficulty=0;	// What difficulty was used to initialize the game
+	void redraw_notify(std::vector<VARVAL> &res);
 public:
 	const char *getclass() const{
 		return "SUDO";

@@ -14,6 +14,7 @@ using namespace std;
 
 #include "proto/documentd_sudoku.protoh"
 #define documentd_sudoku_cell_NOTNEED
+#define documentd_sudoku_cell2_NOTNEED
 #define documentd_sudoku_header_NOTNEED
 #include "proto/documentd_sudoku.protoch"
 
@@ -37,9 +38,20 @@ void SUDOKU::save (DOC_WRITER &w, bool save_session_info)
 		users.emplace_back(u);
 	}
 	documentd_sudoku_userpref (&w,users);
+	vector<CELL3> cells;
 	for (auto &g:grid){
-		for (auto &gg:g) documentd_sudoku_cell2(&w,gg.visible,gg.value,gg.user_value,gg.username);
+		for (auto &gg:g){
+			CELL3 c;
+			c.visible = gg.visible;
+			c.value = gg.value;
+			c.user_value = gg.user_value;
+			c.username = gg.username;
+			c.user_guess = gg.user_guess;
+			c.guess_color = gg.guess_color;
+			cells.emplace_back(c);
+		}
 	}
+	documentd_sudoku_cell3(&w,cells);
 }
 <mod>
 void SUDOKU::load (DOC_READER &r, string &msg)
@@ -76,7 +88,7 @@ void SUDOKU::load (DOC_READER &r, string &msg)
 	</f>
 	<f cell2>
 		if (glocal.x > 8){
-			glocal.msg = "Too many cells in the sodoku files";
+			glocal.msg = "Too many cells in the sodoku file";
 			end  = true;
 		}else{
 			SUDOKU_CELL &gg = glocal.grid[glocal.x][glocal.y];
@@ -86,6 +98,29 @@ void SUDOKU::load (DOC_READER &r, string &msg)
 			gg.username = username;
 			glocal.y = (glocal.y+1)%9;
 			if (glocal.y == 0) glocal.x++;
+		}
+	</f>
+	<f cell3>
+		if (cells.size() != 81){
+			glocal.msg = "Invalid number of cells in the sodoku file";
+			end  = true;
+		}else{
+			unsigned line=0;
+			unsigned col=0;
+			for (auto &c:cells){
+				SUDOKU_CELL &gg = glocal.grid[line][col];
+				gg.visible = c.visible;
+				gg.value = c.value;
+				gg.user_value = c.user_value;
+				gg.username = c.username;
+				gg.user_guess = c.user_guess;
+				gg.guess_color = c.guess_color;
+				col++;
+				if (col==9){
+					col = 0;
+					line++;
+				}
+			}
 		}
 	</f>
 	<f select>
@@ -130,11 +165,96 @@ void SUDOKU::testwin(vector<VARVAL> &res)
 		res.push_back(v);
 	}
 }
+const unsigned nbcolor=6;
+static const char *colors[nbcolor]={"black","green","blue","orange","lightblue","lightgreen"};
+/*
+	Redraw the grid content using javascript.
+*/
+void SUDOKU::redraw_notify(vector<VARVAL> &res)
+{
+	VARVAL var;
+	var.var = VAR_NOTIFY;
+	var.val = string_f ("var frm = document.getElementById('form-%s');\n",gameid.c_str());
+	var.val += "if (frm != null){\n";
+	var.val += "\tvar buttons = frm.getElementsByTagName('input');\n";
+	for (unsigned i=0; i<4; i++){
+		var.val += string_f("\tbuttons[%i].style.background='%s';\n",i,i==difficulty ? "lightblue" : "lightgray");
+	}
+	var.val += "}\n";
+	var.val += string_f ("var doc = document.getElementById('grid-%s');\n",gameid.c_str());
+	var.val += "if (doc != null){\n";
+	var.val += "\tvar circles = doc.getElementsByTagName('circle');\n";
+	var.val += "\tvar txts = doc.getElementsByTagName('text');\n";
+	// We have to skip the a,b,c...i and then the A
+	unsigned txt_item = 9+1;
+	unsigned circle_item = 0;
+	unsigned line=0;
+	for (auto &g:grid){
+		unsigned col = 0;
+		for (auto &&gg:g){
+			const char *color = "none";
+			const char *circle_color = "none";
+			const char *guess_color = "none";
+			if (gg.visible){
+				color = "gray";
+			}else if (gg.user_value != 0){
+				color = "black";
+				auto a = prefs.find(gg.username);
+				if (a != prefs.end()){
+					color = colors[a->second.color];
+					if (a->second.last_column == col && a->second.last_line == line){
+						circle_color = color;
+					}
+				}
+			}else if (gg.user_guess != 0){
+				guess_color = colors[gg.guess_color];
+			}
+			// We draw the guess
+			var.val += string_f("\tvar e = txts[%u];\n",txt_item);
+			var.val += string_f("\te.style.fill = '%s';\n",guess_color);
+			var.val += string_f("\te.style.stroke = '%s';\n",guess_color);
+			var.val += string_f("\te.textContent = '%u';\n",gg.user_guess);
+			txt_item++;		// We draw the value
+			var.val += string_f ("\tvar e = txts[%u];\n",txt_item);
+			var.val += string_f("\te.style.fill = '%s';\n",color);
+			var.val += string_f("\te.style.stroke = '%s';\n",color);
+			var.val += string_f("\te.textContent = '%u';\n",gg.value);
+			txt_item++;
+			var.val += string_f ("\tvar e = circles[%u];\n",circle_item);
+			var.val += string_f("\t\t\te.style.stroke = '%s';\n",circle_color);
+			circle_item++;
+			col++;
+		}
+		// We skip the letter on the side
+		txt_item++;
+		line++;
+	}
+	var.val += "}\n";
+	// Draw the user ids under their color
+	var.val += string_f ("var doc = document.getElementById('avatar-%s');\n",gameid.c_str());
+	var.val += "if (doc != null){\n";
+	var.val += "\tvar txts = doc.getElementsByTagName('text');\n";
+	const char *tbusers[nbcolor]={nullptr,nullptr,nullptr,nullptr,nullptr,nullptr};
+	for (auto &a:prefs) tbusers[a.second.color] = a.first.c_str();
+	for (unsigned i=0; i<nbcolor; i++){
+		const char *user = tbusers[i];
+		const char *color = "black";
+		if (user == nullptr){
+			color = "none";
+			user = "";
+		}
+		var.val += string_f ("\tvar e = txts[%u];\n",i);
+		var.val += string_f("\te.style.fill = '%s';\n",color);
+		var.val += string_f("\te.style.stroke = '%s';\n",color);
+		var.val += string_f("\te.textContent = '%s';\n",user);
+	}
+	var.val += "}\n";
+	res.push_back(var);
+}
+
 <mod>
 void SUDOKU::exec (const char *var, const char *val, const char *session, const char *username, bool maywrite, unsigned win_width, unsigned win_height, vector<VARVAL> &res)
 {
-	const unsigned nbcolor=6;
-	static const char *colors[nbcolor]={"black","green","blue","orange","lightblue","lightgreen"};
 	setactivity();
 	//tlmp_error ("SUDOKU var %s val%s username %s maywrite %d",var,val,username,maywrite);
 	/*
@@ -241,15 +361,17 @@ void SUDOKU::exec (const char *var, const char *val, const char *session, const 
 			lines += string_f("\tgameaction('select='+Math.floor((event.clientY-rect.top-%u)/%u+1));\n",g_offy,h9);
 			lines += "}\n";
 			lines += "function avatarselect(event){\n";
-			lines += "\tvar elm = document.getElementById('avatarsudosel');\n";
+			lines += string_f("\tvar elm = document.getElementById('avatar-%s');\n",gameid.c_str());
 			lines += "\tvar rect = elm.getBoundingClientRect();\n";
 			lines += string_f("\tgameaction('avatar='+Math.floor((event.clientX-rect.left)/%u));\n",avatarcw);
 			lines += "}\n";
 			lines += "function gameplace(event){\n";
-			lines += string_f("\tvar elm = document.getElementById('grid-%s');\n",gameid.c_str());
-			lines += "\tvar rect = elm.getBoundingClientRect();\n";
-			lines += string_f("\tgameaction('place='+Math.floor((event.clientY-rect.top-%u)/%u)+','+Math.floor((event.clientX-rect.left-%u)/%u));\n",g_offy,h9,g_offx,w9);
-			lines += "\tevent.stopPropagation();\n";
+			lines += "\tif(event.which==1 || event.which==2){\n";
+			lines += string_f("\t\tvar elm = document.getElementById('grid-%s');\n",gameid.c_str());
+			lines += "\t\tvar rect = elm.getBoundingClientRect();\n";
+			lines += string_f("\t\tgameaction('place='+Math.floor((event.clientY-rect.top-%u)/%u)+','+Math.floor((event.clientX-rect.left-%u)/%u) + ','+event.which);\n",g_offy,h9,g_offx,w9);
+			lines += "\t\tevent.stopPropagation();\n";
+			lines += "\t}\n";
 			lines += "}\n";
 			lines += "</script>\n";
 			
@@ -267,6 +389,7 @@ void SUDOKU::exec (const char *var, const char *val, const char *session, const 
 			lines += "<a href='#' onclick=gameselect(event)>\n";
 			lines += string_f("<svg id='gamesudosel' width='%upx' height='%upx' viewbox='0 0 %u %u'>\n",w9,grid_height,w9,grid_height);
 			unsigned font_base = h9*7/10;
+			unsigned font_base_guess = h9*9/10;
 			unsigned font_size = h9*6/10;
 			unsigned w9_3 = w9/3;
 			unsigned seldig = seldigs[session];
@@ -281,7 +404,7 @@ void SUDOKU::exec (const char *var, const char *val, const char *session, const 
 			lines += "</a>";
 			lines += "</div>\n";
 			lines += "<div style='flex:1 1 auto; overflow: hidden;'>\n";
-			lines += "<a href='#' onclick=gameplace(event)>\n";
+			lines += "<a href='#' onclick=gameplace(event) onmousedown=gameplace(event)>\n";
 			lines += string_f("<svg id='grid-%s' width='%upx' height='%upx' viewbox='0 0 %u %u'>\n",gameid.c_str(),grid_width,grid_height,grid_width,grid_height);
 			unsigned line = 0;
 			unsigned w9_2 = w9/2;
@@ -319,10 +442,16 @@ void SUDOKU::exec (const char *var, const char *val, const char *session, const 
 						}
 						if (gg.user_value != gg.value) color = "red";
 					}
-					// We always draw a circle around the number so it is easy to change its attribute later
-					// By default, the circle is white.
 					unsigned w9_col = w9*col+g_offx;
 					unsigned h9_line = h9*line+g_offy;
+					// We always display the guess, so it can be manipulated later using notifications
+					const char *guess_color = gg.user_guess == 0 ? "none" : colors[gg.guess_color];
+					lines += string_f("<text id='g%u,%u' X='%u' Y='%u' style='stroke:%s;fill:%s;font-size:%u;font-family: Times New Roman;'>%u</text>\n"
+						,line,col
+						,w9_col+w9_3,h9_line+font_base_guess
+						,guess_color,guess_color,font_size/2,gg.user_guess);
+					// We always draw a circle around the number so it is easy to change its attribute later
+					// By default, the circle is white.
 					lines += string_f("<circle id='c%u,%u' cx=%u cy=%u r=%u stroke='%s' stroke-width=2 fill='none'/>\n"
 						,line,col,w9_col+w9_2,h9_line+h9_2,circle_radius,circle_color);
 					lines += string_f("<text id='%u,%u' X='%u' Y='%u' style='stroke:%s;fill:%s;font-size:%u;font-family: Times New Roman;'>%u</text>\n"
@@ -343,7 +472,7 @@ void SUDOKU::exec (const char *var, const char *val, const char *session, const 
 			*/
 			lines += "<div>\n";
 			lines += "<a href='#' onclick=avatarselect(event)>\n";
-			lines += string_f("<svg id='avatarsudosel' width='%upx' height='%upx' viewbox='0 0 %u 30'>\n",avatarw,w9/2,avatarw);
+			lines += string_f("<svg id='avatar-%s' width='%upx' height='%upx' viewbox='0 0 %u 30'>\n",gameid.c_str(),avatarw,w9/2,avatarw);
 			const char *tbusers[nbcolor]={"","","","","",""};
 			for (auto &a:prefs) tbusers[a.second.color] = a.first.c_str();
 			for (unsigned i=0; i<nbcolor; i++){
@@ -364,9 +493,9 @@ void SUDOKU::exec (const char *var, const char *val, const char *session, const 
 		res.push_back(v);
 	}else if (maywrite){
 		if (strcmp(var,"place")==0){
-			unsigned lo,co;
-			int n = sscanf(val,"%u,%u",&lo,&co);
-			if (n == 2 && lo < 9 && co < 9){
+			unsigned lo,co,guess;
+			int n = sscanf(val,"%u,%u,%u",&lo,&co,&guess);
+			if (n == 3 && lo < 9 && co < 9 && (guess == 1 || guess == 2)){
 				auto &gg = grid[lo][co];
 				if (gg.visible){
 					documentd_error (res,MSG_U(E_CANTSELTHISCELL,"You can't set this cell"));
@@ -375,36 +504,59 @@ void SUDOKU::exec (const char *var, const char *val, const char *session, const 
 					// If you click over again, it will erase itself.
 					unsigned newval = seldigs[session]+1;
 					const char *color = "black";
+					const char *gcolor = "none";
+					unsigned gnewval = 0;
 					VARVAL var;
 					var.var = VAR_NOTIFY;
 					var.val = string_f ("var doc = document.getElementById('grid-%s');\n",gameid.c_str());
 					var.val += "if (doc != null){\n";
 					if (gg.user_value == 0){
-						gg.user_value = newval;
-						gg.username = username;
-						if (gg.user_value != gg.value){
-							color = "red";
-						}else{
-							auto a = prefs.find(username);
+						auto a = prefs.find(username);
+						if (guess == 2){
 							if (a != prefs.end()){
-								color = colors[a->second.color];
-								var.val += "\tvar circles = doc.getElementsByTagName('circle');\n";
-								var.val += "\tfor(var i = 0; i< circles.length;i++){\n";
-								var.val += "\t\tvar e = circles[i];\n";
-								if (a->second.last_line != lo || a->second.last_column != co){
-									// Erase the last solved cell circle
-									var.val += string_f("\t\tif (e.getAttribute('id') == 'c%u,%u'){\n"
-										,a->second.last_line,a->second.last_column);
-									var.val += string_f("\t\t\te.style.stroke = 'none';\n");
-									var.val += "\t\t}else";
+								if (gg.user_guess == newval && gg.guess_color == a->second.color){
+									// The user erased is guess
+									gg.user_guess = 0;
+									gg.guess_color = 0;
+									gcolor = "none";
+									gnewval = 0;
+								}else{
+									gg.user_guess = newval;
+									gg.guess_color = a->second.color;
+									gcolor = colors[a->second.color];
+									gnewval = newval;
 								}
-								// Draw the new solved cell circle
-								var.val += string_f(" if (e.getAttribute('id') == 'c%u,%u'){\n",lo,co);
-								var.val += string_f("\t\t\te.style.stroke = '%s';\n",color);
-								var.val += "\t\t}\n";
-								var.val += "\t}\n";
-								a->second.last_column = co;
-								a->second.last_line = lo;
+								color="none";
+							}
+						}else{
+							gg.user_value = newval;
+							gg.username = username;
+							gg.user_guess = 0;
+							gg.guess_color = 0;
+							if (gg.user_value != gg.value){
+								color = "red";
+							}else{
+								auto a = prefs.find(username);
+								if (a != prefs.end()){
+									color = colors[a->second.color];
+									var.val += "\tvar circles = doc.getElementsByTagName('circle');\n";
+									var.val += "\tfor(var i = 0; i< circles.length;i++){\n";
+									var.val += "\t\tvar e = circles[i];\n";
+									if (a->second.last_line != lo || a->second.last_column != co){
+										// Erase the last solved cell circle
+										var.val += string_f("\t\tif (e.getAttribute('id') == 'c%u,%u'){\n"
+											,a->second.last_line,a->second.last_column);
+										var.val += string_f("\t\t\te.style.stroke = 'none';\n");
+										var.val += "\t\t}else";
+									}
+									// Draw the new solved cell circle
+									var.val += string_f(" if (e.getAttribute('id') == 'c%u,%u'){\n",lo,co);
+									var.val += string_f("\t\t\te.style.stroke = '%s';\n",color);
+									var.val += "\t\t}\n";
+									var.val += "\t}\n";
+									a->second.last_column = co;
+									a->second.last_line = lo;
+								}
 							}
 						}
 					}else if (gg.user_value == newval){
@@ -415,7 +567,11 @@ void SUDOKU::exec (const char *var, const char *val, const char *session, const 
 					var.val += "\tvar txts = doc.getElementsByTagName('text');\n";
 					var.val += "\tfor(var i = 0; i< txts.length;i++){\n";
 					var.val += "\t\tvar e = txts[i];\n";
-					var.val += string_f("\t\tif (e.getAttribute('id') == '%u,%u'){\n",lo,co);
+					var.val += string_f("\t\tif (e.getAttribute('id') == 'g%u,%u'){\n",lo,co);
+					var.val += string_f("\t\t\te.style.fill = '%s';\n",gcolor);
+					var.val += string_f("\t\t\te.style.stroke = '%s';\n",gcolor);
+					var.val += string_f("\t\t\te.textContent = '%u';\n",gnewval);
+					var.val += string_f("\t\t}else if (e.getAttribute('id') == '%u,%u'){\n",lo,co);
 					var.val += string_f("\t\t\te.style.fill = '%s';\n",color);
 					var.val += string_f("\t\t\te.style.stroke = '%s';\n",color);
 					var.val += string_f("\t\t\te.textContent = '%u';\n",newval);
@@ -446,7 +602,20 @@ void SUDOKU::exec (const char *var, const char *val, const char *session, const 
 						break;
 					}
 				}
-				if (!fail) prefs[username].color = avatar;
+				if (!fail){
+					auto &u = prefs[username];
+					unsigned old_avatar = u.color;
+					u.color = avatar;
+					// Change all the guess color
+					for (auto &g:grid){
+						for (auto &gg:g){
+							if (gg.user_guess != 0 && gg.guess_color == old_avatar){
+								gg.guess_color = avatar;
+							}
+						}
+					}
+					redraw_notify(res);
+				}
 			}else{
 				documentd_error (res,"Color selection from 0 to 5");
 			}
@@ -487,39 +656,7 @@ void SUDOKU::exec (const char *var, const char *val, const char *session, const 
 				</f>
 				</call>
 				setmodified(username);
-				VARVAL var;
-				var.var = VAR_NOTIFY;
-				var.val = string_f ("var frm = document.getElementById('form-%s');\n",gameid.c_str());
-				var.val += "if (frm != null){\n";
-				var.val += "\tvar buttons = frm.getElementsByTagName('input');\n";
-				for (unsigned i=0; i<4; i++){
-					var.val += string_f("\tbuttons[%i].style.background='%s';\n",i,i==uval ? "lightblue" : "lightgray");
-				}
-				var.val += "}\n";
-				var.val += string_f ("var doc = document.getElementById('grid-%s');\n",gameid.c_str());
-				var.val += "if (doc != null){\n";
-				var.val += "\tvar circles = doc.getElementsByTagName('circle');\n";
-				var.val += "\tfor(var i = 0; i< circles.length;i++){\n";
-				var.val += "\t\tvar e = circles[i];\n";
-				var.val += string_f("\t\t\te.style.stroke = 'none';\n");
-				var.val += "\t}\n";
-				var.val += "\tvar txts = doc.getElementsByTagName('text');\n";
-				// We have to skip the a,b,c...i and then the A
-				unsigned item = 9+1;
-				for (auto &g:grid){
-					for (auto &&gg:g){
-						var.val += string_f ("\tvar e = txts[%u];\n",item);
-						const char *color = gg.visible ? "gray" : "white";
-						var.val += string_f("\te.style.fill = '%s';\n",color);
-						var.val += string_f("\te.style.stroke = '%s';\n",color);
-						var.val += string_f("\te.textContent = '%u';\n",gg.value);
-						item++;
-					}
-					// We skip the letter on the side
-					item++;
-				}
-				var.val += "}\n";
-				res.push_back(var);
+				redraw_notify(res);
 			}
 		}else{
 			tlmp_error ("sudoku invalid command %s\n",var);
