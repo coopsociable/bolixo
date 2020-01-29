@@ -195,15 +195,21 @@ void SUDOKU::redraw_notify(vector<VARVAL> &res)
 			const char *color = "none";
 			const char *circle_color = "none";
 			const char *guess_color = "none";
+			unsigned value = gg.value;
 			if (gg.visible){
 				color = "gray";
 			}else if (gg.user_value != 0){
-				color = "black";
-				auto a = prefs.find(gg.username);
-				if (a != prefs.end()){
-					color = colors[a->second.color];
-					if (a->second.last_column == col && a->second.last_line == line){
-						circle_color = color;
+				value = gg.user_value;
+				if (gg.user_value != gg.value){
+					color = "red";
+				}else{
+					color = "black";
+					auto a = prefs.find(gg.username);
+					if (a != prefs.end()){
+						color = colors[a->second.color];
+						if (a->second.last_column == col && a->second.last_line == line){
+							circle_color = color;
+						}
 					}
 				}
 			}else if (gg.user_guess != 0){
@@ -218,7 +224,7 @@ void SUDOKU::redraw_notify(vector<VARVAL> &res)
 			var.val += string_f ("\tvar e = txts[%u];\n",txt_item);
 			var.val += string_f("\te.style.fill = '%s';\n",color);
 			var.val += string_f("\te.style.stroke = '%s';\n",color);
-			var.val += string_f("\te.textContent = '%u';\n",gg.value);
+			var.val += string_f("\te.textContent = '%u';\n",value);
 			txt_item++;
 			var.val += string_f ("\tvar e = circles[%u];\n",circle_item);
 			var.val += string_f("\t\t\te.style.stroke = '%s';\n",circle_color);
@@ -255,6 +261,8 @@ void SUDOKU::redraw_notify(vector<VARVAL> &res)
 <mod>
 void SUDOKU::exec (const char *var, const char *val, const char *session, const char *username, bool maywrite, unsigned win_width, unsigned win_height, vector<VARVAL> &res)
 {
+	string error;
+	string msg;
 	setactivity();
 	//tlmp_error ("SUDOKU var %s val%s username %s maywrite %d",var,val,username,maywrite);
 	/*
@@ -356,20 +364,20 @@ void SUDOKU::exec (const char *var, const char *val, const char *session, const 
 			
 			lines += "<script>\n";
 			lines += "function gameselect(event){\n";
-			lines += "\tvar elm = document.getElementById('gamesudosel');\n";
+			lines += string_f("\tvar elm = document.getElementById('sudosel-%s');\n",gameid.c_str());
 			lines += "\tvar rect = elm.getBoundingClientRect();\n";
-			lines += string_f("\tgameaction('select='+Math.floor((event.clientY-rect.top-%u)/%u+1));\n",g_offy,h9);
+			lines += string_f("\tgameaction('select:'+Math.floor((event.clientY-rect.top-%u)/%u+1));\n",g_offy,h9);
 			lines += "}\n";
 			lines += "function avatarselect(event){\n";
 			lines += string_f("\tvar elm = document.getElementById('avatar-%s');\n",gameid.c_str());
 			lines += "\tvar rect = elm.getBoundingClientRect();\n";
-			lines += string_f("\tgameaction('avatar='+Math.floor((event.clientX-rect.left)/%u));\n",avatarcw);
+			lines += string_f("\tgameaction('avatar:'+Math.floor((event.clientX-rect.left)/%u));\n",avatarcw);
 			lines += "}\n";
 			lines += "function gameplace(event){\n";
 			lines += "\tif(event.which==1 || event.which==2){\n";
 			lines += string_f("\t\tvar elm = document.getElementById('grid-%s');\n",gameid.c_str());
 			lines += "\t\tvar rect = elm.getBoundingClientRect();\n";
-			lines += string_f("\t\tgameaction('place='+Math.floor((event.clientY-rect.top-%u)/%u)+','+Math.floor((event.clientX-rect.left-%u)/%u) + ','+event.which);\n",g_offy,h9,g_offx,w9);
+			lines += string_f("\t\tgameaction('place:'+Math.floor((event.clientY-rect.top-%u)/%u)+','+Math.floor((event.clientX-rect.left-%u)/%u) + ','+event.which);\n",g_offy,h9,g_offx,w9);
 			lines += "\t\tevent.stopPropagation();\n";
 			lines += "\t}\n";
 			lines += "}\n";
@@ -387,7 +395,7 @@ void SUDOKU::exec (const char *var, const char *val, const char *session, const 
 			lines += "<div style='display:flex; flex-flow:row;'>\n";
 			lines += "<div style='flex:1 1 auto; overflow: hidden;'>\n";
 			lines += "<a href='#' onclick=gameselect(event)>\n";
-			lines += string_f("<svg id='gamesudosel' width='%upx' height='%upx' viewbox='0 0 %u %u'>\n",w9,grid_height,w9,grid_height);
+			lines += string_f("<svg id='sudosel-%s' width='%upx' height='%upx' viewbox='0 0 %u %u'>\n",gameid.c_str(),w9,grid_height,w9,grid_height);
 			unsigned font_base = h9*7/10;
 			unsigned font_base_guess = h9*9/10;
 			unsigned font_size = h9*6/10;
@@ -403,8 +411,9 @@ void SUDOKU::exec (const char *var, const char *val, const char *session, const 
 			lines += "</svg>\n";
 			lines += "</a>";
 			lines += "</div>\n";
-			lines += "<div style='flex:1 1 auto; overflow: hidden;'>\n";
-			lines += "<a href='#' onclick=gameplace(event) onmousedown=gameplace(event)>\n";
+			lines += "<div style='flex:1 1 auto; overflow: hidden;' onmousedown='gameplace(event); return false;' style=color:blue;cursor:pointer>\n";
+			//lines += "<a href='#' onclick=gameplace(event) onmousedown=gameplace(event)>\n";
+			//lines += "<a href='#' onmousedown='gameplace(event); return false;'>\n";
 			lines += string_f("<svg id='grid-%s' width='%upx' height='%upx' viewbox='0 0 %u %u'>\n",gameid.c_str(),grid_width,grid_height,grid_width,grid_height);
 			unsigned line = 0;
 			unsigned w9_2 = w9/2;
@@ -463,7 +472,7 @@ void SUDOKU::exec (const char *var, const char *val, const char *session, const 
 				line++;
 			}
 			lines += "</svg>\n";
-			lines += "</a>\n";
+			//lines += "</a>\n";
 			lines += "</div>\n";
 			lines += "</div>\n";
 			/*
@@ -486,6 +495,8 @@ void SUDOKU::exec (const char *var, const char *val, const char *session, const 
 			lines += "</svg>\n";
 			lines += "</a>";
 			lines += "</div>\n";
+			lines += "<p>\n";
+			lines += string_f("<div id=msg-%s style=color:white>This is a messageCeci est un message</div>\n",gameid.c_str());
 		}
 		VARVAL v;
 		v.var = VAR_CONTENT;
@@ -498,7 +509,7 @@ void SUDOKU::exec (const char *var, const char *val, const char *session, const 
 			if (n == 3 && lo < 9 && co < 9 && (guess == 1 || guess == 2)){
 				auto &gg = grid[lo][co];
 				if (gg.visible){
-					documentd_error (res,MSG_U(E_CANTSELTHISCELL,"You can't set this cell"));
+					error = MSG_U(E_CANTSELTHISCELL,"You can't set this cell");
 				}else{
 					// We can set a value. If it is wrong, it will show in red.
 					// If you click over again, it will erase itself.
@@ -582,13 +593,24 @@ void SUDOKU::exec (const char *var, const char *val, const char *session, const 
 					res.push_back(var);
 				}
 			}else{
-				documentd_error (res,MSG_U(E_IVLDPLACESUD,"Invalid place command (need 2 value)"));
+				error = MSG_U(E_IVLDPLACESUD,"Invalid place command (need 2 value)");
 			}
 		}else if (strcmp(var,"select")==0){
 			unsigned sel = atoi(val);
 			if (sel > 0 && sel < 10){
-				seldigs[session] = sel-1;
+				sel--;
+				seldigs[session] = sel;
 				setmodified(username);
+				VARVAL var;
+				var.var = VAR_SCRIPT;
+				var.val = string_f ("var doc = document.getElementById('sudosel-%s');\n",gameid.c_str());
+				var.val += "if (doc != null){\n";
+				var.val += "\tvar paths = doc.getElementsByTagName('path');\n";
+				for (unsigned i=0; i<9; i++){
+					var.val += string_f("\tpaths[%u].style.fill='%s';\n",i,i==sel ? "pink" : "white");
+				}
+				var.val += "}\n";
+				res.push_back(var);
 			}
 		}else if (strcmp(var,"avatar")==0){
 			unsigned avatar = atoi(val);
@@ -597,7 +619,7 @@ void SUDOKU::exec (const char *var, const char *val, const char *session, const 
 				bool fail = false;
 				for (auto &a:prefs){
 					if (a.second.color == avatar && a.first != username){
-						documentd_error (res,MSG_U(E_USEDAVATAR,"This color is already used!"));
+						error = MSG_U(E_USEDAVATAR,"This color is already used!");
 						fail = true;
 						break;
 					}
@@ -662,8 +684,21 @@ void SUDOKU::exec (const char *var, const char *val, const char *session, const 
 			tlmp_error ("sudoku invalid command %s\n",var);
 		}
 	}else{
-		documentd_error (res,MSG_U(E_READONLY,"You do not have write access to this game"));
+		error = MSG_U(E_READONLY,"You do not have write access to this game");
 	}
+	VARVAL mvar;
+	mvar.var = VAR_SCRIPT;
+	mvar.val = string_f ("var doc = document.getElementById('msg-%s');\n",gameid.c_str());
+	if (error.size() > 0){
+		mvar.val += "doc.style.color=\"red\";\n";
+		mvar.val += string_f("doc.innerHTML=\"%s\";\n",error.c_str());
+	}else if (msg.size() > 0){
+		mvar.val += "doc.style.color=\"blue\";\n";
+		mvar.val += string_f("doc.innerHTML=\"%s\";\n",msg.c_str());
+	}else{
+		mvar.val += "doc.style.color=\"white\";\n";
+	}
+	res.emplace_back(mvar);
 		
 }
 </mod>

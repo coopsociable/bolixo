@@ -101,6 +101,7 @@ W_SSTRING w_access4("access4");
 W_SSTRING w_name("name");
 W_SSTRING w_image("image");
 W_SSTRING w_action("action");
+W_SSTRING w_gameid("gameid");
 
 static W_UNSIGNED w_sequence("sequence");
 
@@ -1538,7 +1539,7 @@ extern "C" void webmain_real()
 		Http.onreadystatechange = function(){
 			if (this.readyState == 4){
 				if (this.status == 200){
-					console.log (Http.responseText);
+					//console.log (Http.responseText);
 					eval (Http.responseText);
 				}else if ((this.status == 502 || this.status == 504) && Date.now()-httpstarted > 30000){
 					console.log ("notification timeout, resend "+(Date.now()-httpstarted).toString());
@@ -1547,7 +1548,7 @@ extern "C" void webmain_real()
 					console.log ("Notification, connection error, stopped");
 				}
 			}else{
-				console.log ("readyState="+this.readyState+" status="+this.status);
+				console.log ("notification readyState="+this.readyState+" status="+this.status);
 			}
 		}
 		</script>
@@ -2499,6 +2500,43 @@ extern "C" void webmain_real()
 		</call>
 		noend();
 		//tlmp_error ("step15 end %s",w_session.c_str());
+	</f>
+	<f step16>	// game action
+		if (w_action.isset()){
+			vector<string> tb;
+			int n = str_splitline(w_action.c_str(),':',tb);
+			if (n == 2){
+				vector<VARVAL> steps;
+				VARVAL var;
+				var.var = tb[0];
+				var.val = tb[1];
+				steps.push_back(var);
+				<call bod_client_playstep>(glocal.con,w_session.c_str(),"",w_gameid.c_str(),steps,0,0);
+				<f ok>
+					if (success){
+						size_t size = 0;
+						string refresh = string_f ("formsubmit('%s?webstep=%d');\n",tlmpweb_curpage(),step_projects);
+						for (auto &r:res){
+							if (is_any_of(r.var,"notify","script")){
+								size += strlen(r.val);
+							}else if (strcmp(r.var,"refresh")==0){
+								size += refresh.size();
+							}
+						}
+						tlmpweb_doctype("text/html",size);
+						for (auto &r:res){
+							if (is_any_of(r.var,"notify","script")){
+								htmlout (r.val);
+							}else if (strcmp(r.var,"refresh")==0){
+								htmlout (refresh);
+							}
+						}
+					}
+				</f>
+				</call>
+			}
+		}
+		noend();
 	</f>
 	</call>
 }

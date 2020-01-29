@@ -170,13 +170,16 @@ public:
 	void exec (const char *var, const char *val, const char *session, const char *username, bool maywrite, unsigned width, unsigned height, std::vector<VARVAL> &res);
 };
 
-#define VAR_CONTENT	"content"
+#define VAR_CONTENT	"content"	// HTML content to display
 #define VAR_ERROR	"error"
 #define VAR_RESULT	"result"
-#define VAR_NOTIFY	"notify"
+#define VAR_NOTIFY	"notify"	// Javascript applied to all users
+#define VAR_REFRESH	"refresh"	// Trigger a screen refresh
+#define VAR_SCRIPT	"script"	// Javascript for this user only
 
 void documentd_error (std::vector<VARVAL> &res, PARAM_STRING s);
 void documentd_button (std::string &lines, unsigned command, const char *txt, bool highlit);
+void documentd_forcerefresh (std::vector<VARVAL> &res);
 void fflush (DOC_WRITER *);
 char *fgets(char *s, int size, DOC_READER *r);
 #endif
