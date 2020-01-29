@@ -122,6 +122,7 @@ class SUDOKU: public GAME{
 	std::map<std::string,SUDO_USERPREF> prefs;	// Preferences associated with a user
 	unsigned difficulty=0;	// What difficulty was used to initialize the game
 	void redraw_notify(std::vector<VARVAL> &res);
+	void update_msg(PARAM_STRING msg, const char *color, std::vector<VARVAL> &res);
 public:
 	const char *getclass() const{
 		return "SUDO";

@@ -150,6 +150,15 @@ void SUDOKU::resetgame()
 		}
 	}
 }
+void SUDOKU::update_msg(PARAM_STRING msg, const char *color, vector<VARVAL> &res)
+{
+	VARVAL mvar;
+	mvar.var = VAR_SCRIPT;
+	mvar.val = string_f ("var doc = document.getElementById('msg-%s');\n",gameid.c_str());
+	mvar.val += string_f("doc.style.color=\"%s\";\n",color);
+	mvar.val += string_f("doc.innerHTML=\"%s\";\n",msg.ptr);
+	res.emplace_back(mvar);
+}
 void SUDOKU::testwin(vector<VARVAL> &res)
 {
 	unsigned nbok = 0;
@@ -159,10 +168,7 @@ void SUDOKU::testwin(vector<VARVAL> &res)
 		}
 	}
 	if (nbok == 9*9){
-		VARVAL v;
-		v.var = VAR_RESULT;
-		v.val = MSG_U(I_COMPLETE,"Congratulation! You completed the puzzle");
-		res.push_back(v);
+		update_msg (MSG_U(I_COMPLETE,"Congratulation! You completed the puzzle"),"blue",res);
 	}
 }
 const unsigned nbcolor=6;
@@ -262,7 +268,6 @@ void SUDOKU::redraw_notify(vector<VARVAL> &res)
 void SUDOKU::exec (const char *var, const char *val, const char *session, const char *username, bool maywrite, unsigned win_width, unsigned win_height, vector<VARVAL> &res)
 {
 	string error;
-	string msg;
 	setactivity();
 	//tlmp_error ("SUDOKU var %s val%s username %s maywrite %d",var,val,username,maywrite);
 	/*
@@ -394,8 +399,8 @@ void SUDOKU::exec (const char *var, const char *val, const char *session, const 
 			lines += "<p>";
 			lines += "<div style='display:flex; flex-flow:row;'>\n";
 			lines += "<div style='flex:1 1 auto; overflow: hidden;'>\n";
-			lines += "<a href='#' onclick=gameselect(event)>\n";
-			lines += string_f("<svg id='sudosel-%s' width='%upx' height='%upx' viewbox='0 0 %u %u'>\n",gameid.c_str(),w9,grid_height,w9,grid_height);
+			// lines += "<a href='#' onclick=gameselect(event)>\n";
+			lines += string_f("<svg onclick=gameselect(event) id='sudosel-%s' width='%upx' height='%upx' viewbox='0 0 %u %u'>\n",gameid.c_str(),w9,grid_height,w9,grid_height);
 			unsigned font_base = h9*7/10;
 			unsigned font_base_guess = h9*9/10;
 			unsigned font_size = h9*6/10;
@@ -409,11 +414,9 @@ void SUDOKU::exec (const char *var, const char *val, const char *session, const 
 					,w9_3,offy+font_base,"black","black",font_size,i+1);
 			}
 			lines += "</svg>\n";
-			lines += "</a>";
+			//lines += "</a>";
 			lines += "</div>\n";
 			lines += "<div style='flex:1 1 auto; overflow: hidden;' onmousedown='gameplace(event); return false;' style=color:blue;cursor:pointer>\n";
-			//lines += "<a href='#' onclick=gameplace(event) onmousedown=gameplace(event)>\n";
-			//lines += "<a href='#' onmousedown='gameplace(event); return false;'>\n";
 			lines += string_f("<svg id='grid-%s' width='%upx' height='%upx' viewbox='0 0 %u %u'>\n",gameid.c_str(),grid_width,grid_height,grid_width,grid_height);
 			unsigned line = 0;
 			unsigned w9_2 = w9/2;
@@ -472,7 +475,6 @@ void SUDOKU::exec (const char *var, const char *val, const char *session, const 
 				line++;
 			}
 			lines += "</svg>\n";
-			//lines += "</a>\n";
 			lines += "</div>\n";
 			lines += "</div>\n";
 			/*
@@ -480,8 +482,7 @@ void SUDOKU::exec (const char *var, const char *val, const char *session, const 
 				When the user place a digit on the grid, the selected rectangle color will be used.
 			*/
 			lines += "<div>\n";
-			lines += "<a href='#' onclick=avatarselect(event)>\n";
-			lines += string_f("<svg id='avatar-%s' width='%upx' height='%upx' viewbox='0 0 %u 30'>\n",gameid.c_str(),avatarw,w9/2,avatarw);
+			lines += string_f("<svg onclick=avatarselect(event) id='avatar-%s' width='%upx' height='%upx' viewbox='0 0 %u 30'>\n",gameid.c_str(),avatarw,w9/2,avatarw);
 			const char *tbusers[nbcolor]={"","","","","",""};
 			for (auto &a:prefs) tbusers[a.second.color] = a.first.c_str();
 			for (unsigned i=0; i<nbcolor; i++){
@@ -493,9 +494,7 @@ void SUDOKU::exec (const char *var, const char *val, const char *session, const 
 					,x+5,i,"black","black",tbusers[i]);
 			}
 			lines += "</svg>\n";
-			lines += "</a>";
 			lines += "</div>\n";
-			lines += "<p>\n";
 			lines += string_f("<div id=msg-%s style=color:white>This is a messageCeci est un message</div>\n",gameid.c_str());
 		}
 		VARVAL v;
@@ -686,19 +685,11 @@ void SUDOKU::exec (const char *var, const char *val, const char *session, const 
 	}else{
 		error = MSG_U(E_READONLY,"You do not have write access to this game");
 	}
-	VARVAL mvar;
-	mvar.var = VAR_SCRIPT;
-	mvar.val = string_f ("var doc = document.getElementById('msg-%s');\n",gameid.c_str());
 	if (error.size() > 0){
-		mvar.val += "doc.style.color=\"red\";\n";
-		mvar.val += string_f("doc.innerHTML=\"%s\";\n",error.c_str());
-	}else if (msg.size() > 0){
-		mvar.val += "doc.style.color=\"blue\";\n";
-		mvar.val += string_f("doc.innerHTML=\"%s\";\n",msg.c_str());
+		update_msg(error,"red",res);
 	}else{
-		mvar.val += "doc.style.color=\"white\";\n";
+		update_msg("","white",res);
 	}
-	res.emplace_back(mvar);
 		
 }
 </mod>
