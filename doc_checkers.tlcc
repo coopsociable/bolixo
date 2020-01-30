@@ -38,6 +38,9 @@ void CHECKERS::load(DOC_READER &r, string &msg)
 }
 void CHECKERS::resetgame()
 {
+	player1_playing = true;
+	player1.line = player1.col = 10;
+	player2.line = player2.col = 10;
 	for (auto &g:grid) for (auto &gg:g) gg=0;
 	for (unsigned i=0; i<3; i++){
 		unsigned start = (i+1)&1;
@@ -55,16 +58,8 @@ void CHECKERS::testwin(vector<VARVAL> &res)
 {
 }
 
-static const char *cnv (const char *val, unsigned &posx, unsigned &posy)
+void CHECKERS::update_msg (PARAM_STRING msg, const char *color, vector<VARVAL> &res)
 {
-	val = str_skip(val);
-	if (islower(*val)){
-		posy = *val - 'a';
-	}else if (isupper(*val)){
-		posy = *val - 'A';
-	}
-	posx = 8-atoi(val+1);
-	return val+2;
 }
 		
 void CHECKERS::exec (
@@ -73,80 +68,195 @@ void CHECKERS::exec (
 	const char *session,
 	const char *username,
 	bool maywrite,
-	unsigned width,
-	unsigned height,
+	unsigned win_width,
+	unsigned win_height,
 	bool mobile,
 	vector<VARVAL> &res)
 {
+	string error;
+	setactivity();
+	if (player1.name.size() == 0){
+		player1.name = username;
+	}else if (player2.name.size() == 0){
+		player2.name = username;
+	}	
 	if (strcmp(var,"print")==0){
 		string lines;
-		//static const char *white = "\033[01;37m";
-		//static const char *green = "\033[01;32m";
-		//static const char *blue = "\033[01;34m";
-		//static const char *red = "\033[01;31m";
-		static const char *bgblue = "\033[01;44m";
-		static const char *bggreen = "\033[01;42m";
-		static const char *bgred = "\033[01;41m";
-		static const char *bgblack = "\033[01;40m";
-		static const char *normal = "\033[00m";
-		static const char *tbcolor[]={bgblack,bgblue};
-		unsigned nol = 0;
-		for (auto &g:grid){
-			static const char *tbl[]={
-				"%s    %s  %s    ",
-				"%s  %s      %s  ",
-				"%s %s        %s ",
-				"%s  %s      %s  ",
-				"%s    %s  %s    ",
-				//"%s          ",
-			};
-			for (unsigned i=0; i<5; i++){
-				unsigned color = nol & 1;
-				if (i == 2){
-					lines += string_f("\t%d ",8-nol);
-				}else{
-					lines += "\t  ";
-				}
-				for (auto &gg:g){
-					const char *bg = tbcolor[color];
-					color = (color+1)&1;
-					const char *bg1 = "";
-					if (gg == 0){
-						bg1 = bg;
-					}else if (gg == 1){
-						bg1 = bgred;
-					}else if (gg == 2){
-						bg1 = bggreen;
+		if (strcmp(val,"console")==0){
+			//static const char *white = "\033[01;37m";
+			//static const char *green = "\033[01;32m";
+			//static const char *blue = "\033[01;34m";
+			//static const char *red = "\033[01;31m";
+			static const char *bgblue = "\033[01;44m";
+			static const char *bggreen = "\033[01;42m";
+			static const char *bgred = "\033[01;41m";
+			static const char *bgblack = "\033[01;40m";
+			static const char *normal = "\033[00m";
+			static const char *tbcolor[]={bgblack,bgblue};
+			unsigned nol = 0;
+			for (auto &g:grid){
+				static const char *tbl[]={
+					"%s    %s  %s    ",
+					"%s  %s      %s  ",
+					"%s %s        %s ",
+					"%s  %s      %s  ",
+					"%s    %s  %s    ",
+					//"%s          ",
+				};
+				for (unsigned i=0; i<5; i++){
+					unsigned color = nol & 1;
+					if (i == 2){
+						lines += string_f("\t%d ",8-nol);
+					}else{
+						lines += "\t  ";
 					}
-					lines += string_f(tbl[i],bg,bg1,bg);
+					for (auto &gg:g){
+						const char *bg = tbcolor[color];
+						color = (color+1)&1;
+						const char *bg1 = "";
+						if (gg == 0){
+							bg1 = bg;
+						}else if (gg == 1){
+							bg1 = bgred;
+						}else if (gg == 2){
+							bg1 = bggreen;
+						}
+						lines += string_f(tbl[i],bg,bg1,bg);
+					}
+					lines += normal;
+					lines += '\n';
 				}
-				lines += normal;
-				lines += '\n';
+				nol++;
+			}	
+			lines += "\t  ";
+			for (unsigned i=0; i<8; i++) lines += string_f("    %c     ",i+'A');
+			lines += '\n';
+		}else{
+			// The layout is a square, constrained by the width
+			unsigned dim = win_width < win_height ? win_width : win_height;
+			unsigned width = dim - dim % 8;
+			unsigned w8 = width/9;
+			unsigned h8 = w8; 
+			unsigned grid_width = w8*8;
+			unsigned grid_height = w8*8;
+			
+			lines += "<script>\n";
+			lines += "function gameplace(event){\n";
+			lines += string_f("\tvar elm = document.getElementById('grid-%s');\n",gameid.c_str());
+			lines += "\tvar rect = elm.getBoundingClientRect();\n";
+			lines += string_f("\tgameaction('place:'+Math.floor((event.clientY-rect.top)/%u)+','+Math.floor((event.clientX-rect.left)/%u));\n",h8,w8);
+			lines += "\tevent.stopPropagation();\n";
+			lines += "}\n";
+			lines += "</script>\n";
+			
+			lines += "<p>\n";
+			lines += "<div style='display:flex; flex-flow:row;'>\n";
+			lines += "<div style='flex:1 1 auto; overflow: hidden;'>\n";
+			lines += string_f("<form id='form-%s'>\n",gameid.c_str());
+			lines += MSG_R(I_NEWGAME);
+			documentd_button (lines,0,MSG_R(I_RESTART),false);
+			lines += "</form>\n";
+			lines += "</div>\n";
+			lines += "<div style='flex:1 1 auto; overflow: hidden;'>\n";
+			lines += string_f("%s\n",player1.name.c_str());
+			lines += "</div>\n";
+			lines += "<div style='flex:1 1 auto; overflow: hidden;'>\n";
+			lines += string_f("%s\n",player2.name.c_str());
+			lines += "</div>\n";
+			lines += "</div>\n";
+			lines += "<div style='display:flex; flex-flow:row;'>\n";
+			lines += "<div style='flex:1 1 auto; overflow: hidden;' onmousedown='gameplace(event); return false;' style=color:blue;cursor:pointer>\n";
+			lines += "&nbsp;&nbsp;\n";
+			lines += string_f("<svg id='grid-%s' width='%upx' height='%upx' viewbox='0 0 %u %u'>\n",gameid.c_str(),grid_width,grid_height,grid_width,grid_height);
+			unsigned w8_2 = w8/2;
+			unsigned h8_2 = h8/2;
+			unsigned circle_radius = h8_2 - h8/10;
+			lines += string_f("<path stroke='green' stroke-width='2' fill='white' d='M%u %u H %u V %u H %u Z'/>\n"
+				,0,0,grid_width-1,grid_height-1,0);
+			for (unsigned line=0; line<8; line++){
+				lines += string_f("<path stroke=%s stroke-width=1 d='M%u,%u H %u'/>\n","lightgray"
+					,0,h8*line,grid_width);
+				unsigned l1 = line & 1;
+				for (unsigned col=0; col<8; col++){
+					unsigned w8_col = w8*col;
+					unsigned h8_line = h8*line;
+					lines += string_f("<path stroke=%s stroke-width=1 d='M%u,%u V %u'/>\n","lightgray"
+						,w8*col,0,grid_height);
+					if ((l1+col)&1){
+						lines += string_f("<path stroke='black' stroke-width=1 d='M%u,%u h %u v %u h -%u Z' fill='lightgray'/>\n"
+							,w8*col,h8*line,w8,h8,w8);
+					}
+					unsigned cell = grid[line][col];
+					if (cell > 0){
+						lines += string_f("<circle id='c%u,%u' cx=%u cy=%u r=%u stroke='black' stroke-width=2 fill='%s'/>\n"
+							,line,col,w8_col+w8_2,h8_line+h8_2,circle_radius,cell==1 ? "black" : "white");
+						const char *color = "none";
+						if (player1.col == col && player1.line == line){
+							color = "blue";
+						}else if (player2.col == col && player2.line == line){
+							color = "red";
+						}
+						lines += string_f("<circle id='c%u,%u' cx=%u cy=%u r=%u stroke='%s' stroke-width=2 fill='%s'/>\n"
+							,line,col,w8_col+w8_2,h8_line+h8_2,circle_radius-4,color,color);
+					}
+				}
 			}
-			nol++;
-		}	
-		lines += "\t  ";
-		for (unsigned i=0; i<8; i++) lines += string_f("    %c     ",i+'A');
-		lines += '\n';
+			lines += "</svg>\n";
+			lines += "</div>\n";
+			lines += "</div>\n";
+		}
 		VARVAL v;
-		v.var = "content";
+		v.var = VAR_CONTENT;
 		v.val = lines;
 		res.push_back(v);
-	}else if (strcmp(var,"place")==0){
-		unsigned fromx,fromy,tox,toy;
-		const char *pt = cnv(val,fromx,fromy);
-		cnv(pt,tox,toy);
-		// printf ("from = %u %u to %u %u\n",fromx,fromy,tox,toy);
-		unsigned char value = grid[fromx][fromy];
-		if (value == 0){
-			documentd_error (res,"Invalid move");
-		}else if (grid[tox][toy] != 0){
-			documentd_error (res,"Destination used");
-		}else{
-			grid[fromx][fromy] = 0;
-			grid[tox][toy] = value;
+	}else if (maywrite){
+		if (strcmp(var,"place")==0){
+			unsigned lo,co;
+			int n = sscanf(val,"%u,%u",&lo,&co);
+			if (n == 2 && lo < 8 && co < 8){
+				CHECKER_PLAYER *player = &player2;
+				unsigned cell_val = 2;
+				if (player1_playing){
+					player = &player1;
+					cell_val = 1;
+				}
+				if (player->has_selected()){
+					if (player->line == lo && player->col == co){
+						// The player is unselecting the cell
+						player->reset();
+					}else{
+						unsigned char &cell = grid[lo][co];
+						if (cell != 0){
+							documentd_error (res,"Destination used");
+						}else{	
+							grid[player->line][player->col] = 0;
+							cell = cell_val;
+							setmodified (username);
+							player->reset();
+							player1_playing = !player1_playing;
+						}
+					}
+				}else if (grid[lo][co] == cell_val){
+					// The player is about to move that piece
+					player->col = co;
+					player->line = lo;
+				}else{
+					documentd_error (res,"Can't select this cell");
+				}
+			}else{
+				tlmp_error ("checkers, invalid place command: %s",val);
+			}
+			documentd_forcerefresh(res);
+		}else if (strcmp(var,"newgame")==0){
+			resetgame();
+			documentd_forcerefresh(res);
 		}
-		setmodified (username);
+	}else{
+	}
+	if (error.size() > 0){
+		update_msg(error,"red",res);
+	}else{
+		update_msg("","white",res);
 	}
 }
 

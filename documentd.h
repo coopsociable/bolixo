@@ -124,7 +124,7 @@ class SUDOKU: public GAME{
 	std::map<std::string,SUDO_USERPREF> prefs;	// Preferences associated with a user
 	unsigned difficulty=0;	// What difficulty was used to initialize the game
 	void redraw_notify(std::vector<VARVAL> &res);
-	void update_msg(PARAM_STRING msg, const char *color, std::vector<VARVAL> &res);
+	void update_msg(bool to_all, PARAM_STRING msg, const char *color, std::vector<VARVAL> &res);
 public:
 	const char *getclass() const{
 		return "SUDO";
@@ -162,8 +162,24 @@ public:
 		unsigned width, unsigned height, bool mobile, std::vector<VARVAL> &res);
 };
 
+struct CHECKER_PLAYER{
+	unsigned col=10;
+	unsigned line=10;
+	std::string name;
+	void reset(){
+		col = line = 10;
+		name.clear();
+	}
+	bool has_selected(){	// Has the player select the piece he wants to move
+		return col < 8 && line < 8;
+	}
+};
+
 class CHECKERS: public GAME{
 	unsigned char grid[8][8];
+	CHECKER_PLAYER player1,player2;
+	bool player1_playing = true;
+	void update_msg (PARAM_STRING msg, const char *color, std::vector<VARVAL> &res);
 public:
 	const char *getclass() const{
 		return "CHEC";
