@@ -74,7 +74,8 @@ public:
 	virtual void load(DOC_READER &reader, std::string &msg)=0;
 	virtual void resetgame() = 0;
 	virtual void testwin(std::vector<VARVAL> &res) = 0;
-	virtual void exec (const char *var, const char *val, const char *session, const char *username, bool maywrite, unsigned width, unsigned height, std::vector<VARVAL> &res) = 0;
+	virtual void exec (const char *var, const char *val, const char *session, const char *username, bool maywrite,
+		unsigned width, unsigned height, bool mobile, std::vector<VARVAL> &res) = 0;
 	virtual ~GAME(){};
 };
 
@@ -90,7 +91,8 @@ public:
 	void testwin(std::vector<VARVAL> &res);
 	void draw_x(std::string &lines, unsigned x, unsigned y, unsigned len);
 	void draw_o(std::string &lines, unsigned x, unsigned y, unsigned len);
-	void exec (const char *var, const char *val, const char *session, const char *username, bool maywrite, unsigned win_width, unsigned win_height, std::vector<VARVAL> &res);
+	void exec (const char *var, const char *val, const char *session, const char *username, bool maywrite,
+		unsigned win_width, unsigned win_height, bool mobile, std::vector<VARVAL> &res);
 };
 
 struct SUDOKU_CELL{
@@ -134,7 +136,8 @@ public:
 	void load(DOC_READER &r, std::string &msg);
 	void resetgame();
 	void testwin(std::vector<VARVAL> &res);
-	void exec (const char *var, const char *val, const char *session, const char *username, bool maywrite, unsigned width, unsigned height, std::vector<VARVAL> &res);
+	void exec (const char *var, const char *val, const char *session, const char *username, bool maywrite,
+		unsigned width, unsigned height, bool mobile, std::vector<VARVAL> &res);
 };
 
 struct WORD_USERPREF{
@@ -155,7 +158,8 @@ public:
 	void load(DOC_READER &r, std::string &msg);
 	void resetgame();
 	void testwin(std::vector<VARVAL> &res);
-	void exec (const char *var, const char *val, const char *session, const char *username, bool maywrite, unsigned width, unsigned height, std::vector<VARVAL> &res);
+	void exec (const char *var, const char *val, const char *session, const char *username, bool maywrite,
+		unsigned width, unsigned height, bool mobile, std::vector<VARVAL> &res);
 };
 
 class CHECKERS: public GAME{
@@ -168,7 +172,8 @@ public:
 	void load(DOC_READER &r, std::string &msg);
 	void resetgame();
 	void testwin(std::vector<VARVAL> &res);
-	void exec (const char *var, const char *val, const char *session, const char *username, bool maywrite, unsigned width, unsigned height, std::vector<VARVAL> &res);
+	void exec (const char *var, const char *val, const char *session, const char *username, bool maywrite,
+		unsigned width, unsigned height, bool mobile, std::vector<VARVAL> &res);
 };
 
 #define VAR_CONTENT	"content"	// HTML content to display

@@ -265,7 +265,16 @@ void SUDOKU::redraw_notify(vector<VARVAL> &res)
 }
 
 <mod>
-void SUDOKU::exec (const char *var, const char *val, const char *session, const char *username, bool maywrite, unsigned win_width, unsigned win_height, vector<VARVAL> &res)
+void SUDOKU::exec (
+	const char *var,
+	const char *val,
+	const char *session,
+	const char *username,
+	bool maywrite,
+	unsigned win_width,
+	unsigned win_height,
+	bool mobile,
+	vector<VARVAL> &res)
 {
 	string error;
 	setactivity();
@@ -482,16 +491,25 @@ void SUDOKU::exec (const char *var, const char *val, const char *session, const 
 				When the user place a digit on the grid, the selected rectangle color will be used.
 			*/
 			lines += "<div>\n";
-			lines += string_f("<svg onclick=avatarselect(event) id='avatar-%s' width='%upx' height='%upx' viewbox='0 0 %u 30'>\n",gameid.c_str(),avatarw,w9/2,avatarw);
+			unsigned av_height=w9/2;
+			unsigned av_vheight=30;
+			unsigned av_fontheight=17;
+			if (mobile){
+				av_height = w9;
+				av_vheight = 60;
+				av_fontheight=34;
+			}
+			lines += string_f("<svg onclick=avatarselect(event) id='avatar-%s' width='%upx' height='%upx' viewbox='0 0 %u %u'>\n"
+				,gameid.c_str(),avatarw,av_height,avatarw,av_vheight);
 			const char *tbusers[nbcolor]={"","","","","",""};
 			for (auto &a:prefs) tbusers[a.second.color] = a.first.c_str();
 			for (unsigned i=0; i<nbcolor; i++){
 				unsigned x = i*avatarcw;
 				lines += string_f("<path stroke='black' stroke-width='2' fill='%s' d='M%u,1 h%u V%u H%u Z'/>\n",colors[i]
-					,x,avatarcw-5,15,x);
-				lines += string_f("<clipPath id='clip%u'><rect x=%u y=0 width=%u height=35 /></clipPath>\n",i,x,avatarcw-5);
-				lines += string_f("<text x='%u' y='30' clip-path='url(#clip%u)' style='stroke:%s;fill:%s;font-size:17;font-family: arial;font-weight:normal;'>%s</text>\n"
-					,x+5,i,"black","black",tbusers[i]);
+					,x,avatarcw-5,av_vheight/2,x);
+				lines += string_f("<clipPath id='clip%u'><rect x=%u y=0 width=%u height=%u /></clipPath>\n",i,x,avatarcw-5,av_height+5);
+				lines += string_f("<text x='%u' y='%u' clip-path='url(#clip%u)' style='stroke:%s;fill:%s;font-size:%u;font-family: arial;font-weight:normal;'>%s</text>\n"
+					,x+5,av_vheight,i,"black","black",av_fontheight,tbusers[i]);
 			}
 			lines += "</svg>\n";
 			lines += "</div>\n";
