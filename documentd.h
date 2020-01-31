@@ -163,22 +163,28 @@ public:
 };
 
 struct CHECKER_PLAYER{
-	unsigned col=10;
-	unsigned line=10;
+	unsigned col=11;
+	unsigned line=11;
+	bool onemove=false;	// The player has done one move over another player coin
+				// and may stop there or not.
 	std::string name;
 	void reset(){
-		col = line = 10;
+		onemove = false;
+		col = line = 11;
 		name.clear();
 	}
 	bool has_selected(){	// Has the player select the piece he wants to move
-		return col < 8 && line < 8;
+		return col < 10 && line < 10;
 	}
 };
 
 class CHECKERS: public GAME{
-	unsigned char grid[8][8];
+	unsigned nbcol=8;
+	static const unsigned MAX_GRID_SIZE = 10;
+	unsigned char grid[MAX_GRID_SIZE][MAX_GRID_SIZE];
 	CHECKER_PLAYER player1,player2;
 	bool player1_playing = true;
+	std::string message;
 	void update_msg (PARAM_STRING msg, const char *color, std::vector<VARVAL> &res);
 public:
 	const char *getclass() const{

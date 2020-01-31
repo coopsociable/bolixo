@@ -177,6 +177,10 @@ proto/documentd_sudoku.protoh: proto/documentd_sudoku.proto
 	build-protocol --file_mode --req_reader_type DOC_READER --req_writer_type DOC_WRITER --name documentd_sudoku \
 		--protoch proto/documentd_sudoku.protoch proto/documentd_sudoku.proto >proto/documentd_sudoku.protoh
 
+proto/documentd_checkers.protoh: proto/documentd_checkers.proto
+	build-protocol --file_mode --req_reader_type DOC_READER --req_writer_type DOC_WRITER --name documentd_checkers \
+		--protoch proto/documentd_checkers.protoch proto/documentd_checkers.proto >proto/documentd_checkers.protoh
+
 proto/documentd_tictacto.protoh: proto/documentd_tictacto.proto
 	build-protocol --file_mode --req_reader_type DOC_READER --req_writer_type DOC_WRITER --name documentd_tictacto \
 		--protoch proto/documentd_tictacto.protoch proto/documentd_tictacto.proto >proto/documentd_tictacto.protoh
@@ -223,7 +227,7 @@ documentd: documentd.o _dict.o \
 documentd.o: documentd.tlcc documentd.h proto/documentd_control.protoh proto/documentd_client.protoh 
 	cctlcc -Wall $(OPTIONS) -c documentd.tlcc -o documentd.o
 
-doc_checkers.o: doc_checkers.tlcc documentd.h
+doc_checkers.o: doc_checkers.tlcc documentd.h proto/documentd_checkers.protoh
 	cctlcc -Wall $(OPTIONS) -c doc_checkers.tlcc -o doc_checkers.o
 
 doc_wordproc.o: doc_wordproc.tlcc documentd.h

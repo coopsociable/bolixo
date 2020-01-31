@@ -12,56 +12,139 @@
 
 using namespace std;
 
+#include "proto/documentd_checkers.protoh"
+#include "proto/documentd_checkers.protoch"
+
 
 void CHECKERS::save(DOC_WRITER &w, bool save_session_info)
 {
-	#if 0
-	for (auto &g:grid){
-		for (auto &gg:g){
-			fprintf (fout," %u",gg);
-		}
-		fprintf (fout,"\n");
-	}
-	#endif
+	documentd_checkers_header (&w,revision,player1_playing,nbcol);
+	PLAYER p1,p2;
+	p1.name = player1.name;
+	p1.line = player1.line;
+	p1.col  = player1.col;
+	p1.onemove = player1.onemove;
+	p2.name = player2.name;
+	p2.line = player2.line;
+	p2.col  = player2.col;
+	p2.onemove = player2.onemove;
+	documentd_checkers_players(&w,p1,p2);
+	vector<unsigned> cells;
+	for (auto &g:grid) for (auto &gg:g) cells.push_back(gg);
+	documentd_checkers_cells(&w,cells);
 }
+<mod>
 void CHECKERS::load(DOC_READER &r, string &msg)
 {
-	#if 0
+	glocal msg;
+	glocal revision;
+	glocal nbcol;
+	glocal player1_playing;
+	glocal grid;
+	glocal player1;
+	glocal player2;
+	glocal unsigned max_grid_size = MAX_GRID_SIZE;
 	resetgame();
-	for (auto &g:grid){
-		unsigned v[8];
-		if (fscanf(fin,"%u %u %u %u %u %u %u %u\n",&v[0],&v[1],&v[2],&v[3],&v[4],&v[5],&v[6],&v[7])==8){
-			for (unsigned i=0; i<8; i++) g[i] = v[i];
+	<call documentd_checkers>(&r);
+	<f header>
+		glocal.revision = revision;
+		glocal.nbcol = nbcol;
+		glocal.player1_playing = player1_playing;
+	</f>
+	<f players>
+		glocal.player1.name = player1.name;
+		glocal.player1.line = player1.line;
+		glocal.player1.col = player1.col;
+		glocal.player1.onemove = player1.onemove;
+		glocal.player2.name = player2.name;
+		glocal.player2.line = player2.line;
+		glocal.player2.col = player2.col;
+		glocal.player2.onemove = player2.onemove;
+	</f>
+	<f cells>
+		unsigned line = 0;
+		unsigned col = 0;
+		for (auto &c:cells){
+			glocal.grid[line][col] = c;
+			col++;
+			if (col == glocal.max_grid_size){
+				line++;
+				col = 0;
+			}
 		}
-	}
-	#endif
+	</f>
+	<f invalid>
+		glocal.msg = "Invalid format for sudoku file";
+	</f>
+	</call>
 }
+</mod>
+enum CELLSTATE { NOTUSED,PLAYER1,PLAYER2,WHITE};
 void CHECKERS::resetgame()
 {
 	player1_playing = true;
 	player1.line = player1.col = 10;
 	player2.line = player2.col = 10;
-	for (auto &g:grid) for (auto &gg:g) gg=0;
-	for (unsigned i=0; i<3; i++){
-		unsigned start = (i+1)&1;
-		for (unsigned j=start; j<8; j+=2){
-			grid[i][j] = 1;
+	for (auto &g:grid) for (auto &gg:g) gg=NOTUSED;
+	// We block the white cells
+	for (unsigned i=0; i<MAX_GRID_SIZE; i++){
+		for (unsigned j=(i&1); j<MAX_GRID_SIZE; j+=2){
+			grid[i][j] = WHITE;
 		}
-		unsigned ii=5+i;
-		start = i&1;
-		for (unsigned j=start; j<8; j+=2){
-			grid[ii][j] = 2;
+	}
+	// We populate the first 3 rows on each side
+	unsigned nbrows = 3;
+	unsigned offy = 5;
+	if (nbcol == 10){
+		nbrows = 4;
+		offy = 6;
+	}
+	for (unsigned i=0; i<nbrows; i++){
+		unsigned start = (i+1)&1;
+		for (unsigned j=start; j<MAX_GRID_SIZE; j+=2){
+			grid[i][j] = PLAYER1;
+		}
+		unsigned ii=offy+i;
+		if (nbcol == 8) start = i&1;
+		for (unsigned j=start; j<MAX_GRID_SIZE; j+=2){
+			grid[ii][j] = PLAYER2;
 		}
 	}
 }
 void CHECKERS::testwin(vector<VARVAL> &res)
 {
+	unsigned nbcell1=0,nbcell2=0;
+	for (auto &g:grid) for (auto &gg:g){
+		if (gg == PLAYER1){
+			nbcell1++;
+		}else if (gg == PLAYER2){
+			nbcell2++;
+		}
+	}
+	if (nbcell1 == 0 || nbcell2 == 0){
+		message = MSG_R(I_WON);
+	}
 }
 
 void CHECKERS::update_msg (PARAM_STRING msg, const char *color, vector<VARVAL> &res)
 {
+	message = msg.ptr;
 }
 		
+static void print_player(string &lines, PARAM_STRING name, const char *player_color, bool playing, bool mobile)
+{
+	const char *color = playing ? "lightblue" : "white";
+	unsigned margin = 5;
+	unsigned width=150;
+	if (mobile){
+		width = 250;
+		margin = 10;
+	}
+	lines += string_f("<div style='flex:0 0 %upx; overflow: hidden; background-color:%s; border: 2px solid %s; margin-bottom:%upx; margin-top:%upx; margin-left:%upx; padding: 10px'>\n"
+		,width,color,player_color,margin,margin,margin);
+	lines += string_f("%s\n",name.ptr);
+	lines += "</div>\n";
+}
 void CHECKERS::exec (
 	const char *var,
 	const char *val,
@@ -134,35 +217,31 @@ void CHECKERS::exec (
 		}else{
 			// The layout is a square, constrained by the width
 			unsigned dim = win_width < win_height ? win_width : win_height;
-			unsigned width = dim - dim % 8;
-			unsigned w8 = width/9;
+			unsigned width = dim - dim % nbcol -20;
+			unsigned w8 = width/(nbcol+1);
 			unsigned h8 = w8; 
-			unsigned grid_width = w8*8;
-			unsigned grid_height = w8*8;
+			unsigned grid_width = w8*nbcol;
+			unsigned grid_height = w8*nbcol;
 			
 			lines += "<script>\n";
 			lines += "function gameplace(event){\n";
 			lines += string_f("\tvar elm = document.getElementById('grid-%s');\n",gameid.c_str());
 			lines += "\tvar rect = elm.getBoundingClientRect();\n";
-			lines += string_f("\tgameaction('place:'+Math.floor((event.clientY-rect.top)/%u)+','+Math.floor((event.clientX-rect.left)/%u));\n",h8,w8);
+			lines += string_f("\tgameaction('place:'+Math.floor((event.clientY-rect.top)/%u)+','+Math.floor((event.clientX-rect.left)/%u)+ ','+event.which);\n",h8,w8);
 			lines += "\tevent.stopPropagation();\n";
 			lines += "}\n";
 			lines += "</script>\n";
 			
-			lines += "<p>\n";
 			lines += "<div style='display:flex; flex-flow:row;'>\n";
-			lines += "<div style='flex:1 1 auto; overflow: hidden;'>\n";
+			lines += "<div style='flex:0 0 250px; overflow: hidden; margin-top:10px;'>\n";
 			lines += string_f("<form id='form-%s'>\n",gameid.c_str());
-			lines += MSG_R(I_NEWGAME);
-			documentd_button (lines,0,MSG_R(I_RESTART),false);
+			if (!mobile) lines += MSG_R(I_NEWGAME);
+			documentd_button (lines,0,MSG_U(I_8_8,"8 X 8"),nbcol==8);
+			documentd_button (lines,1,MSG_U(I_10_10,"10 X 10"),nbcol==10);
 			lines += "</form>\n";
 			lines += "</div>\n";
-			lines += "<div style='flex:1 1 auto; overflow: hidden;'>\n";
-			lines += string_f("%s\n",player1.name.c_str());
-			lines += "</div>\n";
-			lines += "<div style='flex:1 1 auto; overflow: hidden;'>\n";
-			lines += string_f("%s\n",player2.name.c_str());
-			lines += "</div>\n";
+			print_player(lines,player1.name,"black",player1_playing,mobile);
+			print_player(lines,player2.name,"red",!player1_playing,mobile);
 			lines += "</div>\n";
 			lines += "<div style='display:flex; flex-flow:row;'>\n";
 			lines += "<div style='flex:1 1 auto; overflow: hidden;' onmousedown='gameplace(event); return false;' style=color:blue;cursor:pointer>\n";
@@ -173,11 +252,11 @@ void CHECKERS::exec (
 			unsigned circle_radius = h8_2 - h8/10;
 			lines += string_f("<path stroke='green' stroke-width='2' fill='white' d='M%u %u H %u V %u H %u Z'/>\n"
 				,0,0,grid_width-1,grid_height-1,0);
-			for (unsigned line=0; line<8; line++){
+			for (unsigned line=0; line<nbcol; line++){
 				lines += string_f("<path stroke=%s stroke-width=1 d='M%u,%u H %u'/>\n","lightgray"
 					,0,h8*line,grid_width);
 				unsigned l1 = line & 1;
-				for (unsigned col=0; col<8; col++){
+				for (unsigned col=0; col<nbcol; col++){
 					unsigned w8_col = w8*col;
 					unsigned h8_line = h8*line;
 					lines += string_f("<path stroke=%s stroke-width=1 d='M%u,%u V %u'/>\n","lightgray"
@@ -187,14 +266,14 @@ void CHECKERS::exec (
 							,w8*col,h8*line,w8,h8,w8);
 					}
 					unsigned cell = grid[line][col];
-					if (cell > 0){
+					if (cell == PLAYER1 || cell == PLAYER2){
 						lines += string_f("<circle id='c%u,%u' cx=%u cy=%u r=%u stroke='black' stroke-width=2 fill='%s'/>\n"
-							,line,col,w8_col+w8_2,h8_line+h8_2,circle_radius,cell==1 ? "black" : "white");
+							,line,col,w8_col+w8_2,h8_line+h8_2,circle_radius,cell==PLAYER1 ? "black" : "red");
 						const char *color = "none";
 						if (player1.col == col && player1.line == line){
 							color = "blue";
 						}else if (player2.col == col && player2.line == line){
-							color = "red";
+							color = "yellow";
 						}
 						lines += string_f("<circle id='c%u,%u' cx=%u cy=%u r=%u stroke='%s' stroke-width=2 fill='%s'/>\n"
 							,line,col,w8_col+w8_2,h8_line+h8_2,circle_radius-4,color,color);
@@ -204,6 +283,7 @@ void CHECKERS::exec (
 			lines += "</svg>\n";
 			lines += "</div>\n";
 			lines += "</div>\n";
+			lines += string_f("<div id=msg-%s style=color:blue>%s</div>\n",gameid.c_str(),message.c_str());
 		}
 		VARVAL v;
 		v.var = VAR_CONTENT;
@@ -212,28 +292,74 @@ void CHECKERS::exec (
 	}else if (maywrite){
 		if (strcmp(var,"place")==0){
 			unsigned lo,co;
-			int n = sscanf(val,"%u,%u",&lo,&co);
-			if (n == 2 && lo < 8 && co < 8){
+			int button;
+			int n = sscanf(val,"%u,%u,%d",&lo,&co,&button);
+			if (n == 3 && lo < nbcol && co < nbcol && is_any_of(button,1,2)){
 				CHECKER_PLAYER *player = &player2;
-				unsigned cell_val = 2;
+				unsigned cell_val = PLAYER2;
+				unsigned other_player = PLAYER1;
+				int vmove = -1;
 				if (player1_playing){
 					player = &player1;
-					cell_val = 1;
+					cell_val = PLAYER1;
+					other_player = PLAYER2;
+					vmove = 1;
 				}
 				if (player->has_selected()){
 					if (player->line == lo && player->col == co){
 						// The player is unselecting the cell
+						if (player->onemove){
+							player1_playing = !player1_playing;
+						}
 						player->reset();
 					}else{
+						int left_col = player->col - 1;
+						int right_col = player->col + 1;
+						int next_line = player->line + vmove;
+						int left_col2 = player->col - 2;
+						int right_col2 = player->col + 2;
+						int next_line2 = player->line + vmove + vmove;
 						unsigned char &cell = grid[lo][co];
+						bool move_ok = false;
+						bool keep_playing = false;
 						if (cell != 0){
-							documentd_error (res,"Destination used");
-						}else{	
-							grid[player->line][player->col] = 0;
+							if (cell == WHITE){
+								error = MSG_U(E_CANTGOTHERE,"You are not allowed to move to white cell");
+							}else if (cell == cell_val){
+								error = MSG_U(E_NOJUMPONYOU,"You can't stack coins");
+							}else{
+								error = MSG_U(E_NOJUMPONOTHER,"You can't jump on the other player coin");
+							}
+						}else if ((int)lo == next_line && ((int)co == left_col || (int)co == right_col)){	
+							// Move the an available next cell
+							move_ok = true;
+						}else if ((int)lo == next_line2){
+							// Move over a player coin
+							if ((int)co == left_col2 && grid[next_line][left_col] == other_player){
+								move_ok = true;
+								grid[next_line][left_col] = NOTUSED;
+							}else if ((int)co == right_col2 && grid[next_line][right_col] == other_player){	
+								move_ok = true;
+								grid[next_line][right_col] = NOTUSED;
+							}
+							if (move_ok){	// && (mobile || button == 2)){
+								keep_playing = true;
+							}
+						}
+						if (move_ok){
+							grid[player->line][player->col] = NOTUSED;
 							cell = cell_val;
 							setmodified (username);
-							player->reset();
-							player1_playing = !player1_playing;
+							if (keep_playing){
+								player->line = lo;
+								player->col = co;
+								player->onemove = true;
+							}else{
+								player->reset();
+								player1_playing = !player1_playing;
+							}
+						}else if (error.size() == 0){
+							error = MSG_U(E_IVLDMOVE,"Invalid move");
 						}
 					}
 				}else if (grid[lo][co] == cell_val){
@@ -248,8 +374,14 @@ void CHECKERS::exec (
 			}
 			documentd_forcerefresh(res);
 		}else if (strcmp(var,"newgame")==0){
-			resetgame();
-			documentd_forcerefresh(res);
+			int uval = atoi(val);
+			if (is_any_of(uval,0,1)){
+				nbcol = uval == 0 ? 8 : 10;
+				resetgame();
+				documentd_forcerefresh(res);
+			}else{
+				tlmp_error ("checkers newgame=%d",uval);
+			}
 		}
 	}else{
 	}
