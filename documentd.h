@@ -28,6 +28,47 @@ class GAME{
 protected:
 	unsigned revision = 0;
 	std::string gameid;
+	inline void js_find_set(std::string &lines, const char *prefix, const char *feature, const char *val){
+		lines += string_f ("var elm = document.getElementById('%s-%s');\n",prefix,gameid.c_str());
+		lines += "if (elm != null){\n";
+		lines += string_f("\telm.%s='%s';\n",feature,val);
+		lines += "}\n";
+	}
+	inline void js_find_set(std::string &lines, const char *prefix, const char *feature1, const char *val1, const char *feature2, const char *val2){
+		lines += string_f ("var elm = document.getElementById('%s-%s');\n",prefix,gameid.c_str());
+		lines += "if (elm != null){\n";
+		lines += string_f("\telm.%s='%s';\n",feature1,val1);
+		lines += string_f("\telm.%s='%s';\n",feature2,val2);
+		lines += "}\n";
+	}
+	inline void js_find_loop_set(std::string &lines, const char *prefix, const char *tag, PARAM_STRING id, const char *feature, const char *val){
+		lines += string_f ("var elm = document.getElementById('%s-%s');\n",prefix,gameid.c_str());
+		lines += "if (elm != null){\n";
+		lines += string_f("\tvar elms = elm.getElementsByTagName('%s');\n",tag);
+		//lines += string_f("\tconsole.log('%s.length='+elms.length);\n",tag);
+		lines += "\tfor (var i=0; i<elms.length; i++){\n";
+		lines += "\t\tvar e = elms[i];\n";
+		lines += string_f("\t\tif (e.id == '%s'){\n",id.ptr);
+		lines += string_f("\t\t\te.%s='%s';\n",feature,val);
+		lines += "\t\t\tbreak;\n";
+		lines += "\t\t}\n";
+		lines += "\t}\n";
+		lines += "}\n";
+	}
+	inline void js_find_loop_set(std::string &lines, const char *prefix, const char *tag, PARAM_STRING id, const char *feature1, const char *val1, const char *feature2, const char *val2){
+		lines += string_f ("var elm = document.getElementById('%s-%s');\n",prefix,gameid.c_str());
+		lines += "if (elm != null){\n";
+		lines += string_f("\tvar elms = elm.getElementsByTagName('%s');\n",tag);
+		lines += "\tfor (var i=0; i<elms.length; i++){\n";
+		lines += "\t\tvar e = elms[i];\n";
+		lines += string_f("\t\tif (e.id == '%s'){\n",id.ptr);
+		lines += string_f("\t\t\te.%s='%s';\n",feature1,val1);
+		lines += string_f("\t\t\te.%s='%s';\n",feature2,val2);
+		lines += "\t\t\tbreak;\n";
+		lines += "\t\t}\n";
+		lines += "\t}\n";
+		lines += "}\n";
+	}
 public:
 	void setgameid(const char *_gameid){
 		gameid = _gameid;
@@ -185,6 +226,7 @@ class CHECKERS: public GAME{
 	CHECKER_PLAYER player1,player2;
 	bool player1_playing = true;
 	std::string message;
+	std::map<std::string,bool> sessions; // Display mode (reverse) per session
 	void update_msg (PARAM_STRING msg, const char *color, std::vector<VARVAL> &res);
 public:
 	const char *getclass() const{

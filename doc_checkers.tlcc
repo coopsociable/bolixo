@@ -32,6 +32,11 @@ void CHECKERS::save(DOC_WRITER &w, bool save_session_info)
 	vector<unsigned> cells;
 	for (auto &g:grid) for (auto &gg:g) cells.push_back(gg);
 	documentd_checkers_cells(&w,cells);
+	if (save_session_info){
+		for (auto &s:sessions){
+			documentd_checkers_session (&w,s.first,s.second);
+		}
+	}
 }
 <mod>
 void CHECKERS::load(DOC_READER &r, string &msg)
@@ -43,8 +48,10 @@ void CHECKERS::load(DOC_READER &r, string &msg)
 	glocal grid;
 	glocal player1;
 	glocal player2;
+	glocal sessions;
 	glocal unsigned max_grid_size = MAX_GRID_SIZE;
 	resetgame();
+	sessions.clear();
 	<call documentd_checkers>(&r);
 	<f header>
 		glocal.revision = revision;
@@ -72,6 +79,9 @@ void CHECKERS::load(DOC_READER &r, string &msg)
 				col = 0;
 			}
 		}
+	</f>
+	<f session>
+		glocal.sessions[session] = reverse;
 	</f>
 	<f invalid>
 		glocal.msg = "Invalid format for sudoku file";
@@ -131,7 +141,7 @@ void CHECKERS::update_msg (PARAM_STRING msg, const char *color, vector<VARVAL> &
 	message = msg.ptr;
 }
 		
-static void print_player(string &lines, PARAM_STRING name, const char *player_color, bool playing, bool mobile)
+static void print_player(string &lines, PARAM_STRING gameid, PARAM_STRING name, unsigned playernum, const char *player_color, bool playing, bool mobile)
 {
 	const char *color = playing ? "lightblue" : "white";
 	unsigned margin = 5;
@@ -140,8 +150,9 @@ static void print_player(string &lines, PARAM_STRING name, const char *player_co
 		width = 250;
 		margin = 10;
 	}
-	lines += string_f("<div style='flex:0 0 %upx; overflow: hidden; background-color:%s; border: 2px solid %s; margin-bottom:%upx; margin-top:%upx; margin-left:%upx; padding: 10px'>\n"
-		,width,color,player_color,margin,margin,margin);
+	lines += string_f("<div id=player%u-%s onmousedown=playersel(event,%u)"
+		" style='flex:0 0 %upx; overflow: hidden; background-color:%s; border: 2px solid %s; margin-bottom:%upx; margin-top:%upx; margin-left:%upx; padding: 10px'>\n"
+		,playernum,gameid.ptr,playernum,width,color,player_color,margin,margin,margin);
 	lines += string_f("%s\n",name.ptr);
 	lines += "</div>\n";
 }
@@ -163,6 +174,8 @@ void CHECKERS::exec (
 	}else if (player2.name.size() == 0){
 		player2.name = username;
 	}	
+	bool reverse = sessions[session];
+	tlmp_warning ("var=%s val=%s",var,val);
 	if (strcmp(var,"print")==0){
 		string lines;
 		if (strcmp(val,"console")==0){
@@ -230,6 +243,14 @@ void CHECKERS::exec (
 			lines += string_f("\tgameaction('place:'+Math.floor((event.clientY-rect.top)/%u)+','+Math.floor((event.clientX-rect.left)/%u)+ ','+event.which);\n",h8,w8);
 			lines += "\tevent.stopPropagation();\n";
 			lines += "}\n";
+			lines += "function playersel(event,num){\n";
+			lines += "\tgameaction('playersel:'+num);\n";
+			lines += "\tevent.stopPropagation();\n";
+			lines += "}\n";
+			lines += "function gamereverse(event){\n";
+			lines += "\tgameaction('reverse:');\n";
+			lines += "\tevent.stopPropagation();\n";
+			lines += "}\n";
 			lines += "</script>\n";
 			
 			lines += "<div style='display:flex; flex-flow:row;'>\n";
@@ -240,10 +261,14 @@ void CHECKERS::exec (
 			documentd_button (lines,1,MSG_U(I_10_10,"10 X 10"),nbcol==10);
 			lines += "</form>\n";
 			lines += "</div>\n";
-			print_player(lines,player1.name,"black",player1_playing,mobile);
-			print_player(lines,player2.name,"red",!player1_playing,mobile);
+			print_player(lines,gameid,player1.name,0,"black",player1_playing,mobile);
+			print_player(lines,gameid,player2.name,1,"red",!player1_playing,mobile);
 			lines += "</div>\n";
 			lines += "<div style='display:flex; flex-flow:row;'>\n";
+			lines += "<div style='flex:0 0 25px; overflow: hidden; color:blue;cursor:pointer; border: 1px solid black; background-color: lightgray;'"
+				" onmousedown='gamereverse(event); return false;'>\n";
+			lines += "RR";
+			lines += "</div>\n";
 			lines += "<div style='flex:1 1 auto; overflow: hidden;' onmousedown='gameplace(event); return false;' style=color:blue;cursor:pointer>\n";
 			lines += "&nbsp;&nbsp;\n";
 			lines += string_f("<svg id='grid-%s' width='%upx' height='%upx' viewbox='0 0 %u %u'>\n",gameid.c_str(),grid_width,grid_height,grid_width,grid_height);
@@ -252,32 +277,37 @@ void CHECKERS::exec (
 			unsigned circle_radius = h8_2 - h8/10;
 			lines += string_f("<path stroke='green' stroke-width='2' fill='white' d='M%u %u H %u V %u H %u Z'/>\n"
 				,0,0,grid_width-1,grid_height-1,0);
-			for (unsigned line=0; line<nbcol; line++){
+			for (unsigned vline=0; vline<nbcol; vline++){
 				lines += string_f("<path stroke=%s stroke-width=1 d='M%u,%u H %u'/>\n","lightgray"
-					,0,h8*line,grid_width);
+					,0,h8*vline,grid_width);
+				unsigned line = reverse ? (nbcol-1-vline) : vline;
 				unsigned l1 = line & 1;
 				for (unsigned col=0; col<nbcol; col++){
 					unsigned w8_col = w8*col;
-					unsigned h8_line = h8*line;
+					unsigned h8_line = h8*vline;
 					lines += string_f("<path stroke=%s stroke-width=1 d='M%u,%u V %u'/>\n","lightgray"
 						,w8*col,0,grid_height);
 					if ((l1+col)&1){
 						lines += string_f("<path stroke='black' stroke-width=1 d='M%u,%u h %u v %u h -%u Z' fill='lightgray'/>\n"
-							,w8*col,h8*line,w8,h8,w8);
+							,w8*col,h8*vline,w8,h8,w8);
 					}
 					unsigned cell = grid[line][col];
+					const char *fill_color = "none";
+					const char *stroke_color = "none";
+					const char *select_color = "none";
 					if (cell == PLAYER1 || cell == PLAYER2){
-						lines += string_f("<circle id='c%u,%u' cx=%u cy=%u r=%u stroke='black' stroke-width=2 fill='%s'/>\n"
-							,line,col,w8_col+w8_2,h8_line+h8_2,circle_radius,cell==PLAYER1 ? "black" : "red");
-						const char *color = "none";
+						fill_color = cell==PLAYER1 ? "black" : "red";
+						stroke_color = "black";
 						if (player1.col == col && player1.line == line){
-							color = "blue";
+							select_color = "blue";
 						}else if (player2.col == col && player2.line == line){
-							color = "yellow";
+							select_color = "yellow";
 						}
-						lines += string_f("<circle id='c%u,%u' cx=%u cy=%u r=%u stroke='%s' stroke-width=2 fill='%s'/>\n"
-							,line,col,w8_col+w8_2,h8_line+h8_2,circle_radius-4,color,color);
 					}
+					lines += string_f("<circle id='c%u,%u' cx=%u cy=%u r=%u stroke='%s' stroke-width=2 fill='%s'/>\n"
+						,line,col,w8_col+w8_2,h8_line+h8_2,circle_radius,stroke_color,fill_color);
+					lines += string_f("<circle id='cs%u,%u' cx=%u cy=%u r=%u stroke='%s' stroke-width=2 fill='%s'/>\n"
+						,line,col,w8_col+w8_2,h8_line+h8_2,circle_radius-4,select_color,select_color);
 				}
 			}
 			lines += "</svg>\n";
@@ -290,11 +320,14 @@ void CHECKERS::exec (
 		v.val = lines;
 		res.push_back(v);
 	}else if (maywrite){
+		VARVAL notify_var;
+		notify_var.var = VAR_NOTIFY;
 		if (strcmp(var,"place")==0){
 			unsigned lo,co;
 			int button;
 			int n = sscanf(val,"%u,%u,%d",&lo,&co,&button);
 			if (n == 3 && lo < nbcol && co < nbcol && is_any_of(button,1,2)){
+				if (reverse) lo = nbcol -1 - lo;
 				CHECKER_PLAYER *player = &player2;
 				unsigned cell_val = PLAYER2;
 				unsigned other_player = PLAYER1;
@@ -310,7 +343,11 @@ void CHECKERS::exec (
 						// The player is unselecting the cell
 						if (player->onemove){
 							player1_playing = !player1_playing;
+							js_find_set(notify_var.val,"player0","style.backgroundColor",player1_playing ? "lightblue" : "white");
+							js_find_set(notify_var.val,"player1","style.backgroundColor",!player1_playing ? "lightblue" : "white");
 						}
+						string id = string_f("cs%u,%u",lo,co);
+						js_find_loop_set (notify_var.val,"grid","circle",id,"style.fill","none","style.stroke","none");
 						player->reset();
 					}else{
 						int left_col = player->col - 1;
@@ -335,18 +372,30 @@ void CHECKERS::exec (
 							move_ok = true;
 						}else if ((int)lo == next_line2){
 							// Move over a player coin
+							unsigned erase_col = 0;
 							if ((int)co == left_col2 && grid[next_line][left_col] == other_player){
 								move_ok = true;
 								grid[next_line][left_col] = NOTUSED;
+								erase_col = left_col;
 							}else if ((int)co == right_col2 && grid[next_line][right_col] == other_player){	
 								move_ok = true;
 								grid[next_line][right_col] = NOTUSED;
+								erase_col = right_col;
 							}
 							if (move_ok){	// && (mobile || button == 2)){
+								string id = string_f("c%u,%u",next_line,erase_col);
+								js_find_loop_set (notify_var.val,"grid","circle",id,"style.fill","none","style.stroke","none");
 								keep_playing = true;
 							}
 						}
 						if (move_ok){
+							string id = string_f("c%u,%u",player->line,player->col);
+							js_find_loop_set (notify_var.val,"grid","circle",id,"style.fill","none","style.stroke","none");
+							id = string_f("cs%u,%u",player->line,player->col);
+							js_find_loop_set (notify_var.val,"grid","circle",id,"style.fill","none","style.stroke","none");
+							id = string_f("c%u,%u",lo,co);
+							js_find_loop_set (notify_var.val,"grid","circle",id
+								,"style.fill",player1_playing ? "black" : "red","style.stroke","black");
 							grid[player->line][player->col] = NOTUSED;
 							cell = cell_val;
 							setmodified (username);
@@ -354,9 +403,14 @@ void CHECKERS::exec (
 								player->line = lo;
 								player->col = co;
 								player->onemove = true;
+								id = string_f("cs%u,%u",lo,co);
+								const char *color = player1_playing ? "blue" : "yellow";
+								js_find_loop_set (notify_var.val,"grid","circle",id,"style.fill",color,"style.stroke",color);
 							}else{
 								player->reset();
 								player1_playing = !player1_playing;
+								js_find_set(notify_var.val,"player0","style.backgroundColor",player1_playing ? "lightblue" : "white");
+								js_find_set(notify_var.val,"player1","style.backgroundColor",!player1_playing ? "lightblue" : "white");
 							}
 						}else if (error.size() == 0){
 							error = MSG_U(E_IVLDMOVE,"Invalid move");
@@ -366,23 +420,57 @@ void CHECKERS::exec (
 					// The player is about to move that piece
 					player->col = co;
 					player->line = lo;
+					const char *color = player1_playing ? "blue" : "yellow";
+					string id = string_f("cs%u,%u",lo,co);
+					js_find_loop_set (notify_var.val,"grid","circle",id,"style.fill",color,"style.stroke",color);
 				}else{
 					documentd_error (res,"Can't select this cell");
 				}
 			}else{
 				tlmp_error ("checkers, invalid place command: %s",val);
 			}
-			documentd_forcerefresh(res);
 		}else if (strcmp(var,"newgame")==0){
 			int uval = atoi(val);
 			if (is_any_of(uval,0,1)){
 				nbcol = uval == 0 ? 8 : 10;
 				resetgame();
+				for (unsigned i=0; i<nbcol; i++){
+					for (unsigned j=0; j<nbcol; j++){
+						unsigned char cell = grid[i][j];
+						string id = string_f("c%u,%u",i,j);
+						const char *fill_color = "none";
+						const char *stroke_color = "none";
+						if (cell == PLAYER1){
+							fill_color = "black";
+							stroke_color = "black";
+						}else if (cell == PLAYER2){
+							fill_color = "red";
+							stroke_color = "black";
+						}
+						js_find_loop_set (notify_var.val,"grid","circle",id,"style.fill",fill_color,"style.stroke",stroke_color);
+					}
+				}
+				js_find_loop_set (notify_var.val,"form","input","button0","style.background",nbcol==8 ? "lightblue" : "lightgray");
+				js_find_loop_set (notify_var.val,"form","input","button1","style.background",nbcol==10 ? "lightblue" : "lightgray");
+				js_find_set(notify_var.val,"player0","style.backgroundColor","lightblue");
+				js_find_set(notify_var.val,"player1","style.backgroundColor","white");
 				documentd_forcerefresh(res);
 			}else{
 				tlmp_error ("checkers newgame=%d",uval);
 			}
+		}else if (strcmp(var,"playersel")==0){
+			CHECKER_PLAYER *player = &player1;
+			if (strcmp(val,"1")==0){
+				player = &player2;
+			}
+			player->name = username;
+			js_find_set(notify_var.val,"player0","innerHTML",player1.name.c_str());
+			js_find_set(notify_var.val,"player1","innerHTML",player2.name.c_str());
+		}else if (strcmp(var,"reverse")==0){
+			sessions[session] = !reverse;
+			documentd_forcerefresh(res);
 		}
+		res.emplace_back(notify_var);
 	}else{
 	}
 	if (error.size() > 0){
