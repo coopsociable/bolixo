@@ -1,6 +1,8 @@
 #ifndef DOCUMENTD_H
 #define DOCUMENTD_H
 
+class DOC_UI_SPECS_receive;
+
 class DOC_WRITER{
 	FILE *fout = nullptr;
 	std::vector<std::string> lines;
@@ -115,8 +117,7 @@ public:
 	virtual void load(DOC_READER &reader, std::string &msg)=0;
 	virtual void resetgame() = 0;
 	virtual void testwin(std::vector<VARVAL> &res) = 0;
-	virtual void exec (const char *var, const char *val, const char *session, const char *username, bool maywrite,
-		unsigned width, unsigned height, bool mobile, std::vector<VARVAL> &res) = 0;
+	virtual void exec (const char *var, const char *val, const char *session, const char *username, bool maywrite, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res) = 0;
 	virtual ~GAME(){};
 };
 
@@ -132,8 +133,7 @@ public:
 	void testwin(std::vector<VARVAL> &res);
 	void draw_x(std::string &lines, unsigned x, unsigned y, unsigned len);
 	void draw_o(std::string &lines, unsigned x, unsigned y, unsigned len);
-	void exec (const char *var, const char *val, const char *session, const char *username, bool maywrite,
-		unsigned win_width, unsigned win_height, bool mobile, std::vector<VARVAL> &res);
+	void exec (const char *var, const char *val, const char *session, const char *username, bool maywrite, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
 };
 
 struct SUDOKU_CELL{
@@ -177,8 +177,7 @@ public:
 	void load(DOC_READER &r, std::string &msg);
 	void resetgame();
 	void testwin(std::vector<VARVAL> &res);
-	void exec (const char *var, const char *val, const char *session, const char *username, bool maywrite,
-		unsigned width, unsigned height, bool mobile, std::vector<VARVAL> &res);
+	void exec (const char *var, const char *val, const char *session, const char *username, bool maywrite, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
 };
 
 struct WORD_USERPREF{
@@ -199,8 +198,7 @@ public:
 	void load(DOC_READER &r, std::string &msg);
 	void resetgame();
 	void testwin(std::vector<VARVAL> &res);
-	void exec (const char *var, const char *val, const char *session, const char *username, bool maywrite,
-		unsigned width, unsigned height, bool mobile, std::vector<VARVAL> &res);
+	void exec (const char *var, const char *val, const char *session, const char *username, bool maywrite, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
 };
 
 struct CHECKER_PLAYER{
@@ -227,7 +225,7 @@ class CHECKERS: public GAME{
 	bool player1_playing = true;
 	std::string message;
 	std::map<std::string,bool> sessions; // Display mode (reverse) per session
-	void update_msg (PARAM_STRING msg, const char *color, std::vector<VARVAL> &res);
+	void update_msg (bool to_all, PARAM_STRING msg, const char *color, std::vector<VARVAL> &res);
 public:
 	const char *getclass() const{
 		return "CHEC";
@@ -236,8 +234,7 @@ public:
 	void load(DOC_READER &r, std::string &msg);
 	void resetgame();
 	void testwin(std::vector<VARVAL> &res);
-	void exec (const char *var, const char *val, const char *session, const char *username, bool maywrite,
-		unsigned width, unsigned height, bool mobile, std::vector<VARVAL> &res);
+	void exec (const char *var, const char *val, const char *session, const char *username, bool maywrite, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
 };
 
 #define VAR_CONTENT	"content"	// HTML content to display
@@ -247,6 +244,7 @@ public:
 #define VAR_REFRESH	"refresh"	// Trigger a screen refresh
 #define VAR_SCRIPT	"script"	// Javascript for this user only
 
+std::string documentd_escape(PARAM_STRING msg);
 void documentd_error (std::vector<VARVAL> &res, PARAM_STRING s);
 void documentd_button (std::string &lines, unsigned command, const char *txt, bool highlit);
 void documentd_forcerefresh (std::vector<VARVAL> &res);

@@ -760,14 +760,19 @@ void projects(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER
 			</f>
 			</call>
 		}else if (file_is_doc(info.file_type)){
+			const char *content_id = "doc";
 			if (info.file_type == FILE_DOC_TICTACTO){
 				sethelp2 ("help_tictacto",MSG_U(T_TICTACTO,"Tictacto"));
+				content_id = "doc_tictacto";
 			}else if (info.file_type == FILE_DOC_SUDOKU){
 				sethelp2 ("help_sudoku",MSG_U(T_SUDOKY,"Sudoku"));
+				content_id = "doc_sudoku";
 			}else if (info.file_type == FILE_DOC_CHECKER){
 				sethelp2 ("help_checkers",MSG_U(T_CHECKERS,"Checkers"));
+				content_id = "doc_checkers";
 			}else if (info.file_type == FILE_DOC_CHESS){
 				sethelp2 ("help_chess",MSG_U(T_CHESS,"Chess"));
+				content_id = "doc_chess";
 			}
 			/- <script>
 			/- var GameHttp = null;
@@ -807,7 +812,19 @@ void projects(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER
 				var.var = "print";
 				steps.push_back(var);
 			}
-			<call bod_client_playstep>(glocal.con,w_session.c_str(),"",glocal.path,steps,tab_width,tab_height,tlmpweb_ismobile());
+			DOC_UI_SPECS sp;
+			sp.width = tab_width;
+			sp.height = tab_height;
+			sp.mobile = tlmpweb_ismobile();
+			WEBID id(content_id);
+			tlmpweb_gettablegeometry(id,sp.content_height,sp.content_width);
+			if (sp.content_width == 0){
+				// We don't know the content size yet, but a requested refresh will tell us.
+				// So we enter a default value for now.
+				sp.content_width = sp.width;
+				sp.content_height = sp.height;
+			}
+			<call bod_client_playstep>(glocal.con,w_session.c_str(),"",glocal.path,steps,sp);
 			<f ok>
 				if (!success){
 					htmlprintf ("<p>%s\n",msg);
@@ -822,7 +839,6 @@ void projects(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER
 							result = r.val;
 						}
 					}
-					/- <p>
 					if (error.size() > 0){
 						htmlprintf ("<font color=red>%s</font>\n",error.c_str());
 					}

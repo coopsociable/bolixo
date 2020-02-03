@@ -464,29 +464,39 @@ void util_endscript(PARAM_STRING urlparam)
 					node.style.height = diff - total;
 				}
 			}
+			var last_webtable = null;
 			for (var i = 0; i < node.childNodes.length; i++) {
 				var child = node.childNodes[i];
 				if (child.id != null
 					&& (child.id == "tabs"
 						|| child.id == "tab_form"
 						|| child.id == "webtable-top")){
-					total += child.offsetHeight;
+					var add = child.offsetHeight;
 					var style = window.getComputedStyle(child);
-					total += parseInt(style.getPropertyValue('margin-top'));
-					total += parseInt(style.getPropertyValue('margin-bottom'));
-					if (child.id == "tab_form") total += 2;	// Bug scrollbar ???
+					add += parseInt(style.getPropertyValue('margin-top'));
+					add += parseInt(style.getPropertyValue('margin-bottom'));
+					if (child.id == "tab_form") add += 2;	// Bug scrollbar ???
+					total += add;
+					if (last_webtable != null){
+						console.log ("last_webtable "+last_webtable.id+"="+add);
+						console.log ("last Set webtable "+last_webtable.id+" total="+total+" oldheight="+last_webtable.offsetHeight);
+						last_webtable.style.height = diff - total;
+					}
 					console.log ("child.id=" + child.id + " total="+total+" height="+child.offsetHeight);
 				}else{
 					if (child.id != null && child.id == "vframe2h"){
 						var bord=(child.offsetWidth-child.clientWidth);
 						total += bord;
 						console.log ("border child.id=" + child.id + " total="+total+" border="+bord);
+						total = allDescendants(child,total);
 					}else if (child.className == "webtable" || child.className == "textgrow"){
 						console.log ("Set webtable "+child.id+" total="+total+" oldheight="+child.offsetHeight);
 						child.style.height = diff - total;
-						break;
+						last_webtable = child;
+						//break;
+					}else{
+						total = allDescendants(child,total);
 					}
-					total = allDescendants(child,total);
 				}
 			}
 			return total;

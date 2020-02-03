@@ -136,9 +136,16 @@ void CHECKERS::testwin(vector<VARVAL> &res)
 	}
 }
 
-void CHECKERS::update_msg (PARAM_STRING msg, const char *color, vector<VARVAL> &res)
+void CHECKERS::update_msg(
+	bool to_all,	// The message will be shown to all player or not
+	PARAM_STRING msg,
+	const char *color,
+	vector<VARVAL> &res)
 {
-	message = msg.ptr;
+	VARVAL mvar;
+	mvar.var = to_all ? VAR_NOTIFY : VAR_SCRIPT;
+	js_find_set (mvar.val,"msg","style.color",color,"innerHTML",documentd_escape(msg).c_str());
+	res.emplace_back(mvar);
 }
 		
 static void print_player(string &lines, PARAM_STRING gameid, PARAM_STRING name, unsigned playernum, const char *player_color, bool playing, bool mobile)
@@ -162,18 +169,22 @@ void CHECKERS::exec (
 	const char *session,
 	const char *username,
 	bool maywrite,
-	unsigned win_width,
-	unsigned win_height,
-	bool mobile,
+	const DOC_UI_SPECS_receive &sp,
 	vector<VARVAL> &res)
 {
 	string error;
 	setactivity();
-	if (player1.name.size() == 0){
-		player1.name = username;
-	}else if (player2.name.size() == 0){
-		player2.name = username;
-	}	
+	VARVAL notify_var;
+	notify_var.var = VAR_NOTIFY;
+	if (maywrite){
+		if (player1.name.size() == 0){
+			player1.name = username;
+			js_find_set(notify_var.val,"player0","innerHTML",username);
+		}else if (player2.name.size() == 0){
+			player2.name = username;
+			js_find_set(notify_var.val,"player1","innerHTML",username);
+		}	
+	}
 	bool reverse = sessions[session];
 	tlmp_warning ("var=%s val=%s",var,val);
 	if (strcmp(var,"print")==0){
@@ -228,10 +239,13 @@ void CHECKERS::exec (
 			for (unsigned i=0; i<8; i++) lines += string_f("    %c     ",i+'A');
 			lines += '\n';
 		}else{
+			// tlmp_warning ("sp w=%u h=%u cw=%u ch=%u",sp.width,sp.height,sp.content_width,sp.content_height);
 			// The layout is a square, constrained by the width
-			unsigned dim = win_width < win_height ? win_width : win_height;
-			unsigned width = dim - dim % nbcol -20;
-			unsigned w8 = width/(nbcol+1);
+			unsigned reverse_width = sp.mobile ? 45 : 25;
+			unsigned reverse_margin = 25;
+			unsigned dim = (sp.content_width < sp.content_height ? sp.content_width : sp.content_height) - (reverse_width+reverse_margin);
+			unsigned width = dim - dim % nbcol;
+			unsigned w8 = width/(nbcol);
 			unsigned h8 = w8; 
 			unsigned grid_width = w8*nbcol;
 			unsigned grid_height = w8*nbcol;
@@ -253,24 +267,38 @@ void CHECKERS::exec (
 			lines += "}\n";
 			lines += "</script>\n";
 			
-			lines += "<div style='display:flex; flex-flow:row;'>\n";
+			lines += "<div id=tab_form style='display:flex; flex-flow:row;'>\n";
 			lines += "<div style='flex:0 0 250px; overflow: hidden; margin-top:10px;'>\n";
-			lines += string_f("<form id='form-%s'>\n",gameid.c_str());
-			if (!mobile) lines += MSG_R(I_NEWGAME);
+			if (!sp.mobile) lines += MSG_R(I_NEWGAME);
 			documentd_button (lines,0,MSG_U(I_8_8,"8 X 8"),nbcol==8);
 			documentd_button (lines,1,MSG_U(I_10_10,"10 X 10"),nbcol==10);
-			lines += "</form>\n";
 			lines += "</div>\n";
-			print_player(lines,gameid,player1.name,0,"black",player1_playing,mobile);
-			print_player(lines,gameid,player2.name,1,"red",!player1_playing,mobile);
+			print_player(lines,gameid,player1.name,0,"black",player1_playing,sp.mobile);
+			print_player(lines,gameid,player2.name,1,"red",!player1_playing,sp.mobile);
 			lines += "</div>\n";
-			lines += "<div style='display:flex; flex-flow:row;'>\n";
-			lines += "<div style='flex:0 0 25px; overflow: hidden; color:blue;cursor:pointer; border: 1px solid black; background-color: lightgray;'"
-				" onmousedown='gamereverse(event); return false;'>\n";
-			lines += "RR";
+			lines += "<div class=webtable id=doc_checkers style='display:flex; flex-flow:row;'>\n";
+			lines += string_f("<div style='flex:0 0 auto; overflow: hidden; margin-right:%u;'>\n",reverse_margin);
+			lines += string_f("<svg width='%upx' height='%upx' viewbox='0 0 %u %u'"
+				" onmousedown='gamereverse(event); return false;' style='color:blue;cursor:pointer;'"
+				">\n",reverse_width,grid_height,reverse_width,grid_height);
+			lines += string_f("<path stroke='black' stroke-width=1 d='M0,0 h %u v %u H 0 Z' fill='lightgray'/>\n"
+				,reverse_width,grid_height);
+			{
+				// Draw a vertical arrow
+				unsigned h1 = reverse_width/2;
+				unsigned v1 = grid_height/4;
+				unsigned vlen = grid_height/2;
+				lines += string_f("<path stroke='black' stroke-width=4 d='M%u,%u v %u' fill='black'/>\n"
+					,h1,v1,vlen);
+				lines += string_f("<path stroke='black' stroke-width=4 d='M%u,%u L%u,%u L%u,%u' fill='black'/>\n"
+					,h1-5,v1+5,h1,v1,h1+5,v1+5);
+				lines += string_f("<path stroke='black' stroke-width=4 d='M%u,%u L%u,%u L%u,%u' fill='black'/>\n"
+					,h1-5,v1+vlen-5,h1,v1+vlen,h1+5,v1+vlen-5);
+			}
+			lines += "</svg>\n";
 			lines += "</div>\n";
+
 			lines += "<div style='flex:1 1 auto; overflow: hidden;' onmousedown='gameplace(event); return false;' style=color:blue;cursor:pointer>\n";
-			lines += "&nbsp;&nbsp;\n";
 			lines += string_f("<svg id='grid-%s' width='%upx' height='%upx' viewbox='0 0 %u %u'>\n",gameid.c_str(),grid_width,grid_height,grid_width,grid_height);
 			unsigned w8_2 = w8/2;
 			unsigned h8_2 = h8/2;
@@ -313,15 +341,15 @@ void CHECKERS::exec (
 			lines += "</svg>\n";
 			lines += "</div>\n";
 			lines += "</div>\n";
-			lines += string_f("<div id=msg-%s style=color:blue>%s</div>\n",gameid.c_str(),message.c_str());
+			lines += "<div id=tab_form>\n";
+			lines += string_f("<div id=msg-%s style=color:white>XXXXXXXX</div>\n",gameid.c_str());
+			lines += "</div>\n";
 		}
 		VARVAL v;
 		v.var = VAR_CONTENT;
 		v.val = lines;
 		res.push_back(v);
 	}else if (maywrite){
-		VARVAL notify_var;
-		notify_var.var = VAR_NOTIFY;
 		if (strcmp(var,"place")==0){
 			unsigned lo,co;
 			int button;
@@ -382,7 +410,7 @@ void CHECKERS::exec (
 								grid[next_line][right_col] = NOTUSED;
 								erase_col = right_col;
 							}
-							if (move_ok){	// && (mobile || button == 2)){
+							if (move_ok){	// && (sp.mobile || button == 2)){
 								string id = string_f("c%u,%u",next_line,erase_col);
 								js_find_loop_set (notify_var.val,"grid","circle",id,"style.fill","none","style.stroke","none");
 								keep_playing = true;
@@ -470,13 +498,14 @@ void CHECKERS::exec (
 			sessions[session] = !reverse;
 			documentd_forcerefresh(res);
 		}
-		res.emplace_back(notify_var);
 	}else{
 	}
+	if (notify_var.val.size() > 0) res.emplace_back(notify_var);
+tlmp_error ("error=%s",error.c_str());
 	if (error.size() > 0){
-		update_msg(error,"red",res);
+		update_msg(false,error,"red",res);
 	}else{
-		update_msg("","white",res);
+		update_msg(false,"","white",res);
 	}
 }
 

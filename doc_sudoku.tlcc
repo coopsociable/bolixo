@@ -158,9 +158,7 @@ void SUDOKU::update_msg(
 {
 	VARVAL mvar;
 	mvar.var = to_all ? VAR_NOTIFY : VAR_SCRIPT;
-	mvar.val = string_f ("var doc = document.getElementById('msg-%s');\n",gameid.c_str());
-	mvar.val += string_f("doc.style.color=\"%s\";\n",color);
-	mvar.val += string_f("doc.innerHTML=\"%s\";\n",msg.ptr);
+	js_find_set (mvar.val,"msg","style.color",color,"innerHTML",documentd_escape(msg).c_str());
 	res.emplace_back(mvar);
 }
 void SUDOKU::testwin(vector<VARVAL> &res)
@@ -275,9 +273,7 @@ void SUDOKU::exec (
 	const char *session,
 	const char *username,
 	bool maywrite,
-	unsigned win_width,
-	unsigned win_height,
-	bool mobile,
+	const DOC_UI_SPECS_receive &sp,
 	vector<VARVAL> &res)
 {
 	string error;
@@ -369,11 +365,11 @@ void SUDOKU::exec (
 			lines += normal;
 		}else{
 			// The layout is a square, constrained by the width
-			unsigned dim = win_width < win_height ? win_width : win_height;
-			unsigned width = dim - dim % 11;
+			unsigned dim = sp.content_width < sp.content_height ? sp.content_width : sp.content_height;
+			unsigned width = dim - dim % 10;
 			unsigned g_offx=17;
 			unsigned g_offy=20;
-			unsigned w9 = (width-g_offy)/11;
+			unsigned w9 = (width-g_offy)/10;
 			unsigned h9 = w9; 
 			unsigned grid_width = w9*9+g_offx;
 			unsigned grid_height = w9*9+g_offy;
@@ -401,7 +397,8 @@ void SUDOKU::exec (
 			lines += "}\n";
 			lines += "</script>\n";
 			
-			lines += "<p>\n";
+			lines += "<div id=tab_form style='margin-top:5; border: 1px solid white;'>\n";
+			//lines += "<div id=tab_form style='margin-top:5;'>\n";
 			lines += string_f("<form id='form-%s'>\n",gameid.c_str());
 			lines += MSG_U(I_NEWGAME,"New game");
 			documentd_button (lines,0,MSG_U(I_SIMPLE,"Simple"),difficulty==0);
@@ -409,8 +406,9 @@ void SUDOKU::exec (
 			documentd_button (lines,2,MSG_U(I_INTERMEDIATE,"Intermediate"),difficulty==2);
 			documentd_button (lines,3,MSG_U(I_EXPERT,"Expert"),difficulty==3);
 			lines += "</form>\n";
-			lines += "<p>";
-			lines += "<div style='display:flex; flex-flow:row;'>\n";
+			lines += "</div>\n";
+			//lines += "<div class=webtable id=doc_sudoku style='display:flex; flex-flow:row; border: 1px solid black;'>\n";
+			lines += "<div class=webtable id=doc_sudoku style='display:flex; flex-flow:row;'>\n";
 			lines += "<div style='flex:1 1 auto; overflow: hidden;'>\n";
 			lines += string_f("<svg onclick=gameselect(event) id='sudosel-%s' width='%upx' height='%upx' viewbox='0 0 %u %u'>\n",gameid.c_str(),w9,grid_height,w9,grid_height);
 			unsigned font_base = h9*7/10;
@@ -492,11 +490,12 @@ void SUDOKU::exec (
 				Colored rectangle. Each user can pick one. His name will show under the selected rectangle.
 				When the user place a digit on the grid, the selected rectangle color will be used.
 			*/
-			lines += "<div>\n";
+			//lines += "<div id=tab_form style='border: 1px solid black;'>\n";
+			lines += "<div id=tab_form>\n";
 			unsigned av_height=w9/2;
 			unsigned av_vheight=30;
 			unsigned av_fontheight=17;
-			if (mobile){
+			if (sp.mobile){
 				av_height = w9;
 				av_vheight = 60;
 				av_fontheight=34;
@@ -514,8 +513,8 @@ void SUDOKU::exec (
 					,x+5,av_vheight,i,"black","black",av_fontheight,tbusers[i]);
 			}
 			lines += "</svg>\n";
-			lines += "</div>\n";
 			lines += string_f("<div id=msg-%s style=color:white>This is a messageCeci est un message</div>\n",gameid.c_str());
+			lines += "</div>\n";
 		}
 		VARVAL v;
 		v.var = VAR_CONTENT;
