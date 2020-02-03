@@ -137,9 +137,9 @@ public:
 };
 
 struct SUDOKU_CELL{
-	unsigned char visible;
-	unsigned char value;
-	unsigned char user_value;
+	unsigned char visible;		// This cell is visible
+	unsigned char value;		// Value of the cell. If visible, this value is shown in gray
+	unsigned char user_value;	// Value entered by the user, if user_value == value, user is right.
 	std::string username;		// User who solved this cell.
 	unsigned char user_guess;	// When trying to solve complex puzzle, a user
 					// may enter a guess in a cell to help his memory
@@ -160,10 +160,11 @@ struct SUDO_USERPREF{
 };
 class SUDOKU: public GAME{
 	SUDOKU_CELL grid[9][9];	
-	//unsigned line,column;	// Currently selected 3x3 area
 	std::map<std::string,unsigned> seldigs; // Selected digit used when setting a value
 	std::map<std::string,SUDO_USERPREF> prefs;	// Preferences associated with a user
 	unsigned difficulty=0;	// What difficulty was used to initialize the game
+	bool grid_full[9];	// The grid is now complete for a given digit.
+	void compute_grid_full();
 	void redraw_notify(std::vector<VARVAL> &res);
 	void update_msg(bool to_all, PARAM_STRING msg, const char *color, std::vector<VARVAL> &res);
 public:

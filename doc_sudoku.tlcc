@@ -138,6 +138,18 @@ void SUDOKU::load (DOC_READER &r, string &msg)
 		glocal.msg = "Invalid format for sudoku file";
 	</f>
 	</call>
+	compute_grid_full();
+}
+void SUDOKU::compute_grid_full()
+{
+	unsigned stats[9];
+	for (auto &s:stats) s = 0;
+	for (auto &g:grid) for (auto &gg:g){
+		if (gg.visible || gg.value == gg.user_value){
+			stats[gg.value-1]++;
+		}
+	}
+	for (unsigned i=0; i<9; i++) grid_full[i] = stats[i] == 9;
 }
 void SUDOKU::resetgame()
 {
@@ -149,6 +161,7 @@ void SUDOKU::resetgame()
 			gg.reset();
 		}
 	}
+	for (auto &g:grid_full) g=false;
 }
 void SUDOKU::update_msg(
 	bool to_all,	// The message will be shown to all player or not
@@ -397,6 +410,8 @@ void SUDOKU::exec (
 			lines += "}\n";
 			lines += "</script>\n";
 			
+			// Strange UI bug here if we remove the border style (instead of using solid white), scroll bars
+			// are showing. Odd.
 			lines += "<div id=tab_form style='margin-top:5; border: 1px solid white;'>\n";
 			//lines += "<div id=tab_form style='margin-top:5;'>\n";
 			lines += string_f("<form id='form-%s'>\n",gameid.c_str());
@@ -420,8 +435,9 @@ void SUDOKU::exec (
 				unsigned offy = g_offy + i*h9;
 				lines += string_f("<path stroke='black' stroke-width='2' fill='%s' d='M1,%u H%u v%u H1 Z'/>\n",i==seldig ? "pink" : "white"
 					,offy,w9,h9);
+				const char *color = grid_full[i] ? "lightgray" : "black";
 				lines += string_f("<text x='%u' y='%u' style='stroke:%s;fill:%s;font-size:%u;font-family: Times New Roman;'>%u</text>\n"
-					,w9_3,offy+font_base,"black","black",font_size,i+1);
+					,w9_3,offy+font_base,color,color,font_size,i+1);
 			}
 			lines += "</svg>\n";
 			lines += "</div>\n";
@@ -608,6 +624,18 @@ void SUDOKU::exec (
 					var.val += "\t\t}\n";
 					var.val += "\t}\n";
 					var.val += "}\n";
+					// Update the digit selector on the side to tell which digits have been solved (all 9 has been found)
+					compute_grid_full();
+					var.val += string_f ("var doc = document.getElementById('sudosel-%s');\n",gameid.c_str());
+					var.val += "if (doc != null){\n";
+					var.val += "\tvar txts = doc.getElementsByTagName('text');\n";
+					for (unsigned i=0; i<9; i++){
+						if (grid_full[i]){
+							var.val += string_f("\ttxts[%u].style.stroke='lightgray';\n",i);
+							var.val += string_f("\ttxts[%u].style.fill='lightgray';\n",i);
+						}
+					}
+					var.val += "}\n";
 					res.push_back(var);
 				}
 			}else{
@@ -617,18 +645,22 @@ void SUDOKU::exec (
 			unsigned sel = atoi(val);
 			if (sel > 0 && sel < 10){
 				sel--;
-				seldigs[session] = sel;
-				setmodified(username);
-				VARVAL var;
-				var.var = VAR_SCRIPT;
-				var.val = string_f ("var doc = document.getElementById('sudosel-%s');\n",gameid.c_str());
-				var.val += "if (doc != null){\n";
-				var.val += "\tvar paths = doc.getElementsByTagName('path');\n";
-				for (unsigned i=0; i<9; i++){
-					var.val += string_f("\tpaths[%u].style.fill='%s';\n",i,i==sel ? "pink" : "white");
+				if (grid_full[sel]){
+					error = MSG_U(E_ALLDIGITFOUND,"The nine positions are known for this digit");
+				}else{
+					seldigs[session] = sel;
+					setmodified(username);
+					VARVAL var;
+					var.var = VAR_SCRIPT;
+					var.val = string_f ("var doc = document.getElementById('sudosel-%s');\n",gameid.c_str());
+					var.val += "if (doc != null){\n";
+					var.val += "\tvar paths = doc.getElementsByTagName('path');\n";
+					for (unsigned i=0; i<9; i++){
+						var.val += string_f("\tpaths[%u].style.fill='%s';\n",i,i==sel ? "pink" : "white");
+					}
+					var.val += "}\n";
+					res.push_back(var);
 				}
-				var.val += "}\n";
-				res.push_back(var);
 			}
 		}else if (strcmp(var,"avatar")==0){
 			unsigned avatar = atoi(val);
