@@ -728,7 +728,20 @@ void SUDOKU::exec (
 				</f>
 				</call>
 				setmodified(username);
+				compute_grid_full();
 				redraw_notify(res);
+				// Make all nine digits available
+				VARVAL var;
+				var.var = VAR_NOTIFY;
+				var.val = string_f ("var doc = document.getElementById('sudosel-%s');\n",gameid.c_str());
+				var.val += "if (doc != null){\n";
+				var.val += "\tvar txts = doc.getElementsByTagName('text');\n";
+				for (unsigned i=0; i<9; i++){
+					var.val += string_f("\ttxts[%u].style.stroke='black';\n",i);
+					var.val += string_f("\ttxts[%u].style.fill='black';\n",i);
+				}
+				var.val += "}\n";
+				res.push_back(var);
 			}
 		}else{
 			tlmp_error ("sudoku invalid command %s\n",var);
