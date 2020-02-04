@@ -89,12 +89,12 @@ void CHECKERS::load(DOC_READER &r, string &msg)
 	</call>
 }
 </mod>
-enum CELLSTATE { NOTUSED,PLAYER1,PLAYER2,WHITE};
+enum CELLSTATE { NOTUSED,PLAYER1,PLAYER2,PLAYER1_KING,PLAYER2_KING,WHITE};
 void CHECKERS::resetgame()
 {
 	player1_playing = true;
-	player1.line = player1.col = 10;
-	player2.line = player2.col = 10;
+	player1.reset();
+	player2.reset();
 	for (auto &g:grid) for (auto &gg:g) gg=NOTUSED;
 	// We block the white cells
 	for (unsigned i=0; i<MAX_GRID_SIZE; i++){
@@ -111,12 +111,12 @@ void CHECKERS::resetgame()
 	}
 	for (unsigned i=0; i<nbrows; i++){
 		unsigned start = (i+1)&1;
-		for (unsigned j=start; j<MAX_GRID_SIZE; j+=2){
+		for (unsigned j=start; j<nbcol; j+=2){
 			grid[i][j] = PLAYER1;
 		}
 		unsigned ii=offy+i;
 		if (nbcol == 8) start = i&1;
-		for (unsigned j=start; j<MAX_GRID_SIZE; j+=2){
+		for (unsigned j=start; j<nbcol; j+=2){
 			grid[ii][j] = PLAYER2;
 		}
 	}
@@ -124,15 +124,21 @@ void CHECKERS::resetgame()
 void CHECKERS::testwin(vector<VARVAL> &res)
 {
 	unsigned nbcell1=0,nbcell2=0;
-	for (auto &g:grid) for (auto &gg:g){
-		if (gg == PLAYER1){
-			nbcell1++;
-		}else if (gg == PLAYER2){
-			nbcell2++;
+	unsigned line = 0;
+	for (auto &g:grid){
+		unsigned col = 0;
+		for (auto &gg:g){
+			if (is_any_of(gg,PLAYER1,PLAYER1_KING)){
+				nbcell1++;
+			}else if (is_any_of(gg,PLAYER2,PLAYER2_KING)){
+				nbcell2++;
+			}
+			col++;
 		}
+		line++;
 	}
 	if (nbcell1 == 0 || nbcell2 == 0){
-		message = MSG_R(I_WON);
+		update_msg (true,MSG_R(I_WON),"blue",res);
 	}
 }
 
@@ -322,19 +328,30 @@ void CHECKERS::exec (
 					const char *fill_color = "none";
 					const char *stroke_color = "none";
 					const char *select_color = "none";
-					if (cell == PLAYER1 || cell == PLAYER2){
-						fill_color = cell==PLAYER1 ? "black" : "red";
+					const char *king_color = "none";
+					if (is_any_of(cell,PLAYER1,PLAYER2,PLAYER1_KING,PLAYER2_KING)){
+						if (is_any_of(cell,PLAYER1,PLAYER1_KING)){
+							fill_color = "black";
+							if (cell == PLAYER1_KING) king_color = "gold";
+						}else{
+							fill_color = "red";
+							if (cell == PLAYER2_KING) king_color = "gold";
+						}
 						stroke_color = "black";
 						if (player1.col == col && player1.line == line){
 							select_color = "blue";
 						}else if (player2.col == col && player2.line == line){
-							select_color = "yellow";
+							select_color = "blue";
 						}
 					}
 					lines += string_f("<circle id='c%u,%u' cx=%u cy=%u r=%u stroke='%s' stroke-width=2 fill='%s'/>\n"
 						,line,col,w8_col+w8_2,h8_line+h8_2,circle_radius,stroke_color,fill_color);
+					lines += string_f("<circle id='ck%u,%u' cx=%u cy=%u r=%u stroke='%s' stroke-width=2 fill='%s'/>\n"
+						,line,col,w8_col+w8_2,h8_line+h8_2,circle_radius-2,king_color,king_color);
+					lines += string_f("<circle id='cc%u,%u' cx=%u cy=%u r=%u stroke='%s' stroke-width=2 fill='%s'/>\n"
+						,line,col,w8_col+w8_2,h8_line+h8_2,circle_radius-8,fill_color,fill_color);
 					lines += string_f("<circle id='cs%u,%u' cx=%u cy=%u r=%u stroke='%s' stroke-width=2 fill='%s'/>\n"
-						,line,col,w8_col+w8_2,h8_line+h8_2,circle_radius-4,select_color,select_color);
+						,line,col,w8_col+w8_2,h8_line+h8_2,circle_radius-18,select_color,select_color);
 				}
 			}
 			lines += "</svg>\n";
@@ -348,6 +365,9 @@ void CHECKERS::exec (
 		v.var = VAR_CONTENT;
 		v.val = lines;
 		res.push_back(v);
+	}else if (strcmp(var,"reverse")==0){
+		sessions[session] = !reverse;
+		documentd_forcerefresh(res);
 	}else if (maywrite){
 		if (strcmp(var,"place")==0){
 			unsigned lo,co;
@@ -357,12 +377,18 @@ void CHECKERS::exec (
 				if (reverse) lo = nbcol -1 - lo;
 				CHECKER_PLAYER *player = &player2;
 				unsigned cell_val = PLAYER2;
+				unsigned cell_val_king = PLAYER2_KING;
 				unsigned other_player = PLAYER1;
+				unsigned other_player_king = PLAYER1_KING;
+				unsigned king_line = 0;	// Line to reach to turn a coin into a king
 				int vmove = -1;
 				if (player1_playing){
 					player = &player1;
 					cell_val = PLAYER1;
+					cell_val_king = PLAYER1_KING;
 					other_player = PLAYER2;
+					other_player_king = PLAYER2_KING;
+					king_line = nbcol-1;
 					vmove = 1;
 				}
 				if (player->has_selected()){
@@ -383,55 +409,84 @@ void CHECKERS::exec (
 						int left_col2 = player->col - 2;
 						int right_col2 = player->col + 2;
 						int next_line2 = player->line + vmove + vmove;
+						// for king moves
+						int prev_line = player->line - vmove;
+						int prev_line2 = prev_line - vmove;
 						unsigned char &cell = grid[lo][co];
+						unsigned char sel_cell = grid[player->line][player->col];
 						bool move_ok = false;
 						bool keep_playing = false;
+						// tlmp_warning ("sel_cell=%u cell=%u lo=%u co=%u prev_line=%u",sel_cell,cell,lo,co,prev_line);
 						if (cell != 0){
 							if (cell == WHITE){
 								error = MSG_U(E_CANTGOTHERE,"You are not allowed to move to white cell");
-							}else if (cell == cell_val){
+							}else if (is_any_of(cell,cell_val,cell_val_king)){
 								error = MSG_U(E_NOJUMPONYOU,"You can't stack coins");
 							}else{
 								error = MSG_U(E_NOJUMPONOTHER,"You can't jump on the other player coin");
 							}
-						}else if ((int)lo == next_line && ((int)co == left_col || (int)co == right_col)){	
+						}else if ((int)lo == next_line && is_any_of((int)co,left_col,right_col)){	
 							// Move the an available next cell
 							move_ok = true;
-						}else if ((int)lo == next_line2){
+						}else if (is_any_of(sel_cell,PLAYER1_KING,PLAYER2_KING)
+							&& (int)lo == prev_line && is_any_of((int)co,left_col,right_col)){	
+							// Move the an available next cell
+							move_ok = true;
+						}else if ((int)lo == next_line2 || ((int)lo == prev_line2 && is_any_of(sel_cell,PLAYER1_KING,PLAYER2_KING))){
 							// Move over a player coin
+							int inter_line = (int)lo==next_line2 ? next_line : prev_line;
 							unsigned erase_col = 0;
-							if ((int)co == left_col2 && grid[next_line][left_col] == other_player){
+							if ((int)co == left_col2 && is_any_of(grid[inter_line][left_col],other_player,other_player_king)){
 								move_ok = true;
-								grid[next_line][left_col] = NOTUSED;
+								grid[inter_line][left_col] = NOTUSED;
 								erase_col = left_col;
-							}else if ((int)co == right_col2 && grid[next_line][right_col] == other_player){	
+							}else if ((int)co == right_col2 && is_any_of(grid[inter_line][right_col],other_player,other_player_king)){	
 								move_ok = true;
-								grid[next_line][right_col] = NOTUSED;
+								grid[inter_line][right_col] = NOTUSED;
 								erase_col = right_col;
 							}
 							if (move_ok){	// && (sp.mobile || button == 2)){
-								string id = string_f("c%u,%u",next_line,erase_col);
-								js_find_loop_set (notify_var.val,"grid","circle",id,"style.fill","none","style.stroke","none");
+								// Ok, we jumped over a coin, it has to be erased
+								for (auto c:{"c","ck","cc","cs"}){
+									string id = string_f("%s%u,%u",c,inter_line,erase_col);
+									js_find_loop_set (notify_var.val,"grid","circle",id,"style.fill","none","style.stroke","none");
+								}
 								keep_playing = true;
 							}
 						}
 						if (move_ok){
-							string id = string_f("c%u,%u",player->line,player->col);
-							js_find_loop_set (notify_var.val,"grid","circle",id,"style.fill","none","style.stroke","none");
-							id = string_f("cs%u,%u",player->line,player->col);
-							js_find_loop_set (notify_var.val,"grid","circle",id,"style.fill","none","style.stroke","none");
-							id = string_f("c%u,%u",lo,co);
-							js_find_loop_set (notify_var.val,"grid","circle",id
-								,"style.fill",player1_playing ? "black" : "red","style.stroke","black");
+							// Erase last selected position
+							for (auto c:{"c","ck","cc","cs"}){
+								string id = string_f("%s%u,%u",c,player->line,player->col);
+								js_find_loop_set (notify_var.val,"grid","circle",id,"style.fill","none","style.stroke","none");
+							}
+							// Draw the new position
+							const char *kcolor = is_any_of(sel_cell,PLAYER1_KING,PLAYER2_KING) ? "gold" : "none";
+							const char *color = player1_playing ? "black" : "red";
+							string id = string_f("c%u,%u",lo,co);
+							js_find_loop_set (notify_var.val,"grid","circle",id,"style.fill",color,"style.stroke","black");
+							id = string_f("ck%u,%u",lo,co);
+							js_find_loop_set (notify_var.val,"grid","circle",id,"style.fill",kcolor,"style.stroke",kcolor);
+							id = string_f("cc%u,%u",lo,co);
+							js_find_loop_set (notify_var.val,"grid","circle",id,"style.fill",color,"style.stroke",color);
 							grid[player->line][player->col] = NOTUSED;
-							cell = cell_val;
+							cell = sel_cell;
+							if (lo == king_line){
+								if (cell == PLAYER1){
+									cell = PLAYER1_KING;
+								}else if (cell == PLAYER2){
+									cell = PLAYER2_KING;
+								}
+								string id = string_f("ck%u,%u",lo,co);
+								js_find_loop_set (notify_var.val,"grid","circle",id,"style.fill","gold","style.stroke","gold");
+							}
 							setmodified (username);
 							if (keep_playing){
 								player->line = lo;
 								player->col = co;
 								player->onemove = true;
 								id = string_f("cs%u,%u",lo,co);
-								const char *color = player1_playing ? "blue" : "yellow";
+								const char *color = player1_playing ? "blue" : "blue";
 								js_find_loop_set (notify_var.val,"grid","circle",id,"style.fill",color,"style.stroke",color);
 							}else{
 								player->reset();
@@ -443,11 +498,11 @@ void CHECKERS::exec (
 							error = MSG_U(E_IVLDMOVE,"Invalid move");
 						}
 					}
-				}else if (grid[lo][co] == cell_val){
+				}else if (is_any_of(grid[lo][co],cell_val,cell_val_king)){
 					// The player is about to move that piece
 					player->col = co;
 					player->line = lo;
-					const char *color = player1_playing ? "blue" : "yellow";
+					const char *color = player1_playing ? "blue" : "blue";
 					string id = string_f("cs%u,%u",lo,co);
 					js_find_loop_set (notify_var.val,"grid","circle",id,"style.fill",color,"style.stroke",color);
 				}else{
@@ -461,10 +516,11 @@ void CHECKERS::exec (
 			if (is_any_of(uval,0,1)){
 				nbcol = uval == 0 ? 8 : 10;
 				resetgame();
+				js_find_loop_start (notify_var.val,"grid","circle");
+				unsigned item = 0;
 				for (unsigned i=0; i<nbcol; i++){
 					for (unsigned j=0; j<nbcol; j++){
 						unsigned char cell = grid[i][j];
-						string id = string_f("c%u,%u",i,j);
 						const char *fill_color = "none";
 						const char *stroke_color = "none";
 						if (cell == PLAYER1){
@@ -474,13 +530,23 @@ void CHECKERS::exec (
 							fill_color = "red";
 							stroke_color = "black";
 						}
-						js_find_loop_set (notify_var.val,"grid","circle",id,"style.fill",fill_color,"style.stroke",stroke_color);
+						string id = string_f("c%u,%u",i,j);
+						notify_var.val += string_f("\t\telms[%u].style.fill='%s';\n",item,fill_color);
+						notify_var.val += string_f("\t\telms[%u].style.stroke='%s';\n",item,stroke_color);
+						item++;
+						for (unsigned x=0; x<3; x++){
+							notify_var.val += string_f("\t\telms[%u].style.fill='none';\n",item);
+							notify_var.val += string_f("\t\telms[%u].style.stroke='none';\n",item);
+							item++;
+						}
 					}
 				}
+				js_find_loop_end (notify_var.val);
 				js_find_loop_set (notify_var.val,"form","input","button0","style.background",nbcol==8 ? "lightblue" : "lightgray");
 				js_find_loop_set (notify_var.val,"form","input","button1","style.background",nbcol==10 ? "lightblue" : "lightgray");
 				js_find_set(notify_var.val,"player0","style.backgroundColor","lightblue");
 				js_find_set(notify_var.val,"player1","style.backgroundColor","white");
+				// tlmp_warning ("val.size=%lu",notify_var.val.size());
 				documentd_forcerefresh(res);
 			}else{
 				tlmp_error ("checkers newgame=%d",uval);
@@ -493,11 +559,9 @@ void CHECKERS::exec (
 			player->name = username;
 			js_find_set(notify_var.val,"player0","innerHTML",player1.name.c_str());
 			js_find_set(notify_var.val,"player1","innerHTML",player2.name.c_str());
-		}else if (strcmp(var,"reverse")==0){
-			sessions[session] = !reverse;
-			documentd_forcerefresh(res);
 		}
 	}else{
+		error = MSG_R(E_READONLY);
 	}
 	if (notify_var.val.size() > 0) res.emplace_back(notify_var);
 	if (error.size() > 0){

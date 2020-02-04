@@ -71,6 +71,16 @@ protected:
 		lines += "\t}\n";
 		lines += "}\n";
 	}
+	inline void js_find_loop_start(std::string &lines, const char *prefix, const char *tag){
+		lines += string_f ("var elm = document.getElementById('%s-%s');\n",prefix,gameid.c_str());
+		lines += "if (elm != null){\n";
+		lines += string_f("\tvar elms = elm.getElementsByTagName('%s');\n",tag);
+		lines += "\tif (elms.length > 0){\n";
+	}
+	inline void js_find_loop_end(std::string &lines){
+		lines += "\t}\n";
+		lines += "}\n";
+	}
 public:
 	void setgameid(const char *_gameid){
 		gameid = _gameid;
@@ -211,7 +221,6 @@ struct CHECKER_PLAYER{
 	void reset(){
 		onemove = false;
 		col = line = 11;
-		name.clear();
 	}
 	bool has_selected(){	// Has the player select the piece he wants to move
 		return col < 10 && line < 10;
