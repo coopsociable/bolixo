@@ -133,6 +133,10 @@ make install
 /var/www/html/notifypopup-fr.jpg
 /var/www/html/list-infoline.jpg
 /var/www/html/list-infoline-fr.jpg
+/var/www/html/sudoku.jpg
+/var/www/html/sudoku-fr.jpg
+/var/www/html/checkers.jpg
+/var/www/html/checkers-fr.jpg
 /usr/lib/bolixo-test.sh
 /usr/sbin/bolixo-production
 /usr/sbin/bo
