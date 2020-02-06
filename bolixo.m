@@ -2,7 +2,7 @@ extern const char **_dictionary_bolixo;
 #ifndef DICTIONARY_REQUEST
 	#define DICTIONARY_REQUEST \
 	const char **_dictionary_bolixo;\
-	TRANSLATE_SYSTEM_REQ _dictionary_req_bolixo("bolixo",_dictionary_bolixo,595,19);\
+	TRANSLATE_SYSTEM_REQ _dictionary_req_bolixo("bolixo",_dictionary_bolixo,598,19);\
 	void dummy_dict_bolixo(){}
 #endif
 #ifndef MSG_U
@@ -608,3 +608,6 @@ extern const char **_dictionary_bolixo;
 #define I_10_10	592
 #define E_ALLDIGITFOUND	593
 #define I_CHECKERSGAME	594
+#define E_MUSTSELECTONEPIECE	595
+#define E_CANTSELECT	596
+#define E_CANTTAKEYOURPIECE	597

@@ -1,0 +1,393 @@
+#include <string.h>
+#include <stdio.h>
+#include <trlitool.h>
+#include <string>
+#include <vector>
+#include <map>
+#include <tlmplib.h>
+#include "bolixo.h"
+#include "proto/bod_client.protodef"
+#include "documentd.h"
+#include "bolixo.m"
+
+using namespace std;
+
+#include "proto/documentd_chess.protoh"
+#include "proto/documentd_chess.protoch"
+
+
+void CHESS::save(DOC_WRITER &w, bool save_session_info)
+{
+	documentd_chess_header (&w,revision,player1_playing);
+	CHESS_FILE_PLAYER p1,p2;
+	p1.name = player1.name;
+	p1.line = player1.line;
+	p1.col  = player1.col;
+	p2.name = player2.name;
+	p2.line = player2.line;
+	p2.col  = player2.col;
+	documentd_chess_players(&w,p1,p2);
+	vector<unsigned> cells;
+	for (auto &g:grid) for (auto &gg:g) cells.push_back(gg);
+	documentd_chess_cells(&w,cells);
+	if (save_session_info){
+		for (auto &s:sessions){
+			documentd_chess_session (&w,s.first,s.second);
+		}
+	}
+}
+<mod>
+void CHESS::load(DOC_READER &r, string &msg)
+{
+	glocal msg;
+	glocal revision;
+	glocal player1_playing;
+	glocal grid;
+	glocal player1;
+	glocal player2;
+	glocal sessions;
+	resetgame();
+	sessions.clear();
+	<call documentd_chess>(&r);
+	<f header>
+		glocal.revision = revision;
+		glocal.player1_playing = player1_playing;
+	</f>
+	<f players>
+		glocal.player1.name = player1.name;
+		glocal.player1.line = player1.line;
+		glocal.player1.col = player1.col;
+		glocal.player2.name = player2.name;
+		glocal.player2.line = player2.line;
+		glocal.player2.col = player2.col;
+	</f>
+	<f cells>
+		unsigned line = 0;
+		unsigned col = 0;
+		for (auto &c:cells){
+			glocal.grid[line][col] = (char)c;
+			col++;
+			if (col == 8){
+				line++;
+				col = 0;
+			}
+		}
+	</f>
+	<f session>
+		glocal.sessions[session] = reverse;
+	</f>
+	<f invalid>
+		glocal.msg = "Invalid format for sudoku file";
+	</f>
+	</call>
+}
+</mod>
+void CHESS::resetgame()
+{
+	player1_playing = true;
+	player1.reset();
+	player2.reset();
+	for (auto &g:grid) for (auto &gg:g) gg=' ';
+	for (unsigned i=0; i<8; i++){
+		const char *lowerp = "rnbqkbnr";
+		const char *upperp = "RNBQKBNR";
+		grid[0][i] = lowerp[i];
+		grid[1][i] = 'p';
+		grid[6][i] = 'P';
+		grid[7][i] = upperp[i];
+	}
+}
+void CHESS::testwin(vector<VARVAL> &res)
+{
+	// update_msg (true,MSG_R(I_WON),"blue",res);
+}
+
+void CHESS::update_msg(
+	bool to_all,	// The message will be shown to all player or not
+	PARAM_STRING msg,
+	const char *color,
+	vector<VARVAL> &res)
+{
+	VARVAL mvar;
+	mvar.var = to_all ? VAR_NOTIFY : VAR_SCRIPT;
+	js_find_set (mvar.val,"msg","style.color",color,"innerHTML",documentd_escape(msg).c_str());
+	res.emplace_back(mvar);
+}
+		
+static void print_player(string &lines, PARAM_STRING gameid, PARAM_STRING name, unsigned playernum, const char *player_color, bool playing, bool mobile)
+{
+	const char *color = playing ? "lightblue" : "white";
+	unsigned margin = 5;
+	unsigned width=150;
+	if (mobile){
+		width = 250;
+		margin = 10;
+	}
+	lines += string_f("<div id=player%u-%s onmousedown=playersel(event,%u)"
+		" style='flex:0 0 %upx; overflow: hidden; background-color:%s; border: 2px solid %s; margin-bottom:%upx; margin-top:%upx; margin-left:%upx; padding: 10px'>\n"
+		,playernum,gameid.ptr,playernum,width,color,player_color,margin,margin,margin);
+	lines += string_f("%s\n",name.ptr);
+	lines += "</div>\n";
+}
+void CHESS::exec (
+	const char *var,
+	const char *val,
+	const char *session,
+	const char *username,
+	bool maywrite,
+	const DOC_UI_SPECS_receive &sp,
+	vector<VARVAL> &res)
+{
+	string error;
+	setactivity();
+	VARVAL notify_var;
+	notify_var.var = VAR_NOTIFY;
+	if (maywrite){
+		if (player1.name.size() == 0){
+			player1.name = username;
+			js_find_set(notify_var.val,"player0","innerHTML",username);
+		}else if (player2.name.size() == 0){
+			player2.name = username;
+			js_find_set(notify_var.val,"player1","innerHTML",username);
+		}	
+	}
+	bool reverse = sessions[session];
+	if (strcmp(var,"print")==0){
+		string lines;
+		if (strcmp(val,"console")==0){
+		}else{
+			// tlmp_warning ("sp w=%u h=%u cw=%u ch=%u",sp.width,sp.height,sp.content_width,sp.content_height);
+			// The layout is a square, constrained by the width
+			unsigned reverse_width = sp.mobile ? 45 : 25;
+			unsigned reverse_margin = 25;
+			unsigned dim = (sp.content_width < sp.content_height ? sp.content_width : sp.content_height) - (reverse_width+reverse_margin);
+			unsigned width = dim - dim % 8;
+			unsigned w8 = width/8;
+			unsigned h8 = w8; 
+			unsigned grid_width = w8*8;
+			unsigned grid_height = w8*8;
+			unsigned font_size = h8*6/10;
+	
+			lines += "<script>\n";
+			lines += "function gameplace(event){\n";
+			lines += string_f("\tvar elm = document.getElementById('grid-%s');\n",gameid.c_str());
+			lines += "\tvar rect = elm.getBoundingClientRect();\n";
+			lines += string_f("\tgameaction('place:'+Math.floor((event.clientY-rect.top)/%u)+','+Math.floor((event.clientX-rect.left)/%u)+ ','+event.which);\n",h8,w8);
+			lines += "\tevent.stopPropagation();\n";
+			lines += "}\n";
+			lines += "function playersel(event,num){\n";
+			lines += "\tgameaction('playersel:'+num);\n";
+			lines += "\tevent.stopPropagation();\n";
+			lines += "}\n";
+			lines += "function gamereverse(event){\n";
+			lines += "\tgameaction('reverse:');\n";
+			lines += "\tevent.stopPropagation();\n";
+			lines += "}\n";
+			lines += "</script>\n";
+			
+			lines += "<div id=tab_form style='display:flex; flex-flow:row;'>\n";
+			lines += "<div style='flex:0 0 250px; overflow: hidden; margin-top:10px;'>\n";
+			if (!sp.mobile) lines += MSG_R(I_NEWGAME);
+			documentd_button (lines,0,MSG_R(I_RESTART),false);
+			lines += "</div>\n";
+			print_player(lines,gameid,player1.name,0,"black",player1_playing,sp.mobile);
+			print_player(lines,gameid,player2.name,1,"red",!player1_playing,sp.mobile);
+			lines += "</div>\n";
+			lines += "<div class=webtable id=doc_chess style='display:flex; flex-flow:row;'>\n";
+			lines += string_f("<div style='flex:0 0 auto; overflow: hidden; margin-right:%u;'>\n",reverse_margin);
+			lines += string_f("<svg width='%upx' height='%upx' viewbox='0 0 %u %u'"
+				" onmousedown='gamereverse(event); return false;' style='color:blue;cursor:pointer;'"
+				">\n",reverse_width,grid_height,reverse_width,grid_height);
+			lines += string_f("<path stroke='black' stroke-width=1 d='M0,0 h %u v %u H 0 Z' fill='lightgray'/>\n"
+				,reverse_width,grid_height);
+			{
+				// Draw a vertical arrow
+				unsigned h1 = reverse_width/2;
+				unsigned v1 = grid_height/4;
+				unsigned vlen = grid_height/2;
+				lines += string_f("<path stroke='black' stroke-width=4 d='M%u,%u v %u' fill='black'/>\n"
+					,h1,v1,vlen);
+				lines += string_f("<path stroke='black' stroke-width=4 d='M%u,%u L%u,%u L%u,%u' fill='black'/>\n"
+					,h1-5,v1+5,h1,v1,h1+5,v1+5);
+				lines += string_f("<path stroke='black' stroke-width=4 d='M%u,%u L%u,%u L%u,%u' fill='black'/>\n"
+					,h1-5,v1+vlen-5,h1,v1+vlen,h1+5,v1+vlen-5);
+			}
+			lines += "</svg>\n";
+			lines += "</div>\n";
+
+			lines += "<div style='flex:1 1 auto; overflow: hidden;' onmousedown='gameplace(event); return false;' style=color:blue;cursor:pointer>\n";
+			lines += string_f("<svg id='grid-%s' width='%upx' height='%upx' viewbox='0 0 %u %u'>\n",gameid.c_str(),grid_width,grid_height,grid_width,grid_height);
+			unsigned w8_2 = w8/2;
+			unsigned h8_2 = h8/2;
+			unsigned circle_x = w8/4;
+			unsigned circle_y = h8*5/6;
+			unsigned circle_radius = w8/8;
+			lines += string_f("<path stroke='green' stroke-width='2' fill='white' d='M%u %u H %u V %u H %u Z'/>\n"
+				,0,0,grid_width-1,grid_height-1,0);
+			for (unsigned vline=0; vline<8; vline++){
+				lines += string_f("<path stroke=%s stroke-width=1 d='M%u,%u H %u'/>\n","lightgray"
+					,0,h8*vline,grid_width);
+				unsigned line = reverse ? (8-1-vline) : vline;
+				unsigned l1 = line & 1;
+				for (unsigned col=0; col<8; col++){
+					unsigned w8_col = w8*col;
+					unsigned h8_line = h8*vline;
+					lines += string_f("<path stroke=%s stroke-width=1 d='M%u,%u V %u'/>\n","lightgray"
+						,w8*col,0,grid_height);
+					if ((l1+col)&1){
+						lines += string_f("<path stroke='black' stroke-width=1 d='M%u,%u h %u v %u h -%u Z' fill='lightgray'/>\n"
+							,w8*col,h8*vline,w8,h8,w8);
+					}
+					char cell = grid[line][col];
+					const char *fill_color = "none";
+					const char *stroke_color = "none";
+					const char *select_color = "none";
+					if (isalpha(cell)){
+						stroke_color = "black";
+						if (isupper(cell)){
+							fill_color = "white";
+						}else{
+							fill_color = "black";
+						}
+						if (player1.col == col && player1.line == line){
+							select_color = "blue";
+						}else if (player2.col == col && player2.line == line){
+							select_color = "blue";
+						}
+					}
+					lines += string_f("<text id='c%u,%u' X=%u Y=%u style='stroke:%s;fill:%s;font-size:%u;font-family: Times New Roman;'>%c</text>\n"
+						,line,col,w8_col+w8_2,h8_line+h8_2,stroke_color,fill_color,font_size,cell);
+					lines += string_f("<circle id='cs%u,%u' cx=%u cy=%u r=%u stroke='%s' stroke-width=2 fill='%s'/>\n"
+						,line,col,w8_col+circle_x,h8_line+circle_y,circle_radius,select_color,select_color);
+				}
+			}
+			lines += "</svg>\n";
+			lines += "</div>\n";
+			lines += "</div>\n";
+			lines += "<div id=tab_form>\n";
+			lines += string_f("<div id=msg-%s style=color:white>XXXXXXXX</div>\n",gameid.c_str());
+			lines += "</div>\n";
+		}
+		VARVAL v;
+		v.var = VAR_CONTENT;
+		v.val = lines;
+		res.push_back(v);
+	}else if (strcmp(var,"reverse")==0){
+		sessions[session] = !reverse;
+		documentd_forcerefresh(res);
+	}else if (maywrite){
+		if (strcmp(var,"place")==0){
+			unsigned lo,co;
+			int button;
+			int n = sscanf(val,"%u,%u,%d",&lo,&co,&button);
+			if (n == 3 && lo < 8 && co < 8 && is_any_of(button,1,2)){
+				if (reverse) lo = 8 -1 - lo;
+				CHESS_PLAYER *player = &player2;
+				if (player1_playing){
+					player = &player1;
+				}
+tlmp_warning ("has_selected %d player1 %d isupper %d islower %d",player->has_selected(),player1_playing,isupper(grid[lo][co]),islower(grid[lo][co]));
+				char &new_cell = grid[lo][co];
+				if (player->has_selected()){
+					string sel_id = string_f("cs%u,%u",player->line,player->col);
+					string new_id = string_f("cs%u,%u",lo,co);
+					char &old_cell = grid[player->line][player->col];
+					if (player->line == lo && player->col == co){
+						// The player is unselecting the cell
+						js_find_loop_set (notify_var.val,"grid","circle",new_id,"style.fill","none","style.stroke","none");
+						player->reset();
+						setmodified(username);
+					}else{
+						// The player is doing a move
+						bool move_ok = true;
+						if (new_cell == ' '){
+						}else if (isupper(new_cell) == isupper(old_cell)){
+							error = MSG_U(E_CANTTAKEYOURPIECE,"Can't move on your piece");
+							move_ok = false;
+						}	
+						if (move_ok){
+							new_cell = old_cell;
+							old_cell = ' ';
+							string old_text_id = string_f("c%u,%u",player->line,player->col);
+							js_find_loop_set (notify_var.val,"grid","text",old_text_id,"innerHTML"," ");
+							string new_text_id = string_f("c%u,%u",lo,co);
+							char str[2]={new_cell,'\0'};
+							js_find_loop_set (notify_var.val,"grid","text",new_text_id,"innerHTML",str
+								,"style.stroke","black","style.fill",isupper(new_cell) ? "white" : "black");
+							js_find_loop_set (notify_var.val,"grid","circle",sel_id,"style.fill","none","style.stroke","none");
+							player1_playing = !player1_playing;
+							player->reset();
+							js_find_set(notify_var.val,"player0","style.backgroundColor",player1_playing ? "lightblue" : "white");
+							js_find_set(notify_var.val,"player1","style.backgroundColor",!player1_playing ? "lightblue" : "white");
+							setmodified(username);
+						}
+					}
+				}else if (new_cell == ' '){
+					error = MSG_U(E_MUSTSELECTONEPIECE,"You must select one piece");
+				}else if ((player1_playing && isupper(new_cell))
+					|| (!player1_playing && islower(new_cell))){
+					// The player is about to move that piece
+					player->col = co;
+					player->line = lo;
+					const char *color = player1_playing ? "blue" : "blue";
+					string id = string_f("cs%u,%u",lo,co);
+					js_find_loop_set (notify_var.val,"grid","circle",id,"style.fill",color,"style.stroke",color);
+				}else{
+					error = MSG_U(E_CANTSELECT,"You can't select one of your pieces");
+				}
+			}else{
+				tlmp_error ("checkers, invalid place command: %s",val);
+			}
+		}else if (strcmp(var,"newgame")==0){
+			int uval = atoi(val);
+			if (is_any_of(uval,0,1)){
+				resetgame();
+				js_find_loop_start (notify_var.val,"grid","text");
+				unsigned item = 0;
+				for (unsigned i=0; i<8; i++){
+					for (unsigned j=0; j<8; j++){
+						char cell = grid[i][j];
+						const char *fill_color = "none";
+						const char *stroke_color = "none";
+						if (isupper(cell)){
+							fill_color = "white";
+							stroke_color = "black";
+						}else if (islower(cell)){
+							fill_color = "black";
+							stroke_color = "black";
+						}
+						notify_var.val += string_f("\t\telms[%u].style.fill='%s';\n",item,fill_color);
+						notify_var.val += string_f("\t\telms[%u].style.stroke='%s';\n",item,stroke_color);
+						notify_var.val += string_f("\t\telms[%u].innerHTML='%c';\n",item,cell);
+						item++;
+					}
+				}
+				js_find_loop_end (notify_var.val);
+				js_find_set(notify_var.val,"player0","style.backgroundColor","lightblue");
+				js_find_set(notify_var.val,"player1","style.backgroundColor","white");
+				// tlmp_warning ("val.size=%lu",notify_var.val.size());
+				documentd_forcerefresh(res);
+			}else{
+				tlmp_error ("checkers newgame=%d",uval);
+			}
+		}else if (strcmp(var,"playersel")==0){
+			CHESS_PLAYER *player = &player1;
+			if (strcmp(val,"1")==0){
+				player = &player2;
+			}
+			player->name = username;
+			js_find_set(notify_var.val,"player0","innerHTML",player1.name.c_str());
+			js_find_set(notify_var.val,"player1","innerHTML",player2.name.c_str());
+		}
+	}else{
+		error = MSG_R(E_READONLY);
+	}
+	if (notify_var.val.size() > 0) res.emplace_back(notify_var);
+	if (error.size() > 0){
+		update_msg(false,error,"red",res);
+	}else{
+		update_msg(false,"","white",res);
+	}
+}
+
+

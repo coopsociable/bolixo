@@ -71,6 +71,22 @@ protected:
 		lines += "\t}\n";
 		lines += "}\n";
 	}
+	inline void js_find_loop_set(std::string &lines, const char *prefix, const char *tag, PARAM_STRING id, const char *feature1,
+		const char *val1, const char *feature2, const char *val2, const char *feature3, const char *val3){
+		lines += string_f ("var elm = document.getElementById('%s-%s');\n",prefix,gameid.c_str());
+		lines += "if (elm != null){\n";
+		lines += string_f("\tvar elms = elm.getElementsByTagName('%s');\n",tag);
+		lines += "\tfor (var i=0; i<elms.length; i++){\n";
+		lines += "\t\tvar e = elms[i];\n";
+		lines += string_f("\t\tif (e.id == '%s'){\n",id.ptr);
+		lines += string_f("\t\t\te.%s='%s';\n",feature1,val1);
+		lines += string_f("\t\t\te.%s='%s';\n",feature2,val2);
+		lines += string_f("\t\t\te.%s='%s';\n",feature3,val3);
+		lines += "\t\t\tbreak;\n";
+		lines += "\t\t}\n";
+		lines += "\t}\n";
+		lines += "}\n";
+	}
 	inline void js_find_loop_start(std::string &lines, const char *prefix, const char *tag){
 		lines += string_f ("var elm = document.getElementById('%s-%s');\n",prefix,gameid.c_str());
 		lines += "if (elm != null){\n";
@@ -239,6 +255,35 @@ class CHECKERS: public GAME{
 public:
 	const char *getclass() const{
 		return "CHEC";
+	}
+	void save(DOC_WRITER &w, bool save_session_info);
+	void load(DOC_READER &r, std::string &msg);
+	void resetgame();
+	void testwin(std::vector<VARVAL> &res);
+	void exec (const char *var, const char *val, const char *session, const char *username, bool maywrite, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
+};
+struct CHESS_PLAYER{
+	unsigned col=11;
+	unsigned line=11;
+	std::string name;
+	void reset(){
+		col = line = 11;
+	}
+	bool has_selected(){	// Has the player select the piece he wants to move
+		return col < 8 && line < 8;
+	}
+};
+
+class CHESS: public GAME{
+	char grid[8][8];
+	CHESS_PLAYER player1,player2;
+	bool player1_playing = true;
+	std::string message;
+	std::map<std::string,bool> sessions; // Display mode (reverse) per session
+	void update_msg (bool to_all, PARAM_STRING msg, const char *color, std::vector<VARVAL> &res);
+public:
+	const char *getclass() const{
+		return "CHES";
 	}
 	void save(DOC_WRITER &w, bool save_session_info);
 	void load(DOC_READER &r, std::string &msg);

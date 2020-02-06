@@ -181,6 +181,10 @@ proto/documentd_checkers.protoh: proto/documentd_checkers.proto
 	build-protocol --file_mode --req_reader_type DOC_READER --req_writer_type DOC_WRITER --name documentd_checkers \
 		--protoch proto/documentd_checkers.protoch proto/documentd_checkers.proto >proto/documentd_checkers.protoh
 
+proto/documentd_chess.protoh: proto/documentd_chess.proto
+	build-protocol --file_mode --req_reader_type DOC_READER --req_writer_type DOC_WRITER --name documentd_chess \
+		--protoch proto/documentd_chess.protoch proto/documentd_chess.proto >proto/documentd_chess.protoh
+
 proto/documentd_tictacto.protoh: proto/documentd_tictacto.proto
 	build-protocol --file_mode --req_reader_type DOC_READER --req_writer_type DOC_WRITER --name documentd_tictacto \
 		--protoch proto/documentd_tictacto.protoch proto/documentd_tictacto.proto >proto/documentd_tictacto.protoh
@@ -219,7 +223,7 @@ proto/bolixoapi.protoh: proto/bolixoapi.proto proto/bolixod_client.protoh
 		--connect_info_obj CONNECT_HTTP_INFO --name bolixoapi \
 		--protoch proto/bolixoapi.protoch proto/bolixoapi.proto >proto/bolixoapi.protoh
 
-DOCGAMES=doc_tictacto.o doc_sudoku.o doc_wordproc.o doc_checkers.o
+DOCGAMES=doc_tictacto.o doc_sudoku.o doc_wordproc.o doc_checkers.o doc_chess.o
 documentd: documentd.o _dict.o \
 	${DOCGAMES}
 	cctlcc -Wall $(OPTIONS) documentd.o ${DOCGAMES} _dict.o -o documentd $(LIBS)
@@ -229,6 +233,9 @@ documentd.o: documentd.tlcc documentd.h proto/documentd_control.protoh proto/doc
 
 doc_checkers.o: doc_checkers.tlcc documentd.h proto/documentd_checkers.protoh
 	cctlcc -Wall $(OPTIONS) -c doc_checkers.tlcc -o doc_checkers.o
+
+doc_chess.o: doc_chess.tlcc documentd.h proto/documentd_chess.protoh
+	cctlcc -Wall $(OPTIONS) -c doc_chess.tlcc -o doc_chess.o
 
 doc_wordproc.o: doc_wordproc.tlcc documentd.h
 	cctlcc -Wall $(OPTIONS) -c doc_wordproc.tlcc -o doc_wordproc.o
