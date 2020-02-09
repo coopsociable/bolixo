@@ -274,6 +274,38 @@ elif [ "$1" = "setaccess" ] ; then # test: set the access parameters of a file
 	./bofs -u admin rm bo://projects/jacques-A/public/file1
 	./bofs groups --delete-list -L project1
 	./bofs groups --delete-list -L project2
+elif [ "$1" = "doc-chess" ] ; then # test: various test on the chess game
+	echo boBOCHES >/tmp/test.chess
+	DOCNAME=/projects/jacques-A/public/test.chess
+	./bofs cp /tmp/test.chess bo:/$DOCNAME
+	./bofs documents --noscripts --playstep --docname $DOCNAME --step newgame=0
+	echo "### Invalid moves on the first line, trapped by the second"
+	for ((col=0; col<8; col++))
+	do
+		MOVE=0,$col,1,$col,0
+		./bofs documents --noscripts --playstep --docname $DOCNAME --step checkmove=$MOVE
+		MOVE=7,$col,6,$col,0
+		./bofs documents --noscripts --playstep --docname $DOCNAME --step checkmove=$MOVE
+	done
+	echo "### Valid moves of the four knights"
+	./bofs documents --noscripts --playstep --docname $DOCNAME --step checkmove=0,1,2,0,0
+	./bofs documents --noscripts --playstep --docname $DOCNAME --step checkmove=0,1,2,2,0
+	./bofs documents --noscripts --playstep --docname $DOCNAME --step checkmove=0,6,2,5,0
+	./bofs documents --noscripts --playstep --docname $DOCNAME --step checkmove=0,6,2,7,0
+	./bofs documents --noscripts --playstep --docname $DOCNAME --step checkmove=7,1,5,0,0
+	./bofs documents --noscripts --playstep --docname $DOCNAME --step checkmove=7,1,5,2,0
+	./bofs documents --noscripts --playstep --docname $DOCNAME --step checkmove=7,6,5,5,0
+	./bofs documents --noscripts --playstep --docname $DOCNAME --step checkmove=7,6,5,7,0
+	echo "### Valid moves of the pawns"
+	#./bofs documents --noscripts --playstep --docname $DOCNAME --step clear=0
+	#./bofs documents --noscripts --playstep --docname $DOCNAME --step loadline=0:pppppppp
+	for move in 6,1,4,1,1 4,1,3,1,1 1,0,3,0,1 3,1,2,0,1
+	do
+		./bofs documents --noscripts --playstep --docname $DOCNAME --step checkmove=$move
+	done
+elif [ "$1" = "doc-chess-dump" ] ; then # test: help debug chess game
+	DOCNAME=/projects/jacques-A/public/test.chess
+	./bofs documents --noscripts --playstep --docname $DOCNAME --step dump=0
 else
 	echo command
 fi

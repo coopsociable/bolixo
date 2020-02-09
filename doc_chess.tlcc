@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <trlitool.h>
 #include <string>
+#include <stdlib.h>
 #include <vector>
 #include <map>
 #include <tlmplib.h>
@@ -15,17 +16,330 @@ using namespace std;
 #include "proto/documentd_chess.protoh"
 #include "proto/documentd_chess.protoch"
 
+inline bool chs_is_king(char cell){
+	return is_any_of(cell,'k','K');
+}
+inline bool chs_is_queen(char cell){
+	return is_any_of(cell,'q','Q');
+}
+inline bool chs_is_rook(char cell){
+	return is_any_of(cell,'r','R');
+}
+inline bool chs_is_knight(char cell){
+	return is_any_of(cell,'n','N');
+}
+inline bool chs_is_bishop(char cell){
+	return is_any_of(cell,'b','B');
+}
+inline bool chs_is_pawn(char cell){
+	return is_any_of(cell,'p','P');
+}
+inline bool chs_is_black(char cell){
+	return islower(cell);
+}
+inline bool chs_is_white(char cell){
+	return isupper(cell);
+}
+struct CHESSMOVE_EFFECTS{
+	bool king_moved = false;
+	bool left_rook_moved = false;
+	bool right_rook_moved = false;
+	// The following two field are there to support the "en passant" move.
+	bool pawn_moved_2steps = false;	// A pawn has done its first move, moving 2 cell at once
+	bool clear_en_passant = false;	// Clear from the grid the other player en_passant pawn
+	bool reset_en_passant = false;	// Forget the en passant setting from the other player
+	bool pawn_queen = false;			// The pawn must be turned into a queen
+	bool left_castling = false;
+	bool right_castling = false;
+	string dump() const {
+		string ret=string_f("king_moved=%d left_rook_moved=%d right_rook_moved=%d pawn_moved_2steps=%d clear_en_passant=%d pawn_queen=%d"
+			,king_moved,left_rook_moved,right_rook_moved,pawn_moved_2steps,clear_en_passant,pawn_queen);
+		return ret;
+	}
+};
+string CHESS_PLAYER::dump() const {
+	string ret=string_f("king_moved=%d left_rook_moved=%d right_rook_moved=%d en_passant.line=%u en_passant.col=%u"
+		,king_moved,left_rook_moved,right_rook_moved,en_passant.line,en_passant.col);
+	return ret;
+}
+/*
+	Check if a move is valid.
+	Return true if the move is valid.
+*/
+bool CHESS::checkmove(
+	CHESS_PLAYER *player,	// Current player. CHeck if a move from the selected cell on the board
+	unsigned to_line,	// is valid to this cell on the board
+	unsigned to_col,
+	CHESS_PLAYER *other_player,
+	CHESSMOVE_EFFECTS &effects,	// Note side effects of the move
+	string &error)		// Will contain any errors.
+{
+	unsigned from_line = player->line;	// CHeck if a move from this cell on the board
+	unsigned from_col = player->col;
+	bool ret = false;
+	bool valid = true;
+	bool vertical = false;
+	bool horizontal = false;
+	bool diagonal = false;
+	int distance = 0;
+	char from_cell = grid[from_line][from_col];
+	char to_cell = grid[to_line][to_col];
+	// First we qualify the move and after, we see if it fits the piece
+	if (from_line == to_line){
+		horizontal = true;
+		distance = to_col-from_col;
+		if (to_col > from_col){
+			for (unsigned col=from_col+1; col < to_col; col++){
+				if (grid[from_line][col] != ' '){
+					valid = false;
+					break;
+				}
+			}
+		}else{
+			for (unsigned col=from_col-1; col > to_col; col--){
+				if (grid[from_line][col] != ' '){
+					valid = false;
+					break;
+				}
+			}
+		}
+	}else if (from_col == to_col){
+		vertical = true;
+		distance = to_line-from_line;
+		if (to_line > from_line){
+			for (unsigned line=from_line+1; line < to_line; line++){
+				if (grid[line][from_col] != ' '){
+					valid = false;
+					break;
+				}
+			}
+		}else{
+			for (unsigned line=from_line-1; line > to_line; line--){
+				if (grid[line][from_col] != ' '){
+					valid = false;
+					break;
+				}
+			}
+		}
+	}else if (abs((int)to_line-(int)from_line) == abs((int)to_col-(int)from_col)){
+		diagonal = true;
+		distance = to_line - from_line;
+		int  hmove = 1, vmove = 1;
+		if (from_line > to_line) vmove = -1;
+		if (from_col > to_col) hmove = -1;
+		unsigned line = from_line + vmove;
+		unsigned col  = from_col + hmove;
+		while (line != to_line && col != to_col){
+			if (grid[line][col] != ' '){
+				valid = false;
+				break;
+			}
+			line += vmove;
+			col  += hmove;
+		}
+	}
+	if (valid && to_cell != ' '){
+		if (isupper(from_cell) == isupper(to_cell)){
+			error = MSG_U(E_CANTTAKEYOURPIECE,"Can't move on your piece");
+			valid = false;
+		}	
+	}
+	if (valid){
+		if (chs_is_pawn(from_cell)){
+			if (vertical && to_cell == ' '){
+				if (chs_is_black(from_cell)){
+					if (distance == 1){
+						if (to_line == 7) effects.pawn_queen = true;
+						ret = true;
+					}else if (distance == 2 && from_line == 1){
+						effects.pawn_moved_2steps = true;
+						ret = true;
+					}
+				}else{
+					if (distance == -1){
+						if (to_line == 0) effects.pawn_queen = true;
+						ret = true;
+					}else if (distance == -2 && from_line == 6){
+						effects.pawn_moved_2steps = true;
+						ret = true;
+					}
+				}
+			}else if (diagonal){
+				if (chs_is_black(from_cell)){
+					if (distance == 1){
+						if (chs_is_white(to_cell)){
+							ret = true;
+						}else if (other_player->en_passant.line == from_line && other_player->en_passant.col == to_col){
+							effects.clear_en_passant = true;
+							ret = true;
+						}
+					}
+				}else{
+					if (distance == -1){
+						if (chs_is_black(to_cell)){
+							ret = true;
+						}else if (other_player->en_passant.line == from_line && other_player->en_passant.col == to_col){
+							effects.clear_en_passant = true;
+							ret = true;
+						}
+					}
+				}
+			}
+		}else if (chs_is_rook(from_cell)){
+			if (horizontal || vertical){
+				if (from_line == 0 || from_line == 7){
+					if (from_col == 0){
+						effects.left_rook_moved = true;
+					}else if (from_col == 7){
+						effects.right_rook_moved = true;
+					}
+				}
+				ret = true;
+			}
+		}else if (chs_is_bishop(from_cell)){
+			if (diagonal) ret = true;
+	tlmp_warning ("bishop %d %d %d ret=%d",horizontal,vertical,diagonal,ret);
+		}else if (chs_is_queen(from_cell)){
+			if (horizontal || vertical || diagonal) ret = true;
+		}else if (chs_is_king(from_cell)){
+			if ((distance == 1 || distance == -1) && (horizontal || vertical || diagonal)){
+				effects.king_moved = true;
+				ret = true;
+			}else if (horizontal && !player->king_moved){
+				if (distance == -2  && !player->left_rook_moved
+					&& grid[from_line][1] == ' '
+					&& grid[from_line][2] == ' '
+					&& grid[from_line][3] == ' '){
+					effects.king_moved = true;
+					effects.left_rook_moved = true;
+					effects.left_castling = true;
+					ret = true;
+				}else if (distance == 2 && !player->right_rook_moved
+					&& grid[from_line][5] == ' '
+					&& grid[from_line][6] == ' '){
+					effects.king_moved = true;
+					effects.right_rook_moved = true;
+					effects.right_castling = true;
+					ret = true;
+				}
+			}
+		}else if (chs_is_knight(from_cell)){
+			// Compute all the possible moves (including one outside the board)
+			unsigned tb[][2]={
+				{from_line+2,from_col-1},
+				{from_line+2,from_col+1},
+				{from_line+1,from_col-2},
+				{from_line+1,from_col+2},
+				{from_line-2,from_col-1},
+				{from_line-2,from_col+1},
+				{from_line-1,from_col-2},
+				{from_line-1,from_col+2}
+				};
+			for (auto &t:tb){
+				if (t[0] == to_line && t[1] == to_col){
+					ret = true;
+					break;
+				}
+			}
+		}
+	}
+	if (ret){
+		if (other_player->has_en_passant()){
+			effects.reset_en_passant = true;
+		}
+	}else if (error.size() == 0){
+		error = MSG_R(E_IVLDMOVE);
+	}
+	return ret;
+}
+/*
+	Complete a move
+*/
+void CHESS::execmove (CHESS_PLAYER *player, CHESS_PLAYER *other_player, unsigned to_line, unsigned to_col, const CHESSMOVE_EFFECTS &effects)
+{
+	char &old_cell = grid[player->line][player->col];
+	char &new_cell = grid[to_line][to_col];
+	CHESS_UNDO undo;
+	undo.player1_playing = player1_playing;
+	undo.line = player->line;
+	undo.col = player->col;
+	undo.cell = old_cell;
+	undo.type = CHESS_UNDO_MOVE;
+	undos.push_back(undo);
+	undo.line = to_line;
+	undo.col = to_col;
+	undo.cell = new_cell;
+	undos.push_back(undo);
+	if (effects.pawn_queen){
+		new_cell = isupper(old_cell) ? 'Q' : 'q';
+	}else{
+		new_cell = old_cell;
+	}
+	old_cell = ' ';
+	if (effects.pawn_moved_2steps){
+		player->en_passant.line = to_line;
+		player->en_passant.col = to_col;
+	}
+	if (effects.reset_en_passant){
+		undo.line = other_player->en_passant.line;
+		undo.col = other_player->en_passant.col;
+		undo.type = CHESS_UNDO_EN_PASSANT;
+		undos.push_back(undo);
+	}
+	if (effects.king_moved){
+		if (!player->king_moved){
+			player->king_moved = true;
+			undo.type = CHESS_UNDO_KING_MOVED;
+			undos.push_back(undo);
+		}
+	}
+	if (effects.left_rook_moved){
+		if (!player->left_rook_moved){
+			player->left_rook_moved = true;
+			undo.type = CHESS_UNDO_LEFT_ROOK_MOVED;
+			undos.push_back(undo);
+		}
+	}
+	if (effects.right_rook_moved){
+		if (!player->right_rook_moved){
+			player->right_rook_moved = true;
+			undo.type = CHESS_UNDO_RIGHT_ROOK_MOVED;
+			undos.push_back(undo);
+		}
+	}
+	player1_playing = !player1_playing;
+	player->reset_sel();
+	other_player->reset_en_passant();
+}
 
+static void copy_player (const CHESS_PLAYER &player, CHESS_FILE_PLAYER &fplayer)
+{
+	fplayer.name = player.name;
+	fplayer.line = player.line;
+	fplayer.col  = player.col;
+	fplayer.king_moved = player.king_moved;
+	fplayer.left_rook_moved = player.left_rook_moved;
+	fplayer.right_rook_moved = player.right_rook_moved;
+	fplayer.en_passant_line = player.en_passant.line;
+	fplayer.en_passant_col = player.en_passant.col;
+}
+static void copy_player (const CHESS_FILE_PLAYER_receive &fplayer, CHESS_PLAYER &player)
+{
+	player.name = fplayer.name;
+	player.line = fplayer.line;
+	player.col  = fplayer.col;
+	player.king_moved = fplayer.king_moved;
+	player.left_rook_moved = fplayer.left_rook_moved;
+	player.right_rook_moved = fplayer.right_rook_moved;
+	player.en_passant.line = fplayer.en_passant_line;
+	player.en_passant.col = fplayer.en_passant_col;
+}
 void CHESS::save(DOC_WRITER &w, bool save_session_info)
 {
 	documentd_chess_header (&w,revision,player1_playing);
 	CHESS_FILE_PLAYER p1,p2;
-	p1.name = player1.name;
-	p1.line = player1.line;
-	p1.col  = player1.col;
-	p2.name = player2.name;
-	p2.line = player2.line;
-	p2.col  = player2.col;
+	copy_player (player1,p1);
+	copy_player (player2,p2);
 	documentd_chess_players(&w,p1,p2);
 	vector<unsigned> cells;
 	for (auto &g:grid) for (auto &gg:g) cells.push_back(gg);
@@ -35,6 +349,17 @@ void CHESS::save(DOC_WRITER &w, bool save_session_info)
 			documentd_chess_session (&w,s.first,s.second);
 		}
 	}
+	vector<CHESS_FILE_UNDO> uns;
+	for (auto &u:undos){
+		CHESS_FILE_UNDO un;
+		un.p1_playing = u.player1_playing;
+		un.line = u.line;
+		un.col = u.col;
+		un.cell = u.cell;
+		un.type = u.type;
+		uns.push_back(un);
+	}
+	documentd_chess_undo(&w,uns);
 }
 <mod>
 void CHESS::load(DOC_READER &r, string &msg)
@@ -46,6 +371,7 @@ void CHESS::load(DOC_READER &r, string &msg)
 	glocal player1;
 	glocal player2;
 	glocal sessions;
+	glocal undos;
 	resetgame();
 	sessions.clear();
 	<call documentd_chess>(&r);
@@ -54,12 +380,8 @@ void CHESS::load(DOC_READER &r, string &msg)
 		glocal.player1_playing = player1_playing;
 	</f>
 	<f players>
-		glocal.player1.name = player1.name;
-		glocal.player1.line = player1.line;
-		glocal.player1.col = player1.col;
-		glocal.player2.name = player2.name;
-		glocal.player2.line = player2.line;
-		glocal.player2.col = player2.col;
+		copy_player (player1,glocal.player1);
+		copy_player (player2,glocal.player2);
 	</f>
 	<f cells>
 		unsigned line = 0;
@@ -76,6 +398,17 @@ void CHESS::load(DOC_READER &r, string &msg)
 	<f session>
 		glocal.sessions[session] = reverse;
 	</f>
+	<f undo>
+		for (auto &u:undos){
+			CHESS_UNDO undo;
+			undo.player1_playing = u.p1_playing;
+			undo.line = u.line;
+			undo.col = u.col;
+			undo.cell = u.cell;
+			undo.type = u.type;
+			glocal.undos.push_back(undo);
+		}
+	</f>
 	<f invalid>
 		glocal.msg = "Invalid format for sudoku file";
 	</f>
@@ -87,6 +420,7 @@ void CHESS::resetgame()
 	player1_playing = true;
 	player1.reset();
 	player2.reset();
+	undos.clear();
 	for (auto &g:grid) for (auto &gg:g) gg=' ';
 	for (unsigned i=0; i<8; i++){
 		const char *lowerp = "rnbqkbnr";
@@ -189,6 +523,7 @@ void CHESS::exec (
 			lines += "<div style='flex:0 0 250px; overflow: hidden; margin-top:10px;'>\n";
 			if (!sp.mobile) lines += MSG_R(I_NEWGAME);
 			documentd_button (lines,0,MSG_R(I_RESTART),false);
+			documentd_button (lines,1,MSG_U(I_UNDO,"Undo"),false);
 			lines += "</div>\n";
 			print_player(lines,gameid,player1.name,0,"black",player1_playing,sp.mobile);
 			print_player(lines,gameid,player2.name,1,"red",!player1_playing,sp.mobile);
@@ -283,15 +618,16 @@ void CHESS::exec (
 			if (n == 3 && lo < 8 && co < 8 && is_any_of(button,1,2)){
 				if (reverse) lo = 8 -1 - lo;
 				CHESS_PLAYER *player = &player2;
+				CHESS_PLAYER *other_player = &player1;
 				if (player1_playing){
 					player = &player1;
+					other_player = &player2;
 				}
 tlmp_warning ("has_selected %d player1 %d isupper %d islower %d",player->has_selected(),player1_playing,isupper(grid[lo][co]),islower(grid[lo][co]));
 				char &new_cell = grid[lo][co];
 				if (player->has_selected()){
 					string sel_id = string_f("cs%u,%u",player->line,player->col);
 					string new_id = string_f("cs%u,%u",lo,co);
-					char &old_cell = grid[player->line][player->col];
 					if (player->line == lo && player->col == co){
 						// The player is unselecting the cell
 						js_find_loop_set (notify_var.val,"grid","circle",new_id,"style.fill","none","style.stroke","none");
@@ -299,27 +635,78 @@ tlmp_warning ("has_selected %d player1 %d isupper %d islower %d",player->has_sel
 						setmodified(username);
 					}else{
 						// The player is doing a move
-						bool move_ok = true;
-						if (new_cell == ' '){
-						}else if (isupper(new_cell) == isupper(old_cell)){
-							error = MSG_U(E_CANTTAKEYOURPIECE,"Can't move on your piece");
-							move_ok = false;
-						}	
+						CHESSMOVE_EFFECTS effects;
+						bool move_ok = checkmove (player,lo,co,other_player,effects,error);
 						if (move_ok){
-							new_cell = old_cell;
-							old_cell = ' ';
+							if (effects.clear_en_passant){
+								CHESS_UNDO undo;
+								undo.player1_playing = player1_playing;
+								undo.line = other_player->en_passant.line;
+								undo.col = other_player->en_passant.col;
+								undo.cell = grid[undo.line][undo.col];
+								undo.type = CHESS_UNDO_MOVE;
+								undos.push_back(undo);
+								string id = string_f("c%u,%u",other_player->en_passant.line,other_player->en_passant.col);
+								js_find_loop_set (notify_var.val,"grid","text",id,"innerHTML"," ");
+								grid[undo.line][undo.col] = ' ';
+							}
+							if (effects.left_castling){
+								unsigned from_line = player->line;
+								char rook = grid[from_line][0];
+								CHESS_UNDO undo;
+								undo.player1_playing = player1_playing;
+								undo.line = from_line;
+								undo.col = 0;
+								undo.cell = rook;
+								undo.type = CHESS_UNDO_MOVE;
+								undos.push_back(undo);
+								undo.col = 3;
+								undo.cell = ' ';
+								undos.push_back(undo);
+								string id = string_f("c%u,%u",from_line,0);
+								js_find_loop_set (notify_var.val,"grid","text",id,"innerHTML"," "
+									,"style.stroke","none","style.fill","none");
+								id = string_f("c%u,%u",from_line,3);
+								char str[2]={rook,'\0'};
+								js_find_loop_set (notify_var.val,"grid","text",id,"innerHTML",str
+									,"style.stroke","black","style.fill",isupper(rook) ? "white" : "black");
+								grid[from_line][0] = ' ';
+								grid[from_line][3] = rook;
+							}
+							if (effects.right_castling){
+								unsigned from_line = player->line;
+								char rook = grid[from_line][7];
+								CHESS_UNDO undo;
+								undo.player1_playing = player1_playing;
+								undo.line = from_line;
+								undo.col = 7;
+								undo.cell = rook;
+								undo.type = CHESS_UNDO_MOVE;
+								undos.push_back(undo);
+								undo.col = 5;
+								undo.cell = ' ';
+								undos.push_back(undo);
+								string id = string_f("c%u,%u",from_line,7);
+								js_find_loop_set (notify_var.val,"grid","text",id,"innerHTML"," "
+									,"style.stroke","none","style.fill","none");
+								id = string_f("c%u,%u",from_line,5);
+								char str[2]={rook,'\0'};
+								js_find_loop_set (notify_var.val,"grid","text",id,"innerHTML",str
+									,"style.stroke","black","style.fill",isupper(rook) ? "white" : "black");
+								grid[from_line][7] = ' ';
+								grid[from_line][5] = rook;
+							}
 							string old_text_id = string_f("c%u,%u",player->line,player->col);
+							execmove (player,other_player,lo,co,effects);
+							setmodified(username);
 							js_find_loop_set (notify_var.val,"grid","text",old_text_id,"innerHTML"," ");
 							string new_text_id = string_f("c%u,%u",lo,co);
 							char str[2]={new_cell,'\0'};
 							js_find_loop_set (notify_var.val,"grid","text",new_text_id,"innerHTML",str
 								,"style.stroke","black","style.fill",isupper(new_cell) ? "white" : "black");
 							js_find_loop_set (notify_var.val,"grid","circle",sel_id,"style.fill","none","style.stroke","none");
-							player1_playing = !player1_playing;
-							player->reset();
 							js_find_set(notify_var.val,"player0","style.backgroundColor",player1_playing ? "lightblue" : "white");
 							js_find_set(notify_var.val,"player1","style.backgroundColor",!player1_playing ? "lightblue" : "white");
-							setmodified(username);
 						}
 					}
 				}else if (new_cell == ' '){
@@ -333,14 +720,14 @@ tlmp_warning ("has_selected %d player1 %d isupper %d islower %d",player->has_sel
 					string id = string_f("cs%u,%u",lo,co);
 					js_find_loop_set (notify_var.val,"grid","circle",id,"style.fill",color,"style.stroke",color);
 				}else{
-					error = MSG_U(E_CANTSELECT,"You can't select one of your pieces");
+					error = MSG_U(E_CANTSELECT,"You can't select an opponent piece");
 				}
 			}else{
 				tlmp_error ("checkers, invalid place command: %s",val);
 			}
 		}else if (strcmp(var,"newgame")==0){
 			int uval = atoi(val);
-			if (is_any_of(uval,0,1)){
+			if (uval == 0){
 				resetgame();
 				js_find_loop_start (notify_var.val,"grid","text");
 				unsigned item = 0;
@@ -367,6 +754,66 @@ tlmp_warning ("has_selected %d player1 %d isupper %d islower %d",player->has_sel
 				js_find_set(notify_var.val,"player1","style.backgroundColor","white");
 				// tlmp_warning ("val.size=%lu",notify_var.val.size());
 				documentd_forcerefresh(res);
+			}else if (uval == 1){
+				// Not really a new game, but an undo
+				if (undos.size() > 0){
+					size_t last = undos.size() -1;
+					bool last_playing = undos[last].player1_playing;
+					if (player1.has_selected()){
+						string sel_id = string_f("cs%u,%u",player1.line,player1.col);
+						js_find_loop_set (notify_var.val,"grid","circle",sel_id,"style.fill","none","style.stroke","none");
+						player1.reset_sel();
+					}else if (player2.has_selected()){
+						string sel_id = string_f("cs%u,%u",player2.line,player2.col);
+						js_find_loop_set (notify_var.val,"grid","circle",sel_id,"style.fill","none","style.stroke","none");
+						player2.reset_sel();
+					}
+					while (undos.size() > 0){
+						last = undos.size() -1;
+						CHESS_UNDO &u = undos[last];
+						if (u.player1_playing != last_playing){
+							break;
+						}else{
+							CHESS_PLAYER *player = &player1;
+							CHESS_PLAYER *other_player = &player2;
+							if (!last_playing){
+								player = &player2;
+								other_player = &player1;
+							}
+							if (u.type == CHESS_UNDO_MOVE){
+								const char *stroke_color = "none";
+								const char *fill_color = "none";
+								if (isupper(u.cell)){
+									stroke_color = "black";
+									fill_color = "white";
+								}else if (islower(u.cell)){
+									stroke_color = "black";
+									fill_color = "black";
+								}
+								string text_id = string_f("c%u,%u",u.line,u.col);
+								char str[2]={u.cell,'\0'};
+								js_find_loop_set (notify_var.val,"grid","text",text_id,"innerHTML",str
+									,"style.stroke",stroke_color,"style.fill",fill_color);
+								grid[u.line][u.col] = u.cell;	
+							}else if (u.type == CHESS_UNDO_KING_MOVED){
+								player->king_moved = false;
+							}else if (u.type == CHESS_UNDO_LEFT_ROOK_MOVED){
+								player->left_rook_moved = false;
+							}else if (u.type == CHESS_UNDO_RIGHT_ROOK_MOVED){
+								player->right_rook_moved = false;
+							}else if (u.type >= CHESS_UNDO_EN_PASSANT){
+								other_player->en_passant.line = u.line;
+								other_player->en_passant.col = u.col;
+							}
+							undos.erase(undos.begin()+last);
+						}
+					}
+					player1_playing = !player1_playing;
+					js_find_set(notify_var.val,"player0","style.backgroundColor",player1_playing ? "lightblue" : "white");
+					js_find_set(notify_var.val,"player1","style.backgroundColor",!player1_playing ? "lightblue" : "white");
+				}else{
+					error = MSG_U(E_NOUNDO,"No step to undo");
+				}
 			}else{
 				tlmp_error ("checkers newgame=%d",uval);
 			}
@@ -378,6 +825,83 @@ tlmp_warning ("has_selected %d player1 %d isupper %d islower %d",player->has_sel
 			player->name = username;
 			js_find_set(notify_var.val,"player0","innerHTML",player1.name.c_str());
 			js_find_set(notify_var.val,"player1","innerHTML",player2.name.c_str());
+		}else if (strcmp(var,"loadline")==0){
+			// For automated tests purpose
+			// val=line:line_content
+			unsigned line = atoi(val);
+			if (line < 8){
+				const char *pt = strchr(val,':');
+				if (pt != nullptr){
+					pt++;
+					unsigned col = 0;
+					while (*pt != '\0' && col < 8){
+						char cell = *pt++;
+						if (cell == '_') cell = ' ';
+						grid[line][col] = cell;
+						col++;
+					}
+				}
+			}
+		}else if (strcmp(var,"clear")==0){
+			for (auto &g:grid) for (auto &gg:g) gg=' ';
+		}else if (strcmp(var,"checkmove")==0){
+			// For automated tests purpose
+			// It is permisive. It will find the who is playing by lookup at the from_line,from_col cell.
+			// This helps create test sequences.
+			unsigned from_line,from_col,to_line,to_col;
+			int do_it;
+			int n = sscanf(val,"%u,%u,%u,%u,%d",&from_line,&from_col,&to_line,&to_col,&do_it);
+			if (n == 5 && from_line < 8 && from_col < 8 && to_line < 8 && to_col < 8 && is_any_of(do_it,0,1)){
+				CHESSMOVE_EFFECTS eff;
+				char cell = grid[from_line][from_col];
+				if (cell == ' '){
+				}else{
+					CHESS_PLAYER *player = &player1;
+					CHESS_PLAYER *other_player = &player2;
+					player1_playing = true;
+					if (islower(cell)){
+						player = &player2;
+						other_player = &player1;
+						player1_playing = false;
+					}
+					player->line = from_line;
+					player->col = from_col;
+					bool move_ok = checkmove (player,to_line,to_col,other_player,eff,error);
+					VARVAL var;
+					var.var = "move_ok";
+					var.val = string_f("%d",move_ok);
+					res.emplace_back(var);
+					var.var = "effects";
+					var.val = eff.dump();
+					res.emplace_back(var);
+					if (do_it) execmove (player,other_player,to_line,to_col,eff);
+					var.var = "player1";
+					var.val = player1.dump();
+					res.emplace_back(var);
+					var.var = "player2";
+					var.val = player2.dump();
+					res.emplace_back(var);
+					player->reset_sel();
+				}
+			}
+		}else if (strcmp(var,"dump")==0){
+			VARVAL var;
+			var.var = "grid";
+			unsigned line = 0;
+			var.val = '\n';
+			for (auto &g:grid){
+				var.val += string_f("%u:",line);
+				for (auto gg:g) var.val += gg;
+				var.val += '\n';
+				line++;
+			}
+			res.emplace_back(var);
+			var.var = "player1";
+			var.val = player1.dump();
+			res.emplace_back(var);
+			var.var = "player2";
+			var.val = player2.dump();
+			res.emplace_back(var);
 		}
 	}else{
 		error = MSG_R(E_READONLY);

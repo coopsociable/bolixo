@@ -266,21 +266,56 @@ struct CHESS_PLAYER{
 	unsigned col=11;
 	unsigned line=11;
 	std::string name;
+	bool king_moved = false;
+	bool left_rook_moved = false;
+	bool right_rook_moved = false;
+	struct{
+		unsigned line=10;
+		unsigned col=10;
+	}en_passant;
 	void reset(){
 		col = line = 11;
+		king_moved = left_rook_moved = right_rook_moved = false;
+		reset_en_passant();
+	}
+	void reset_sel(){
+		col = line = 11;
+	}
+	void reset_en_passant(){
+		en_passant.line = en_passant.col = 10;
+	}
+	bool has_en_passant() const {
+		return en_passant.line != 10;
 	}
 	bool has_selected(){	// Has the player select the piece he wants to move
 		return col < 8 && line < 8;
 	}
+	std::string dump() const;
 };
 
+class CHESSMOVE_EFFECTS;
+
+enum CHESS_UNDO_TYPE {
+	CHESS_UNDO_MOVE, CHESS_UNDO_KING_MOVED, CHESS_UNDO_LEFT_ROOK_MOVED, CHESS_UNDO_RIGHT_ROOK_MOVED,
+	CHESS_UNDO_EN_PASSANT
+};
+struct CHESS_UNDO{
+	bool player1_playing = false;
+	unsigned line=10;
+	unsigned col=10;
+	char cell=' ';
+	CHESS_UNDO_TYPE type;
+};
 class CHESS: public GAME{
 	char grid[8][8];
 	CHESS_PLAYER player1,player2;
 	bool player1_playing = true;
 	std::string message;
+	std::vector<CHESS_UNDO> undos;
 	std::map<std::string,bool> sessions; // Display mode (reverse) per session
 	void update_msg (bool to_all, PARAM_STRING msg, const char *color, std::vector<VARVAL> &res);
+	bool checkmove (CHESS_PLAYER *player, unsigned to_line, unsigned to_col, CHESS_PLAYER *other_player, CHESSMOVE_EFFECTS &, std::string &error);
+	void execmove (CHESS_PLAYER *player, CHESS_PLAYER *other_player, unsigned to_line, unsigned to_col, const CHESSMOVE_EFFECTS &);
 public:
 	const char *getclass() const{
 		return "CHES";

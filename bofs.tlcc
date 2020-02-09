@@ -3844,6 +3844,7 @@ static int bofs_documents (CONTEXT &ctx, int argc, char *argv[])
 	glocal bool playstep = false;
 	glocal vector<string> steps;
 	glocal const char *docname = nullptr;
+	glocal bool noscripts = false;
 
 	glocal.ret = <call tlmpprogram>(argc,argv);
 	<f init>
@@ -3861,6 +3862,7 @@ static int bofs_documents (CONTEXT &ctx, int argc, char *argv[])
 		setarg ('p',"playstep",MSG_U(O_PLAYSTEP,"Send some commands to a document"),glocal.playstep,false);
 		setarg ('s',"step",MSG_U(O_STEP,"Command (command=value) to send to document"),glocal.steps,false);
 		setarg ('d',"docname",MSG_U(O_DOCNAME,"Document name"),glocal.docname,false);
+		setarg (' ',"noscripts",MSG_U(O_NOSCRIPTS,"Do not print output for notify,script and refresh"),glocal.noscripts,false);
 	</f>
 	<f main_noarg>
 		int ret = -1;
@@ -3892,6 +3894,7 @@ static int bofs_documents (CONTEXT &ctx, int argc, char *argv[])
 						bofs_error ("document",internal_error,MSG_U(E_PLAYSTEP,"Error while doing playstep msg=%s\n"),msg);
 					}else{
 						for (auto &r:res){
+							if (glocal.noscripts && is_any_of(r.var,"notify","script","refresh")) continue;
 							printf ("r=var=%s r.val=%s\n",r.var,r.val);
 						}
 					}
