@@ -114,10 +114,7 @@ void TICTACTO::testwin(vector<VARVAL> &res)
 		}
 	}
 	if (won){
-		VARVAL v;
-		v.var = "result";
-		v.val = MSG_U(I_WON,"Congratulation! You just won");
-		res.push_back(v);
+		update_msg (true,MSG_U(I_WON,"Congratulation! You just won"),"blue",res);
 	}
 }
 void TICTACTO::draw_x(string &lines, unsigned x, unsigned y, unsigned len)
@@ -141,6 +138,17 @@ void TICTACTO::draw_o(string &lines, unsigned x, unsigned y, unsigned len)
 	lines += string_f("<circle stroke='black' stroke-width='2' fill='none' cx='%u' cy='%u' r='%u'/>\n"
 		,x+len/2,y+len/2,len/2);
 }
+void TICTACTO::update_msg(
+	bool to_all,	// The message will be shown to all player or not
+	PARAM_STRING msg,
+	const char *color,
+	vector<VARVAL> &res)
+{
+	VARVAL mvar;
+	mvar.var = to_all ? VAR_NOTIFY : VAR_SCRIPT;
+	js_find_set (mvar.val,"msg","style.color",color,"innerHTML",documentd_escape(msg).c_str());
+	res.emplace_back(mvar);
+}
 void TICTACTO::exec (
 	const char *var,
 	const char *val,
@@ -150,6 +158,8 @@ void TICTACTO::exec (
 	const DOC_UI_SPECS_receive &sp,
 	vector<VARVAL> &res)
 {
+	string error;
+	VARVAL notify_var;
 	setactivity();
 	if (strcmp(var,"print")==0){
 		string lines;
@@ -169,13 +179,11 @@ void TICTACTO::exec (
 		lines += "}\n";
 		lines += "</script>\n";
 		
-		lines += "<p>\n";
-		lines += "<form>\n";
+		lines += string_f("<div id=tab_form style='margin-top:10px; margin-bottom:10px;'>\n");
 		lines += MSG_R(I_NEWGAME);
 		documentd_button (lines,0,MSG_U(I_RESTART,"Restart"),false);
-		lines += "</form>\n";
-		lines += "<p>";
-		lines += "<div>\n";
+		lines += "</div>\n";
+		lines += "<div class=webtable id=doc_tictacto>\n";
 		lines += "<svg width='50px' height='200px' viewbox='0 0 50 200'>\n";
 		draw_x (lines,0,0,50);
 		draw_o (lines,0,100,50);
@@ -183,8 +191,7 @@ void TICTACTO::exec (
 			,x_is_player ? 0 : 100);
 		lines += "</svg>\n";
 		lines += "&nbsp;&nbsp;&nbsp;";
-		lines += "<a href='#' onclick=gameplace(event)>\n";
-		lines += string_f("<svg id='gametictgrid' width='%upx' height='%upx' viewbox='0 0 %u %u'>\n",grid_width,grid_height,grid_width,grid_height);
+		lines += string_f("<svg id='gametictgrid' onclick=gameplace(event) width='%upx' height='%upx' viewbox='0 0 %u %u'>\n",grid_width,grid_height,grid_width,grid_height);
 		// Draw the board
 		for (unsigned i=1; i<3; i++){
 			lines += string_f("<path stroke='black' stroke-width='2' fill='black' d='M%u,1 L%u %u'/>\n"
@@ -205,7 +212,10 @@ void TICTACTO::exec (
 			}
 		}
 		lines += "</svg>\n";
-		lines += "</a>\n";
+		lines += "</div>\n";
+		lines += "<div id=tab_form>\n";
+		lines += string_f("<div id=msg-%s style=color:white>XXXXXXXX</div>\n",gameid.c_str());
+		lines += "</div>\n";
 		VARVAL v;
 		v.var = VAR_CONTENT;
 		v.val = lines;
@@ -245,7 +255,13 @@ void TICTACTO::exec (
 		}
 		documentd_forcerefresh(res);
 	}else{
-		documentd_error (res,MSG_R(E_READONLY));
+		error = MSG_R(E_READONLY);
+	}
+	if (notify_var.val.size() > 0) res.emplace_back(notify_var);
+	if (error.size() > 0){
+		update_msg(false,error,"red",res);
+	}else{
+		update_msg(false,"","white",res);
 	}
 }
 

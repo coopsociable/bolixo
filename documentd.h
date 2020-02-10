@@ -150,6 +150,7 @@ public:
 class TICTACTO: public GAME{
 	bool x_is_player;
 	unsigned char grid[3][3];
+	void update_msg (bool to_all, PARAM_STRING msg, const char *color, std::vector<VARVAL> &res);
 public:
 	void save(DOC_WRITER &w, bool);
 	void load(DOC_READER &r, std::string &msg);
@@ -295,6 +296,15 @@ struct CHESS_PLAYER{
 
 class CHESSMOVE_EFFECTS;
 
+struct CHESS_COOR{
+	unsigned line;
+	unsigned col;
+	CHESS_COOR(unsigned _line, unsigned _col){
+		line = _line;
+		col = _col;
+	}
+};
+
 enum CHESS_UNDO_TYPE {
 	CHESS_UNDO_MOVE, CHESS_UNDO_KING_MOVED, CHESS_UNDO_LEFT_ROOK_MOVED, CHESS_UNDO_RIGHT_ROOK_MOVED,
 	CHESS_UNDO_EN_PASSANT
@@ -312,10 +322,15 @@ class CHESS: public GAME{
 	bool player1_playing = true;
 	std::string message;
 	std::vector<CHESS_UNDO> undos;
+	std::vector<CHESS_COOR> marked_pieces;
 	std::map<std::string,bool> sessions; // Display mode (reverse) per session
 	void update_msg (bool to_all, PARAM_STRING msg, const char *color, std::vector<VARVAL> &res);
 	bool checkmove (CHESS_PLAYER *player, unsigned to_line, unsigned to_col, CHESS_PLAYER *other_player, CHESSMOVE_EFFECTS &, std::string &error);
 	void execmove (CHESS_PLAYER *player, CHESS_PLAYER *other_player, unsigned to_line, unsigned to_col, const CHESSMOVE_EFFECTS &);
+	bool check_expose(unsigned line, unsigned col, bool king_is_white, std::vector<CHESS_COOR> &pieces);
+	bool check_expose(bool king_is_white, std::vector<CHESS_COOR> &pieces);
+	void undoone(VARVAL &notify_var);
+	void show_marked_pieces (VARVAL &notify_var, const char *color);
 public:
 	const char *getclass() const{
 		return "CHES";
