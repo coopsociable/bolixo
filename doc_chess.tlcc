@@ -520,6 +520,36 @@ void CHESS::resetgame()
 		grid[7][i] = upperp[i];
 	}
 }
+static const char *cnv_cell_html (char cell)
+{
+	const char *utf8 = " ";
+	if (cell == 'K'){
+		utf8 = "&#9812;";
+	}else if (cell == 'Q'){
+		utf8 = "&#9813;";
+	}else if (cell == 'R'){
+		utf8 = "&#9814;";
+	}else if (cell == 'B'){
+		utf8 = "&#9815;";
+	}else if (cell == 'N'){
+		utf8 = "&#9816;";
+	}else if (cell == 'P'){
+		utf8 = "&#9817;";
+	}else if (cell == 'k'){
+		utf8 = "&#9818;";
+	}else if (cell == 'q'){
+		utf8 = "&#9819;";
+	}else if (cell == 'r'){
+		utf8 = "&#9820;";
+	}else if (cell == 'b'){
+		utf8 = "&#9821;";
+	}else if (cell == 'n'){
+		utf8 = "&#9822;";
+	}else if (cell == 'p'){
+		utf8 = "&#9823;";
+	}
+	return utf8;
+}
 /*
 	Undo one step
 */
@@ -560,8 +590,7 @@ void CHESS::undoone(VARVAL &notify_var)
 						fill_color = "black";
 					}
 					string text_id = string_f("c%u,%u",u.line,u.col);
-					char str[2]={u.cell,'\0'};
-					js_find_loop_set (notify_var.val,"grid","text",text_id,"innerHTML",str
+					js_find_loop_set (notify_var.val,"grid","text",text_id,"innerHTML",cnv_cell_html(u.cell)
 						,"style.stroke",stroke_color,"style.fill",fill_color);
 					grid[u.line][u.col] = u.cell;	
 				}else if (u.type == CHESS_UNDO_KING_MOVED){
@@ -608,9 +637,9 @@ static void print_player(string &lines, PARAM_STRING gameid, PARAM_STRING name, 
 		width = 250;
 		margin = 10;
 	}
-	lines += string_f("<div id=player%u-%s onmousedown=playersel(event,%u)"
-		" style='flex:0 0 %upx; overflow: hidden; background-color:%s; border: 2px solid black; margin-bottom:%upx; margin-top:%upx; margin-left:%upx; padding: 10px'>\n"
-		,playernum,gameid.ptr,playernum,width,color,margin,margin,margin);
+	lines += string_f("<div onmousedown=playersel(event,%u)"
+		" style='flex:0 0 %upx; overflow: hidden; border: 2px solid black; margin-bottom:%upx; margin-top:%upx; margin-left:%upx; padding: 0px'>\n"
+		,playernum,width,margin,margin,margin);
 	const char *player_color = "white";
 	const char *bgcolor = "black";
 	const char *msg = MSG_U(I_WHITE,"WHITE");
@@ -622,7 +651,9 @@ static void print_player(string &lines, PARAM_STRING gameid, PARAM_STRING name, 
 	lines += string_f("<div style='border: 1px solid black; background-color:%s;padding-left:5px;'>\n",bgcolor);
 	lines += string_f("<font style='color:%s; font-size:1.5em;'>%s</font>\n",player_color,msg);
 	lines += "</div>\n";
+	lines += string_f("<div id=player%u-%s style='background-color:%s; padding:5px;'>\n",playernum,gameid.ptr,color);
 	lines += string_f("%s\n",name.ptr);
+	lines += "</div>\n";
 	lines += "</div>\n";
 }
 void CHESS::show_marked_pieces (
@@ -723,11 +754,11 @@ void CHESS::exec (
 
 			lines += "<div style='flex:1 1 auto; overflow: hidden;' onmousedown='gameplace(event); return false;' style=color:blue;cursor:pointer>\n";
 			lines += string_f("<svg id='grid-%s' width='%upx' height='%upx' viewbox='0 0 %u %u'>\n",gameid.c_str(),grid_width,grid_height,grid_width,grid_height);
-			unsigned w8_2 = w8/2;
-			unsigned h8_2 = h8/2;
+			unsigned w8_4 = w8/4;
+			unsigned h8_3_4 = 3*h8/4;
 			unsigned circle_x = w8/4;
 			unsigned circle_y = h8*5/6;
-			unsigned circle_radius = w8/8;
+			unsigned circle_radius = w8/12;
 			unsigned marked_radius = w8/12;
 			lines += string_f("<path stroke='green' stroke-width='2' fill='white' d='M%u %u H %u V %u H %u Z'/>\n"
 				,0,0,grid_width-1,grid_height-1,0);
@@ -762,8 +793,10 @@ void CHESS::exec (
 							select_color = "blue";
 						}
 					}
-					lines += string_f("<text id='c%u,%u' X=%u Y=%u style='stroke:%s;fill:%s;font-size:%u;font-family: Times New Roman;'>%c</text>\n"
-						,line,col,w8_col+w8_2,h8_line+h8_2,stroke_color,fill_color,font_size,cell);
+					const char *utf8 = cnv_cell_html(cell);
+
+					lines += string_f("<text id='c%u,%u' X=%u Y=%u style='stroke:%s;fill:%s;font-size:%u;font-family: Times New Roman;'>%s</text>\n"
+						,line,col,w8_col+w8_4,h8_line+h8_3_4,stroke_color,fill_color,font_size,utf8);
 					lines += string_f("<circle id='cs%u,%u' cx=%u cy=%u r=%u stroke='%s' stroke-width=2 fill='%s'/>\n"
 						,line,col,w8_col+circle_x,h8_line+circle_y,circle_radius,select_color,select_color);
 					const char *marked_color = "none";
@@ -848,8 +881,7 @@ void CHESS::exec (
 								js_find_loop_set (notify_var.val,"grid","text",id,"innerHTML"," "
 									,"style.stroke","none","style.fill","none");
 								id = string_f("c%u,%u",from_line,3);
-								char str[2]={rook,'\0'};
-								js_find_loop_set (notify_var.val,"grid","text",id,"innerHTML",str
+								js_find_loop_set (notify_var.val,"grid","text",id,"innerHTML",cnv_cell_html(rook)
 									,"style.stroke","black","style.fill",isupper(rook) ? "white" : "black");
 								grid[from_line][0] = ' ';
 								grid[from_line][3] = rook;
@@ -871,8 +903,7 @@ void CHESS::exec (
 								js_find_loop_set (notify_var.val,"grid","text",id,"innerHTML"," "
 									,"style.stroke","none","style.fill","none");
 								id = string_f("c%u,%u",from_line,5);
-								char str[2]={rook,'\0'};
-								js_find_loop_set (notify_var.val,"grid","text",id,"innerHTML",str
+								js_find_loop_set (notify_var.val,"grid","text",id,"innerHTML",cnv_cell_html(rook)
 									,"style.stroke","black","style.fill",isupper(rook) ? "white" : "black");
 								grid[from_line][7] = ' ';
 								grid[from_line][5] = rook;
@@ -882,8 +913,7 @@ void CHESS::exec (
 							setmodified(username);
 							js_find_loop_set (notify_var.val,"grid","text",old_text_id,"innerHTML"," ");
 							string new_text_id = string_f("c%u,%u",lo,co);
-							char str[2]={new_cell,'\0'};
-							js_find_loop_set (notify_var.val,"grid","text",new_text_id,"innerHTML",str
+							js_find_loop_set (notify_var.val,"grid","text",new_text_id,"innerHTML",cnv_cell_html(new_cell)
 								,"style.stroke","black","style.fill",isupper(new_cell) ? "white" : "black");
 							js_find_loop_set (notify_var.val,"grid","circle",sel_id,"style.fill","none","style.stroke","none");
 							show_marked_pieces (notify_var,"none");
