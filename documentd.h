@@ -273,11 +273,16 @@ struct CHESS_PLAYER{
 	struct{
 		unsigned line=10;
 		unsigned col=10;
+	}lastmove;
+	struct{
+		unsigned line=10;
+		unsigned col=10;
 	}en_passant;
 	void reset(){
-		col = line = 11;
 		king_moved = left_rook_moved = right_rook_moved = false;
+		reset_sel();
 		reset_en_passant();
+		reset_lastmove();
 	}
 	void reset_sel(){
 		col = line = 11;
@@ -287,6 +292,12 @@ struct CHESS_PLAYER{
 	}
 	bool has_en_passant() const {
 		return en_passant.line != 10;
+	}
+	bool has_lastmove() const {
+		return lastmove.line != 10;
+	}
+	void reset_lastmove(){
+		lastmove.line = lastmove.col = 10;
 	}
 	bool has_selected(){	// Has the player select the piece he wants to move
 		return col < 8 && line < 8;
@@ -307,7 +318,7 @@ struct CHESS_COOR{
 
 enum CHESS_UNDO_TYPE {
 	CHESS_UNDO_MOVE, CHESS_UNDO_KING_MOVED, CHESS_UNDO_LEFT_ROOK_MOVED, CHESS_UNDO_RIGHT_ROOK_MOVED,
-	CHESS_UNDO_EN_PASSANT
+	CHESS_UNDO_EN_PASSANT,CHESS_UNDO_LASTMOVE
 };
 struct CHESS_UNDO{
 	bool player1_playing = false;
@@ -326,6 +337,7 @@ class CHESS: public GAME{
 	std::map<std::string,bool> sessions; // Display mode (reverse) per session
 	void update_msg (bool to_all, PARAM_STRING msg, const char *color, std::vector<VARVAL> &res);
 	bool checkmove (CHESS_PLAYER *player, unsigned to_line, unsigned to_col, CHESS_PLAYER *other_player, CHESSMOVE_EFFECTS &, std::string &error);
+	void save_lastmove (CHESS_PLAYER *player);
 	void execmove (CHESS_PLAYER *player, CHESS_PLAYER *other_player, unsigned to_line, unsigned to_col, const CHESSMOVE_EFFECTS &);
 	bool check_expose(unsigned line, unsigned col, bool king_is_white, std::vector<CHESS_COOR> &pieces);
 	bool check_expose(bool king_is_white, std::vector<CHESS_COOR> &pieces);

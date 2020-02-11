@@ -14,6 +14,7 @@
 using namespace std;
 
 #include "proto/documentd_chess.protoh"
+#define documentd_chess_players_NOTNEED
 #include "proto/documentd_chess.protoch"
 
 inline bool chs_is_king(char cell){
@@ -253,6 +254,22 @@ bool CHESS::checkmove(
 	return ret;
 }
 /*
+	Record the current lastmove in the undos
+	This has to be called before execmove() is called and before any other side effects are stored in the undo table.
+*/
+void CHESS::save_lastmove (CHESS_PLAYER *player)
+{
+	if (player->has_lastmove()){
+		CHESS_UNDO undo;
+		undo.player1_playing = player1_playing;
+		undo.line = player->lastmove.line;
+		undo.col = player->lastmove.col;
+		undo.cell = ' ';
+		undo.type = CHESS_UNDO_LASTMOVE;
+		undos.push_back(undo);
+	}
+}
+/*
 	Complete a move
 */
 void CHESS::execmove (CHESS_PLAYER *player, CHESS_PLAYER *other_player, unsigned to_line, unsigned to_col, const CHESSMOVE_EFFECTS &effects)
@@ -401,7 +418,7 @@ bool CHESS::check_expose(
 	}
 	return ret;
 }
-static void copy_player (const CHESS_PLAYER &player, CHESS_FILE_PLAYER &fplayer)
+static void copy_player (const CHESS_PLAYER &player, CHESS_FILE_PLAYER2 &fplayer)
 {
 	fplayer.name = player.name;
 	fplayer.line = player.line;
@@ -411,6 +428,8 @@ static void copy_player (const CHESS_PLAYER &player, CHESS_FILE_PLAYER &fplayer)
 	fplayer.right_rook_moved = player.right_rook_moved;
 	fplayer.en_passant_line = player.en_passant.line;
 	fplayer.en_passant_col = player.en_passant.col;
+	fplayer.lastmove_line = player.lastmove.line;
+	fplayer.lastmove_col = player.lastmove.col;
 }
 static void copy_player (const CHESS_FILE_PLAYER_receive &fplayer, CHESS_PLAYER &player)
 {
@@ -423,13 +442,26 @@ static void copy_player (const CHESS_FILE_PLAYER_receive &fplayer, CHESS_PLAYER 
 	player.en_passant.line = fplayer.en_passant_line;
 	player.en_passant.col = fplayer.en_passant_col;
 }
+static void copy_player (const CHESS_FILE_PLAYER2_receive &fplayer, CHESS_PLAYER &player)
+{
+	player.name = fplayer.name;
+	player.line = fplayer.line;
+	player.col  = fplayer.col;
+	player.king_moved = fplayer.king_moved;
+	player.left_rook_moved = fplayer.left_rook_moved;
+	player.right_rook_moved = fplayer.right_rook_moved;
+	player.en_passant.line = fplayer.en_passant_line;
+	player.en_passant.col = fplayer.en_passant_col;
+	player.lastmove.line = fplayer.lastmove_line;
+	player.lastmove.col = fplayer.lastmove_col;
+}
 void CHESS::save(DOC_WRITER &w, bool save_session_info)
 {
 	documentd_chess_header (&w,revision,player1_playing);
-	CHESS_FILE_PLAYER p1,p2;
+	CHESS_FILE_PLAYER2 p1,p2;
 	copy_player (player1,p1);
 	copy_player (player2,p2);
-	documentd_chess_players(&w,p1,p2);
+	documentd_chess_players2(&w,p1,p2);
 	vector<unsigned> cells;
 	for (auto &g:grid) for (auto &gg:g) cells.push_back(gg);
 	documentd_chess_cells(&w,cells);
@@ -469,6 +501,10 @@ void CHESS::load(DOC_READER &r, string &msg)
 		glocal.player1_playing = player1_playing;
 	</f>
 	<f players>
+		copy_player (player1,glocal.player1);
+		copy_player (player2,glocal.player2);
+	</f>
+	<f players2>
 		copy_player (player1,glocal.player1);
 		copy_player (player2,glocal.player2);
 	</f>
@@ -589,10 +625,21 @@ void CHESS::undoone(VARVAL &notify_var)
 						stroke_color = "black";
 						fill_color = "black";
 					}
+					if (player->has_lastmove()){
+						string last_id = string_f("cl%u,%u",player->lastmove.line,player->lastmove.col);
+						js_find_loop_set (notify_var.val,"grid","circle",last_id,"style.stroke","none");
+						player->reset_lastmove();
+					}
 					string text_id = string_f("c%u,%u",u.line,u.col);
 					js_find_loop_set (notify_var.val,"grid","text",text_id,"innerHTML",cnv_cell_html(u.cell)
 						,"style.stroke",stroke_color,"style.fill",fill_color);
 					grid[u.line][u.col] = u.cell;	
+				}else if (u.type == CHESS_UNDO_LASTMOVE){
+tlmp_warning ("undo lastmove %u %u",u.line,u.col);
+					player->lastmove.line = u.line;
+					player->lastmove.col = u.col;
+					string last_id = string_f("cl%u,%u",u.line,u.col);
+					js_find_loop_set (notify_var.val,"grid","circle",last_id,"style.stroke","black");
 				}else if (u.type == CHESS_UNDO_KING_MOVED){
 					player->king_moved = false;
 				}else if (u.type == CHESS_UNDO_LEFT_ROOK_MOVED){
@@ -674,7 +721,7 @@ void CHESS::exec (
 	const DOC_UI_SPECS_receive &sp,
 	vector<VARVAL> &res)
 {
-	string error;
+	string error,status;
 	setactivity();
 	VARVAL notify_var;
 	notify_var.var = VAR_NOTIFY;
@@ -722,13 +769,15 @@ void CHESS::exec (
 			lines += "</script>\n";
 			
 			lines += string_f("<div id=tab_form style='display:flex; flex-flow:row; margin-bottom:%upx;'>\n",sp.mobile ? 30 : 0);
-			lines += "<div style='flex:0 0 250px; overflow: hidden; margin-top:10px;'>\n";
+			lines += "<div style='flex:0 0 200px; overflow: hidden; margin-top:10px;'>\n";
 			if (!sp.mobile) lines += MSG_R(I_NEWGAME);
 			documentd_button (lines,0,MSG_R(I_RESTART),false);
-			documentd_button (lines,1,MSG_U(I_UNDO,"Undo"),false);
 			lines += "</div>\n";
 			print_player(lines,gameid,player1.name,0,player1_playing,sp.mobile);
 			print_player(lines,gameid,player2.name,1,!player1_playing,sp.mobile);
+			lines += "<div style='flex:0 0 150px; overflow: hidden; margin-top:10px; margin-left:10px;'>\n";
+			documentd_button (lines,1,MSG_U(I_UNDO,"Undo"),false);
+			lines += "</div>\n";
 			lines += "</div>\n";
 			lines += "<div class=webtable id=doc_chess style='display:flex; flex-flow:row;'>\n";
 			lines += string_f("<div style='flex:0 0 auto; overflow: hidden; margin-right:%u;'>\n",reverse_margin);
@@ -754,11 +803,14 @@ void CHESS::exec (
 
 			lines += "<div style='flex:1 1 auto; overflow: hidden;' onmousedown='gameplace(event); return false;' style=color:blue;cursor:pointer>\n";
 			lines += string_f("<svg id='grid-%s' width='%upx' height='%upx' viewbox='0 0 %u %u'>\n",gameid.c_str(),grid_width,grid_height,grid_width,grid_height);
+			unsigned w8_2 = w8/2;
+			unsigned h8_2 = h8/2;
 			unsigned w8_4 = w8/4;
 			unsigned h8_3_4 = 3*h8/4;
 			unsigned circle_x = w8/4;
 			unsigned circle_y = h8*5/6;
 			unsigned circle_radius = w8/12;
+			unsigned last_radius = w8_2-3;
 			unsigned marked_radius = w8/12;
 			lines += string_f("<path stroke='green' stroke-width='2' fill='white' d='M%u %u H %u V %u H %u Z'/>\n"
 				,0,0,grid_width-1,grid_height-1,0);
@@ -793,12 +845,23 @@ void CHESS::exec (
 							select_color = "blue";
 						}
 					}
+					// Circle for last move
+					const char *last_color = "none";
+					if (player1.lastmove.line == line && player1.lastmove.col == col){
+						last_color = "black";
+					}else if (player2.lastmove.line == line && player2.lastmove.col == col){
+						last_color = "black";
+					}
+					lines += string_f("<circle id='cl%u,%u' cx=%u cy=%u r=%u stroke='%s' stroke-width=2 fill='none'/>\n"
+						,line,col,w8_col+w8_2,h8_line+h8_2,last_radius,last_color);
+					// Piece
 					const char *utf8 = cnv_cell_html(cell);
-
 					lines += string_f("<text id='c%u,%u' X=%u Y=%u style='stroke:%s;fill:%s;font-size:%u;font-family: Times New Roman;'>%s</text>\n"
 						,line,col,w8_col+w8_4,h8_line+h8_3_4,stroke_color,fill_color,font_size,utf8);
+					// Circle to the left to show a selected piece
 					lines += string_f("<circle id='cs%u,%u' cx=%u cy=%u r=%u stroke='%s' stroke-width=2 fill='%s'/>\n"
 						,line,col,w8_col+circle_x,h8_line+circle_y,circle_radius,select_color,select_color);
+					// small circle to the right to show marked pieces
 					const char *marked_color = "none";
 					for (auto &m:marked_pieces){
 						if (m.line == line && m.col == col){
@@ -845,13 +908,14 @@ void CHESS::exec (
 					if (player->line == lo && player->col == co){
 						// The player is unselecting the cell
 						js_find_loop_set (notify_var.val,"grid","circle",new_id,"style.fill","none","style.stroke","none");
-						player->reset();
+						player->reset_sel();
 						setmodified(username);
 					}else{
 						// The player is doing a move
 						CHESSMOVE_EFFECTS effects;
 						bool move_ok = checkmove (player,lo,co,other_player,effects,error);
 						if (move_ok){
+							save_lastmove(player);
 							if (effects.clear_en_passant){
 								CHESS_UNDO undo;
 								undo.player1_playing = player1_playing;
@@ -917,15 +981,26 @@ void CHESS::exec (
 								,"style.stroke","black","style.fill",isupper(new_cell) ? "white" : "black");
 							js_find_loop_set (notify_var.val,"grid","circle",sel_id,"style.fill","none","style.stroke","none");
 							show_marked_pieces (notify_var,"none");
-							if (check_expose (!player1_playing,marked_pieces)){
-								error = MSG_U(I_KINGEXPOSED,"Your king becomes in check. Move illegal");
-								undoone(notify_var);
-							}else if (check_expose (player1_playing,marked_pieces)){
-								error = MSG_U(I_KINGCHECK,"Check");
+							if (check_expose (player1_playing,marked_pieces)){
+								status = MSG_U(I_KINGCHECK,"Check");
 							}
-							show_marked_pieces (notify_var,"red");
 							js_find_set(notify_var.val,"player0","style.backgroundColor",player1_playing ? "lightblue" : "white");
 							js_find_set(notify_var.val,"player1","style.backgroundColor",!player1_playing ? "lightblue" : "white");
+							if (player->has_lastmove()){
+								string last_id = string_f("cl%u,%u",player->lastmove.line,player->lastmove.col);
+								js_find_loop_set (notify_var.val,"grid","circle",last_id,"style.stroke","none");
+							}
+							player->lastmove.line = lo;
+							player->lastmove.col = co;
+							string last_id = string_f("cl%u,%u",lo,co);
+							js_find_loop_set (notify_var.val,"grid","circle",last_id,"style.stroke","black");
+							vector<CHESS_COOR> exposing_pieces;
+							if (check_expose (!player1_playing,exposing_pieces)){
+								marked_pieces = exposing_pieces;	
+								error = MSG_U(I_KINGEXPOSED,"Your king becomes in check. Illegal move.");
+								undoone(notify_var);
+							}
+							show_marked_pieces (notify_var,"red");
 						}
 					}
 				}else if (new_cell == ' '){
@@ -1080,6 +1155,8 @@ void CHESS::exec (
 	if (notify_var.val.size() > 0) res.emplace_back(notify_var);
 	if (error.size() > 0){
 		update_msg(false,error,"red",res);
+	}else if (status.size() > 0){
+		update_msg(true,status,"red",res);
 	}else{
 		update_msg(false,"","white",res);
 	}
