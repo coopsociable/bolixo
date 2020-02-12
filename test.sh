@@ -1587,6 +1587,8 @@ elif [ "$1" = "lxc0-webssl" ]; then # prod:
 			-e /var/www/html/sudoku-fr.jpg \
 			-e /var/www/html/checkers.jpg \
 			-e /var/www/html/checkers-fr.jpg \
+			-e /var/www/html/chess.jpg \
+			-e /var/www/html/chess-fr.jpg \
 			-i /usr/sbin/trli-init \
 			-l $LOG \
 			-n $w -p /usr/sbin/httpd >/var/lib/lxc/$w/$w-lxc0.sh

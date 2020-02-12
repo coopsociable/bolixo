@@ -137,6 +137,8 @@ make install
 /var/www/html/sudoku-fr.jpg
 /var/www/html/checkers.jpg
 /var/www/html/checkers-fr.jpg
+/var/www/html/chess.jpg
+/var/www/html/chess-fr.jpg
 /usr/lib/bolixo-test.sh
 /usr/sbin/bolixo-production
 /usr/sbin/bo
