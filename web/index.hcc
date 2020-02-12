@@ -564,24 +564,16 @@ static void index_check_fulltext(CONNECT_INFO &con_sess)
 }
 </mod>
 /*
-	Return the proper image to tell if this ID has a notification or not
+	Return the color (row style in fact) to tell if this ID has a notification or not
 */
-static const char *index_talk_notify_icon (const string &id)
+static const char *index_talk_notify_color (const string &id)
 {
+	const char *ret = "white";
 	string tmp = string("talks:")+id;
 	if (userinfo.notifies.count(tmp) > 0){
-		if (is_mobile){
-			return "<img width=60 src=/new.png>";
-		}else{
-			return "<img src=/new.png>";
-		}
-	}else{
-		if (is_mobile){
-			return "<img width=60 src=/seen.png>";
-		}else{
-			return "<img src=/seen.png>";
-		}
+		ret = "orange";
 	}
+	return ret;
 }
 void index_doc (DOCUMENT_POINTER &pt, DOC_ID &jump, bool index)
 {
@@ -1449,6 +1441,8 @@ extern "C" void webmain_real()
 		c.setrowstyle ("white+current","bgcolor=lightblue");
 		c.setrowstyle ("whitebold","bgcolor=white style='font-weight:bold;'");
 		c.setrowstyle ("whitebold+current","bgcolor=lightblue style='font-weight:bold;'");
+		c.setrowstyle ("orange","bgcolor=orange");
+		c.setrowstyle ("orange+current","bgcolor=lightblue");
 		//c.setrowstyle ("whitebold","bgcolor=white><b>\b</b>");
 		//c.setrowstyle ("whitebold+current","bgcolor=lightblue><b>\b</b>");
 		c.setrowstyle ("image","bgcolor=white align=center");
@@ -1543,7 +1537,7 @@ extern "C" void webmain_real()
 		Http.onreadystatechange = function(){
 			if (this.readyState == 4){
 				if (this.status == 200){
-					//console.log (Http.responseText);
+					// console.log (Http.responseText);
 					eval (Http.responseText);
 				}else if ((this.status == 502 || this.status == 504) && Date.now()-httpstarted > 30000){
 					console.log ("notification timeout, resend "+(Date.now()-httpstarted).toString());
@@ -2174,7 +2168,7 @@ extern "C" void webmain_real()
 			</f>
 			<f load>
 				adddrop_opt(MENU_NOTIFICATIONS,MSG_U(M_NOTIFICATIONS,"Notifications"));
-				sethead (MSG_U(H_TALKS,"\tOwner\tGroup"));
+				sethead (MSG_U(H_TALKS,"Owner\tGroup"));
 				<call bod_client_list_groups>(glocal.con,w_session.c_str(),"",false);
 				<f ok>
 					// Make sure the inbox and public inbox (anonymous) appears at the
@@ -2185,8 +2179,9 @@ extern "C" void webmain_real()
 					string add = string_f("webtab_add=1:%s:inbox~%s",username,MSG_U(I_SHORTINBOX,"Inbox"));
 					if (glocal.webtabs.selected(id)) glocal.webtable.setcurrent(rownum);
 					glocal.webtable.setclickopt (true,"",add);
-					glocal.webtable.setrow ("white",rownum,"%s\t\t%s"
-						,index_talk_notify_icon(id),MSG_R(I_SHORTINBOX));
+					glocal.webtable.setid(string_f("talktbl:%s:inbox",username));
+					glocal.webtable.setrow (index_talk_notify_color(id),rownum,"\t%s"
+						,MSG_R(I_SHORTINBOX));
 					rownum++;
 					for (auto &g:groups){
 						if (userinfo.name != g.owner
@@ -2195,8 +2190,9 @@ extern "C" void webmain_real()
 							add = string_f("webtab_add=1:%s:%s",g.owner,g.name);
 							if (glocal.webtabs.selected(id)) glocal.webtable.setcurrent(rownum);
 							glocal.webtable.setclickopt (true,"",add);
-							glocal.webtable.setrow ("white",rownum,"%s\t%s\t%s"
-								,index_talk_notify_icon(id),g.owner,g.name);
+							glocal.webtable.setid (string_f("talktbl:%s:%s",g.owner,g.name));
+							glocal.webtable.setrow (index_talk_notify_color(id),rownum,"%s\t%s"
+								,g.owner,g.name);
 							rownum++;
 						}
 					}
@@ -2204,8 +2200,9 @@ extern "C" void webmain_real()
 					add = string_f("webtab_add=1:%s:anonymous~%s",username,MSG_U(I_ANONINBOX,"Public-inbox"));
 					if (glocal.webtabs.selected(id)) glocal.webtable.setcurrent(rownum);
 					glocal.webtable.setclickopt (true,"",add);
-					glocal.webtable.setrow ("white",rownum,"%s\t\t%s"
-						,index_talk_notify_icon(id),MSG_R(I_ANONINBOX));
+					glocal.webtable.setid(string_f("talktbl:%s:anonymous",username));
+					glocal.webtable.setrow (index_talk_notify_color(id),rownum,"\t%s"
+						,MSG_R(I_ANONINBOX));
 				</f>
 				</call>
 			</f>
@@ -2465,6 +2462,8 @@ extern "C" void webmain_real()
 				tlmpweb_flushheader();
 				return;
 			}
+			// tlmp_warning ("step15 user=%s content=%s",userinfo.name.c_str(),content);
+			// Any event starting with profile: turn the 3 bars menu orange
 			if (is_start_any_of(content,NONEED,"profile:")){
 				htmlprintf ("var e = document.getElementById('rectdotmenu');\n");
 			<?
@@ -2473,6 +2472,7 @@ extern "C" void webmain_real()
 			}
 			?>
 			}
+			// Any event starting with talks or projects turn the main talks and projects tab orange
 			const char *pt;
 			if (is_start_any_of(content,pt,"talks","projects")){
 				string tmp(content,pt-content);
@@ -2484,6 +2484,7 @@ extern "C" void webmain_real()
 			}
 			?>
 			}
+			// Now we turn the subtab orange
 			htmlprintf ("var e = document.getElementById('tabrect%s');\n",content);
 			<?
 			if (e!=null){
@@ -2491,12 +2492,22 @@ extern "C" void webmain_real()
 				/- htmlprintf("tabcolor['tabrect%s'] = 'orange';\n",content);
 			}
 			?>
+			// And the X in the subtab
 			htmlprintf ("e = document.getElementById('tabsrect%s');\n",content);
 			<?
 			if (e!=null){
 				e.setAttribute('fill', 'orange');
 			}
 			?>
+			// Turn the table entry in the webtable orange
+			if (is_start_any_of(content,pt,"talks")){
+				htmlprintf ("var e = document.getElementById('talktbl%s');\n",pt);
+			<?
+			if (e!=null){
+				e.setAttribute('bgcolor', 'orange');
+			}
+			?>
+			}
 			if (script[0] != '\0') htmlout (script);
 			htmlprintf ("sequence=%u;\n",sequence);
 			/- callnotify();
