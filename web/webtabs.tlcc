@@ -159,18 +159,27 @@ void _F_webtabs::addtab (PARAM_STRING id, PARAM_STRING title_txt)
 		added_tab = type;
 		WEBTAB w(type,ptid,title,"");
 		w.selorder = ++maxsel;
-		tabs->push_back(w);
+		// New tabs are added in added_tabs and then moved to the main tabs table.
+		// because addtab may be called while the main tabs table is being processed.
+		// commit_addtab() is called to complete the work.
+		added_tabs.push_back(w);
 		selected_id = ptid;
-		// hack, do not sort the first locked tabs.
-		for (auto t=tabs->begin(); t!= tabs->end(); t++){
-			if (!t->locked){
-				sort (t,tabs->end());
-				break;
-			}
-		}
 	}
 	changed = true;
 }
+void _F_webtabs::commit_addtab()
+{
+	for (auto &t:added_tabs) tabs->push_back(t);
+	added_tabs.clear();
+	// hack, do not sort the first locked tabs.
+	for (auto t=tabs->begin(); t != tabs->end(); t++){
+		if (!t->locked){
+			sort (t,tabs->end());
+			break;
+		}
+	}
+}
+
 static unsigned webtab_href_c (PARAM_STRING id_suffix, const char *title, int tab, int nox, const char *color, const char *color_in, bool close)
 {
 	unsigned ret = 0;
@@ -254,6 +263,7 @@ static void webtabs(_F_webtabs &c,
 			}
 			c.addtab (ptid,title);
 		}
+		c.commit_addtab();
 	}
 	if (may_delete && w_webtab > 0 && (w_webtab & 1)==0){
 		// A click on the X to delete one tab
@@ -440,7 +450,7 @@ static void webtabs(_F_webtabs &c,
 		FORM_HIDDEN t(w_subtab);
 		const unsigned type = typeorder.front();
 		typeorder.pop_front();	
-		WEBTAB *ptt = NULL;
+		WEBTAB *ptt = nullptr;
 		{
 			int maxorder = -1;
 			unsigned no = 1;
@@ -454,7 +464,7 @@ static void webtabs(_F_webtabs &c,
 				no+=2;
 			}
 		}
-		if (ptt != NULL){
+		if (ptt != nullptr){
 			if (mobile_view && type != w_subtab-1) tlmpweb_visibletab(false);
 			lines[type].clear();
 			if (draw_ok) tlmpweb_pushgrab(lines[type]);
@@ -490,6 +500,7 @@ static void webtabs(_F_webtabs &c,
 				}else{
 					c.docmain(id,id,state,spec.width,spec.height);
 				}
+				// tlmp_warning ("webtabs type=%d id=%s draw_ok=%d redo=%d added_tab=%d",type,id,draw_ok,c.redo,c.added_tab);
 				if (!draw_ok) break;
 				if (!c.redo) break;
 				c.redo = false;
@@ -502,6 +513,7 @@ static void webtabs(_F_webtabs &c,
 			// We have to replay the tab
 			typeorder.push_back(c.added_tab);
 			c.added_tab = -1;
+			c.commit_addtab();
 		} 
 	}
 	if (draw_ok){

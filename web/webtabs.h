@@ -85,6 +85,7 @@ struct _F_webtabs {
 	string help_id[5];
 	string help_title[5];
 	vector<WEBTAB> *tabs;
+	vector<WEBTAB> added_tabs;
 	int maxsel;
 	bool changed;
 	int added_tab;
@@ -108,6 +109,7 @@ struct _F_webtabs {
 	void redotab ();		// Ask webtabs to redraw the current TAB
 	bool selected(PARAM_STRING id);
 	void addtab (PARAM_STRING id, PARAM_STRING txt);
+	void commit_addtab();
 	#define _F_webtabs_documents(x) void x documents()
 	virtual _F_webtabs_documents( );
 	#define _F_webtabs_docmain(x) void x docmain(const char *id, const char *formid, const char *state, unsigned tab_width, unsigned tab_height)
