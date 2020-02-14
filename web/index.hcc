@@ -263,6 +263,10 @@ struct SEENS{
 	SEENS(){}
 	SEENS(const string &_last, const string &_previous) : last(_last), previous(_previous){}
 	SEENS(const string &_last) : last(_last){}
+	void pushlast(){
+		previous = last;
+		last.clear();
+	}
 };
 static map<string,SEENS> firstseens;
 static string org("Bolixo.org");
@@ -977,10 +981,7 @@ static void index_show_shortmsg(
 		adddrop_opt (MENU_OPENINTAB,MSG_U(M_OPENINTAB,"Open in tab"));
 		index_msgs_style(*this);
 		auto &fseen = firstseens[glocal.table];
-		if (w_showhidden == 1){
-			fseen.previous = fseen.last;
-			fseen.last = "";
-		}
+		if (w_showhidden == 1) fseen.pushlast();
 		<call bod_client_list_talk>(*glocal.con,w_session.c_str(),"",glocal.groupname,glocal.groupowner
 			,fulltext,nbskip,nblines,fseen.last);
 		<f ok>
@@ -1011,17 +1012,18 @@ static void index_show_shortmsg(
 				}
 				string &previous_last = firstseens[glocal.table].previous;
 				for (auto &m:messages){
+					bool is_previous_last = previous_last == m.uuid;
 					string now = string(m.submit,10);
 					if (now != day){
 						day = now;
 						glocal.webtable.setclickopt (true,"","");
 						glocal.webtable.setdrop_visibles({MENU_PASTE});
-						glocal.webtable.setrow("hline",-1,"<div id=date0_7b>%s</div>\a\a\a",format_date(userinfo.dateformat,day).c_str());
+						glocal.webtable.setrow(is_previous_last ? "yline" : "hline",-1,"<div id=date0_7b>%s</div>\a\a\a",format_date(userinfo.dateformat,day).c_str());
 						glocal.webtable.resetdrop();
 						line_style=0;
-					}else if (previous_last == m.uuid){
+					}else if (is_previous_last){
 						glocal.webtable.setclickopt (false,"","");
-						glocal.webtable.setrow("hline",-1,"----->\a\a\a");
+						glocal.webtable.setrow("yline",-1,"<div style='height:5px;'></div>\a\a\a");
 					}
 					if (glocal.is_inbox){
 						if (userinfo.name == m.from){
@@ -1461,6 +1463,7 @@ extern "C" void webmain_real()
 		c.setrowstyle ("sep1","bgcolor=white valign=top");
 		c.setrowstyle ("sep1+current","bgcolor=lightblue valign=top");
 		c.setrowstyle ("hline","bgcolor=gray valign=top");
+		c.setrowstyle ("yline","bgcolor=#fdfd96 valign=top");
 		c.setrowstyle ("white","bgcolor=white");
 		c.setrowstyle ("white+current","bgcolor=lightblue");
 		c.setrowstyle ("whitebold","bgcolor=white style='font-weight:bold;'");
@@ -1726,10 +1729,7 @@ extern "C" void webmain_real()
 				index_msgs_style (*this);
 				glocal unsigned rownum = nbskip;
 				auto &fseen = firstseens[glocal.table];
-				if (w_showhidden == 1){
-					fseen.previous = fseen.last;
-					fseen.last = "";
-				}
+				if (w_showhidden == 1) fseen.pushlast();
 				<call bod_client_interest_check>(glocal.con,w_session.c_str(),"",fulltext,nbskip,nblines,fseen.last);
 				<f ok>
 					// success:b msg messages:U{MAINMSG}v
@@ -1753,6 +1753,7 @@ extern "C" void webmain_real()
 					}
 					string &previous_last = firstseens[glocal.table].previous;
 					for (auto &m:messages){
+						bool is_previous_last = previous_last == m.uuid;
 						string now = string (m.submit,10);
 						if (1){
 							if (m.inbox && userinfo.name != m.from){
@@ -1764,12 +1765,12 @@ extern "C" void webmain_real()
 						if (now != day){
 							day = now;
 							glocal.webtable.setclickopt (true,"","");
-							glocal.webtable.setrow("hline",-1,"<div id=date0_7b>%s</div>\a\a\a"
+							glocal.webtable.setrow(is_previous_last ? "yline" : "hline",-1,"<div id=date0_7b>%s</div>\a\a\a"
 								,format_date(userinfo.dateformat,day).c_str());
 							line_style=0;
-						}else if (previous_last == m.uuid){
+						}else if (is_previous_last){
 							glocal.webtable.setclickopt (false,"","");
-							glocal.webtable.setrow("hline",-1,"------>\a\a\a");
+							glocal.webtable.setrow("yline",-1,"<div style='height:5px;'></div>\a\a\a");
 						}
 						const char *style = line_styles[line_style];
 						line_style++;
