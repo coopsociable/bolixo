@@ -18,10 +18,12 @@ int main (int argc, char *argv[])
 {
 	glocal int ret = -1;
 	glocal bool show_geometry = false;
+	glocal bool show_sessionnum = false;
 	glocal.ret = <call tlmpprogram>(argc,argv);
 	<f init>
 		setproginfo ("show-notifies","0.0","...");
 		setarg ('g',"show-geometry","Present geometry information instead of notifications",glocal.show_geometry,false);
+		setarg ('s',"show-sessionnum","Present the session number",glocal.show_sessionnum,false);
 	</f>
 	<f main_noarg>
 		glocal string userid;
@@ -51,13 +53,17 @@ int main (int argc, char *argv[])
 						w = args[0] + ',' + args[2];
 					}
 				}
-				printf ("%s %s",glocal.session.c_str(),glocal.userid.c_str());
+				if (glocal.show_sessionnum) printf ("%s ",glocal.session.c_str());
+				printf ("%s",glocal.userid.c_str());
 				for (auto const &w:words){
 					printf (" %s",w.c_str());
 				}
 				printf ("\n");
 			}else if (is_start_any_of (pt,NONEED,"id=")){
-				if (glocal.show_geometry) printf ("%s %s %s\n",glocal.session.c_str(),glocal.userid.c_str(),pt);
+				if (glocal.show_geometry){
+					if (glocal.show_sessionnum) printf ("%s ",glocal.session.c_str());
+					printf ("%s %s\n",glocal.userid.c_str(),pt);
+				}
 			}
 			return 0;
 		</f>
