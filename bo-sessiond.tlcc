@@ -54,6 +54,7 @@ struct HANDLE_INFO: public ARRAY_OBJ{
 #define session_log_notify_NOTNEED
 #define session_log_notify_v1_NOTNEED
 #define session_log_notify_v2_NOTNEED
+#define session_log_notify_v3_NOTNEED
 #include "proto/session_log.protoch"
 #include "proto/session_log.protoh"
 
@@ -68,6 +69,7 @@ struct VARIABLE{
 	}
 };
 
+// Information associated with a session
 struct SESSION_INFO{
 	unsigned userid;
 	string userid_str;
@@ -111,12 +113,17 @@ struct SESSION_INFO{
 };
 
 static const char *VAR_NOTIFIES = "notifies";
-struct NOTIFIES{
+
+// Information associated with a user
+// Notification are globals to all sessions of a user.
+// Some variables are globals as well.
+struct USER_INFO{
 	unsigned sequence = 0;
 	vector<NOTIFY> notes;
+	vector<VAR> vars;
 };
 static void bo_sessiond_setnotify(
-	map<unsigned,NOTIFIES> &notifies,
+	map<unsigned,USER_INFO> &userinfos,
 	map<unsigned,vector<int>> &waiting,
 	const vector<unsigned> &userids,
 	const char *name,
@@ -124,7 +131,7 @@ static void bo_sessiond_setnotify(
 {
 	time_t now = time(NULL);
 	for (auto userid:userids){
-		auto &v = notifies[userid];
+		auto &v = userinfos[userid];
 		bool found = false;
 		unsigned sequence = ++v.sequence;
 		for (auto &n:v.notes){
@@ -153,6 +160,19 @@ static void bo_sessiond_setnotify(
 		}
 	}
 }
+static void bo_sessiond_dumpvars(const char *prefix, const vector<VAR> &vars, vector<string> &tb)
+{
+	for (auto &v:vars){
+		string tmp = string_f("\t%s %s:[",prefix,v.name.c_str());
+		bool geometry = v.name == "geometry";
+		for (auto &vv:v.vals){
+			if (geometry && vv.sname == "id") tmp += "\n\t";
+			tmp += string_f (" %s=%s",vv.sname.c_str(),vv.sval.c_str());
+		}
+		tmp += "]";
+		tb.push_back(move(tmp));
+	}
+}
 <mod>
 int main (int argc, char *argv[])
 {
@@ -167,6 +187,7 @@ int main (int argc, char *argv[])
 	glocal bool daemon = false;
 	glocal const char *pidfile = "/var/run/bo-sessiond.pid";
 	glocal vector<string> variables;
+	glocal vector<string> user_variables;
 	glocal unsigned maxhandles = 10000;
 
 	glocal.ret = <call tlmpprogram>(argc,argv,"tlmpsql");
@@ -176,7 +197,8 @@ int main (int argc, char *argv[])
 		setarg ('b',"bindaddr","Bind to this address (TCP)",glocal.bind,false);
 		setarg ('p',"tcpport","Listen for command on this TCP port",glocal.port,false);
 		setarg ('c',"control","Unix socket for bo-sessiond",glocal.control,false);
-		setarg (' ',"variable","Supported web variable",glocal.variables,false);
+		setarg (' ',"variable","Supported web session variables",glocal.variables,false);
+		setarg (' ',"user_variable","Supported web user variables",glocal.user_variables,false);
 		setgrouparg ("Misc.");
 		setarg (' ',"admin-secrets","File holding admin secrets for communication",glocal.admin_secretfile,false);
 		setarg (' ',"client-secrets","File holding client secrets for communication",glocal.client_secretfile,false);
@@ -207,9 +229,10 @@ int main (int argc, char *argv[])
 		}
 	</f>
 	<f main_noarg>
-		glocal set<string> vars;
+		glocal set<string> vars;	// Acceptable variable names
+		glocal set<string> user_vars;	// glocal variable names
 		glocal map<string,SESSION_INFO> sessions;
-		glocal map<unsigned,NOTIFIES> notifies;
+		glocal map<unsigned,USER_INFO> userinfos;
 		glocal map<unsigned,vector<int>> waiting;	// Connections waiting for events
 		glocal map<string,string> admin_secrets;
 		glocal map<string,string> client_secrets;
@@ -224,6 +247,10 @@ int main (int argc, char *argv[])
 		fdpass_readsecrets (glocal.client_secretfile,glocal.client_secrets);
 		int ret = -1;
 		for (auto s:glocal.variables) glocal.vars.insert(s);
+		for (auto s:glocal.user_variables){
+			glocal.vars.insert(s);
+			glocal.user_vars.insert(s);
+		}
 		{
 			FILE *fin = fopen ("/tmp/sessions.log","r");
 			if (fin != NULL){
@@ -240,12 +267,29 @@ int main (int argc, char *argv[])
 					SESSION_INFO sess(userid, userid_str, name, email, lang, admin, dateformat,timezone);
 					sess.stats.lastvisit = lastvisit;
 					sess.stats.nbacc = nbacc;
-					for (auto &v:vars) sess.vars.push_back(v);
+					for (auto &v:vars){
+						if (glocal.user_vars.count(v.name)!=0){
+							// Move per session variables to per user variables
+							auto &uvars = glocal.userinfos[userid].vars;
+							bool found = false;
+							for (auto &uv:uvars){
+								if (uv.name == v.name){
+									found = true;
+									break;
+								}
+							}
+							if (!found){
+								uvars.push_back(v);
+							}
+						}else{
+							sess.vars.push_back(v);
+						}
+					}
 					glocal.sessions[session] = move(sess);
 					
 				</f>
 				<f notify>
-					auto &v = glocal.notifies[userid];
+					auto &v = glocal.userinfos[userid];
 					// Old format, when must assign a sequence number
 					for (auto &n:notifies){
 						NOTIFY nn;
@@ -256,7 +300,7 @@ int main (int argc, char *argv[])
 					}
 				</f>
 				<f notify_v1>
-					auto &v = glocal.notifies[userid];
+					auto &v = glocal.userinfos[userid];
 					v.sequence = 0;
 					for (auto &n:notifies){
 						if (v.sequence < n.sequence) v.sequence = n.sequence;
@@ -264,7 +308,7 @@ int main (int argc, char *argv[])
 					}
 				</f>
 				<f notify_v2>
-					auto &v = glocal.notifies[userid];
+					auto &v = glocal.userinfos[userid];
 					v.sequence = sequence;
 					for (auto &n:notifies){
 						NOTIFY note;
@@ -275,9 +319,27 @@ int main (int argc, char *argv[])
 					}
 				</f>
 				<f notify_v3>
-					auto &v = glocal.notifies[userid];
+					auto &v = glocal.userinfos[userid];
 					v.sequence = sequence;
 					for (auto &n:notifies) v.notes.push_back(n);
+				</f>
+				<f notify_v4>
+					auto &user = glocal.userinfos[userid];
+					user.sequence = sequence;
+					for (auto &n:notifies) user.notes.push_back(n);
+					// A bug created dups in user variables. We keep the first here
+					for (auto &var:vars){
+						bool found = false;
+						for (auto &uv:user.vars){
+							if (uv.name == var.name){
+								found = true;
+								break;
+							}
+						}
+						if (!found){
+							user.vars.push_back(var);
+						}
+					}
 				</f>
 				<f invalid>
 					tlmp_error ("Invalid entry, reading sessions.log\n");
@@ -347,7 +409,7 @@ int main (int argc, char *argv[])
 					}
 					tb.push_back(string_f ("nbanon=%lu",nbanon));
 					tb.push_back(string_f ("nbadmin=%lu",nbadmin));
-					tb.push_back(string_f ("nbnotifies=%lu",glocal.notifies.size()));
+					tb.push_back(string_f ("nbuserinfos=%lu",glocal.userinfos.size()));
 					tb.push_back(string_f ("nbsesssions_created=%lu",glocal.nbsessions_created));
 					tb.push_back(string_f ("nbrequest_admin=%lu",glocal.nbrequest_admin));
 					tb.push_back(string_f ("nbrequest_client=%lu",glocal.nbrequest_client));
@@ -371,8 +433,8 @@ int main (int argc, char *argv[])
 								,s.second.dateformat
 								,s.second.stats.lastvisit,s.second.stats.nbacc,s.second.vars);
 						}
-						for (auto const &s:glocal.notifies){
-							session_log_notify_v3(fout,s.first,s.second.sequence,s.second.notes);
+						for (auto const &s:glocal.userinfos){
+							session_log_notify_v4(fout,s.first,s.second.sequence,s.second.notes,s.second.vars);
 						}
 						return 0;
 					</f>
@@ -414,24 +476,16 @@ int main (int argc, char *argv[])
 									,it.second.dateformat,it.second.timezone.c_str());
 							}
 							tb.push_back(move(tmp));
-							for (auto &v:it.second.vars){
-								tmp = string_f("\t%s:[",v.name.c_str());
-								bool geometry = v.name == "geometry";
-								for (auto &vv:v.vals){
-									if (geometry && vv.sname == "id") tmp += "\n\t";
-									tmp += string_f (" %s=%s",vv.sname.c_str(),vv.sval.c_str());
-								}
-								tmp += "]";
-								tb.push_back(move(tmp));
-							}
-							auto note = glocal.notifies.find(it.second.userid);
-							if (note != glocal.notifies.end()){
+							bo_sessiond_dumpvars("S",it.second.vars,tb);
+							auto note = glocal.userinfos.find(it.second.userid);
+							if (note != glocal.userinfos.end()){
 								tmp = string_f("\t%s:",VAR_NOTIFIES);
 								tmp += string_f(" %u",note->second.sequence);
 								for (auto &n:note->second.notes){
 									tmp += string_f(" %s,%u,%u",n.key.c_str(),n.when,n.sequence);
 								}
 								tb.push_back(move(tmp));
+								bo_sessiond_dumpvars("U",note->second.vars,tb);
 							}
 									
 						}
@@ -440,7 +494,7 @@ int main (int argc, char *argv[])
 					rep_listsessions(tb);
 				</f>
 				<f resetnotifies>
-					glocal.notifies.clear();
+					glocal.userinfos.clear();
 				</f>
 				<f stuffsessions>
 					time_t t = time(NULL);
@@ -525,8 +579,8 @@ int main (int argc, char *argv[])
 						it->second.stats.lastvisit = time(NULL);
 						it->second.stats.nbacc++;
 						vector<VAR> vars = it->second.vars;
-						auto note = glocal.notifies.find(it->second.userid);
-						if (note != glocal.notifies.end()){
+						auto note = glocal.userinfos.find(it->second.userid);
+						if (note != glocal.userinfos.end()){
 							VAR var;
 							var.name = VAR_NOTIFIES;
 							// We send the sequence number as a variable
@@ -542,6 +596,9 @@ int main (int argc, char *argv[])
 								var.vals.push_back(val);
 							}
 							vars.push_back(var);
+							for (auto &v:note->second.vars){
+								vars.push_back(v);
+							}
 						}
 						rep_getsessioninfovars(true,it->second.name,it->second.lang,it->second.dateformat,it->second.admin,it->second.userid,vars);
 					}else{
@@ -557,8 +614,12 @@ int main (int argc, char *argv[])
 					}else{
 						auto it = glocal.sessions.find(sessionid);
 						if (it != glocal.sessions.end()){
+							auto *vars = &it->second.vars;
+							if (glocal.user_vars.count(var.name)!=0){
+								vars = &glocal.userinfos[it->second.userid].vars;
+							}
 							bool found = false;
-							for (auto &v:it->second.vars){
+							for (auto &v:*vars){
 								if (v.name == var.name){
 									v.vals.clear();
 									for (auto &vv:var.vals){
@@ -574,7 +635,7 @@ int main (int argc, char *argv[])
 								}
 							}
 							if (!found){
-								it->second.vars.push_back(var);
+								vars->push_back(var);
 								msg = "Variable added";
 								success = true;
 							}
@@ -591,8 +652,8 @@ int main (int argc, char *argv[])
 					if (it == glocal.sessions.end()){
 						msg = "Invalid sessionid";
 					}else{
-						auto note = glocal.notifies.find(it->second.userid);
-						if (note != glocal.notifies.end()){
+						auto note = glocal.userinfos.find(it->second.userid);
+						if (note != glocal.userinfos.end()){
 							for (auto vit=note->second.notes.begin(); vit != note->second.notes.end(); vit++){
 								if (vit->key == name){
 									note->second.notes.erase(vit);
@@ -600,7 +661,7 @@ int main (int argc, char *argv[])
 								}
 							}
 							// We must keep the entry around to keep the sequence number.
-							//if (note->second.notes.size()==0) glocal.notifies.erase(note);
+							//if (note->second.notes.size()==0) glocal.userinfos.erase(note);
 						}
 						success = true;
 					}
@@ -614,11 +675,11 @@ int main (int argc, char *argv[])
 						rep_waitevent (false,"Anonymous session","","",0);
 					}else{
 						// We do not respond immediatly, only if there is an event
-						auto n = glocal.notifies.find(it->second.userid);
+						auto n = glocal.userinfos.find(it->second.userid);
 						unsigned next_sequence = (unsigned)-1;
 						string name;
 						string script;
-						if (n != glocal.notifies.end()){
+						if (n != glocal.userinfos.end()){
 							// We have to find the next event with the closest smallest
 							// sequence number, yet larger than the received sequence parameter.
 							for (auto &nn:n->second.notes){
@@ -648,7 +709,7 @@ int main (int argc, char *argv[])
 					}
 				</f>
 				<f setnotify>
-					bo_sessiond_setnotify(glocal.notifies,glocal.waiting,userids,name,script);
+					bo_sessiond_setnotify(glocal.userinfos,glocal.waiting,userids,name,script);
 				</f>
 				<f test>
 					rep_test (true);
@@ -706,7 +767,7 @@ int main (int argc, char *argv[])
 				</f>
 				<f setnotify>
 					// Assigned a notification to a list of userids
-					bo_sessiond_setnotify(glocal.notifies,glocal.waiting,userids,name,script);
+					bo_sessiond_setnotify(glocal.userinfos,glocal.waiting,userids,name,script);
 				</f>
 				<f deletesession>
 					auto it = glocal.sessions.find(sessionid);
