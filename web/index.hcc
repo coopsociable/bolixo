@@ -263,9 +263,9 @@ struct SEENS{
 	SEENS(){}
 	SEENS(const string &_last, const string &_previous) : last(_last), previous(_previous){}
 	SEENS(const string &_last) : last(_last){}
-	void pushlast(){
+	void pushlast(const char *newlast){
 		previous = last;
-		last.clear();
+		last = newlast;
 	}
 };
 static map<string,SEENS> firstseens;
@@ -659,7 +659,7 @@ static void web_update_firstseen(CONNECT_INFO &con_sess, const char *tablename, 
 {
 	auto &val = firstseens[tablename];
 	if (val.last != key){
-		val.last = key;
+		val.pushlast(key);
 		VAR var;
 		var.name = "firstseen";
 		for (auto &v:firstseens){
@@ -981,9 +981,10 @@ static void index_show_shortmsg(
 		adddrop_opt (MENU_OPENINTAB,MSG_U(M_OPENINTAB,"Open in tab"));
 		index_msgs_style(*this);
 		auto &fseen = firstseens[glocal.table];
-		if (w_showhidden == 1) fseen.pushlast();
+		const char *last = fseen.last.c_str();
+		if (w_showhidden == 1) last = "";
 		<call bod_client_list_talk>(*glocal.con,w_session.c_str(),"",glocal.groupname,glocal.groupowner
-			,fulltext,nbskip,nblines,fseen.last);
+			,fulltext,nbskip,nblines,last);
 		<f ok>
 			glocal.webtable.setdrop_default({MENU_PASTE,MENU_UNDELETE});
 			if (!success){
@@ -993,8 +994,8 @@ static void index_show_shortmsg(
 				glocal.webtable.settotal(total);
 				glocal.webtable.sethiddens(nbnew);
 				glocal.webtable.sethidden_title (tlmpweb_ismobile() ? MSG_U(I_NEWM,"new") : MSG_U(I_NEWMESSAGES,"new messages"));
-				if (glocal.rownum == 0 && nbnew == 0){
-					web_update_firstseen(*glocal.con_sess,glocal.table,messages.size()>0 ? messages[0].uuid : "");
+				if (glocal.rownum == 0 && nbnew == 0 && messages.size() > 0){
+					web_update_firstseen(*glocal.con_sess,glocal.table, messages[0].uuid);
 				}
 				string day;
 				static const char *line_styles[]={"sep","sep1"};
@@ -1010,7 +1011,7 @@ static void index_show_shortmsg(
 					video_size = 700;
 					icon_height=40;
 				}
-				string &previous_last = firstseens[glocal.table].previous;
+				auto &previous_last = firstseens[glocal.table].previous;
 				for (auto &m:messages){
 					bool is_previous_last = previous_last == m.uuid;
 					string now = string(m.submit,10);
@@ -1729,8 +1730,9 @@ extern "C" void webmain_real()
 				index_msgs_style (*this);
 				glocal unsigned rownum = nbskip;
 				auto &fseen = firstseens[glocal.table];
-				if (w_showhidden == 1) fseen.pushlast();
-				<call bod_client_interest_check>(glocal.con,w_session.c_str(),"",fulltext,nbskip,nblines,fseen.last);
+				const char *last = fseen.last.c_str();
+				if (w_showhidden == 1) last = "";
+				<call bod_client_interest_check>(glocal.con,w_session.c_str(),"",fulltext,nbskip,nblines,last);
 				<f ok>
 					// success:b msg messages:U{MAINMSG}v
 					static const char *func = "Popup";
@@ -1748,10 +1750,10 @@ extern "C" void webmain_real()
 					glocal.webtable.settotal(total);
 					glocal.webtable.sethiddens(nbnew);
 					glocal.webtable.sethidden_title(tlmpweb_ismobile() ? MSG_R(I_NEWM) : MSG_R(I_NEWMESSAGES));
-					if (glocal.rownum == 0 && nbnew == 0){
-						web_update_firstseen(glocal.con_sess,glocal.table,messages.size()>0 ? messages[0].uuid : "");
+					if (glocal.rownum == 0 && nbnew == 0 && messages.size() > 0){
+						web_update_firstseen(glocal.con_sess,glocal.table,messages[0].uuid);
 					}
-					string &previous_last = firstseens[glocal.table].previous;
+					auto &previous_last = firstseens[glocal.table].previous;
 					for (auto &m:messages){
 						bool is_previous_last = previous_last == m.uuid;
 						string now = string (m.submit,10);
