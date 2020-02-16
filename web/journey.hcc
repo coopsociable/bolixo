@@ -18,6 +18,7 @@
 	This file hold various test done to figure out how to use html and javascript
 */
 // To learn and experiment with HTML
+#include <unistd.h>
 #include <tlmplib.h>
 #include <tlmpweb.h>
 #include <tlmp/translat.h>
@@ -311,6 +312,161 @@ void form_space()
 	</call>
 	sub.h(60).bg("green").print();
 	/- End
+}
+</mod>
+static W_SSTRING w_file("file");
+static W_UNSIGNED w_delay("delay");
+
+
+static void fctanim()
+{
+	static const char *waitid = "waitpopup";
+	const unsigned width = 100;
+	const unsigned height = 40;
+	{
+		DIV a("popup","popup-id"); a.print();
+		DIV d("popup-content",waitid); d.print();
+		DIV dd; dd.dispflex().flowrow().print();
+		DIV left; left.flexfixe().margins(10,10).vmargins(5,0).print();
+		htmlprintf ("<svg width='%upx' height='%upx' viewbox='0 0 %u %u'>\n",width,height,width,height);
+		unsigned w1 = width/5;
+		unsigned w1_2 = w1/2;
+		unsigned h1 = height/2;
+		const unsigned ray = w1/4;
+		for (unsigned i=0; i<5; i++){
+			htmlprintf ("<circle id='wait%u' cx=%u cy=%u r=%u stroke='black' stroke-width=2 fill='%s'/>\n"
+				,i,i*w1+w1_2,h1,ray,i==0 ? "blue" : "white");
+		}
+		/- </svg>
+		left.end();
+		#if 0
+		DIV right; right.print();
+		htmlout (	
+			"<svg width=20 height=20>\n"
+			"<a href='#' onclick=waitunshow() onmouseover=changefill('svg1','#D0D0D0') onmouseout=changefill('svg1','#F1F1F1')>\n"
+			"<rect id=svg1 x=2 y=2 rx=2 ry=2 width=18 height=18 fill=#f1f1f1 />\n"
+			"<path stroke=black stroke-width=1 d='M7,7 l8,8 M7,15 l8,-8'/>\n"
+			"</a>\n"
+			"</svg>\n");
+		#endif
+	}
+	htmlprintf ("<script>\n"
+		"var waitcircle=0;\n"
+		"function waitanimate(){\n"
+		" var w=document.getElementById('wait'+waitcircle);\n"
+		" if (w != null){\n"
+		"  w.style.fill='white';\n"
+		" }\n"
+		" waitcircle++;\n"
+		" if(waitcircle==5) waitcircle=0;\n"
+		" w=document.getElementById('wait'+waitcircle);\n"
+		" if (w != null){\n"
+		"  w.style.fill='blue';\n"
+		" }\n"
+		" window.setTimeout(waitanimate,800);\n"
+		"}\n"
+		"function showanimate(){\n"
+		" var pop = document.getElementById('%s');\n"
+		" if (pop != null){\n",waitid);
+	htmlprintf (
+		"  pop.style.left = window.innerWidth/2-%u;\n"
+		"  pop.style.top = window.innerHeight/2-%u;\n",width/2,height/2);
+	htmlprintf (
+		"  pop.classList.toggle('show');\n"
+		"  waitanimate();\n"
+		" }\n"
+		"}\n"
+
+		"function waitunshow(){\n"
+		" var elm = document.getElementById('%s');\n"
+		" console.log ('elm='+elm);\n"
+		" elm.parentNode.removeChild(elm);\n"
+		"}\n"
+		"</script>\n",waitid);
+}
+
+
+/*
+	Add some animation when a form is submit after a delay	
+*/
+<mod>
+void journey_formanim()
+{
+	if (w_delay.getval() > 0) sleep (w_delay.getval());
+	glocal string error;
+	tlmpweb_body("white",NULL);
+	//tlmpweb_setscripts();
+	htmlout ("<style>\n"
+		".popup {\n"
+		"	display: inline-block;\n"
+		"}\n"
+		".popup-content {\n"
+		"	display: none;\n"
+		"	position: absolute;\n"
+		"	background-color: #f1f1f1;\n"
+		"	box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);\n"
+		"	z-index: 1;\n"
+		"}\n"
+
+		".show {display: block;}\n"
+		".hide {display: none;}\n"
+		".active { background-color: lightgrey;}\n"
+
+		"</style>\n"
+	);
+	DIV d; d.h(100).dispflex().flowcol().print();
+
+	<?
+	<script>
+	function showname () {
+		var name = document.getElementById('fileInput'); 
+		alert('Selected file: ' + name.files.item(0).name);
+		alert('Selected file: ' + name.files.item(0).size);
+		alert('Selected file: ' + name.files.item(0).type);
+	};
+	function getextra(){
+		window.setTimeout(showanimate,500);
+		return "";
+	}
+	</script>
+	?>
+	<call form>("test");
+	<f top>
+		/- <table bgcolor=pink>
+	</f>
+	<f bottom>
+		/- </table>
+	</f>
+	<f setup>
+		/- <tr><td>execution delay (seconds)<td>
+		field_string (w_delay,"");
+		/- <tr><td>Upload a file<td>
+		field_file (w_file);
+		/- <tr><td>Message<td>
+		htmlout (glocal.error);
+		/- <tr><td colspan=2>
+	</f>
+	<f validate>
+		bool ret = false;
+		if (strcmp(w_file.c_str(),"toto.txt")==0){
+			glocal.error = "toto.txt is not accepted";
+		}else if (strcmp(w_file.c_str(),"")!=0){
+			ret = true;
+		}else{
+			glocal.error = "You must specify a file";
+		}
+		return ret;
+	</f>
+	<f process>
+		if (strcmp(w_file.c_str(),"")!=0){
+			const char *tempname = tlmpweb_getfilename(w_file);
+			tlmp_warning ("upload file temp=%s",tempname);
+		}
+	</f>
+	</call>
+	fctanim();
+	/- End
+	/- <a href=/journey.hc>Retry</a>
 }
 </mod>
 /*
@@ -790,7 +946,6 @@ void webtable_drowdown()
 	</call>
 }
 </mod>
-static W_SSTRING w_file("file");
 <mod>
 void webtable_popup()
 {
@@ -1052,12 +1207,13 @@ extern "C" void webmain()
 	//newtags();
 	//form_space();
 	//scrollbar();
-	tabs();
+	//tabs();
 	//popup();
 	//webtable_dropdown();
 	//webtable_popup();
 	//journey_setscroll();
 	//journey_subtabs();
 	//journey_click();
+	journey_formanim();
 }
 
