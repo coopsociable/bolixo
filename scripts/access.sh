@@ -306,6 +306,26 @@ elif [ "$1" = "doc-chess" ] ; then # test: various test on the chess game
 elif [ "$1" = "doc-chess-dump" ] ; then # test: help debug chess game
 	DOCNAME=/projects/jacques-A/public/test.chess
 	./bofs documents --noscripts --playstep --docname $DOCNAME --step dump=0
+elif [ "$1" = "remote-member" ] ; then # test: create groups with remote members
+	USER=jacques-A
+	echo "#### Create group remote, add 1 local member and 2 remote members"
+	./bofs -u $USER groups --create-group --groupname remote
+	./bofs -u $USER groups --set-member --groupname remote --user jacques-B
+	./bofs -u $USER groups --set-member --groupname remote --user jacquesg@preprod.bolixo.org
+	./bofs -u $USER groups --set-member --groupname remote --user bolixodev@preprod.bolixo.org
+	./bofs -u $USER groups --print-groups --only_owner
+	echo "#### print-group on remote server"
+	ssh root@preprod.bolixo.org bofs groups --print-groups -O jacques-A@test1.bolixo.org --only_owner
+	echo "#### remove one remote user from group"
+	./bofs -u $USER groups --set-member --groupname remote --user jacquesg@preprod.bolixo.org --access -
+	ssh root@preprod.bolixo.org bofs groups --print-groups -O jacques-A@test1.bolixo.org --only_owner
+	echo "#### remove second remote user from group"
+	./bofs -u $USER groups --set-member --groupname remote --user bolixodev@preprod.bolixo.org --access -
+	ssh root@preprod.bolixo.org bofs groups --print-groups -O jacques-A@test1.bolixo.org --only_owner
+	./bofs -u $USER groups --print-groups --only_owner
+	echo "#### Delete group remote"
+	./bofs -u $USER groups --delete-group --groupname remote
+	./bofs -u $USER groups --print-groups --only_owner
 else
 	echo command
 fi
