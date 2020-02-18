@@ -3187,6 +3187,9 @@ int main (int argc, char *argv[])
 						rep_create_group (false,glocal.msg);
 					}
 				</f>
+				<f set_members>		// sessionid groupname members owner = success:b msg
+					rep_set_members(false,"not done");
+				</f>
 				<f set_list_desc>	// sessionid listname description owner = success:b msg
 					glocal string msg;
 					glocal const char *listname = listname;
@@ -3273,13 +3276,19 @@ int main (int argc, char *argv[])
 						<f onerow>
 							glocal unsigned groupid = atoi(row[0]);
 							// Is this group part of any list
-							<call sql_query>("select 1 from group_list_members where groupid=%u limit 1",glocal.groupid);
+							<call sql_query>("select 1 from group_list_members"
+								" join group_lists on group_list_members.group_list_id=group_lists.id"
+								" where groupid=%u and group_lists.name <> '#%s' limit 1",glocal.groupid,glocal.groupname);
 							<f onerow>
 								glocal.msg = "This group is a member of at least one list";
 							</f>
 							<f empty>
 								if (sql_action("delete from group_members where groupid=%u",glocal.groupid)==-1){
 									glocal.msg = "Internal error (Table group_members)";
+								}else if (sql_action("delete from group_list_members where groupid=%u",glocal.groupid)==-1){
+									glocal.msg = "Internal error (Table group_list_members)";
+								}else if (sql_action("delete from group_lists where ownerid=%u and name='#%s'",glocal.userid,glocal.groupname)==-1){
+									glocal.msg = "Internal error (Table group_lists)";
 								}else if (sql_action("delete from groups where ownerid=%u and name='%s'",glocal.userid,glocal.groupname)==-1){
 									glocal.msg = "Internal error (Table groups)";
 								}else{
