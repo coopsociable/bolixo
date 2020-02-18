@@ -3268,8 +3268,9 @@ int main (int argc, char *argv[])
 				</f>
 				<f delete_group>	// sessionid groupname owner = success:b msg
 					glocal string msg;
-					glocal const char *groupname = groupname;
-					glocal unsigned userid = bo_writed_get_group_owner (glocal.con, sessionid, owner, glocal.msg);
+					glocal groupname;
+					glocal string username;
+					glocal unsigned userid = bo_writed_get_group_owner (glocal.con, sessionid, owner, glocal.username,glocal.msg);
 					if (glocal.userid != 0)
 						// Find if the group exists
 						<call sql_query>("select id from groups where ownerid=%u and name='%s'",glocal.userid,groupname);
@@ -3283,6 +3284,15 @@ int main (int argc, char *argv[])
 								glocal.msg = "This group is a member of at least one list";
 							</f>
 							<f empty>
+								// Locate the short-inbox for that group. It it exists, we delete the entry
+								// and deleteitems cleanup will complete the job
+								string tmp;
+								unsigned dirid = fs_find_short_inbox (glocal.userid,glocal.username,glocal.groupname,tmp);	
+								if (dirid != (unsigned)-1){
+									if (sql_action("delete from dirs_content where itemid=%u",dirid)==-1){
+										glocal.msg = "Internal error (Table dirs_content)";
+									}
+								}
 								if (sql_action("delete from group_members where groupid=%u",glocal.groupid)==-1){
 									glocal.msg = "Internal error (Table group_members)";
 								}else if (sql_action("delete from group_list_members where groupid=%u",glocal.groupid)==-1){

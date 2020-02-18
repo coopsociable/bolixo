@@ -326,6 +326,23 @@ elif [ "$1" = "remote-member" ] ; then # test: create groups with remote members
 	echo "#### Delete group remote"
 	./bofs -u $USER groups --delete-group --groupname remote
 	./bofs -u $USER groups --print-groups --only_owner
+elif [ "$1" = "delete-group" ] ; then # test: create a group with messages and delete it
+	USER=jacques-A
+	echo "#### Create group onegroup with 2 members"
+	./bofs -u $USER groups --create-group --groupname onegroup
+	./bofs -u $USER groups --set-member --groupname onegroup --user $USER
+	./bofs -u $USER groups --set-member --groupname onegroup --user jacques-B
+	./bofs -u $USER groups --set-member --groupname onegroup --user jacques-C
+	./bofs -u $USER groups --print-groups --only_owner
+	echo "#### Write some messages"
+	./bofs -u jacques-B msgs --shortmsg --groupname onegroup --groupowner $USER --content "message from jacques-B"
+	./bofs -u jacques-C msgs --shortmsg --groupname onegroup --groupowner $USER --content "message from jacques-C"
+	./bofs -t -u $USER msgs --listshortmsgs --groupname onegroup --groupowner $USER
+	echo "#### Delete group onegroup"
+	./bofs -u $USER groups --delete-group --groupname onegroup
+	./bofs -u $USER groups --print-groups --only_owner
+	./bofs -t -u $USER ls -l bo://msgs/$USER/short-inbox
+	./test.sh deleteitems --doit
 else
 	echo command
 fi
