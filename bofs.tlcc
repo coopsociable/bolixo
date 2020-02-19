@@ -38,6 +38,7 @@
 #include <vector>
 #include <deque>
 #include <algorithm>
+#include <set>
 #include <trlitool.h>
 #define DEFINE_TBTYPE
 #define DEFINE_TBFTYPE
@@ -100,6 +101,8 @@ using namespace std;
 static bool verbose = false;
 static bool testmode = false;
 static TRANS_NOTLOAD *tbviewed[]={P_MSG_U(I_VIEWNEW,"New"),P_MSG_U(I_VIEWSEEN,"Seen"),P_MSG_U(I_VIEWCHANGED,"Changed")};
+
+static set<string> usehttp;	// Use HTTP instead of HTTPS to reach these servers
 
 static void notdone()
 {
@@ -470,9 +473,14 @@ static void bofs_getpubkey(_F_bofs_getpubkey &c, CONTEXT &ctx, PARAM_STRING nick
 	}else{
 		local_user = string(nickname.ptr,pt-nickname.ptr);
 		remote_user = true;
-		hcon.host = pt+1;
-		hcon.port = "443";
-		hcon.use_ssl = true;
+		pt++;
+		hcon.host = pt;
+		if (usehttp.count(pt)>0){
+			hcon.port = "80";
+		}else{
+			hcon.port = "443";
+			hcon.use_ssl = true;
+		}
 		if (nonstrict) hcon.setnonstrictmode();
 	}
 	auto p = pubkeys.find(glocal.user);
@@ -1840,7 +1848,7 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 					if (success){
 						glocal.ret = 0;
 					}else{
-						bofs_error ("groups",internal_error, "Can't create group_list: %s",msg);
+						bofs_error ("groups",internal_error, MSG_U(E_CREATEGROUPLIST,"Can't create group_list: %s"),msg);
 					}
 				</f>
 				</call>
@@ -1856,7 +1864,7 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 					if (success){
 						glocal.ret = 0;
 					}else{
-						bofs_error ("groups",internal_error,"Can't create group: %s",msg);
+						bofs_error ("groups",internal_error,MSG_U(E_CREATEGROUP,"Can't create group: %s"),msg);
 					}
 				</f>
 				</call>
@@ -1866,7 +1874,7 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 					if (success){
 						glocal.ret = 0;
 					}else{
-						bofs_error ("groups",internal_error,"Can't create group: %s",msg);
+						bofs_error ("groups",internal_error,MSG_R(E_CREATEGROUP),msg);
 					}
 				</f>
 				</call>
@@ -1882,7 +1890,7 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 					if (success){
 						glocal.ret = 0;
 					}else{
-						bofs_error ("groups",internal_error,"Can't set list description: %s",msg);
+						bofs_error ("groups",internal_error,MSG_U(E_SETLISTDESC,"Can't set list description: %s"),msg);
 					}
 				</f>
 				</call>
@@ -3971,6 +3979,8 @@ static void bofs_loadconf(CONTEXT &ctx, const char *user)
 			const char *subject = tb[0].c_str();
 			if (strcmp(subject,"bolixo")==0){
 				dirserver = tb[1];
+			}else if (strcmp(subject,"usehttp")==0){
+				usehttp.insert(tb[1]);
 			}else if (strcmp(subject,"user")==0){
 				if (glocal.thisuser){
 					ret = -1;

@@ -31,6 +31,8 @@
 #include <trlitool.h>
 #include <deque>
 #include <memory>
+#include <set>
+#include <algorithm>
 #include <string>
 #include "filesystem.h"
 #include "bolixo.h"
@@ -118,20 +120,24 @@ struct HANDLE_INFO: public ARRAY_OBJ{
 #define bo_keysd_control_runstatus_NOTNEED
 #include "proto/bo-keysd_control.protoch"
 
+static vector<string> usehttp;
+
 struct PUBLISH_MESSAGE{
 	string user;
 	string name;
+	string groupname;
 	unsigned userid;
 	unsigned dirid;
 	unsigned fileid;
 	string modified;
-	PUBLISH_MESSAGE(const char *_user, unsigned _userid, unsigned _dirid, unsigned _fileid, const char *_modified, const char *_name){
+	PUBLISH_MESSAGE(const char *_user, unsigned _userid, unsigned _dirid, unsigned _fileid, const char *_modified, const char *_name, const char *_groupname){
 		user = _user;
 		userid = _userid;
 		dirid = _dirid;
 		fileid = _fileid;
 		modified = _modified;
 		name = _name;
+		groupname = _groupname;
 	}
 	PUBLISH_MESSAGE(){
 		userid = (unsigned)-1;
@@ -192,6 +198,7 @@ struct STATS{
 		nbcopied = nbfailed = nbtried = 0;
 	}
 };
+static bool nonstrict = false;
 
 <mod>
 static void publishd_doone (
@@ -202,7 +209,7 @@ static void publishd_doone (
 	const char *our_node,
 	const char *keysdsock)
 {
-	glocal NSQL *sq = &sq;
+	glocal sq;
 	glocal const char *our_node = our_node;
 	glocal const char *keysdsock = keysdsock;
 	if (messages.size() > 0){
@@ -217,118 +224,145 @@ static void publishd_doone (
 			if (pid == (pid_t)0){
 				// Do the job
 				close (tb[0]);
-				glocal BOB_TYPE content;
-				glocal string sign;
-				glocal FILE *fin = NULL;
-				glocal bool data_loaded=false;
-				glocal bool some_errors = false;
-				<call sql_query>(*glocal.sq,"select nodename from interests_remote where userid=%u",glocal.todo.userid);
+				glocal set<string> nodes;
+				if (glocal.todo.groupname == "public"){
+					// Check the nodes interested in this user public messages
+					<call sql_query>(glocal.sq,"select nodename from interests_remote where userid=%u",glocal.todo.userid);
+					<f onerow>
+						glocal.nodes.insert(row[0]);
+					</f>
+					</call>
+				}
+				// Now check if the group has remote members
+				<call sql_query>("select id2name.name from groups"
+					" join group_members on group_members.groupid = groups.id"
+					" join id2name on id2name.userid=group_members.userid"
+					" where groups.ownerid=%u and groups.name='%s'"
+					,glocal.todo.userid,glocal.todo.groupname.c_str());
 				<f onerow>
-					//tlmp_error ("nodename=%s\n",row[0]);
-					glocal CONNECT_HTTP_INFO hcon;
-					// Load the data only once since it is copied to potentially more than one node
-					if (!glocal.data_loaded){
-						<call sql_query>(*glocal.sq,"select content,signature from files where id=%u and modified='%s'"
-							,glocal.todo.fileid,glocal.todo.modified.c_str());
-						<f onerow>
-							if (row[1] != NULL) glocal.sign = row[1];
-							if (row[0] != NULL){
-								glocal.content.setbuffer((const void*)row[0],strlen(row[0]),true);
-							}else{
-								// The content is in a file
-								string fname = fs_createpath(glocal.todo.fileid,glocal.todo.modified);
-								glocal.fin = fopen (fname.c_str(),"r");
-								if (glocal.fin == NULL){
-									tlmp_error ("Can't open content file %s (%s)\n",fname.c_str(),strerror(errno));
-									glocal.some_errors = true;
-								}
-							}
-						</f>
-						<f empty>
-							tlmp_error ("No content for message: user=%s dirid=%u userid=%u fileid=%u modified=%s\n"
-								,glocal.todo.user.c_str(),glocal.todo.dirid,glocal.todo.userid
-								,glocal.todo.fileid,glocal.todo.modified.c_str());
-							glocal.some_errors = true;
-						</f>
-						</call>
-						glocal.data_loaded = true;
+					const char *pt = strchr(row[0],'@');
+					if (pt != nullptr){
+						const char *htt = "https";
+						pt++;
+						if(find(usehttp.begin(),usehttp.end(),pt)!=usehttp.end()) htt = "http";
+						glocal.nodes.insert(string_f("%s://%s",htt,pt));
 					}
-					if (!glocal.some_errors && glocal.hcon.init (row[0]) != -1){
-						glocal string remote_user = string_f("%s@%s",glocal.todo.user.c_str(),glocal.our_node);
-						glocal string sessionid;
-						glocal.stats.nbtried++;
-						if (publishd_remotelogin(glocal.hcon,glocal.remote_user,glocal.keysdsock,glocal.todo.userid,glocal.sessionid)!=-1){
-							glocal bool error = false;
-							static vector<string> empty;
-							if (glocal.fin == NULL){
-								<call webapi_sendtalk>(glocal.hcon,glocal.sessionid,"",empty,"public",glocal.remote_user
-									,glocal.content,false,glocal.todo.name,glocal.sign,"");
-								<f ok>
-									if (!success){
-										tlmp_error ("message to %s internal=%d success=%d msg=%s\n"
-											,glocal.remote_user.c_str(),internal_error,success,msg);
-										glocal.error = true;
-									}
-								</f>
-								</call>
-							}else{
-								// The content is in a file
-								glocal string handle;
-								char buf[REQ_CONTENT_CHUNK];
-								int n;
-								bool more = false;
-								rewind(glocal.fin);
-								while (!glocal.error && (n=fread(buf,1,sizeof(buf),glocal.fin))>0){
-									more = n==sizeof(buf);
-									BOB_TYPE content((const void*)buf,n,false);
-									if (glocal.handle.size() == 0){
-										<call webapi_sendtalk>(glocal.hcon,glocal.sessionid,"",empty,"public",glocal.remote_user
-											,content,more,glocal.todo.name,glocal.sign,"");
-										<f ok>
-											glocal.handle = handle;
-											if(!success){
-												glocal.error = true;
-												tlmp_error ("copying to %s internal=%d success=%d msg=%s\n"
-													,glocal.remote_user.c_str(),internal_error,success,msg);
-											}
-										</f>
-										</call>
-									}else{
-										<call webapi_appendfile>(glocal.hcon,glocal.sessionid,glocal.handle,content,more);
-										<f ok>
-											if(!success){
-												glocal.error = true;
-												tlmp_error ("appending to %s internal=%d success=%d msg=%s\n"
-													,glocal.remote_user.c_str(),internal_error,success,msg);
-											}
-										</f>
-										</call>
-									}
-								}
-								if (more){
-									BOB_TYPE content((const void*)"",0,false);
-									<call webapi_appendfile>(glocal.hcon,glocal.sessionid,glocal.handle,content,false);
-									<f ok>
-										//tlmp_error ("internal=%d success=%d msg=%s\n",internal_error,success,msg);
-									</f>
-									</call>
-								}
-							}
-							if (glocal.error){
-								glocal.stats.nbfailed++;
-							}else{
-								glocal.stats.nbcopied++;
-							}
-							<call webapi_logout>(glocal.hcon,glocal.sessionid);
-							<f ok>
-							</f>
-							</call>
-						}
-					}
-					if (glocal.some_errors) end = true;
 				</f>
 				</call>
-				if (glocal.fin != NULL) fclose (glocal.fin);
+				if (glocal.nodes.size() > 0){
+					glocal BOB_TYPE content;
+					glocal string sign;
+					glocal string from;
+					glocal FILE *fin = nullptr;
+					glocal bool some_errors = false;
+					<call sql_query>(glocal.sq,"select content,signature,id2name.name from files"
+						" join ids on files.id = ids.id"
+						" join id2name on ids.ownerid=id2name.userid"
+						" where files.id=%u and files.modified='%s'"
+						,glocal.todo.fileid,glocal.todo.modified.c_str());
+					<f onerow>
+						if (glocal.todo.user != row[2]) glocal.from = string_f("%s@%s",row[2],glocal.our_node);
+						if (row[1] != NULL) glocal.sign = row[1];
+						if (row[0] != NULL){
+							glocal.content.setbuffer((const void*)row[0],strlen(row[0]),true);
+						}else{
+							// The content is in a file
+							string fname = fs_createpath(glocal.todo.fileid,glocal.todo.modified);
+							glocal.fin = fopen (fname.c_str(),"r");
+							if (glocal.fin == NULL){
+								tlmp_error ("Can't open content file %s (%s)\n",fname.c_str(),strerror(errno));
+								glocal.some_errors = true;
+							}
+						}
+					</f>
+					<f empty>
+						tlmp_error ("No content for message: user=%s dirid=%u userid=%u fileid=%u modified=%s\n"
+							,glocal.todo.user.c_str(),glocal.todo.dirid,glocal.todo.userid
+							,glocal.todo.fileid,glocal.todo.modified.c_str());
+						glocal.some_errors = true;
+					</f>
+					</call>
+					for (auto &node:glocal.nodes){	
+						//tlmp_error ("nodename=%s\n",row[0]);
+						glocal CONNECT_HTTP_INFO hcon;
+						// Load the data only once since it is copied to potentially more than one node
+						if (!glocal.some_errors && glocal.hcon.init (node) != -1){
+							glocal string remote_user = string_f("%s@%s",glocal.todo.user.c_str(),glocal.our_node);
+							glocal string sessionid;
+							glocal.stats.nbtried++;
+							if (nonstrict) glocal.hcon.setnonstrictmode();
+							if (publishd_remotelogin(glocal.hcon,glocal.remote_user,glocal.keysdsock,glocal.todo.userid,glocal.sessionid)!=-1){
+								glocal bool error = false;
+								static vector<string> empty;
+								if (glocal.fin == NULL){
+									<call webapi_sendtalk>(glocal.hcon,glocal.sessionid,"",empty,glocal.todo.groupname,glocal.remote_user
+										,glocal.content,false,glocal.todo.name,glocal.sign,glocal.from);
+									<f ok>
+										if (!success){
+											tlmp_error ("message to %s internal=%d success=%d msg=%s\n"
+												,glocal.remote_user.c_str(),internal_error,success,msg);
+											glocal.error = true;
+										}
+									</f>
+									</call>
+								}else{
+									// The content is in a file
+									glocal string handle;
+									char buf[REQ_CONTENT_CHUNK];
+									int n;
+									bool more = false;
+									rewind(glocal.fin);
+									while (!glocal.error && (n=fread(buf,1,sizeof(buf),glocal.fin))>0){
+										more = n==sizeof(buf);
+										BOB_TYPE content((const void*)buf,n,false);
+										if (glocal.handle.size() == 0){
+											<call webapi_sendtalk>(glocal.hcon,glocal.sessionid,"",empty,glocal.todo.groupname,glocal.remote_user
+												,content,more,glocal.todo.name,glocal.sign,glocal.from);
+											<f ok>
+												glocal.handle = handle;
+												if(!success){
+													glocal.error = true;
+													tlmp_error ("copying to %s internal=%d success=%d msg=%s\n"
+														,glocal.remote_user.c_str(),internal_error,success,msg);
+												}
+											</f>
+											</call>
+										}else{
+											<call webapi_appendfile>(glocal.hcon,glocal.sessionid,glocal.handle,content,more);
+											<f ok>
+												if(!success){
+													glocal.error = true;
+													tlmp_error ("appending to %s internal=%d success=%d msg=%s\n"
+														,glocal.remote_user.c_str(),internal_error,success,msg);
+												}
+											</f>
+											</call>
+										}
+									}
+									if (more){
+										BOB_TYPE content((const void*)"",0,false);
+										<call webapi_appendfile>(glocal.hcon,glocal.sessionid,glocal.handle,content,false);
+										<f ok>
+											//tlmp_error ("internal=%d success=%d msg=%s\n",internal_error,success,msg);
+										</f>
+										</call>
+									}
+								}
+								if (glocal.error){
+									glocal.stats.nbfailed++;
+								}else{
+									glocal.stats.nbcopied++;
+								}
+								<call webapi_logout>(glocal.hcon,glocal.sessionid);
+								<f ok>
+								</f>
+								</call>
+							}
+						}
+						if (glocal.some_errors) break;
+					}
+					if (glocal.fin != nullptr) fclose (glocal.fin);
+				}
 				write (tb[1],&glocal.stats,sizeof(glocal.stats));	
 				_exit (0);
 			}else if (pid == (pid_t)-1){
@@ -378,6 +412,8 @@ int main (int argc, char *argv[])
 		setarg (' ',"user","Run the program as this user",glocal.user,false);
 		setarg (' ',"daemon","Run in background",glocal.daemon,false);
 		setarg (' ',"pidfile","File holding the PID of the process",glocal.pidfile,false);
+		setarg (' ',"nonstrict",MSG_R(O_NONSTRICT),nonstrict,false);
+		setarg (' ',"usehttp",MSG_R(O_USEHTTP),usehttp,false);
 	</f>
 	<f showerror>
 		if (glocal.daemon){
@@ -451,6 +487,7 @@ int main (int argc, char *argv[])
 					tb.push_back(string_f("messages_sent: %u",glocal.messages_sent));
 					tb.push_back(string_f("stats: nbtried %u nbcopied %u nbfailed %u"
 						,glocal.stats.nbtried,glocal.stats.nbcopied,glocal.stats.nbfailed));
+					tb.push_back(string_f("nonstrict: %d",nonstrict));
 					instrument_status(tb);
 					rep_status(tb);
 				</f>
@@ -553,7 +590,7 @@ int main (int argc, char *argv[])
 							tlmp_error ("No user for userid=%u\n",userid);
 						}else{
 							glocal.messages_sent++;
-							glocal.messages.emplace_back(glocal.user.c_str(),userid,dirid,fileid,modified,name);
+							glocal.messages.emplace_back(glocal.user.c_str(),userid,dirid,fileid,modified,name,groupname);
 							if (glocal.pid == (pid_t)-1){
 								publishd_doone (glocal.TCPSERVER,glocal.pid,glocal.messages
 									,*glocal.sub_sq,glocal.hostname,glocal.keysdsock);

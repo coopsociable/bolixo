@@ -37,8 +37,9 @@ FILE *fs_alloc_file_handle (int fileid, PARAM_STRING modified, const char *mode,
 long fs_get_filesize (int fileid, PARAM_STRING modified);
 FILE *fs_get_file (const std::string &handle, const char *sessionid);
 void fs_delete_handle (PARAM_STRING handle);
-void fs_file_handle_addextra (PARAM_STRING handle, int ownerid, int dirid, PARAM_STRING name);
-int fs_file_handle_getextra (PARAM_STRING handle, int &ownerid, int &dirid, int &fileid, std::string &modified, std::string &name);
+void fs_file_handle_addextra (PARAM_STRING handle, int ownerid, int dirid, PARAM_STRING name, PARAM_STRING groupname);
+int fs_file_handle_getextra (PARAM_STRING handle, int &ownerid, int &dirid, int &fileid, std::string &modified, std::string &name
+	, std::string &groupname);
 FILE *fs_open_file (int fileid, PARAM_STRING modified, const char *mode);
 std::string fs_makeid ();
 unsigned fs_getnbhandle();

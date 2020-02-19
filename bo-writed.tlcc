@@ -793,7 +793,7 @@ static FILE_TYPE bo_writed_file_type (PARAM_STRING name, const BOB_TYPE &content
 	}else{
 		if (bo_writed_is_text(content)) file_type = FILE_TEXT;
 	}
-	if (file_type == FILE_UNKNOWN){
+	if (file_type == FILE_UNKNOWN && name.ptr != nullptr){
 		const char *ext = strrchr(name.ptr,'.');
 		if (ext != NULL){
 			if (strcasecmp(ext,".mp3")==0 || strcasecmp(ext,".wav")==0 || strcasecmp(ext,".ogg")==0){
@@ -842,44 +842,60 @@ static int bo_writed_addfile_bob (
 	PARAM_STRING recipients,
 	bool more,
 	string &sign,		// Either contain the Pre-signed content or will contain the new signature
+	const char *createdby,	// If the messsage is pre-signed, it was signed by this user, not by the sender
 	ADDFILE_INFO &info,
 	string &msg)
 {
+	glocal unsigned userid = userid;
+	glocal string pubkey;
+	glocal msg;
 	if (listmode == 'p') listmode = 'r';	// listmode was taken from the parent directory.
 						// 'p' is meaningless for a file.
-	info.fileid = fs_newid (userid,listid,listmode,msg,info.fileuuid);
-	if (info.fileid != -1){
-		const char *basename = name.ptr;
-		if (basename == NULL) basename = info.fileuuid.c_str();
-		fs_set_now(info.modified);
-		info.file_type = bo_writed_file_type (basename,content,more);
-		const char *content_str = NULL;
-		string tmp;
-		if (!more){
-			if (info.file_type == FILE_TEXT){
-				tmp = string((const char *) content.getbuffer(),content.getsize());
-				content_str = tmp.c_str();
-			}
-			if (sign.size() > 0){
-				// Already signed, validate
-				glocal string pubkey;
+	fs_set_now(info.modified);
+	info.file_type = bo_writed_file_type (name,content,more);
+	const char *content_str = nullptr;
+	string tmp;
+	if (createdby[0] != '\0'){
+		<call sql_query>("select pub_key,userid from id2name where name='%s'",createdby);
+		<f onerow>
+			if (row[0] != NULL) glocal.pubkey = row[0];
+			glocal.userid = atoi(row[1]);
+		</f>
+		<f empty>
+			glocal.msg = "Unknown createdby user";
+		</f>
+		</call>
+	}
+	if (!more){
+		if (info.file_type == FILE_TEXT){
+			tmp = string((const char *) content.getbuffer(),content.getsize());
+			content_str = tmp.c_str();
+		}
+		if (sign.size() > 0){
+			// Already signed, validate
+			if (glocal.pubkey.size() == 0){
 				<call sql_query>("select pub_key from id2name where userid=%u",userid);
 				<f onerow>
 					if (row[0] != NULL) glocal.pubkey = row[0];
 				</f>
 				</call>
-				if (glocal.pubkey.size()==0){
-					msg = string_f("No public key for userid=%u",userid);
-					tlmp_error ("%s\n",msg.c_str());
-				}else if (fs_verify(glocal.pubkey,content,sign)==-1){
-					msg = string_f ("Signature do not match for pre-signed file %s",basename);
-					tlmp_error ("%s\n",msg.c_str());
-				}
-			}else{
-				sign = bo_writed_sign (con_keys,userid,content);
 			}
+			if (glocal.pubkey.size()==0){
+				msg = string_f("No public key for userid=%u",userid);
+				tlmp_error ("%s\n",msg.c_str());
+			}else if (fs_verify(glocal.pubkey,content,sign)==-1){
+				msg = string_f ("Signature do not match for pre-signed file %s",name.ptr);
+				tlmp_error ("%s\n",msg.c_str());
+			}
+		}else{
+			sign = bo_writed_sign (con_keys,userid,content);
 		}
-		if (msg.size()==0){
+	}
+	if (msg.size()==0){
+		info.fileid = fs_newid (glocal.userid,listid,listmode,msg,info.fileuuid);
+		if (info.fileid != -1){
+			const char *basename = name.ptr;
+			if (basename == nullptr) basename = info.fileuuid.c_str();
 			// If the recipients list is empty, we insert a null in the database
 			const char *recipients_ptr = recipients.ptr == nullptr || recipients.ptr[0] == '\0' ? nullptr : recipients.ptr;
 			if (fs_insert_entry(dirid,info.fileid,info.modified.buf,basename,type)==-1){
@@ -952,12 +968,19 @@ static int bo_writed_create_group_list(unsigned userid, PARAM_STRING username, c
 	return ret;
 }
 <mod>
-static int bo_writed_create_group (unsigned userid, const char *groupname, bool create_dash_list, const char *description, string &msg)
+static int bo_writed_create_group (
+	unsigned userid,
+	const char *groupname,
+	bool create_dash_list,	// Create a project with the same name, but with the #prefix
+	bool insert_user,	// Make the user (the owner) member of his own group
+	const char *description,
+	string &msg)
 {
 	glocal int ret = -1;
 	glocal const char *groupname = groupname;
 	glocal string *msg = &msg;
 	glocal unsigned userid = userid;
+	glocal bool insert_user = insert_user;
 	if (sql_action("insert into groups (ownerid,name,description) values (%u,'%s','%s')",userid,groupname,description)==-1){
 		msg = "Internal error (group_lists table)";
 	}else{
@@ -980,6 +1003,12 @@ static int bo_writed_create_group (unsigned userid, const char *groupname, bool 
 							,glocal.group_list_id,groupid)==-1){
 							(*glocal.msg) = "Internal error (group_list_members table)";
 						}else{
+							if (glocal.insert_user){
+								if (sql_action("insert into group_members (groupid,userid,access) value (%u,%u,'W')"
+									,groupid,glocal.userid)==-1){
+									tlmp_error ("bo_writed_create_group: can't insert user");
+								}
+							}
 							glocal.ret = groupid;
 						}
 					</f>
@@ -992,6 +1021,15 @@ static int bo_writed_create_group (unsigned userid, const char *groupname, bool 
 	return glocal.ret;
 }
 </mod>
+static int bo_writed_create_group (
+	unsigned userid,
+	const char *groupname,
+	bool create_dash_list,	// Create a project with the same name, but with the #prefix
+	const char *description,
+	string &msg)
+{
+	return bo_writed_create_group(userid,groupname,create_dash_list,false,description,msg);
+}
 /*
 	Add/remove a group into a list
 */
@@ -1317,7 +1355,7 @@ static void bo_writed_send_admin_msg (
 			BOB_TYPE content(message.ptr,strlen(message.ptr),false);
 			string sign;
 			bo_writed_addfile_bob (con_keys,NULL,NULL,ENTRY_MSG,dirid,0,'r',adminid
-				,content,username,false,sign,info,msg);
+				,content,username,false,sign,"",info,msg);
 		}
 	}
 }
@@ -2694,7 +2732,7 @@ int main (int argc, char *argv[])
 						char listmode;
 						bo_writed_get_listid(entry.dirid,listid,listmode,entry.msg);
 						bo_writed_addfile_bob (glocal.ctx.con_keys,sessionid,entry.basename,ENTRY_FILE,entry.dirid,listid,listmode,entry.userid
-								,content,nullptr,more,sign
+								,content,nullptr,more,sign,""
 								,info,msg);
 						if (msg.size() > 0){
 							rep_addfile_bob (false,"",msg);
@@ -2726,11 +2764,11 @@ int main (int argc, char *argv[])
 							}
 							if (!more){
 								int ownerid,dirid,fileid;
-								string modified,name;
-								if (fs_file_handle_getextra(handle,ownerid,dirid,fileid,modified,name)!=-1
+								string modified,name,groupname;
+								if (fs_file_handle_getextra(handle,ownerid,dirid,fileid,modified,name,groupname)!=-1
 									&& ownerid != -1){ 
 									<call publishd_client_sendmessage>(glocal.ctx.con_publish,ownerid
-										,dirid,fileid,modified,name);
+										,dirid,fileid,modified,name,groupname);
 									<f ok>
 										if (!success) tlmp_error ("publishd_client_sendmessage: %s\n",msg);
 									</f>
@@ -3060,16 +3098,17 @@ int main (int argc, char *argv[])
 				<f create_group>	// sessionid groupname owner = success:b msg
 					glocal string msg;
 					glocal const char *groupname = groupname;
-					glocal unsigned userid = bo_writed_get_group_owner (glocal.con, sessionid, owner, glocal.msg);
+					glocal string username;
+					glocal unsigned userid = bo_writed_get_group_owner (glocal.con, sessionid, owner, glocal.username, glocal.msg);
 					if (glocal.userid != 0){
 						if (bo_writed_group_check(groupname,glocal.msg)){
 							<call sql_query>("select id from groups where ownerid=%u and name='%s'"
 								,glocal.userid,groupname);
 							<f onerow>
-								glocal.msg = "Group alreay exist";
+								glocal.msg = MSG_U(E_GROUPEXIST,"Group already exist");
 							</f>
 							<f empty>
-								bo_writed_create_group(glocal.userid,glocal.groupname,true,"",glocal.msg);
+								bo_writed_create_group(glocal.userid,glocal.groupname,true,bo_writed_remote_user(glocal.username),"",glocal.msg);
 							</f>
 							</call> 
 						}else{
@@ -3363,7 +3402,7 @@ int main (int argc, char *argv[])
 					glocal const char *to = to;
 					glocal string msg;
 					glocal string handle;
-					glocal const BOB_TYPE *content = &content;
+					glocal content;
 					glocal bool more = more;
 					<call sql_query>("select id2name.userid,id2name.name,anon_messages from id2name join config on config.userid=id2name.userid"
 						" where id2name.name='%s'",to);
@@ -3383,11 +3422,11 @@ int main (int argc, char *argv[])
 								string sign;
 								ADDFILE_INFO info;
 								bo_writed_addfile_bob (glocal.ctx.con_keys,glocal.sessionid,NULL,ENTRY_MSG,dirid,0,'r',userid
-									,*glocal.content,nullptr,glocal.more,sign
+									,glocal.content,nullptr,glocal.more,sign,""
 									,info,glocal.msg);
 								glocal.handle = info.handle;
 								string email_title,email_content;
-								bo_writed_set_email_notify ("",username,"anonymous",info.file_type,*glocal.content,email_title,email_content);
+								bo_writed_set_email_notify ("",username,"anonymous",info.file_type,glocal.content,email_title,email_content);
 								string tmp = string_f("talks:%s:anonymous",username);
 								bo_writed_notify(glocal.ctx,glocal.con,tmp,userid,email_title,email_content);
 							}
@@ -3405,9 +3444,10 @@ int main (int argc, char *argv[])
 						rep_sendtalk_anon (true,glocal.msg,glocal.handle);
 					}
 				</f>
-				<f sendtalk>	// sessionid owner to:v groupname groupowner content:o more:b filename sign = success:b msg handle
+				<f sendtalk>	// sessionid owner to:v groupname groupowner content:o more:b filename sign createdby = success:b msg handle
+					glocal const char *createdby = createdby;
 					glocal const char *sessionid = sessionid;
-					glocal const BOB_TYPE *content = &content;
+					glocal content;
 					glocal bool more = more;
 					glocal string username;
 					glocal string handle;
@@ -3455,12 +3495,31 @@ int main (int argc, char *argv[])
 										const char *ptr_name = glocal.filename[0] != '\0' ? glocal.filename : NULL;
 										bo_writed_addfile_bob (glocal.ctx.con_keys,glocal.sessionid,ptr_name,ENTRY_MSG,dirid
 											,0,'r',glocal.userid
-											,*glocal.content,glocal.recipients,glocal.more,glocal.sign
+											,glocal.content,glocal.recipients,glocal.more,glocal.sign,glocal.createdby
 											,info,glocal.msg);
 										glocal.handle = info.handle;
 										string email_title,email_content;
-										bo_writed_set_email_notify (glocal.username,glocal.groupowner,glocal.groupname,info.file_type,*glocal.content
+										bo_writed_set_email_notify (glocal.username,glocal.groupowner,glocal.groupname,info.file_type,glocal.content
 											,email_title,email_content);
+										// We send a notification to each members of the group
+										glocal vector<unsigned> members;
+										glocal bool remote_members = false;
+										<call sql_query>("select group_members.userid,id2name.name from group_members"
+											" join id2name on id2name.userid=group_members.userid"
+											" where groupid=%u",group_id);
+										<f onerow>
+											unsigned userid = atoi(row[0]);
+											// No notification needed to the author of the message
+											if (userid != glocal.userid){
+												glocal.members.push_back(userid);
+												if (bo_writed_remote_user(row[1])) glocal.remote_members = true;
+											}
+										</f>
+										</call>
+										{
+											string tmp = string_f("talks:%s:%s",bd_group_owner,bd_group_name);
+											bo_writed_notify (glocal.ctx,glocal.con,tmp,glocal.members,email_title,email_content);
+										}
 										bool remote_user = bo_writed_remote_user(glocal.username);
 										if (remote_user){
 											if (created){
@@ -3468,43 +3527,34 @@ int main (int argc, char *argv[])
 											}
 										}else{
 											bo_writed_update_interest(created,bd_group_name,ownerid,dirid);
-											if (strcmp(bd_group_name,"public")==0){
+											// We have to decide if the message has to be pushed to other servers.
+											// public messages do (as needed)
+											// group message do if some members are remote
+											if (strcmp(bd_group_name,"public")==0 || glocal.remote_members){
 												if (!glocal.more){
 													<call publishd_client_sendmessage>(glocal.ctx.con_publish,ownerid
-														,dirid,info.fileid,info.modified.buf,info.fileuuid);
+														,dirid,info.fileid,info.modified.buf,info.fileuuid
+														,bd_group_name);
 													<f ok>
 														if (!success) tlmp_error ("publishd_client_sendmessage: %s\n",msg);
 													</f>
 													</call>
 												}else{
-													fs_file_handle_addextra (glocal.handle,ownerid,dirid,info.fileuuid);
+													fs_file_handle_addextra (glocal.handle,ownerid,dirid,info.fileuuid,bd_group_name);
 												}
-												// Add notification for the main page for those who have interests
-												// for this user
-												glocal vector<unsigned> interested;
-												<call sql_query>("select userid from interests where check_userid=%u",ownerid);
-												<f onerow>
-													glocal.interested.push_back(atoi(row[0]));
-												</f>
-												</call>
-												string empty_title,empty_content;	// No email notification for the main screen.
-												bo_writed_notify(glocal.ctx,glocal.con,"main",glocal.interested,email_title,empty_content);
 											}
 										}
-										// We send a notification to each members of the group
-										glocal vector<unsigned> members;
-										<call sql_query>("select userid from group_members where groupid=%u",group_id);
-										<f onerow>
-											unsigned userid = atoi(row[0]);
-											// No notification needed to the author of the message
-											if (userid != glocal.userid){
-												glocal.members.push_back(userid);
-											}
-										</f>
-										</call>
-										{
-											string tmp = string_f("talks:%s:%s",bd_group_owner,bd_group_name);
-											bo_writed_notify (glocal.ctx,glocal.con,tmp,glocal.members,email_title,email_content);
+										if (strcmp(bd_group_name,"public")==0){
+											// Add notification for the main page for those who have interests
+											// for this user
+											glocal vector<unsigned> interested;
+											<call sql_query>("select userid from interests where check_userid=%u",ownerid);
+											<f onerow>
+												glocal.interested.push_back(atoi(row[0]));
+											</f>
+											</call>
+											string empty_title,empty_content;	// No email notification for the main screen.
+											bo_writed_notify(glocal.ctx,glocal.con,"main",glocal.interested,email_title,empty_content);
 										}
 										// Now that we have created the message in the group, we
 										// simply link the message in all recipients, except remote user.
@@ -3517,7 +3567,7 @@ int main (int argc, char *argv[])
 														break;
 													}
 													bo_writed_set_email_notify (glocal.username,u.first,"inbox",info.file_type
-														,*glocal.content,email_title,email_content);
+														,glocal.content,email_title,email_content);
 													bo_writed_notify_talk_inbox(glocal.ctx,glocal.con,u.first,u.second,email_title,email_content);
 												}else{
 													tlmp_error ("Insert in short user inbox, missing inbox, internal error %s\n",u.first.c_str());
@@ -3549,10 +3599,10 @@ int main (int argc, char *argv[])
 									if (dirid != -1){
 										ADDFILE_INFO info;
 										bo_writed_addfile_bob (glocal.ctx.con_keys,glocal.sessionid,NULL,ENTRY_MSG,dirid,0,'r',glocal.userid
-											,*glocal.content,glocal.recipients,glocal.more,glocal.sign
+											,glocal.content,glocal.recipients,glocal.more,glocal.sign,glocal.createdby
 											,info,glocal.msg);
 										string email_title,email_content;
-										bo_writed_set_email_notify (glocal.username,uid0.first,"inbox",info.file_type,*glocal.content,email_title,email_content);
+										bo_writed_set_email_notify (glocal.username,uid0.first,"inbox",info.file_type,glocal.content,email_title,email_content);
 										glocal.handle = info.handle;
 										bo_writed_notify_talk_inbox(glocal.ctx,glocal.con,uid0.first,uid0.second,email_title,email_content);
 										glocal.uids.erase(glocal.uids.begin());
@@ -3563,7 +3613,7 @@ int main (int argc, char *argv[])
 													tlmp_error ("Insert in short user inbox, internal error %s\n",u.first.c_str());
 													break;
 												}
-												bo_writed_set_email_notify (glocal.username,u.first,"inbox",info.file_type,*glocal.content
+												bo_writed_set_email_notify (glocal.username,u.first,"inbox",info.file_type,glocal.content
 													,email_title,email_content);
 												bo_writed_notify_talk_inbox(glocal.ctx,glocal.con,u.first,u.second,email_title,email_content);
 											}else{
@@ -3622,7 +3672,7 @@ int main (int argc, char *argv[])
 								bo_writed_update_interest(created,glocal.groupname,ownerid,dirid);
 								if (strcmp(glocal.groupname,"public")==0){
 									<call publishd_client_sendmessage>(glocal.ctx.con_publish,ownerid
-										,dirid,glocal.srcentry.entryid,glocal.srcentry.modified,newname);
+										,dirid,glocal.srcentry.entryid,glocal.srcentry.modified,newname,"public");
 									<f ok>
 										if (!success) tlmp_error ("publishd_client_sendmessage: %s\n",msg);
 									</f>

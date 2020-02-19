@@ -1429,6 +1429,9 @@ static int bod_parse_user (
 	}
 	return ret;
 }
+/*
+	Get the public key of a node
+*/
 <mod>
 static int bod_getpubkey (const char *nodename, string &pubkey)
 {
@@ -1454,6 +1457,7 @@ static int bod_getpubkey (const char *nodename, string &pubkey)
 	return glocal.ret;
 }
 </mod>
+
 <mod>
 // Get the name associated with a userid
 static string bod_getname(unsigned userid)
@@ -1536,6 +1540,22 @@ static int bod_check_remote_user(
 	return glocal.ret;
 }
 </mod>
+/*
+	Check if createdby is an existing account (local or remote).
+	If it is not on the system, but is a remote account, try to create it by retrieving its public key.
+	Return -1 if any error.
+*/
+static int bod_check_createdby(CONNECT_INFO &con, const char *createdby, const char *nodename, string &msg)
+{
+	int ret = 0;
+	if (createdby[0] != '\0'){
+		string remote;
+		string local_user;
+		string remote_user;
+		ret = bod_check_remote_user(con,createdby,nodename,msg,local_user,remote_user,remote);
+	}
+	return ret;
+}
 <mod>
 static int bod_main (
 	const char *bind,
@@ -2794,22 +2814,22 @@ static int bod_main (
 				glocal const char *sessionid = sessionid;
 				glocal string msg;
 				glocal string handle;
-				glocal const vector<const char *> *to = &to;
-				glocal const BOB_TYPE *content = &content;
+				glocal to;
+				glocal content;
 				glocal string username;
 				glocal const char *filename = filename;
 				glocal bool more = more;
 				glocal const char *createdby = createdby;
 				unsigned userid = bo_writed_get_group_owner (glocal.con_sess, sessionid, owner, glocal.username, glocal.msg);
-				if (userid != 0){
-					<call bo_writed_client_sendtalk>(glocal.con,sessionid,owner,to,groupname,groupowner,content,more,filename,sign);
+				if (userid != 0 && bod_check_createdby(glocal.con,createdby,glocal.nodename,glocal.msg)!=-1){
+					<call bo_writed_client_sendtalk>(glocal.con,sessionid,owner,to,groupname,groupowner,content,more,filename,sign,createdby);
 					<f ok>
 						glocal.msg = msg;
 						glocal.handle = handle;
 						if (success){
 							// We have to find if there are remote users and we organize them by servers
 							map<string,vector<string>> mp;
-							for (auto s:*glocal.to){
+							for (auto s:glocal.to){
 								string tmpuser,remote_user,remote;
 								if (bod_parse_user(s,tmpuser,remote_user,remote,glocal.nodename)!=-1
 									&& remote.size() > 0){
@@ -2820,7 +2840,7 @@ static int bod_main (
 								auto rem = make_unique<REMOTE_HANDLE>();
 								rem->username = glocal.username;
 								for (auto p:mp) rem->addto(p.first,p.second);
-								bod_remote_sendtalk (glocal.con,glocal.sessionid,*rem,*glocal.content,glocal.nodename
+								bod_remote_sendtalk (glocal.con,glocal.sessionid,*rem,glocal.content,glocal.nodename
 									,glocal.more,glocal.filename,sign,glocal.createdby);
 								if (handle[0] != '\0'){
 									rem->handle = handle;
