@@ -1218,6 +1218,14 @@ static void print_configs (
 		glocal FILE *all_fout = fout;
 		glocal vector<string> delayed;
 		fprintf (fout,"#!/usr/bin/sh\n");
+		// When running bolixo inside a lxc container, /dev/net/tun is often missing, no idea why
+		// So if the script /root/nettun exists, it is executed
+		fprintf (fout,"test -x /root/nettun && /root/nettun\n");
+		// Check if the virtual bridge device is active. This is a common problem
+		fprintf (fout,"if ! grep -q virbr0 /proc/net/dev; then\n");
+		fprintf (fout,"\tvirtual bridge device virbr0 not found, aborting\n");
+		fprintf (fout,"\texit 1\n");
+		fprintf (fout,"fi\n");
 		{
 			// SERVICE iptables
 			if (!glocal.devmode && glocal.iptables){
