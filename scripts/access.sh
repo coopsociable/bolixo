@@ -345,11 +345,12 @@ elif [ "$1" = "delete-group" ] ; then # test: create a group with messages and d
 	./test.sh deleteitems --doit
 elif [ "$1" = "remote-group-create" ] ; then # test: group with remote members, create
 	USER=jacques-A
-	echo "#### Create group onegroup with 3 members"
+	echo "#### Create group onegroup with 4 members"
 	./bofs -u $USER groups --create-group --groupname onegroup
 	./bofs -u $USER groups --set-member --groupname onegroup --user $USER
 	./bofs -u $USER groups --set-member --groupname onegroup --user jacques-B
 	./bofs -u $USER groups --set-member --groupname onegroup --user jacquesg@preprod.bolixo.org
+	./bofs -u $USER groups --set-member --groupname onegroup --user bolixodev@preprod.bolixo.org
 	echo "#### Show all members"
 	./bofs -u $USER groups --print-groups --only_owner
 	echo "#### Show members on preprod"
@@ -358,6 +359,7 @@ elif [ "$1" = "remote-group-cleanup" ] ; then # test: group with remote members,
 	USER=jacques-A
 	echo "#### Cleanup"
 	./bofs -u $USER groups --set-member --groupname onegroup --user jacquesg@preprod.bolixo.org --access -
+	./bofs -u $USER groups --set-member --groupname onegroup --user bolixodev@preprod.bolixo.org --access -
 	ssh root@preprod.bolixo.org bo deleteitems --doit
 	./bofs -u $USER groups --delete-group --groupname onegroup
 	echo "#### print-groups"

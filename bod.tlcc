@@ -1122,6 +1122,8 @@ struct REMOTE_INFO_FROM: public REMOTE_INFO{
 	string user;
 };
 struct REMOTE_INFO_TO: public REMOTE_INFO{
+	string groupname;
+	string groupowner;
 	vector<string> users;
 };
 <mod>
@@ -1145,11 +1147,19 @@ struct REMOTE_HANDLE{
 	void setfrom (PARAM_STRING server){
 		from.server = server.ptr;
 	}
+	void addgroup (PARAM_STRING groupname, PARAM_STRING server, PARAM_STRING groupowner){
+		REMOTE_INFO_TO r;
+		r.groupname = groupname.ptr;
+		r.server = server.ptr;
+		r.groupowner = groupowner.ptr;
+tlmp_warning ("addgroup g=%s s=%s o=%s",groupname.ptr,server.ptr,groupowner.ptr);
+		to.emplace_back(r);
+	}
 	void addto (PARAM_STRING server, const vector<string> &users){
 		REMOTE_INFO_TO r;
 		r.server = server.ptr;
 		r.users = users;
-		to.push_back(r);
+		to.emplace_back(r);
 	}
 };
 using REMOTE_HANDLE_P = unique_ptr<REMOTE_HANDLE>;
@@ -1262,12 +1272,12 @@ static void bod_remote_sendtalk(
 	PARAM_STRING createdby)
 {
 	for (auto &r:rem.to){
-		glocal REMOTE_INFO *r = &r;
+		glocal r;
 		r.initcon();
 		if (bod_remotelogin (con,r.con,rem.username,nodename,sessionid,r.sessionid)!=-1){
-			<call webapi_sendtalk> (r.con,r.sessionid,"",r.users,"","",content,more,name,sign,createdby);
+			<call webapi_sendtalk> (r.con,r.sessionid,"",r.users,r.groupname,r.groupowner,content,more,name,sign,createdby);
 			<f ok>
-				glocal.r->handle = handle;
+				glocal.r.handle = handle;
 				if (!success) tlmp_error ("remote_sendtalk: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
 			</f>
 			</call>
@@ -1428,6 +1438,13 @@ static int bod_parse_user (
 		}
 	}
 	return ret;
+}
+/*
+	Return true if a user account is remote
+*/
+static bool bod_is_remote_user (PARAM_STRING user)
+{
+	return strchr(user.ptr,'@') != nullptr;
 }
 /*
 	Get the public key of a node
@@ -2811,6 +2828,8 @@ static int bod_main (
 				rep_verifysign (glocal.status,glocal.msg);
 			</f>
 			<f sendtalk>	// sessionid owner to:v groupname groupowner content:o filename sign createdby = success:b msg handle
+				glocal groupname;
+				glocal groupowner;
 				glocal const char *sessionid = sessionid;
 				glocal string msg;
 				glocal string handle;
@@ -2826,7 +2845,35 @@ static int bod_main (
 					<f ok>
 						glocal.msg = msg;
 						glocal.handle = handle;
-						if (success){
+						if (success && !bod_is_remote_user(glocal.username)){
+							/*
+								Messages propagation. How it works.
+								Bolixo is a distributed system. Messages are duplicated on servers as needed.
+
+								Private messages are simply copied to destination here
+								(here means in the following code).
+								bo-writed takes care of private messages distribution for local users and bod
+								handles the remote users.
+
+								Group messages are copied as needed by publishd. bo-writed communicates
+								with publishd.
+
+								There is an exception. When a group message originates on a server which
+								is not the owner of the group, it is copied here to the owner server.
+								The owner server will do the propagation to the all other members
+								of the group. This is so because:
+									-remote server only knowns about their local group members.
+									 They lack the full definition of the group.
+									-remote servers can't connect the the group owner remote accounts.
+
+								In the following code, we extract the remote recipients in glocal.to and
+								organize them per server. Messages are copied once per server since
+								Bolixo use shared folders for group messages.
+
+								The we check if this is a remote group name. If so, we copy the message to the
+								group owner server.
+							*/
+tlmp_warning ("propagate message %s from user %s",fileuuid,glocal.username.c_str());
 							// We have to find if there are remote users and we organize them by servers
 							map<string,vector<string>> mp;
 							for (auto s:glocal.to){
@@ -2836,18 +2883,26 @@ static int bod_main (
 									mp[remote].push_back(remote_user);
 								}
 							}
-							if (mp.size() > 0){
+							string remote_group,remote;
+							{
+								string tmpuser;
+								bod_parse_user(glocal.groupowner,tmpuser,remote_group,remote,glocal.nodename);
+							}
+tlmp_warning ("mp.size()=%lu remote_user=%s remote=%s username=%s",mp.size(),remote_group.c_str(),remote.c_str(),glocal.username.c_str());
+							if (mp.size() > 0 || remote_group.size() > 0){
 								auto rem = make_unique<REMOTE_HANDLE>();
 								rem->username = glocal.username;
+								if (remote_group.size() > 0) rem->addgroup (glocal.groupname,remote,remote_group);
 								for (auto p:mp) rem->addto(p.first,p.second);
 								bod_remote_sendtalk (glocal.con,glocal.sessionid,*rem,glocal.content,glocal.nodename
-									,glocal.more,glocal.filename,sign,glocal.createdby);
+									,glocal.more,fileuuid,sign,glocal.createdby);
 								if (handle[0] != '\0'){
 									rem->handle = handle;
 									glocal.handle = fs_makeid();
 									rem_handles[glocal.handle] = move(rem);
 								}	
 							}
+tlmp_warning ("propagation done");
 						}
 					</f>
 					</call>

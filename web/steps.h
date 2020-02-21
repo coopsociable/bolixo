@@ -13,4 +13,5 @@ static const int step_doc=12;
 static const int step_incomplete=13;
 static const int step_doctopic=14;
 static const int step_gameaction=16;
+static const int step_techdoc=17;
 

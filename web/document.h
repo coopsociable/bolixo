@@ -40,7 +40,8 @@ EXTERN DOC_ID section_publish;
 #define SECTION_PREVIEW 10
 #define SECTION_NOTIFICATIONS 11
 #define SECTION_DOCUMENTS 12
-#define SECTION_NBSECTIONS 13
+#define SECTION_TECH 13
+#define SECTION_NBSECTIONS 14
 
 void jump2app (int step, PARAM_STRING webtab_add);
 void jump2app (int step, int tab);

@@ -3452,6 +3452,7 @@ int main (int argc, char *argv[])
 					glocal const char *groupowner = groupowner;
 					glocal const char *filename = filename;
 					glocal string sign = sign;
+					glocal string fileuuid;
 					bool is_admin;
 					glocal unsigned userid = bo_writed_get_group_owner (glocal.con, sessionid, owner, glocal.username, glocal.msg, is_admin);
 					if (glocal.userid > 0){
@@ -3494,6 +3495,7 @@ int main (int argc, char *argv[])
 											,glocal.content,glocal.recipients,glocal.more,glocal.sign,glocal.createdby
 											,info,glocal.msg);
 										glocal.handle = info.handle;
+										glocal.fileuuid = info.fileuuid;
 										string email_title,email_content;
 										bo_writed_set_email_notify (glocal.username,glocal.groupowner,glocal.groupname,info.file_type,glocal.content
 											,email_title,email_content);
@@ -3516,16 +3518,12 @@ int main (int argc, char *argv[])
 											string tmp = string_f("talks:%s:%s",bd_group_owner,bd_group_name);
 											bo_writed_notify (glocal.ctx,glocal.con,tmp,glocal.members,email_title,email_content);
 										}
-										bool remote_user = bo_writed_remote_user(glocal.username);
-										if (remote_user){
-											if (created){
-												bo_writed_update_interest_public(ownerid,dirid);
-											}
-										}else{
-											bo_writed_update_interest(created,bd_group_name,ownerid,dirid);
+										bo_writed_update_interest(created,bd_group_name,ownerid,dirid);
+										if (!bo_writed_remote_user(glocal.groupowner)){
 											// We have to decide if the message has to be pushed to other servers.
 											// public messages do (as needed)
 											// group message do if some members are remote
+tlmp_warning ("bd_group_name=%s groupowner=%s remote_members=%d username=%s",bd_group_name,glocal.groupowner,glocal.remote_members,glocal.username.c_str());
 											if (strcmp(bd_group_name,"public")==0 || glocal.remote_members){
 												if (!glocal.more){
 													<call publishd_client_sendmessage>(glocal.ctx.con_publish,ownerid
@@ -3623,14 +3621,14 @@ int main (int argc, char *argv[])
 						}
 					}
 					if (glocal.msg.size() > 0){
-						rep_sendtalk (false,glocal.msg,"","");
+						rep_sendtalk (false,glocal.msg,"","","");
 						fs_delete_handle(glocal.handle);
 					}else{
 						if (!more){
 							fs_delete_handle(glocal.handle);
 							glocal.handle.clear();
 						}
-						rep_sendtalk (true,glocal.msg,glocal.handle,glocal.sign);
+						rep_sendtalk (true,glocal.msg,glocal.handle,glocal.sign,glocal.fileuuid);
 					}
 				</f>
 				<f sendtalk_file>	// sessionid owner to:v groupname groupowner filename filedate = success:b msg

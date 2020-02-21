@@ -968,6 +968,7 @@ elif [ "$1" = "test-sendmail" ] ;then # prod: ask writed to send one email
 elif [ "$1" = "cmp-sequence" ] ; then # S: Execute QA tests
 	rm -f /tmp/bofs.testuuids
 	ssh root@preprod.bolixo.org rm -f /tmp/bofs.testuuids
+	ssh root@preprod.bolixo.org bofs --clearpubcache --pubsite test1.bolixo.org
 	unset LANG
 	CMPDIR=/tmp/cmp-test
 	rm -fr $CMPDIR
