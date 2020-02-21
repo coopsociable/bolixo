@@ -15,12 +15,18 @@ Bolixo is a distributed social media. This package includes everything
 to run a node.
 
 %package install
+Summary: Script to help install the bolixo packages
+Group: Networking/util
+%description install
 This package installs the script bolixo-production to let you easily installed
 the required packages for Bolixo. After installing this package, just run
 
 bolixo-production install-required
 
 %package utils
+Summary: Client command line utility to access Bolixo
+Group: Networking/util
+%description utils
 Provide the bofs command line tool. This tool allows you to access and maintain
 Bolixo.
 
