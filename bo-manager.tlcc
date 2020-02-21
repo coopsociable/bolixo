@@ -1745,10 +1745,15 @@ static void print_configs (
 					<f delayed>
 						fprintf (fout,"SESSION=`%s/bo-writed-control -p /var/lib/lxc/writed/rootfs/var/run/blackhole/bo-writed-0.sock login admin`\n"
 							,project_path);
-						fprintf (fout,"for file in /var/lib/lxc/bod/rootfs/var/run/blackhole/bod-*.sock\n");
-						fprintf (fout,"do\n");
-						fprintf (fout,"\t%s/bod-control -p $file set_admin_session $SESSION\n",project_path);
-						fprintf (fout,"done\n");
+						fprintf (fout,"if [ \"$SESSION\" = \"\" ] ;then\n");
+						fprintf (fout,"\techo No session for user admin\n");
+						fprintf (fout,"\texit 1\n");
+						fprintf (fout,"else\n");
+						fprintf (fout,"\tfor file in /var/lib/lxc/bod/rootfs/var/run/blackhole/bod-*.sock\n");
+						fprintf (fout,"\tdo\n");
+						fprintf (fout,"\t\t%s/bod-control -p $file set_admin_session $SESSION\n",project_path);
+						fprintf (fout,"\tdone\n");
+						fprintf (fout,"fi\n");
 					</f>
 					</call>
 					fprintf (glocal.all_fout,"%s\n",startfile.c_str());
@@ -1768,8 +1773,10 @@ static void print_configs (
 					<f pre_insert>
 						fprintf (fout,"SESSION=`%s/bod-control -p /var/lib/lxc/bod/rootfs/var/run/blackhole/bod-0.sock status | grep admin_sessionid: | ( read a b; echo $b)`\n"
 							,project_path);
-						fprintf (fout,"%s/bo-writed-control -p /var/lib/lxc/writed/rootfs/var/run/blackhole/bo-writed-0.sock logout $SESSION\n"
+						fprintf (fout,"if [ \"$SESSION\" != \"\" ] ; then\n");
+						fprintf (fout,"\t%s/bo-writed-control -p /var/lib/lxc/writed/rootfs/var/run/blackhole/bo-writed-0.sock logout $SESSION\n"
 							,project_path);
+						fprintf (fout,"fi\n");
 
 					</f>
 					</call>

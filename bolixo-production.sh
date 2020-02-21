@@ -59,10 +59,10 @@ check_loadfail(){
 	fi
 }
 step(){
-	echo -n bolixo-production $1" (n) "
+	echo -n bolixo-production $*" (n) "
 	read line
 	if [ "$line" != "n" ] ; then
-		bolixo-production $1
+		bolixo-production $*
 	else
 		echo skipped
 	fi
@@ -73,9 +73,6 @@ stepnote(){
 }
 if [ "$1" = "" ] ; then
 	menutest -s $0
-elif [ "$1" = "compute" ] ; then # prod: Update stats in news database
-	export LXCSOCK=on
-	$(TESTSH) compute
 elif [ "$1" = "files" ] ; then	# db: Access files database
 	shift
 	mysql -S /var/lib/lxc/bosqlddata/rootfs/var/lib/mysql/mysql.sock $DBNAME $*
@@ -151,6 +148,10 @@ elif [ "$1" = "blackhole-start" ]; then # config: Starts blackholes service or r
 		echo Start blackhole
 		/etc/init.d/blackhole start
 	fi
+elif [ "$1" = "blackhole-enable" ] ; then # config: Enable blackhole service at server start
+	chkconfig --add blackhole
+	chkconfig --add horizon
+	chkconfig --add conproxy
 elif [ "$1" = "secrets" ] ; then # config: Generate secrets
 	HOSTNAME=`hostname`
 	if [ ! -f /etc/bolixo/secrets.admin ] ; then
@@ -171,8 +172,8 @@ elif [ "$1" = "secrets" ] ; then # config: Generate secrets
 		CLI=`head -1 /etc/bolixo/secrets.client | (read a b; echo $b)`
 		ADM=`head -1 /etc/bolixo/secrets.admin | (read a b; echo $b)`
 		MYIP=`ifconfig eth0 | grep "inet " | ( read a b c; echo $b)`
-		sed "s/ #CLI/ $CLI/" </usr/share/bolixo/manager.conf \
-			| sed "s/ #ADM/ $ADM/" \
+		sed "s/ #CLI/ $CLI/g" </usr/share/bolixo/manager.conf \
+			| sed "s/ #ADM/ $ADM/g" \
 			| sed "s/testhost/localhost/" \
 			| sed "s/#MYIP/$MYIP/" >/root/data/manager.conf
 	fi
@@ -686,7 +687,7 @@ elif [ "$1" = "record-keysd-pass" ] ; then # prod: Record the keysd passphrase f
 		echo "***" Pass phrase not recorded
 	fi
 elif [ "$1" = "install-required" ] ; then # config: install required packages
-	echo dnf install lxc lxc-templates \
+	LIST="lxc lxc-templates \
 		gd \
 		mariadb-server mariadb-connector-c boost-date-time \
 		liberation-sans-fonts dejavu-sans-fonts freetype httpd mod_ssl \
@@ -694,7 +695,16 @@ elif [ "$1" = "install-required" ] ; then # config: install required packages
 		libvirt-daemon-config-network libvirt-client \
 		libvirt-daemon-driver-qemu bridge-utils \
 		time strace exim vim-enhanced certbot python3-certbot-apache \
-		bash-completion wget ImageMagick qqwing
+		bash-completion wget ImageMagick qqwing dnsmasq ebtables"
+	echo The following packages must be installed
+	echo
+	echo $LIST
+	echo
+	echo -n "Would you like to install them now (y/n) ? "
+	read yes
+	if [ "$yes" = "y" ] ; then
+		dnf install $LIST
+	fi
 elif [ "$1" = "generate-system-pubkey" ] ; then # config: Generate the node public key
 	/usr/lib/bolixo-test.sh generate-system-pubkey
 elif [ "$1" = "registernode" ] ; then # config: Register this node in the directory
@@ -716,6 +726,7 @@ elif [ "$1" = "install-sequence" ] ; then # config: Interative sequence to start
 	stepnote edit/configure /root/data/manager.conf /root/.bofs.conf
 	step config
 	step blackhole-start
+	step blackhole-enable
 	step checks
 	step lxc0s
 	step start-everything
@@ -724,6 +735,7 @@ elif [ "$1" = "install-sequence" ] ; then # config: Interative sequence to start
 	step test-system
 	step generate-system-pubkey
 	step createadmin
+	step restart bod
 	step syslog-clear
 	step syslog-reset
 	step test-system
