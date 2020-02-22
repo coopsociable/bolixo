@@ -197,7 +197,10 @@ id bolixo >/dev/null 2>/dev/null || useradd -r bolixo
 
 
 %files install
+/etc/bash_completion.d/bolixo
+/usr/lib/bo-complete
 /usr/sbin/bolixo-production
+/usr/sbin/bo
 
 %files utils
 /usr/bin/bofs
