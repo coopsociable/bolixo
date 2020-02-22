@@ -201,6 +201,7 @@ id bolixo >/dev/null 2>/dev/null || useradd -r bolixo
 /usr/lib/bo-complete
 /usr/sbin/bolixo-production
 /usr/sbin/bo
+/usr/share/bolixo/bolixo.conf
 
 %files utils
 /usr/bin/bofs

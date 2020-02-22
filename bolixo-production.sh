@@ -722,6 +722,13 @@ elif [ "$1" = "install-sequence" ] ; then # config: Interative sequence to start
 		echo "    " bolixo-production make-exim-log
 		exit 1
 	fi
+	echo The host name is `hostname`
+	echo -n "Is this valid (y/n) ?"
+	read yes
+	if [ "$yes" != "y" ] ; then
+		echo aborting
+		exit 1
+	fi
 	step secrets
 	stepnote edit/configure /root/data/manager.conf /root/.bofs.conf
 	step config
