@@ -957,20 +957,21 @@ static int bod_remotelogin (
 	string &sessionid)
 {
 	glocal int ret = -1;
-	glocal CONNECT_INFO *con = &con;
-	glocal string *sessionid = &sessionid;
-	glocal CONNECT_HTTP_INFO *hcon = &hcon;
-	glocal const char *local_session = local_session;
+	glocal con;
+	glocal sessionid;
+	glocal hcon;
+	glocal local_session;
+	glocal const char *remote = hcon.host.c_str();
 	glocal string remote_user = bod_format_remote_user (local_user,nodename);
 	<call webapi_remotelogin>(hcon,glocal.remote_user);
 	<f ok>
 		if (!success){
-			tlmp_error ("remotelogin failed for %s: %s\n"
-				,glocal.remote_user.c_str(),msg);
+			tlmp_error ("remotelogin failed for %s, remote server %s returned: %s\n"
+				,glocal.remote_user.c_str(),glocal.remote,msg);
 		}else{
 			glocal string sign;
-			*glocal.sessionid = sessionid;
-			<call bo_writed_client_usersign>(*glocal.con,glocal.local_session,sessionid);
+			glocal.sessionid = sessionid;
+			<call bo_writed_client_usersign>(glocal.con,glocal.local_session,sessionid);
 			<f ok>
 				if (success){
 					glocal.sign = sign;
@@ -980,7 +981,7 @@ static int bod_remotelogin (
 			</f>
 			</call>
 			if (glocal.sign.size() > 0){
-				<call webapi_remotepass>(*glocal.hcon,sessionid,glocal.remote_user,glocal.sign);
+				<call webapi_remotepass>(glocal.hcon,sessionid,glocal.remote_user,glocal.sign);
 				<f ok>
 					if (success){
 						glocal.ret = 0;
@@ -1519,12 +1520,15 @@ static int bod_check_remote_user(
 		<call sql_query>("select userid from id2name where name='%s'",glocal.user);
 		<f empty>
 			// User unknown
+tlmp_warning ("check_remote_user unknown user %s",glocal.user);
 			if (glocal.remote[0] != '\0'){
 				// Check if this user exists on the remote node
 				CONNECT_HTTP_INFO hcon;
 				bod_inithcon (hcon,glocal.remote);
+tlmp_warning ("check remote=%s remote_user=%s",glocal.remote,glocal.remote_user);
 				<call webapi_getpubkey>(hcon,glocal.remote_user);
 				<f ok>
+tlmp_warning ("check internal=%d success=%d sign=%s",internal_error,success,pubkey);
 					if (success){
 						if (fs_valid_pubkey(pubkey)==-1){
 							glocal.msg = MSG_U(E_IVLDPUBKEY,"Invalid public key for remote user");
@@ -1540,7 +1544,8 @@ static int bod_check_remote_user(
 							</call>
 						}
 					}else{
-						glocal.msg = MSG_U(E_CANTGETPUBKEY,"Can't get public key for remote user");
+						glocal.msg = string_f(MSG_U(E_CANTGETPUBKEY,"Can't get public key for remote user %s on server %s")
+							,glocal.remote_user,glocal.remote);
 					}
 				</f>
 				</call>
