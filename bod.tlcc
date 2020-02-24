@@ -157,6 +157,7 @@ struct DIRENTRY{
 #define webapi_list_groups_NOTNEED
 #define webapi_list_contacts_NOTNEED
 #define webapi_delete_list_NOTNEED
+#define webapi_contact_remove_NOTNEED
 #include "proto/webapi.protoch"
 
 
@@ -1008,28 +1009,43 @@ static void bod_remotelogout(CONNECT_HTTP_INFO &hcon, PARAM_STRING sessionid)
 </mod>
 /*
 	Perform a remote contact request
+	Return -1 if any error
 */
 <mod>
-static void bod_remote_contact_request(
+static int bod_remote_contact_request(
 	CONNECT_INFO &con,
 	const char *sessionid,
 	PARAM_STRING caller,	// User who created this request
 	PARAM_STRING user,	// User we wish to contact
 	PARAM_STRING intro,	// Small message
 	PARAM_STRING server,	// Server where this user lives
-	const char *nodename)	// Our nodename
+	const char *nodename,	// Our nodename
+	string &msg)
 {
+	glocal int ret = -1;
+	glocal msg;
+	glocal const char *server = server.ptr;
+	glocal const char *user = user.ptr;
 	CONNECT_HTTP_INFO hcon;
 	bod_inithcon (hcon,server);
 	string session;
 	if (bod_remotelogin (con,hcon,caller,nodename,sessionid,session)!=-1){
 		<call webapi_contact_request> (hcon,session,"",user,intro);
 		<f ok>
-			if (!success) tlmp_error ("remote_contact_request: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
+			if (success){
+				glocal.ret = 0;
+			}else{
+				tlmp_error ("remote_contact_request: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
+				glocal.msg = string_f(MSG_U(E_REMOTECONTACTREQ,"Remote contact request to account %s on server %s failed: %s")
+					,glocal.user,glocal.server,msg);
+			}
 		</f>
 		</call>
 		bod_remotelogout(hcon,session);
+	}else{
+		msg = string_f(MSG_U(E_REMOTELOGINFAIL,"Remote login to account %s on server %s failed"),caller.ptr,server.ptr);
 	}
+	return glocal.ret;
 }
 </mod>
 /*
@@ -1520,15 +1536,15 @@ static int bod_check_remote_user(
 		<call sql_query>("select userid from id2name where name='%s'",glocal.user);
 		<f empty>
 			// User unknown
-tlmp_warning ("check_remote_user unknown user %s",glocal.user);
+			// tlmp_warning ("check_remote_user unknown user %s",glocal.user);
 			if (glocal.remote[0] != '\0'){
 				// Check if this user exists on the remote node
 				CONNECT_HTTP_INFO hcon;
 				bod_inithcon (hcon,glocal.remote);
-tlmp_warning ("check remote=%s remote_user=%s",glocal.remote,glocal.remote_user);
+				// tlmp_warning ("check remote=%s remote_user=%s",glocal.remote,glocal.remote_user);
 				<call webapi_getpubkey>(hcon,glocal.remote_user);
 				<f ok>
-tlmp_warning ("check internal=%d success=%d sign=%s",internal_error,success,pubkey);
+					// tlmp_warning ("check internal=%d success=%d sign=%s",internal_error,success,pubkey);
 					if (success){
 						if (fs_valid_pubkey(pubkey)==-1){
 							glocal.msg = MSG_U(E_IVLDPUBKEY,"Invalid public key for remote user");
@@ -2983,24 +2999,35 @@ tlmp_warning ("propagation done");
 				}
 			</f>
 			<f contact_request>	// sessionid owner user intro = success:b msg
-				glocal const char *intro = intro;
+				glocal intro;
+				glocal owner;
+				glocal sessionid;
 				glocal bool success = false;
 				glocal string msg;
 				glocal string username;
-				glocal const char *sessionid = sessionid;
 				unsigned userid = bo_writed_get_group_owner (glocal.con_sess, sessionid, owner, glocal.username, glocal.msg);
 				if (userid != 0){
 					glocal string remote_user;
 					glocal string remote;
-					string local_user;
+					glocal string local_user;
 					if (bod_check_remote_user(glocal.con,user,glocal.nodename,glocal.msg
-						,local_user,glocal.remote_user,glocal.remote)!=-1){
-						<call bo_writed_client_contact_request>(glocal.con,sessionid,owner,local_user,intro);
+						,glocal.local_user,glocal.remote_user,glocal.remote)!=-1){
+						<call bo_writed_client_contact_request>(glocal.con,sessionid,owner,glocal.local_user,intro);
 						<f ok>
 							glocal.success = success;
 							glocal.msg = msg;
 							if (success && glocal.remote.size() > 0){
-								bod_remote_contact_request (glocal.con,glocal.sessionid,glocal.username,glocal.remote_user,glocal.intro,glocal.remote,glocal.nodename);
+								if(bod_remote_contact_request (glocal.con,glocal.sessionid
+									,glocal.username,glocal.remote_user,glocal.intro,glocal.remote
+									,glocal.nodename,glocal.msg)==-1){
+									glocal.success = false;
+									// We have to undo the local contact request
+									tlmp_warning ("contact_remove %s",glocal.local_user.c_str());
+									<call bo_writed_client_contact_remove>(glocal.con,glocal.sessionid,glocal.owner,glocal.local_user);
+									<f ok>
+									</f>
+									</call>
+								}
 							}
 						</f>
 						</call>
@@ -3035,6 +3062,17 @@ tlmp_warning ("propagation done");
 					</call>
 				}
 				rep_contact_manage (glocal.success,glocal.msg);
+			</f>
+			<f contact_remove> // sessionid owner user = success:b msg
+				glocal bool success = false;
+				glocal string msg;
+				<call bo_writed_client_contact_remove>(glocal.con,sessionid,owner,user);
+				<f ok>
+					glocal.success = success;
+					glocal.msg = msg;
+				</f>
+				</call>
+				rep_contact_remove (glocal.success,glocal.msg);
 			</f>
 			<f contact_list>	// sessionid owner to_me:b contact offset:u nb:u = success:b msg contacts:U{CONTACT}v
 				// CONTACT user reqdate message status

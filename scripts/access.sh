@@ -120,6 +120,7 @@ elif [ "$1" = "ivldsession" ] ; then # test: Test access with invalid session (a
 	./test.sh bod-control nodelogout http://test1.bolixo.org $SESSION
 elif [ "$1" = "remote-contact" ] ; then # test: Perform remote contact request
 	ssh root@preprod.bolixo.org /root/bin/cleartest1
+	echo Sleep 5 seconds
 	sleep 5
 	for user in bolixodev bolixonews bolixonouvelles jacquesg
 	do
@@ -140,6 +141,33 @@ elif [ "$1" = "remote-contact" ] ; then # test: Perform remote contact request
 	./bofs groups --print-contacts
 	echo ==== Inbox jacques-A
 	./bofs -t msgs -s -G inbox
+elif [ "$1" = "remote-contact-fail" ] ; then # test: Perform remote contact request with failure
+	SERVER=preprod2.bolixo.org
+	ssh root@$SERVER /root/bin/cleartest1
+	echo Sleep 5 seconds
+	sleep 5
+	./bofs -u jacques-A misc --contact_list --minimal | grep $SERVER | while read line
+	do
+		echo ./bofs -u jacques-A misc --contact_remove --user $line
+		./bofs -u jacques-A misc --contact_remove --user $line
+	done
+	echo "delete from id2name where name like '%@$SERVER';" | ./test.sh files
+	echo "#### Invalid user"
+	ssh root@$SERVER bofs -u jacques misc --contact_request -u jacques-AA@test1.bolixo.org
+	echo "#### Local user without public key"
+	# Erase public key for user jacques-A
+	PUBKEY=`echo "select pub_key from id2name where name='jacques-A';" | ./test.sh files --skip-column-names`
+	echo "update id2name set pub_key=null where name='jacques-A';" | ./test.sh files
+	ssh root@$SERVER bofs -u jacques misc --contact_request -u jacques-A@test1.bolixo.org
+	echo "update id2name set pub_key='$PUBKEY' where name='jacques-A';" | ./test.sh files
+	echo "#### remote user have no public key"
+	PUBKEY=`echo "select pub_key from id2name where name='jacques';" | ssh root@$SERVER bo files --skip-column-names`
+	echo "update id2name set pub_key=null where name='jacques';" | ssh root@$SERVER bo files
+	ssh root@$SERVER bofs -u jacques misc --contact_request -u jacques-A@test1.bolixo.org
+	echo "update id2name set pub_key='$PUBKEY' where name='jacques';" | ssh root@$SERVER bo files
+	echo "#### Contact request works"
+	ssh root@$SERVER bofs -u jacques misc --contact_request -u jacques-A@test1.bolixo.org
+	./bofs --nonstrict -u jacques-A misc --contact_manage -u jacques@preprod2.bolixo.org
 elif [ "$1" = "contact-utf8" ] ; then # test: Perform contact request UTF-8
 	user=jacques-éà
 	./bofs misc --contact_request -u $user

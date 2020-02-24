@@ -3743,7 +3743,7 @@ tlmp_warning ("bd_group_name=%s groupowner=%s remote_members=%d username=%s",bd_
 							<call sql_query>("select status from contact_requests where userid=%u and reqid=%d"
 								,glocal.userid,glocal.target_userid);
 							<f empty>
-								glocal.msg = "No contact request from this user";
+								glocal.msg = MSG_U(E_NOCONTACTUSER,"No contact request from this user");
 							</f>
 							<f onerow>
 								CONTACT_STATUS s = (CONTACT_STATUS)atoi(row[0]);
@@ -3781,6 +3781,40 @@ tlmp_warning ("bd_group_name=%s groupowner=%s remote_members=%d username=%s",bd_
 						rep_contact_manage (false,glocal.msg);
 					}else{
 						rep_contact_manage (true,"");
+					}
+				</f>
+				<f contact_remove>	// sessionid owner user = success:b msg
+					glocal string msg;
+					glocal string username;
+					glocal unsigned userid = bo_writed_get_group_owner (glocal.con, sessionid, owner, glocal.username, glocal.msg);
+					if (glocal.userid > 0){
+						glocal int target_userid = fs_rec_getid ("select userid from id2name where name='%s'",user);
+						if (glocal.target_userid == -1){
+							glocal.msg = MSG_R(E_UNKNOWNUSER);
+						}else{
+							<call sql_query>("select userid,reqid from contact_requests"
+								" where (userid=%u and reqid=%u) or (userid=%u and reqid=%u)"
+								,glocal.target_userid,glocal.userid,glocal.userid,glocal.target_userid);
+							<f empty>
+								glocal.msg = MSG_R(E_NOCONTACTUSER);
+							</f>
+							<f onerow>
+								if (sql_action("delete from contact_requests where userid=%s and reqid=%s",row[0],row[1])==-1){
+									glocal.msg = "contact_remove: error deleting in table contact_requests";
+								}else if (sql_action("delete group_members from group_members"
+									" join groups on groups.id=group_members.groupid"
+									" where group_members.userid=%u and groups.ownerid=%u"
+									,glocal.target_userid,glocal.userid)==-1){
+									glocal.msg = "contact_remove: error deleting in group contacts";
+								}
+							</f>
+							</call>
+						}
+					}
+					if (glocal.msg.size() > 0){
+						rep_contact_remove (false,glocal.msg);
+					}else{
+						rep_contact_remove (true,"");
 					}
 				</f>
 				<f set_notification>	// sessionid owner key ui:b email:b digest:b = success:b msg

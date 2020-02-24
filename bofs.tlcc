@@ -2631,7 +2631,7 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 							glocal.stop = true;
 						}else{
 							vector<SHORTMSG_receive> copy;
-							bofs_copysort (messages,copy);
+							bofs_copysort(messages,copy);
 							if (nbnew > 0) printf (MSG_U(I_HIDDENNEWMESSAGES,"%u hidden new messages\n"),nbnew);
 							bofs_listshortmsgs(*glocal.ctx,copy,glocal.full);
 							glocal.stop = messages.size() < glocal.chunk;
@@ -2818,6 +2818,7 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 	glocal unsigned nbrep=1;
 	glocal bool contact_request = false;
 	glocal bool contact_manage = false;
+	glocal bool contact_remove = false;
 	glocal bool contact_list = false;
 	glocal bool contact_request_by_me = false;
 	glocal bool interest_set = false;
@@ -2847,6 +2848,7 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 	glocal bool notify_email = false;
 	glocal bool notify_digest = false;
 	glocal const char *firstseen = "";
+	glocal bool minimal = false;
 	glocal.ret = <call tlmpprogram>(argc,argv);
 	<f init>
 		setproginfo ("bomisc",VERSION
@@ -2858,6 +2860,7 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 		setarg ('c',"showconfig","Show user configuration",glocal.showconfig,false);
 		setarg ('w',"writeconfig","Update user configuration",glocal.writeconfig,false);
 		setarg ('m',"markview","Mark a file as viewed",glocal.markview,false);
+		setarg (' ',"contact_remove","Remove a contact request from his contact list",glocal.contact_remove,false);
 		setarg ('r',"contact_request","Ask a user to be part of his contact list",glocal.contact_request,false);
 		setarg ('R',"contact_manage","Manage a contact request",glocal.contact_manage,false);
 		setarg ('l',"contact_list","List the contacts for this user",glocal.contact_list,false);
@@ -2903,6 +2906,7 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 		setarg ('O',"owner",MSG_R(O_OWNER),glocal.owner,false);
 		setarg (' ',"fulltext","Request full text for these messages",glocal.fulltext,false);
 		setarg (' ',"firstseen",MSG_R(O_FIRSTSEEN),glocal.firstseen,false);
+		setarg (' ',"minimal",MSG_U(O_MINIMAL,"Minimal output, used for scripting"),glocal.minimal,false);
 	</f>
 	<f main>
 		glocal int ret = -1;
@@ -2996,6 +3000,32 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 					</call>
 				}
 			}
+		}else if (glocal.contact_remove){
+			if (glocal.user == NULL){
+				tlmp_error ("You must specify the user you wish to remove from your contact list\n");
+				exit (-1);
+			}
+			if (glocal.ctx->login()!=-1){
+				if (glocal.ctx->is_internal()){
+					<call bod_client_contact_remove>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner,glocal.user);
+					<f ok>
+						if (!success){
+							bofs_error ("contact_remove",internal_error,msg);
+							glocal.ret = -1;
+						}
+					</f>
+					</call>
+				}else{
+					<call webapi_contact_remove>(glocal.ctx->hcon,glocal.ctx->hsessionid,glocal.owner,glocal.user);
+					<f ok>
+						if (!success){
+							bofs_error ("contact_remove",internal_error,msg);
+							glocal.ret = -1;
+						}
+					</f>
+					</call>
+				}
+			}
 		}else if (glocal.contact_request){
 			if (glocal.user == NULL){
 				tlmp_error ("You must specify the user you want to contact\n");
@@ -3033,7 +3063,11 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 						}else{
 							static const char *tbstatus[]={"waiting","accepted","rejected"};
 							for (auto &c:contacts){
-								printf ("%s\t%s\t%s\t%s\n",c.user,c.reqdate,tbstatus[c.status],c.message);
+								if (glocal.minimal){
+									printf ("%s\n",c.user);
+								}else{
+									printf ("%s\t%s\t%s\t%s\n",c.user,c.reqdate,tbstatus[c.status],c.message);
+								}
 							}
 						}
 					</f>
@@ -3047,7 +3081,11 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 						}else{
 							static const char *tbstatus[]={"waiting","accepted","rejected"};
 							for (auto &c:contacts){
-								printf ("%s\t%s\t%s\t%s\n",c.user,c.reqdate,tbstatus[c.status],c.message);
+								if (glocal.minimal){
+									printf ("%s\n",c.user);
+								}else{
+									printf ("%s\t%s\t%s\t%s\n",c.user,c.reqdate,tbstatus[c.status],c.message);
+								}
 							}
 						}
 					</f>
