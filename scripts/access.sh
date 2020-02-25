@@ -16,6 +16,30 @@ listdir(){
 		esac
 	done
 }
+# Add contact $2@$3 to $1
+# $2 is remote.
+addcontact(){
+	localuser=$1
+	user=$2
+	server=$3
+	if [ "$server" = "" ] ; then
+		found=`(./bofs -u jacques-A misc --contact_list --request_by_me --minimal; ./bofs -u jacques-A misc --contact_list --minimal)|grep $user`
+		if [ "$found" = "" ] ; then
+			./bofs --nonstrict -u $1 misc --contact_request -u $user
+			sleep 0.2
+			./bofs --nonstrict -u $user misc --contact_manage -u $localuser
+		fi
+	else
+		remoteuser=$2@$3
+		found=`(./bofs -u jacques-A misc --contact_list --request_by_me --minimal; ./bofs -u jacques-A misc --contact_list --minimal)|grep $remoteuser`
+		if [ "$found" = "" ] ; then
+			./bofs --nonstrict -u $1 misc --contact_request -u $remoteuser
+			sleep 0.2
+			ssh root@$server bofs --nonstrict -u $user misc --contact_manage -u $localuser@test1.bolixo.org
+		fi
+	fi
+}
+
 if [ "$1" = "" ] ; then
 	if [ -x /usr/sbin/menutest ] ; then
 		/usr/sbin/menutest -s $0
@@ -373,39 +397,58 @@ elif [ "$1" = "delete-group" ] ; then # test: create a group with messages and d
 	./test.sh deleteitems --doit
 elif [ "$1" = "remote-group-create" ] ; then # test: group with remote members, create
 	USER=jacques-A
-	echo "#### Create group onegroup with 4 members"
+	addcontact $USER jacques-B
+	addcontact $USER jacquesg  preprod.bolixo.org
+	addcontact $USER bolixodev preprod.bolixo.org
+	addcontact $USER jacques   preprod2.bolixo.org
+	addcontact $USER clemence  preprod2.bolixo.org
+	echo "#### Create group onegroup with 6 members"
 	./bofs -u $USER groups --create-group --groupname onegroup
 	./bofs -u $USER groups --set-member --groupname onegroup --user $USER
 	./bofs -u $USER groups --set-member --groupname onegroup --user jacques-B
 	./bofs -u $USER groups --set-member --groupname onegroup --user jacquesg@preprod.bolixo.org
 	./bofs -u $USER groups --set-member --groupname onegroup --user bolixodev@preprod.bolixo.org
+	./bofs -u $USER groups --set-member --groupname onegroup --user jacques@preprod2.bolixo.org
+	./bofs -u $USER groups --set-member --groupname onegroup --user clemence@preprod2.bolixo.org
 	echo "#### Show all members"
 	./bofs -u $USER groups --print-groups --only_owner
 	echo "#### Show members on preprod"
 	ssh root@preprod.bolixo.org bofs -u admin groups --print-groups --only_owner -O $USER@test1.bolixo.org
+	echo "#### Show members on preprod2"
+	ssh root@preprod2.bolixo.org bofs -u admin groups --print-groups --only_owner -O $USER@test1.bolixo.org
 elif [ "$1" = "remote-group-cleanup" ] ; then # test: group with remote members, cleanup
 	USER=jacques-A
 	echo "#### Cleanup"
 	./bofs -u $USER groups --set-member --groupname onegroup --user jacquesg@preprod.bolixo.org --access -
 	./bofs -u $USER groups --set-member --groupname onegroup --user bolixodev@preprod.bolixo.org --access -
+	./bofs -u $USER groups --set-member --groupname onegroup --user jacques@preprod2.bolixo.org --access -
+	./bofs -u $USER groups --set-member --groupname onegroup --user clemence@preprod2.bolixo.org --access -
 	ssh root@preprod.bolixo.org bo deleteitems --doit
+	ssh root@preprod2.bolixo.org bo deleteitems --doit
 	./bofs -u $USER groups --delete-group --groupname onegroup
 	echo "#### print-groups"
 	./bofs -u $USER groups --print-groups --only_owner
 	echo "#### print-groups on preprod"
 	ssh root@preprod.bolixo.org bofs -u admin groups --print-groups --only_owner -O $USER@test1.bolixo.org
+	echo "#### print-groups on preprod2"
+	ssh root@preprod2.bolixo.org bofs -u admin groups --print-groups --only_owner -O $USER@test1.bolixo.org
 	./test.sh deleteitems --doit
 elif [ "$1" = "remote-group-messages" ] ; then # test: group with remote members, send messages
 	USER=jacques-A
 	echo "#### Send messages"
-	# All 3 members will send a message
+	# All 6 members will send a message
 	./bofs -u $USER msgs --shortmsg --groupname onegroup --groupowner $USER -C "message from $USER"
 	./bofs -u jacques-B msgs --shortmsg --groupname onegroup --groupowner $USER -C "message from jacques-B"
 	ssh root@preprod.bolixo.org bofs -u jacquesg msgs --shortmsg --groupname onegroup --groupowner $USER@test1.bolixo.org -C "message_from_jacquesg@preprod.bolixo.org"
+	ssh root@preprod.bolixo.org bofs -u bolixodev msgs --shortmsg --groupname onegroup --groupowner $USER@test1.bolixo.org -C "message_from_bolixodev@preprod.bolixo.org"
+	ssh root@preprod2.bolixo.org bofs -u jacques msgs --shortmsg --groupname onegroup --groupowner $USER@test1.bolixo.org -C "message_from_jacques@preprod2.bolixo.org"
+	ssh root@preprod2.bolixo.org bofs -u clemence msgs --shortmsg --groupname onegroup --groupowner $USER@test1.bolixo.org -C "message_from_clemence@preprod2.bolixo.org"
 	echo "#### list messages for $USER"
-	./bofs -u $USER msgs --listshortmsgs --groupname onegroup --groupowner $USER
+	./bofs --nonstrict -u $USER msgs --listshortmsgs --groupname onegroup --groupowner $USER
 	echo "#### list messages for jacquesg@preprod.bolixo.org"
-	ssh root@preprod.bolixo.org bofs -u jacquesg msgs --listshortmsgs --groupname onegroup --groupowner jacques-A@test1.bolixo.org
+	ssh root@preprod.bolixo.org bofs --nonstrict -u jacquesg msgs --listshortmsgs --groupname onegroup --groupowner jacques-A@test1.bolixo.org
+	echo "#### list messages for jacques@preprod2.bolixo.org"
+	ssh root@preprod2.bolixo.org bofs --nonstrict -u jacques msgs --listshortmsgs --groupname onegroup --groupowner jacques-A@test1.bolixo.org
 elif [ "$1" = "remote-group" ] ; then # test: group with remote members, create,send,cleanup
 	$0 remote-group-create
 	$0 remote-group-messages

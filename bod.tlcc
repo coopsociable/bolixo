@@ -2458,7 +2458,7 @@ static int bod_main (
 				</f>
 				</call>
 			</f>
-			<f set_member>	// sessionid groupname user defaultaccess owner = success:b msg
+			<f set_member>	// sessionid groupname user access owner = success:b msg
 				glocal bool success = false;
 				glocal string msg;
 				string username;
@@ -2466,6 +2466,7 @@ static int bod_main (
 				if (userid != 0){
 					// Extract all member of the group before calling bo-writed.
 					// We will be able to figure out of a group has to be created or deleted on a remote server
+					// tlmp_warning ("set_member groupname=%s username=%s user=%s access=%s role=%s",groupname,username.c_str(),user,access,role);
 					glocal map<string,set<string>> servers;	// Record per remote server accounts
 					<call sql_query>("select id2name.name from groups"
 						" left join group_members on groups.id = group_members.groupid"
@@ -2482,6 +2483,7 @@ static int bod_main (
 					</call>
 					<call bo_writed_client_set_member>(glocal.con,sessionid,groupname,user,access,role,owner);
 					<f ok>
+						//tlmp_warning ("writed set_member success=%d msg=%s",success,msg);
 						glocal.success = success;
 						glocal.msg = msg;
 					</f>
@@ -2894,7 +2896,7 @@ static int bod_main (
 								The we check if this is a remote group name. If so, we copy the message to the
 								group owner server.
 							*/
-tlmp_warning ("propagate message %s from user %s",fileuuid,glocal.username.c_str());
+							// tlmp_warning ("propagate message %s from user %s",fileuuid,glocal.username.c_str());
 							// We have to find if there are remote users and we organize them by servers
 							map<string,vector<string>> mp;
 							for (auto s:glocal.to){
@@ -2909,7 +2911,7 @@ tlmp_warning ("propagate message %s from user %s",fileuuid,glocal.username.c_str
 								string tmpuser;
 								bod_parse_user(glocal.groupowner,tmpuser,remote_group,remote,glocal.nodename);
 							}
-tlmp_warning ("mp.size()=%lu remote_user=%s remote=%s username=%s",mp.size(),remote_group.c_str(),remote.c_str(),glocal.username.c_str());
+							// tlmp_warning ("mp.size()=%lu remote_user=%s remote=%s username=%s",mp.size(),remote_group.c_str(),remote.c_str(),glocal.username.c_str());
 							if (mp.size() > 0 || remote_group.size() > 0){
 								auto rem = make_unique<REMOTE_HANDLE>();
 								rem->username = glocal.username;
@@ -2923,7 +2925,7 @@ tlmp_warning ("mp.size()=%lu remote_user=%s remote=%s username=%s",mp.size(),rem
 									rem_handles[glocal.handle] = move(rem);
 								}	
 							}
-tlmp_warning ("propagation done");
+							// tlmp_warning ("propagation done");
 						}
 					</f>
 					</call>

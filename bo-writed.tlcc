@@ -85,14 +85,14 @@ using namespace std;
 static unsigned trli_getsessionuser (CONNECT_INFO &con, const char *sessionid, string &userid_str, bool &is_admin, bool &is_node)
 {
 	glocal unsigned userid = 0;
-	glocal string *userid_str = &userid_str;
+	glocal userid_str;
 	glocal bool is_admin = false;
 	is_node = false;
 	<call bo_sessiond_admin_getsession>(con,sessionid);
 	<f ok>
 		if (success){
 			glocal.userid = userid;
-			(*glocal.userid_str) = userid_str;
+			glocal.userid_str = userid_str;
 			glocal.is_admin = admin;
 			translat_selectlang (lang);
 		}
@@ -117,12 +117,14 @@ static unsigned trli_getsessionuser (CONNECT_INFO &con, const char *sessionid, s
 	bool is_admin,is_node;
 	return trli_getsessionuser (con,sessionid,userid_str,is_admin,is_node);
 }
+#if 0
 static unsigned trli_getsessionuser (CONNECT_INFO &con, const char *sessionid)
 {
 	string tmp;
 	bool is_admin,is_node;
 	return trli_getsessionuser (con,sessionid,tmp,is_admin,is_node);
 }
+#endif
 /*
 	Check if a name only use accepted characters
 	Many characters are refused even if they probably do not cause any problems on the system.
@@ -846,6 +848,7 @@ static int bo_writed_addfile_bob (
 	ADDFILE_INFO &info,
 	string &msg)
 {
+	glocal createdby;
 	glocal unsigned userid = userid;
 	glocal string pubkey;
 	glocal msg;
@@ -862,11 +865,11 @@ static int bo_writed_addfile_bob (
 			glocal.userid = atoi(row[1]);
 		</f>
 		<f empty>
-			glocal.msg = "Unknown createdby user";
+			glocal.msg = string_f("Unknown createdby user: %s",glocal.createdby);
 		</f>
 		</call>
 	}
-	if (!more){
+	if (msg.size() == 0 && !more){
 		if (info.file_type == FILE_TEXT){
 			tmp = string((const char *) content.getbuffer(),content.getsize());
 			content_str = tmp.c_str();
@@ -2744,8 +2747,11 @@ int main (int argc, char *argv[])
 					}
 				</f>
 				<f appendfile>
-					if (trli_getsessionuser(glocal.con,sessionid)==0){
-						rep_appendfile (false,"Invalid session");
+					string msg;
+					string username;
+					unsigned userid = bo_writed_get_group_owner (glocal.con, sessionid, "", username, msg);
+					if (userid == 0){
+						rep_appendfile (false,msg);
 					}else{
 						FILE *fout = fs_get_file (handle,sessionid);
 						if (fout == NULL){
@@ -2764,7 +2770,7 @@ int main (int argc, char *argv[])
 								if (fs_file_handle_getextra(handle,ownerid,dirid,fileid,modified,name,groupname)!=-1
 									&& ownerid != -1){ 
 									<call publishd_client_sendmessage>(glocal.ctx.con_publish,ownerid
-										,dirid,fileid,modified,name,groupname);
+										,dirid,fileid,modified,name,groupname,username);
 									<f ok>
 										if (!success) tlmp_error ("publishd_client_sendmessage: %s\n",msg);
 									</f>
@@ -3523,12 +3529,11 @@ int main (int argc, char *argv[])
 											// We have to decide if the message has to be pushed to other servers.
 											// public messages do (as needed)
 											// group message do if some members are remote
-tlmp_warning ("bd_group_name=%s groupowner=%s remote_members=%d username=%s",bd_group_name,glocal.groupowner,glocal.remote_members,glocal.username.c_str());
 											if (strcmp(bd_group_name,"public")==0 || glocal.remote_members){
 												if (!glocal.more){
 													<call publishd_client_sendmessage>(glocal.ctx.con_publish,ownerid
 														,dirid,info.fileid,info.modified.buf,info.fileuuid
-														,bd_group_name);
+														,bd_group_name,glocal.username);
 													<f ok>
 														if (!success) tlmp_error ("publishd_client_sendmessage: %s\n",msg);
 													</f>
@@ -3664,9 +3669,16 @@ tlmp_warning ("bd_group_name=%s groupowner=%s remote_members=%d username=%s",bd_
 									bo_writed_update_dirdate(dirid);
 								}
 								bo_writed_update_interest(created,glocal.groupname,ownerid,dirid);
-								if (strcmp(glocal.groupname,"public")==0){
+								if (!bo_writed_remote_user(glocal.groupowner)){
+									glocal string username;
+									<call sql_query>("select name from id2name where userid=%u",glocal.srcentry.userid);
+									<f onerow>
+										glocal.username = row[0];
+									</f>
+									</call>
 									<call publishd_client_sendmessage>(glocal.ctx.con_publish,ownerid
-										,dirid,glocal.srcentry.entryid,glocal.srcentry.modified,newname,"public");
+										,dirid,glocal.srcentry.entryid,glocal.srcentry.modified,newname
+										,glocal.groupname,glocal.username);
 									<f ok>
 										if (!success) tlmp_error ("publishd_client_sendmessage: %s\n",msg);
 									</f>

@@ -131,14 +131,20 @@ struct PUBLISH_MESSAGE{
 	unsigned dirid;
 	unsigned fileid;
 	string modified;
-	PUBLISH_MESSAGE(const char *_user, unsigned _userid, unsigned _dirid, unsigned _fileid, const char *_modified, const char *_name, const char *_groupname){
-		user = _user;
+	string sentfrom;
+	PUBLISH_MESSAGE(
+		const char *_user,
+		unsigned _userid,
+		unsigned _dirid,
+		unsigned _fileid,
+		const char *_modified,
+		const char *_name,
+		const char *_groupname,
+		const char *_sentfrom)
+		:user(_user),name(_name),groupname(_groupname),modified(_modified),sentfrom(_sentfrom){
 		userid = _userid;
 		dirid = _dirid;
 		fileid = _fileid;
-		modified = _modified;
-		name = _name;
-		groupname = _groupname;
 	}
 	PUBLISH_MESSAGE(){
 		userid = (unsigned)-1;
@@ -258,6 +264,26 @@ static void publishd_doone (
 					}
 				</f>
 				</call>
+				if (glocal.todo.sentfrom.size() > 0){
+					/*
+						sentfrom is the address of the sender. From this address, we
+						extract the server. No need to resend the message to the server
+						which generate it. So we remove it from glocal.nodes here.
+					*/
+					const char *pt = strchr(glocal.todo.sentfrom.c_str(),'@');
+					if (pt != nullptr){
+						pt++;
+						auto f = glocal.nodes.find(string_f("https://%s",pt));
+						if (f != glocal.nodes.end()){
+							glocal.nodes.erase(f);
+						}else{
+							f = glocal.nodes.find(string_f("http://%s",pt));
+							if (f != glocal.nodes.end()){
+								glocal.nodes.erase(f);
+							}
+						}
+					}
+				}
 				if (glocal.nodes.size() > 0){
 					glocal BOB_TYPE content;
 					glocal string sign;
@@ -270,7 +296,14 @@ static void publishd_doone (
 						" where files.id=%u and files.modified='%s'"
 						,glocal.todo.fileid,glocal.todo.modified.c_str());
 					<f onerow>
-						if (glocal.todo.user != row[2]) glocal.from = string_f("%s@%s",row[2],glocal.our_node);
+						if (glocal.todo.user != row[2]){
+							if (strchr(row[2],'@')!=nullptr){
+								glocal.from = row[2];
+							}else{
+								glocal.from = string_f("%s@%s",row[2],glocal.our_node);
+							}
+						}
+						//tlmp_warning ("todo.user=%s row[2]=%s from=%s",glocal.todo.user.c_str(),row[2],glocal.from.c_str());
 						if (row[1] != NULL) glocal.sign = row[1];
 						if (row[0] != NULL){
 							glocal.content.setbuffer((const void*)row[0],strlen(row[0]),true);
@@ -591,7 +624,7 @@ int main (int argc, char *argv[])
 						tlmp_error ("No user for userid=%u\n",userid);
 					}else{
 						glocal.messages_sent++;
-						glocal.messages.emplace_back(glocal.user.c_str(),userid,dirid,fileid,modified,name,groupname);
+						glocal.messages.emplace_back(glocal.user.c_str(),userid,dirid,fileid,modified,name,groupname,sentfrom);
 						if (glocal.pid == (pid_t)-1){
 							publishd_doone (glocal.TCPSERVER,glocal.pid,glocal.messages
 								,*glocal.sub_sq,glocal.hostname,glocal.keysdsock);
