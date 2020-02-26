@@ -241,7 +241,11 @@ elif [ "$1" = "instrument" ] ; then # prod: Turn instrumentation on and off
 		echo "bolixo-production instrument 0|1"
 		exit 1
 	fi
-	for cmd in bod-controls bo-mon-control bo-writed-control bo-sessiond-control bolixod-controls publishd-control documentd-control
+	CTRL="bod-controls bo-mon-control bo-writed-control bo-sessiond-control publishd-control documentd-control"
+	if [ -d /var/lib/lxc/bolixod/rootfs ] ; then
+		CTRL="$CTRL bolixod-controls"
+	fi
+	for cmd in $CTRL
 	do
 		$0 calltest $cmd instrument $2
 	done
@@ -365,11 +369,15 @@ elif [ "$1" = "restart-nolock" ] ; then # prod: restart without locking some ser
 				done
 			elif [ "$serv" = "keysd" ] ; then
 				KEYSDPASS=needed
+				SERVICES="$SERVICES keysd"
 			else
 				SERVICES="$SERVICES $serv"
 			fi
 		done
-		if [ "$KEYSDPASS" != "" ] ;then
+		if [ -f /root/keysd.pass ] ;then
+			export KEYSDPASS=`cat /root/keysd.pass`
+			shred -u /root/keysd.pass
+		elif [ "$KEYSDPASS" != "" ]; then
 			echo -n "keysd will be restarted, please enter its passphrase : "
 			read -s KEYSDPASS
 			echo
@@ -428,6 +436,7 @@ elif [ "$1" = "restart-nolock" ] ; then # prod: restart without locking some ser
 			done
 			if [ "$keysd_restarted" != "" ] ; then
 				echo Service keysd was restarted, passphrase in place
+				sleep 0.5
 				if /usr/sbin/bo-keysd-control -p /var/lib/lxc/keysd/rootfs/var/run/blackhole/bo-keysd.sock setpassphrase $KEYSDPASS
 				then
 					echo Pass phrase ok
@@ -713,6 +722,18 @@ elif [ "$1" = "createadmin" ] ; then # config: Create the admin acccount
 	/usr/lib/bolixo-test.sh createadmin
 elif [ "$1" = "start-everything" ] ; then # config: Start all bolixo services
 	/root/bolixostart.sh
+elif [ "$1" = "genkeysdpass" ] ; then # config: Generate the bo-keysd passphrase
+	echo -n `date +%N` >/root/keysd.pass
+	dd if=/dev/random count=8 bs=1 2>/dev/null | od -x | head -1 | (read a b c d e; echo $b$c$d$e) >>/root/keysd.pass 
+	echo
+	echo "**** Attention *****"
+	echo
+	echo "A pass phrase for the private keys management daemon bo-keysd"
+	echo "has been generated in file /root/keysd.pass"
+	echo "You must retrieve this pass phrase and store it safely"
+	echo
+	echo "You must do this now, as the passphrase will be erased at the next step"
+	echo
 elif [ "$1" = "install-sequence" ] ; then # config: Interative sequence to start a node from scratch
 	if [ ! -f /root/stracelogs/log.web -o ! -f /root/stracelogs/log.exim -o ! -f /root/stracelogs/log.mysql ] ; then
 		echo lxc0 log files are missing in /root/stracelogs
@@ -736,6 +757,7 @@ elif [ "$1" = "install-sequence" ] ; then # config: Interative sequence to start
 	step blackhole-enable
 	step checks
 	step lxc0s
+	step genkeysdpass
 	step start-everything
 	step createsqluser
 	step createdb

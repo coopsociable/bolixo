@@ -446,6 +446,7 @@ static void webtabs(_F_webtabs &c,
 		unsigned width=0,height=0;
 	};
 	TABSPEC tbspec[5];
+	tlmpweb_delay_deleteform(true);
 	while (typeorder.size() > 0){
 		FORM_HIDDEN t(w_subtab);
 		const unsigned type = typeorder.front();
@@ -501,8 +502,9 @@ static void webtabs(_F_webtabs &c,
 					c.docmain(id,id,state,spec.width,spec.height);
 				}
 				// tlmp_warning ("webtabs type=%d id=%s draw_ok=%d redo=%d added_tab=%d",type,id,draw_ok,c.redo,c.added_tab);
-				if (!draw_ok) break;
-				if (!c.redo) break;
+				if (!draw_ok || !c.redo){
+					break;
+				}
 				c.redo = false;
 				lines[type].clear();
 			}
@@ -514,8 +516,12 @@ static void webtabs(_F_webtabs &c,
 			typeorder.push_back(c.added_tab);
 			c.added_tab = -1;
 			c.commit_addtab();
-		} 
+			tlmpweb_clear_deletedforms();
+		}else{ 
+			tlmpweb_exec_deleteform();
+		}
 	}
+	tlmpweb_delay_deleteform(false);
 	if (draw_ok){
 		DIV sc; sc.w(100).dispflex().flowrow().align("stetch").bg("white").print();
 		vector<GRABLINE> docs;

@@ -894,6 +894,7 @@ static void index_show_shortmsg(
 	glocal const char *groupname = groupname.ptr;
 	glocal const char *groupowner = groupowner.ptr;
 	glocal bool is_inbox = strcmp(glocal.groupname,"inbox")==0;
+	glocal bool is_anonymous = strcmp(glocal.groupname,"anonymous")==0;
 	glocal string path = string_f("/msgs/%s/short-inbox/%s",glocal.groupowner,glocal.groupname);
 	WEBID ID_TALK("talk",string_f("%s:%s",groupowner.ptr,groupname.ptr));
 	glocal const char *table = ID_TALK.c_str();
@@ -952,8 +953,9 @@ static void index_show_shortmsg(
 								tmp += t;
 							}
 						}
-						if (glocal.is_inbox && tmp.size() > 0){
-							tlmpweb_forcevar(w_recipients,tmp);
+						if (!glocal.is_anonymous && tmp.size() > 0){
+							tlmpweb_forcevar(w_recipients2,tmp);
+							if (!glocal.is_inbox) glocal.webtabs.addtab (string_f("1:%s:inbox",userinfo.name.c_str()),MSG_R(I_SHORTINBOX));
 						}else{
 							/-#E_REPLYTOYOU Can't reply to yourself
 						}
@@ -972,7 +974,7 @@ static void index_show_shortmsg(
 	<f load>
 		glocal unsigned rownum = nbskip;
 		// Defines all posible options for dropdown
-		if (glocal.is_inbox){
+		if (!glocal.is_anonymous){
 			adddrop_opt (MENU_REPLY,MSG_U(M_REPLY,"Reply"));
 		}
 		adddrop_opt (MENU_COPY,MSG_R(M_COPY));
