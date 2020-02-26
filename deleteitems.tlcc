@@ -388,16 +388,16 @@ int main (int argc, char *argv[])
 			// While cleaning those tables, we collect other ids which will make orphans in other tables.
 			set<unsigned> group_ids;
 			set<unsigned> group_list_ids;
-			struct TABLESPEC { const char *table; const char *field; set<unsigned> *collect;} tables[]={
-				{"contact_requests","userid",nullptr},
-				{"contact_requests","reqid",nullptr},
-				{"interests","userid",nullptr},
-				{"interests_remote","userid",nullptr},
-				{"notifications","userid",nullptr},
-				{"userinfo","userid",nullptr},
-				{"group_members","userid",nullptr},
-				{"groups","ownerid",&group_ids},
-				{"group_lists","ownerid",&group_list_ids}
+			struct TABLESPEC { const char *table; const char *field; set<unsigned> *collect; const char *member_table; const char *member_field;} tables[]={
+				{"contact_requests","userid",nullptr,nullptr,nullptr},
+				{"contact_requests","reqid",nullptr,nullptr,nullptr},
+				{"interests","userid",nullptr,nullptr,nullptr},
+				{"interests_remote","userid",nullptr,nullptr,nullptr},
+				{"notifications","userid",nullptr,nullptr,nullptr},
+				{"userinfo","userid",nullptr,nullptr,nullptr},
+				{"group_members","userid",nullptr,nullptr,nullptr},
+				{"groups","ownerid",&group_ids,"group_members","groupid"},
+				{"group_lists","ownerid",&group_list_ids,"group_list_members","group_list_id"}
 				};
 			for (auto const &table:tables){
 				glocal const char *table = table.table;
@@ -435,10 +435,10 @@ int main (int argc, char *argv[])
 				if (table.collect != nullptr){
 					for (auto &u:*table.collect){
 						if (verbose){
-							printf ("delete %s %u\n",table.table,u);
+							printf ("delete %s %s %u\n",table.member_table,table.member_field,u);
 						}
 						if (doit){
-							if (sql_action("delete from %s where id=%u",table.table,u)==-1){
+							if (sql_action("delete from %s where %s=%u",table.member_table,table.member_field,u)==-1){
 								tlmp_error ("Delete fail in table %s, aborting: %s\n"
 									,table.table,query_getdefaultdb()->error());
 								exit (-1);
