@@ -167,14 +167,15 @@ elif [ "$1" = "remote-contact" ] ; then # test: Perform remote contact request
 	./bofs -t msgs -s -G inbox
 elif [ "$1" = "remote-contact-fail" ] ; then # test: Perform remote contact request with failure
 	SERVER=preprod2.bolixo.org
-	ssh root@$SERVER /root/bin/cleartest1
-	echo Sleep 5 seconds
-	sleep 5
+	# Remove all contact from $SERVER
 	./bofs -u jacques-A misc --contact_list --minimal | grep $SERVER | while read line
 	do
 		echo ./bofs -u jacques-A misc --contact_remove --user $line
 		./bofs -u jacques-A misc --contact_remove --user $line
 	done
+	ssh root@$SERVER /root/bin/cleartest1
+	echo Sleep 5 seconds
+	sleep 5
 	echo "delete from id2name where name like '%@$SERVER';" | ./test.sh files
 	echo "#### Invalid user"
 	ssh root@$SERVER bofs -u jacques misc --contact_request -u jacques-AA@test1.bolixo.org
@@ -192,6 +193,8 @@ elif [ "$1" = "remote-contact-fail" ] ; then # test: Perform remote contact requ
 	echo "#### Contact request works"
 	ssh root@$SERVER bofs -u jacques misc --contact_request -u jacques-A@test1.bolixo.org
 	./bofs --nonstrict -u jacques-A misc --contact_manage -u jacques@preprod2.bolixo.org
+	echo Contacts from $SERVER for jacques-A
+	./bofs -u jacques-A misc --contact_list --minimal | grep $SERVER
 elif [ "$1" = "contact-utf8" ] ; then # test: Perform contact request UTF-8
 	user=jacques-éà
 	./bofs misc --contact_request -u $user

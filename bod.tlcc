@@ -157,7 +157,6 @@ struct DIRENTRY{
 #define webapi_list_groups_NOTNEED
 #define webapi_list_contacts_NOTNEED
 #define webapi_delete_list_NOTNEED
-#define webapi_contact_remove_NOTNEED
 #include "proto/webapi.protoch"
 
 
@@ -1068,6 +1067,31 @@ static void bod_remote_contact_manage(
 		<call webapi_contact_manage> (hcon,session,"",user,status);
 		<f ok>
 			if (!success) tlmp_error ("remote_contact_manage: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
+		</f>
+		</call>
+		bod_remotelogout(hcon,session);
+	}
+}
+</mod>
+/*
+	Perform a remote contact remove
+*/
+<mod>
+static void bod_remote_contact_remove(
+	CONNECT_INFO &con,
+	const char *sessionid,
+	PARAM_STRING caller,	// User who created this request
+	PARAM_STRING user,	// User we wish to remove
+	PARAM_STRING server,	// Server where this user lives
+	const char *nodename)	// Our nodename
+{
+	CONNECT_HTTP_INFO hcon;
+	bod_inithcon(hcon,server);
+	string session;
+	if (bod_remotelogin (con,hcon,caller,nodename,sessionid,session)!=-1){
+		<call webapi_contact_remove> (hcon,session,"",user);
+		<f ok>
+			if (!success) tlmp_error ("remote_contact_remove: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
 		</f>
 		</call>
 		bod_remotelogout(hcon,session);
@@ -3068,12 +3092,23 @@ static int bod_main (
 			<f contact_remove> // sessionid owner user = success:b msg
 				glocal bool success = false;
 				glocal string msg;
-				<call bo_writed_client_contact_remove>(glocal.con,sessionid,owner,user);
-				<f ok>
-					glocal.success = success;
-					glocal.msg = msg;
-				</f>
-				</call>
+				string username;
+				unsigned userid = bo_writed_get_group_owner (glocal.con_sess, sessionid, owner, username, glocal.msg);
+				if (userid != 0){
+					<call bo_writed_client_contact_remove>(glocal.con,sessionid,owner,user);
+					<f ok>
+						glocal.success = success;
+						glocal.msg = msg;
+					</f>
+					</call>
+					string tmpuser,remote_user,remote;
+					if (glocal.success
+						&& bod_parse_user(user,tmpuser,remote_user,remote,glocal.nodename)!=-1
+						&& remote.size() > 0){
+						// The contact is remote. We will try to remove it from the server
+						bod_remote_contact_remove (glocal.con,sessionid,username,remote_user,remote,glocal.nodename);
+					}
+				}
 				rep_contact_remove (glocal.success,glocal.msg);
 			</f>
 			<f contact_list>	// sessionid owner to_me:b contact offset:u nb:u = success:b msg contacts:U{CONTACT}v
@@ -3241,10 +3276,11 @@ static int bod_main (
 							// PATCH: The table encode interest for the private inbox
 							// when check_userid == the current user.
 							u.name = "inbox";
+							u.visible = false;
 						}else{
 							u.name = row[0];
+							u.visible = row[1] == nullptr ? 1 : atoi(row[1]) != 0;
 						}
-						u.visible = row[1] == NULL ? 1 : atoi(row[1]) != 0;
 						u.since = row[2];
 						glocal.users.push_back(u);
 					</f>

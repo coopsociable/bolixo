@@ -3811,13 +3811,20 @@ int main (int argc, char *argv[])
 								glocal.msg = MSG_R(E_NOCONTACTUSER);
 							</f>
 							<f onerow>
+								// We delete one entry from contact_requests. A single entry defines the relation.
+								// Then we delete one user from the contact list of the other and vice versa
 								if (sql_action("delete from contact_requests where userid=%s and reqid=%s",row[0],row[1])==-1){
 									glocal.msg = "contact_remove: error deleting in table contact_requests";
 								}else if (sql_action("delete group_members from group_members"
 									" join groups on groups.id=group_members.groupid"
 									" where group_members.userid=%u and groups.ownerid=%u"
 									,glocal.target_userid,glocal.userid)==-1){
-									glocal.msg = "contact_remove: error deleting in group contacts";
+									glocal.msg = "contact_remove: error deleting in userid group contacts";
+								}else if (sql_action("delete group_members from group_members"
+									" join groups on groups.id=group_members.groupid"
+									" where group_members.userid=%u and groups.ownerid=%u"
+									,glocal.userid,glocal.target_userid)==-1){
+									glocal.msg = "contact_remove: error deleting in target_userid group contacts";
 								}
 							</f>
 							</call>
