@@ -167,7 +167,7 @@ elif [ "$1" = "remote-contact" ] ; then # test: Perform remote contact request
 	./bofs -t msgs -s -G inbox
 elif [ "$1" = "remote-contact-fail" ] ; then # test: Perform remote contact request with failure
 	SERVER=preprod2.bolixo.org
-	# Remove all contact from $SERVER
+	# Remove all contacts from $SERVER
 	./bofs -u jacques-A misc --contact_list --minimal | grep $SERVER | while read line
 	do
 		echo ./bofs -u jacques-A misc --contact_remove --user $line

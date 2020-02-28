@@ -1,0 +1,199 @@
+/*
+	This file is part of Bolixo.
+
+	Bolixo is free software: you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation, either version 3 of the License, or
+	(at your option) any later version.
+
+	Bolixo is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+	GNU General Public License for more details.
+
+	You should have received a copy of the GNU General Public License
+	along with Bolixo.  If not, see <https://www.gnu.org/licenses/>.
+*/
+/*
+	Command line utility to manage bolixo servers
+*/
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <tlmplib.h>
+#include <string>
+#include "../bolixo.m"
+
+using namespace std;
+
+#define _TLMP_procserver
+struct _F_procserver{
+	string home;
+	string server;
+	void saveversion(PARAM_STRING version);
+	string getversion() const;
+	#define _F_procserver_doone(x) void x doone(const char *server, const char *path_pass, bool &end)
+	virtual _F_procserver_doone( )=0;
+};
+
+
+<mod>
+void _F_procserver::saveversion (PARAM_STRING version)
+{
+	glocal version;
+	<call savefile>(string_f("%s/bolixo/%s.version",home.c_str(),server.c_str()),false);
+	<f dowrite>
+		fprintf (fout,"%s\n",glocal.version.ptr);
+		return 0;
+	</f>
+	</call>
+}
+</mod>
+<mod>
+string _F_procserver::getversion () const
+{
+	glocal string version;
+	<call loadfile>(string_f("%s/bolixo/%s.version",home.c_str(),server.c_str()),true);
+	<f oneline>
+		glocal.version = line;
+		return 0;
+	</f>
+	</call>
+	return glocal.version;
+}
+</mod>
+<mod>
+static void procserver(_F_procserver &c, int argc, char **argv)
+{
+	glocal bool end = false;
+	glocal c;
+	glocal const char *home = getenv("HOME");
+	if (glocal.home == nullptr){
+		tlmp_error ("No HOME variable, can't continue\n");
+		exit (-1);
+	}
+	c.home = glocal.home;
+	for (int i=0; i<argc && !glocal.end; i++){
+		const char *arg = argv[i];
+		string path_lst = string_f("%s/bolixo/%s.lst",glocal.home,arg);
+		if (file_type(path_lst.c_str())==0){
+			<call loadfile>(path_lst,true);
+			<f oneline>
+				if (line[0] != '\0'){
+					string path_pass = string_f("%s/bolixo/%s.pass",glocal.home,line);
+					if (file_type(path_pass.c_str())==0){
+						glocal.c.server = line;
+						glocal.c.doone (line,path_pass.c_str(),glocal.end);
+					}else{
+						tlmp_error ("File %s does not exist, can't continue\n",path_pass.c_str());
+						glocal.end = true;
+					}
+				}
+				return glocal.end ? -1 : 0;
+			</f>
+			</call>
+		}else{
+			string path_pass = string_f("%s/bolixo/%s.pass",glocal.home,arg);
+			if (file_type(path_pass.c_str())==0){
+				glocal.c.server = arg;
+				c.doone (arg,path_pass.c_str(),glocal.end);
+			}else{
+				tlmp_error ("File %s does not exist, can't continue\n",path_pass.c_str());
+				glocal.end = true;
+			}
+		}
+	}
+}
+</mod>
+
+static void banner (const char *server)
+{
+	printf ("-------------------- %s\n",server);
+}
+
+<mod>
+int main (int argc, char *argv[])
+{
+	glocal int ret = -1;
+	glocal.ret = <call tlmpprogram>(argc,argv);
+	<f init>
+		setproginfo ("bo-remote-manage",VERSION
+			,"restart server ...\n"
+			 "update  server ...\n"
+			 "version server ...\n"
+			);
+	</f>
+	<f main>
+		int ret = -1;
+		const char *cmd = argv[0];
+		if (strcmp(cmd,"restart")==0){
+			<call procserver>(argc-1,argv+1);
+			<f doone>
+				banner (server);
+				string cmd = string_f("scp %s root@%s:/root/keysd.pass",path_pass,server);
+				printf ("cmd=%s\n",cmd.c_str());
+				if (system(cmd.c_str())==0){
+					cmd = string_f("ssh root@%s bo restart most",server);
+					printf ("cmd=%s\n",cmd.c_str());
+					if (system(cmd.c_str())!=0){
+						end = true;
+					}
+				}else{
+					end = true;
+				}
+			</f>
+			</call>
+		}else if (strcmp(cmd,"update")==0){
+			<call procserver>(argc-1,argv+1);
+			<f doone>
+				banner(server);
+				vector<string> cmds;
+				cmds.push_back(string_f("ssh root@%s rpm -Uvh /pkgs/*",server));
+				cmds.push_back(string_f("ssh root@%s rm -f /pkgs/*",server));
+				for (auto &cmd:cmds){
+					printf ("cmd=%s\n",cmd.c_str());
+					if (system(cmd.c_str())!=0){
+						end = true;
+						break;
+					}
+				}
+				if (!end){
+					<call walkpopen>(string_f("ssh root@%s rpm -q bolixo",server),10);
+					<f oneline>
+						printf ("version=%s\n",line);
+						glocal.procserver.saveversion (line);
+						return 0;
+					</f>
+					</call>
+				}
+			</f>
+			</call>
+		}else if (strcmp(cmd,"version")==0){
+			<call procserver>(argc-1,argv+1);
+			<f doone>
+				banner(server);
+				<call walkpopen>(string_f("ssh root@%s rpm -q bolixo",server),10);
+				<f oneline>
+					printf ("version=%s\n",line);
+					glocal.procserver.saveversion (line);
+					return 0;
+				</f>
+				</call>
+			</f>
+			</call>
+		}else if (strcmp(cmd,"listversion")==0){
+			<call procserver>(argc-1,argv+1);
+			<f doone>
+				printf ("%s: %s\n",server,getversion().c_str());
+			</f>
+			</call>
+		}else{
+			usage();
+		}
+		return ret;
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+
