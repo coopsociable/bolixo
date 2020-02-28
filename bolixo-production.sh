@@ -270,15 +270,15 @@ elif [ "$1" = "listsessions" ] ; then # prod: list web sessions (offset)
 		OFF=$2
 	fi
 	bo-sessiond-control -p /var/lib/lxc/sessiond/rootfs/var/run/blackhole/bo-sessiond.sock listsessions $OFF 100
-elif [ "$1" = "who" ] ; then # prod: who is connected
+elif [ "$1" = "who" ] ; then # accounts: who is connected
 	$0 listsessions | grep 000 | grep @ | while read a b c d e f g
 	do
 		echo $f $d
 	done | sort
-elif [ "$1" = "listusers" ] ; then # prod: list user accounts
+elif [ "$1" = "listusers" ] ; then # accounts: list user accounts
 	shift
 	listusers "$@"
-elif [ "$1" = "show-interest" ] ; then # prod: show the interest table
+elif [ "$1" = "show-interest" ] ; then # accounts: show the interest table
 	$0 files --column-names --table <<-EOF
 	select id2name.name as User,id2.name as Interest, dirid from interests
 		join id2name on id2name.userid=interests.userid
@@ -505,26 +505,26 @@ elif [ "$1" = "rotatelog" ] ; then # prod: Rotate writed logs
 	cp $LOG.1 $FILE
 	gpg -e -r jack@solucorp.qc.ca $FILE
 	rm -f $FILE
-elif [ "$1" = "newacctresend" ] ; then # prod: Resend account confirmation mail [ to_stdout ]
+elif [ "$1" = "newacctresend" ] ; then # accounts: Resend account confirmation mail [ to_stdout ]
 	if [ "$2" = "" ] ; then
 		echo newacctresend email [ to_stdout ]
 		exit 1
 	fi
 	/usr/lib/bolixo-test.sh bo-writed-control newacctresend $2 $3
-elif [ "$1" = "confirmuser" ] ; then # prod: Confirm a new user account
+elif [ "$1" = "confirmuser" ] ; then # accounts: Confirm a new user account
 	if [ "$3" = "" ] ; then
 		echo confirmuser nickname email
 		exit 1
 	fi
 	/usr/lib/bolixo-test.sh bo-writed-control confirmuser $2
 	/usr/lib/bolixo-test.sh bod-control publishemail $2 $3
-elif [ "$1" = "del_incomplete" ] ; then # prod: Deletes un-confirmed user accounts (seconds)
+elif [ "$1" = "del_incomplete" ] ; then # accounts: Deletes un-confirmed user accounts (seconds)
 	shift
 	/usr/lib/bolixo-test.sh bo-writed-control del_incomplete $1 
-elif [ "$1" = "disable" ] ; then # prod: Disable one user account
+elif [ "$1" = "disable" ] ; then # accounts: Disable one user account
 	shift
 	/usr/lib/bolixo-test.sh bo-writed-control disable $1 
-elif [ "$1" = "enable" ] ; then # prod: Enable one user account
+elif [ "$1" = "enable" ] ; then # accounts: Enable one user account
 	shift
 	/usr/lib/bolixo-test.sh bo-writed-control enable $1 
 elif [ "$1" = "status" ] ; then # prod: Status of one service
@@ -628,7 +628,7 @@ elif [ "$1" = "calltest" ] ; then # A: Call /usr/lib/bolixo-test.sh
 	export LXCSOCK=on
 	shift
 	/usr/lib/bolixo-test.sh "$@"
-elif [ "$1" = "certificate-install" ]; then # prod: Install the SSL certificate
+elif [ "$1" = "certificate-install" ]; then # config: Install the SSL certificate
 	# Make sure the special /root/bin/apachectl is used
 	export PATH=/root/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin
 	NODENAME=$2
