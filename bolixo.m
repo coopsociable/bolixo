@@ -2,7 +2,7 @@ extern const char **_dictionary_bolixo;
 #ifndef DICTIONARY_REQUEST
 	#define DICTIONARY_REQUEST \
 	const char **_dictionary_bolixo;\
-	TRANSLATE_SYSTEM_REQ _dictionary_req_bolixo("bolixo",_dictionary_bolixo,615,19);\
+	TRANSLATE_SYSTEM_REQ _dictionary_req_bolixo("bolixo",_dictionary_bolixo,624,19);\
 	void dummy_dict_bolixo(){}
 #endif
 #ifndef MSG_U
@@ -628,3 +628,12 @@ extern const char **_dictionary_bolixo;
 #define E_REMOTELOGINFAIL	612
 #define E_NOCONTACTUSER	613
 #define O_MINIMAL	614
+#define I_BOLIXO_UPDATE	615
+#define I_SCRIPTFILE	616
+#define I_STATEFILE	617
+#define E_STATEFILEMISSING	618
+#define I_NEWSTATEFILE	619
+#define E_SCRIPTMISSING	620
+#define E_ONEERROR	621
+#define I_TEST	622
+#define I_DOIT	623

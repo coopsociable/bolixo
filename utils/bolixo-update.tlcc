@@ -1,0 +1,136 @@
+/*
+	This file is part of Bolixo.
+
+	Bolixo is free software: you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation, either version 3 of the License, or
+	(at your option) any later version.
+
+	Bolixo is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+	GNU General Public License for more details.
+
+	You should have received a copy of the GNU General Public License
+	along with Bolixo.  If not, see <https://www.gnu.org/licenses/>.
+*/
+/*
+	Command line utility to perform updates based on the update-script file
+*/
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <tlmplib.h>
+#include <string>
+#include "../bolixo.m"
+#include <set>
+#include <string>
+#include <vector>
+#include <algorithm>
+#include "../helper.h"
+
+using namespace std;
+
+<mod>
+int main (int argc, char *argv[])
+{
+	glocal int ret = -1;
+	glocal const char *update_script = "/usr/share/bolixo/update-script";
+	glocal const char *state_file = nullptr;
+	glocal const char *newstate_file = nullptr;
+	glocal bool doit = false;
+	glocal bool test = false;
+	glocal.ret = <call tlmpprogram>(argc,argv,"bolixo");
+	<f init>
+		setproginfo ("bolixo-update",VERSION
+			,MSG_U(I_BOLIXO_UPDATE,
+			"Apply command in the update-script file as needed\n"));
+		setarg ('c',"script",MSG_U(I_SCRIPTFILE,"Path of the update-script file"),glocal.update_script,false);
+		setarg ('n',"newstatefile",MSG_U(I_NEWSTATEFILE,"File which will hold the updated states"),glocal.newstate_file,false);
+		setarg ('s',"statefile",MSG_U(I_STATEFILE,"File holding the current state of the system"),glocal.state_file,true);
+		setarg (' ',"test",MSG_U(I_TEST,"Show what will be done only"),glocal.test,false);
+		setarg (' ',"doit",MSG_U(I_DOIT,"Execute the commands"),glocal.doit,false);
+	</f>
+	<f main_noarg>
+		int ret = 0;
+		glocal set<string> states;
+		glocal vector<string> newstates;	// States to add
+		glocal vector<string> commands;		// Commands to execute
+		glocal vector<string> end_commands;	// Commands to execute after commands.
+		<call loadfile>(glocal.state_file,true);
+		<f oneline>
+			glocal.states.insert(line);
+			return 0;
+		</f>
+		<f missing>
+			tlmp_error (MSG_U(E_STATEFILEMISSING,"State file %s is missing, can't continue\n"),fname);
+			exit (-1);
+		</f>
+		</call>
+		glocal bool processing = false;
+		<call loadfile>(glocal.update_script,true);
+		<f oneline>
+			if (line[0] != '\0' && line[0] != '#'){
+				const char *pt;
+				if (is_start_any_of(line,pt,"----")){
+					string word;
+					str_copyword(word,pt);
+					if (glocal.states.count(word)==0){
+						glocal.newstates.push_back(word);
+						glocal.processing = true;
+					}else{
+						glocal.processing = false;
+					}
+				}else if (glocal.processing){
+					if (strcmp(line,"bo config")==0 || strcmp(line,"bo lxc0s")==0){
+						if (find(glocal.end_commands.begin(),glocal.end_commands.end(),line) == glocal.end_commands.end()){
+							glocal.end_commands.push_back(line);
+						}
+					}else{
+						glocal.commands.push_back(line);
+					}
+				}
+			}
+			return 0;
+		</f>
+		<f missing>
+			tlmp_error (MSG_U(E_SCRIPTMISSING,"Script file %s is missing, can't continue\n"),fname);
+			exit (-1);
+		</f>
+		</call>
+		if (glocal.test){
+			for (auto &s:glocal.newstates) printf ("newstate: %s\n",s.c_str());
+			for (auto &s:glocal.commands) printf ("    command: %s\n",s.c_str());
+			for (auto &s:glocal.end_commands) printf ("end command: %s\n",s.c_str());
+		}
+		if (glocal.doit){
+			for (auto &s:glocal.commands){
+				printf ("    command: %s\n",s.c_str());
+				if (system(s.c_str())!=0){
+					tlmp_error (MSG_U(E_ONEERROR,"One error, aborting\n"));
+					exit (-1);
+				}
+			}
+			for (auto &s:glocal.end_commands){
+				printf ("end command: %s\n",s.c_str());
+				if (system(s.c_str())!=0){
+					tlmp_error (MSG_R(E_ONEERROR));
+					exit (-1);
+				}
+			}
+			if (glocal.newstate_file != nullptr){
+				<call savefile>(glocal.newstate_file,false);
+				<f dowrite>
+					for (auto &s:glocal.newstates) fprintf (fout,"%s\n",s.c_str());
+					return 0;
+				</f>
+				</call>
+			}
+		}
+		return ret;
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+

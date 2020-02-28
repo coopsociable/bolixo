@@ -298,6 +298,19 @@ elif [ "$1" = "monitor" ] ; then # prod: Reports last run of the bolixo monitor
 elif [ "$1" = "resetmsg" ] ; then # prod: Reset alarm in bolixo monitor
 	$0 syslog-reset
 	bo-mon-control resetmsg
+elif [ "$1" = "update-script" ] ; then # prod: Apply update scripts
+	CURSTATES=/root/update.states
+	NEWSTATES=/root/update.newstates
+	rm -f $CURSTATES $NEWSTATES
+	echo "select name from updates" | bo users >$CURSTATES
+	shift
+	/usr/lib/bolixo-update -s $CURSTATES -n $NEWSTATES $*
+	if [ -f $NEWSTATES ] ; then
+		for state in `cat $NEWSTATES`
+		do
+			echo "insert into updates (name) values ('$state');" | bo users
+		done
+	fi
 elif [ "$1" = "restart" ] ; then # prod: restart some services (webs, internals, ...)
 	shift
 	flock --close /var/run/bolixo-restart.lock $0 restart-nolock $*

@@ -53,6 +53,8 @@ make install
 /usr/share/bolixo/manager.conf
 /usr/share/bolixo/bolixo.conf
 /usr/share/bolixo/bofs.conf
+/usr/share/bolixo/update-script
+/usr/lib/bolixo-update
 /usr/sbin/bo-webtest
 /usr/sbin/bod
 /usr/sbin/bod-control

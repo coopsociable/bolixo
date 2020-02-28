@@ -9,7 +9,7 @@ PROGS=_dict.o bod bod-client bod-control bo-writed bo-writed-control bo-sessiond
       bo-manager bofs ssltestsign bo-keysd bo-keysd-control bolixod bolixod-control perfsql \
       bo-mon bo-mon-control utils/eximexec utils/helpspell publishd publishd-control bo-webtest \
       documentd documentd-control rssd rssd-control deleteitems utils/cacheurl utils/email-log \
-      utils/show-notifies utils/business-card waitevent utils/bo-remote-manage
+      utils/show-notifies utils/business-card waitevent utils/bo-remote-manage utils/bolixo-update
 #bo-log bo-log-control \
 DOCS=
 OPTIONS=$(DINSTRUMENT) -funsigned-char -O2 -Wall -g -DVERSION=\"$(PACKAGE_REV)\" -I/usr/include/tlmp -I/usr/include/trlitool
@@ -22,7 +22,7 @@ all: $(PROGS) msg.eng msg.fr
 
 msg:
 	$(LDEVEL)/msgscan bolixo \
-		bolixo.dic bolixo.m EF *.cc *.tlcc web/*.tlcc web/*.hcc
+		bolixo.dic bolixo.m EF *.cc *.tlcc web/*.tlcc web/*.hcc utils/*.tlcc
 
 compile: $(PROGS)
 	make -Cweb 
@@ -125,6 +125,10 @@ utils/show-notifies: utils/show-notifies.tlcc
 
 utils/bo-remote-manage: utils/bo-remote-manage.tlcc
 	cctlcc $(OPTIONS) utils/bo-remote-manage.tlcc -o utils/bo-remote-manage -lstdc++
+
+utils/bolixo-update: utils/bolixo-update.tlcc _dict.o
+	cctlcc $(OPTIONS) utils/bolixo-update.tlcc _dict.o -o utils/bolixo-update -lstdc++
+
 
 proto/publishd_control.protoh: proto/publishd_control.proto
 	build-protocol --arg "int no" --arg "HANDLE_INFO *c" --name publishd_control \
@@ -389,6 +393,8 @@ install: msg.eng msg.fr
 	install -m755 deleteitems $(RPM_BUILD_ROOT)/usr/sbin/deleteitems
 	install -m755 utils/erase-oldsesssions.hourly  $(RPM_BUILD_ROOT)/etc/cron.hourly/erase-oldsesssions
 	install -m755 utils/document-save.hourly  $(RPM_BUILD_ROOT)/etc/cron.hourly/document-save
+	install -m644 update-script $(RPM_BUILD_ROOT)/usr/share/bolixo/update-script
+	install -m755 utils/bolixo-update $(RPM_BUILD_ROOT)/usr/lib/bolixo-update
 	for file in web/images-doc/*.jpg; do install -m644 $$file $(RPM_BUILD_ROOT)/var/www/html/.; done
 
 #	install -m755 web/admin.hc $(RPM_BUILD_ROOT)/var/www/html/admin.hc
