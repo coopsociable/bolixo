@@ -3566,6 +3566,7 @@ static int bofs_bolixoapi (CONTEXT &ctx, int argc, char *argv[])
 	glocal CONTEXT *ctx = &ctx;
 	// Info for publish
 	glocal bool filldummy = false;
+	glocal const char *user = "";
 	glocal const char *fullname = "";
 	glocal const char *address1 = "";
 	glocal const char *address2 = "";
@@ -3606,6 +3607,7 @@ static int bofs_bolixoapi (CONTEXT &ctx, int argc, char *argv[])
 				 "\tpublish directory_url user\n"
 				 "\tremove directory_url user\n"
 				 "\trecordemail thisnode_url userid email\n"
+				 "\tsearch\n"
 				 "\tupdate directory_url user\n"
 				)
 			);
@@ -3631,6 +3633,7 @@ static int bofs_bolixoapi (CONTEXT &ctx, int argc, char *argv[])
 		setarg (' ',"interest",MSG_U(O_INTEREST,"Interests"),glocal.interest,false);
 		setarg (' ',"photo",MSG_U(O_PHOTO,"Path of the large photo of the user"),glocal.photo,false);
 		setarg (' ',"mini_photo",MSG_U(O_MINIPHOTO,"Path of the small photo of the user"),glocal.mini_photo,false);
+		setarg (' ',"user",MSG_U(O_USER,"User ID"),glocal.user,false);
 	</f>
 	<f main>
 		glocal int ret = 0;
@@ -3904,6 +3907,42 @@ static int bofs_bolixoapi (CONTEXT &ctx, int argc, char *argv[])
 					}
 				</f>
 				</call>
+			}
+		}else if (strcmp(arg,"search")==0){
+			FILTER filter;
+			filter.user = glocal.user;
+			filter.fullname = glocal.fullname;
+			filter.address = glocal.address1;
+			filter.city = glocal.city;
+			filter.state = glocal.state;
+			filter.country = glocal.country;
+			filter.interest = glocal.interest;
+			glocal bool done = false;
+			glocal unsigned offset = 0;
+			while (!glocal.done){
+				<call bolixoapi_pub_search>(glocal.ctx->hcon,filter,glocal.offset,20);
+				<f ok>
+					if (!success){
+						tlmp_error ("search: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
+						glocal.done = true;
+					}else{
+						if (users.size() < 20) glocal.done = true;
+						for (auto &u:users){
+							printf ("user=%s nodename=%s fullname=%s\n"
+								"\taddress1=%s address2=%s city=%s zipcode=%s state=%s country=%s\n"
+								"\temail=%s phone=%s fax=%s bolixosite=%s website=%s\n"
+								"\tphoto_modified=%s mini_photo_modified=%s\n"
+								"\tinterest=%s\n"
+								,u.user,u.nodename,u.fullname
+								,u.address1,u.address2,u.city,u.zipcode,u.state,u.country
+								,u.email,u.phone,u.fax,u.bolixosite,u.website
+								,u.photo_modified,u.mini_photo_modified
+								,u.interest);
+						}
+					}
+				</f>
+				</call>
+				glocal.offset += 20;
 			}
 		}else{
 			usage();
