@@ -22,7 +22,9 @@
 #include <string.h>
 #include <tlmplib.h>
 #include <string>
+#include <map>
 #include "../bolixo.m"
+#include "../helper.h"
 
 using namespace std;
 
@@ -62,16 +64,21 @@ string _F_procserver::getversion () const
 	return glocal.version;
 }
 </mod>
+static const char *gethome()
+{
+	const char *home = getenv("HOME");
+	if (home == nullptr){
+		tlmp_error (MSG_U(E_NOHOME,"No HOME variable, can't continue\n"));
+		exit (-1);
+	}
+	return home;
+}
 <mod>
 static void procserver(_F_procserver &c, int argc, char **argv)
 {
 	glocal bool end = false;
 	glocal c;
-	glocal const char *home = getenv("HOME");
-	if (glocal.home == nullptr){
-		tlmp_error ("No HOME variable, can't continue\n");
-		exit (-1);
-	}
+	glocal const char *home = gethome();
 	c.home = glocal.home;
 	for (int i=0; i<argc && !glocal.end; i++){
 		const char *arg = argv[i];
@@ -85,7 +92,7 @@ static void procserver(_F_procserver &c, int argc, char **argv)
 						glocal.c.server = line;
 						glocal.c.doone (line,path_pass.c_str(),glocal.end);
 					}else{
-						tlmp_error ("File %s does not exist, can't continue\n",path_pass.c_str());
+						tlmp_error (MSG_U(E_NOFILE,"File %s does not exist, can't continue\n"),path_pass.c_str());
 						glocal.end = true;
 					}
 				}
@@ -98,7 +105,7 @@ static void procserver(_F_procserver &c, int argc, char **argv)
 				glocal.c.server = arg;
 				c.doone (arg,path_pass.c_str(),glocal.end);
 			}else{
-				tlmp_error ("File %s does not exist, can't continue\n",path_pass.c_str());
+				tlmp_error (MSG_R(E_NOFILE),path_pass.c_str());
 				glocal.end = true;
 			}
 		}
@@ -115,14 +122,22 @@ static void banner (const char *server)
 int main (int argc, char *argv[])
 {
 	glocal int ret = -1;
-	glocal.ret = <call tlmpprogram>(argc,argv);
+	glocal bool getexpdate = false;
+	glocal bool renew = false;
+	glocal bool printexpdate = false;
+	glocal.ret = <call tlmpprogram>(argc,argv,"bolixo");
 	<f init>
 		setproginfo ("bo-remote-manage",VERSION
-			,"restart server ...\n"
+			,"certificate options server ...\n"
+			 "restart server ...\n"
 			 "update  server ...\n"
 			 "version server ...\n"
 			 "listversion server ...\n"
 			);
+		setgrouparg(MSG_U(I_CERTOPTS,"Certificate command options"));
+		setarg (' ',"renew",MSG_U(O_RENEW,"Renew certificate"),glocal.renew,false);
+		setarg (' ',"getexpdate",MSG_U(I_GETEXPDATE,"Retrieve certificate expiration date from server"),glocal.getexpdate,false);
+		setarg (' ',"printexpdate",MSG_U(I_PRINTEXPDATE,"Print expiration dates for servers"),glocal.printexpdate,false);
 	</f>
 	<f main>
 		int ret = -1;
@@ -189,6 +204,75 @@ int main (int argc, char *argv[])
 				printf ("%s: %s\n",server,getversion().c_str());
 			</f>
 			</call>
+		}else if (strcmp(cmd,"certificate")==0){
+			if (!glocal.getexpdate && !glocal.renew && !glocal.printexpdate){
+				tlmp_error (MSG_U(E_CERTOPT,"Option --getexpdate or --renew or --printexpdate must be selected\n"));
+			}else{
+				glocal bool changed = false;
+				glocal map<string,string> expdates;
+				string certlist = string_f("%s/bolixo/certificates.lst",gethome());
+				<call loadfile>(certlist,true);
+				<f oneline>
+					vector<string> tb;
+					str_splitline(line,' ',tb);
+					if (tb.size()==2){
+						glocal.expdates[tb[0]] = tb[1];
+					}
+					return 0;
+				</f>
+				<f missing>
+				</f>
+				</call>
+				<call procserver>(argc-1,argv+1);
+				<f doone>
+					glocal server;
+					if (glocal.printexpdate){
+						const char *expdate = MSG_U(I_UNKNOWN,"unknown");
+						auto e = glocal.expdates.find(server);
+						if (e != glocal.expdates.end()){
+							expdate = e->second.c_str();
+						}
+						printf ("%s: %s\n",server,expdate);
+					}else if (glocal.getexpdate){
+						<call walkpopen>(string_f("ssh root@%s bo certificates",server),10);
+						<f oneline>
+							const char *pt;
+							line = str_skip(line);
+							if (is_start_any_of(line,pt,"Expiry Date:")){
+								string date;
+								str_copyword (date,pt);
+								glocal.expdates[glocal.server] = date;
+								glocal.changed = true;
+							}
+							return 0;
+						</f>
+						</call>
+					}else if (glocal.renew){
+						vector<string> tb;
+						tb.push_back(server);
+						// Temp. bolixo.org is hosted on the same server as alpha.bolixo.org
+						if (strcmp(server,"alpha.bolixo.org")==0) tb.push_back("bolixo.org");
+						for (auto &s:tb){
+							printf ("----------------- %s\n",s.c_str());
+							<call walkpopen>(string_f("ssh root@%s bo certificate-renew doit %s",server,s.c_str()),10);
+							<f oneline>
+								printf ("%s\n",line);
+								return 0;
+							</f>
+							</call>
+						}
+					}
+				</f>
+				</call>
+				if (glocal.changed){
+					<call savefile>(certlist,false);
+					<f dowrite>
+						for (auto &m:glocal.expdates) fprintf (fout,"%s %s\n",m.first.c_str(),m.second.c_str());
+						return 0;
+					</f>
+					</call>
+				}
+			}
 		}else{
 			usage();
 		}

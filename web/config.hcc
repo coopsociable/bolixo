@@ -33,6 +33,8 @@
 #undef INSTRUMENT
 #include "../instrument.h"
 #include "../proto/bod_client.protoch"
+#include "../proto/bolixod_client.protodef"
+#include "../proto/bolixoapi.protoch"
 #include "w_var.h"
 #include "../helper.h"
 #include "steps.h"
@@ -191,6 +193,37 @@ static void profile_upload (CONNECT_INFO &con, W_SSTRING &var, const char *fname
 		<call bod_client_appendfile>(glocal.con,w_session.c_str(),handle,content,more);
 		<f ok>
 			glocal.sendfile.setresult(success,msg);
+		</f>
+		</call>
+	</f>
+	</call>
+}
+</mod>
+/*
+	Create a small dialog to perform a search on bolixo.org.
+	The result is presented in a table. When the user click on one
+	record, it is add to the form for either interest or contact request.
+*/
+<mod>
+static void config_search()
+{
+	<call form>("search");
+	<f setup>
+	</f>
+	<f validate>
+		return true;
+	</f>
+	<f process>
+	</f>
+	</call>
+	static WEBID id("tab:search");
+	<call webtable>(id,currents[id.c_str()]);
+	<f load>
+		CONNECT_HTTP_INFO hcon;
+		FILTER filter;
+		filter.user = "jac";	
+		<call bolixoapi_pub_search>(hcon,filter,nbskip,nblines);
+		<f ok>
 		</f>
 		</call>
 	</f>
@@ -724,6 +757,7 @@ void profile(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER>
 				if (!fail) glocal.webtabs.setstate("");
 			</f>
 			</call>
+			config_search();
 		}
 	</f>
 	<f docmain>

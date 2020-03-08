@@ -123,8 +123,8 @@ utils/email-log: utils/email-log.tlcc
 utils/show-notifies: utils/show-notifies.tlcc
 	cctlcc $(OPTIONS) utils/show-notifies.tlcc -o utils/show-notifies -lstdc++
 
-utils/bo-remote-manage: utils/bo-remote-manage.tlcc
-	cctlcc $(OPTIONS) utils/bo-remote-manage.tlcc -o utils/bo-remote-manage -lstdc++
+utils/bo-remote-manage: utils/bo-remote-manage.tlcc _dict.o
+	cctlcc $(OPTIONS) utils/bo-remote-manage.tlcc _dict.o -o utils/bo-remote-manage -lstdc++
 
 utils/bolixo-update: utils/bolixo-update.tlcc _dict.o
 	cctlcc $(OPTIONS) utils/bolixo-update.tlcc _dict.o -o utils/bolixo-update -lstdc++

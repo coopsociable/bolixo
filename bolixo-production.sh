@@ -305,12 +305,14 @@ elif [ "$1" = "update-script" ] ; then # prod: Apply update scripts
 	echo "select name from updates" | bo users >$CURSTATES
 	shift
 	/usr/lib/bolixo-update -s $CURSTATES -n $NEWSTATES $*
+	RET=$?
 	if [ -f $NEWSTATES ] ; then
 		for state in `cat $NEWSTATES`
 		do
 			echo "insert into updates (name) values ('$state');" | bo users
 		done
 	fi
+	exit $RET
 elif [ "$1" = "restart" ] ; then # prod: restart some services (webs, internals, ...)
 	shift
 	flock --close /var/run/bolixo-restart.lock $0 restart-nolock $*
