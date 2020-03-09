@@ -11,8 +11,8 @@ index.hc: index.os /usr/lib64/trlitool/trlitool.pic.a util.os webtabs.os documen
 	/usr/include/tlmp/tlmpweb.h /usr/include/tlmp/tlmpweb.p
 	@echo $@
 	@g++ $(OPTIONS) -g -shared -Wl,-soname,test.so.1 -o \
-		$@ $< ../_dict.os /usr/lib64/trlitool/trlitool.pic.a util.os webtabs.os techdoc.os document.os document_fr.os \
-		config.os mail.os projects.os /usr/lib/tlmp/lib/tlmpdoc.so /usr/lib/tlmp/lib/tlmpwebsql.so -lcrypto
+		$@ $< ../_dict.os util.os webtabs.os techdoc.os document.os document_fr.os \
+		config.os mail.os projects.os /usr/lib/tlmp/lib/tlmpdoc.so /usr/lib64/trlitool/trlitool.pic.a /usr/lib/tlmp/lib/tlmpwebsql.so -lcrypto
 
 %.hc: %.os /usr/lib64/trlitool/trlitool.pic.a util.os webtabs.os techdoc.os document.os document_fr.os \
 	../proto/webapi.protoh ../proto/bolixoapi.protoh \

@@ -199,31 +199,93 @@ static void profile_upload (CONNECT_INFO &con, W_SSTRING &var, const char *fname
 	</call>
 }
 </mod>
+static void config_form_title(const char *title)
+{
+	htmlprintf ("<font style='font-size:%sem;'>\n",tlmpweb_ismobile() ? "1.3" : "1.5");
+	htmlout (title);
+	/- </font>
+}
 /*
 	Create a small dialog to perform a search on bolixo.org.
 	The result is presented in a table. When the user click on one
-	record, it is add to the form for either interest or contact request.
+	record, it is added to the form for either interest or contact request.
+	It is placed in userid and the caller uses it to place the value in its form.
 */
 <mod>
-static void config_search()
+static void config_search(string &userid)
 {
-	<call form>("search");
-	<f setup>
-	</f>
-	<f validate>
-		return true;
-	</f>
-	<f process>
-	</f>
-	</call>
+	glocal userid;
+	//DIV c; c.borderradius(5).border(1,"black").vmargins(2,5).paddings(2,2).vpaddings(2,2).print();
+	DIV c; c.bg("#A0A0A0").print();
+	{
+		DIV f; f.id(TAB_FORM).print();
+		<call form>("search");
+		<f setup>
+			/- <table border=0>
+			/- <tr><td>User ID<td>Name<td>City
+			/- <tr><td>
+			field_string (w_user,"size=15");
+			/- <td>
+			field_string (w_name,"size=15");
+			if (!tlmpweb_ismobile()){
+				/- <td>
+				field_string (w_city,"size=15");
+			}
+			/- <tr><td colspan=2>
+			button_submit(MSG_R(B_SEARCH));
+			/- </table>
+		</f>
+		<f validate>
+			return true;
+		</f>
+		<f process>
+			keepediting = true;
+		</f>
+		</call>
+	}
+	glocal FILTER filter;
+	glocal CONNECT_HTTP_INFO hcon;
+	glocal.hcon.init (util_getdirserver());
+	glocal.hcon.setpageapi ("bolixoapi");
+	glocal.filter.user = w_user.c_str();	
+	glocal.filter.fullname = w_name.c_str();	
+	glocal.filter.city = w_city.c_str();	
 	static WEBID id("tab:search");
-	<call webtable>(id,currents[id.c_str()]);
+	<call webtable>(id,currents[id.c_str()],offsets[id.c_str()],20);
 	<f load>
-		CONNECT_HTTP_INFO hcon;
-		FILTER filter;
-		filter.user = "jac";	
-		<call bolixoapi_pub_search>(hcon,filter,nbskip,nblines);
+		glocal nbskip;
+		glocal selected_row;
+		<call bolixoapi_pub_search>(glocal.hcon,glocal.filter,nbskip,nblines);
 		<f ok>
+			unsigned noline = glocal.nbskip;
+			glocal.webtable.sethead("User\tName\tCity");
+			const char *dirserver = util_getdirserver();
+			for (auto &u:users){
+				if (noline == glocal.selected_row){
+					const char *nodename;
+					if (is_start_any_ofnc(u.nodename,nodename,"https://","http://")){
+						glocal.userid = string_f("%s@%s",u.user,nodename);
+					}
+				}
+				glocal.webtable.setclickopt (true,"","");
+				glocal.webtable.setrow("white",noline,"%s\t%s\t%s",u.user,u.fullname,u.city);
+				string photo_url,mini_photo_url;
+				if (u.photo_modified[0] != '\0'){
+					string tmp = util_flipspaces(u.photo_modified);
+					photo_url = string_f ("<img width=100 src=%s/bolixo.hc?webstep=2&user=%s&node=%s&file=photo.jpg&mod=%s>\n"
+						,dirserver,u.user,u.nodename,tmp.c_str());
+				}
+				if (u.mini_photo_modified[0] != '\0'){
+					string tmp = util_flipspaces(u.mini_photo_modified);
+					mini_photo_url = string_f ("<img width=40 src=%s/bolixo.hc?webstep=2&user=%s&node=%s&file=mini-photo.jpg&mod=%s>\n"
+						,dirserver,u.user,u.nodename,tmp.c_str());
+				}
+				if (photo_url.size() > 0 || mini_photo_url.size() > 0){
+					glocal.webtable.setrow("white",noline,"%s\t%s",mini_photo_url.c_str(),photo_url.c_str());
+				}
+				noline++;
+
+			}
 		</f>
 		</call>
 	</f>
@@ -265,7 +327,6 @@ void profile(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER>
 		</call>
 	</f>
 	<f doctype2>
-		DIV f("webtable"); f.print();
 		if (strcmp(id,"helpgroups")==0){
 			index_doc((*glocal.docpointers)[SECTION_GROUPS],section_groups);
 		}else if (strcmp(id,"helpprojects")==0){
@@ -287,8 +348,8 @@ void profile(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER>
 			glocal bool adding = glocal.prjname[0] == '\0';
 			<call form>(id);
 			<f top>
-				/- <table border=0 width=100%><tr><td>&nbsp;&nbsp;&nbsp;<td><table border=0 witdh=100%>
-				if (!glocal.adding) htmlprintf ("<tr><td>%s<td><b>%s<b><p>\n",MSG_U(T_PROJECT,"Project"),glocal.prjname);
+				/- <table border=0 width=100%><tr><td><td><table border=0 witdh=100%>
+				if (!glocal.adding) htmlprintf ("<tr><td>%s<td><b>%s</b>\n",MSG_U(T_PROJECT,"Project"),glocal.prjname);
 			</f>
 			<f bottom>
 				/- </table></table>
@@ -359,7 +420,7 @@ void profile(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER>
 				/- <td>
 				index_field_access (this,w_access4);
 				/- </table>
-				/- <tr><td>
+				/- <tr><td colspan=2>
 				button_submit();
 			</f>
 			<f validate>
@@ -436,8 +497,8 @@ void profile(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER>
 			glocal bool adding = glocal.grpname[0] == '\0';
 			<call form>(id);
 			<f top>
-				/- <table border=0 width=100%><tr><td>&nbsp;&nbsp;&nbsp;<td><table border=0 width=100%>
-				if (!glocal.adding) htmlprintf ("<tr><td>%s<td width=99%%><b>%s</b><p>\n",MSG_R(I_GROUP),glocal.grpname);
+				/- <table border=0 width=100%><tr><td><td><table border=0 width=100%>
+				if (!glocal.adding) htmlprintf ("<tr><td>%s<td width=99%%><b>%s</b>\n",MSG_R(I_GROUP),glocal.grpname);
 			</f>
 			<f bottom>
 				/- </table></table>
@@ -468,7 +529,7 @@ void profile(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER>
 				/- <tr><td>&nbsp;
 				/-#I_MEMBERS <tr><td valign=top>Members<td width=99%>
 				field_textarea (w_content,20,-100,"");
-				/- <tr><td>
+				/- <tr><td colspan=2>
 				button_submit();
 			</f>
 			<f validate>
@@ -569,54 +630,74 @@ void profile(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER>
 			</call>
 		}else if (strcmp(id,"sendcontact")==0){
 			glocal bool done = false;
-			<call form>(id);
-			<f top>
-				/- <table border=0 width=100%><tr><td>&nbsp;&nbsp;&nbsp;<td><table border=0 width=100%>
-				// /- <table border=0>
-				/- <tr><td><td>
-				/-#I_SENDCONTACT <h3>Send a contact request</h3>
-			</f>
-			<f bottom>
-				/- </table></table>
-			</f>
-			<f setup>
-				htmlprintf ("<tr><td>%s<td width=99%%>\n",MSG_U(I_TOCONTACT,"Person to contact"));
-				field_string (w_user,"style=width:100%");
-				htmlprintf ("<tr><td valign=top>%s<td width=99%%>\n",MSG_U(I_MESSAGE,"Message"));
-				field_textarea (w_content,10,-100,"");
-				/- <tr><td>
-				button_submit();
-			</f>
-			<f validate>
-				return true;
-			</f>
-			<f process>
-				glocal bool fail = false;
-				<call bod_client_contact_request>(glocal.con,w_session.c_str(),"",w_user.c_str(),w_content.c_str());
-				<f ok>
-					if (!success){
-						glocal.fail = true;
-						htmlprintf (MSG_U(E_CONTACTFAIL,"Contact request failed: %s<br>\n"),msg);
-					}else{
-						glocal.done = true;
+			glocal id;
+			glocal string picked_userid;
+			<call webflip>();
+			<f first>
+				glocal string error;
+				glocal string confirm;
+				DIV f; f.id(TAB_FORM).print();
+				<call form>(glocal.id);
+				<f top>
+					/- <table border=0 width=100%><tr><td><td><table border=0 width=100%>
+					/- <tr><td><td>
+					config_form_title(MSG_U(I_SENDCONTACT,"Send a contact request"));
+				</f>
+				<f bottom>
+					/- </table></table>
+				</f>
+				<f setup>
+					htmlprintf ("<tr><td>%s<td width=99%%>\n",MSG_U(I_TOCONTACT,"Person to contact"));
+					if (glocal.picked_userid.size() > 0){
+						tlmpweb_forcevar(w_recipients,glocal.picked_userid);
 					}
+					field_string (w_recipients,"style=width:100%");
+					htmlprintf ("<tr><td valign=top>%s<td width=99%%>\n",MSG_U(I_MESSAGE,"Message"));
+					field_textarea (w_content,10,-100,"");
+					/- <tr><td colspan=2>
+					button_submit(MSG_R(B_SEND));
+					/- <font color=red>
+					htmlout (glocal.error);
+					/- </font>
+					/- <font color=blue>
+					htmlout (glocal.confirm);
+					/- </font>
+				</f>
+				<f validate>
+					return true;
+				</f>
+				<f process>
+					glocal bool fail = false;
+					if (w_recipients.size() > 0){
+						<call bod_client_contact_request>(glocal.con,w_session.c_str(),"",w_recipients.c_str(),w_content.c_str());
+						<f ok>
+							if (!success){
+								glocal.fail = true;
+								glocal.error = string_f (MSG_U(E_CONTACTFAIL,"Contact request failed: %s"),msg);
+							}else{
+								glocal.confirm = MSG_U(I_CONTACTSENT,"Contact request sent!");
+							}
+						</f>
+						</call>
+					}
+					fail = glocal.fail;
+					keepediting = true;
 				</f>
 				</call>
-				fail = glocal.fail;
+			</f>
+			<f second>
+				config_search(glocal.picked_userid);
 			</f>
 			</call>
-			if (glocal.done){
-				/-#I_CONTACTSENT Contact request sent!
-			}
 		}else if (strncmp(id,"manage:",7)==0){
 			glocal bool done = false;
 			glocal CONTACT_STATUS status = CONTACT_WAITING;
 			glocal string user = id+7;
 			<call form>(id);
 			<f top>
-				/- <table border=0 width=100%><tr><td>&nbsp;&nbsp;&nbsp;<td><table border=0 width=100%>
+				/- <table border=0 width=100%><tr><td><td><table border=0 width=100%>
 				/- <tr><td><td>
-				/-#I_MANAGECONTACT <h3>Manage a contact</h3>
+				config_form_title(MSG_U(I_MANAGECONTACT,"Manage a contact"));
 			</f>
 			<f bottom>
 				/- </table></table>
@@ -639,7 +720,7 @@ void profile(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER>
 				htmlout (glocal.user);
 				/-<tr><td>
 				htmlout (MSG_R(I_MESSAGE));
-				/-<td width=70%>
+				/-<td width=80%>
 				field_textarea(w_content,5,-100,"readonly");
 				/- <tr><td>
 				/-#I_ACCEPTREQ Accept request
@@ -649,7 +730,7 @@ void profile(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER>
 				/-#I_REFUSEREQ Refuse request
 				/- <td>
 				field_radio(w_accept,"reject",false,"");
-				/- <tr><td>
+				/- <tr><td colspan=2>
 				button_submit();
 			</f>
 			<f validate>
@@ -694,70 +775,89 @@ void profile(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER>
 			}
 		}else if (strcmp(id,"interest")==0){
 			glocal bool done = false;
-			<call form>(id);
-			<f top>
-				/- <table border=0 width=100%><tr><td>&nbsp;&nbsp;&nbsp;<td><table border=0 width=100%>
-				/- <tr><td><td>
-				/-#I_ADDINTEREST <h3>Add more interesting people</h3>
-			</f>
-			<f bottom>
-				/- </table></table>
-			</f>
-			<f setup>
-				htmlprintf ("<tr><td valign=top>%s<td width=90%%>\n",MSG_U(I_PEOPLES,"Peoples"));
-				field_textarea (w_content,10,-100,"");
-				/- <tr><td>
-				button_submit();
-			</f>
-			<f validate>
-				return true;
-			</f>
-			<f process>
+			glocal id;
+			glocal string picked_userid;
+			<call webflip>();
+			<f first>
 				glocal string error;
-				glocal bool fail = false;
-				glocal vector<string> users;
-				const char *pt = w_content.c_str();
-				while (*pt != '\0'){
-					pt = str_skip(pt);
-					if (*pt > ' '){
-						const char *start = pt;
-						while (*pt > ' ') pt++;
-						glocal.users.push_back(string(start,pt-start));
+				DIV f; f.id(TAB_FORM).print();
+				<call form>(glocal.id);
+				<f top>
+					/- <table border=0 width=100%>
+					/- <tr><td><td>
+					config_form_title(MSG_U(I_ADDINTEREST,"Add interesting people"));
+				</f>
+				<f bottom>
+					/- </table>
+				</f>
+				<f setup>
+					htmlprintf ("<tr><td valign=top>%s&nbsp;<td width=99%%>\n",MSG_U(I_PEOPLES,"Peoples"));
+					if (glocal.picked_userid.size() > 0){
+						string content = w_content.c_str();
+						if (content.size() > 0) content += '\n';
+						content += glocal.picked_userid;
+						tlmpweb_forcevar(w_content,content);
 					}
-				}
-				// Check if some are already in the interest list
-				<call bod_client_interest_list>(glocal.con,w_session.c_str(),"");
-				<f ok>
-					for (auto u:users){
-						if (find(glocal.users.begin(),glocal.users.end(),u.name)!=glocal.users.end()){
-							glocal.error += string_f(" %s",u.name);
-							glocal.fail = true;
+					field_textarea (w_content,10,-100,"");
+					/- <tr><td colspan=2>
+					button_submit(MSG_U(I_ADD,"Add"));
+					/- <font color=red>
+					htmlout (glocal.error);
+					/- </font>
+				</f>
+				<f validate>
+					return true;
+				</f>
+				<f process>
+					glocal bool fail = false;
+					glocal vector<string> users;
+					glocal string already;		// Users already in our interest list
+					const char *pt = w_content.c_str();
+					while (*pt != '\0'){
+						pt = str_skip(pt);
+						if (*pt > ' '){
+							const char *start = pt;
+							while (*pt > ' ') pt++;
+							glocal.users.push_back(string(start,pt-start));
 						}
 					}
-				</f>
-				</call>
-				if (!glocal.fail){
-					for (auto u:glocal.users){
-						glocal const char *user = u.c_str();
-						<call bod_client_interest_set>(glocal.con,w_session.c_str(),u,"");
-						<f ok>
-							if (!success){
-								htmlprintf (MSG_U(E_INTERESTSET,"Can't add user %s in interest list: %s<br>\n")
-									,glocal.user,msg);
+					// Check if some are already in the interest list
+					<call bod_client_interest_list>(glocal.con,w_session.c_str(),"");
+					<f ok>
+						for (auto u:users){
+							if (find(glocal.users.begin(),glocal.users.end(),u.name)!=glocal.users.end()){
+								glocal.already += string_f(" %s",u.name);
 								glocal.fail = true;
 							}
-						</f>
-						</call>
-						if (glocal.fail) break;
+						}
+					</f>
+					</call>
+					if (!glocal.fail){
+						for (auto u:glocal.users){
+							glocal const char *user = u.c_str();
+							<call bod_client_interest_set>(glocal.con,w_session.c_str(),u,"");
+							<f ok>
+								if (!success){
+									glocal.error = string_f (MSG_U(E_INTERESTSET,"Can't add user %s in interest list: %s")
+										,glocal.user,msg);
+									glocal.fail = true;
+								}
+							</f>
+							</call>
+							if (glocal.fail) break;
+						}
+					}else{
+						glocal.error = string_f ("%s: %s",MSG_U(E_INTERESTDUP,"These people are already in your interest list"),glocal.already.c_str());
 					}
-				}else{
-					htmlprintf ("%s<br>%s<br>",MSG_U(E_INTERESTDUP,"These people are already in your interest list"),glocal.error.c_str());
-				}
-				fail = glocal.fail;
-				if (!fail) glocal.webtabs.setstate("");
+					fail = glocal.fail;
+					if (!fail) glocal.webtabs.setstate("");
+				</f>
+				</call>
+			</f>
+			<f second>
+				config_search(glocal.picked_userid);
 			</f>
 			</call>
-			config_search();
 		}
 	</f>
 	<f docmain>

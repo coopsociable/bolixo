@@ -292,7 +292,7 @@ static void bolixo_title (const char *title, _F_websteps *c)
 		// /- </font>
 	}else{
 		/- <table border=0><tr><td>&nbsp;<img height=20 src=/favicon.ico></td><td align=left>
-		htmlprintf ("<a href=%s><font size=7 color=\"white\">%s</font></a>&nbsp;&nbsp;&nbsp;",util_getdirserver(),org.c_str());
+		htmlprintf ("<a href=%s/bolixo.hc><font size=7 color=\"white\">%s</font></a>&nbsp;&nbsp;&nbsp;",util_getdirserver(),org.c_str());
 		/- <font color=gray>
 		htmlprintf (MSG_R(I_NODENAME),util_getnodename());
 		/- </font>
@@ -905,7 +905,6 @@ static void index_show_shortmsg(
 	<call webtable>(ID_TALK,currents[glocal.table],offset,5);
 	<f click>
 		glocal unsigned dropmenu = dropmenu;
-		if (dropmenu == 0) tlmpweb_flushheader();
 		if (dropmenu == MENU_UNDELETE){
 			<call bod_client_undelete> (*glocal.con,w_session.c_str(),glocal.path);
 			<f ok>
@@ -961,7 +960,8 @@ static void index_show_shortmsg(
 						}
 					}else if (glocal.dropmenu == MENU_OPENINTAB){
 						glocal.webtabs.addtab (string_f("2:%s",glocal.fname.c_str()),MSG_U(I_TEXT,"Text"));
-					}else{
+					}else if (file_is_video(m.file_type) || file_is_sound(m.file_type)){
+						tlmpweb_flushheader();
 						util_popup (*glocal.con,m.content,m.file_type,m.submit,m.from
 							,string_f("/msgs/%s/short-inbox/%s/%s"
 							,glocal.groupowner,glocal.groupname,m.uuid));
@@ -1298,7 +1298,7 @@ extern "C" void webmain_real()
 			}
 		}else if (strncmp(tableid,"tab:",4)==0){
 			const char *tab = tableid+4;
-			if (is_any_of(tab,"projects","mails","talk","profiles")){
+			if (is_any_of(tab,"projects","mails","talk","profiles","search")){
 				glocal.valid = true;
 			}
 		}else if (is_any_of(tableid,"allcontacts","talkpublic","follow")){
@@ -1716,7 +1716,7 @@ extern "C" void webmain_real()
 							}else{
 								htmlprintf (MSG_R(E_REPLYTOYOU));
 							}
-						}else{
+						}else if (file_is_image(m.file_type) || file_is_video(m.file_type) || file_is_sound(m.file_type)){
 							tlmpweb_popgrab();
 							glocal.junk_output = true;
 							util_popup (glocal.con,step,m.content,m.file_type,m.submit,m.from

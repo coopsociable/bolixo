@@ -1511,6 +1511,7 @@ elif [ "$1" = "lxc0-web" ]; then # prod:
 			-e /usr/share/fonts/liberation*/LiberationSans-Regular.ttf \
 			-e /var/www/html/no-mini-photo.jpg \
 			-e /var/www/html/no-photo.jpg \
+			-e /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem \
 			-n $w -p /usr/sbin/httpd >/var/lib/lxc/$w/$w-lxc0.sh
 			chmod +x /var/lib/lxc/$w/$w-lxc0.sh
 	done

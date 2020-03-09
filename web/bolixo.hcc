@@ -146,7 +146,7 @@ static void bolixo_prevnext(bool display_more)
 	/- <tr><td align=right colspan=2>
 	WEBENC enc;
 	if (w_offset.getval() > 0){
-		htmlprintf ("<a href=%s?offset=%u&user=%s&fullname=%s&address=%s&city=%s&state=%s&country=%s&interest=%s>%s</a>\n"
+		htmlprintf ("<a href=%s?webstep=8&offset=%u&user=%s&fullname=%s&address=%s&city=%s&state=%s&country=%s&interest=%s>%s</a>\n"
 			,tlmpweb_curpage(),w_offset.getval()-10
 			,enc.enc(w_user).c_str(),enc.enc(w_fullname).c_str(),enc.enc(w_address).c_str()
 			,enc.enc(w_city).c_str(),enc.enc(w_state).c_str(),enc.enc(w_country).c_str()
@@ -156,7 +156,7 @@ static void bolixo_prevnext(bool display_more)
 		htmlprintf ("<font color=white>%s</font>\n",MSG_R(I_PREVPAGE));
 	}
 	if (display_more){
-		htmlprintf ("<a href=%s?offset=%u&user=%s&fullname=%s&address=%s&city=%s&state=%s&country=%s&interest=%s>%s</a>\n"
+		htmlprintf ("<a href=%s?webstep=8&offset=%u&user=%s&fullname=%s&address=%s&city=%s&state=%s&country=%s&interest=%s>%s</a>\n"
 			,tlmpweb_curpage(),w_offset.getval()+10
 			,enc.enc(w_user).c_str(),enc.enc(w_fullname).c_str(),enc.enc(w_address).c_str()
 			,enc.enc(w_city).c_str(),enc.enc(w_state).c_str(),enc.enc(w_country).c_str()
@@ -421,23 +421,20 @@ static void webmain_real()
 					DIV info;
 					if (!is_mobile) info.dispflex().flowrow().print();
 					{
-						const char *nodename = u.nodename;
-						if (strncasecmp(nodename,"https://",8)==0){
-							nodename += 8;
-						}else if (strncasecmp(nodename,"http://",7)==0){
-							nodename += 7;
-						}
-						DIV d("col0"); d.margins(5,5).borderradius(5).border(1,"gray").print();
-						htmlprintf ("%s@%s<br>%s<br>\n",u.user,nodename,u.fullname);
-						if (u.photo_modified[0] != '\0'){
-							string tmp = util_flipspaces(u.photo_modified);
-							htmlprintf ("<img width=100 src=%s?webstep=2&user=%s&node=%s&file=photo.jpg&mod=%s>\n"
-								,tlmpweb_curpage(),u.user,u.nodename,tmp.c_str());
-						}
-						if (u.mini_photo_modified[0] != '\0'){
-							string tmp = util_flipspaces(u.mini_photo_modified);
-							htmlprintf ("<img width=40 src=%s?webstep=2&user=%s&node=%s&file=mini-photo.jpg&mod=%s>\n"
-								,tlmpweb_curpage(),u.user,u.nodename,tmp.c_str());
+						const char *nodename;
+						if (is_start_any_ofnc(u.nodename,nodename,"https://","http://")){
+							DIV d("col0"); d.margins(5,5).borderradius(5).border(1,"gray").print();
+							htmlprintf ("%s@%s<br>%s<br>\n",u.user,nodename,u.fullname);
+							if (u.photo_modified[0] != '\0'){
+								string tmp = util_flipspaces(u.photo_modified);
+								htmlprintf ("<img width=100 src=%s?webstep=2&user=%s&node=%s&file=photo.jpg&mod=%s>\n"
+									,tlmpweb_curpage(),u.user,u.nodename,tmp.c_str());
+							}
+							if (u.mini_photo_modified[0] != '\0'){
+								string tmp = util_flipspaces(u.mini_photo_modified);
+								htmlprintf ("<img width=40 src=%s?webstep=2&user=%s&node=%s&file=mini-photo.jpg&mod=%s>\n"
+									,tlmpweb_curpage(),u.user,u.nodename,tmp.c_str());
+							}
 						}
 					}
 					if (f(u.address1)  || f(u.address2) || f(u.city) || f(u.state) || f(u.country) || f(u.zipcode)){

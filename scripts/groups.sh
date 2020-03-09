@@ -238,6 +238,10 @@ elif [ "$1" = "manysubdirs" ] ; then # test: Add many subdirs to project public 
 		./bofs mkdir bo://projects/jacques-A/public/sdir-$i
 	done
 elif [ "$1" = "manypublish" ] ; then # test: Add many entries into the bolixo.org directory
+	import -window root /tmp/tmpphoto.jpg
+	convert -resize 100x100 /tmp/tmpphoto.jpg /tmp/photo.jpg
+	convert -resize 40x40 /tmp/tmpphoto.jpg /tmp/mini-photo.jpg
+	rm -f /tmp/tmpphoto.jpg
 	for ((i=0; i<100; i++))
 	do
 		./bofs bolixoapi --filldummy publish http://test1.bolixo.org jacques-X$i
