@@ -175,3 +175,5 @@ void util_popup (CONNECT_INFO &con, int step, const char *content, FILE_TYPE fil
 void util_popup (CONNECT_INFO &con, const char *content, FILE_TYPE file_type, PARAM_STRING modified, PARAM_STRING from, PARAM_STRING filepath);
 void util_markview (CONNECT_INFO &con, PARAM_STRING fname);
 std::string util_subformsubmit (PARAM_STRING link, PARAM_STRING text);
+void util_setnonstrict(bool mode);
+bool util_getnonstrict();
