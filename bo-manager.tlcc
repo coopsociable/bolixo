@@ -33,6 +33,7 @@
 #include <set>
 #include <manager.h>
 #include "bolixo.m"
+#include "helper.h"
 
 using namespace std;
 
@@ -1247,6 +1248,16 @@ static void print_configs (
 					fprintf (fout,"iptables -t nat -A POSTROUTING -o eth0 -s %s -j MASQUERADE\n",ip_bod);
 					fprintf (fout,"iptables -t nat -A POSTROUTING -o eth0 -s %s -j MASQUERADE\n",ip_bolixod);
 					fprintf (fout,"iptables -t nat -A POSTROUTING -o eth0 -s %s -j MASQUERADE\n",ip_publishd);
+					const char *dirserver = glocal.dirserver;
+					{
+						const char *pt;
+						if (preprodmode){
+							dirserver = ip_preprod;
+						}else if (is_start_any_ofnc(dirserver,pt,"https://","http://")){
+							dirserver = pt;
+						}
+					}
+					fprintf (fout,"iptables -t nat -A POSTROUTING -o eth0 -s %s -d %s -j MASQUERADE\n",ip_web,dirserver);
 
 					fprintf (fout,"iptables --flush -t mangle\n");
 					#if 1
@@ -1965,7 +1976,7 @@ static void print_configs (
 						</call>
 						if (glocal.stopweb.size() > 0) glocal.stopweb += "\n";
 						glocal.stopweb += stopcmd.c_str();
-						lxc_config (w,ip);
+						lxc_config (w,ip,true);
 						ip = ip_web_fail;
 					}
 				}
