@@ -72,7 +72,9 @@ const unsigned MENU_NOTIFICATIONS=9;
 const unsigned MENU_OPENINTAB=10;
 const unsigned MENU_DOWNLOAD=100;
 
-#define TAB_FORM "tab_form"
+// Special DIV class used to control the layout
+#define TAB_FORM "tab_form"	// TAB_FORM are computed and the rest is allocated to webtable
+#define TAB_SUBTABS "subtabs"	// The padding and margins are computed and inner webtable get the remainging spaces
 extern USERLOGINFO userinfo;
 extern map<string,unsigned> offsets;
 extern map<string,unsigned> currents;

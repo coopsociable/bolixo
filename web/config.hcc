@@ -212,22 +212,27 @@ static void config_form_title(const char *title)
 	It is placed in userid and the caller uses it to place the value in its form.
 */
 <mod>
-static void config_search(string &userid)
+static void config_search(const char *id, string &userid)
 {
 	glocal userid;
-	//DIV c; c.borderradius(5).border(1,"black").vmargins(2,5).paddings(2,2).vpaddings(2,2).print();
-	DIV c; c.bg("#A0A0A0").print();
+	glocal id;
+	DIV c(TAB_SUBTABS); c.borderradius(5).border(1,"black").vmargins(2,5).paddings(2,2).vpaddings(2,2).print();
 	{
-		DIV f; f.id(TAB_FORM).print();
-		<call form>("search");
+		DIV f; f.id(TAB_FORM).bg("#A0A0A0").borderradius(5).print();
+		<call form>(string_f("search:%s",glocal.id));
 		<f setup>
 			/- <table border=0>
-			/- <tr><td>User ID<td>Name<td>City
+			bool mobile = tlmpweb_ismobile();
+			if (mobile){
+				htmlprintf ("<tr><td>%s<td>%s\n",MSG_U(I_USERID,"User ID"),MSG_U(I_USERNAME,"Name"));
+			}else{
+				htmlprintf ("<tr><td>%s<td>%s<td>%s\n",MSG_R(I_USERID),MSG_R(I_USERNAME),MSG_U(I_CITY,"City"));
+			}
 			/- <tr><td>
 			field_string (w_user,"size=15");
 			/- <td>
 			field_string (w_name,"size=15");
-			if (!tlmpweb_ismobile()){
+			if (!mobile){
 				/- <td>
 				field_string (w_city,"size=15");
 			}
@@ -259,7 +264,7 @@ static void config_search(string &userid)
 		<call bolixoapi_pub_search>(glocal.hcon,glocal.filter,nbskip,nblines);
 		<f ok>
 			unsigned noline = glocal.nbskip;
-			glocal.webtable.sethead("User\tName\tCity");
+			glocal.webtable.sethead("%s\t%s\t%s",MSG_R(I_USERID),MSG_R(I_USERNAME),MSG_R(I_CITY));
 			const char *dirserver = util_getdirserver();
 			for (auto &u:users){
 				if (noline == glocal.selected_row){
@@ -682,12 +687,12 @@ void profile(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER>
 						</call>
 					}
 					fail = glocal.fail;
-					keepediting = true;
+					if (!fail) keepediting = true;
 				</f>
 				</call>
 			</f>
 			<f second>
-				config_search(glocal.picked_userid);
+				config_search("sendcontact",glocal.picked_userid);
 			</f>
 			</call>
 		}else if (strncmp(id,"manage:",7)==0){
@@ -856,7 +861,7 @@ void profile(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER>
 				</call>
 			</f>
 			<f second>
-				config_search(glocal.picked_userid);
+				config_search("interest",glocal.picked_userid);
 			</f>
 			</call>
 		}
