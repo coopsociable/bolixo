@@ -104,6 +104,19 @@ static bool testmode = false;
 static TRANS_NOTLOAD *tbviewed[]={P_MSG_U(I_VIEWNEW,"New"),P_MSG_U(I_VIEWSEEN,"Seen"),P_MSG_U(I_VIEWCHANGED,"Changed")};
 
 static set<string> usehttp;	// Use HTTP instead of HTTPS to reach these servers
+static set<string> nonstricts;	// Use nonstrict HTTPS to reach these servers
+static bool nonstrict = false;	// Use nonstrict HTTPS to reach all servers
+
+static bool bofs_use_nonstrict (PARAM_STRING server)
+{
+	bool ret = false;
+	if (nonstrict){
+		ret = true;
+	}else if (nonstricts.count(server.ptr)>0){
+		ret = true;
+	}
+	return ret;
+}
 
 static void notdone()
 {
@@ -249,7 +262,6 @@ static int bofs_login (
 	return glocal.ret;
 }
 </mod>
-static bool nonstrict = false;
 <mod>
 static int bofs_login (
 	CONNECT_HTTP_INFO &hcon,
@@ -261,7 +273,7 @@ static int bofs_login (
 	glocal int ret = 0;
 	glocal const char *email = email.ptr;
 	if (hcon.host.size() > 0){
-		if (nonstrict) hcon.setnonstrictmode();
+		if (bofs_use_nonstrict(hcon.host)) hcon.setnonstrictmode();
 		<call webapi_login>(hcon,email,password);
 		<f ok>
 			if (success){
@@ -482,7 +494,7 @@ static void bofs_getpubkey(_F_bofs_getpubkey &c, CONTEXT &ctx, PARAM_STRING nick
 			hcon.port = "443";
 			hcon.use_ssl = true;
 		}
-		if (nonstrict) hcon.setnonstrictmode();
+		if (bofs_use_nonstrict(hcon.host)) hcon.setnonstrictmode();
 	}
 	auto p = pubkeys.find(glocal.user);
 	if (p != pubkeys.end()){
@@ -3647,7 +3659,7 @@ static int bofs_bolixoapi (CONTEXT &ctx, int argc, char *argv[])
 			}
 		}
 		glocal.ctx->hcon.setpageapi("bolixoapi");
-		if (nonstrict) glocal.ctx->hcon.setnonstrictmode();
+		if (bofs_use_nonstrict(glocal.ctx->hcon.host)) glocal.ctx->hcon.setnonstrictmode();
 		const char *arg = argv[0];
 		if (strcmp(arg,"test")==0 && argc == 1){
 			<call bolixoapi_test> (glocal.ctx->hcon);
@@ -4059,6 +4071,8 @@ static void bofs_loadconf(CONTEXT &ctx, const char *user)
 				dirserver = tb[1];
 			}else if (strcmp(subject,"usehttp")==0){
 				usehttp.insert(tb[1]);
+			}else if (strcmp(subject,"nonstrict")==0){
+				nonstricts.insert(tb[1]);
 			}else if (strcmp(subject,"user")==0){
 				if (glocal.thisuser){
 					ret = -1;

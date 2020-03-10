@@ -263,47 +263,49 @@ static void config_search(const char *id, string &userid)
 	<f load>
 		glocal nbskip;
 		glocal selected_row;
-		FILTER filter;
-		CONNECT_HTTP_INFO hcon;
-		hcon.init (util_getdirserver());
-		hcon.setpageapi ("bolixoapi");
-		if (util_getnonstrict()) hcon.setnonstrictmode();
-		filter.user = w_s_user.c_str();	
-		filter.fullname = w_s_name.c_str();	
-		filter.city = w_s_city.c_str();	
-		<call bolixoapi_pub_search>(hcon,filter,nbskip,nblines);
-		<f ok>
-			unsigned noline = glocal.nbskip;
-			glocal.webtable.sethead("%s\t%s\t%s",MSG_R(I_USERID),MSG_R(I_USERNAME),MSG_R(I_CITY));
-			const char *dirserver = util_getdirserver();
-			for (auto &u:users){
-				if (noline == glocal.selected_row){
-					const char *nodename;
-					if (is_start_any_ofnc(u.nodename,nodename,"https://","http://")){
-						glocal.userid = string_f("%s@%s",u.user,nodename);
+		if (w_s_user.size() > 0 || w_s_name.size() > 0 || w_s_city.size() > 0){
+			FILTER filter;
+			CONNECT_HTTP_INFO hcon;
+			hcon.init (util_getdirserver());
+			hcon.setpageapi ("bolixoapi");
+			if (util_getnonstrict()) hcon.setnonstrictmode();
+			filter.user = w_s_user.c_str();	
+			filter.fullname = w_s_name.c_str();	
+			filter.city = w_s_city.c_str();	
+			<call bolixoapi_pub_search>(hcon,filter,nbskip,nblines);
+			<f ok>
+				unsigned noline = glocal.nbskip;
+				glocal.webtable.sethead("%s\t%s\t%s",MSG_R(I_USERID),MSG_R(I_USERNAME),MSG_R(I_CITY));
+				const char *dirserver = util_getdirserver();
+				for (auto &u:users){
+					if (noline == glocal.selected_row){
+						const char *nodename;
+						if (is_start_any_ofnc(u.nodename,nodename,"https://","http://")){
+							glocal.userid = string_f("%s@%s",u.user,nodename);
+						}
 					}
-				}
-				glocal.webtable.setclickopt (true,"","");
-				glocal.webtable.setrow("white",noline,"%s\t%s\t%s",u.user,u.fullname,u.city);
-				string photo_url,mini_photo_url;
-				if (u.photo_modified[0] != '\0'){
-					string tmp = util_flipspaces(u.photo_modified);
-					photo_url = string_f ("<img width=100 src=%s/bolixo.hc?webstep=2&user=%s&node=%s&file=photo.jpg&mod=%s>\n"
-						,dirserver,u.user,u.nodename,tmp.c_str());
-				}
-				if (u.mini_photo_modified[0] != '\0'){
-					string tmp = util_flipspaces(u.mini_photo_modified);
-					mini_photo_url = string_f ("<img width=40 src=%s/bolixo.hc?webstep=2&user=%s&node=%s&file=mini-photo.jpg&mod=%s>\n"
-						,dirserver,u.user,u.nodename,tmp.c_str());
-				}
-				if (photo_url.size() > 0 || mini_photo_url.size() > 0){
-					glocal.webtable.setrow("white",noline,"%s\t%s",mini_photo_url.c_str(),photo_url.c_str());
-				}
-				noline++;
+					glocal.webtable.setclickopt (true,"","");
+					glocal.webtable.setrow("white",noline,"%s\t%s\t%s",u.user,u.fullname,u.city);
+					string photo_url,mini_photo_url;
+					if (u.photo_modified[0] != '\0'){
+						string tmp = util_flipspaces(u.photo_modified);
+						photo_url = string_f ("<img width=100 src=%s/bolixo.hc?webstep=2&user=%s&node=%s&file=photo.jpg&mod=%s>\n"
+							,dirserver,u.user,u.nodename,tmp.c_str());
+					}
+					if (u.mini_photo_modified[0] != '\0'){
+						string tmp = util_flipspaces(u.mini_photo_modified);
+						mini_photo_url = string_f ("<img width=40 src=%s/bolixo.hc?webstep=2&user=%s&node=%s&file=mini-photo.jpg&mod=%s>\n"
+							,dirserver,u.user,u.nodename,tmp.c_str());
+					}
+					if (photo_url.size() > 0 || mini_photo_url.size() > 0){
+						glocal.webtable.setrow("white",noline,"%s\t%s",mini_photo_url.c_str(),photo_url.c_str());
+					}
+					noline++;
 
-			}
-		</f>
-		</call>
+				}
+			</f>
+			</call>
+		}
 	</f>
 	</call>
 }
