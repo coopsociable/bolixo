@@ -43,6 +43,10 @@ void index_doc (DOCUMENT_POINTER &pt, DOC_ID &jump, bool index);
 void index_doc (DOCUMENT_POINTER &pt, DOC_ID &jump);
 
 static W_SSTRING w_upload2("upload2");
+// Fields for config_search
+static W_SSTRING w_s_user("s_user");
+static W_SSTRING w_s_name("s_name");
+static W_SSTRING w_s_city("s_city");
 static void index_field (_F_form *c, bool newline,unsigned colspan, const char *title, W_SSTRING &var, unsigned size)
 {
 	if (newline) htmlout ("<tr>");
@@ -205,6 +209,12 @@ static void config_form_title(const char *title)
 	htmlout (title);
 	/- </font>
 }
+static void config_printmsg(const char *color, const string &msg)
+{
+	if (msg.size() > 0){
+		htmlprintf ("<font color=%s>%s</font>\n",color,msg.c_str());
+	}
+}
 /*
 	Create a small dialog to perform a search on bolixo.org.
 	The result is presented in a table. When the user click on one
@@ -229,12 +239,12 @@ static void config_search(const char *id, string &userid)
 				htmlprintf ("<tr><td>%s<td>%s<td>%s\n",MSG_R(I_USERID),MSG_R(I_USERNAME),MSG_U(I_CITY,"City"));
 			}
 			/- <tr><td>
-			field_string (w_user,"size=15");
+			field_string (w_s_user,"size=15");
 			/- <td>
-			field_string (w_name,"size=15");
+			field_string (w_s_name,"size=15");
 			if (!mobile){
 				/- <td>
-				field_string (w_city,"size=15");
+				field_string (w_s_city,"size=15");
 			}
 			/- <tr><td colspan=2>
 			button_submit(MSG_R(B_SEARCH));
@@ -248,20 +258,20 @@ static void config_search(const char *id, string &userid)
 		</f>
 		</call>
 	}
-	glocal FILTER filter;
-	glocal CONNECT_HTTP_INFO hcon;
-	glocal.hcon.init (util_getdirserver());
-	glocal.hcon.setpageapi ("bolixoapi");
-	if (util_getnonstrict()) glocal.hcon.setnonstrictmode();
-	glocal.filter.user = w_user.c_str();	
-	glocal.filter.fullname = w_name.c_str();	
-	glocal.filter.city = w_city.c_str();	
 	static WEBID id("tab:search");
 	<call webtable>(id,currents[id.c_str()],offsets[id.c_str()],20);
 	<f load>
 		glocal nbskip;
 		glocal selected_row;
-		<call bolixoapi_pub_search>(glocal.hcon,glocal.filter,nbskip,nblines);
+		FILTER filter;
+		CONNECT_HTTP_INFO hcon;
+		hcon.init (util_getdirserver());
+		hcon.setpageapi ("bolixoapi");
+		if (util_getnonstrict()) hcon.setnonstrictmode();
+		filter.user = w_s_user.c_str();	
+		filter.fullname = w_s_name.c_str();	
+		filter.city = w_s_city.c_str();	
+		<call bolixoapi_pub_search>(hcon,filter,nbskip,nblines);
 		<f ok>
 			unsigned noline = glocal.nbskip;
 			glocal.webtable.sethead("%s\t%s\t%s",MSG_R(I_USERID),MSG_R(I_USERNAME),MSG_R(I_CITY));
@@ -501,6 +511,7 @@ void profile(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER>
 		}else if (strncmp(id,"group:",6)==0){
 			glocal const char *grpname = id+6;
 			glocal bool adding = glocal.grpname[0] == '\0';
+			glocal string error;
 			<call form>(id);
 			<f top>
 				/- <table border=0 width=100%><tr><td><td><table border=0 width=100%>
@@ -537,6 +548,7 @@ void profile(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER>
 				field_textarea (w_content,20,-100,"");
 				/- <tr><td colspan=2>
 				button_submit();
+				config_printmsg ("red",glocal.error); 
 			</f>
 			<f validate>
 				bool ret = true;
@@ -550,7 +562,7 @@ void profile(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER>
 					<f ok>
 						if (!success){
 							glocal.fail = true;
-							htmlprintf (MSG_U(E_CANTCREATEGROUP,"Can't create group: %s<br>\n"),msg);
+							glocal.error = string_f(MSG_U(E_CANTCREATEGROUP,"Can't create group: %s"),msg);
 						}else{
 							// The group has been added, the tab name will change.
 							glocal.webtabs.setid(string_f("group:%s",glocal.grpname));
@@ -574,7 +586,7 @@ void profile(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER>
 					<call bod_client_set_group_desc>(glocal.con,w_session.c_str(),glocal.grpname,w_desc.c_str(),"");
 					<f ok>
 						if (!success){
-							htmlprintf (MSG_U(E_CANTSETGROUPDESC,"Can't set group description: %s<br>\n"),msg);
+							glocal.error = string_f (MSG_U(E_CANTSETGROUPDESC,"Can't set group description: %s"),msg);
 							glocal.fail = true;
 						}
 					</f>
@@ -600,7 +612,7 @@ void profile(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER>
 						<f ok>
 							if (!success){
 								glocal.fail = true;
-								htmlprintf (MSG_U(E_CANTSETMEMBER,"Can't set member %s: %s\n"),glocal.user,msg);
+								glocal.error = string_f (MSG_U(E_CANTSETMEMBER,"Can't set member %s: %s"),glocal.user,msg);
 							}
 						</f>
 						</call>
@@ -616,7 +628,7 @@ void profile(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER>
 							<f ok>
 								if (!success){
 									glocal.fail = true;
-									htmlprintf (MSG_U(E_CANTDELMEMBER,"Can't delete member %s: %s\n"),glocal.user,msg);
+									glocal.error = string_f (MSG_U(E_CANTDELMEMBER,"Can't delete member %s: %s"),glocal.user,msg);
 								}
 							</f>
 							</call>
@@ -662,12 +674,8 @@ void profile(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER>
 					field_textarea (w_content,10,-100,"");
 					/- <tr><td colspan=2>
 					button_submit(MSG_R(B_SEND));
-					/- <font color=red>
-					htmlout (glocal.error);
-					/- </font>
-					/- <font color=blue>
-					htmlout (glocal.confirm);
-					/- </font>
+					config_printmsg ("red",glocal.error);
+					config_printmsg ("blue",glocal.confirm);
 				</f>
 				<f validate>
 					return true;
@@ -807,9 +815,7 @@ void profile(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER>
 					field_textarea (w_content,10,-100,"");
 					/- <tr><td colspan=2>
 					button_submit(MSG_U(I_ADD,"Add"));
-					/- <font color=red>
-					htmlout (glocal.error);
-					/- </font>
+					config_printmsg ("red",glocal.error);
 				</f>
 				<f validate>
 					return true;
