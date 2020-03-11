@@ -48,7 +48,7 @@ void format_content (const char *s);
 void format_content (const char *s, int nbline, bool &more);
 void formatting_tips();
 void util_google_code();
-void util_setmobilespecs (unsigned body_font_size, unsigned input_font_size);
+void util_setmobilespecs (unsigned body_font_size, unsigned input_font_size, unsigned button_font_size);
 void util_defstyles();
 void printhref(const char *url, const char *text);
 void printhref(const char *url, const char *text, bool largewindow);
