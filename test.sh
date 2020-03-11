@@ -1475,6 +1475,11 @@ elif [ "$1" = "lxc0-web" ]; then # prod:
 	fi
 	echo web
 	strace -f -o /tmp/log.web2 /var/www/cgi-bin/tlmpweb >/dev/null
+	if [ -x utils/dnsrequest ] ; then
+		strace -f -o /tmp/log.web3 utils/dnsrequest >/dev/null
+	elif [ -f /usr/lib/dnsrequest ] ; then
+		strace -f -o /tmp/log.web3 /usr/lib/dnsrequest >/dev/null
+	fi
 	for w in web web-fail
 	do
 		JOURNEY=
@@ -1489,7 +1494,7 @@ elif [ "$1" = "lxc0-web" ]; then # prod:
 			--preserve /tmp/agent.log \
 			--preserve /tmp/login.log \
 			$EXTRALXCPROG \
-			-i /usr/sbin/trli-init -l $LOG -l /tmp/log.web2 \
+			-i /usr/sbin/trli-init -l $LOG -l /tmp/log.web2 -l /tmp/log.web3 \
 			-e /var/www/html/index.hc \
 			-e /var/www/html/webapi.hc \
 			-e /var/www/html/bolixoapi.hc \

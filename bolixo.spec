@@ -55,6 +55,7 @@ make install
 /usr/share/bolixo/bofs.conf
 /usr/share/bolixo/update-script
 /usr/lib/bolixo-update
+/usr/lib/dnsrequest
 /usr/sbin/bo-webtest
 /usr/sbin/bod
 /usr/sbin/bod-control

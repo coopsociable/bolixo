@@ -9,7 +9,8 @@ PROGS=_dict.o bod bod-client bod-control bo-writed bo-writed-control bo-sessiond
       bo-manager bofs ssltestsign bo-keysd bo-keysd-control bolixod bolixod-control perfsql \
       bo-mon bo-mon-control utils/eximexec utils/helpspell publishd publishd-control bo-webtest \
       documentd documentd-control rssd rssd-control deleteitems utils/cacheurl utils/email-log \
-      utils/show-notifies utils/business-card waitevent utils/bo-remote-manage utils/bolixo-update
+      utils/show-notifies utils/business-card waitevent utils/bo-remote-manage utils/bolixo-update \
+      utils/dnsrequest
 #bo-log bo-log-control \
 DOCS=
 OPTIONS=$(DINSTRUMENT) -funsigned-char -O2 -Wall -g -DVERSION=\"$(PACKAGE_REV)\" -I/usr/include/tlmp -I/usr/include/trlitool
@@ -128,6 +129,9 @@ utils/bo-remote-manage: utils/bo-remote-manage.tlcc _dict.o
 
 utils/bolixo-update: utils/bolixo-update.tlcc _dict.o
 	cctlcc $(OPTIONS) utils/bolixo-update.tlcc _dict.o -o utils/bolixo-update -lstdc++
+
+utils/dnsrequest: utils/dnsrequest.cc _dict.o
+	g++ $(OPTIONS) utils/dnsrequest.cc -o utils/dnsrequest
 
 
 proto/publishd_control.protoh: proto/publishd_control.proto
@@ -395,6 +399,7 @@ install: msg.eng msg.fr
 	install -m755 utils/document-save.hourly  $(RPM_BUILD_ROOT)/etc/cron.hourly/document-save
 	install -m644 update-script $(RPM_BUILD_ROOT)/usr/share/bolixo/update-script
 	install -m755 utils/bolixo-update $(RPM_BUILD_ROOT)/usr/lib/bolixo-update
+	install -m755 utils/dnsrequest $(RPM_BUILD_ROOT)/usr/lib/dnsrequest
 	for file in web/images-doc/*.jpg; do install -m644 $$file $(RPM_BUILD_ROOT)/var/www/html/.; done
 
 #	install -m755 web/admin.hc $(RPM_BUILD_ROOT)/var/www/html/admin.hc
