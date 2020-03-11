@@ -158,6 +158,10 @@ make install
 /var/www/html/checkers-fr.jpg
 /var/www/html/chess.jpg
 /var/www/html/chess-fr.jpg
+/var/www/html/add-interests.jpg
+/var/www/html/add-interests-fr.jpg
+/var/www/html/contact-request.jpg
+/var/www/html/contact-request-fr.jpg
 /usr/lib/bolixo-test.sh
 /usr/sbin/bolixo-production
 /usr/sbin/bo
