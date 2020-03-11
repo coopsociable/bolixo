@@ -984,8 +984,8 @@ elif [ "$1" = "cmp-sequence" ] ; then # S: Execute QA tests
 	CMPDIR=/tmp/cmp-test
 	rm -fr $CMPDIR
 	mkdir $CMPDIR
-	for test in directory createsubdir projects msgs ivldsession public remote-contact remote-interest contact-utf8 notifications \
-		remote-sendlarge cp-admin badnames setaccess remote-member delete-group
+	for test in cleartest1 directory createsubdir projects msgs ivldsession public remote-contact remote-interest contact-utf8 notifications \
+		remote-sendlarge cp-admin badnames setaccess remote-member delete-group remote-group
 	do
 		OPT=
 		if [ "$test" = "public" ]; then
@@ -1609,6 +1609,8 @@ elif [ "$1" = "lxc0-webssl" ]; then # prod:
 			-e /var/www/html/checkers-fr.jpg \
 			-e /var/www/html/chess.jpg \
 			-e /var/www/html/chess-fr.jpg \
+			-e /var/www/html/add-interests.jpg \
+			-e /var/www/html/add-interests-fr.jpg \
 			-i /usr/sbin/trli-init \
 			-l $LOG \
 			-n $w -p /usr/sbin/httpd >/var/lib/lxc/$w/$w-lxc0.sh

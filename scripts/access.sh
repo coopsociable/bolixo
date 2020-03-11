@@ -22,6 +22,7 @@ addcontact(){
 	localuser=$1
 	user=$2
 	server=$3
+	#echo addcontact $1 $2 $3
 	if [ "$server" = "" ] ; then
 		found=`(./bofs -u jacques-A misc --contact_list --request_by_me --minimal; ./bofs -u jacques-A misc --contact_list --minimal)|grep $user`
 		if [ "$found" = "" ] ; then
@@ -32,9 +33,10 @@ addcontact(){
 	else
 		remoteuser=$2@$3
 		found=`(./bofs -u jacques-A misc --contact_list --request_by_me --minimal; ./bofs -u jacques-A misc --contact_list --minimal)|grep $remoteuser`
+		#echo addcontact found=$found
 		if [ "$found" = "" ] ; then
 			./bofs --nonstrict -u $1 misc --contact_request -u $remoteuser
-			sleep 0.2
+			sleep 0.4
 			ssh root@$server bofs --nonstrict -u $user misc --contact_manage -u $localuser@test1.bolixo.org
 		fi
 	fi
@@ -46,6 +48,12 @@ if [ "$1" = "" ] ; then
 	else
 		echo "No menutest, can't display help"
 	fi
+elif [ "$1" = "cleartest1" ] ; then # test: remove traces of test1.bolixo.org from preprods
+	for SERVER in preprod preprod2 preprod3
+	do
+		ssh root@$SERVER.bolixo.org /root/bin/cleartest1 &
+	done
+	wait
 elif [ "$1" = "directory" ] ;then # test: Basic directory content
 	inittest
 	DIR=bo://projects/jacques-A
@@ -143,9 +151,6 @@ elif [ "$1" = "ivldsession" ] ; then # test: Test access with invalid session (a
 	testseq $SESSION dir1
 	./test.sh bod-control nodelogout http://test1.bolixo.org $SESSION
 elif [ "$1" = "remote-contact" ] ; then # test: Perform remote contact request
-	ssh root@preprod.bolixo.org /root/bin/cleartest1
-	echo Sleep 5 seconds
-	sleep 5
 	for user in bolixodev bolixonews bolixonouvelles jacquesg
 	do
 		./bofs misc --contact_request -u $user@preprod.bolixo.org
@@ -173,9 +178,6 @@ elif [ "$1" = "remote-contact-fail" ] ; then # test: Perform remote contact requ
 		echo ./bofs -u jacques-A misc --contact_remove --user $line
 		./bofs -u jacques-A misc --contact_remove --user $line
 	done
-	ssh root@$SERVER /root/bin/cleartest1
-	echo Sleep 5 seconds
-	sleep 5
 	echo "delete from id2name where name like '%@$SERVER';" | ./test.sh files
 	echo "#### Invalid user"
 	ssh root@$SERVER bofs -u jacques misc --contact_request -u jacques-AA@test1.bolixo.org
@@ -447,11 +449,11 @@ elif [ "$1" = "remote-group-messages" ] ; then # test: group with remote members
 	ssh root@preprod2.bolixo.org bofs -u jacques msgs --shortmsg --groupname onegroup --groupowner $USER@test1.bolixo.org -C "message_from_jacques@preprod2.bolixo.org"
 	ssh root@preprod2.bolixo.org bofs -u clemence msgs --shortmsg --groupname onegroup --groupowner $USER@test1.bolixo.org -C "message_from_clemence@preprod2.bolixo.org"
 	echo "#### list messages for $USER"
-	./bofs --nonstrict -u $USER msgs --listshortmsgs --groupname onegroup --groupowner $USER
+	./bofs -t --nonstrict -u $USER msgs --listshortmsgs --groupname onegroup --groupowner $USER
 	echo "#### list messages for jacquesg@preprod.bolixo.org"
-	ssh root@preprod.bolixo.org bofs --nonstrict -u jacquesg msgs --listshortmsgs --groupname onegroup --groupowner jacques-A@test1.bolixo.org
+	ssh root@preprod.bolixo.org bofs -t --nonstrict -u jacquesg msgs --listshortmsgs --groupname onegroup --groupowner jacques-A@test1.bolixo.org
 	echo "#### list messages for jacques@preprod2.bolixo.org"
-	ssh root@preprod2.bolixo.org bofs --nonstrict -u jacques msgs --listshortmsgs --groupname onegroup --groupowner jacques-A@test1.bolixo.org
+	ssh root@preprod2.bolixo.org bofs -t --nonstrict -u jacques msgs --listshortmsgs --groupname onegroup --groupowner jacques-A@test1.bolixo.org
 elif [ "$1" = "remote-group" ] ; then # test: group with remote members, create,send,cleanup
 	$0 remote-group-create
 	$0 remote-group-messages
