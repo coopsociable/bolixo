@@ -24,7 +24,7 @@ addcontact(){
 	server=$3
 	#echo addcontact $1 $2 $3
 	if [ "$server" = "" ] ; then
-		found=`(./bofs -u jacques-A misc --contact_list --request_by_me --minimal; ./bofs -u jacques-A misc --contact_list --minimal)|grep $user`
+		found=`./bofs -u jacques-A misc --contact_list --minimal | grep $user`
 		if [ "$found" = "" ] ; then
 			./bofs --nonstrict -u $1 misc --contact_request -u $user
 			sleep 0.2
@@ -32,7 +32,7 @@ addcontact(){
 		fi
 	else
 		remoteuser=$2@$3
-		found=`(./bofs -u jacques-A misc --contact_list --request_by_me --minimal; ./bofs -u jacques-A misc --contact_list --minimal)|grep $remoteuser`
+		found=`./bofs -u jacques-A misc --contact_list | grep $remoteuser`
 		#echo addcontact found=$found
 		if [ "$found" = "" ] ; then
 			./bofs --nonstrict -u $1 misc --contact_request -u $remoteuser
@@ -178,14 +178,24 @@ elif [ "$1" = "remote-contact-fail" ] ; then # test: Perform remote contact requ
 		echo ./bofs -u jacques-A misc --contact_remove --user $line
 		./bofs -u jacques-A misc --contact_remove --user $line
 	done
+	# If all is good, removing a contact on this server does it on the remote server
+	# Just in case, we do it on the remote server. 
+	ssh root@$SERVER bofs -u jacques misc --contact_list --minimal | grep test1.bolixo.org | while read line
+	do
+		echo ssh root@$SERVER bofs -u jacques misc --contact_remove --user $line
+		ssh root@$SERVER bofs -u jacques misc --contact_remove --user $line
+	done
+	$0 cleartest1
 	echo "delete from id2name where name like '%@$SERVER';" | ./test.sh files
 	echo "#### Invalid user"
 	ssh root@$SERVER bofs -u jacques misc --contact_request -u jacques-AA@test1.bolixo.org
 	echo "#### Local user without public key"
-	# Erase public key for user jacques-A
+	# Take a backup
 	PUBKEY=`echo "select pub_key from id2name where name='jacques-A';" | ./test.sh files --skip-column-names`
+	# Erase public key for user jacques-A
 	echo "update id2name set pub_key=null where name='jacques-A';" | ./test.sh files
 	ssh root@$SERVER bofs -u jacques misc --contact_request -u jacques-A@test1.bolixo.org
+	# Restore public key
 	echo "update id2name set pub_key='$PUBKEY' where name='jacques-A';" | ./test.sh files
 	echo "#### remote user have no public key"
 	PUBKEY=`echo "select pub_key from id2name where name='jacques';" | ssh root@$SERVER bo files --skip-column-names`
@@ -197,6 +207,8 @@ elif [ "$1" = "remote-contact-fail" ] ; then # test: Perform remote contact requ
 	./bofs --nonstrict -u jacques-A misc --contact_manage -u jacques@preprod2.bolixo.org
 	echo Contacts from $SERVER for jacques-A
 	./bofs -u jacques-A misc --contact_list --minimal | grep $SERVER
+	echo Contacts from test1.bolixo.org for jacques
+	ssh root@$SERVER bofs -u jacques misc --contact_list --minimal | grep test1.bolixo.org
 elif [ "$1" = "contact-utf8" ] ; then # test: Perform contact request UTF-8
 	user=jacques-éà
 	./bofs misc --contact_request -u $user
