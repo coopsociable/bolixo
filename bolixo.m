@@ -2,7 +2,7 @@ extern const char **_dictionary_bolixo;
 #ifndef DICTIONARY_REQUEST
 	#define DICTIONARY_REQUEST \
 	const char **_dictionary_bolixo;\
-	TRANSLATE_SYSTEM_REQ _dictionary_req_bolixo("bolixo",_dictionary_bolixo,638,19);\
+	TRANSLATE_SYSTEM_REQ _dictionary_req_bolixo("bolixo",_dictionary_bolixo,661,19);\
 	void dummy_dict_bolixo(){}
 #endif
 #ifndef MSG_U
@@ -651,3 +651,26 @@ extern const char **_dictionary_bolixo;
 #define I_USERID	635
 #define I_CITY	636
 #define I_USERNAME	637
+#define O_USERINTEREST	638
+#define O_NICKNAME	639
+#define O_MSGVERIFY	640
+#define O_NBREP	641
+#define O_FULLTEXT	642
+#define O_SHOWCONFIG	643
+#define O_WRITECONFIG	644
+#define O_MARKVIEW	645
+#define O_CONTACTREMOVE	646
+#define O_CONTACTREQUEST	647
+#define O_MANAGECONTACTREQ	648
+#define O_CONTACTLIST	649
+#define O_ADDUSERINTLIST	650
+#define O_UNSETINTEREST	651
+#define O_LISTINTEREST	652
+#define O_LISTMSGINTEREST	653
+#define O_VERIFYMSGSIGN	654
+#define O_GETPUBKEY	655
+#define O_MSGCONTACTREQ	656
+#define O_CONTACTSTATUS	657
+#define O_USERCONTACTREQ	658
+#define O_CONTACTTOME	659
+#define O_CONTACTBYMY	660
