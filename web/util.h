@@ -177,3 +177,5 @@ void util_markview (CONNECT_INFO &con, PARAM_STRING fname);
 std::string util_subformsubmit (PARAM_STRING link, PARAM_STRING text);
 void util_setnonstrict(bool mode);
 bool util_getnonstrict();
+void util_set_experimental();
+bool util_experimental();
