@@ -196,6 +196,10 @@ proto/documentd_chess.protoh: proto/documentd_chess.proto
 	build-protocol --file_mode --req_reader_type DOC_READER --req_writer_type DOC_WRITER --name documentd_chess \
 		--protoch proto/documentd_chess.protoch proto/documentd_chess.proto >proto/documentd_chess.protoh
 
+proto/documentd_wordproc.protoh: proto/documentd_wordproc.proto
+	build-protocol --file_mode --req_reader_type DOC_READER --req_writer_type DOC_WRITER --name documentd_wordproc \
+		--protoch proto/documentd_wordproc.protoch proto/documentd_wordproc.proto >proto/documentd_wordproc.protoh
+
 proto/documentd_tictacto.protoh: proto/documentd_tictacto.proto
 	build-protocol --file_mode --req_reader_type DOC_READER --req_writer_type DOC_WRITER --name documentd_tictacto \
 		--protoch proto/documentd_tictacto.protoch proto/documentd_tictacto.proto >proto/documentd_tictacto.protoh
@@ -248,7 +252,7 @@ doc_checkers.o: doc_checkers.tlcc documentd.h proto/documentd_checkers.protoh
 doc_chess.o: doc_chess.tlcc documentd.h proto/documentd_chess.protoh
 	cctlcc -Wall $(OPTIONS) -c doc_chess.tlcc -o doc_chess.o
 
-doc_wordproc.o: doc_wordproc.tlcc documentd.h
+doc_wordproc.o: doc_wordproc.tlcc documentd.h proto/documentd_wordproc.protoh
 	cctlcc -Wall $(OPTIONS) -c doc_wordproc.tlcc -o doc_wordproc.o
 
 doc_sudoku.o: doc_sudoku.tlcc documentd.h proto/documentd_sudoku.protoh

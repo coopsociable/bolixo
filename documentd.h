@@ -218,6 +218,7 @@ struct WORD_USERPREF{
 class WORDPROC: public GAME{
 	std::vector<std::string> lines;
 	std::map<std::string,WORD_USERPREF> prefs;
+	void deletechar(std::vector<unsigned> &updlines, WORD_USERPREF &pref);
 public:
 	const char *getclass() const{
 		return "WORD";
