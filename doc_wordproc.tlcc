@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <algorithm>
 #include <tlmplib.h>
 #include "bolixo.h"
 #include "proto/bod_client.protodef"
@@ -141,18 +142,31 @@ static unsigned wordproc_jump2col (const string &line, unsigned pos)
 	
 static string wordproc_formatline(
 	const string &line,
-	bool current_line,
-	unsigned noline,
-	unsigned column,
-	bool insertmode)
+	map<string,WORD_USERPREF> &prefs,
+	unsigned noline)
 {
 	string ret = string_f("%02u-",noline);
-	if (current_line){
-		const char *cursor=insertmode ? "<font color=red>|</font>" : "<font color=blue>|</font>";
+	struct CURSOR{
+		unsigned column;
+		bool insertmode;
+		CURSOR(unsigned _column, bool _insertmode): column(_column), insertmode(_insertmode){}
+	};
+	vector<CURSOR> cursors;
+	for (auto &p:prefs){
+		if (p.second.maywrite && p.second.line == noline) cursors.emplace_back(p.second.column,p.second.insertmode);
+	}
+	if (cursors.size() > 0){
+		sort(cursors.begin(),cursors.end(),[](auto &c1, auto &c2){return c1.column < c2.column;});
+		unsigned column = cursors[0].column;
+		unsigned cursor_no = 0;
 		unsigned pos=0;
 		for (auto p=line.begin(); p!=line.end(); ){
 			auto c = *p;
-			if (pos == column) ret += cursor;
+			if (pos == column){
+				const char *cursor=cursors[cursor_no].insertmode
+					? "<span style=background-color:lightgray;>" : "<span style=background-color:lightpink;>";
+				ret += cursor;
+			}
 			if (c == ' '){
 				ret += "&nbsp;";
 				p++;
@@ -163,14 +177,27 @@ static string wordproc_formatline(
 					sizecar--;
 				}
 			}
+			if (pos == column){
+				ret += "</span>";
+				cursor_no++;
+				if (cursor_no < cursors.size()){
+					column = cursors[cursor_no].column;
+				}
+			}
 			pos++;
 		}
 		if (pos <= column){
-			while (pos < column){
-				pos++;
-				ret += "&nbsp;";
+			while (cursor_no < cursors.size()){
+				column = cursors[cursor_no].column;
+				while (pos < column){
+					pos++;
+					ret += "&nbsp;";
+				}
+				const char *cursor=cursors[cursor_no].insertmode
+					? "<span style=background-color:lightgray;>" : "<span style=background-color:lightpink;>";
+				ret += string(cursor) + "&nbsp;</span>";
+				cursor_no++;
 			}
-			ret += cursor;
 		}
 	}else{
 		for (auto c:line){
@@ -217,6 +244,55 @@ void WORDPROC::deletechar (vector<unsigned> &updlines, WORD_USERPREF &pref)
 		updlines.push_back(pref.line);
 	}
 }
+void WORDPROC::vmove (int move, unsigned visible_lines, WORD_USERPREF &pref, VARVAL &script_var, vector<unsigned> &updlines)
+{
+	if (move < 0 && abs(move) > pref.line) move = -pref.line;
+	unsigned nextline = pref.line + move;
+	if (nextline < pref.offset){
+		pref.offset--;
+		js_find_loop_start (script_var.val,"text","div");
+		// Remove last div
+		script_var.val += string_f("\tvar last=elms[%u];\n",visible_lines-1);
+		script_var.val += "\tlast.parentNode.removeChild(last);\n";
+		// Insert one at the top
+		script_var.val += "\tvar newElement = document.createElement('div');\n";
+		script_var.val += string_f("\tnewElement.setAttribute('id', 'l%u');\n",pref.offset);
+		script_var.val += "\tnewElement.innerHTML = '';\n";
+		script_var.val += "\telm.insertBefore(newElement,elms[0]);\n";
+		js_find_loop_end (script_var.val);
+		updlines.push_back(pref.offset);
+		updlines.push_back(pref.offset+1);
+	}else if (nextline >= pref.offset + visible_lines){
+		pref.offset++;
+		js_find_loop_start (script_var.val,"text","div");
+		// Remove first div
+		script_var.val += "\tvar first=elms[0];\n";
+		script_var.val += "\tfirst.parentNode.removeChild(first);\n";
+		// Add one at the end
+		script_var.val += "\tvar newElement = document.createElement('div');\n";
+		unsigned last_line = pref.offset + visible_lines - 1;
+		script_var.val += string_f("\tnewElement.setAttribute('id', 'l%u');\n",last_line);
+		script_var.val += "\tnewElement.innerHTML = '';\n";
+		script_var.val += "\telm.insertBefore(newElement,null);\n";
+		js_find_loop_end (script_var.val);
+		updlines.push_back(last_line-1);
+		updlines.push_back(last_line);
+	}else{
+		updlines.push_back(pref.line);
+		updlines.push_back(nextline);
+	}
+	pref.line = nextline;
+}
+void WORDPROC::update_lines (string &script, vector<unsigned> &updlines)
+{
+	for (auto l:updlines){
+		string id=string_f("l%u",l);
+		static string empty;
+		string &line = l < lines.size() ? lines[l] : empty;
+		js_find_loop_set(script,"text","div",id,"innerHTML"
+			,wordproc_formatline(line,prefs,l).c_str());
+	}
+}
 void WORDPROC::exec (
 	const char *var,
 	const char *val,
@@ -228,6 +304,8 @@ void WORDPROC::exec (
 {
 	setactivity();
 	auto &pref = prefs[username];
+	pref.maywrite = maywrite;
+	unsigned visible_lines = 10;	//sp.content_height/X;
 	if (strcmp(var,"print")==0){
 		if (strcmp(val,"console")==0){
 			VARVAL v;
@@ -266,22 +344,26 @@ void WORDPROC::exec (
 			v.val += string_f("<div id='text-%s' onkeydown=gamepress(event)"
 				" tabindex=0 style='flex:0 0 auto; overflow: hidden; margin-right:%u; width:%u'>\n",gameid.c_str(),10,width);
 			unsigned line = 0;
-			for (auto &l:lines){
-				v.val += string_f("<div id=l%u>%s</div>\n",line
-					,wordproc_formatline(l,pref.line==line,line,pref.column,pref.insertmode).c_str());
-				line++;
+			if (pref.offset < lines.size()){
+				for (auto p=lines.begin()+pref.offset; p != lines.end() && line < visible_lines; p++){
+					auto &l = *p;
+					unsigned doc_line = line+pref.offset;
+					v.val += string_f("<div id=l%u>%s</div>\n",doc_line
+						,wordproc_formatline(l,prefs,doc_line).c_str());
+					line++;
+				}
 			}
-			for (; line<20; line++){
+			for (; line<visible_lines; line++){
 				static string empty;
-				v.val += string_f("<div id=l%u>%s</div>\n",line
-					,wordproc_formatline(empty,pref.line==line,line,pref.column,pref.insertmode).c_str());
+				unsigned doc_line = line+pref.offset;
+				v.val += string_f("<div id=l%u>%s</div>\n",doc_line
+					,wordproc_formatline(empty,prefs,doc_line).c_str());
 			}
 			v.val += "</div>\n";
 			v.val += "</div>\n";
 			res.emplace_back(v);
 		}
-	}else if (maywrite){
-tlmp_warning ("var=%s val=%s:",var,val);
+	}else{
 		if (strcmp(var,"kbd")==0){
 			if (is_start_any_of(var,NONEED,"kbd")){
 				const char *pt = str_skipword(val);
@@ -317,6 +399,10 @@ tlmp_warning ("var=%s val=%s:",var,val);
 						val = "1";
 					}else if (strcmp(pt,"Insert")==0){
 						var = "insertmode";
+					}else if (strcmp(pt,"PageUp")==0){
+						var = "pageup";
+					}else if (strcmp(pt,"PageDown")==0){
+						var = "pagedown";
 					}
 				}else if (is_start_any_of(val,NONEED,"Key","Digit","Slash")){
 					var = "insertchar";
@@ -346,105 +432,171 @@ tlmp_warning ("var=%s val=%s:",var,val);
 					val = "1";
 				}else if (is_start_any_of(val,NONEED,"Backspace")){
 					var = "backspace";
+				}else if (is_start_any_of(val,NONEED,"PageUp")){
+					var = "pageup";
+				}else if (is_start_any_of(val,NONEED,"PageDown")){
+					var = "pagedown";
 				}
-tlmp_warning ("kbd: var=%s val=%s",var,val);
+				// tlmp_warning ("kbd: var=%s val=%s",var,val);
 			}
 		}
-		VARVAL notify_var;
-		notify_var.var = VAR_NOTIFY;
-		vector<unsigned> updlines;	// Lines to update using NOTIFY
-		if (strcmp(var,"insertmode")==0){
-			pref.insertmode = !pref.insertmode;
-			updlines.push_back(pref.line);
-		}else if (strcmp(var,"insertchar")==0){
-			while (lines.size() <= pref.line) lines.push_back("");
-			string &l = lines[pref.line];
-			while (wordproc_linelen(l) < pref.column) l += ' ';
-			unsigned pos = wordproc_jump2col(l,pref.column);
-			l.insert(pos,val);
-			pref.column ++;
-			updlines.push_back(pref.line);
-		}else if (strcmp(var,"break")==0){
-			while (lines.size() <= pref.line) lines.push_back("");
-			string &l = lines[pref.line];
-			auto nextline = lines.begin() + (pref.line+1);
-			if (wordproc_linelen(l) > pref.column){
+		if (maywrite){
+			VARVAL notify_var;
+			notify_var.var = VAR_NOTIFY;
+			VARVAL script_var;
+			script_var.var = VAR_SCRIPT;
+			vector<unsigned> script_lines;	// Lines to update using SCRIPT (Private to this user)
+			vector<unsigned> notify_lines;	// Lines to update using NOTIFY (To all)
+			if (strcmp(var,"insertmode")==0){
+				pref.insertmode = !pref.insertmode;
+				notify_lines.push_back(pref.line);
+			}else if (strcmp(var,"insertchar")==0){
+				while (lines.size() <= pref.line) lines.push_back("");
+				string &l = lines[pref.line];
+				while (wordproc_linelen(l) < pref.column) l += ' ';
 				unsigned pos = wordproc_jump2col(l,pref.column);
-				lines.insert(nextline,l.substr(pos));
-				lines[pref.line].resize(pos);
-			}else{
-				lines.insert(nextline,"");	
-			}
-			for (unsigned l=pref.line; l<lines.size(); l++) updlines.push_back(l);
-			pref.line++;
-			pref.column=0;
-		}else if (strcmp(var,"backspace")==0){
-			updlines.push_back(pref.line);
-			// We start by moving the cursor back one character if possible.
-			// If we are at the start of a line, we go at the end of the previous line.
-			// We do a deletechar after that
-			if (pref.column > 0){
-				pref.column--;
-				deletechar(updlines,pref);
-			}else if (pref.line > 0){
-				pref.line--;
-				pref.column=0;
-				if (lines.size() > pref.line){
-					string &l = lines[pref.line];
-					unsigned len = wordproc_linelen(l);
-					pref.column = len;
-				}
-				updlines.push_back(pref.line);
-				deletechar(updlines,pref);
-			}
-		}else if (strcmp(var,"deletechar")==0){
-			deletechar(updlines,pref);
-		}else if (strcmp(var,"voffset")==0){
-			// Change page up or down
-			int move = atoi(val);
-			if (move > 0){
-				pref.offset += move;
-			}else{
-				if ((unsigned)-move > pref.offset){
-					pref.offset = 0;
+				l.insert(pos,val);
+				pref.column ++;
+				notify_lines.push_back(pref.line);
+			}else if (strcmp(var,"break")==0){
+				while (lines.size() <= pref.line) lines.push_back("");
+				string &l = lines[pref.line];
+				auto nextline = lines.begin() + (pref.line+1);
+				if (wordproc_linelen(l) > pref.column){
+					unsigned pos = wordproc_jump2col(l,pref.column);
+					lines.insert(nextline,l.substr(pos));
+					lines[pref.line].resize(pos);
 				}else{
+					lines.insert(nextline,"");	
+				}
+				for (unsigned l=pref.line; l<lines.size(); l++) notify_lines.push_back(l);
+				pref.line++;
+				pref.column=0;
+			}else if (strcmp(var,"backspace")==0){
+				notify_lines.push_back(pref.line);
+				// We start by moving the cursor back one character if possible.
+				// If we are at the start of a line, we go at the end of the previous line.
+				// We do a deletechar after that
+				if (pref.column > 0){
+					pref.column--;
+					deletechar(notify_lines,pref);
+				}else if (pref.line > 0){
+					pref.line--;
+					pref.column=0;
+					if (lines.size() > pref.line){
+						string &l = lines[pref.line];
+						unsigned len = wordproc_linelen(l);
+						pref.column = len;
+					}
+					notify_lines.push_back(pref.line);
+					deletechar(notify_lines,pref);
+				}
+			}else if (strcmp(var,"deletechar")==0){
+				deletechar(notify_lines,pref);
+			}else if (strcmp(var,"voffset")==0){
+				// Change page up or down
+				int move = atoi(val);
+				if (move > 0){
 					pref.offset += move;
+				}else{
+					if ((unsigned)-move > pref.offset){
+						pref.offset = 0;
+					}else{
+						pref.offset += move;
+					}
+				}
+			}else if (strcmp(var,"vmove")==0){
+				// Move cursor
+				int move = atoi(val);
+				unsigned current_line = pref.line;
+				vmove (move,visible_lines,pref,script_var,script_lines);
+				if (current_line != pref.line){
+					notify_lines.push_back(current_line);
+					notify_lines.push_back(pref.line);
+				}
+			}else if (strcmp(var,"pageup")==0 || strcmp(var,"pagedown")==0){
+				int new_offset = strcmp(var,"pageup")==0 ? pref.offset-visible_lines : pref.offset + visible_lines;
+				if (new_offset < 0) new_offset = 0;
+				if ((unsigned)new_offset != pref.offset){
+					js_find_loop_start (script_var.val,"text","div");
+					// Remove all div
+					script_var.val += "\telm.innerHTML='';\n";
+					// Add new ones
+					script_var.val += string_f("\tfor (var i=0; i<%u; i++){\n",visible_lines);
+					script_var.val += "\t\tvar newElement = document.createElement('div');\n";
+					script_var.val += string_f("\t\tvar id='l'+(%u+i);\n",new_offset);
+					script_var.val += "\t\tnewElement.setAttribute('id', id);\n";
+					script_var.val += "\t\tnewElement.innerHTML = '';\n";
+					script_var.val += "\t\telm.insertBefore(newElement,null);\n";
+					script_var.val += "\t}\n";
+					js_find_loop_end (script_var.val);
+					for (unsigned i=0; i<visible_lines; i++) script_lines.push_back(new_offset+i);
+					notify_lines.push_back(pref.line);
+					if (pref.line < (unsigned)new_offset){
+						pref.line = new_offset;
+					}else if (pref.line >= new_offset + visible_lines){
+						pref.line = new_offset;
+					}
+					notify_lines.push_back(pref.line);
+					pref.offset = new_offset;
+				}
+			}else if (strcmp(var,"hmove")==0){
+				int move = atoi(val);
+				if (move < 0 && pref.column == 0){
+					if (pref.line > 0){
+						notify_lines.push_back(pref.line);
+						vmove (-1,visible_lines,pref,script_var,script_lines);
+						if (lines.size() > pref.line){
+							pref.column = wordproc_linelen(lines[pref.line]);
+						}
+						notify_lines.push_back(pref.line);
+						
+					}
+				}else{
+					pref.column += move;
+					notify_lines.push_back(pref.line);
+				}
+			}else if (strcmp(var,"home")==0){
+				if (pref.column != 0){
+					pref.column = 0;
+					notify_lines.push_back(pref.line);
+				}
+			}else if (strcmp(var,"end")==0){
+				unsigned column  = pref.column;
+				if (lines.size() > pref.line){
+					column = wordproc_linelen(lines[pref.line]);
+				}else{
+					column = 0;
+				}
+				if (column != pref.column){
+					pref.column = column;
+					notify_lines.push_back(pref.line);
 				}
 			}
-		}else if (strcmp(var,"vmove")==0){
-			// Move cursor
-			int move = atoi(val);
-			if (move < 0 && abs(move) > pref.line) move = -pref.line;
-			updlines.push_back(pref.line);
-			pref.line += move;
-			updlines.push_back(pref.line);
-		}else if (strcmp(var,"hmove")==0){
-			int move = atoi(val);
-			if (move < 0 && abs(move) > pref.column) move = -pref.column;
-			pref.column += move;
-			updlines.push_back(pref.line);
-		}else if (strcmp(var,"home")==0){
-			pref.column = 0;
-			updlines.push_back(pref.line);
-		}else if (strcmp(var,"end")==0){
-			if (lines.size() > pref.line){
-				pref.column = wordproc_linelen(lines[pref.line]);
+			update_lines (notify_var.val,notify_lines);
+			update_lines (script_var.val,script_lines);
+			res.emplace_back(script_var);
+			res.emplace_back(notify_var);
+			setmodified(username);
+		}else{
+			VARVAL script_var;
+			script_var.var = VAR_SCRIPT;
+			vector<unsigned> updlines;	// Lines to update using NOTIFY
+			if (strcmp(var,"vmove")==0){
+				// Vertical arrows are producing scrolls in read only mode.
+				int move = atoi(val);
+				if (move < 0){
+					pref.line = pref.offset;
+				}else{
+					pref.line = pref.offset + visible_lines - 1;
+				}
+				vmove (move,visible_lines,pref,script_var,updlines);
 			}else{
-				pref.column = 0;
+				documentd_error (res,MSG_R(E_READONLY));
 			}
-			updlines.push_back(pref.line);
+			update_lines (script_var.val,updlines);
+			res.emplace_back(script_var);
 		}
-		for (auto l:updlines){
-			string id=string_f("l%u",l);
-			static string empty;
-			string &line = l < lines.size() ? lines[l] : empty;
-			js_find_loop_set(notify_var.val,"text","div",id,"innerHTML"
-				,wordproc_formatline(line,pref.line==l,l,pref.column,pref.insertmode).c_str());
-		}
-		res.emplace_back(notify_var);
-		setmodified(username);
-	}else{
-		documentd_error (res,MSG_R(E_READONLY));
 	}
 }
 
