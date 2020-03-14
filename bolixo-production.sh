@@ -635,6 +635,7 @@ elif [ "$1" = "loadfail" ] ; then # prod: Switch web access (normal,backup,split
 					COUNT=0
 				fi
 				echo -n .
+				/usr/sbin/bo-sessiond-control -p /var/lib/lxc/sessiond/rootfs/var/run/blackhole/bo-sessiond.sock disconnect_waitings
 				sleep 1
 			fi
 		done
