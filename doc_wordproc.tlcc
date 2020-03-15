@@ -23,8 +23,8 @@ void WORDPROC::save(DOC_WRITER &w, bool save_session_info)
 	for (auto &p:prefs){
 		WORDPROC_USER user;
 		user.name = p.first;
-		user.line = p.second.line;
-		user.column = p.second.column;
+		user.line = p.second.cursor.line;
+		user.column = p.second.cursor.column;
 		user.offset = p.second.offset;
 		user.insertmode = p.second.insertmode;
 		users.emplace_back(user);
@@ -47,8 +47,8 @@ void WORDPROC::load(DOC_READER &r, string &msg)
 	<f users>
 		for (auto &u:users){
 			WORD_USERPREF &p = glocal.prefs[u.name];
-			p.line = u.line;
-			p.column = u.column;
+			p.cursor.line = u.line;
+			p.cursor.column = u.column;
 			p.offset = u.offset;
 			p.insertmode = u.insertmode;
 		}
@@ -64,6 +64,7 @@ void WORDPROC::load(DOC_READER &r, string &msg)
 void WORDPROC::resetgame()
 {
 	lines.clear();
+	prefs.clear();
 }
 void WORDPROC::testwin(vector<VARVAL> &res)
 {
@@ -153,7 +154,7 @@ static string wordproc_formatline(
 	};
 	vector<CURSOR> cursors;
 	for (auto &p:prefs){
-		if (p.second.maywrite && p.second.line == noline) cursors.emplace_back(p.second.column,p.second.insertmode);
+		if (p.second.maywrite && p.second.cursor.line == noline) cursors.emplace_back(p.second.cursor.column,p.second.insertmode);
 	}
 	if (cursors.size() > 0){
 		sort(cursors.begin(),cursors.end(),[](auto &c1, auto &c2){return c1.column < c2.column;});
@@ -216,23 +217,23 @@ static string wordproc_formatline(
 */
 void WORDPROC::deletechar (vector<unsigned> &updlines, WORD_USERPREF &pref)
 {
-	if (lines.size() > pref.line){
-		string &l = lines[pref.line];
+	if (lines.size() > pref.cursor.line){
+		string &l = lines[pref.cursor.line];
 		unsigned len = wordproc_linelen(l);
-		if (len > pref.column){
+		if (len > pref.cursor.column){
 			// We are inside the line, we remove the current character
 			size_t sizecar;
-			unsigned pos = wordproc_jump2col(l,pref.column,sizecar);
+			unsigned pos = wordproc_jump2col(l,pref.cursor.column,sizecar);
 			if (sizecar > 0){
 				l = l.substr(0,pos) + l.substr(pos+sizecar);
 			}
 		}else{
-			unsigned nextline = pref.line+1;
+			unsigned nextline = pref.cursor.line+1;
 			if (lines.size() > nextline){
 				// We are at the end of the line, or further.
 				// So we merge the previous line here.
 				// First we grow the line
-				while (len < pref.column){
+				while (len < pref.cursor.column){
 					l += ' ';
 					len++;
 				}
@@ -241,13 +242,13 @@ void WORDPROC::deletechar (vector<unsigned> &updlines, WORD_USERPREF &pref)
 				for (unsigned l=nextline; l<lines.size()+1; l++) updlines.push_back(l);
 			}
 		}
-		updlines.push_back(pref.line);
+		updlines.push_back(pref.cursor.line);
 	}
 }
 void WORDPROC::vmove (int move, unsigned visible_lines, WORD_USERPREF &pref, VARVAL &script_var, vector<unsigned> &updlines)
 {
-	if (move < 0 && abs(move) > pref.line) move = -pref.line;
-	unsigned nextline = pref.line + move;
+	if (move < 0 && abs(move) > pref.cursor.line) move = -pref.cursor.line;
+	unsigned nextline = pref.cursor.line + move;
 	if (nextline < pref.offset){
 		pref.offset--;
 		js_find_loop_start (script_var.val,"text","div");
@@ -278,10 +279,10 @@ void WORDPROC::vmove (int move, unsigned visible_lines, WORD_USERPREF &pref, VAR
 		updlines.push_back(last_line-1);
 		updlines.push_back(last_line);
 	}else{
-		updlines.push_back(pref.line);
+		updlines.push_back(pref.cursor.line);
 		updlines.push_back(nextline);
 	}
-	pref.line = nextline;
+	pref.cursor.line = nextline;
 }
 void WORDPROC::update_lines (string &script, vector<unsigned> &updlines)
 {
@@ -313,12 +314,12 @@ void WORDPROC::exec (
 			unsigned line = 0;
 			const char cursor = pref.insertmode ? '^' : '_';
 			for (auto &l:lines){
-				if (line == pref.line){
-					if (l.size() > pref.column){
-						v.val += l.substr(0,pref.column) + cursor + l.substr(pref.column) + "|\n";
+				if (line == pref.cursor.line){
+					if (l.size() > pref.cursor.column){
+						v.val += l.substr(0,pref.cursor.column) + cursor + l.substr(pref.cursor.column) + "|\n";
 					}else{
 						v.val += l;
-						for (unsigned i=l.size(); i<pref.column; i++) v.val += '.';
+						for (unsigned i=l.size(); i<pref.cursor.column; i++) v.val += '.';
 						v.val += cursor;
 						v.val += "|\n";
 					}
@@ -332,16 +333,28 @@ void WORDPROC::exec (
 			unsigned width = sp.content_width;
 			VARVAL v;
 			v.var = VAR_CONTENT;
+			// event.location==1 tells if this is the left shift/alt key or right. We are not using it now
 			v.val += "<script>\n";
+			v.val += "function gameselect(event){\n";
+			v.val += string_f("\tvar elm = document.getElementById('text-%s');\n",gameid.c_str());
+			v.val += "\tvar elms = elm.getElementsByTagName('div');\n";
+			v.val += "\tfor (var i=0; i<elms.length; i++){\n";
+			v.val += "\t\tvar rect = elms[i].getBoundingClientRect();\n";
+			v.val += "\t\tif (event.clientY >= rect.top && event.clientY < rect.bottom){\n";
+			v.val += "\t\t\tgameaction('select:'+i+' '+(event.clientX-rect.left)+' '+(event.clientY-rect.top));\n";
+			v.val += "\t\t\tbreak;\n";
+			v.val += "\t\t}\n";
+			v.val += "\t}\n";
+			v.val += "}\n";
 			v.val += "function gamepress(event){\n";
-			v.val += "\tconsole.log ('key='+event.key);\n";
+			v.val += "\tconsole.log ('key='+event.key+' '+event.altKey+' '+event.ctrlKey+' '+event.shiftKey);\n";
 			v.val += "\tconsole.log ('code='+event.code);\n";
-			v.val += string_f("\tgameaction('kbd:'+event.code + ' ' + event.key);\n");
+			v.val += string_f("\tgameaction('kbd:'+event.code + ' ' + event.key+' '+event.altKey+' '+event.ctrlKey+' '+event.shiftKey);\n");
 			v.val += "\tevent.stopPropagation();\n";
 			v.val += "}\n";
 			v.val += "</script>\n";
 			v.val += "<div class=webtable id=doc_wordproc style='display:flex; flex-flow:row;'>\n";
-			v.val += string_f("<div id='text-%s' onkeydown=gamepress(event)"
+			v.val += string_f("<div id='text-%s' onkeydown=gamepress(event) onclick=gameselect(event)"
 				" tabindex=0 style='flex:0 0 auto; overflow: hidden; margin-right:%u; width:%u'>\n",gameid.c_str(),10,width);
 			unsigned line = 0;
 			if (pref.offset < lines.size()){
@@ -364,78 +377,93 @@ void WORDPROC::exec (
 			res.emplace_back(v);
 		}
 	}else{
+		struct {
+			bool ctrl = false;
+			bool shift = false;
+			bool alt = false;
+		} mod;
 		if (strcmp(var,"kbd")==0){
 			if (is_start_any_of(var,NONEED,"kbd")){
-				const char *pt = str_skipword(val);
-				if (isspace(*pt)) pt++;
-				if (is_start_any_of(val,NONEED,"Enter","NumpadEnter")){
-					var = "break";
-				}else if (is_start_any_of(val,NONEED,"NumpadDecimal")){
-					if (strcmp(pt,"Delete")==0){
-						var = "deletechar";
-					}else{
-						var = "insertchar";
-						val = pt;
-					}
-				}else if (is_start_any_of(val,NONEED,"Numpad")){
-					if (strlen(pt)==1){
-						var = "insertchar";
-						val = pt;
-					}else if (strcmp(pt,"Home")==0){
-						var = "home";
-					}else if (strcmp(pt,"End")==0){
-						var = "end";
-					}else if (strcmp(pt,"ArrowLeft")==0){
-						var = "hmove";
-						val = "-1";
-					}else if (strcmp(pt,"ArrowRight")==0){
-						var = "hmove";
-						val = "1";
-					}else if (strcmp(pt,"ArrowUp")==0){
-						var = "vmove";
-						val = "-1";
-					}else if (strcmp(pt,"ArrowDown")==0){
-						var = "vmove";
-						val = "1";
-					}else if (strcmp(pt,"Insert")==0){
-						var = "insertmode";
-					}else if (strcmp(pt,"PageUp")==0){
-						var = "pageup";
-					}else if (strcmp(pt,"PageDown")==0){
-						var = "pagedown";
-					}
-				}else if (is_start_any_of(val,NONEED,"Key","Digit","Slash")){
-					var = "insertchar";
-					val = pt;
-				}else if (is_start_any_of(val,NONEED,"Space")){
+				vector<string> tb;
+				int n = str_splitline(val,' ',tb);
+				tlmp_warning ("n=%d val=%s",n,val);
+				if (n == 4 && is_any_of(tb[0],"Space")){
 					var = "insertchar";
 					val = " ";
-				}else if (is_start_any_of(val,NONEED,"Insert")){
-					var = "insertmode";
-				}else if (is_start_any_of(val,NONEED,"Delete")){
-					var = "deletechar";
-				}else if (is_start_any_of(val,NONEED,"Home")){
-					var = "home";
-				}else if (is_start_any_of(val,NONEED,"End")){
-					var = "end";
-				}else if (is_start_any_of(val,NONEED,"ArrowUp")){
-					var = "vmove";
-					val = "-1";
-				}else if (is_start_any_of(val,NONEED,"ArrowDown")){
-					var = "vmove";
-					val = "1";
-				}else if (is_start_any_of(val,NONEED,"ArrowLeft")){
-					var = "hmove";
-					val = "-1";
-				}else if (is_start_any_of(val,NONEED,"ArrowRight")){
-					var = "hmove";
-					val = "1";
-				}else if (is_start_any_of(val,NONEED,"Backspace")){
-					var = "backspace";
-				}else if (is_start_any_of(val,NONEED,"PageUp")){
-					var = "pageup";
-				}else if (is_start_any_of(val,NONEED,"PageDown")){
-					var = "pagedown";
+				}else if (n != 5){
+					// Do nothing
+				}else{
+					mod.alt = tb[2] == "true";
+					mod.ctrl = tb[3] == "true";
+					mod.shift = tb[4] == "true";
+					const char *tb0 = tb[0].c_str();
+					const char *tb1 = tb[1].c_str();
+					if (is_any_of(tb0,"Enter","NumpadEnter")){
+						var = "break";
+					}else if (is_any_of(tb0,"NumpadDecimal")){
+						if (tb[1] == "Delete"){
+							var = "deletechar";
+						}else{
+							var = "insertchar";
+							val = tb1;
+						}
+					}else if (is_start_any_of(tb0,NONEED,"Numpad")){
+						if (tb[1].size()==1){
+							var = "insertchar";
+							val = tb1;
+						}else if (strcmp(tb1,"Home")==0){
+							var = "home";
+						}else if (strcmp(tb1,"End")==0){
+							var = "end";
+						}else if (strcmp(tb1,"ArrowLeft")==0){
+							var = "hmove";
+							val = "-1";
+						}else if (strcmp(tb1,"ArrowRight")==0){
+							var = "hmove";
+							val = "1";
+						}else if (strcmp(tb1,"ArrowUp")==0){
+							var = "vmove";
+							val = "-1";
+						}else if (strcmp(tb1,"ArrowDown")==0){
+							var = "vmove";
+							val = "1";
+						}else if (strcmp(tb1,"Insert")==0){
+							var = "insertmode";
+						}else if (strcmp(tb1,"PageUp")==0){
+							var = "pageup";
+						}else if (strcmp(tb1,"PageDown")==0){
+							var = "pagedown";
+						}
+					}else if (is_start_any_of(tb0,NONEED,"Key","Digit","Slash")){
+						var = "insertchar";
+						val = tb1;
+					}else if (is_any_of(tb0,"Insert")){
+						var = "insertmode";
+					}else if (is_any_of(tb0,"Delete")){
+						var = "deletechar";
+					}else if (is_any_of(tb0,"Home")){
+						var = "home";
+					}else if (is_any_of(tb0,"End")){
+						var = "end";
+					}else if (is_any_of(tb0,"ArrowUp")){
+						var = "vmove";
+						val = "-1";
+					}else if (is_any_of(tb0,"ArrowDown")){
+						var = "vmove";
+						val = "1";
+					}else if (is_any_of(tb0,"ArrowLeft")){
+						var = "hmove";
+						val = "-1";
+					}else if (is_any_of(tb0,"ArrowRight")){
+						var = "hmove";
+						val = "1";
+					}else if (is_any_of(tb0,"Backspace")){
+						var = "backspace";
+					}else if (is_any_of(tb0,"PageUp")){
+						var = "pageup";
+					}else if (is_any_of(tb0,"PageDown")){
+						var = "pagedown";
+					}
 				}
 				// tlmp_warning ("kbd: var=%s val=%s",var,val);
 			}
@@ -449,46 +477,46 @@ void WORDPROC::exec (
 			vector<unsigned> notify_lines;	// Lines to update using NOTIFY (To all)
 			if (strcmp(var,"insertmode")==0){
 				pref.insertmode = !pref.insertmode;
-				notify_lines.push_back(pref.line);
+				notify_lines.push_back(pref.cursor.line);
 			}else if (strcmp(var,"insertchar")==0){
-				while (lines.size() <= pref.line) lines.push_back("");
-				string &l = lines[pref.line];
-				while (wordproc_linelen(l) < pref.column) l += ' ';
-				unsigned pos = wordproc_jump2col(l,pref.column);
+				while (lines.size() <= pref.cursor.line) lines.push_back("");
+				string &l = lines[pref.cursor.line];
+				while (wordproc_linelen(l) < pref.cursor.column) l += ' ';
+				unsigned pos = wordproc_jump2col(l,pref.cursor.column);
 				l.insert(pos,val);
-				pref.column ++;
-				notify_lines.push_back(pref.line);
+				pref.cursor.column ++;
+				notify_lines.push_back(pref.cursor.line);
 			}else if (strcmp(var,"break")==0){
-				while (lines.size() <= pref.line) lines.push_back("");
-				string &l = lines[pref.line];
-				auto nextline = lines.begin() + (pref.line+1);
-				if (wordproc_linelen(l) > pref.column){
-					unsigned pos = wordproc_jump2col(l,pref.column);
+				while (lines.size() <= pref.cursor.line) lines.push_back("");
+				string &l = lines[pref.cursor.line];
+				auto nextline = lines.begin() + (pref.cursor.line+1);
+				if (wordproc_linelen(l) > pref.cursor.column){
+					unsigned pos = wordproc_jump2col(l,pref.cursor.column);
 					lines.insert(nextline,l.substr(pos));
-					lines[pref.line].resize(pos);
+					lines[pref.cursor.line].resize(pos);
 				}else{
 					lines.insert(nextline,"");	
 				}
-				for (unsigned l=pref.line; l<lines.size(); l++) notify_lines.push_back(l);
-				pref.line++;
-				pref.column=0;
+				for (unsigned l=pref.cursor.line; l<lines.size(); l++) notify_lines.push_back(l);
+				pref.cursor.line++;
+				pref.cursor.column=0;
 			}else if (strcmp(var,"backspace")==0){
-				notify_lines.push_back(pref.line);
+				notify_lines.push_back(pref.cursor.line);
 				// We start by moving the cursor back one character if possible.
 				// If we are at the start of a line, we go at the end of the previous line.
 				// We do a deletechar after that
-				if (pref.column > 0){
-					pref.column--;
+				if (pref.cursor.column > 0){
+					pref.cursor.column--;
 					deletechar(notify_lines,pref);
-				}else if (pref.line > 0){
-					pref.line--;
-					pref.column=0;
-					if (lines.size() > pref.line){
-						string &l = lines[pref.line];
+				}else if (pref.cursor.line > 0){
+					pref.cursor.line--;
+					pref.cursor.column=0;
+					if (lines.size() > pref.cursor.line){
+						string &l = lines[pref.cursor.line];
 						unsigned len = wordproc_linelen(l);
-						pref.column = len;
+						pref.cursor.column = len;
 					}
-					notify_lines.push_back(pref.line);
+					notify_lines.push_back(pref.cursor.line);
 					deletechar(notify_lines,pref);
 				}
 			}else if (strcmp(var,"deletechar")==0){
@@ -508,11 +536,11 @@ void WORDPROC::exec (
 			}else if (strcmp(var,"vmove")==0){
 				// Move cursor
 				int move = atoi(val);
-				unsigned current_line = pref.line;
+				unsigned current_line = pref.cursor.line;
 				vmove (move,visible_lines,pref,script_var,script_lines);
-				if (current_line != pref.line){
+				if (current_line != pref.cursor.line){
 					notify_lines.push_back(current_line);
-					notify_lines.push_back(pref.line);
+					notify_lines.push_back(pref.cursor.line);
 				}
 			}else if (strcmp(var,"pageup")==0 || strcmp(var,"pagedown")==0){
 				int new_offset = strcmp(var,"pageup")==0 ? pref.offset-visible_lines : pref.offset + visible_lines;
@@ -531,46 +559,131 @@ void WORDPROC::exec (
 					script_var.val += "\t}\n";
 					js_find_loop_end (script_var.val);
 					for (unsigned i=0; i<visible_lines; i++) script_lines.push_back(new_offset+i);
-					notify_lines.push_back(pref.line);
-					if (pref.line < (unsigned)new_offset){
-						pref.line = new_offset;
-					}else if (pref.line >= new_offset + visible_lines){
-						pref.line = new_offset;
+					notify_lines.push_back(pref.cursor.line);
+					if (pref.cursor.line < (unsigned)new_offset){
+						pref.cursor.line = new_offset;
+					}else if (pref.cursor.line >= new_offset + visible_lines){
+						pref.cursor.line = new_offset;
 					}
-					notify_lines.push_back(pref.line);
+					notify_lines.push_back(pref.cursor.line);
 					pref.offset = new_offset;
 				}
 			}else if (strcmp(var,"hmove")==0){
 				int move = atoi(val);
-				if (move < 0 && pref.column == 0){
-					if (pref.line > 0){
-						notify_lines.push_back(pref.line);
-						vmove (-1,visible_lines,pref,script_var,script_lines);
-						if (lines.size() > pref.line){
-							pref.column = wordproc_linelen(lines[pref.line]);
+				if (move < 0){
+					if (pref.cursor.column == 0){
+						if (pref.cursor.line > 0){
+							notify_lines.push_back(pref.cursor.line);
+							vmove (-1,visible_lines,pref,script_var,script_lines);
+							if (lines.size() > pref.cursor.line){
+								pref.cursor.column = wordproc_linelen(lines[pref.cursor.line]);
+							}
+							notify_lines.push_back(pref.cursor.line);
 						}
-						notify_lines.push_back(pref.line);
-						
+							
+					}else{
+						if (pref.cursor.line < lines.size() && mod.ctrl){
+							// skip word back
+							auto &line = lines[pref.cursor.line];
+							unsigned len = wordproc_linelen(line);
+							if (pref.cursor.column > len){
+								pref.cursor.column = len;
+							}else{
+								// First, skip spaces
+								while (pref.cursor.column > 0){
+									unsigned pos = wordproc_jump2col (line, pref.cursor.column);
+									if (line[pos] != ' ') break;
+									pref.cursor.column--;
+								}
+								// Then skip word
+								while (pref.cursor.column > 0){
+									unsigned pos = wordproc_jump2col (line, pref.cursor.column);
+									if (line[pos] == ' ') break;
+									pref.cursor.column--;
+								}
+							}
+						}else{
+							pref.cursor.column += move;
+						}
+						notify_lines.push_back(pref.cursor.line);
 					}
 				}else{
-					pref.column += move;
-					notify_lines.push_back(pref.line);
+					if (pref.cursor.line < lines.size() && mod.ctrl){
+						// skip word
+						auto &line = lines[pref.cursor.line];
+						unsigned len = wordproc_linelen(line);
+						if (pref.cursor.column >= len){
+							pref.cursor.column++;
+						}else{
+							// First, skip spaces
+							while (pref.cursor.column < len){
+								unsigned pos = wordproc_jump2col (line, pref.cursor.column);
+								if (line[pos] != ' ') break;
+								pref.cursor.column++;
+							}
+							// Then skip word
+							while (pref.cursor.column < len){
+								unsigned pos = wordproc_jump2col (line, pref.cursor.column);
+								if (line[pos] == ' ') break;
+								pref.cursor.column++;
+							}
+						}
+					}else{
+						pref.cursor.column += move;
+					}
+					notify_lines.push_back(pref.cursor.line);
 				}
 			}else if (strcmp(var,"home")==0){
-				if (pref.column != 0){
-					pref.column = 0;
-					notify_lines.push_back(pref.line);
+				if (pref.cursor.column != 0){
+					pref.cursor.column = 0;
+					notify_lines.push_back(pref.cursor.line);
 				}
 			}else if (strcmp(var,"end")==0){
-				unsigned column  = pref.column;
-				if (lines.size() > pref.line){
-					column = wordproc_linelen(lines[pref.line]);
+				unsigned column  = pref.cursor.column;
+				if (lines.size() > pref.cursor.line){
+					column = wordproc_linelen(lines[pref.cursor.line]);
 				}else{
 					column = 0;
 				}
-				if (column != pref.column){
-					pref.column = column;
-					notify_lines.push_back(pref.line);
+				if (column != pref.cursor.column){
+					pref.cursor.column = column;
+					notify_lines.push_back(pref.cursor.line);
+				}
+			}else if (strcmp(var,"select")==0){
+				vector<string> tb;
+				tlmp_warning ("select=%s",val);
+				int n = str_splitline(val,' ',tb);
+				if (n == 3){
+					unsigned noline = atoi(tb[0].c_str());
+					if (noline < visible_lines){
+						unsigned newline = pref.offset + noline;
+						if (newline != pref.cursor.line){
+							notify_lines.push_back(pref.cursor.line);
+							pref.cursor.line = newline;
+						}
+						// We have to figure out where 
+						if (pref.cursor.line < lines.size()){
+							unsigned xcoor = atoi(tb[1].c_str());
+							auto &line = lines[pref.cursor.line];
+							unsigned len = wordproc_linelen(line);
+							unsigned xpos = 0;
+							for (unsigned i=0; i<len; i++){
+								// We have to compute the length of every character in the line
+								#if 0
+								size_t sizecar;
+								unsigned pos = wordproc_jump2col(line,i,sizecar);
+								#endif
+								// assume a fixed length for now
+								unsigned width=10;
+								xpos += width;
+								if (xpos  > xcoor){
+									pref.cursor.column = i;
+									break;
+								}
+							}
+						}
+						notify_lines.push_back(pref.cursor.line);
+					}
 				}
 			}
 			update_lines (notify_var.val,notify_lines);
@@ -586,9 +699,9 @@ void WORDPROC::exec (
 				// Vertical arrows are producing scrolls in read only mode.
 				int move = atoi(val);
 				if (move < 0){
-					pref.line = pref.offset;
+					pref.cursor.line = pref.offset;
 				}else{
-					pref.line = pref.offset + visible_lines - 1;
+					pref.cursor.line = pref.offset + visible_lines - 1;
 				}
 				vmove (move,visible_lines,pref,script_var,updlines);
 			}else{

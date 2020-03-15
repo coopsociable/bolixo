@@ -208,12 +208,20 @@ public:
 	void exec (const char *var, const char *val, const char *session, const char *username, bool maywrite, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
 };
 
+struct WORD_DOCPOS{
+	unsigned line=0;
+	unsigned column=0;
+	void reset(){
+		line = column = 0;
+	}
+};
+
 struct WORD_USERPREF{
 	bool maywrite=false;
 	unsigned offset=0;	// First line displayed
-	unsigned line=0;
-	unsigned column=0;
+	WORD_DOCPOS cursor;
 	bool insertmode = true;
+	WORD_DOCPOS mark1,mark2;	// Cut & Paste
 };
 
 class WORDPROC: public GAME{
