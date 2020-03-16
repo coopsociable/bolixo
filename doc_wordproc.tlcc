@@ -245,11 +245,18 @@ void WORDPROC::deletechar (vector<unsigned> &updlines, WORD_USERPREF &pref)
 		updlines.push_back(pref.cursor.line);
 	}
 }
-void WORDPROC::vmove (int move, unsigned visible_lines, WORD_USERPREF &pref, VARVAL &script_var, vector<unsigned> &updlines)
+void WORDPROC::vmove (
+	int move,
+	unsigned visible_lines,		// How many <div> sent
+	unsigned lastline,		// last line partially visible
+	WORD_USERPREF &pref,
+	VARVAL &script_var,
+	vector<unsigned> &updlines)
 {
 	if (move < 0 && abs(move) > pref.cursor.line) move = -pref.cursor.line;
 	unsigned nextline = pref.cursor.line + move;
 	if (nextline < pref.offset){
+tlmp_warning ("vmove offset=%u visible_lines=%u lastline=%u",pref.offset,visible_lines,lastline);
 		pref.offset--;
 		js_find_loop_start (script_var.val,"text","div");
 		// Remove last div
@@ -263,7 +270,7 @@ void WORDPROC::vmove (int move, unsigned visible_lines, WORD_USERPREF &pref, VAR
 		js_find_loop_end (script_var.val);
 		updlines.push_back(pref.offset);
 		updlines.push_back(pref.offset+1);
-	}else if (nextline >= pref.offset + visible_lines){
+	}else if (nextline >= pref.offset + lastline){
 		pref.offset++;
 		js_find_loop_start (script_var.val,"text","div");
 		// Remove first div
@@ -306,7 +313,9 @@ void WORDPROC::exec (
 	setactivity();
 	auto &pref = prefs[username];
 	pref.maywrite = maywrite;
-	unsigned visible_lines = 10;	//sp.content_height/X;
+	unsigned visible_lines = sp.content_height/sp.fontsize + 10;
+	visible_lines = 50;
+tlmp_warning ("visible_lines=%u content_height=%u fontsize=%u",visible_lines,sp.content_height,sp.fontsize);
 	if (strcmp(var,"print")==0){
 		if (strcmp(val,"console")==0){
 			VARVAL v;
@@ -335,24 +344,46 @@ void WORDPROC::exec (
 			v.var = VAR_CONTENT;
 			// event.location==1 tells if this is the left shift/alt key or right. We are not using it now
 			v.val += "<script>\n";
+			// Function find the last visible line on screen
+			v.val += "function getlastline(){\n";
+			v.val += string_f("\tvar elm = document.getElementById('text-%s');\n",gameid.c_str());
+			v.val += "\tvar rect = elm.getBoundingClientRect();\n";
+			v.val += "\tvar elms = elm.getElementsByTagName('div');\n";
+			//v.val += "\tconsole.log('getlastline length='+elms.length);\n";
+			v.val += "\tfor (var i=0; i<elms.length; i++){\n";
+			v.val += "\t\tvar srect = elms[i].getBoundingClientRect();\n";
+			//v.val += "\t\tconsole.log('i='+i+' rect.bottom='+rect.bottom+' srect.bottom='+srect.bottom);\n";
+			v.val += "\t\tif (rect.bottom < srect.bottom){\n";
+			v.val += "\t\t\treturn i;\n";
+			v.val += "\t\t}\n";
+			v.val += "\t}\n";
+			v.val += "\treturn 0;\n";
+			v.val += "}\n";
+			// Function called when the user click
 			v.val += "function gameselect(event){\n";
 			v.val += string_f("\tvar elm = document.getElementById('text-%s');\n",gameid.c_str());
 			v.val += "\tvar elms = elm.getElementsByTagName('div');\n";
 			v.val += "\tfor (var i=0; i<elms.length; i++){\n";
 			v.val += "\t\tvar rect = elms[i].getBoundingClientRect();\n";
 			v.val += "\t\tif (event.clientY >= rect.top && event.clientY < rect.bottom){\n";
-			v.val += "\t\t\tgameaction('select:'+i+' '+(event.clientX-rect.left)+' '+(event.clientY-rect.top));\n";
+			v.val += "\t\t\tgameaction('select:'+i+' '+(event.clientX-rect.left)+' '+(event.clientY-rect.top)+' '+getlastline());\n";
 			v.val += "\t\t\tbreak;\n";
 			v.val += "\t\t}\n";
 			v.val += "\t}\n";
 			v.val += "}\n";
+			// Function called when the user uses the keyboard
 			v.val += "function gamepress(event){\n";
 			v.val += "\tconsole.log ('key='+event.key+' '+event.altKey+' '+event.ctrlKey+' '+event.shiftKey);\n";
 			v.val += "\tconsole.log ('code='+event.code);\n";
-			v.val += string_f("\tgameaction('kbd:'+event.code + ' ' + event.key+' '+event.altKey+' '+event.ctrlKey+' '+event.shiftKey);\n");
+			v.val += string_f("\tgameaction('kbd:'+event.code + ' ' + event.key+' '+event.altKey+' '+event.ctrlKey+' '+event.shiftKey+' '+getlastline());\n");
 			v.val += "\tevent.stopPropagation();\n";
 			v.val += "}\n";
 			v.val += "</script>\n";
+			// Buttons line
+			v.val += "<div id=tab_form>\n";
+			v.val += "Buttons";
+			v.val += "</div>\n";
+			// Document
 			v.val += "<div class=webtable id=doc_wordproc style='display:flex; flex-flow:row;'>\n";
 			v.val += string_f("<div id='text-%s' onkeydown=gamepress(event) onclick=gameselect(event)"
 				" tabindex=0 style='flex:0 0 auto; overflow: hidden; margin-right:%u; width:%u'>\n",gameid.c_str(),10,width);
@@ -374,6 +405,14 @@ void WORDPROC::exec (
 			}
 			v.val += "</div>\n";
 			v.val += "</div>\n";
+			// Status line
+			v.val += "<div id=tab_form>\n";
+			v.val += "&nbsp;";
+			#if 0
+				// Trick to make the document window shorter
+				for (int i=0; i<25; i++) v.val += "allo<br>\n";
+			#endif
+			v.val += "</div>\n";
 			res.emplace_back(v);
 		}
 	}else{
@@ -382,17 +421,20 @@ void WORDPROC::exec (
 			bool shift = false;
 			bool alt = false;
 		} mod;
+		unsigned lastline = 1000;
 		if (strcmp(var,"kbd")==0){
 			if (is_start_any_of(var,NONEED,"kbd")){
 				vector<string> tb;
 				int n = str_splitline(val,' ',tb);
 				tlmp_warning ("n=%d val=%s",n,val);
-				if (n == 4 && is_any_of(tb[0],"Space")){
+				if (n == 5 && is_any_of(tb[0],"Space")){
 					var = "insertchar";
 					val = " ";
-				}else if (n != 5){
+					lastline = atoi(tb[4].c_str());
+				}else if (n != 6){
 					// Do nothing
 				}else{
+					lastline = atoi(tb[5].c_str());
 					mod.alt = tb[2] == "true";
 					mod.ctrl = tb[3] == "true";
 					mod.shift = tb[4] == "true";
@@ -465,7 +507,7 @@ void WORDPROC::exec (
 						var = "pagedown";
 					}
 				}
-				// tlmp_warning ("kbd: var=%s val=%s",var,val);
+				tlmp_warning ("kbd: var=%s val=%s lastline=%u",var,val,lastline);
 			}
 		}
 		if (maywrite){
@@ -537,15 +579,17 @@ void WORDPROC::exec (
 				// Move cursor
 				int move = atoi(val);
 				unsigned current_line = pref.cursor.line;
-				vmove (move,visible_lines,pref,script_var,script_lines);
+				vmove (move,visible_lines,lastline,pref,script_var,script_lines);
 				if (current_line != pref.cursor.line){
 					notify_lines.push_back(current_line);
 					notify_lines.push_back(pref.cursor.line);
 				}
 			}else if (strcmp(var,"pageup")==0 || strcmp(var,"pagedown")==0){
-				int new_offset = strcmp(var,"pageup")==0 ? pref.offset-visible_lines : pref.offset + visible_lines;
+				int new_offset = strcmp(var,"pageup")==0 ? pref.offset-lastline : pref.offset + lastline;
 				if (new_offset < 0) new_offset = 0;
 				if ((unsigned)new_offset != pref.offset){
+					int offline = pref.cursor.line - pref.offset;
+					if (offline < 0) offline = 0;
 					js_find_loop_start (script_var.val,"text","div");
 					// Remove all div
 					script_var.val += "\telm.innerHTML='';\n";
@@ -560,10 +604,9 @@ void WORDPROC::exec (
 					js_find_loop_end (script_var.val);
 					for (unsigned i=0; i<visible_lines; i++) script_lines.push_back(new_offset+i);
 					notify_lines.push_back(pref.cursor.line);
-					if (pref.cursor.line < (unsigned)new_offset){
-						pref.cursor.line = new_offset;
-					}else if (pref.cursor.line >= new_offset + visible_lines){
-						pref.cursor.line = new_offset;
+					if (pref.cursor.line < (unsigned)new_offset
+						|| pref.cursor.line >= new_offset + lastline){
+						pref.cursor.line = new_offset+offline;
 					}
 					notify_lines.push_back(pref.cursor.line);
 					pref.offset = new_offset;
@@ -574,7 +617,7 @@ void WORDPROC::exec (
 					if (pref.cursor.column == 0){
 						if (pref.cursor.line > 0){
 							notify_lines.push_back(pref.cursor.line);
-							vmove (-1,visible_lines,pref,script_var,script_lines);
+							vmove (-1,visible_lines,lastline,pref,script_var,script_lines);
 							if (lines.size() > pref.cursor.line){
 								pref.cursor.column = wordproc_linelen(lines[pref.cursor.line]);
 							}
@@ -653,7 +696,7 @@ void WORDPROC::exec (
 				vector<string> tb;
 				tlmp_warning ("select=%s",val);
 				int n = str_splitline(val,' ',tb);
-				if (n == 3){
+				if (n == 4){
 					unsigned noline = atoi(tb[0].c_str());
 					if (noline < visible_lines){
 						unsigned newline = pref.offset + noline;
@@ -703,7 +746,7 @@ void WORDPROC::exec (
 				}else{
 					pref.cursor.line = pref.offset + visible_lines - 1;
 				}
-				vmove (move,visible_lines,pref,script_var,updlines);
+				vmove (move,visible_lines,lastline,pref,script_var,updlines);
 			}else{
 				documentd_error (res,MSG_R(E_READONLY));
 			}

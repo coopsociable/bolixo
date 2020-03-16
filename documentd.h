@@ -228,7 +228,7 @@ class WORDPROC: public GAME{
 	std::vector<std::string> lines;
 	std::map<std::string,WORD_USERPREF> prefs;
 	void deletechar(std::vector<unsigned> &updlines, WORD_USERPREF &pref);
-	void vmove (int move, unsigned visible_lines, WORD_USERPREF &pref, VARVAL &script_var, std::vector<unsigned> &updlines);
+	void vmove (int move, unsigned visible_lines, unsigned lastline, WORD_USERPREF &pref, VARVAL &script_var, std::vector<unsigned> &updlines);
 	void update_lines (std::string &line, std::vector<unsigned> &updlines);
 public:
 	const char *getclass() const{
