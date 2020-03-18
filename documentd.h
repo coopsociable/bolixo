@@ -224,8 +224,18 @@ struct WORD_USERPREF{
 	WORD_DOCPOS mark1,mark2;	// Cut & Paste
 };
 
+struct WORDPROC_LINE{	// Well, a line is a paragraph...
+	std::string line;
+	bool bullet=false;
+	unsigned char title_level=0;
+	unsigned char tab_level=0;
+	WORDPROC_LINE(){}
+	WORDPROC_LINE(const std::string &l):line(l){}
+	WORDPROC_LINE(const char *l):line(l){}
+};
+
 class WORDPROC: public GAME{
-	std::vector<std::string> lines;
+	std::vector<WORDPROC_LINE> lines;
 	std::map<std::string,WORD_USERPREF> prefs;
 	void deletechar(std::vector<unsigned> &updlines, WORD_USERPREF &pref);
 	void vmove (int move, unsigned visible_lines, unsigned lastline, WORD_USERPREF &pref, VARVAL &script_var, std::vector<unsigned> &updlines);

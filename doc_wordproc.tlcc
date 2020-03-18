@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <stack>
 #include <algorithm>
 #include <tlmplib.h>
 #include "bolixo.h"
@@ -30,7 +31,16 @@ void WORDPROC::save(DOC_WRITER &w, bool save_session_info)
 		users.emplace_back(user);
 	}
 	documentd_wordproc_users (&w,users);
-	documentd_wordproc_lines (&w,lines);
+	vector<WORDPROC_PARA> paras;
+	for (auto &l:lines){
+		WORDPROC_PARA para;
+		para.bullet = l.bullet;
+		para.title_level = l.title_level;
+		para.tab_level = l.tab_level;
+		para.line = l.line;
+		paras.emplace_back(para);
+	}
+	documentd_wordproc_lines (&w,paras);
 }
 <mod>
 void WORDPROC::load(DOC_READER &r, string &msg)
@@ -38,6 +48,7 @@ void WORDPROC::load(DOC_READER &r, string &msg)
 	glocal revision;
 	glocal prefs;
 	glocal lines;
+	glocal gameid;
 	resetgame();
 	prefs.clear();
 	<call documentd_wordproc>(&r);
@@ -54,9 +65,17 @@ void WORDPROC::load(DOC_READER &r, string &msg)
 		}
 	</f>
 	<f lines>
-		for (auto &l:lines) glocal.lines.push_back(l);
+		for (auto &l:lines){
+			WORDPROC_LINE line;
+			line.bullet = l.bullet;
+			line.title_level = l.title_level;
+			line.tab_level = l.tab_level;
+			line.line = l.line;
+			glocal.lines.push_back(line);
+		}
 	</f>
 	<f invalid>
+		tlmp_error ("Invalid command while loading document %s",glocal.gameid.c_str());
 	</f>
 	</call>
 }
@@ -96,6 +115,160 @@ static size_t utf8_codepoint_size(uint8_t text)
 	}
 	return 4;
 }
+#define CAR_START_EFFECT	11		
+#define CAR_END_EFFECT		12
+#define CAR_END2_EFFECT		13	// This is like END, except the cursor moves over it
+#					// This is useful to stop expanding an effect while entering character
+#define EFFECT_BOLD	"b"
+#define EFFECT_FONT1	"F"
+
+static string::const_iterator wordproc_skipeffect(const string &line, string::const_iterator p)
+{
+	p++;
+	while (p != line.end()){
+		if (*p == ';'){
+			p++;
+			break;
+		}else{
+			p++;
+		}
+	}
+	return p;
+}
+#if 0
+#define EFFECT_TAB	"T"		// Followed by a number telling the level
+#define EFFECT_BULLET	"B"
+#define EFFECT_TITLE	"S"		// Followed by a number telling the size
+/*
+	toggle an effect at the start of a line (bullet).
+*/
+static void wordproc_toggle_effect (string &l, const char *effect)
+{
+	bool found = false;
+	for (auto p=l.begin(); p != l.end() && !found; p++){
+		if (*p == CAR_START_EFFECT){
+			auto start = p;
+			p++;
+			if (*p == effect[0]){
+				// Remove the effect
+				l.erase(start,p+2);
+				found = true;
+			}else if (is_not_in(*p,EFFECT_TAB[0],EFFECT_BULLET[0],EFFECT_TITLE[0])){
+				break;
+			}else{
+				while (*p != ';' && p != l.end()) p++;
+				if (p != l.end() && *p == ';') p++;
+			}
+		}
+	}
+	if (!found){
+		l.insert (0,string_f("%c%s;",CAR_START_EFFECT,effect));
+	}
+}
+/*
+	Increase or lower the effect level of TAB or TITLE
+*/
+static void wordproc_set_effect_level (string &l, const char *effect, int add)
+{
+	bool found = false;
+	for (auto p=l.begin(); p != l.end() && !found; p++){
+		if (*p == CAR_START_EFFECT){
+			auto start = p;
+			p++;
+			if (*p == effect[0]){
+				p++;
+				if (add == -1 && *p == '1'){
+					// Remove the effect
+					l.erase(start,p+2);
+				}else if (add == 1 && *p == '4'){
+					// Do nothing
+				}else{
+					*p = (*p)+add;
+				}
+				found = true;
+			}else if (is_not_in(*p,EFFECT_TAB[0],EFFECT_BULLET[0],EFFECT_TITLE[0])){
+				break;
+			}else{
+				while (*p != ';' && p != l.end()) p++;
+				if (p != l.end() && *p == ';') p++;
+			}
+		}
+	}
+	if (!found && add == 1){
+		l.insert (0,string_f("%c%s1;",CAR_START_EFFECT,effect));
+	}
+}
+#endif
+/*
+	Walk a string from 0 to pos and fill the stack of active effects
+*/
+static void wordproc_current_effects (string &line, unsigned pos, vector<string> &effects, string &last_effect)
+{
+	auto end = line.begin() + pos;
+	for (auto p=line.begin(); p<end; ){
+		if (*p == CAR_START_EFFECT){
+			string effect;
+			p++;
+			while (p != line.end()){
+				if (*p == ';'){
+					p++;
+					break;
+				}else{
+					effect += *p++;
+				}
+			}
+			effects.push_back(effect);
+			last_effect.clear();
+		}else{
+			if (is_any_of(*p,CAR_END_EFFECT,CAR_END2_EFFECT)){
+				if (effects.size() == 0){
+					tlmp_warning ("END_EFFECT seen in doc, no active effect");
+				}else{
+					last_effect = effects.back();
+					effects.pop_back();
+				}
+			}else{
+				last_effect.clear();
+			}
+			p++;
+		}
+		
+	}
+}
+static void wordproc_current_effects (string &line, unsigned pos, vector<string> &effects)
+{
+	string last;
+	wordproc_current_effects (line,pos,effects,last);
+}
+/*
+
+	If we are currently at the end of this effect, we toggle the END marker (END <-> END2). This allows the user to extend
+	the line by inserting character inside or outside the effect area.
+
+	If we are currently inside this effect area, it is removed.
+
+	If not, we just insert the effect start and stop in a line.
+*/
+static void wordproc_insert_effect (string &line, unsigned pos, const char *effect)
+{
+	vector<string> cur_effects;
+	string last_effect;
+	wordproc_current_effects(line,pos,cur_effects,last_effect);
+tlmp_warning ("insert cur_effects.size()=%lu :%s:",cur_effects.size(),cur_effects.size() >0 ? cur_effects.back().c_str():"");
+	if (cur_effects.size() > 0 && cur_effects.back()==effect){
+		auto p = line.begin()+pos;
+tlmp_warning ("p=%d",*p);
+		if (*p == CAR_END_EFFECT){	
+			*p = CAR_END2_EFFECT;
+		}else{
+			// We remove the effect.
+		}
+	}else if (last_effect==effect){
+		line[pos-1] = CAR_END_EFFECT;	
+	}else{
+		line.insert(pos,string_f("%c%s;%c",CAR_START_EFFECT,effect,CAR_END_EFFECT));
+	}
+}
 /*
 	Return the length of a UTF8 string
 */
@@ -103,12 +276,18 @@ static unsigned wordproc_linelen (const string &line)
 {
 	unsigned ret = 0;
 	for (auto p=line.begin(); p!=line.end(); ){
-		size_t sizecar = utf8_codepoint_size(*p);
-		while (sizecar > 0 && p != line.end()){
+		if (*p == CAR_START_EFFECT){
+			p = wordproc_skipeffect(line,p);
+		}else if (is_any_of(*p,CAR_END_EFFECT,CAR_END2_EFFECT)){
 			p++;
-			sizecar--;
+		}else{
+			size_t sizecar = utf8_codepoint_size(*p);
+			while (sizecar > 0 && p != line.end()){
+				p++;
+				sizecar--;
+			}
+			ret++;	
 		}
-		ret++;	
 	}
 	return ret;
 }
@@ -120,15 +299,31 @@ static unsigned wordproc_jump2col (const string &line, unsigned pos, size_t &ret
 {
 	unsigned ret = 0;
 	for (auto p=line.begin(); pos != 0 && p!=line.end(); ){
-		size_t sizecar = utf8_codepoint_size(*p);
-		while (sizecar > 0 && p != line.end()){
+		if (*p == CAR_START_EFFECT){
+			auto startp = p;
+			p = wordproc_skipeffect(line,p);
+			ret += p-startp;	
+		}else if (is_any_of(*p,CAR_END_EFFECT,CAR_END2_EFFECT)){
 			p++;
-			sizecar--;
 			ret++;
+		}else{
+			size_t sizecar = utf8_codepoint_size(*p);
+			while (sizecar > 0 && p != line.end()){
+				p++;
+				sizecar--;
+				ret++;
+			}
+			pos--;
 		}
-		pos--;
 	}
 	if (pos == 0){
+		auto p = line.begin()+ret;
+		while (*p == CAR_START_EFFECT){
+			auto startp = p;
+			p = wordproc_skipeffect(line,p);
+			ret += p-startp;	
+		}
+		if (*p == CAR_END2_EFFECT) ret++;
 		ret_sizecar = utf8_codepoint_size(line[ret]);
 	}else{
 		ret_sizecar = 0;
@@ -142,11 +337,12 @@ static unsigned wordproc_jump2col (const string &line, unsigned pos)
 }
 	
 static string wordproc_formatline(
-	const string &line,
+	const WORDPROC_LINE &para,
 	map<string,WORD_USERPREF> &prefs,
 	unsigned noline)
 {
-	string ret = string_f("%02u-",noline);
+	auto &line = para.line;
+	string ret = string_f("<div class=col><div class=onecol>%02u-</div>",noline);
 	struct CURSOR{
 		unsigned column;
 		bool insertmode;
@@ -156,36 +352,121 @@ static string wordproc_formatline(
 	for (auto &p:prefs){
 		if (p.second.maywrite && p.second.cursor.line == noline) cursors.emplace_back(p.second.cursor.column,p.second.insertmode);
 	}
-	if (cursors.size() > 0){
+	stack<string> effects;
+	string closetitle,closetab;
+	{
 		sort(cursors.begin(),cursors.end(),[](auto &c1, auto &c2){return c1.column < c2.column;});
-		unsigned column = cursors[0].column;
+		unsigned column = cursors.size() > 0 ? cursors[0].column : (unsigned)-1;
 		unsigned cursor_no = 0;
 		unsigned pos=0;
+		#if 0
+		auto p=line.begin();
+		// Check for indent, title and bullets
+		unsigned tab_level = 0;
+		unsigned title_level = 0;
+		bool bullet = false;
+		for (; p!=line.end(); ){
+			auto c = *p;
+			if (c == CAR_START_EFFECT){
+				string effect;
+				auto start = p;
+				p++;
+				while (p != line.end()){
+					if (*p == ';'){
+						p++;
+						break;
+					}else{
+						effect += *p++;
+					}
+				}
+				if (effect[0] == EFFECT_TAB[0]){
+					tab_level = effect[1] - '0';	
+				}else if (effect[0] == EFFECT_TITLE[0]){
+					title_level = effect[1] - '0';	
+				}else if (effect == EFFECT_BULLET){
+					bullet = true;
+				}else{
+					p = start;
+					break;
+				}
+			}else{
+				break;
+			}	
+		}
+		#endif
+		if (para.title_level > 0){
+			static float tb[]={1,1.2,1.5,2,2.5};
+			ret += string_f("<span style=font-size:%1.2fem;>",tb[para.title_level]);
+			closetitle = "</span>";
+		}
+		if (para.bullet){
+			ret += string_f("<div class=bullet%u>&bull;</div><div class=tab%u-bullet>",para.tab_level,para.tab_level);
+		}else{
+			ret += string_f("<div class=tab%u>",para.tab_level);
+		}
+		closetab = "</div>";
+				
 		for (auto p=line.begin(); p!=line.end(); ){
 			auto c = *p;
-			if (pos == column){
-				const char *cursor=cursors[cursor_no].insertmode
-					? "<span style=background-color:lightgray;>" : "<span style=background-color:lightpink;>";
-				ret += cursor;
-			}
-			if (c == ' '){
-				ret += "&nbsp;";
+			if (c == CAR_START_EFFECT){
+				// tlmp_warning ("Start effect");
+				string effect;
 				p++;
+				while (p != line.end()){
+					if (*p == ';'){
+						p++;
+						break;
+					}else{
+						effect += *p++;
+					}
+				}
+				// tlmp_warning ("effect=%s",effect.c_str());
+				if (effect == EFFECT_BOLD){
+					ret += "<b>";
+					effects.push("</b>");
+				}else if (effect == EFFECT_FONT1){
+					ret += "<span style=font-size:1.5em;>";
+					effects.push("</span>");
+				}
+			}else if (is_any_of(c,CAR_END_EFFECT,CAR_END2_EFFECT)){
+				// tlmp_warning ("effects.size()=%lu",effects.size());
+				p++;
+				ret += effects.top();
+				effects.pop();
 			}else{
-				size_t sizecar = utf8_codepoint_size(c);
-				while (sizecar > 0 && p != line.end()){
-					ret += *p++;
-					sizecar--;
+				if (pos == column){
+					const char *cursor=cursors[cursor_no].insertmode
+						? "<span style=background-color:lightgray;>" : "<span style=background-color:lightpink;>";
+					ret += cursor;
 				}
-			}
-			if (pos == column){
-				ret += "</span>";
-				cursor_no++;
-				if (cursor_no < cursors.size()){
-					column = cursors[cursor_no].column;
+				if (c == ' '){
+					ret += "&nbsp;";
+					p++;
+				}else if (c == '<'){
+					ret += "&lt;";
+					p++;
+				}else if (c == '>'){
+					ret += "&gt;";
+					p++;
+				}else if (c == '\\'){
+					ret += "&bsol;";
+					p++;
+				}else{
+					size_t sizecar = utf8_codepoint_size(c);
+					while (sizecar > 0 && p != line.end()){
+						ret += *p++;
+						sizecar--;
+					}
 				}
+				if (pos == column){
+					ret += "</span>";
+					cursor_no++;
+					if (cursor_no < cursors.size()){
+						column = cursors[cursor_no].column;
+					}
+				}
+				pos++;
 			}
-			pos++;
 		}
 		if (pos <= column){
 			while (cursor_no < cursors.size()){
@@ -200,15 +481,9 @@ static string wordproc_formatline(
 				cursor_no++;
 			}
 		}
-	}else{
-		for (auto c:line){
-			if (c == ' '){
-				ret += "&nbsp;";
-			}else{
-				ret += c;
-			}
-		}
 	}
+	ret += closetab + closetitle;
+	ret += "</div>";
 	return ret;
 }
 
@@ -218,7 +493,7 @@ static string wordproc_formatline(
 void WORDPROC::deletechar (vector<unsigned> &updlines, WORD_USERPREF &pref)
 {
 	if (lines.size() > pref.cursor.line){
-		string &l = lines[pref.cursor.line];
+		string &l = lines[pref.cursor.line].line;
 		unsigned len = wordproc_linelen(l);
 		if (len > pref.cursor.column){
 			// We are inside the line, we remove the current character
@@ -237,7 +512,7 @@ void WORDPROC::deletechar (vector<unsigned> &updlines, WORD_USERPREF &pref)
 					l += ' ';
 					len++;
 				}
-				l += lines[nextline];
+				l += lines[nextline].line;
 				lines.erase(lines.begin()+nextline);
 				for (unsigned l=nextline; l<lines.size()+1; l++) updlines.push_back(l);
 			}
@@ -256,7 +531,7 @@ void WORDPROC::vmove (
 	if (move < 0 && abs(move) > pref.cursor.line) move = -pref.cursor.line;
 	unsigned nextline = pref.cursor.line + move;
 	if (nextline < pref.offset){
-tlmp_warning ("vmove offset=%u visible_lines=%u lastline=%u",pref.offset,visible_lines,lastline);
+		// tlmp_warning ("vmove offset=%u visible_lines=%u lastline=%u",pref.offset,visible_lines,lastline);
 		pref.offset--;
 		js_find_loop_start (script_var.val,"text","div");
 		// Remove last div
@@ -265,6 +540,7 @@ tlmp_warning ("vmove offset=%u visible_lines=%u lastline=%u",pref.offset,visible
 		// Insert one at the top
 		script_var.val += "\tvar newElement = document.createElement('div');\n";
 		script_var.val += string_f("\tnewElement.setAttribute('id', 'l%u');\n",pref.offset);
+		script_var.val += "\tnewElement.setAttribute('class', 'oneline');\n";
 		script_var.val += "\tnewElement.innerHTML = '';\n";
 		script_var.val += "\telm.insertBefore(newElement,elms[0]);\n";
 		js_find_loop_end (script_var.val);
@@ -280,6 +556,7 @@ tlmp_warning ("vmove offset=%u visible_lines=%u lastline=%u",pref.offset,visible
 		script_var.val += "\tvar newElement = document.createElement('div');\n";
 		unsigned last_line = pref.offset + visible_lines - 1;
 		script_var.val += string_f("\tnewElement.setAttribute('id', 'l%u');\n",last_line);
+		script_var.val += "\tnewElement.setAttribute('class', 'oneline');\n";
 		script_var.val += "\tnewElement.innerHTML = '';\n";
 		script_var.val += "\telm.insertBefore(newElement,null);\n";
 		js_find_loop_end (script_var.val);
@@ -293,13 +570,25 @@ tlmp_warning ("vmove offset=%u visible_lines=%u lastline=%u",pref.offset,visible
 }
 void WORDPROC::update_lines (string &script, vector<unsigned> &updlines)
 {
-	for (auto l:updlines){
+	sort (updlines.begin(),updlines.end());
+	js_find_loop_start(script,"text","div");
+	script += "\t\tfor (var i=0; i<elms.length; i++){\n";	
+	script += "\t\t\tvar e=elms[i];\n";
+	for (unsigned i=0; i<updlines.size(); i++){
+		const char *elseverb = i==0 ? "" : "}else ";
+		auto l = updlines[i];
 		string id=string_f("l%u",l);
-		static string empty;
-		string &line = l < lines.size() ? lines[l] : empty;
-		js_find_loop_set(script,"text","div",id,"innerHTML"
-			,wordproc_formatline(line,prefs,l).c_str());
+		static WORDPROC_LINE empty;
+		auto &line = l < lines.size() ? lines[l] : empty;
+		script += string_f("\t\t\t%sif(e.id=='l%u'){\n",elseverb,l);
+		script += string_f("\t\t\t\te.innerHTML = '%s';\n",wordproc_formatline(line,prefs,l).c_str());
+		if (i == updlines.size()-1){
+			script += "\t\t\t\tbreak;\n";
+			script += "\t\t\t}\n";
+		}
 	}
+	script += "\t\t}\n";
+	js_find_loop_end(script);
 }
 void WORDPROC::exec (
 	const char *var,
@@ -315,14 +604,15 @@ void WORDPROC::exec (
 	pref.maywrite = maywrite;
 	unsigned visible_lines = sp.content_height/sp.fontsize + 10;
 	visible_lines = 50;
-tlmp_warning ("visible_lines=%u content_height=%u fontsize=%u",visible_lines,sp.content_height,sp.fontsize);
+	// tlmp_warning ("visible_lines=%u content_height=%u fontsize=%u",visible_lines,sp.content_height,sp.fontsize);
 	if (strcmp(var,"print")==0){
 		if (strcmp(val,"console")==0){
 			VARVAL v;
 			v.var = VAR_CONTENT;
 			unsigned line = 0;
 			const char cursor = pref.insertmode ? '^' : '_';
-			for (auto &l:lines){
+			for (auto &ll:lines){
+				auto &l = ll.line;
 				if (line == pref.cursor.line){
 					if (l.size() > pref.cursor.column){
 						v.val += l.substr(0,pref.cursor.column) + cursor + l.substr(pref.cursor.column) + "|\n";
@@ -342,13 +632,50 @@ tlmp_warning ("visible_lines=%u content_height=%u fontsize=%u",visible_lines,sp.
 			unsigned width = sp.content_width;
 			VARVAL v;
 			v.var = VAR_CONTENT;
+
+
+			v.val += "<style>\n";
+			v.val += ".onecol, .oneline{\n";
+			v.val += "\tflex:0 1 auto;\n";
+			v.val += "}\n";
+			v.val += ".oneline .col{\n";
+			v.val += "\tdisplay:flex;\n";
+			v.val += "\tflex-flow:row;\n";
+			v.val += "}\n";
+			{
+				unsigned sp_width = width-30;	// Space for line numbers, during development
+				const unsigned tab_width=30;
+				unsigned offsets[]={5,tab_width-15,2*tab_width-15,3*tab_width-15};
+				for (unsigned i=0; i<4; i++){
+					v.val += string_f(".bullet%u{\n",i);
+					v.val += "\tflex:0 1 auto;\n";
+					v.val += "\twidth:10;\n";
+					v.val += string_f("\tmargin-left:%u;\n",offsets[i]);
+					v.val += "\tmargin-right:5;\n";
+					v.val += "}\n";
+					v.val += string_f(".tab%u{\n",i);
+					v.val += "\toverflow-wrap: break-word;\n";
+					v.val += "\tflex:0 1 auto;\n";
+					v.val += string_f("\twidth:%u;\n",sp_width-i*tab_width);
+					v.val += string_f("\tmargin-left:%u;\n",i*tab_width);
+					v.val += "}\n";
+					v.val += string_f(".tab%u-bullet{\n",i);
+					v.val += "\toverflow-wrap: break-word;\n";
+					v.val += "\tflex:0 1 auto;\n";
+					v.val += string_f("width:%u;\n",sp_width-i*tab_width);
+					v.val += "\tmargin-left:0;\n";
+					v.val += "}\n";
+				}
+			}
+			v.val += "</style>\n";
+
 			// event.location==1 tells if this is the left shift/alt key or right. We are not using it now
 			v.val += "<script>\n";
 			// Function find the last visible line on screen
 			v.val += "function getlastline(){\n";
 			v.val += string_f("\tvar elm = document.getElementById('text-%s');\n",gameid.c_str());
 			v.val += "\tvar rect = elm.getBoundingClientRect();\n";
-			v.val += "\tvar elms = elm.getElementsByTagName('div');\n";
+			v.val += "\tvar elms = elm.getElementsByClassName('oneline');\n";
 			//v.val += "\tconsole.log('getlastline length='+elms.length);\n";
 			v.val += "\tfor (var i=0; i<elms.length; i++){\n";
 			v.val += "\t\tvar srect = elms[i].getBoundingClientRect();\n";
@@ -362,7 +689,7 @@ tlmp_warning ("visible_lines=%u content_height=%u fontsize=%u",visible_lines,sp.
 			// Function called when the user click
 			v.val += "function gameselect(event){\n";
 			v.val += string_f("\tvar elm = document.getElementById('text-%s');\n",gameid.c_str());
-			v.val += "\tvar elms = elm.getElementsByTagName('div');\n";
+			v.val += "\tvar elms = elm.getElementsByClassName('oneline');\n";
 			v.val += "\tfor (var i=0; i<elms.length; i++){\n";
 			v.val += "\t\tvar rect = elms[i].getBoundingClientRect();\n";
 			v.val += "\t\tif (event.clientY >= rect.top && event.clientY < rect.bottom){\n";
@@ -392,7 +719,7 @@ tlmp_warning ("visible_lines=%u content_height=%u fontsize=%u",visible_lines,sp.
 				for (auto p=lines.begin()+pref.offset; p != lines.end() && line < visible_lines; p++){
 					auto &l = *p;
 					unsigned doc_line = line+pref.offset;
-					v.val += string_f("<div id=l%u>%s</div>\n",doc_line
+					v.val += string_f("<div class=oneline id=l%u>%s</div>\n",doc_line
 						,wordproc_formatline(l,prefs,doc_line).c_str());
 					line++;
 				}
@@ -400,7 +727,7 @@ tlmp_warning ("visible_lines=%u content_height=%u fontsize=%u",visible_lines,sp.
 			for (; line<visible_lines; line++){
 				static string empty;
 				unsigned doc_line = line+pref.offset;
-				v.val += string_f("<div id=l%u>%s</div>\n",doc_line
+				v.val += string_f("<div class=oneline id=l%u>%s</div>\n",doc_line
 					,wordproc_formatline(empty,prefs,doc_line).c_str());
 			}
 			v.val += "</div>\n";
@@ -426,7 +753,7 @@ tlmp_warning ("visible_lines=%u content_height=%u fontsize=%u",visible_lines,sp.
 			if (is_start_any_of(var,NONEED,"kbd")){
 				vector<string> tb;
 				int n = str_splitline(val,' ',tb);
-				tlmp_warning ("n=%d val=%s",n,val);
+				//tlmp_warning ("n=%d val=%s",n,val);
 				if (n == 5 && is_any_of(tb[0],"Space")){
 					var = "insertchar";
 					val = " ";
@@ -476,7 +803,8 @@ tlmp_warning ("visible_lines=%u content_height=%u fontsize=%u",visible_lines,sp.
 						}else if (strcmp(tb1,"PageDown")==0){
 							var = "pagedown";
 						}
-					}else if (is_start_any_of(tb0,NONEED,"Key","Digit","Slash")){
+					}else if (is_start_any_of(tb0,NONEED,"Key","Digit","Slash","Period"
+						,"Comma","Quote","Backslash","Minus","Equa","Bracket","Backquote","Semicolon")){
 						var = "insertchar";
 						val = tb1;
 					}else if (is_any_of(tb0,"Insert")){
@@ -507,7 +835,7 @@ tlmp_warning ("visible_lines=%u content_height=%u fontsize=%u",visible_lines,sp.
 						var = "pagedown";
 					}
 				}
-				tlmp_warning ("kbd: var=%s val=%s lastline=%u",var,val,lastline);
+				// tlmp_warning ("kbd: var=%s val=%s lastline=%u",var,val,lastline);
 			}
 		}
 		if (maywrite){
@@ -522,22 +850,69 @@ tlmp_warning ("visible_lines=%u content_height=%u fontsize=%u",visible_lines,sp.
 				notify_lines.push_back(pref.cursor.line);
 			}else if (strcmp(var,"insertchar")==0){
 				while (lines.size() <= pref.cursor.line) lines.push_back("");
-				string &l = lines[pref.cursor.line];
+				auto &wl = lines[pref.cursor.line];
+				string &l = wl.line;
 				while (wordproc_linelen(l) < pref.cursor.column) l += ' ';
 				unsigned pos = wordproc_jump2col(l,pref.cursor.column);
-				l.insert(pos,val);
-				pref.cursor.column ++;
+				if (strcmp(val,"b")==0 && mod.alt){
+					wordproc_insert_effect (l,pos,EFFECT_BOLD);
+				}else if (strcmp(val,"f")==0 && mod.alt){
+					wordproc_insert_effect (l,pos,EFFECT_FONT1);
+				}else if (strcmp(val,">")==0 && mod.alt){
+					if (wl.tab_level < 4) wl.tab_level++;
+				}else if (strcmp(val,"<")==0 && mod.alt){
+					if (wl.tab_level > 0) wl.tab_level--;
+				}else if (strcmp(val,"t")==0 && mod.alt){
+					if (wl.title_level < 4) wl.title_level++;
+				}else if (strcmp(val,"T")==0 && mod.alt){
+					if (wl.title_level > 0) wl.title_level--;
+				}else if (strcmp(val,"l")==0 && mod.alt){
+					wl.bullet = !wl.bullet;
+				}else if (strcmp(val,"z")==0 && mod.alt){
+					if (lines.size()==1 && lines[0].line.size()==0){
+						// Fill with many lines
+						resetgame();
+						string para;
+						para = "allo comment ca va le monde et toi et encore et encore et encore";
+						for (unsigned i=0; i<2; i++) para += " allo comment ca va le monde et toi et encore et encore et encore";
+						for (unsigned i=0; i<100; i++) lines.push_back(para);
+					}else{
+						resetgame();
+					}
+					documentd_forcerefresh (res);
+				}else{
+					l.insert(pos,val);
+					pref.cursor.column ++;
+				}
 				notify_lines.push_back(pref.cursor.line);
 			}else if (strcmp(var,"break")==0){
-				while (lines.size() <= pref.cursor.line) lines.push_back("");
-				string &l = lines[pref.cursor.line];
+				while (lines.size() <= pref.cursor.line) lines.emplace_back(WORDPROC_LINE());
+				auto &para = lines[pref.cursor.line];
+				string &l = para.line;
 				auto nextline = lines.begin() + (pref.cursor.line+1);
+				unsigned pos = l.size();
 				if (wordproc_linelen(l) > pref.cursor.column){
-					unsigned pos = wordproc_jump2col(l,pref.cursor.column);
-					lines.insert(nextline,l.substr(pos));
-					lines[pref.cursor.line].resize(pos);
-				}else{
-					lines.insert(nextline,"");	
+					pos = wordproc_jump2col(l,pref.cursor.column);
+				}
+				{
+					// We have to transport the active effects to the next line.
+					// effects started after pos are simply copied
+					vector<string> effects;
+					wordproc_current_effects (l,pos,effects);
+					WORDPROC_LINE newl;
+					tlmp_warning ("break effects.size()=%lu",effects.size());
+					for (auto &e:effects){
+						tlmp_warning ("break insert %s",e.c_str());
+						newl.line += string_f("%c%s;",CAR_START_EFFECT,e.c_str());
+					}
+					newl.line += l.substr(pos);
+					if (para.title_level == 0){
+						newl.bullet = para.bullet;
+						newl.tab_level = para.tab_level;
+					}
+					lines.insert(nextline,newl);
+					lines[pref.cursor.line].line.resize(pos);
+					for (unsigned i=0; i<effects.size(); i++) lines[pref.cursor.line].line += CAR_END_EFFECT;
 				}
 				for (unsigned l=pref.cursor.line; l<lines.size(); l++) notify_lines.push_back(l);
 				pref.cursor.line++;
@@ -554,7 +929,7 @@ tlmp_warning ("visible_lines=%u content_height=%u fontsize=%u",visible_lines,sp.
 					pref.cursor.line--;
 					pref.cursor.column=0;
 					if (lines.size() > pref.cursor.line){
-						string &l = lines[pref.cursor.line];
+						string &l = lines[pref.cursor.line].line;
 						unsigned len = wordproc_linelen(l);
 						pref.cursor.column = len;
 					}
@@ -598,6 +973,7 @@ tlmp_warning ("visible_lines=%u content_height=%u fontsize=%u",visible_lines,sp.
 					script_var.val += "\t\tvar newElement = document.createElement('div');\n";
 					script_var.val += string_f("\t\tvar id='l'+(%u+i);\n",new_offset);
 					script_var.val += "\t\tnewElement.setAttribute('id', id);\n";
+					script_var.val += "\t\tnewElement.setAttribute('class', 'oneline');\n";
 					script_var.val += "\t\tnewElement.innerHTML = '';\n";
 					script_var.val += "\t\telm.insertBefore(newElement,null);\n";
 					script_var.val += "\t}\n";
@@ -619,7 +995,7 @@ tlmp_warning ("visible_lines=%u content_height=%u fontsize=%u",visible_lines,sp.
 							notify_lines.push_back(pref.cursor.line);
 							vmove (-1,visible_lines,lastline,pref,script_var,script_lines);
 							if (lines.size() > pref.cursor.line){
-								pref.cursor.column = wordproc_linelen(lines[pref.cursor.line]);
+								pref.cursor.column = wordproc_linelen(lines[pref.cursor.line].line);
 							}
 							notify_lines.push_back(pref.cursor.line);
 						}
@@ -627,7 +1003,7 @@ tlmp_warning ("visible_lines=%u content_height=%u fontsize=%u",visible_lines,sp.
 					}else{
 						if (pref.cursor.line < lines.size() && mod.ctrl){
 							// skip word back
-							auto &line = lines[pref.cursor.line];
+							auto &line = lines[pref.cursor.line].line;
 							unsigned len = wordproc_linelen(line);
 							if (pref.cursor.column > len){
 								pref.cursor.column = len;
@@ -653,7 +1029,7 @@ tlmp_warning ("visible_lines=%u content_height=%u fontsize=%u",visible_lines,sp.
 				}else{
 					if (pref.cursor.line < lines.size() && mod.ctrl){
 						// skip word
-						auto &line = lines[pref.cursor.line];
+						auto &line = lines[pref.cursor.line].line;
 						unsigned len = wordproc_linelen(line);
 						if (pref.cursor.column >= len){
 							pref.cursor.column++;
@@ -684,7 +1060,7 @@ tlmp_warning ("visible_lines=%u content_height=%u fontsize=%u",visible_lines,sp.
 			}else if (strcmp(var,"end")==0){
 				unsigned column  = pref.cursor.column;
 				if (lines.size() > pref.cursor.line){
-					column = wordproc_linelen(lines[pref.cursor.line]);
+					column = wordproc_linelen(lines[pref.cursor.line].line);
 				}else{
 					column = 0;
 				}
@@ -694,7 +1070,7 @@ tlmp_warning ("visible_lines=%u content_height=%u fontsize=%u",visible_lines,sp.
 				}
 			}else if (strcmp(var,"select")==0){
 				vector<string> tb;
-				tlmp_warning ("select=%s",val);
+				//tlmp_warning ("select=%s",val);
 				int n = str_splitline(val,' ',tb);
 				if (n == 4){
 					unsigned noline = atoi(tb[0].c_str());
@@ -707,7 +1083,7 @@ tlmp_warning ("visible_lines=%u content_height=%u fontsize=%u",visible_lines,sp.
 						// We have to figure out where 
 						if (pref.cursor.line < lines.size()){
 							unsigned xcoor = atoi(tb[1].c_str());
-							auto &line = lines[pref.cursor.line];
+							auto &line = lines[pref.cursor.line].line;
 							unsigned len = wordproc_linelen(line);
 							unsigned xpos = 0;
 							for (unsigned i=0; i<len; i++){
