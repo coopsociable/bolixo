@@ -34,7 +34,7 @@ void WORDPROC::save(DOC_WRITER &w, bool save_session_info)
 	vector<WORDPROC_PARA> paras;
 	for (auto &l:lines){
 		WORDPROC_PARA para;
-		para.bullet = l.bullet;
+		para.listtype = l.listtype;
 		para.title_level = l.title_level;
 		para.tab_level = l.tab_level;
 		para.line = l.line;
@@ -67,7 +67,7 @@ void WORDPROC::load(DOC_READER &r, string &msg)
 	<f lines>
 		for (auto &l:lines){
 			WORDPROC_LINE line;
-			line.bullet = l.bullet;
+			line.listtype = l.listtype;
 			line.title_level = l.title_level;
 			line.tab_level = l.tab_level;
 			line.line = l.line;
@@ -120,6 +120,10 @@ static size_t utf8_codepoint_size(uint8_t text)
 #define CAR_END2_EFFECT		13	// This is like END, except the cursor moves over it
 #					// This is useful to stop expanding an effect while entering character
 #define EFFECT_BOLD	"b"
+#define EFFECT_ITALIC	"i"
+#define EFFECT_UNDERLINE "u"
+#define EFFECT_SUP	"S"
+#define EFFECT_SUB	"s"
 #define EFFECT_FONT1	"F"
 
 static string::const_iterator wordproc_skipeffect(const string &line, string::const_iterator p)
@@ -135,70 +139,6 @@ static string::const_iterator wordproc_skipeffect(const string &line, string::co
 	}
 	return p;
 }
-#if 0
-#define EFFECT_TAB	"T"		// Followed by a number telling the level
-#define EFFECT_BULLET	"B"
-#define EFFECT_TITLE	"S"		// Followed by a number telling the size
-/*
-	toggle an effect at the start of a line (bullet).
-*/
-static void wordproc_toggle_effect (string &l, const char *effect)
-{
-	bool found = false;
-	for (auto p=l.begin(); p != l.end() && !found; p++){
-		if (*p == CAR_START_EFFECT){
-			auto start = p;
-			p++;
-			if (*p == effect[0]){
-				// Remove the effect
-				l.erase(start,p+2);
-				found = true;
-			}else if (is_not_in(*p,EFFECT_TAB[0],EFFECT_BULLET[0],EFFECT_TITLE[0])){
-				break;
-			}else{
-				while (*p != ';' && p != l.end()) p++;
-				if (p != l.end() && *p == ';') p++;
-			}
-		}
-	}
-	if (!found){
-		l.insert (0,string_f("%c%s;",CAR_START_EFFECT,effect));
-	}
-}
-/*
-	Increase or lower the effect level of TAB or TITLE
-*/
-static void wordproc_set_effect_level (string &l, const char *effect, int add)
-{
-	bool found = false;
-	for (auto p=l.begin(); p != l.end() && !found; p++){
-		if (*p == CAR_START_EFFECT){
-			auto start = p;
-			p++;
-			if (*p == effect[0]){
-				p++;
-				if (add == -1 && *p == '1'){
-					// Remove the effect
-					l.erase(start,p+2);
-				}else if (add == 1 && *p == '4'){
-					// Do nothing
-				}else{
-					*p = (*p)+add;
-				}
-				found = true;
-			}else if (is_not_in(*p,EFFECT_TAB[0],EFFECT_BULLET[0],EFFECT_TITLE[0])){
-				break;
-			}else{
-				while (*p != ';' && p != l.end()) p++;
-				if (p != l.end() && *p == ';') p++;
-			}
-		}
-	}
-	if (!found && add == 1){
-		l.insert (0,string_f("%c%s1;",CAR_START_EFFECT,effect));
-	}
-}
-#endif
 /*
 	Walk a string from 0 to pos and fill the stack of active effects
 */
@@ -336,11 +276,10 @@ static unsigned wordproc_jump2col (const string &line, unsigned pos)
 	return wordproc_jump2col (line,pos,sizecar);
 }
 	
-static string wordproc_formatline(
-	const WORDPROC_LINE &para,
-	map<string,WORD_USERPREF> &prefs,
-	unsigned noline)
+string WORDPROC::formatline(unsigned noline)
 {
+	WORDPROC_LINE empty;
+	const WORDPROC_LINE &para = noline < lines.size() ? lines[noline] : empty;
 	auto &line = para.line;
 	string ret = string_f("<div class=col><div class=onecol>%02u-</div>",noline);
 	struct CURSOR{
@@ -359,52 +298,31 @@ static string wordproc_formatline(
 		unsigned column = cursors.size() > 0 ? cursors[0].column : (unsigned)-1;
 		unsigned cursor_no = 0;
 		unsigned pos=0;
-		#if 0
-		auto p=line.begin();
-		// Check for indent, title and bullets
-		unsigned tab_level = 0;
-		unsigned title_level = 0;
-		bool bullet = false;
-		for (; p!=line.end(); ){
-			auto c = *p;
-			if (c == CAR_START_EFFECT){
-				string effect;
-				auto start = p;
-				p++;
-				while (p != line.end()){
-					if (*p == ';'){
-						p++;
-						break;
-					}else{
-						effect += *p++;
-					}
-				}
-				if (effect[0] == EFFECT_TAB[0]){
-					tab_level = effect[1] - '0';	
-				}else if (effect[0] == EFFECT_TITLE[0]){
-					title_level = effect[1] - '0';	
-				}else if (effect == EFFECT_BULLET){
-					bullet = true;
-				}else{
-					p = start;
+		static float tb[]={1,1.2,1.5,2,2.5};
+		if (para.listtype == LIST_BULLET){
+			ret += string_f("<div class=bullet%u>&bull;</div><div class=tab%u-bullet>",para.tab_level,para.tab_level);
+		}else if (para.listtype == LIST_NUM){
+			unsigned num = 1;
+			for (int i=noline-1; i >=0; i--){
+				auto &l = lines[i];
+				if (l.tab_level == para.tab_level && l.listtype == LIST_NUM){
+					num++;
+				}else if (l.tab_level <= para.tab_level){
 					break;
 				}
-			}else{
-				break;
-			}	
-		}
-		#endif
-		if (para.title_level > 0){
-			static float tb[]={1,1.2,1.5,2,2.5};
-			ret += string_f("<span style=font-size:%1.2fem;>",tb[para.title_level]);
-			closetitle = "</span>";
-		}
-		if (para.bullet){
-			ret += string_f("<div class=bullet%u>&bull;</div><div class=tab%u-bullet>",para.tab_level,para.tab_level);
+			}
+			ret += string_f("<div class=bullet%u><span style=font-size:%1.2fem>%u.</span></div><div class=tab%u-bullet>"
+				,para.tab_level,tb[para.title_level],num,para.tab_level);
+		}else if (para.listtype == LIST_CENTER){
+			ret += "<div class=tab-center>";
 		}else{
 			ret += string_f("<div class=tab%u>",para.tab_level);
 		}
 		closetab = "</div>";
+		if (para.title_level > 0){
+			ret += string_f("<span style=font-size:%1.2fem;>",tb[para.title_level]);
+			closetitle = "</span>";
+		}
 				
 		for (auto p=line.begin(); p!=line.end(); ){
 			auto c = *p;
@@ -424,6 +342,18 @@ static string wordproc_formatline(
 				if (effect == EFFECT_BOLD){
 					ret += "<b>";
 					effects.push("</b>");
+				}else if (effect == EFFECT_ITALIC){
+					ret += "<i>";
+					effects.push("</i>");
+				}else if (effect == EFFECT_UNDERLINE){
+					ret += "<u>";
+					effects.push("</u>");
+				}else if (effect == EFFECT_SUP){
+					ret += "<sup>";
+					effects.push("</sup>");
+				}else if (effect == EFFECT_SUB){
+					ret += "<sub>";
+					effects.push("</sub>");
 				}else if (effect == EFFECT_FONT1){
 					ret += "<span style=font-size:1.5em;>";
 					effects.push("</span>");
@@ -440,7 +370,14 @@ static string wordproc_formatline(
 					ret += cursor;
 				}
 				if (c == ' '){
-					ret += "&nbsp;";
+					// The first space is passed as is so the browser knows there are multiple words
+					// The extra spaces are changed to &nbsp; so they are not skipped by the browser
+					if (p == line.begin()
+						|| (p > line.begin() && p[-1] == ' ')){
+						ret += "&nbsp;";
+					}else{
+						ret += ' ';
+					}
 					p++;
 				}else if (c == '<'){
 					ret += "&lt;";
@@ -450,6 +387,9 @@ static string wordproc_formatline(
 					p++;
 				}else if (c == '\\'){
 					ret += "&bsol;";
+					p++;
+				}else if (c == '\''){
+					ret += "&#39;";
 					p++;
 				}else{
 					size_t sizecar = utf8_codepoint_size(c);
@@ -482,9 +422,26 @@ static string wordproc_formatline(
 			}
 		}
 	}
-	ret += closetab + closetitle;
+	ret += closetitle + closetab;
 	ret += "</div>";
 	return ret;
+}
+/*
+	Check if the line following noline are LIST_NUM. If this is the case, the line is added to updlines
+*/
+static void wordproc_update_num_lines (unsigned noline, const vector<WORDPROC_LINE> &lines, vector<unsigned> &updlines)
+{
+	if (noline < lines.size()){
+		unsigned tab_level = lines[noline].tab_level;
+		for (unsigned i=noline+1; i<lines.size(); i++){
+			auto &l = lines[i];
+			if (l.tab_level == tab_level && l.listtype == LIST_NUM){
+				updlines.push_back(i);
+			}else if (l.tab_level <= tab_level){
+				break;
+			}
+		}
+	}
 }
 
 /*
@@ -533,8 +490,9 @@ void WORDPROC::vmove (
 	if (nextline < pref.offset){
 		// tlmp_warning ("vmove offset=%u visible_lines=%u lastline=%u",pref.offset,visible_lines,lastline);
 		pref.offset--;
-		js_find_loop_start (script_var.val,"text","div");
+		js_find_loop_start_class (script_var.val,"text","oneline");
 		// Remove last div
+		script_var.val += "console.log('vmove length='+elms.length);\n";
 		script_var.val += string_f("\tvar last=elms[%u];\n",visible_lines-1);
 		script_var.val += "\tlast.parentNode.removeChild(last);\n";
 		// Insert one at the top
@@ -548,7 +506,7 @@ void WORDPROC::vmove (
 		updlines.push_back(pref.offset+1);
 	}else if (nextline >= pref.offset + lastline){
 		pref.offset++;
-		js_find_loop_start (script_var.val,"text","div");
+		js_find_loop_start_class (script_var.val,"text","oneline");
 		// Remove first div
 		script_var.val += "\tvar first=elms[0];\n";
 		script_var.val += "\tfirst.parentNode.removeChild(first);\n";
@@ -568,20 +526,54 @@ void WORDPROC::vmove (
 	}
 	pref.cursor.line = nextline;
 }
+void WORDPROC::page_up_down(
+	int new_offset, 
+	unsigned visible_lines,
+	unsigned lastline,
+	WORD_USERPREF &pref,
+	VARVAL &script_var,
+	vector<unsigned> &script_lines,
+	vector<unsigned> &notify_lines)
+{
+	if (new_offset < 0) new_offset = 0;
+	if ((unsigned)new_offset != pref.offset){
+		int offline = pref.cursor.line - pref.offset;
+		if (offline < 0) offline = 0;
+		js_find_loop_start (script_var.val,"text","div");
+		// Remove all div
+		script_var.val += "\telm.innerHTML='';\n";
+		// Add new ones
+		script_var.val += string_f("\tfor (var i=0; i<%u; i++){\n",visible_lines);
+		script_var.val += "\t\tvar newElement = document.createElement('div');\n";
+		script_var.val += string_f("\t\tvar id='l'+(%u+i);\n",new_offset);
+		script_var.val += "\t\tnewElement.setAttribute('id', id);\n";
+		script_var.val += "\t\tnewElement.setAttribute('class', 'oneline');\n";
+		script_var.val += "\t\tnewElement.innerHTML = '';\n";
+		script_var.val += "\t\telm.insertBefore(newElement,null);\n";
+		script_var.val += "\t}\n";
+		js_find_loop_end (script_var.val);
+		for (unsigned i=0; i<visible_lines; i++) script_lines.push_back(new_offset+i);
+		notify_lines.push_back(pref.cursor.line);
+		if (pref.cursor.line < (unsigned)new_offset
+			|| pref.cursor.line >= new_offset + lastline){
+			pref.cursor.line = new_offset+offline;
+		}
+		notify_lines.push_back(pref.cursor.line);
+		pref.offset = new_offset;
+	}
+}
 void WORDPROC::update_lines (string &script, vector<unsigned> &updlines)
 {
 	sort (updlines.begin(),updlines.end());
-	js_find_loop_start(script,"text","div");
+	js_find_loop_start_class(script,"text","oneline");
 	script += "\t\tfor (var i=0; i<elms.length; i++){\n";	
 	script += "\t\t\tvar e=elms[i];\n";
 	for (unsigned i=0; i<updlines.size(); i++){
 		const char *elseverb = i==0 ? "" : "}else ";
 		auto l = updlines[i];
 		string id=string_f("l%u",l);
-		static WORDPROC_LINE empty;
-		auto &line = l < lines.size() ? lines[l] : empty;
 		script += string_f("\t\t\t%sif(e.id=='l%u'){\n",elseverb,l);
-		script += string_f("\t\t\t\te.innerHTML = '%s';\n",wordproc_formatline(line,prefs,l).c_str());
+		script += string_f("\t\t\t\te.innerHTML = '%s';\n",formatline(l).c_str());
 		if (i == updlines.size()-1){
 			script += "\t\t\t\tbreak;\n";
 			script += "\t\t\t}\n";
@@ -634,23 +626,31 @@ void WORDPROC::exec (
 			v.var = VAR_CONTENT;
 
 
-			v.val += "<style>\n";
-			v.val += ".onecol, .oneline{\n";
-			v.val += "\tflex:0 1 auto;\n";
-			v.val += "}\n";
-			v.val += ".oneline .col{\n";
-			v.val += "\tdisplay:flex;\n";
-			v.val += "\tflex-flow:row;\n";
-			v.val += "}\n";
 			{
 				unsigned sp_width = width-30;	// Space for line numbers, during development
+				v.val += "<style>\n";
+				v.val += ".onecol, .oneline{\n";
+				v.val += "\tflex:0 1 auto;\n";
+				v.val += "}\n";
+				v.val += ".oneline .col{\n";
+				v.val += "\tdisplay:flex;\n";
+				v.val += "\tflex-flow:row;\n";
+				v.val += "}\n";
+				v.val += ".tab-center{\n";
+				v.val += "\ttext-align:center;\n";
+				v.val += "\toverflow-wrap: break-word;\n";
+				v.val += "\tflex:0 1 auto;\n";
+				v.val += string_f("\twidth:%u;\n",sp_width);
+				v.val += "}\n";
+
 				const unsigned tab_width=30;
-				unsigned offsets[]={5,tab_width-15,2*tab_width-15,3*tab_width-15};
+				const unsigned bullet_width=15+5;
+				//unsigned offsets[]={5,tab_width-15,2*tab_width-15,3*tab_width-15};
 				for (unsigned i=0; i<4; i++){
 					v.val += string_f(".bullet%u{\n",i);
 					v.val += "\tflex:0 1 auto;\n";
 					v.val += "\twidth:10;\n";
-					v.val += string_f("\tmargin-left:%u;\n",offsets[i]);
+					v.val += string_f("\tmargin-left:%u;\n",i*tab_width+5);
 					v.val += "\tmargin-right:5;\n";
 					v.val += "}\n";
 					v.val += string_f(".tab%u{\n",i);
@@ -662,7 +662,7 @@ void WORDPROC::exec (
 					v.val += string_f(".tab%u-bullet{\n",i);
 					v.val += "\toverflow-wrap: break-word;\n";
 					v.val += "\tflex:0 1 auto;\n";
-					v.val += string_f("width:%u;\n",sp_width-i*tab_width);
+					v.val += string_f("width:%u;\n",sp_width-i*tab_width-bullet_width);
 					v.val += "\tmargin-left:0;\n";
 					v.val += "}\n";
 				}
@@ -691,9 +691,12 @@ void WORDPROC::exec (
 			v.val += string_f("\tvar elm = document.getElementById('text-%s');\n",gameid.c_str());
 			v.val += "\tvar elms = elm.getElementsByClassName('oneline');\n";
 			v.val += "\tfor (var i=0; i<elms.length; i++){\n";
-			v.val += "\t\tvar rect = elms[i].getBoundingClientRect();\n";
+			v.val += "\t\tvar para= elms[i];\n";
+			v.val += "\t\tvar rect = para.getBoundingClientRect();\n";
 			v.val += "\t\tif (event.clientY >= rect.top && event.clientY < rect.bottom){\n";
-			v.val += "\t\t\tgameaction('select:'+i+' '+(event.clientX-rect.left)+' '+(event.clientY-rect.top)+' '+getlastline());\n";
+			v.val += "\t\t\tvar divs=para.getElementsByTagName('div');\n";
+			v.val += "\t\t\tvar r=divs[divs.length-1].getBoundingClientRect();\n";
+			v.val += "\t\t\tgameaction('select:'+i+' '+(event.clientX-r.left)+' '+(event.clientY-r.top)+' '+getlastline());\n";
 			v.val += "\t\t\tbreak;\n";
 			v.val += "\t\t}\n";
 			v.val += "\t}\n";
@@ -707,8 +710,39 @@ void WORDPROC::exec (
 			v.val += "}\n";
 			v.val += "</script>\n";
 			// Buttons line
-			v.val += "<div id=tab_form>\n";
-			v.val += "Buttons";
+			if (maywrite){
+				v.val += "<div id=tab_form style='margin-top:5; margin-bottom:5; background-color: lightgray;'>\n";
+				#define BUTTON_TITLE_PLUS	0
+				#define BUTTON_TITLE_LESS	1
+				#define BUTTON_TAB_PLUS		3
+				#define BUTTON_TAB_LESS		4
+				#define BUTTON_BULLET		5
+				#define BUTTON_NUMLIST		6
+				#define BUTTON_BOLD		7
+				#define BUTTON_ITALIC		8
+				#define BUTTON_UNDERLINE	9
+				#define BUTTON_SUP		10
+				#define BUTTON_SUB		11
+				#define BUTTON_CENTER		12
+				const unsigned b_width=20;
+				documentd_button_start(v.val,gameid);
+				documentd_button (v.val,BUTTON_TITLE_PLUS,"T",b_width,false);
+				documentd_button (v.val,BUTTON_TITLE_LESS,"t",b_width,false);
+				documentd_button (v.val,BUTTON_BOLD,"<b>B</b>",b_width,false);
+				documentd_button (v.val,BUTTON_ITALIC,"<i>I</i>",b_width,false);
+				documentd_button (v.val,BUTTON_UNDERLINE,"<u>U</u>",b_width,false);
+				documentd_button (v.val,BUTTON_SUP,"A<sup>2</sup>",b_width,false);
+				documentd_button (v.val,BUTTON_SUB,"A<sub>2</sub>",b_width,false);
+				documentd_button (v.val,BUTTON_TAB_PLUS,"->",b_width,false);
+				documentd_button (v.val,BUTTON_TAB_LESS,"<-",b_width,false);
+				documentd_button (v.val,BUTTON_CENTER,"<->",b_width,false);
+				documentd_button (v.val,BUTTON_BULLET,"&bull;",b_width,false);
+				documentd_button (v.val,BUTTON_NUMLIST,"N.",b_width,false);
+				documentd_button_end(v.val);
+			}else{
+				v.val += "<div id=tab_form style='margin-top:5; margin-bottom:5; background-color: lightgray;'>\n";
+				v.val += "Read only";
+			}
 			v.val += "</div>\n";
 			// Document
 			v.val += "<div class=webtable id=doc_wordproc style='display:flex; flex-flow:row;'>\n";
@@ -717,10 +751,9 @@ void WORDPROC::exec (
 			unsigned line = 0;
 			if (pref.offset < lines.size()){
 				for (auto p=lines.begin()+pref.offset; p != lines.end() && line < visible_lines; p++){
-					auto &l = *p;
 					unsigned doc_line = line+pref.offset;
 					v.val += string_f("<div class=oneline id=l%u>%s</div>\n",doc_line
-						,wordproc_formatline(l,prefs,doc_line).c_str());
+						,formatline(doc_line).c_str());
 					line++;
 				}
 			}
@@ -728,7 +761,7 @@ void WORDPROC::exec (
 				static string empty;
 				unsigned doc_line = line+pref.offset;
 				v.val += string_f("<div class=oneline id=l%u>%s</div>\n",doc_line
-					,wordproc_formatline(empty,prefs,doc_line).c_str());
+					,formatline(doc_line).c_str());
 			}
 			v.val += "</div>\n";
 			v.val += "</div>\n";
@@ -854,20 +887,37 @@ void WORDPROC::exec (
 				string &l = wl.line;
 				while (wordproc_linelen(l) < pref.cursor.column) l += ' ';
 				unsigned pos = wordproc_jump2col(l,pref.cursor.column);
+				bool update_num_lines = false;
 				if (strcmp(val,"b")==0 && mod.alt){
 					wordproc_insert_effect (l,pos,EFFECT_BOLD);
 				}else if (strcmp(val,"f")==0 && mod.alt){
 					wordproc_insert_effect (l,pos,EFFECT_FONT1);
 				}else if (strcmp(val,">")==0 && mod.alt){
 					if (wl.tab_level < 4) wl.tab_level++;
+					update_num_lines = true;
 				}else if (strcmp(val,"<")==0 && mod.alt){
 					if (wl.tab_level > 0) wl.tab_level--;
+					update_num_lines = true;
 				}else if (strcmp(val,"t")==0 && mod.alt){
 					if (wl.title_level < 4) wl.title_level++;
+					update_num_lines = true;
 				}else if (strcmp(val,"T")==0 && mod.alt){
 					if (wl.title_level > 0) wl.title_level--;
+					update_num_lines = true;
 				}else if (strcmp(val,"l")==0 && mod.alt){
-					wl.bullet = !wl.bullet;
+					if (wl.listtype == LIST_BULLET){
+						wl.listtype = LIST_NONE;
+					}else{
+						wl.listtype = LIST_BULLET;
+					}
+					update_num_lines = true;
+				}else if (strcmp(val,"L")==0 && mod.alt){
+					if (wl.listtype == LIST_NUM){
+						wl.listtype = LIST_NONE;
+					}else{
+						wl.listtype = LIST_NUM;
+					}
+					update_num_lines = true;
 				}else if (strcmp(val,"z")==0 && mod.alt){
 					if (lines.size()==1 && lines[0].line.size()==0){
 						// Fill with many lines
@@ -875,7 +925,7 @@ void WORDPROC::exec (
 						string para;
 						para = "allo comment ca va le monde et toi et encore et encore et encore";
 						for (unsigned i=0; i<2; i++) para += " allo comment ca va le monde et toi et encore et encore et encore";
-						for (unsigned i=0; i<100; i++) lines.push_back(para);
+						for (unsigned i=0; i<100; i++) lines.push_back(string_f("line %lu:",lines.size())+para);
 					}else{
 						resetgame();
 					}
@@ -884,6 +934,7 @@ void WORDPROC::exec (
 					l.insert(pos,val);
 					pref.cursor.column ++;
 				}
+				if (update_num_lines) wordproc_update_num_lines (pref.cursor.line,lines,notify_lines);
 				notify_lines.push_back(pref.cursor.line);
 			}else if (strcmp(var,"break")==0){
 				while (lines.size() <= pref.cursor.line) lines.emplace_back(WORDPROC_LINE());
@@ -907,7 +958,7 @@ void WORDPROC::exec (
 					}
 					newl.line += l.substr(pos);
 					if (para.title_level == 0){
-						newl.bullet = para.bullet;
+						newl.listtype = para.listtype;
 						newl.tab_level = para.tab_level;
 					}
 					lines.insert(nextline,newl);
@@ -959,34 +1010,9 @@ void WORDPROC::exec (
 					notify_lines.push_back(current_line);
 					notify_lines.push_back(pref.cursor.line);
 				}
-			}else if (strcmp(var,"pageup")==0 || strcmp(var,"pagedown")==0){
+			}else if (is_any_of(var,"pageup","pagedown")){
 				int new_offset = strcmp(var,"pageup")==0 ? pref.offset-lastline : pref.offset + lastline;
-				if (new_offset < 0) new_offset = 0;
-				if ((unsigned)new_offset != pref.offset){
-					int offline = pref.cursor.line - pref.offset;
-					if (offline < 0) offline = 0;
-					js_find_loop_start (script_var.val,"text","div");
-					// Remove all div
-					script_var.val += "\telm.innerHTML='';\n";
-					// Add new ones
-					script_var.val += string_f("\tfor (var i=0; i<%u; i++){\n",visible_lines);
-					script_var.val += "\t\tvar newElement = document.createElement('div');\n";
-					script_var.val += string_f("\t\tvar id='l'+(%u+i);\n",new_offset);
-					script_var.val += "\t\tnewElement.setAttribute('id', id);\n";
-					script_var.val += "\t\tnewElement.setAttribute('class', 'oneline');\n";
-					script_var.val += "\t\tnewElement.innerHTML = '';\n";
-					script_var.val += "\t\telm.insertBefore(newElement,null);\n";
-					script_var.val += "\t}\n";
-					js_find_loop_end (script_var.val);
-					for (unsigned i=0; i<visible_lines; i++) script_lines.push_back(new_offset+i);
-					notify_lines.push_back(pref.cursor.line);
-					if (pref.cursor.line < (unsigned)new_offset
-						|| pref.cursor.line >= new_offset + lastline){
-						pref.cursor.line = new_offset+offline;
-					}
-					notify_lines.push_back(pref.cursor.line);
-					pref.offset = new_offset;
-				}
+				page_up_down(new_offset,visible_lines,lastline,pref,script_var,script_lines,notify_lines);
 			}else if (strcmp(var,"hmove")==0){
 				int move = atoi(val);
 				if (move < 0){
@@ -1104,6 +1130,60 @@ void WORDPROC::exec (
 						notify_lines.push_back(pref.cursor.line);
 					}
 				}
+			}else if (strcmp(var,"newgame")==0){
+				while (lines.size() <= pref.cursor.line) lines.push_back("");
+				unsigned uval = atoi(val);
+				bool update_num_lines = false;
+				auto &wl = lines[pref.cursor.line];
+				auto &l = wl.line;
+				unsigned pos = wordproc_jump2col(l,pref.cursor.column);
+				if (uval == BUTTON_TAB_PLUS){
+					if (wl.tab_level < 4) wl.tab_level++;
+					update_num_lines = true;
+				}else if (uval == BUTTON_TAB_LESS){
+					if (wl.tab_level > 0) wl.tab_level--;
+					update_num_lines = true;
+				}else if (uval == BUTTON_TITLE_PLUS){
+					if (wl.title_level < 4) wl.title_level++;
+					update_num_lines = true;
+				}else if (uval == BUTTON_TITLE_LESS){
+					if (wl.title_level > 0) wl.title_level--;
+					update_num_lines = true;
+				}else if (uval == BUTTON_BULLET){
+					if (wl.listtype == LIST_BULLET){
+						wl.listtype = LIST_NONE;
+					}else{
+						wl.listtype = LIST_BULLET;
+					}
+					update_num_lines = true;
+				}else if (uval == BUTTON_NUMLIST){
+					if (wl.listtype == LIST_NUM){
+						wl.listtype = LIST_NONE;
+					}else{
+						wl.listtype = LIST_NUM;
+					}
+					update_num_lines = true;
+				}else if (uval == BUTTON_CENTER){
+					if (wl.listtype == LIST_CENTER){
+						wl.listtype = LIST_NONE;
+					}else{
+						wl.listtype = LIST_CENTER;
+					}
+					update_num_lines = true;
+				}else if (uval == BUTTON_BOLD){
+					wordproc_insert_effect (l,pos,EFFECT_BOLD);
+				}else if (uval == BUTTON_ITALIC){
+					wordproc_insert_effect (l,pos,EFFECT_ITALIC);
+				}else if (uval == BUTTON_UNDERLINE){
+					wordproc_insert_effect (l,pos,EFFECT_UNDERLINE);
+				}else if (uval == BUTTON_SUP){
+					wordproc_insert_effect (l,pos,EFFECT_SUP);
+				}else if (uval == BUTTON_SUB){
+					wordproc_insert_effect (l,pos,EFFECT_SUB);
+				}
+				if (update_num_lines) wordproc_update_num_lines (pref.cursor.line,lines,notify_lines);
+				notify_lines.push_back(pref.cursor.line);
+				script_var.val += string_f("document.getElementById('text-%s').focus();\n",gameid.c_str());
 			}
 			update_lines (notify_var.val,notify_lines);
 			update_lines (script_var.val,script_lines);
@@ -1123,6 +1203,10 @@ void WORDPROC::exec (
 					pref.cursor.line = pref.offset + visible_lines - 1;
 				}
 				vmove (move,visible_lines,lastline,pref,script_var,updlines);
+			}else if (is_any_of(var,"pageup","pagedown")){
+				int new_offset = strcmp(var,"pageup")==0 ? pref.offset-lastline : pref.offset + lastline;
+				vector<unsigned> notify_lines;
+				page_up_down (new_offset,visible_lines,lastline,pref,script_var,updlines,notify_lines);
 			}else{
 				documentd_error (res,MSG_R(E_READONLY));
 			}
@@ -1130,5 +1214,8 @@ void WORDPROC::exec (
 			res.emplace_back(script_var);
 		}
 	}
+	string tmp;
+	for (auto &v:res) tmp += string_f(" %s=%lu",v.var.c_str(),v.val.size());
+	tlmp_warning (tmp.c_str());
 }
 

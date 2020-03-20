@@ -112,6 +112,7 @@ struct DIRENTRY{
 #define bod_control_keepmsgs_NOTNEED
 #define bod_control_set_admin_session_NOTNEED
 #define bod_control_savegame_NOTNEED
+#define bod_control_slowplaystep_NOTNEED
 #include "proto/bod_control.protoch"
 
 #define bolixoapi_test_NOTNEED
@@ -1653,6 +1654,7 @@ static int bod_main (
 	glocal unsigned maxaccts = maxaccts;
 	glocal string admin_sessionid;
 	glocal string instrument_file = string_f("/tmp/instrument-%s.log",portstr);
+	glocal unsigned slowplaystep = 0;
 	<obj TCPSERVER s>(bind,glocal.unixportclient,5);
 	<f newclient>
 		HANDLE_INFO *n = new HANDLE_INFO;
@@ -1725,6 +1727,7 @@ static int bod_main (
 				tb.push_back(string_f("rem_filehandle %lu",rem_handles.size()));
 				tb.push_back(string_f("sessions %lu",sessions.size()));
 				tb.push_back(string_f("admin_sessionid: %s",glocal.admin_sessionid.c_str()));
+				tb.push_back(string_f("slowplaystep: %u",glocal.slowplaystep));
 				string useline = "usehttp:";
 				for (auto &s:usehttp) useline += string(" ") + s;
 				tb.push_back(useline);
@@ -1849,6 +1852,9 @@ static int bod_main (
 			<f savegame>	// path
 				bool success = bod_document_save(glocal.con,glocal.con_doc,glocal.admin_sessionid.c_str(),path);
 				rep_savegame(success,"");
+			</f>
+			<f slowplaystep> // delay:u
+				glocal.slowplaystep=delay;
 			</f>
 			<f invalid>
 				endclient = true;
@@ -3886,6 +3892,7 @@ static int bod_main (
 				glocal bool success = false;
 				glocal ENTRY entry;
 				string username;
+				if (glocal.slowplaystep != 0) usleep(glocal.slowplaystep*1000);
 				if (bod_findentry (glocal.con_sess,sessionid,path,glocal.entry,"",username)!=-1){
 					if (!bolixo_isfile(glocal.entry.type)){
 						glocal.entry.msg = MSG_R(E_NOTAFILE);

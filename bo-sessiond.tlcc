@@ -122,6 +122,7 @@ struct USER_INFO{
 	vector<NOTIFY> notes;
 	vector<VAR> vars;
 };
+static unsigned max_key_notes=4;		// Number of notifications kept with the same key
 static void bo_sessiond_setnotify(
 	map<unsigned,USER_INFO> &userinfos,
 	map<unsigned,vector<int>> &waiting,
@@ -132,24 +133,36 @@ static void bo_sessiond_setnotify(
 	time_t now = time(NULL);
 	for (auto userid:userids){
 		auto &v = userinfos[userid];
-		bool found = false;
 		unsigned sequence = ++v.sequence;
+		// Notifications contains script. We can't just override a notification with
+		// a new one. The previous script would be lost. A user would miss one script
+		// and the document/game would be broken
+		// Notifications like these are never deleted because the end user may
+		// have several UIs running.
+		// So we keep around the last max_key_notes.
+		// Further, in waitevent, if there are several consecutive event for the same
+		// key, we return a concatenation of the scripts.
+		unsigned found = 0;
 		for (auto &n:v.notes){
 			if (n.key == name){
-				found = true;
-				n.sequence = sequence;
-				n.script = script;
-				n.when = now;
-				break;
+				found++;
 			}
 		}
-		if (!found){
+		{
 			NOTIFY n;
 			n.key = name;
 			n.script = script;
 			n.when = now;
 			n.sequence = sequence;
 			v.notes.push_back(n);
+		}
+		for (auto it=v.notes.begin(); found > max_key_notes && it != v.notes.end(); ){
+			auto next_it = it+1;
+			if (it->key == name){
+				v.notes.erase(it);
+				found--;
+			}
+			it = next_it;
 		}
 		auto w = waiting.find(userid);
 		if (w != waiting.end()){
@@ -206,6 +219,7 @@ int main (int argc, char *argv[])
 		setarg (' ',"daemon","Run in background",glocal.daemon,false);
 		setarg (' ',"pidfile","File holding the PID of the process",glocal.pidfile,false);
 		setarg (' ',"maxhandles","Maximum number of file handle supported",glocal.maxhandles,false);
+		setarg (' ',"max_eq_notes","Maximum number of notifications kept with the same key",max_key_notes,false);
 	</f>
 	<f showerror>
 		glocal const char *msg = msg;
@@ -418,6 +432,7 @@ int main (int argc, char *argv[])
 						nbwaiting += ww.second.size();
 					}
 					tb.push_back(string_f("nbwaiting=%lu",nbwaiting));
+					tb.push_back(string_f ("max_eq_notes=%u",max_key_notes));
 					instrument_status (tb);
 					rep_status(tb);
 				</f>
@@ -552,6 +567,9 @@ int main (int argc, char *argv[])
 				</f>
 				<f debugfile>
 					debug_setfdebug (filename);
+				</f>
+				<f max_eq_notes>
+					max_key_notes = max_notes;
 				</f>
 				<f invalid>
 					tlmp_error ("Control: Invalid command: %s\n",line);
@@ -688,6 +706,11 @@ int main (int argc, char *argv[])
 									next_sequence = nn.sequence;
 									name = nn.key;
 									script = nn.script;
+								}else if (nn.sequence == next_sequence+1
+									&& nn.key == name){
+									script += nn.script;
+									next_sequence = nn.sequence;
+									tlmp_warning ("merge name=%s next_sequence=%u sequence=%u",name.c_str(),next_sequence,nn.sequence);
 								}
 							}
 						}

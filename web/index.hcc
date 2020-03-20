@@ -1153,6 +1153,7 @@ static void terms_of_use()
 <mod>
 extern "C" void webmain_real()
 {
+	glocal unsigned waitevent_delay=0;
 	glocal bool account_confirmed = false;
 	glocal CONNECT_INFO con;
 	glocal CONNECT_INFO con_sess;
@@ -1165,12 +1166,15 @@ extern "C" void webmain_real()
 	if (tlmpweb_isrobot()) w_robot = 1;
 	<call loadfile>("/etc/bolixonode.conf",true);
 	<f oneline>
-		if (strncmp(line,"node=",5)==0){
-			util_setnodeurl(line+5);
-		}else if (strncmp(line,"dirserver=",10)==0){
-			util_setdirserver(line+10);
-		}else if (strncmp(line,"org=",4)==0){
-			org = line+4;
+		const char *pt;
+		if (is_start_any_of(line,pt,"node=")){
+			util_setnodeurl(pt);
+		}else if (is_start_any_of(line,pt,"dirserver=")){
+			util_setdirserver(pt);
+		}else if (is_start_any_of(line,pt,"org=")){
+			org = pt;
+		}else if (is_start_any_of(line,pt,"waitevent_delay=")){
+			glocal.waitevent_delay=atoi(pt);
 		}else if (strcmp(line,"private_site")==0){
 			private_site = true;
 		}else if (strcmp(line,"mobile")==0){
@@ -1179,9 +1183,9 @@ extern "C" void webmain_real()
 			util_setnonstrict(true);
 		}else if (strcmp(line,"experimental")==0){
 			util_set_experimental();
-		}else if (strncmp(line,"mobilespecs",11)==0){
+		}else if (is_start_any_of(line,pt,"mobilespecs")){
 			unsigned u1=300,u2=80,u3=100;
-			if (sscanf(line+11,"%u %u %u",&u1,&u2,&u3)==2){
+			if (sscanf(pt,"%u %u %u",&u1,&u2,&u3)==2){
 				util_setmobilespecs(u1,u2,u3);
 			}
 		}else if (strcmp(line,"debug-agent")==0){
@@ -2503,6 +2507,10 @@ extern "C" void webmain_real()
 	</f>
 	<f step15> // Handle notification
 		// tlmp_error ("step15 start %s sequence %u",w_session.c_str(),w_sequence.getval());
+		if (glocal.waitevent_delay > 0){
+			tlmp_warning ("waitevent_delay=%u",glocal.waitevent_delay);
+			usleep(glocal.waitevent_delay*1000);
+		}
 		<call bo_sessiond_client_waitevent>(glocal.con_sess,w_session.c_str(),w_sequence.getval());
 		<f ok>
 			if (!success){

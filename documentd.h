@@ -93,6 +93,12 @@ protected:
 		lines += string_f("\tvar elms = elm.getElementsByTagName('%s');\n",tag);
 		lines += "\tif (elms.length > 0){\n";
 	}
+	inline void js_find_loop_start_class(std::string &lines, const char *prefix, const char *cls){
+		lines += string_f ("var elm = document.getElementById('%s-%s');\n",prefix,gameid.c_str());
+		lines += "if (elm != null){\n";
+		lines += string_f("\tvar elms = elm.getElementsByClassName('%s');\n",cls);
+		lines += "\tif (elms.length > 0){\n";
+	}
 	inline void js_find_loop_end(std::string &lines){
 		lines += "\t}\n";
 		lines += "}\n";
@@ -224,9 +230,11 @@ struct WORD_USERPREF{
 	WORD_DOCPOS mark1,mark2;	// Cut & Paste
 };
 
+enum WORDPROC_LISTTYPE { LIST_NONE, LIST_BULLET,LIST_NUM,LIST_CENTER};
+
 struct WORDPROC_LINE{	// Well, a line is a paragraph...
 	std::string line;
-	bool bullet=false;
+	WORDPROC_LISTTYPE listtype=LIST_NONE;
 	unsigned char title_level=0;
 	unsigned char tab_level=0;
 	WORDPROC_LINE(){}
@@ -239,7 +247,10 @@ class WORDPROC: public GAME{
 	std::map<std::string,WORD_USERPREF> prefs;
 	void deletechar(std::vector<unsigned> &updlines, WORD_USERPREF &pref);
 	void vmove (int move, unsigned visible_lines, unsigned lastline, WORD_USERPREF &pref, VARVAL &script_var, std::vector<unsigned> &updlines);
+	void page_up_down(int new_offset, unsigned visible_lines, unsigned lastline, WORD_USERPREF &pref, VARVAL &script_var,
+		std::vector<unsigned> &script_lines, std::vector<unsigned> &notify_lines);
 	void update_lines (std::string &line, std::vector<unsigned> &updlines);
+	std::string formatline (unsigned noline);
 public:
 	const char *getclass() const{
 		return "WORD";
@@ -385,7 +396,11 @@ public:
 
 std::string documentd_escape(PARAM_STRING msg);
 void documentd_error (std::vector<VARVAL> &res, PARAM_STRING s);
-void documentd_button (std::string &lines, unsigned command, const char *txt, bool highlit);
+void documentd_button_start (std::string &line, const std::string &gameid);
+void documentd_button_end (std::string &line);
+void documentd_button_label (std::string &line, PARAM_STRING txt);
+void documentd_button (std::string &lines, unsigned command, PARAM_STRING txt, bool highlit);
+void documentd_button (std::string &lines, unsigned command, PARAM_STRING txt, unsigned width, bool highlit);
 void documentd_forcerefresh (std::vector<VARVAL> &res);
 void fflush (DOC_WRITER *);
 char *fgets(char *s, int size, DOC_READER *r);
