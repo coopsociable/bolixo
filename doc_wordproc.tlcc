@@ -704,9 +704,13 @@ void WORDPROC::exec (
 			// Function called when the user uses the keyboard
 			v.val += "function gamepress(event){\n";
 			v.val += "\tconsole.log ('key='+event.key+' '+event.altKey+' '+event.ctrlKey+' '+event.shiftKey);\n";
-			v.val += "\tconsole.log ('code='+event.code);\n";
 			v.val += string_f("\tgameaction('kbd:'+event.code + ' ' + event.key+' '+event.altKey+' '+event.ctrlKey+' '+event.shiftKey+' '+getlastline());\n");
 			v.val += "\tevent.stopPropagation();\n";
+			v.val += "\treturn false;\n";
+			v.val += "}\n";
+			v.val += "function gamefalse(event){\n";
+			v.val += "\tevent.stopPropagation();\n";
+			v.val += "\treturn false;\n";
 			v.val += "}\n";
 			v.val += "</script>\n";
 			// Buttons line
@@ -724,20 +728,27 @@ void WORDPROC::exec (
 				#define BUTTON_SUP		10
 				#define BUTTON_SUB		11
 				#define BUTTON_CENTER		12
-				const unsigned b_width=20;
+				DOC_BUTTON_SPECS specs;
+				if (sp.mobile){
+					specs.width = 60;
+					specs.radius = 6;
+					specs.margin_left = 10;
+					specs.margin_top = 4;
+					specs.margin_bottom = 4;
+				}
 				documentd_button_start(v.val,gameid);
-				documentd_button (v.val,BUTTON_TITLE_PLUS,"T",b_width,false);
-				documentd_button (v.val,BUTTON_TITLE_LESS,"t",b_width,false);
-				documentd_button (v.val,BUTTON_BOLD,"<b>B</b>",b_width,false);
-				documentd_button (v.val,BUTTON_ITALIC,"<i>I</i>",b_width,false);
-				documentd_button (v.val,BUTTON_UNDERLINE,"<u>U</u>",b_width,false);
-				documentd_button (v.val,BUTTON_SUP,"A<sup>2</sup>",b_width,false);
-				documentd_button (v.val,BUTTON_SUB,"A<sub>2</sub>",b_width,false);
-				documentd_button (v.val,BUTTON_TAB_PLUS,"->",b_width,false);
-				documentd_button (v.val,BUTTON_TAB_LESS,"<-",b_width,false);
-				documentd_button (v.val,BUTTON_CENTER,"<->",b_width,false);
-				documentd_button (v.val,BUTTON_BULLET,"&bull;",b_width,false);
-				documentd_button (v.val,BUTTON_NUMLIST,"N.",b_width,false);
+				documentd_button (v.val,BUTTON_TITLE_PLUS,"T",specs,false);
+				documentd_button (v.val,BUTTON_TITLE_LESS,"t",specs,false);
+				documentd_button (v.val,BUTTON_BOLD,"<b>B</b>",specs,false);
+				documentd_button (v.val,BUTTON_ITALIC,"<i>I</i>",specs,false);
+				documentd_button (v.val,BUTTON_UNDERLINE,"<u>U</u>",specs,false);
+				documentd_button (v.val,BUTTON_SUP,"A<sup>2</sup>",specs,false);
+				documentd_button (v.val,BUTTON_SUB,"A<sub>2</sub>",specs,false);
+				documentd_button (v.val,BUTTON_TAB_PLUS,"->",specs,false);
+				documentd_button (v.val,BUTTON_TAB_LESS,"<-",specs,false);
+				documentd_button (v.val,BUTTON_CENTER,"<>",specs,false);
+				documentd_button (v.val,BUTTON_BULLET,"&bull;",specs,false);
+				documentd_button (v.val,BUTTON_NUMLIST,"N.",specs,false);
 				documentd_button_end(v.val);
 			}else{
 				v.val += "<div id=tab_form style='margin-top:5; margin-bottom:5; background-color: lightgray;'>\n";
@@ -746,7 +757,7 @@ void WORDPROC::exec (
 			v.val += "</div>\n";
 			// Document
 			v.val += "<div class=webtable id=doc_wordproc style='display:flex; flex-flow:row;'>\n";
-			v.val += string_f("<div id='text-%s' onkeydown=gamepress(event) onclick=gameselect(event)"
+			v.val += string_f("<div id='text-%s' onkeydown=gamepress(event) onkeypress=gamefalse(event) onclick=gameselect(event)"
 				" tabindex=0 style='flex:0 0 auto; overflow: hidden; margin-right:%u; width:%u'>\n",gameid.c_str(),10,width);
 			unsigned line = 0;
 			if (pref.offset < lines.size()){
@@ -1214,8 +1225,10 @@ void WORDPROC::exec (
 			res.emplace_back(script_var);
 		}
 	}
-	string tmp;
-	for (auto &v:res) tmp += string_f(" %s=%lu",v.var.c_str(),v.val.size());
-	tlmp_warning (tmp.c_str());
+	if (0){
+		string tmp;
+		for (auto &v:res) tmp += string_f(" %s=%lu",v.var.c_str(),v.val.size());
+		tlmp_warning (tmp.c_str());
+	}
 }
 

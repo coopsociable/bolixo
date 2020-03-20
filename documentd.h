@@ -400,7 +400,14 @@ void documentd_button_start (std::string &line, const std::string &gameid);
 void documentd_button_end (std::string &line);
 void documentd_button_label (std::string &line, PARAM_STRING txt);
 void documentd_button (std::string &lines, unsigned command, PARAM_STRING txt, bool highlit);
-void documentd_button (std::string &lines, unsigned command, PARAM_STRING txt, unsigned width, bool highlit);
+struct DOC_BUTTON_SPECS{
+	unsigned width = 20;
+	unsigned radius = 4;
+	unsigned margin_left = 5;
+	unsigned margin_top = 2;
+	unsigned margin_bottom = 2;
+};
+void documentd_button (std::string &lines, unsigned command, PARAM_STRING txt, const DOC_BUTTON_SPECS &specs, bool highlit);
 void documentd_forcerefresh (std::vector<VARVAL> &res);
 void fflush (DOC_WRITER *);
 char *fgets(char *s, int size, DOC_READER *r);

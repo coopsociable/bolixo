@@ -1196,6 +1196,21 @@ string util_clickable_img (PARAM_STRING url, unsigned image_width)
 	return ret;
 }
 /*
+	Remove the dot at the end of a string
+*/
+static void util_remove_dot(string &line, string &dot)
+{
+	if (line.size() > 0){
+		dot.clear();
+		auto last = line.size()-1;
+		if (line[last] == '.'){
+			// The line ends with a period. It is probably not part of the ID.
+			line.resize(last);
+			dot = ".";
+		}
+	}
+}
+/*
 	Format a short message, remove the signature
 	Escapes < and >
 	Supports ? for URL
@@ -1278,32 +1293,36 @@ string util_format_shortmsg (PARAM_STRING msg, unsigned nblines, size_t size, un
 				string tmp(pt,txt-pt);
 				ret += string_f("<span style=color:blue;cursor:pointer onclick=subformsubmit(event,\"%s?webstep=%d&topic=%s\")>%s</span>\n"
 					,tlmpweb_curpage(),step_doctopic,tmp.c_str(),MSG_U(I_LINK,"link"));
+				txt--;
 			}else if (is_start_any_of(txt,pt,"_DOC=")){
 				txt = pt;
 				while (*txt > ' ' && is_not_in(*txt,'"','>',',')) txt++;
 				string tmp(pt,txt-pt);
-				const char *name = strrchr(tmp.c_str(),'/');
-				if (name == nullptr){
-					name = tmp.c_str();
+				string dot;
+				util_remove_dot (tmp,dot);
+				if (tmp.size() == 0){
+					ret += "_DOC=";
 				}else{
-					name++;
+					const char *name = strrchr(tmp.c_str(),'/');
+					if (name == nullptr){
+						name = tmp.c_str();
+					}else{
+						name++;
+					}
+					ret += string_f("<span style=color:blue;cursor:pointer onclick=subformsubmit(event,\"%s?webstep=%d&webtab_add=2:%s~%s\")>%s</span>\n"
+						,tlmpweb_curpage(),step_projects,tmp.c_str(),name,tmp.c_str());
+					ret += dot;
 				}
-				ret += string_f("<span style=color:blue;cursor:pointer onclick=subformsubmit(event,\"%s?webstep=%d&webtab_add=2:%s~%s\")>%s</span>\n"
-					,tlmpweb_curpage(),step_projects,tmp.c_str(),name,MSG_U(I_LINK,"link"));
+				txt--;
 			}else if (is_start_any_of(txt,pt,"_USER=")){
 				txt = pt;
 				while (*txt > ' ' && is_not_in(*txt,'"','>',',')) txt++;
 				string user(pt,txt-pt);
+				string dot;
+				util_remove_dot (user,dot);
 				if (user.size() == 0){
 					ret += "_USER=";
 				}else{
-					const char *dot = "";
-					auto last = user.size()-1;
-					if (user[last] == '.'){
-						// The user id ends with a period. It is probably not part of the ID.
-						user.resize(last);
-						dot = ".";
-					}
 					ret += " ";
 					if (user == "admin"){
 						// admin is not in the contact list of everyone, but has a public page

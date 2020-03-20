@@ -2591,14 +2591,33 @@ extern "C" void webmain_real()
 	</f>
 	<f step16>	// game action
 		if (w_action.isset()){
-			vector<string> tb;
-			int n = str_splitline(w_action.c_str(),':',tb);
-			if (is_any_of(n,1,2)){
-				vector<VARVAL> steps;
-				VARVAL var;
-				var.var = tb[0];
-				if (n == 2) var.val = tb[1];
-				steps.push_back(var);
+			// The variable w_action may contain several actions splitted by a ;; marker
+			// Then each action is a verb followed by a column followed by arguments
+			vector<string> actions;
+			const char *pt = w_action.c_str();
+			while (*pt != '\0'){
+				const char *next = strstr(pt,";;");
+				if (next == nullptr){
+					actions.push_back(pt);
+					break;
+				}else{
+					actions.emplace_back(pt,next-pt);
+					pt = next+2;
+				}
+			}
+			vector<VARVAL> steps;
+			if (actions.size() > 1) tlmp_warning ("step16: actions.size()=%lu",actions.size());
+			for (auto &a:actions){
+				vector<string> tb;
+				int n = str_splitline(a,':',tb);
+				if (is_any_of(n,1,2)){
+					VARVAL var;
+					var.var = tb[0];
+					if (n == 2) var.val = tb[1];
+					steps.push_back(var);
+				}
+			}
+			if (steps.size() > 0){
 				DOC_UI_SPECS sp;
 				sp.mobile = tlmpweb_ismobile();
 				sp.fontsize = tlmpweb_fontsize();
