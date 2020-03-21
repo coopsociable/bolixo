@@ -190,6 +190,18 @@ void documentd_button (string &lines, unsigned command, PARAM_STRING txt, const 
 using GAME_P = shared_ptr<GAME>;
 
 
+void GAME::manyexec (
+	const std::vector<VARVAL_receive> &steps,
+	const char *session,
+	const char *username,
+	bool maywrite,
+	const DOC_UI_SPECS_receive &sp,
+	std::vector<VARVAL> &res)
+{
+	for (auto &v:steps){
+		exec(v.var,v.val,session,username,maywrite,sp,res);
+	}
+}
 
 static bool documentd_playstep (
 	map<string,GAME_P> &games,
@@ -208,9 +220,7 @@ static bool documentd_playstep (
 	auto g = games.find(gameid);
 	if (g != games.end()){
 		success = true;
-		for (auto &v:steps){
-			g->second->exec(v.var,v.val,session,username,maywrite,sp,res);
-		}
+		g->second->manyexec(steps,session,username,maywrite,sp,res);
 		g->second->testwin(res);
 	}else{
 		msg = "Unknown game id";

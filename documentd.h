@@ -1,6 +1,8 @@
 #ifndef DOCUMENTD_H
 #define DOCUMENTD_H
 
+#include <set>
+
 class DOC_UI_SPECS_receive;
 
 class DOC_WRITER{
@@ -150,6 +152,7 @@ public:
 	virtual void resetgame() = 0;
 	virtual void testwin(std::vector<VARVAL> &res) = 0;
 	virtual void exec (const char *var, const char *val, const char *session, const char *username, bool maywrite, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res) = 0;
+	virtual void manyexec (const std::vector<VARVAL_receive> &steps, const char *session, const char *username, bool maywrite, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
 	virtual ~GAME(){};
 };
 
@@ -245,12 +248,15 @@ struct WORDPROC_LINE{	// Well, a line is a paragraph...
 class WORDPROC: public GAME{
 	std::vector<WORDPROC_LINE> lines;
 	std::map<std::string,WORD_USERPREF> prefs;
-	void deletechar(std::vector<unsigned> &updlines, WORD_USERPREF &pref);
-	void vmove (int move, unsigned visible_lines, unsigned lastline, WORD_USERPREF &pref, VARVAL &script_var, std::vector<unsigned> &updlines);
+	void deletechar(std::set<unsigned> &updlines, WORD_USERPREF &pref);
+	void vmove (int move, unsigned visible_lines, unsigned lastline, WORD_USERPREF &pref, VARVAL &script_var, std::set<unsigned> &updlines);
 	void page_up_down(int new_offset, unsigned visible_lines, unsigned lastline, WORD_USERPREF &pref, VARVAL &script_var,
-		std::vector<unsigned> &script_lines, std::vector<unsigned> &notify_lines);
-	void update_lines (std::string &line, std::vector<unsigned> &updlines);
+		std::set<unsigned> &script_lines, std::set<unsigned> &notify_lines);
+	void update_lines (std::string &line, std::set<unsigned> &updlines);
 	std::string formatline (unsigned noline);
+	void execstep (const char *var,	const char *val, const char *session, const char *username, bool maywrite, const DOC_UI_SPECS_receive &sp,
+		VARVAL &script_var, std::set<unsigned> &script_lines, VARVAL &notify_var, std::set<unsigned> &notify_lines,
+		std::vector<VARVAL> &res);
 public:
 	const char *getclass() const{
 		return "WORD";
@@ -260,6 +266,7 @@ public:
 	void resetgame();
 	void testwin(std::vector<VARVAL> &res);
 	void exec (const char *var, const char *val, const char *session, const char *username, bool maywrite, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
+	void manyexec (const std::vector<VARVAL_receive> &steps, const char *session, const char *username, bool maywrite, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
 };
 
 struct CHECKER_PLAYER{
