@@ -22,6 +22,8 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
+#include <sys/socket.h>
 #include <signal.h>
 #include <syslog.h>
 #include <dialog.h>
@@ -150,6 +152,12 @@ string util_readsecret()
 }
 </mod>
 
+enum class WORKER_COMMAND{REQ_END};
+
+struct WORKER_REQUEST{
+	WORKER_COMMAND cmd;
+};
+
 static void bo_websocket_send (_F_TCPSERVER_V1 *c, unsigned opcode, PARAM_STRING msg)
 {
 	size_t lenmsg = strlen(msg.ptr);
@@ -185,8 +193,9 @@ struct _F_bo_websocket{
 };
 
 <mod>
-static void bo_websocket (_F_bo_websocket &c, int fd, CONNECT_INFO &con_bod, CONNECT_INFO &con_sessiond)
+static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &con_bod, CONNECT_INFO &con_sessiond)
 {
+	glocal int waitfd = waitfd;
 	glocal c;
 	glocal con_bod;
 	glocal con_sessiond;
@@ -214,7 +223,16 @@ static void bo_websocket (_F_bo_websocket &c, int fd, CONNECT_INFO &con_bod, CON
 			</f>
 			</call>
 		}
-		if (!glocal.header_seen){
+		if (no == glocal.waitfd){
+			if (info.linelen == sizeof(WORKER_REQUEST)){
+				auto *req = (const WORKER_REQUEST*)line;
+				if (req->cmd == WORKER_COMMAND::REQ_END){
+					endserver = true;
+				}
+			}else{
+				tlmp_error ("Invalid packet size for worker request");
+			}
+		}else if (!glocal.header_seen){
 			const char *pt;
 			if (is_start_any_ofnc(line,pt,"Sec-WebSocket-Key:")){
 				pt = str_skip(pt);
@@ -334,15 +352,17 @@ static void bo_websocket (_F_bo_websocket &c, int fd, CONNECT_INFO &con_bod, CON
 	</f>
 	</obj>
 	s.inject(fd,nullptr);
+	s.inject(waitfd,nullptr);
+	s.setrawmode (waitfd,true);
 	s.loop();
 }
 </mod>
 
 <mod>
-static void bo_websocket_game (int fd, CONNECT_INFO &con_bod, CONNECT_INFO &con_sessiond)
+static void bo_websocket_game (int fd, int waitfd, CONNECT_INFO &con_bod, CONNECT_INFO &con_sessiond)
 {
 	glocal string gameid;
-	<call bo_websocket>(fd,con_bod,con_sessiond);
+	<call bo_websocket>(fd,waitfd,con_bod,con_sessiond);
 	<f commands>
 		const char *pt;
 		if (cmds.size() == 1 && is_start_any_of(cmds[0],pt,"gameid=")){
@@ -430,6 +450,7 @@ int main (int argc, char *argv[])
 		}
 	</f>
 	<f main_noarg>
+		glocal vector<int> workers;
 		glocal CONNECT_INFO con_bod;
 		glocal CONNECT_INFO con_sessiond;
 		glocal.con_bod.port = glocal.bodsock;
@@ -450,20 +471,40 @@ int main (int argc, char *argv[])
 			if (string_cmp(port,glocal.control)==0){
 				n->type = TYPE_CONTROL;
 			}else if (string_cmp(port,glocal.port)==0){
-				n->type = TYPE_CLIENT;
-				pid_t pid = fork();
-				if (pid == 0){
-					bo_websocket_game(no,glocal.con_bod,glocal.con_sessiond);
-					_exit (0);
-				}else if (pid == (pid_t)-1){
-					tlmp_error ("Can't fork (%s)",strerror(errno));
+				int tb[2];
+				if (socketpair(AF_UNIX,SOCK_STREAM,PF_UNIX,tb)==-1){
 				}else{
-					endclient = true;
+					pid_t pid = fork();
+					if (pid == 0){
+						close (tb[0]);
+						bo_websocket_game(no,tb[1],glocal.con_bod,glocal.con_sessiond);
+						_exit (0);
+					}else if (pid == (pid_t)-1){
+						close (tb[0]);
+						close (tb[1]);
+						tlmp_error ("Can't fork (%s)",strerror(errno));
+					}else{
+						close (tb[1]);
+						HANDLE_INFO *nn = new HANDLE_INFO;
+						nn->type = TYPE_WORKER;
+						inject (tb[0],nn);
+						glocal.workers.push_back(tb[0]);
+						endclient = true;
+					}
 				}
 			}
 			
 		</f>
 		<f endclient>
+			HANDLE_INFO *n = (HANDLE_INFO*)info.data;
+			if (n->type == TYPE_WORKER){
+				for (auto p=glocal.workers.begin(); p != glocal.workers.end(); p++){
+					if (*p == no){
+						glocal.workers.erase(p);
+						break;
+					}
+				}
+			}
 		</f>
 		<f receive>
 			HANDLE_INFO *n = (HANDLE_INFO*)info.data;
@@ -472,6 +513,7 @@ int main (int argc, char *argv[])
 				<f status>
 					vector<string> tb;
 					instrument_status(tb);
+					tb.push_back(string_f("workers: %lu",glocal.workers.size()));
 					rep_status (tb);
 				</f>
 				<f quit>
@@ -493,6 +535,13 @@ int main (int argc, char *argv[])
 				<f instrument>	// on:b
 					toggle_instrument_file(on);
 				</f>
+				<f disconnectworkers>
+					WORKER_REQUEST req;
+					req.cmd = WORKER_COMMAND::REQ_END;
+					for (auto fd:glocal.workers){
+						glocal.TCPSERVER.sendto(fd,&req,sizeof(req));
+					}
+				</f>
 				<f invalid>
 					tlmp_error ("Invalid command: %s\n",line);
 					endclient = true;
@@ -500,6 +549,8 @@ int main (int argc, char *argv[])
 				</call>
 
 			}else if (n->type == TYPE_CLIENT){
+				// Not possible
+			}else if (n->type == TYPE_WORKER){
 				// Not possible
 			}	
 		</f>

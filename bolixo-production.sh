@@ -581,25 +581,31 @@ elif [ "$1" = "loadfail" ] ; then # prod: Switch web access (normal,backup,split
 		W1=100
 		W2=1
 		WAIT=backup
+		DISCONNECT=web-fail
 		S1="$THISSERVER web-fail 80"
-		S2="$THISSERVER webssl-fail$VSOURCE 80"
-		S3="$THISSERVER webssl-fail$VSOURCE 443"
+		S2="$THISSERVER web-fail /var/run/websocket.sock"
+		S3="$THISSERVER webssl-fail$VSOURCE 80"
+		S4="$THISSERVER webssl-fail$VSOURCE 443"
 	elif [ "$2" = "backup" ] ; then
 		W1=1
 		W2=100
 		WAIT=normal
+		DISCONNECT=web
 		S1="$THISSERVER web 80"
-		S2="$THISSERVER webssl$VSOURCE 80"
-		S3="$THISSERVER webssl$VSOURCE 443"
+		S2="$THISSERVER web /var/run/websocket.sock"
+		S3="$THISSERVER webssl$VSOURCE 80"
+		S4="$THISSERVER webssl$VSOURCE 443"
 	elif [ "$2" = "split" ] ; then
 		W1=100
 		W2=100
 		S1=
 		S2=
 		S3=
+		S4=
 	else
 		echo normal,backup or split
 		check_loadfail web web-fail 80
+		check_loadfail web web-fail /var/run/websocket.sock
 		check_loadfail webssl$VSOURCE webssl-fail$VSOURCE 80
 		check_loadfail webssl$VSOURCE webssl-fail$VSOURCE 443
 		exit 1
@@ -607,6 +613,8 @@ elif [ "$1" = "loadfail" ] ; then # prod: Switch web access (normal,backup,split
 	echo Switching to web mode $2
 	blackhole-control setweight $THISSERVER web 80 $W1
 	blackhole-control setweight $THISSERVER web-fail 80 $W2
+	blackhole-control setweight $THISSERVER web /var/run/websocket.sock $W1
+	blackhole-control setweight $THISSERVER web-fail /var/run/websocket.sock $W2
 	blackhole-control setweight $THISSERVER webssl$VSOURCE 80 $W1
 	blackhole-control setweight $THISSERVER webssl-fail$VSOURCE 80 $W2
 	blackhole-control setweight $THISSERVER webssl$VSOURCE 443 $W1
@@ -615,6 +623,7 @@ elif [ "$1" = "loadfail" ] ; then # prod: Switch web access (normal,backup,split
 	if [ "$$1" != "" ] ; then
 		# kill all notification sockets. Those socket takes a long time to end normally.
 		/usr/sbin/bo-sessiond-control -p /var/lib/lxc/sessiond/rootfs/var/run/blackhole/bo-sessiond.sock disconnect_waitings
+		/usr/sbin/bo-websocket-control -p /var/lib/lxc/$DISCONNECT/rootfs/var/run/websocket-control.sock disconnectworkers
 		echo -n "Waiting for $WAIT connections to end : "
 		COUNT=0
 		while true
@@ -622,6 +631,7 @@ elif [ "$1" = "loadfail" ] ; then # prod: Switch web access (normal,backup,split
 			NB1=`blackhole-control connectload | fgrep "$S1" | (read a b c d e; echo $d)` 
 			NB2=`blackhole-control connectload | fgrep "$S2" | (read a b c d e; echo $d)` 
 			NB3=`blackhole-control connectload | fgrep "$S3" | (read a b c d e; echo $d)` 
+			NB3=`blackhole-control connectload | fgrep "$S4" | (read a b c d e; echo $d)` 
 			if [ "$NB1" = 0 -a "$NB2" = 0 -a "$NB3" = 0 ] ; then
 				echo
 				break

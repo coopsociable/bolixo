@@ -44,6 +44,7 @@ if [ "$LXCSOCK" == "on" ] ; then
 	BOLIXOD_SOCKS=/var/lib/lxc/bolixod/rootfs/var/run/blackhole/bolixod-*.sock
 	PUBLISHD_SOCK=/var/lib/lxc/publishd/rootfs/var/run/blackhole/publishd.sock
 	DOCUMENTD_SOCK=/var/lib/lxc/documentd/rootfs/var/run/blackhole/documentd.sock
+	WEBSOCKET_SOCK=/var/lib/lxc/web/rootfs/var/run/websocket-control.sock
 	BOD_SOCK=/var/lib/lxc/bod/rootfs/var/run/blackhole/bod-2.sock
 	BOD_SOCKS=/var/lib/lxc/bod/rootfs/var/run/blackhole/bod-*.sock
 	WRITED_SOCK=/var/lib/lxc/writed/rootfs/var/run/blackhole/bo-writed-0.sock
@@ -487,6 +488,9 @@ elif [ "$1" = "bolixod-controls" ] ; then # A: Talks to all bolixod
 	do
 		$BOLIXOPATH/bolixod-control --control $sock $*
 	done
+elif [ "$1" = "bo-websocket-control" ] ; then # A: Talks to bo-websocket
+	shift
+	$BOLIXOPATH/bo-websocket-control --control $WEBSOCKET_SOCK $*
 elif [ "$1" = "documentd-control" ] ; then # A: Talks to documentd
 	shift
 	$BOLIXOPATH/documentd-control --control $DOCUMENTD_SOCK $*
