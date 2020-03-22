@@ -66,6 +66,8 @@ make install
 /usr/sbin/bo-sessiond-control
 /usr/sbin/bolixod
 /usr/sbin/bolixod-control
+/usr/sbin/bo-websocket
+/usr/sbin/bo-websocket-control
 /usr/sbin/publishd
 /usr/sbin/publishd-control
 /usr/sbin/documentd

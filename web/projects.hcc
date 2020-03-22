@@ -803,42 +803,30 @@ void projects(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER
 				content_id = "doc_whiteboard";
 			}
 			/- <script>
-			/- var GameHttp = null;
-			/- var LastActions = '';
+			/- var gamesocket = new WebSocket((location.protocol=='http:' ? 'ws' : 'wss') + '://' + location.hostname + '/wss');
+			/- gamesocket.onopen = function(e) {
+			htmlprintf ("  gamesocket.send('gameid=%s');\n",glocal.path.c_str());
+			/- }
+
+			/- gamesocket.onmessage = function(event) {
+			/-  eval(event.data);
+			/- }
+
+			/- gamesocket.onclose = function(event) {
+			/-  if (event.wasClean) {
+			/-   alert(`[close] Connection closed cleanly, code=${event.code} reason=${event.reason}`);
+			/-  } else {
+			      // e.g. server process killed or network down
+			      // event.code is usually 1006 in this case
+			///-    alert('[close] Connection died');
+			/-  }
+			/- }
+
+			/- gamesocket.onerror = function(error) {
+			/-  alert(`[error] ${error.message}`);
+			/- }
 			/- function gameaction(action){
-			/-  if (GameHttp != null){
-			/-    LastActions += action + ';;';
-			/-    return;
-			/-  }
-			/-  GameHttp = new XMLHttpRequest();
-			htmlprintf (" GameHttp.open(\"GET\", location.protocol + '//' + location.hostname + '/index.hc?webstep=%d&action=' + LastActions + action + '&gameid=%s');\n"
-				,step_gameaction,glocal.path.c_str());
-			/-  LastActions = '';
-			/-  GameHttp.send();
-			/-  startanimate();
-			/-  GameHttp.onreadystatechange = function(){
-			/-   console.log ("gameaction readyState="+this.readyState+" status="+this.status);
-			/-   if (this.readyState == 4){
-			/-	if (this.status == 200){
-			/-		hideanimate();
-			/-		console.log (GameHttp.responseText);
-			/-		eval (GameHttp.responseText);
-			/-		if (LastActions != ''){
-			htmlprintf ("\t\t\tGameHttp.open(\"GET\", location.protocol + '//' + location.hostname + '/index.hc?webstep=%d&action=' + LastActions + '&gameid=%s');\n"
-				,step_gameaction,glocal.path.c_str());
-			/-			LastActions = '';
-			/-			GameHttp.send();
-			/-			startanimate();
-			/-		}else{
-			/-			GameHttp = null;
-			/-		}
-			/-	}else if (this.status == 502 || this.status == 504){
-			/-		console.log ("gameaction timeout");
-			/-	}else{
-			/-		console.log ("gameaction, connection error");
-			/-	}
-			/-   }
-			/-  }
+			/-  gamesocket.send(action);
 			/- }
 			/- </script>
 			vector<VARVAL> steps;

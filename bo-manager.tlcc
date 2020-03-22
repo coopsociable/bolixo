@@ -372,12 +372,20 @@ static void generateconfig (
 	prefix = "";
 	for (auto t:config.webssls){
 		for (auto x:config.webs){
+			// http requests
 			fprintf (fout,"%s %srule %s webssl ip0 9080 http:%s web 80\n",bk_control,prefix,t.server.c_str(),x.server.c_str());
 			fprintf (fout,"%s %srule %s webssl-fail ip0 9080 http:%s web 80\n",bk_control,prefix,t.server.c_str(),x.server.c_str());
 			prefix = "a";
 			fprintf (fout,"%s %srule %s webssl ip0 9080 http:%s web-fail 80\n",bk_control,prefix,t.server.c_str(),x.server.c_str());
 			fprintf (fout,"%s %srule %s webssl-fail ip0 9080 http:%s web-fail 80\n",bk_control,prefix,t.server.c_str(),x.server.c_str());
 			fprintf (fout,"%s setweight %s web-fail 80 1\n",bk_control,x.server.c_str());
+			// web sockets
+			fprintf (fout,"%s %srule %s webssl ip0 9082 %s web /var/run/websocket.sock\n",bk_control,prefix,t.server.c_str(),x.server.c_str());
+			fprintf (fout,"%s %srule %s webssl-fail ip0 9082 %s web /var/run/websocket.sock\n",bk_control,prefix,t.server.c_str(),x.server.c_str());
+			prefix = "a";
+			fprintf (fout,"%s %srule %s webssl ip0 9082 %s web-fail /var/run/websocket.sock\n",bk_control,prefix,t.server.c_str(),x.server.c_str());
+			fprintf (fout,"%s %srule %s webssl-fail ip0 9082 %s web-fail /var/run/websocket.sock\n",bk_control,prefix,t.server.c_str(),x.server.c_str());
+			fprintf (fout,"%s setweight %s web-fail /var/run/websocket.sock 1\n",bk_control,x.server.c_str());
 		}
 	}
 	prefix = "";
@@ -954,12 +962,12 @@ static void print_configs (
 			fprintf (fout,
 				"HORIZONOPTIONS=\""
 				" --bind %s,9000 --bind %s,9100 --bind %s,9200 --bind %s,3307 --bind %s,3307"
-				" --bind %s,9080 --bind %s,9081 --bind %s,8053"
+				" --bind %s,9080 --bind %s,9081 --bind %s,9082 --bind %s,8053"
 				" --bind %s,9080 --bind %s,9081"
 				" --control %s/horizon.sock --master %s,8100 --master %s/horizon-master.sock --user %s --pidfile %s/horizon.pid"
 				" --conproxyport %s/conproxy.sock --open_network"
 				,horizon_ip,horizon_ip,horizon_ip,horizon_ip,horizon_ip2
-				,horizon_ip,horizon_ip,horizon_ip
+				,horizon_ip,horizon_ip,horizon_ip,horizon_ip
 				,horizon_ip2,horizon_ip2
 				,sock_dir,horizon_masterip,sock_dir,user,pid_dir
 				,sock_dir);
@@ -1904,6 +1912,7 @@ static void print_configs (
 						<f dowrite>
 							fprintf (fout,"/usr/sbin/httpd --daemon\n");
 							fprintf (fout,"%s/trli-stop --daemon --user %s --control /tmp/trli-stop.sock --pidfile /tmp/trli-stop.pid\n",sbin_path,"apache");
+							fprintf (fout,"%s/bo-websocket --daemon --user %s\n",project_path,"apache");
 							return 0;
 						</f>
 						</call>
@@ -2058,6 +2067,7 @@ static void print_configs (
 							fprintf (fout,"ProxyPass \"/webapi.hc\" \"http://192.168.4.1:9080/webapi.hc\"\n");
 							fprintf (fout,"ProxyPass \"/bolixoapi.hc\" \"http://192.168.4.1:9080/bolixoapi.hc\"\n");
 							fprintf (fout,"ProxyPass \"/bolixo.hc\" \"http://192.168.4.1:9080/bolixo.hc\"\n");
+							fprintf (fout,"ProxyPass \"/wss\" \"ws://192.168.4.1:9082/\"\n");
 							fprintf (fout,"RewriteEngine On\n");
 							fprintf (fout,"#LogLevel alert rewrite:trace7\n");
 							fprintf (fout,"RewriteRule ^/public/(.*) /public.hc?image=\\$1 [PT,QSA]\n");

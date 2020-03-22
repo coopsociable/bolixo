@@ -1480,6 +1480,11 @@ elif [ "$1" = "lxc0-web" ]; then # prod:
 	elif [ -f /usr/lib/dnsrequest ] ; then
 		strace -f -o /tmp/log.web3 /usr/lib/dnsrequest >/dev/null
 	fi
+	if [ -x bo-websocket ] ; then
+		strace -f -o /tmp/log.web4 ./bo-websocket --help >/dev/null
+	elif [ -f /usr/sbin/bo-websocket ] ; then
+		strace -f -o /tmp/log.web4 /usr/sbin/bo-websocket --help >/dev/null
+	fi
 	for w in web web-fail
 	do
 		JOURNEY=
@@ -1494,7 +1499,7 @@ elif [ "$1" = "lxc0-web" ]; then # prod:
 			--preserve /tmp/agent.log \
 			--preserve /tmp/login.log \
 			$EXTRALXCPROG \
-			-i /usr/sbin/trli-init -l $LOG -l /tmp/log.web2 -l /tmp/log.web3 \
+			-i /usr/sbin/trli-init -l $LOG -l /tmp/log.web2 -l /tmp/log.web3 -l /tmp/log.web4 \
 			-e /var/www/html/index.hc \
 			-e /var/www/html/webapi.hc \
 			-e /var/www/html/bolixoapi.hc \

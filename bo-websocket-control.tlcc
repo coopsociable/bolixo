@@ -1,0 +1,106 @@
+/*
+	This file is part of Bolixo.
+
+	Bolixo is free software: you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation, either version 3 of the License, or
+	(at your option) any later version.
+
+	Bolixo is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+	GNU General Public License for more details.
+
+	You should have received a copy of the GNU General Public License
+	along with Bolixo.  If not, see <https://www.gnu.org/licenses/>.
+*/
+/*
+	Command line tool to control bo-websocket
+*/
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <termios.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <string.h>
+#include <tlmplib.h>
+#include <tlmpnet.h>
+#include <string>
+#include <trlitool.h>
+#include "bolixo.h"
+
+using namespace std;
+
+#include "proto/bo-websocket_control.protoch"
+
+<mod>
+int main (int argc, char *argv[])
+{
+	glocal int ret = -1;
+	glocal const char *control = "/var/run/bo-websocket-control.sock";
+	glocal.ret = <call tlmpprogram>(argc,argv);
+	<f init>
+		setproginfo ("publishd-control",VERSION
+			,"Command line tool to control bo-websocket\n"
+			 "\n"
+			 "\tdebug 0/1\n"
+			 "\tdebugfile filename\n"
+			 "\thelp_connect host port message\n"
+			 "\tinstrument 0|1\n"
+			 "\tquit\n"
+			 "\tstatus\n"
+			);
+		setarg ('p',"control","Unix socket to reach bo-websocket",glocal.control,false);
+	</f>
+	<f main>
+		glocal int ret = -1;
+		CONNECT_INFO con;
+		con.port = glocal.control;
+		if (strcmp(argv[0],"status")==0 && argc==1){
+			<call bo_websocket_control_status>(con);
+			<f ok>
+				glocal.ret = internal_error ? -1 : 0;
+				for (auto x:lines) printf ("%s\n",x);
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"quit")==0 && argc==1){
+			<call bo_websocket_control_quit>(con);
+			<f ok>
+				glocal.ret = internal_error ? -1 : 0;
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"test")==0 && argc==1){
+			<call bo_websocket_control_test>(con);
+			<f ok>
+				glocal.ret = internal_error ? -1 : 0;
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"debug")==0 && argc==2){
+			<call bo_websocket_control_debug>(con,atoi(argv[1]));
+			<f ok>
+				glocal.ret = internal_error ? -1 : 0;
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"debugfile")==0 && argc==2){
+			<call bo_websocket_control_debugfile>(con,argv[1]);
+			<f ok>
+				glocal.ret = internal_error ? -1 : 0;
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"instrument")==0 && argc==2){
+			<call bo_websocket_control_instrument>(con,atoi(argv[1]));
+			<f ok>
+			</f>
+			</call>
+		}else{
+			tlmp_error ("Invalid command: %s\n",argv[0]);
+			usage();
+		}
+		return glocal.ret;
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+

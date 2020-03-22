@@ -1,4 +1,4 @@
-CURDIR=bolixo
+bo-websocketCURDIR=bolixo
 MANPAGES=/usr/share/man
 PACKAGE_REV:=$(shell ./makeversion $(BUILD_SVNVER))
 DINSTRUMENT:=$(shell test -f ../instrument && echo -DINSTRUMENT)
@@ -10,7 +10,7 @@ PROGS=_dict.o bod bod-client bod-control bo-writed bo-writed-control bo-sessiond
       bo-mon bo-mon-control utils/eximexec utils/helpspell publishd publishd-control bo-webtest \
       documentd documentd-control rssd rssd-control deleteitems utils/cacheurl utils/email-log \
       utils/show-notifies utils/business-card waitevent utils/bo-remote-manage utils/bolixo-update \
-      utils/dnsrequest
+      utils/dnsrequest bo-websocket bo-websocket-control
 #bo-log bo-log-control \
 DOCS=
 OPTIONS=$(DINSTRUMENT) -funsigned-char -O2 -Wall -g -DVERSION=\"$(PACKAGE_REV)\" -I/usr/include/tlmp -I/usr/include/trlitool
@@ -103,6 +103,13 @@ publishd: publishd.tlcc proto/publishd_control.protoh proto/publishd_client.prot
 publishd-control: publishd-control.tlcc proto/publishd_control.protoh
 	cctlcc -Wall $(OPTIONS) publishd-control.tlcc -o publishd-control $(LIBS)
 
+bo-websocket: bo-websocket.tlcc proto/bod_client.protoh proto/bo-sessiond_client.protoh _dict.o \
+	proto/bo-websocket_control.protoh
+	cctlcc -Wall $(OPTIONS) bo-websocket.tlcc _dict.o -o bo-websocket $(LIBS) 
+
+bo-websocket-control: bo-websocket-control.tlcc proto/bo-websocket_control.protoh
+	cctlcc -Wall $(OPTIONS) bo-websocket-control.tlcc -o bo-websocket-control $(LIBS)
+
 perfsql: perfsql.tlcc
 	cctlcc -Wall $(OPTIONS) perfsql.tlcc -o perfsql $(LIBS) -ltlmpsql -L/usr/lib64/mysql -lmysqlclient
 
@@ -137,6 +144,10 @@ utils/dnsrequest: utils/dnsrequest.cc _dict.o
 proto/publishd_control.protoh: proto/publishd_control.proto
 	build-protocol --arg "int no" --arg "HANDLE_INFO *c" --name publishd_control \
 	       --protoch proto/publishd_control.protoch proto/publishd_control.proto >proto/publishd_control.protoh
+
+proto/bo-websocket_control.protoh: proto/bo-websocket_control.proto
+	build-protocol --arg "int no" --arg "HANDLE_INFO *c" --name bo_websocket_control \
+	       --protoch proto/bo-websocket_control.protoch proto/bo-websocket_control.proto >proto/bo-websocket_control.protoh
 
 proto/publishd_client.protoh: proto/publishd_client.proto
 	build-protocol $(INSTRUMENT) --secretmode --arg "int no" --arg "HANDLE_INFO *c" --name publishd_client \
@@ -373,6 +384,8 @@ install: msg.eng msg.fr
 	install -m755 bolixoserv.sysv $(RPM_BUILD_ROOT)/etc/init.d/bolixoserv
 	install -m755 bolixod $(RPM_BUILD_ROOT)/usr/sbin/bolixod
 	install -m755 bolixod-control $(RPM_BUILD_ROOT)/usr/sbin/bolixod-control
+	install -m755 bo-websocket $(RPM_BUILD_ROOT)/usr/sbin/bo-websocket
+	install -m755 bo-websocket-control $(RPM_BUILD_ROOT)/usr/sbin/bo-websocket-control
 	install -m755 publishd $(RPM_BUILD_ROOT)/usr/sbin/publishd
 	install -m755 publishd-control $(RPM_BUILD_ROOT)/usr/sbin/publishd-control
 	install -m755 documentd $(RPM_BUILD_ROOT)/usr/sbin/documentd

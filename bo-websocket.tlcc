@@ -1,0 +1,528 @@
+/*
+	This file is part of Bolixo.
+
+	Bolixo is free software: you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation, either version 3 of the License, or
+	(at your option) any later version.
+
+	Bolixo is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+	GNU General Public License for more details.
+
+	You should have received a copy of the GNU General Public License
+	along with Bolixo.  If not, see <https://www.gnu.org/licenses/>.
+*/
+/*
+	Listen on a socket
+*/
+#include <stdio.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <stdlib.h>
+#include <string.h>
+#include <signal.h>
+#include <syslog.h>
+#include <dialog.h>
+#include <tlmplib.h>
+#include <tlmpnet.h>
+#include <trlitool.h>
+#include <string>
+#include "helper.h"
+#include "instrument.h"
+#include "bolixo.h"
+
+
+using namespace std;
+
+enum CONNECT_TYPE { TYPE_NONE, TYPE_CONTROL, TYPE_CLIENT, TYPE_WORKER};
+
+struct HANDLE_INFO: public ARRAY_OBJ{
+	REQUEST_INFO req;
+	CONNECT_TYPE type = TYPE_NONE;
+};
+#include "proto/bo-websocket_control.protoh"
+#define bo_sessiond_client_getsessioninfo_NOTNEED
+#define bo_sessiond_client_delnotify_NOTNEED
+#define bo_sessiond_client_test_NOTNEED
+#define bo_sessiond_client_setvar_NOTNEED
+#define bo_sessiond_client_waitevent_NOTNEED
+#define bo_sessiond_client_setnotify_NOTNEED
+#include "proto/bo-sessiond_client.protoch"
+#define bod_client_login_NOTNEED
+#define bod_client_logout_NOTNEED
+#define bod_client_adduser_NOTNEED
+#define bod_client_confirmuser_NOTNEED
+#define bod_client_deleteuser_NOTNEED
+#define bod_client_confirmdelete_NOTNEED
+#define bod_client_createsession_NOTNEED
+#define bod_client_addfile_NOTNEED
+#define bod_client_addfile_bob_NOTNEED
+#define bod_client_appendfile_NOTNEED
+#define bod_client_delfile_NOTNEED
+#define bod_client_undelete_NOTNEED
+#define bod_client_modifyfile_NOTNEED
+#define bod_client_modifyfile_bob_NOTNEED
+#define bod_client_rename_NOTNEED
+#define bod_client_copy_NOTNEED
+#define bod_client_readfile_NOTNEED
+#define bod_client_readfile_bob_NOTNEED
+#define bod_client_readmore_NOTNEED
+#define bod_client_mkdir_NOTNEED
+#define bod_client_rmdir_NOTNEED
+#define bod_client_listdir_NOTNEED
+#define bod_client_stat_NOTNEED
+#define bod_client_set_access_NOTNEED
+#define bod_client_markview_NOTNEED
+#define bod_client_create_group_list_NOTNEED
+#define bod_client_create_group_NOTNEED
+#define bod_client_set_group_NOTNEED
+#define bod_client_set_member_NOTNEED
+#define bod_client_set_members_NOTNEED
+#define bod_client_set_list_desc_NOTNEED
+#define bod_client_set_group_desc_NOTNEED
+#define bod_client_delete_list_NOTNEED
+#define bod_client_delete_group_NOTNEED
+#define bod_client_list_lists_NOTNEED
+#define bod_client_list_groups_NOTNEED
+#define bod_client_create_project_dir_NOTNEED
+#define bod_client_list_contacts_NOTNEED
+#define bod_client_list_inboxes_NOTNEED
+#define bod_client_list_msgs_NOTNEED
+#define bod_client_sendmsg_NOTNEED
+#define bod_client_sendmsg_project_NOTNEED
+#define bod_client_replymsg_NOTNEED
+#define bod_client_replymsg_project_NOTNEED
+#define bod_client_sendattach_NOTNEED
+#define bod_client_verifysign_NOTNEED
+#define bod_client_getpubkey_NOTNEED
+#define bod_client_registernode_NOTNEED
+#define bod_client_remotelogin_NOTNEED
+#define bod_client_remotepass_NOTNEED
+#define bod_client_remote_interest_set_NOTNEED
+#define bod_client_remote_interest_unset_NOTNEED
+#define bod_client_nodelogin_NOTNEED
+#define bod_client_nodepass_NOTNEED
+#define bod_client_sendtalk_anon_NOTNEED
+#define bod_client_sendtalk_NOTNEED
+#define bod_client_sendtalk_file_NOTNEED
+#define bod_client_list_talk_NOTNEED
+#define bod_client_contact_request_NOTNEED
+#define bod_client_contact_manage_NOTNEED
+#define bod_client_contact_list_NOTNEED
+#define bod_client_contact_remove_NOTNEED
+#define bod_client_config_read_NOTNEED
+#define bod_client_config_write_NOTNEED
+#define bod_client_set_notification_NOTNEED
+#define bod_client_get_notification_NOTNEED
+#define bod_client_public_checkuser_NOTNEED
+#define bod_client_public_listdir_NOTNEED
+#define bod_client_public_readfile_NOTNEED
+#define bod_client_public_list_talk_NOTNEED
+#define bod_client_form_savevar_NOTNEED
+#define bod_client_form_readvar_NOTNEED
+#define bod_client_form_deletevar_NOTNEED
+#define bod_client_form_deleteall_NOTNEED
+#define bod_client_interest_set_NOTNEED
+#define bod_client_interest_unset_NOTNEED
+#define bod_client_interest_list_NOTNEED
+#define bod_client_interest_check_NOTNEED
+#define bod_client_systempubkey_NOTNEED
+#define bod_client_systemsign_NOTNEED
+#define bod_client_info_read_NOTNEED
+#define bod_client_info_write_NOTNEED
+#include "proto/bod_client.protoch"
+/*
+        Read the secret used to communicate with internal service
+*/
+<mod>
+string util_readsecret()
+{
+	glocal string ret;
+	<call loadfile>("/etc/secret",true);
+	<f oneline>
+		glocal.ret = line;
+		return 0;
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+
+static void bo_websocket_send (_F_TCPSERVER_V1 *c, unsigned opcode, PARAM_STRING msg)
+{
+	size_t lenmsg = strlen(msg.ptr);
+	size_t lenframe = 2+2+lenmsg;
+	char buf[lenframe];
+	buf[0] = 128+opcode;
+	char *ptbuf=buf+2;
+	if (lenmsg <= 125){
+		buf[1] = (char)lenmsg;
+		ptbuf = buf+2;
+		lenframe = 2 + lenmsg;
+	}else if (lenmsg < 65536){
+		buf[1] = 126;
+		buf[2] = (lenmsg >> 8) &0xff;
+		buf[3] = lenmsg & 0xff;
+		ptbuf = buf+4;
+	}else{
+		tlmp_error ("bo_websocket_send lenmsg=%lu not supported",lenmsg);
+		return;
+	}
+	memcpy (ptbuf,msg.ptr,lenmsg);
+	c->send (buf,lenframe);
+}
+#define _TLMP_bo_websocket
+
+struct _F_bo_websocket{
+	_F_TCPSERVER_V1 *tcp=nullptr;
+	void send (PARAM_STRING msg){
+		bo_websocket_send (tcp,1,msg);
+	}
+	#define _F_bo_websocket_commands(name) void name commands(const vector<string> &cmds, CONNECT_INFO &con_bod, CONNECT_INFO &con_sessiond, const char *session, bool &endserver)
+	virtual _F_bo_websocket_commands( )=0;
+};
+
+<mod>
+static void bo_websocket (_F_bo_websocket &c, int fd, CONNECT_INFO &con_bod, CONNECT_INFO &con_sessiond)
+{
+	glocal c;
+	glocal con_bod;
+	glocal con_sessiond;
+	glocal STREAMP_BUF buf;
+	glocal bool header_seen = false;
+	glocal string acceptkey;
+	glocal string session;
+	glocal vector<string> messages;
+	<obj TCPSERVER s>();
+	<f newclient>
+	</f>
+	<f endclient>
+		endserver = true;
+	</f>
+	<f receive>
+		glocal endserver;
+		glocal line;
+		glocal info;
+		glocal.c.tcp = this;
+		if (0) {
+			<call savefile>("/tmp/log",true);
+			<f dowrite>
+				fprintf(fout,"receive [%d] header_seen=%d len=%u %s\n",getpid(),glocal.header_seen,glocal.info.linelen,glocal.line);
+				return 0;
+			</f>
+			</call>
+		}
+		if (!glocal.header_seen){
+			const char *pt;
+			if (is_start_any_ofnc(line,pt,"Sec-WebSocket-Key:")){
+				pt = str_skip(pt);
+				string webkey = pt;
+				string tmp = webkey + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+				unsigned char* sha_str = SHA1(reinterpret_cast<const unsigned char*>(tmp.c_str()), tmp.length(), nullptr);
+				glocal.acceptkey = base64_encode(reinterpret_cast<const char*>(sha_str), 20);
+				// tlmp_warning ("WEBKEY=%s acceptkey=%s\n",webkey.c_str(),glocal.acceptkey.c_str());
+			}else if (is_start_any_ofnc(line,pt,"Cookie:")){
+				vector<string> cookies;
+				str_splitline(pt,' ',cookies);
+				if (cookies.size() > 0){
+					for (auto &c:cookies){
+						const char *val;
+						if (is_start_any_of(c,val,"session=")){
+							glocal.session = val;
+							break;
+						}
+					}
+					if (glocal.session.size() == 0){
+						tlmp_warning ("No session received");
+						endserver = true;
+					}else{
+						<call bo_sessiond_client_getsessioninfovars>(glocal.con_sessiond,glocal.session);
+						<f ok>
+							if (internal_error || !success){
+								tlmp_warning ("Invalid session");
+								glocal.endserver = true;
+							}else{
+								// tlmp_warning ("Valid session");
+							}
+						</f>
+						</call>
+					}
+				}else{
+					tlmp_warning ("No cookie, ending");
+					endserver = true;
+				}
+			}else if (line[0] == '\0'){
+				if (glocal.session.size() == 0){
+					tlmp_warning ("No session received");
+					endserver = true;
+				}else{
+					// tlmp_warning ("session=%s",glocal.session.c_str());
+					glocal.header_seen = true;
+					sendf ("HTTP/1.1 101 Switching Protocols\r\n"
+						"Upgrade: websocket\r\n"
+						"Connection: Upgrade\r\n"
+						"Sec-WebSocket-Accept: %s\r\n"
+						"\r\n"
+						,glocal.acceptkey.c_str());
+					setrawmode(true);
+				}
+			}
+		}else{
+			<call streamp_do>(glocal.buf,line,info.linelen);
+			<f process>
+				int ret = 0;
+				const unsigned char *line = (const unsigned char *)buf;
+				if (len > 4){
+					bool fin = (line[0] &0x80) != 0;
+					if (!fin){
+						tlmp_error ("fin != %d",fin);
+						glocal.endserver = true;
+						return 0;
+					}
+					unsigned opcode = line[0] &0xf;
+					if (opcode == 8){	// Close
+						glocal.endserver = true;
+					}else{
+						bool mask = (line[1]&0x80)!=0;
+						unsigned len1 = line[1] &0x7f;
+						unsigned data_len = len1;
+						int frame_len = 2 + len1; 
+						const unsigned char *data = line+2;
+						const unsigned char *maskb = line+2;
+						if (len1 == 126){
+							data_len = (line[2]<<8)+line[3];
+							frame_len = 2 + 2 + data_len; 
+							data = line + 4;
+							maskb = line + 4;
+						}
+						if (mask){
+							frame_len += 4;
+							data += 4;
+						}
+						if (frame_len <= len){
+							ret = frame_len;
+							string msg;
+							//FILE *fout = fopen ("/tmp/log","a");
+							//fprintf (fout,"data:");
+							for (unsigned i=0; i<data_len; i++){
+								char carac = (char)(data[i] ^ maskb[i%4]);
+								msg += carac;
+								//fprintf (fout,"%c",carac);
+							}
+							//fprintf (fout,"\n");
+							//fclose (fout);
+							if (opcode == 9){	//
+								tlmp_warning ("ping msg=%s",msg.c_str());
+								bo_websocket_send(&glocal.TCPSERVER,10,msg);
+							}else{
+								glocal.messages.emplace_back(move(msg));
+							}
+						}
+					}
+				}
+				return ret;
+			</f>
+			</call>
+			// for (auto &m:glocal.messages) tlmp_warning ("msg=%s",m.c_str());
+			if (glocal.messages.size() > 0){
+				glocal.c.commands(glocal.messages,glocal.con_bod,glocal.con_sessiond,glocal.session.c_str(),endserver);
+				glocal.messages.clear();
+			}
+		}
+	</f>
+	</obj>
+	s.inject(fd,nullptr);
+	s.loop();
+}
+</mod>
+
+<mod>
+static void bo_websocket_game (int fd, CONNECT_INFO &con_bod, CONNECT_INFO &con_sessiond)
+{
+	glocal string gameid;
+	<call bo_websocket>(fd,con_bod,con_sessiond);
+	<f commands>
+		const char *pt;
+		if (cmds.size() == 1 && is_start_any_of(cmds[0],pt,"gameid=")){
+			glocal.gameid = pt;
+			//tlmp_warning ("gameid:%s",glocal.gameid.c_str());
+			return;
+		}
+		if (glocal.gameid.size()==0){
+			tlmp_error ("bo_websocket_game: gameid not set, ending");
+			endserver = true;
+		}
+		vector<VARVAL> steps;
+		for (auto &a:cmds){
+			vector<string> tb;
+			int n = str_splitline(a,':',tb);
+			if (is_any_of(n,1,2)){
+				VARVAL var;
+				var.var = tb[0];
+				if (n == 2) var.val = tb[1];
+				steps.push_back(var);
+			}
+		}
+		if (steps.size() > 0){
+			DOC_UI_SPECS sp;
+			sp.mobile = 0;	//tlmpweb_ismobile();
+			sp.fontsize = 0; //tlmpweb_fontsize();
+			sp.height = sp.width = sp.content_height = sp.content_width = 0;
+			//for (auto m:cmds) tlmp_warning ("m=%s",m.c_str());
+			<call bod_client_playstep>(con_bod,session,"",glocal.gameid,steps,sp);
+			<f ok>
+				if (success){
+					for (auto &r:res){
+						if (is_any_of(r.var,"notify","script")){
+							glocal.bo_websocket.send (r.val);
+						}else if (strcmp(r.var,"refresh")==0){
+							glocal.bo_websocket.send ("callrefresh();");
+						}
+					}
+				}else{
+					tlmp_warning ("success false");
+				}
+			</f>
+			</call>
+		}
+	</f>
+	</call>
+}
+</mod>
+
+<mod>
+int main (int argc, char *argv[])
+{
+	glocal int ret = -1;
+	glocal const char *port = "/var/run/websocket.sock";
+	glocal const char *control = "/var/run/websocket-control.sock";
+	glocal const char *user = "apache";
+	glocal bool daemon = false;
+	glocal const char *pidfile = "/var/run/bo-websocket.pid";
+	glocal const char *bodsock = "/dev/bod.sock";
+	glocal const char *sessiondsock = "/dev/sessiond.sock";
+	glocal.ret = <call tlmpprogram>(argc,argv,"bolixo");
+	<f init>
+		setproginfo ("bo-websocket",VERSION,"websocet for documents/games protocol and notifications");
+		setarg ('c',"control","Unix socket for bo-websocket-control",glocal.control,false);
+		setarg ('C',"port","Unix socket for bo-websocket",glocal.port,false);
+		setgrouparg ("Misc.");
+		setarg (' ',"sessiondsock","Port to reach the bo-sessiond server",glocal.sessiondsock,false);
+		setarg (' ',"bodsock","Port to reach the bod server",glocal.bodsock,false);
+		setarg (' ',"user","Run the program as this user",glocal.user,false);
+		setarg (' ',"daemon","Run in background",glocal.daemon,false);
+		setarg (' ',"pidfile","File holding the PID of the process",glocal.pidfile,false);
+	</f>
+	<f showerror>
+		if (glocal.daemon){
+			syslog (LOG_ERR,"%s",msg);
+		}else{
+			fprintf (stderr,"%s",msg);
+		}
+	</f>
+	<f showwarn>
+		if (glocal.daemon){
+			syslog (LOG_WARNING,"%s",msg);
+		}else{
+			fprintf (stderr,"%s",msg);
+		}
+	</f>
+	<f main_noarg>
+		glocal CONNECT_INFO con_bod;
+		glocal CONNECT_INFO con_sessiond;
+		glocal.con_bod.port = glocal.bodsock;
+		glocal.con_sessiond.port = glocal.sessiondsock;
+		glocal.con_bod.secret = util_readsecret();
+		glocal.con_sessiond.secret = glocal.con_bod.secret;
+		int ret = -1;
+		signal (SIGCHLD,SIG_IGN);
+		<obj TCPSERVER s>(string_f("unix:%s",glocal.port),10);
+		<f newclient>
+			HANDLE_INFO *n = new HANDLE_INFO;
+			info.data = n;
+			const char *port = info.port;
+			const char *pt;	
+			if (is_start_any_of (port,pt,"unix:")){
+				port = pt;
+			}
+			if (string_cmp(port,glocal.control)==0){
+				n->type = TYPE_CONTROL;
+			}else if (string_cmp(port,glocal.port)==0){
+				n->type = TYPE_CLIENT;
+				pid_t pid = fork();
+				if (pid == 0){
+					bo_websocket_game(no,glocal.con_bod,glocal.con_sessiond);
+					_exit (0);
+				}else if (pid == (pid_t)-1){
+					tlmp_error ("Can't fork (%s)",strerror(errno));
+				}else{
+					endclient = true;
+				}
+			}
+			
+		</f>
+		<f endclient>
+		</f>
+		<f receive>
+			HANDLE_INFO *n = (HANDLE_INFO*)info.data;
+			if (n->type == TYPE_CONTROL){
+				<call bo_websocket_control>(this,n->req,line, info.linelen,endserver, endclient, no,n);
+				<f status>
+					vector<string> tb;
+					instrument_status(tb);
+					rep_status (tb);
+				</f>
+				<f quit>
+					endserver = true;
+				</f>
+				<f debug>	// on:b
+					if (on){
+						debug_seton();
+					}else{
+						debug_setoff();
+					}
+				</f>
+				<f debugfile>
+					debug_setfdebug (filename);
+				</f>
+				<f test>	// ok:b
+					rep_test (true);
+				</f>
+				<f instrument>	// on:b
+					toggle_instrument_file(on);
+				</f>
+				<f invalid>
+					tlmp_error ("Invalid command: %s\n",line);
+					endclient = true;
+				</f>
+				</call>
+
+			}else if (n->type == TYPE_CLIENT){
+				// Not possible
+			}	
+		</f>
+		</obj>
+		bool some_errors = false;
+		if (fdpass_setcontrol(s,glocal.control,glocal.user)==-1){
+			some_errors = true;
+		}
+
+		if (!some_errors && s.is_ok()){
+			chmod (glocal.port,0666);
+			if (glocal.daemon){
+				daemon_init(glocal.pidfile,glocal.user);
+			}
+			open_instrument_file();
+			s.setrawmode(true);
+			s.loop();
+			ret = 0;
+		}
+		return ret;
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+
