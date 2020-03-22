@@ -1,4 +1,4 @@
-bo-websocketCURDIR=bolixo
+CURDIR=bolixo
 MANPAGES=/usr/share/man
 PACKAGE_REV:=$(shell ./makeversion $(BUILD_SVNVER))
 DINSTRUMENT:=$(shell test -f ../instrument && echo -DINSTRUMENT)
