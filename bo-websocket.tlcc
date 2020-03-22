@@ -158,7 +158,7 @@ struct WORKER_REQUEST{
 	WORKER_COMMAND cmd;
 };
 
-static void bo_websocket_send (_F_TCPSERVER_V1 *c, unsigned opcode, PARAM_STRING msg)
+static void bo_websocket_send (_F_TCPSERVER_V1 *c, int fd, unsigned opcode, PARAM_STRING msg)
 {
 	size_t lenmsg = strlen(msg.ptr);
 	size_t lenframe = 2+2+lenmsg;
@@ -179,23 +179,27 @@ static void bo_websocket_send (_F_TCPSERVER_V1 *c, unsigned opcode, PARAM_STRING
 		return;
 	}
 	memcpy (ptbuf,msg.ptr,lenmsg);
-	c->send (buf,lenframe);
+	c->sendto (fd,buf,lenframe);
 }
 #define _TLMP_bo_websocket
 
 struct _F_bo_websocket{
 	_F_TCPSERVER_V1 *tcp=nullptr;
+	int fd = -1;
 	void send (PARAM_STRING msg){
-		bo_websocket_send (tcp,1,msg);
+		bo_websocket_send (tcp,fd,1,msg);
 	}
-	#define _F_bo_websocket_commands(name) void name commands(const vector<string> &cmds, CONNECT_INFO &con_bod, CONNECT_INFO &con_sessiond, const char *session, bool &endserver)
+	#define _F_bo_websocket_commands(name) void name commands(const vector<string> &cmds, CONNECT_INFO &con_bod, CONNECT_INFO &con_sessiond, const char *session, const char *gameid, bool &endserver)
 	virtual _F_bo_websocket_commands( )=0;
+	#define _F_bo_websocket_waitnote(name) void name waitnote(CONNECT_INFO &con_sessiond, const char *session, int sequence, bool &endserver)
+	virtual _F_bo_websocket_waitnote( )=0;
 };
 
 <mod>
 static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &con_bod, CONNECT_INFO &con_sessiond)
 {
 	glocal int waitfd = waitfd;
+	glocal int fd = fd;
 	glocal c;
 	glocal con_bod;
 	glocal con_sessiond;
@@ -204,11 +208,24 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 	glocal string acceptkey;
 	glocal string session;
 	glocal vector<string> messages;
+	glocal unsigned nbping = 0;	// number of ping sent without an answer
+	glocal time_t lastactivity = time(nullptr);
+	glocal string gameid;
+	glocal int sequence = -1;
+	c.fd = fd;
 	<obj TCPSERVER s>();
 	<f newclient>
 	</f>
 	<f endclient>
 		endserver = true;
+	</f>
+	<f idle>
+		unsigned diff = time(nullptr) - glocal.lastactivity;
+		if (diff > 10){
+			if (glocal.nbping > 2) endserver = true;
+			tlmp_warning ("idle since=%d diff=%u ping sent nbping=%u",since,diff,glocal.nbping);
+			bo_websocket_send (this,glocal.fd,9,"hello");
+		}
 	</f>
 	<f receive>
 		glocal endserver;
@@ -288,6 +305,7 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 				}
 			}
 		}else{
+			glocal.lastactivity = time(nullptr);
 			<call streamp_do>(glocal.buf,line,info.linelen);
 			<f process>
 				int ret = 0;
@@ -333,7 +351,10 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 							//fclose (fout);
 							if (opcode == 9){	//
 								tlmp_warning ("ping msg=%s",msg.c_str());
-								bo_websocket_send(&glocal.TCPSERVER,10,msg);
+								bo_websocket_send(&glocal.TCPSERVER,glocal.fd,10,msg);
+							}else if (opcode == 10){	//
+								tlmp_warning ("pong msg=%s",msg.c_str());
+								glocal.nbping = 0;
 							}else{
 								glocal.messages.emplace_back(move(msg));
 							}
@@ -345,7 +366,20 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 			</call>
 			// for (auto &m:glocal.messages) tlmp_warning ("msg=%s",m.c_str());
 			if (glocal.messages.size() > 0){
-				glocal.c.commands(glocal.messages,glocal.con_bod,glocal.con_sessiond,glocal.session.c_str(),endserver);
+				const char *pt;
+				if (glocal.messages.size() == 1 && is_start_any_of(glocal.messages[0],pt,"gameid=")){
+					glocal.gameid = pt;
+					tlmp_warning ("gameid:%s",glocal.gameid.c_str());
+				}else if (glocal.messages.size() == 1 && is_start_any_of(glocal.messages[0],pt,"sequence=")){
+					glocal.sequence = atoi(pt);
+				}else if (glocal.gameid.size() > 0){
+					glocal.c.commands(glocal.messages,glocal.con_bod,glocal.con_sessiond,glocal.session.c_str(),glocal.gameid.c_str(),endserver);
+				}else if (glocal.sequence != -1){
+					glocal.c.waitnote(glocal.con_sessiond, glocal.session.c_str(),glocal.sequence, endserver);
+				}else{
+					tlmp_error ("bo_websocket_game: gameid or sequence not set, ending");
+					endserver = true;
+				}
 				glocal.messages.clear();
 			}
 		}
@@ -361,19 +395,10 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 <mod>
 static void bo_websocket_game (int fd, int waitfd, CONNECT_INFO &con_bod, CONNECT_INFO &con_sessiond)
 {
-	glocal string gameid;
 	<call bo_websocket>(fd,waitfd,con_bod,con_sessiond);
+	<f waitnote>
+	</f>
 	<f commands>
-		const char *pt;
-		if (cmds.size() == 1 && is_start_any_of(cmds[0],pt,"gameid=")){
-			glocal.gameid = pt;
-			//tlmp_warning ("gameid:%s",glocal.gameid.c_str());
-			return;
-		}
-		if (glocal.gameid.size()==0){
-			tlmp_error ("bo_websocket_game: gameid not set, ending");
-			endserver = true;
-		}
 		vector<VARVAL> steps;
 		for (auto &a:cmds){
 			vector<string> tb;
@@ -391,7 +416,7 @@ static void bo_websocket_game (int fd, int waitfd, CONNECT_INFO &con_bod, CONNEC
 			sp.fontsize = 0; //tlmpweb_fontsize();
 			sp.height = sp.width = sp.content_height = sp.content_width = 0;
 			//for (auto m:cmds) tlmp_warning ("m=%s",m.c_str());
-			<call bod_client_playstep>(con_bod,session,"",glocal.gameid,steps,sp);
+			<call bod_client_playstep>(con_bod,session,"",gameid,steps,sp);
 			<f ok>
 				if (success){
 					for (auto &r:res){
