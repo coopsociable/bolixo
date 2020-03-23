@@ -1563,34 +1563,40 @@ extern "C" void webmain_real()
 		}
 		// Generate the javascript to retrieve the notification code
 		/- <script>
-		/- const Http = new XMLHttpRequest();
-		/- var httpstarted = Date.now();
 		htmlprintf ("var sequence=%u;\n",userinfo.notify_sequence);
-		<?
-		function callnotify(){
-			Http.open("GET", location.protocol + '//' + location.hostname + '/index.hc?webstep=15&sequence=' + sequence);
-			Http.send();
-			httpstarted = Date.now();
-		}
-		callnotify();
+			/- var notesocket = null;
+			/- function noteconnect(){
+			/-  notesocket = new WebSocket((location.protocol=='http:' ? 'ws' : 'wss') + '://' + location.hostname + '/wss');
+			/-  notesocket.onopen = function(e) {
+			/-    notesocket.send('sequence='+sequence);
+			/-  }
 
-		Http.onreadystatechange = function(){
-			if (this.readyState == 4){
-				if (this.status == 200){
-					// console.log (Http.responseText);
-					eval (Http.responseText);
-				}else if ((this.status == 502 || this.status == 504) && Date.now()-httpstarted > 30000){
-					console.log ("notification timeout, resend "+(Date.now()-httpstarted).toString());
-					callnotify();
-				}else{
-					console.log ("Notification, connection error, stopped");
-				}
-			}else{
-				console.log ("notification readyState="+this.readyState+" status="+this.status);
-			}
-		}
-		</script>
-		?>
+			/-  notesocket.onmessage = function(event) {
+			///-   console.log (event.data);
+			/-   eval(event.data);
+			/-   notesocket.send('sequence='+sequence);
+			/-  }
+
+			/-  notesocket.onclose = function(event) {
+			/-   if (event.wasClean) {
+			///-    alert(`[close] Connection closed cleanly, code=${event.code} reason=${event.reason}`);
+			/-   } else {
+			       // e.g. server process killed or network down
+			       // event.code is usually 1006 in this case
+			///-     alert('[close] Connection died');
+			/-   }
+			/-   window.setTimeout(function()
+			/-   {
+			///-    alert ('reconnect');
+			/-      noteconnect();
+			/-   },2000);
+			/-  }
+			/-  notesocket.onerror = function(error) {
+			///-   alert(`[error] ${error.message}`);
+			/-  }
+			/- }
+			/- noteconnect();
+		/- </script>
 	</f>
 	<f step1>
 		if (userinfo.name.size() == 0){

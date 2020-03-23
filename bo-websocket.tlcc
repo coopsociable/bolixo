@@ -49,7 +49,6 @@ struct HANDLE_INFO: public ARRAY_OBJ{
 #define bo_sessiond_client_delnotify_NOTNEED
 #define bo_sessiond_client_test_NOTNEED
 #define bo_sessiond_client_setvar_NOTNEED
-#define bo_sessiond_client_waitevent_NOTNEED
 #define bo_sessiond_client_setnotify_NOTNEED
 #include "proto/bo-sessiond_client.protoch"
 #define bod_client_login_NOTNEED
@@ -223,7 +222,7 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 		unsigned diff = time(nullptr) - glocal.lastactivity;
 		if (diff > 10){
 			if (glocal.nbping > 2) endserver = true;
-			tlmp_warning ("idle since=%d diff=%u ping sent nbping=%u",since,diff,glocal.nbping);
+			tlmp_warning ("idle since=%d diff=%u ping sent nbping=%u gameid=%s",since,diff,glocal.nbping,glocal.gameid.c_str());
 			bo_websocket_send (this,glocal.fd,9,"hello");
 		}
 	</f>
@@ -372,10 +371,9 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 					tlmp_warning ("gameid:%s",glocal.gameid.c_str());
 				}else if (glocal.messages.size() == 1 && is_start_any_of(glocal.messages[0],pt,"sequence=")){
 					glocal.sequence = atoi(pt);
+					glocal.c.waitnote(glocal.con_sessiond, glocal.session.c_str(),glocal.sequence, endserver);
 				}else if (glocal.gameid.size() > 0){
 					glocal.c.commands(glocal.messages,glocal.con_bod,glocal.con_sessiond,glocal.session.c_str(),glocal.gameid.c_str(),endserver);
-				}else if (glocal.sequence != -1){
-					glocal.c.waitnote(glocal.con_sessiond, glocal.session.c_str(),glocal.sequence, endserver);
 				}else{
 					tlmp_error ("bo_websocket_game: gameid or sequence not set, ending");
 					endserver = true;
@@ -397,6 +395,82 @@ static void bo_websocket_game (int fd, int waitfd, CONNECT_INFO &con_bod, CONNEC
 {
 	<call bo_websocket>(fd,waitfd,con_bod,con_sessiond);
 	<f waitnote>
+		glocal endserver;
+		glocal int sequence = sequence;
+tlmp_warning ("waitnote start sequence=%d",sequence);
+		<call bo_sessiond_client_waitevent>(con_sessiond,session,sequence);
+		<f ok>
+			if (!success){
+				glocal.endserver = true;
+				return;
+			}
+			// tlmp_warning ("waitnote user=%s content=%s",userinfo.name.c_str(),content);
+			// Any event starting with profile: turn the 3 bars menu orange
+			string buf;
+			if (is_start_any_of(content,NONEED,"profile:")){
+				buf += string_f ("var e = document.getElementById('rectdotmenu');\n");
+				buf += "if (e!=null){\n";
+				buf += "\te.setAttribute('fill', 'orange');\n";
+				buf += "}\n";
+			}
+			// Any event starting with talks or projects turn the main talks and projects tab orange
+			const char *pt;
+			if (is_start_any_of(content,pt,"talks","projects")){
+				string tmp(content,pt-content);
+				buf += string_f ("var e = document.getElementById('tabrect%s');\n",tmp.c_str());
+				buf += "if (e!=null){\n";
+				buf += "\te.setAttribute('fill', 'orange');\n";
+				buf += string_f("\ttabcolor['tabrect%s'] = 'orange';\n",tmp.c_str());
+				buf += "}\n";
+			}
+			// Now we turn the subtab orange
+			buf += string_f ("var e = document.getElementById('tabrect%s');\n",content);
+			buf += "if (e!=null){\n";
+			buf += "\te.setAttribute('fill', 'orange');\n";
+			buf += string_f("\ttabcolor['tabrect%s'] = 'orange';\n",content);
+			buf += "}\n";
+			// And the X in the subtab
+			buf += string_f ("e = document.getElementById('tabsrect%s');\n",content);
+			buf += "if (e!=null){\n";
+			buf += "\te.setAttribute('fill', 'orange');\n";
+			buf += "}\n";
+			// Turn the table entry in the webtable orange
+			if (is_start_any_of(content,pt,"talks")){
+				buf += string_f ("var e = document.getElementById('talktbl%s');\n",pt);
+				buf += "if (e!=null){\n";
+				buf += "\te.setAttribute('bgcolor', 'orange');\n";
+				buf += "}\n";
+				pt++;
+				buf += string_f ("var e = document.getElementById('hid-talk=%s');\n",pt);
+				buf += "if (e!=null){\n";
+				buf += "\te.style.color = 'blue';\n";
+				buf += string_f ("\tvar num = parseInt(e.innerHTML,10)+%u;\n",sequence-glocal.sequence);
+				buf += "\te.innerHTML = num + e.innerHTML.replace(/[0-9]/g, '');\n";
+				buf += "}\n";
+				buf += string_f ("var e = document.getElementById('hidsvg-talk=%s');\n",pt);
+				buf += "if (e!=null){\n";
+				buf += "\te.setAttribute('fill', 'orange');\n";
+				buf += "}\n";
+			}
+			if (strcmp(content,"main")==0){
+				buf += "var e = document.getElementById('hid-follow');\n";
+				buf += "if (e!=null){\n";
+				buf += "\tconsole.log ('found hidfollow');\n";
+				buf += "\te.style.color = 'blue';\n";
+				buf += "\tvar num = parseInt(e.innerHTML,10)+1;\n";
+				buf += "\te.innerHTML = '' + num + e.innerHTML.replace(/[0-9]/g, '');\n";
+				buf += "}\n";
+				buf += "var e = document.getElementById('hidsvg-follow');\n";
+				buf += "if (e!=null){\n";
+				buf += "\te.setAttribute('fill', 'orange');\n";
+				buf += "}\n";
+			}
+			if (script[0] != '\0') buf += script;
+			buf += string_f("sequence=%u;\n",sequence);
+			glocal.bo_websocket.send (buf);
+		</f>
+		</call>
+tlmp_warning ("waitnote end sequence=%d",sequence);
 	</f>
 	<f commands>
 		vector<VARVAL> steps;
