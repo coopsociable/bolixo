@@ -197,7 +197,7 @@ struct _F_bo_websocket{
 	virtual _F_bo_websocket_waitnote_call( )=0;
 };
 
-static unsigned idle_delay=10;	//5*60;
+static unsigned idle_delay=5*60;
 <mod>
 static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &con_bod, CONNECT_INFO &con_sessiond)
 {
@@ -381,7 +381,6 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 					glocal.c.waitnote_call(glocal.con_sessiond, glocal.session.c_str(),glocal.sequence, endserver);
 					if (glocal.sessionfd == -1){
 						glocal.sessionfd = glocal.con_sessiond.fd;
-tlmp_warning ("sessionfd=%d",glocal.sessionfd);
 						glocal.TCPSERVER.inject(glocal.sessionfd,nullptr);
 						glocal.TCPSERVER.setmonitormode(glocal.sessionfd,true);
 					}
@@ -409,16 +408,13 @@ static void bo_websocket_game (int fd, int waitfd, CONNECT_INFO &con_bod, CONNEC
 	<call bo_websocket>(fd,waitfd,con_bod,con_sessiond);
 	<f waitnote_call>
 		int ret = bo_sessiond_client_waitevent_SEND(con_sessiond,session,sequence);
-		tlmp_warning ("waitnote_call ret = %d",ret);
 		return ret;
 	</f>
 	<f waitnote>
 		glocal endserver;
 		glocal int sequence = sequence;
-		tlmp_warning ("waitnode receive");
 		<call bo_sessiond_client_waitevent>(con_sessiond);
 		<f ok>
-		tlmp_warning ("waitnode receive success=%d",success);
 			if (!success){
 				glocal.endserver = true;
 				return;
