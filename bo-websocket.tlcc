@@ -50,6 +50,7 @@ struct HANDLE_INFO: public ARRAY_OBJ{
 #define bo_sessiond_client_test_NOTNEED
 #define bo_sessiond_client_setvar_NOTNEED
 #define bo_sessiond_client_setnotify_NOTNEED
+#define bo_sessiond_client_waitevent_ASYNC
 #include "proto/bo-sessiond_client.protoch"
 #define bod_client_login_NOTNEED
 #define bod_client_logout_NOTNEED
@@ -192,8 +193,11 @@ struct _F_bo_websocket{
 	virtual _F_bo_websocket_commands( )=0;
 	#define _F_bo_websocket_waitnote(name) void name waitnote(CONNECT_INFO &con_sessiond, const char *session, int sequence, bool &endserver)
 	virtual _F_bo_websocket_waitnote( )=0;
+	#define _F_bo_websocket_waitnote_call(name) int name waitnote_call(CONNECT_INFO &con_sessiond, const char *session, int sequence, bool &endserver)
+	virtual _F_bo_websocket_waitnote_call( )=0;
 };
 
+static unsigned idle_delay=10;	//5*60;
 <mod>
 static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &con_bod, CONNECT_INFO &con_sessiond)
 {
@@ -211,6 +215,7 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 	glocal time_t lastactivity = time(nullptr);
 	glocal string gameid;
 	glocal int sequence = -1;
+	glocal int sessionfd = -1;
 	c.fd = fd;
 	<obj TCPSERVER s>();
 	<f newclient>
@@ -220,7 +225,7 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 	</f>
 	<f idle>
 		unsigned diff = time(nullptr) - glocal.lastactivity;
-		if (diff > 10){
+		if (diff > idle_delay){
 			if (glocal.nbping > 2) endserver = true;
 			tlmp_warning ("idle since=%d diff=%u ping sent nbping=%u gameid=%s",since,diff,glocal.nbping,glocal.gameid.c_str());
 			bo_websocket_send (this,glocal.fd,9,"hello");
@@ -248,6 +253,8 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 			}else{
 				tlmp_error ("Invalid packet size for worker request");
 			}
+		}else if (no == glocal.sessionfd){
+			glocal.c.waitnote(glocal.con_sessiond, glocal.session.c_str(),glocal.sequence, endserver);
 		}else if (!glocal.header_seen){
 			const char *pt;
 			if (is_start_any_ofnc(line,pt,"Sec-WebSocket-Key:")){
@@ -371,7 +378,13 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 					tlmp_warning ("gameid:%s",glocal.gameid.c_str());
 				}else if (glocal.messages.size() == 1 && is_start_any_of(glocal.messages[0],pt,"sequence=")){
 					glocal.sequence = atoi(pt);
-					glocal.c.waitnote(glocal.con_sessiond, glocal.session.c_str(),glocal.sequence, endserver);
+					glocal.c.waitnote_call(glocal.con_sessiond, glocal.session.c_str(),glocal.sequence, endserver);
+					if (glocal.sessionfd == -1){
+						glocal.sessionfd = glocal.con_sessiond.fd;
+tlmp_warning ("sessionfd=%d",glocal.sessionfd);
+						glocal.TCPSERVER.inject(glocal.sessionfd,nullptr);
+						glocal.TCPSERVER.setmonitormode(glocal.sessionfd,true);
+					}
 				}else if (glocal.gameid.size() > 0){
 					glocal.c.commands(glocal.messages,glocal.con_bod,glocal.con_sessiond,glocal.session.c_str(),glocal.gameid.c_str(),endserver);
 				}else{
@@ -394,12 +407,18 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 static void bo_websocket_game (int fd, int waitfd, CONNECT_INFO &con_bod, CONNECT_INFO &con_sessiond)
 {
 	<call bo_websocket>(fd,waitfd,con_bod,con_sessiond);
+	<f waitnote_call>
+		int ret = bo_sessiond_client_waitevent_SEND(con_sessiond,session,sequence);
+		tlmp_warning ("waitnote_call ret = %d",ret);
+		return ret;
+	</f>
 	<f waitnote>
 		glocal endserver;
 		glocal int sequence = sequence;
-tlmp_warning ("waitnote start sequence=%d",sequence);
-		<call bo_sessiond_client_waitevent>(con_sessiond,session,sequence);
+		tlmp_warning ("waitnode receive");
+		<call bo_sessiond_client_waitevent>(con_sessiond);
 		<f ok>
+		tlmp_warning ("waitnode receive success=%d",success);
 			if (!success){
 				glocal.endserver = true;
 				return;
@@ -470,7 +489,6 @@ tlmp_warning ("waitnote start sequence=%d",sequence);
 			glocal.bo_websocket.send (buf);
 		</f>
 		</call>
-tlmp_warning ("waitnote end sequence=%d",sequence);
 	</f>
 	<f commands>
 		vector<VARVAL> steps;
