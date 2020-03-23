@@ -191,9 +191,9 @@ struct _F_bo_websocket{
 	}
 	#define _F_bo_websocket_commands(name) void name commands(const vector<string> &cmds, CONNECT_INFO &con_bod, CONNECT_INFO &con_sessiond, const char *session, const char *gameid, bool &endserver)
 	virtual _F_bo_websocket_commands( )=0;
-	#define _F_bo_websocket_waitnote(name) void name waitnote(CONNECT_INFO &con_sessiond, const char *session, int sequence, bool &endserver)
+	#define _F_bo_websocket_waitnote(name) void name waitnote(CONNECT_INFO &con_sessiond, const char *session, int &sequence, bool &endserver)
 	virtual _F_bo_websocket_waitnote( )=0;
-	#define _F_bo_websocket_waitnote_call(name) int name waitnote_call(CONNECT_INFO &con_sessiond, const char *session, int sequence, bool &endserver)
+	#define _F_bo_websocket_waitnote_call(name) int name waitnote_call(CONNECT_INFO &con_sessiond, const char *session, int &sequence, bool &endserver)
 	virtual _F_bo_websocket_waitnote_call( )=0;
 };
 
@@ -254,7 +254,10 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 				tlmp_error ("Invalid packet size for worker request");
 			}
 		}else if (no == glocal.sessionfd){
+			// tlmp_warning ("waitnote");
 			glocal.c.waitnote(glocal.con_sessiond, glocal.session.c_str(),glocal.sequence, endserver);
+			// We are always calling back sessiond to wait for more events.
+			if (!glocal.endserver) glocal.c.waitnote_call(glocal.con_sessiond, glocal.session.c_str(),glocal.sequence, endserver);
 		}else if (!glocal.header_seen){
 			const char *pt;
 			if (is_start_any_ofnc(line,pt,"Sec-WebSocket-Key:")){
@@ -375,11 +378,14 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 				const char *pt;
 				if (glocal.messages.size() == 1 && is_start_any_of(glocal.messages[0],pt,"gameid=")){
 					glocal.gameid = pt;
-					tlmp_warning ("gameid:%s",glocal.gameid.c_str());
+					//tlmp_warning ("gameid:%s",glocal.gameid.c_str());
 				}else if (glocal.messages.size() == 1 && is_start_any_of(glocal.messages[0],pt,"sequence=")){
+					// We had to wait until we received the sequence number before doing the first
+					// call to sessiond.
+					// After that, every success completed call is followed by a new one (see above)
 					glocal.sequence = atoi(pt);
-					glocal.c.waitnote_call(glocal.con_sessiond, glocal.session.c_str(),glocal.sequence, endserver);
 					if (glocal.sessionfd == -1){
+						glocal.c.waitnote_call(glocal.con_sessiond, glocal.session.c_str(),glocal.sequence, endserver);
 						glocal.sessionfd = glocal.con_sessiond.fd;
 						glocal.TCPSERVER.inject(glocal.sessionfd,nullptr);
 						glocal.TCPSERVER.setmonitormode(glocal.sessionfd,true);
@@ -412,7 +418,7 @@ static void bo_websocket_game (int fd, int waitfd, CONNECT_INFO &con_bod, CONNEC
 	</f>
 	<f waitnote>
 		glocal endserver;
-		glocal int sequence = sequence;
+		glocal sequence;
 		<call bo_sessiond_client_waitevent>(con_sessiond);
 		<f ok>
 			if (!success){
@@ -483,6 +489,7 @@ static void bo_websocket_game (int fd, int waitfd, CONNECT_INFO &con_bod, CONNEC
 			if (script[0] != '\0') buf += script;
 			buf += string_f("sequence=%u;\n",sequence);
 			glocal.bo_websocket.send (buf);
+			glocal.sequence = sequence;
 		</f>
 		</call>
 	</f>
