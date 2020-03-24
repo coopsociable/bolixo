@@ -1787,8 +1787,7 @@ elif [ "$1" = "stop-stop" ] ; then # P: stop the web
 	echo stop-stop: Block internal services
 	# We block new requests
 	/usr/sbin/trli-stop-control -p /var/lib/lxc/web/rootfs/tmp/trli-stop.sock stop-nowait
-	# then end all waiting processes (for notifications)
-	/usr/sbin/bo-sessiond-control -p /var/lib/lxc/sessiond/rootfs/var/run/blackhole/bo-sessiond.sock disconnect_waitings
+	/usr/sbin/bo-websocket-control -p /var/lib/lxc/web/rootfs/var/run/websocket-control.sock pause
 	# Then wait for every in flight process to end
 	/usr/sbin/trli-stop-control -p /var/lib/lxc/web/rootfs/tmp/trli-stop.sock stop
 	#echo webadm
@@ -1796,6 +1795,7 @@ elif [ "$1" = "stop-stop" ] ; then # P: stop the web
 elif [ "$1" = "stop-start" ] ; then # P: restart the web
 	echo stop-start: Resume internal services access
 	/usr/sbin/trli-stop-control -p /var/lib/lxc/web/rootfs/tmp/trli-stop.sock start
+	/usr/sbin/bo-websocket-control -p /var/lib/lxc/web/rootfs/var/run/websocket-control.sock resume
 	#echo webadm
 	#/usr/sbin/trli-stop-control -p /var/lib/lxc/webadm/rootfs/tmp/trli-stop.sock start
 elif [ "$1" = "mailctrl" ] ; then # prod: Control writed sendmail

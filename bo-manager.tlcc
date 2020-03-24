@@ -1908,6 +1908,7 @@ static void print_configs (
 					static const char *tb[]={"web","web-fail"};
 					const char *ip = ip_web;
 					for (auto w:tb){
+						glocal w;
 						mkdir (string_f("/var/lib/lxc/%s",w).c_str(),0755);
 						<call savefile>(string_f("/var/lib/lxc/%s/%s.init",w,w),false);
 						<f dowrite>
@@ -1995,6 +1996,19 @@ static void print_configs (
 							fprintf (fout,"lxc-stop -n %s\n",name);
 						</f>
 						</call>
+						string status_sh = string_f("/var/lib/lxc/%s/status.sh",w);
+						<call savefile>(status_sh,false);
+						<f dowrite>
+							fprintf (fout,"#!/usr/bin/sh\n");
+							fprintf (fout,"echo '----trli-stop'\n");
+							fprintf (fout,"%s/trli-stop-control --control /var/lib/lxc/%s/rootfs/tmp/trli-stop.sock status\n",sbin_path,glocal.w);
+							fprintf (fout,"echo '----bo-websocket'\n");
+							fprintf (fout,"%s/bo-websocket-control --control /var/lib/lxc/%s/rootfs/var/run/websocket-control.sock status\n"
+								,project_path,glocal.w);
+							return 0;
+						</f>
+						</call>
+						chmod (status_sh.c_str(),0755);
 						if (glocal.stopweb.size() > 0) glocal.stopweb += "\n";
 						glocal.stopweb += stopcmd.c_str();
 						lxc_config (w,ip,true);

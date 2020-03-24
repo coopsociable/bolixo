@@ -132,6 +132,7 @@ const char *util_getdirserver();
 string toupper (PARAM_STRING s);
 class MESSAGE_receive;
 string index_format_mail_fname(const MESSAGE_receive &m, PARAM_STRING username);
+void index_setgameid(PARAM_STRING gameid);
 void util_delnotify(CONNECT_INFO &con_sess, PARAM_STRING id);
 void util_delnotify(CONNECT_INFO &con_sess, PARAM_STRING prefix, PARAM_STRING id);
 void util_endscript(PARAM_STRING urlparam);

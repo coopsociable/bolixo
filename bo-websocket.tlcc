@@ -44,6 +44,8 @@ struct HANDLE_INFO: public ARRAY_OBJ{
 	REQUEST_INFO req;
 	CONNECT_TYPE type = TYPE_NONE;
 };
+#define bo_websocket_control_rep_pause_NEEDED
+#define bo_websocket_control_rep_resume_NEEDED
 #include "proto/bo-websocket_control.protoh"
 #define bo_sessiond_client_getsessioninfo_NOTNEED
 #define bo_sessiond_client_delnotify_NOTNEED
@@ -152,10 +154,20 @@ string util_readsecret()
 }
 </mod>
 
-enum class WORKER_COMMAND{REQ_END};
+enum class WORKER_COMMAND{
+	REQ_END,
+	REQ_PAUSE,	// The worker disconnect from sessiond and bod and stop processing user request
+	REQ_RESUME	// Allow processing again
+};
 
 struct WORKER_REQUEST{
 	WORKER_COMMAND cmd;
+};
+enum class WORKER_REPLY{
+	REPLY_OK
+};
+struct WORKER_RESULT{
+	WORKER_REPLY ret;
 };
 
 static void bo_websocket_send (_F_TCPSERVER_V1 *c, int fd, unsigned opcode, PARAM_STRING msg)
@@ -199,7 +211,7 @@ struct _F_bo_websocket{
 
 static unsigned idle_delay=5*60;
 <mod>
-static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &con_bod, CONNECT_INFO &con_sessiond)
+static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &con_bod, CONNECT_INFO &con_sessiond, bool paused)
 {
 	glocal int waitfd = waitfd;
 	glocal int fd = fd;
@@ -249,6 +261,27 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 				auto *req = (const WORKER_REQUEST*)line;
 				if (req->cmd == WORKER_COMMAND::REQ_END){
 					endserver = true;
+				}else{
+					if (req->cmd == WORKER_COMMAND::REQ_PAUSE){
+						glocal.con_bod.close();
+						if (glocal.sessionfd != -1){
+							glocal.con_sessiond.close();
+							closeclient (glocal.sessionfd);
+							glocal.sessionfd = -1;
+						}
+						setlisten (glocal.fd,false);
+					}else if (req->cmd == WORKER_COMMAND::REQ_RESUME){
+						if (glocal.sequence != -1){
+							glocal.c.waitnote_call(glocal.con_sessiond, glocal.session.c_str(),glocal.sequence, endserver);
+							glocal.sessionfd = glocal.con_sessiond.fd;
+							glocal.TCPSERVER.inject(glocal.sessionfd,nullptr);
+							glocal.TCPSERVER.setmonitormode(glocal.sessionfd,true);
+						}
+						setlisten (glocal.fd,true);
+					}
+					WORKER_RESULT rep;
+					rep.ret = WORKER_REPLY::REPLY_OK;
+					send (&rep,sizeof(rep));
 				}
 			}else{
 				tlmp_error ("Invalid packet size for worker request");
@@ -402,6 +435,7 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 	</f>
 	</obj>
 	s.inject(fd,nullptr);
+	if (paused) s.setlisten(fd,false);
 	s.inject(waitfd,nullptr);
 	s.setrawmode (waitfd,true);
 	s.set_idle_timeout(60);
@@ -410,9 +444,9 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 </mod>
 
 <mod>
-static void bo_websocket_game (int fd, int waitfd, CONNECT_INFO &con_bod, CONNECT_INFO &con_sessiond)
+static void bo_websocket_game (int fd, int waitfd, CONNECT_INFO &con_bod, CONNECT_INFO &con_sessiond, bool paused)
 {
-	<call bo_websocket>(fd,waitfd,con_bod,con_sessiond);
+	<call bo_websocket>(fd,waitfd,con_bod,con_sessiond,paused);
 	<f waitnote_call>
 		int ret = bo_sessiond_client_waitevent_SEND(con_sessiond,session,sequence);
 		return ret;
@@ -498,11 +532,13 @@ static void bo_websocket_game (int fd, int waitfd, CONNECT_INFO &con_bod, CONNEC
 		vector<VARVAL> steps;
 		for (auto &a:cmds){
 			vector<string> tb;
-			int n = str_splitline(a,':',tb);
-			if (is_any_of(n,1,2)){
+			// Command goes like this: command:arguments ...
+			const char *pta = a.c_str();
+			const char *pt = strchr(pta,':');
+			if (pt != nullptr){
 				VARVAL var;
-				var.var = tb[0];
-				if (n == 2) var.val = tb[1];
+				var.var = string (pta,pt-pta);
+				var.val = pt+1;
 				steps.push_back(var);
 			}
 		}
@@ -571,6 +607,9 @@ int main (int argc, char *argv[])
 		}
 	</f>
 	<f main_noarg>
+		glocal bool paused = false;
+		glocal unsigned expect_replies = 0;
+		glocal int caller = -1;		// Handle of the caller who requested the pause or resume
 		glocal vector<int> workers;
 		glocal CONNECT_INFO con_bod;
 		glocal CONNECT_INFO con_sessiond;
@@ -598,7 +637,7 @@ int main (int argc, char *argv[])
 					pid_t pid = fork();
 					if (pid == 0){
 						close (tb[0]);
-						bo_websocket_game(no,tb[1],glocal.con_bod,glocal.con_sessiond);
+						bo_websocket_game(no,tb[1],glocal.con_bod,glocal.con_sessiond,glocal.paused);
 						_exit (0);
 					}else if (pid == (pid_t)-1){
 						close (tb[0]);
@@ -626,6 +665,7 @@ int main (int argc, char *argv[])
 					}
 				}
 			}
+			if (no == glocal.caller) glocal.caller = -1;
 		</f>
 		<f receive>
 			HANDLE_INFO *n = (HANDLE_INFO*)info.data;
@@ -635,6 +675,8 @@ int main (int argc, char *argv[])
 					vector<string> tb;
 					instrument_status(tb);
 					tb.push_back(string_f("workers: %lu",glocal.workers.size()));
+					tb.push_back(string_f("paused: %d",glocal.paused));
+					tb.push_back(string_f("expect-replies: %u",glocal.expect_replies));
 					rep_status (tb);
 				</f>
 				<f quit>
@@ -663,6 +705,37 @@ int main (int argc, char *argv[])
 						glocal.TCPSERVER.sendto(fd,&req,sizeof(req));
 					}
 				</f>
+				<f pause>
+					WORKER_REQUEST req;
+					req.cmd = WORKER_COMMAND::REQ_PAUSE;
+					for (auto fd:glocal.workers){
+						glocal.TCPSERVER.sendto(fd,&req,sizeof(req));
+					}
+					glocal.expect_replies = glocal.workers.size();
+					glocal.paused = true;
+					if (glocal.expect_replies == 0){
+						rep_pause(true);
+					}else{
+						// We do reply when receiving answers from all workers.
+						glocal.caller = no;
+					}
+					// Note that new connection (new workers) will be started in paused mode
+				</f>
+				<f resume>
+					WORKER_REQUEST req;
+					req.cmd = WORKER_COMMAND::REQ_RESUME;
+					for (auto fd:glocal.workers){
+						glocal.TCPSERVER.sendto(fd,&req,sizeof(req));
+					}
+					glocal.expect_replies = glocal.workers.size();
+					glocal.paused = false;
+					if (glocal.expect_replies == 0){
+						rep_resume(true);
+					}else{
+						// We do reply when receiving answers from all workers.
+						glocal.caller = no;
+					}
+				</f>
 				<f invalid>
 					tlmp_error ("Invalid command: %s\n",line);
 					endclient = true;
@@ -672,7 +745,21 @@ int main (int argc, char *argv[])
 			}else if (n->type == TYPE_CLIENT){
 				// Not possible
 			}else if (n->type == TYPE_WORKER){
-				// Not possible
+				if (glocal.expect_replies > 0){
+					glocal.expect_replies--;
+					if (glocal.expect_replies == 0){
+						if (glocal.caller != -1){
+							if (glocal.paused){
+								bo_websocket_control_rep_pause (glocal.caller,true);
+							}else{
+								bo_websocket_control_rep_resume (glocal.caller,true);
+							}
+							glocal.caller = -1;
+						}
+					}
+				}else{
+					tlmp_error ("Unexpected reply from worker, ignored");
+				}
 			}	
 		</f>
 		</obj>
