@@ -557,13 +557,7 @@ elif [ "$1" = "status" ] ; then # prod: Status of one service
 	while [ "$1" != "" ]
 	do
 		echo ============== $1 ============
-		if [ "$1" = "web" ] ; then
-			trli-stop-control -p /var/lib/lxc/web/rootfs/tmp/trli-stop.sock status
-		elif [ "$1" = "web-fail" ] ; then
-			trli-stop-control -p /var/lib/lxc/web-fail/rootfs/tmp/trli-stop.sock status
-		else
-			/var/lib/lxc/$1/status.sh
-		fi
+		/var/lib/lxc/$1/status.sh
 		shift
 	done
 elif [ "$1" = "checkupdates" ] ; then # prod: Check all containers are up to date
