@@ -46,6 +46,7 @@ struct HANDLE_INFO: public ARRAY_OBJ{
 };
 #define bo_websocket_control_rep_pause_NEEDED
 #define bo_websocket_control_rep_resume_NEEDED
+#define bo_websocket_control_rep_test_NEEDED
 #include "proto/bo-websocket_control.protoh"
 #define bo_sessiond_client_getsessioninfo_NOTNEED
 #define bo_sessiond_client_delnotify_NOTNEED
@@ -155,9 +156,11 @@ string util_readsecret()
 </mod>
 
 enum class WORKER_COMMAND{
+	REQ_NONE,
 	REQ_END,
 	REQ_PAUSE,	// The worker disconnect from sessiond and bod and stop processing user request
-	REQ_RESUME	// Allow processing again
+	REQ_RESUME,	// Allow processing again
+	REQ_TEST	// Check if the worker is working
 };
 
 struct WORKER_REQUEST{
@@ -553,7 +556,7 @@ static void bo_websocket_game (int fd, int waitfd, CONNECT_INFO &con_bod, CONNEC
 		if (steps.size() > 0){
 			DOC_UI_SPECS sp;
 			sp.mobile = 0;	//tlmpweb_ismobile();
-			sp.fontsize = 0; //tlmpweb_fontsize();
+			sp.fontsize = 13; //tlmpweb_fontsize();
 			sp.height = sp.width = sp.content_height = sp.content_width = 0;
 			//for (auto m:cmds) tlmp_warning ("m=%s",m.c_str());
 			<call bod_client_playstep>(con_bod,session,"",gameid,steps,sp);
@@ -584,6 +587,7 @@ int main (int argc, char *argv[])
 	glocal const char *port = "/var/run/websocket.sock";
 	glocal const char *control = "/var/run/websocket-control.sock";
 	glocal const char *user = "apache";
+	glocal const char *user_control = "bolixo";
 	glocal bool daemon = false;
 	glocal const char *pidfile = "/var/run/bo-websocket.pid";
 	glocal const char *bodsock = "/dev/bod.sock";
@@ -597,6 +601,7 @@ int main (int argc, char *argv[])
 		setarg (' ',"sessiondsock","Port to reach the bo-sessiond server",glocal.sessiondsock,false);
 		setarg (' ',"bodsock","Port to reach the bod server",glocal.bodsock,false);
 		setarg (' ',"user","Run the program as this user",glocal.user,false);
+		setarg (' ',"user-control","Owner of the websocket-control socket",glocal.user_control,false);
 		setarg (' ',"daemon","Run in background",glocal.daemon,false);
 		setarg (' ',"pidfile","File holding the PID of the process",glocal.pidfile,false);
 	</f>
@@ -616,6 +621,7 @@ int main (int argc, char *argv[])
 	</f>
 	<f main_noarg>
 		glocal bool paused = false;
+		glocal WORKER_COMMAND request = WORKER_COMMAND::REQ_NONE;
 		glocal unsigned expect_replies = 0;
 		glocal int caller = -1;		// Handle of the caller who requested the pause or resume
 		glocal vector<int> workers;
@@ -685,6 +691,8 @@ int main (int argc, char *argv[])
 					tb.push_back(string_f("workers: %lu",glocal.workers.size()));
 					tb.push_back(string_f("paused: %d",glocal.paused));
 					tb.push_back(string_f("expect-replies: %u",glocal.expect_replies));
+					static const char *tbcmd[]={"none","end","pause","resume","test"};
+					tb.push_back(string_f("worker-command: %s",tbcmd[(unsigned)glocal.request]));
 					rep_status (tb);
 				</f>
 				<f quit>
@@ -701,7 +709,18 @@ int main (int argc, char *argv[])
 					debug_setfdebug (filename);
 				</f>
 				<f test>	// ok:b
-					rep_test (true);
+					if (glocal.workers.size() > 0){
+						WORKER_REQUEST req;
+						req.cmd = WORKER_COMMAND::REQ_TEST;
+						glocal.expect_replies = glocal.workers.size();
+						glocal.caller = no;
+						glocal.request = req.cmd;
+						for (auto fd:glocal.workers){
+							glocal.TCPSERVER.sendto(fd,&req,sizeof(req));
+						}
+					}else{
+						rep_test (true,0);
+					}
 				</f>
 				<f instrument>	// on:b
 					toggle_instrument_file(on);
@@ -721,6 +740,7 @@ int main (int argc, char *argv[])
 					}
 					glocal.expect_replies = glocal.workers.size();
 					glocal.paused = true;
+					glocal.request = req.cmd;
 					if (glocal.expect_replies == 0){
 						rep_pause(true);
 					}else{
@@ -737,6 +757,7 @@ int main (int argc, char *argv[])
 					}
 					glocal.expect_replies = glocal.workers.size();
 					glocal.paused = false;
+					glocal.request = req.cmd;
 					if (glocal.expect_replies == 0){
 						rep_resume(true);
 					}else{
@@ -757,11 +778,14 @@ int main (int argc, char *argv[])
 					glocal.expect_replies--;
 					if (glocal.expect_replies == 0){
 						if (glocal.caller != -1){
-							if (glocal.paused){
+							if (glocal.request == WORKER_COMMAND::REQ_PAUSE){
 								bo_websocket_control_rep_pause (glocal.caller,true);
-							}else{
+							}else if (glocal.request == WORKER_COMMAND::REQ_RESUME){
 								bo_websocket_control_rep_resume (glocal.caller,true);
+							}else if (glocal.request == WORKER_COMMAND::REQ_TEST){
+								bo_websocket_control_rep_test (glocal.caller,true,glocal.workers.size());
 							}
+							glocal.request = WORKER_COMMAND::REQ_NONE;
 							glocal.caller = -1;
 						}
 					}
@@ -772,7 +796,7 @@ int main (int argc, char *argv[])
 		</f>
 		</obj>
 		bool some_errors = false;
-		if (fdpass_setcontrol(s,glocal.control,glocal.user)==-1){
+		if (fdpass_setcontrol(s,glocal.control,glocal.user_control)==-1){
 			some_errors = true;
 		}
 

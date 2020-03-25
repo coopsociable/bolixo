@@ -463,6 +463,10 @@ static void generateconfig (
 			,bk_control,rootserver,sock_tests_dir,server,server);
 		fprintf (fout,"%s rule %s root unix %s/F-web-fail-80-%s.sock %s web-fail 80\n"
 			,bk_control,rootserver,sock_tests_dir,server,server);
+		fprintf (fout,"%s rule %s root unix %s/F-websocket-%s.sock %s web /var/run/websocket-control.sock\n"
+			,bk_control,rootserver,sock_tests_dir,server,server);
+		fprintf (fout,"%s rule %s root unix %s/F-websocket-fail-%s.sock %s web-fail /var/run/websocket-control.sock\n"
+			,bk_control,rootserver,sock_tests_dir,server,server);
 	}
 	fprintf (fout,"# rules to connect to webadm trli-stop for monitoring\n");
 	for (auto t:config.webs){
@@ -1105,6 +1109,14 @@ static void print_configs (
 				fprintf (fout,"%s --bind unix,%s/F-web-fail-80-%s.sock,root\n"
 					,hc,sock_tests_dir,server);
 				fprintf (fout,"chown %s %s/F-web-fail-80-%s.sock\n"
+					,trli_user,sock_tests_dir,server);
+				fprintf (fout,"%s --bind unix,%s/F-websocket-%s.sock,root\n"
+					,hc,sock_tests_dir,server);
+				fprintf (fout,"chown %s %s/F-websocket-%s.sock\n"
+					,trli_user,sock_tests_dir,server);
+				fprintf (fout,"%s --bind unix,%s/F-websocket-fail-%s.sock,root\n"
+					,hc,sock_tests_dir,server);
+				fprintf (fout,"chown %s %s/F-websocket-fail-%s.sock\n"
 					,trli_user,sock_tests_dir,server);
 			}
 			fprintf (fout,"# For web trli-stop system tests\n");
@@ -1914,7 +1926,7 @@ static void print_configs (
 						<f dowrite>
 							fprintf (fout,"/usr/sbin/httpd --daemon\n");
 							fprintf (fout,"%s/trli-stop --daemon --user %s --control /tmp/trli-stop.sock --pidfile /tmp/trli-stop.pid\n",sbin_path,"apache");
-							fprintf (fout,"%s/bo-websocket --daemon --user %s\n",project_path,"apache");
+							fprintf (fout,"%s/bo-websocket --daemon --user %s --user-control %s\n",project_path,"apache",trli_user);
 							return 0;
 						</f>
 						</call>
@@ -1974,6 +1986,8 @@ static void print_configs (
 							if (glocal.devmode){
 								fprintf (fout,"echo experimental >>/var/lib/lxc/%s/rootfs/etc/bolixonode.conf\n",name);
 							}
+							fprintf (fout,"echo %s:x:%d:%d:trli user:/home/trli:/sbin/nologin >>/var/lib/lxc/%s/rootfs/etc/passwd\n"
+								,trli_user,trli_userid,trli_userid,name);
 							if (glocal.private_site){
 								fprintf (fout,"echo private_site >>/var/lib/lxc/%s/rootfs/etc/bolixonode.conf\n",name);
 							}

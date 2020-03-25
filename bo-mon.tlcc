@@ -105,6 +105,16 @@ struct HANDLE_INFO: public ARRAY_OBJ{
 #define bo_keysd_control_runstatus_NOTNEED
 #include "proto/bo-keysd_control.protoch"
 
+#define bo_websocket_control_status_NOTNEED
+#define bo_websocket_control_quit_NOTNEED
+#define bo_websocket_control_debug_NOTNEED
+#define bo_websocket_control_debugfile_NOTNEED
+#define bo_websocket_control_instrument_NOTNEED
+#define bo_websocket_control_disconnectworkers_NOTNEED
+#define bo_websocket_control_pause_NOTNEED
+#define bo_websocket_control_resume_NOTNEED
+#include "proto/bo-websocket_control.protoch"
+
 #include "proto/bo-mon_control.protoh"
 
 static const char *ok_marker = "   ";
@@ -329,6 +339,16 @@ static int test_loop (
 				glocal.out->push_back(string_f("%s%s: Ok not seen",err_marker,glocal.path));
 				glocal.ret = -1;
 			}
+		}else if (strstr(glocal.path,"websocket-")!=nullptr){
+			<call bo_websocket_control_test>(con);
+			<f ok>
+				if (internal_error || !ok){
+					glocal.out->push_back(string_f("%s%s: test failed",err_marker,glocal.path));
+				}else{
+					glocal.out->push_back (string_f("%s%s: test ok",ok_marker,glocal.path));
+				}
+			</f>
+			</call>
 		}else{
 			auto size = out.size();
 			if (trlitool_mon(glocal.path,out)==-1){
