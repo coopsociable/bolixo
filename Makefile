@@ -84,7 +84,7 @@ bo-manager: bo-manager.tlcc /usr/include/trlitool/manager.h
 	cctlcc -Wall $(OPTIONS) bo-manager.tlcc _dict.o /usr/lib64/trlitool/manager.o -o bo-manager $(LIBS)
 
 bo-mon: bo-mon.tlcc proto/bod_client.protoh proto/bo-mon_control.protoh _dict.o /usr/lib64/trlitool/trlitool_mon.o \
-	proto/bolixod_client.protoh proto/bo-keysd_control.protoh
+	proto/bolixod_client.protoh proto/bo-keysd_control.protoh proto/bo-websocket_control.protoh
 	cctlcc -Wall $(OPTIONS) bo-mon.tlcc _dict.o /usr/lib64/trlitool/trlitool_mon.o -o bo-mon $(LIBS)
 
 bo-mon-control: bo-mon-control.tlcc proto/bo-mon_control.protoh _dict.o
