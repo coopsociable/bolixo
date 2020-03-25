@@ -407,12 +407,16 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 			</f>
 			</call>
 			// for (auto &m:glocal.messages) tlmp_warning ("msg=%s",m.c_str());
-			if (glocal.messages.size() > 0){
+			// At the start of a session, we receive a sequence number and a gameid.
+			// After that, we receive line like this "verb: arguments"
+			while (glocal.messages.size() > 0){
 				const char *pt;
-				if (glocal.messages.size() == 1 && is_start_any_of(glocal.messages[0],pt,"gameid=")){
+				auto p = glocal.messages.begin();
+				if (is_start_any_of(*p,pt,"gameid=")){
 					glocal.gameid = pt;
 					//tlmp_warning ("gameid:%s",glocal.gameid.c_str());
-				}else if (glocal.messages.size() == 1 && is_start_any_of(glocal.messages[0],pt,"sequence=")){
+					glocal.messages.erase (p);
+				}else if (is_start_any_of(*p,pt,"sequence=")){
 					// We had to wait until we received the sequence number before doing the first
 					// call to sessiond.
 					// After that, every success completed call is followed by a new one (see above)
@@ -423,14 +427,18 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 						glocal.TCPSERVER.inject(glocal.sessionfd,nullptr);
 						glocal.TCPSERVER.setmonitormode(glocal.sessionfd,true);
 					}
+					glocal.messages.erase (p);
 				}else if (glocal.gameid.size() > 0){
 					glocal.c.commands(glocal.messages,glocal.con_bod,glocal.con_sessiond,glocal.session.c_str(),glocal.gameid.c_str(),endserver);
+					break;
 				}else{
-					tlmp_error ("bo_websocket_game: gameid or sequence not set, ending");
+					tlmp_error ("bo_websocket_game: gameid or sequence not set, ending: messages.size()=%lu message[0]=%s"
+						,glocal.messages.size(),glocal.messages[0].c_str());
 					endserver = true;
+					break;
 				}
-				glocal.messages.clear();
 			}
+			glocal.messages.clear();
 		}
 	</f>
 	</obj>
