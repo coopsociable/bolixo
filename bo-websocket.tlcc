@@ -682,6 +682,17 @@ int main (int argc, char *argv[])
 			if (no == glocal.caller) glocal.caller = -1;
 		</f>
 		<f receive>
+			<obj OBJECTSUB sub>();
+			<f exec>
+				WORKER_REQUEST req;
+				req.cmd = glocal.request;
+				glocal.expect_replies = glocal.workers.size();
+				for (auto fd:glocal.workers){
+					glocal.TCPSERVER.sendto(fd,&req,sizeof(req));
+				}
+			</f>
+			</obj>
+			glocal OBJECTSUB *ptsub = &sub;
 			HANDLE_INFO *n = (HANDLE_INFO*)info.data;
 			if (n->type == TYPE_CONTROL){
 				<call bo_websocket_control>(this,n->req,line, info.linelen,endserver, endclient, no,n);
@@ -710,14 +721,9 @@ int main (int argc, char *argv[])
 				</f>
 				<f test>	// ok:b
 					if (glocal.workers.size() > 0){
-						WORKER_REQUEST req;
-						req.cmd = WORKER_COMMAND::REQ_TEST;
-						glocal.expect_replies = glocal.workers.size();
+						glocal.request = WORKER_COMMAND::REQ_TEST;
 						glocal.caller = no;
-						glocal.request = req.cmd;
-						for (auto fd:glocal.workers){
-							glocal.TCPSERVER.sendto(fd,&req,sizeof(req));
-						}
+						glocal.ptsub->exec();
 					}else{
 						rep_test (true,0,glocal.paused);
 					}
@@ -733,36 +739,26 @@ int main (int argc, char *argv[])
 					}
 				</f>
 				<f pause>
-					WORKER_REQUEST req;
-					req.cmd = WORKER_COMMAND::REQ_PAUSE;
-					for (auto fd:glocal.workers){
-						glocal.TCPSERVER.sendto(fd,&req,sizeof(req));
-					}
-					glocal.expect_replies = glocal.workers.size();
+					// Note that new connection (new workers) will be started in paused mode
 					glocal.paused = true;
-					glocal.request = req.cmd;
-					if (glocal.expect_replies == 0){
+					if (glocal.workers.size() == 0){
 						rep_pause(true);
 					}else{
-						// We do reply when receiving answers from all workers.
+						glocal.request = WORKER_COMMAND::REQ_PAUSE;
 						glocal.caller = no;
+						glocal.ptsub->exec();
+						// We do reply when receiving answers from all workers.
 					}
-					// Note that new connection (new workers) will be started in paused mode
 				</f>
 				<f resume>
-					WORKER_REQUEST req;
-					req.cmd = WORKER_COMMAND::REQ_RESUME;
-					for (auto fd:glocal.workers){
-						glocal.TCPSERVER.sendto(fd,&req,sizeof(req));
-					}
-					glocal.expect_replies = glocal.workers.size();
 					glocal.paused = false;
-					glocal.request = req.cmd;
-					if (glocal.expect_replies == 0){
+					if (glocal.workers.size() == 0){
 						rep_resume(true);
 					}else{
-						// We do reply when receiving answers from all workers.
+						glocal.request = WORKER_COMMAND::REQ_RESUME;
 						glocal.caller = no;
+						glocal.ptsub->exec();
+						// We do reply when receiving answers from all workers.
 					}
 				</f>
 				<f invalid>
