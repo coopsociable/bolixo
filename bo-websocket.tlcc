@@ -620,10 +620,17 @@ int main (int argc, char *argv[])
 		}
 	</f>
 	<f main_noarg>
+		struct REQUEST{
+			int caller;
+			WORKER_COMMAND cmd;
+			REQUEST(int _caller, WORKER_COMMAND _cmd){
+				caller = _caller;
+				cmd = _cmd;
+			}
+		};
+		glocal vector<REQUEST> requests;
 		glocal bool paused = false;
-		glocal WORKER_COMMAND request = WORKER_COMMAND::REQ_NONE;
 		glocal unsigned expect_replies = 0;
-		glocal int caller = -1;		// Handle of the caller who requested the pause or resume
 		glocal vector<int> workers;
 		glocal CONNECT_INFO con_bod;
 		glocal CONNECT_INFO con_sessiond;
@@ -679,16 +686,24 @@ int main (int argc, char *argv[])
 					}
 				}
 			}
-			if (no == glocal.caller) glocal.caller = -1;
+			for (auto &r:glocal.requests) if (no == r.caller) r.caller = -1;
 		</f>
 		<f receive>
 			<obj OBJECTSUB sub>();
 			<f exec>
-				WORKER_REQUEST req;
-				req.cmd = glocal.request;
-				glocal.expect_replies = glocal.workers.size();
-				for (auto fd:glocal.workers){
-					glocal.TCPSERVER.sendto(fd,&req,sizeof(req));
+				while (glocal.expect_replies == 0 && glocal.requests.size() > 0){
+					auto first = glocal.requests.begin();
+					if (first->caller == -1){
+						glocal.requests.erase(first);
+					}else{
+						WORKER_REQUEST req;
+						req.cmd = first->cmd;
+						glocal.expect_replies = glocal.workers.size();
+						for (auto fd:glocal.workers){
+							glocal.TCPSERVER.sendto(fd,&req,sizeof(req));
+						}
+						break;
+					}
 				}
 			</f>
 			</obj>
@@ -703,7 +718,13 @@ int main (int argc, char *argv[])
 					tb.push_back(string_f("paused: %d",glocal.paused));
 					tb.push_back(string_f("expect-replies: %u",glocal.expect_replies));
 					static const char *tbcmd[]={"none","end","pause","resume","test"};
-					tb.push_back(string_f("worker-command: %s",tbcmd[(unsigned)glocal.request]));
+					const char *running = "none";
+					unsigned pending = 0;
+					if (glocal.requests.size() > 0){
+						running = tbcmd[(unsigned)glocal.requests[0].cmd];
+						pending = glocal.requests.size()-1;
+					}
+					tb.push_back(string_f("worker-command: running=%s pending=%u",running,pending));
 					rep_status (tb);
 				</f>
 				<f quit>
@@ -721,8 +742,7 @@ int main (int argc, char *argv[])
 				</f>
 				<f test>	// ok:b
 					if (glocal.workers.size() > 0){
-						glocal.request = WORKER_COMMAND::REQ_TEST;
-						glocal.caller = no;
+						glocal.requests.emplace_back(no,WORKER_COMMAND::REQ_TEST);
 						glocal.ptsub->exec();
 					}else{
 						rep_test (true,0,glocal.paused);
@@ -744,8 +764,7 @@ int main (int argc, char *argv[])
 					if (glocal.workers.size() == 0){
 						rep_pause(true);
 					}else{
-						glocal.request = WORKER_COMMAND::REQ_PAUSE;
-						glocal.caller = no;
+						glocal.requests.emplace_back(no,WORKER_COMMAND::REQ_PAUSE);
 						glocal.ptsub->exec();
 						// We do reply when receiving answers from all workers.
 					}
@@ -755,8 +774,7 @@ int main (int argc, char *argv[])
 					if (glocal.workers.size() == 0){
 						rep_resume(true);
 					}else{
-						glocal.request = WORKER_COMMAND::REQ_RESUME;
-						glocal.caller = no;
+						glocal.requests.emplace_back(no,WORKER_COMMAND::REQ_RESUME);
 						glocal.ptsub->exec();
 						// We do reply when receiving answers from all workers.
 					}
@@ -772,18 +790,27 @@ int main (int argc, char *argv[])
 			}else if (n->type == TYPE_WORKER){
 				if (glocal.expect_replies > 0){
 					glocal.expect_replies--;
-					if (glocal.expect_replies == 0){
-						if (glocal.caller != -1){
-							if (glocal.request == WORKER_COMMAND::REQ_PAUSE){
-								bo_websocket_control_rep_pause (glocal.caller,true);
-							}else if (glocal.request == WORKER_COMMAND::REQ_RESUME){
-								bo_websocket_control_rep_resume (glocal.caller,true);
-							}else if (glocal.request == WORKER_COMMAND::REQ_TEST){
-								bo_websocket_control_rep_test (glocal.caller,true
+					/*
+						We have received all replies for the current request.
+						So we reply.
+						At the end, we submit another request using ptsub->exec();
+						if the caller of the next request has quit, or if there are no workers anymore
+						then ptsub->exec() won't do much and expect_replies will be 0.
+						This explains the while loop.
+					*/
+					while (glocal.expect_replies == 0 && glocal.requests.size() > 0){
+						auto first = glocal.requests.begin();
+						if (first->caller != -1){
+							if (first->cmd == WORKER_COMMAND::REQ_PAUSE){
+								bo_websocket_control_rep_pause (first->caller,true);
+							}else if (first->cmd == WORKER_COMMAND::REQ_RESUME){
+								bo_websocket_control_rep_resume (first->caller,true);
+							}else if (first->cmd == WORKER_COMMAND::REQ_TEST){
+								bo_websocket_control_rep_test (first->caller,true
 									,glocal.workers.size(),glocal.paused);
 							}
-							glocal.request = WORKER_COMMAND::REQ_NONE;
-							glocal.caller = -1;
+							glocal.requests.erase(first);
+							glocal.ptsub->exec();	// Check if there is another request pending
 						}
 					}
 				}else{
