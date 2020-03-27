@@ -31,6 +31,7 @@
 #include <tlmpnet.h>
 #include <trlitool.h>
 #include <string>
+#include <set>
 #include "helper.h"
 #include "instrument.h"
 #include "bolixo.h"
@@ -206,12 +207,27 @@ struct _F_bo_websocket{
 	}
 	#define _F_bo_websocket_commands(name) void name commands(const vector<string> &cmds, CONNECT_INFO &con_bod, CONNECT_INFO &con_sessiond, const char *session, const char *gameid, bool &endserver)
 	virtual _F_bo_websocket_commands( )=0;
-	#define _F_bo_websocket_waitnote(name) void name waitnote(CONNECT_INFO &con_sessiond, const char *session, int &sequence, bool &endserver)
+	#define _F_bo_websocket_waitnote(name) void name waitnote(CONNECT_INFO &con_sessiond, const char *session, int &sequence, const set<string> &project_notifications, bool &endserver)
 	virtual _F_bo_websocket_waitnote( )=0;
 	#define _F_bo_websocket_waitnote_call(name) int name waitnote_call(CONNECT_INFO &con_sessiond, const char *session, int &sequence, bool &endserver)
 	virtual _F_bo_websocket_waitnote_call( )=0;
 };
 
+/*
+	Extract the list of tabs in section projects.
+	The strings will be formatted as a notification id.
+*/
+static void webtab_init (const vector<SNAMEVAL_receive> &vals, set<string> &notifications)
+{
+	for (auto &s:vals){
+		const char *pt;
+		if (is_start_any_of(s.sname,pt,"Projects:2:")){
+			string note = string_f("Projects:%s",pt);
+			tlmp_warning ("add notifications: %s",note.c_str());
+			notifications.insert(note);
+		}
+	}
+}
 static unsigned idle_delay=5*60;
 <mod>
 static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &con_bod, CONNECT_INFO &con_sessiond, bool paused)
@@ -231,6 +247,7 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 	glocal string gameid;
 	glocal int sequence = -1;
 	glocal int sessionfd = -1;
+	glocal set<string> project_notifications;
 	c.fd = fd;
 	<obj TCPSERVER s>();
 	<f newclient>
@@ -291,7 +308,7 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 			}
 		}else if (no == glocal.sessionfd){
 			// tlmp_warning ("waitnote");
-			glocal.c.waitnote(glocal.con_sessiond, glocal.session.c_str(),glocal.sequence, endserver);
+			glocal.c.waitnote(glocal.con_sessiond, glocal.session.c_str(),glocal.sequence, glocal.project_notifications,endserver);
 			// We are always calling back sessiond to wait for more events.
 			if (!glocal.endserver) glocal.c.waitnote_call(glocal.con_sessiond, glocal.session.c_str(),glocal.sequence, endserver);
 		}else if (!glocal.header_seen){
@@ -324,6 +341,14 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 								tlmp_warning ("Invalid session");
 								glocal.endserver = true;
 							}else{
+								for (auto &var:vars){
+									if (strcmp(var.name,"webtabs")==0){
+										// We extract the list of tabs in the session. We will use this to
+										// decide if we send notification for documents. Se <f waitnote> below
+										webtab_init (var.vals,glocal.project_notifications);
+										break;
+									}
+								}
 								// tlmp_warning ("Valid session");
 							}
 						</f>
@@ -465,13 +490,14 @@ static void bo_websocket_game (int fd, int waitfd, CONNECT_INFO &con_bod, CONNEC
 	<f waitnote>
 		glocal endserver;
 		glocal sequence;
+		glocal project_notifications;
 		<call bo_sessiond_client_waitevent>(con_sessiond);
 		<f ok>
 			if (!success){
 				glocal.endserver = true;
 				return;
 			}
-			// tlmp_warning ("waitnote user=%s content=%s",userinfo.name.c_str(),content);
+			//tlmp_warning ("waitnote content=%s",content);
 			// Any event starting with profile: turn the 3 bars menu orange
 			string buf;
 			if (is_start_any_of(content,NONEED,"profile:")){
@@ -482,13 +508,15 @@ static void bo_websocket_game (int fd, int waitfd, CONNECT_INFO &con_bod, CONNEC
 			}
 			// Any event starting with talks or projects turn the main talks and projects tab orange
 			const char *pt;
-			if (is_start_any_of(content,pt,"talks","projects")){
+			if (is_start_any_of(content,pt,"talks","Projects")){
 				string tmp(content,pt-content);
-				buf += string_f ("var e = document.getElementById('tabrect%s');\n",tmp.c_str());
-				buf += "if (e!=null){\n";
-				buf += "\te.setAttribute('fill', 'orange');\n";
-				buf += string_f("\ttabcolor['tabrect%s'] = 'orange';\n",tmp.c_str());
-				buf += "}\n";
+				if (tmp != "Projects" || glocal.project_notifications.count(content) > 0){ 
+					buf += string_f ("var e = document.getElementById('tabrect%s');\n",tmp.c_str());
+					buf += "if (e!=null){\n";
+					buf += "\te.setAttribute('fill', 'orange');\n";
+					buf += string_f("\ttabcolor['tabrect%s'] = 'orange';\n",tmp.c_str());
+					buf += "}\n";
+				}
 			}
 			// Now we turn the subtab orange
 			buf += string_f ("var e = document.getElementById('tabrect%s');\n",content);

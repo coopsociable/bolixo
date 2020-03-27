@@ -400,6 +400,7 @@ public:
 #define VAR_NOTIFY	"notify"	// Javascript applied to all users
 #define VAR_REFRESH	"refresh"	// Trigger a screen refresh
 #define VAR_SCRIPT	"script"	// Javascript for this user only
+#define VAR_CHANGES	"changes"	// A change was done in the game or document worth telling everyone
 
 std::string documentd_escape(PARAM_STRING msg);
 void documentd_error (std::vector<VARVAL> &res, PARAM_STRING s);
@@ -416,6 +417,7 @@ struct DOC_BUTTON_SPECS{
 };
 void documentd_button (std::string &lines, unsigned command, PARAM_STRING txt, const DOC_BUTTON_SPECS &specs, bool highlit);
 void documentd_forcerefresh (std::vector<VARVAL> &res);
+void documentd_setchanges (std::vector<VARVAL> &res);
 void fflush (DOC_WRITER *);
 char *fgets(char *s, int size, DOC_READER *r);
 #endif

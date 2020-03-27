@@ -3929,7 +3929,7 @@ static int bod_main (
 										glocal.success = success;
 										glocal.entry.msg = msg;
 										for (auto &r:res){
-											if (strcmp(r.var,"notify")==0){
+											if (is_any_of(r.var,"notify","changes")){
 												glocal vector<unsigned> userids;
 												<call sql_query>(
 													"select group_lists.ownerid, group_lists.name,groups.name,group_members.userid from group_lists"
@@ -3942,7 +3942,15 @@ static int bod_main (
 													glocal.userids.push_back(atoi(row[3]));
 												</f>
 												</call>
-												<call bo_sessiond_client_setnotify>(glocal.con_sess,glocal.userids,glocal.path,r.val);
+												string change;
+												const char *key = glocal.path;
+												if (strcmp(r.var,"changes")==0){
+													// We remove the current user from the notifications as he created the changes
+													glocal.userids.erase(find(glocal.userids.begin(),glocal.userids.end(),glocal.entry.userid));
+													change = string_f("Projects:%s",key+10);
+													key = change.c_str();
+												}
+												<call bo_sessiond_client_setnotify>(glocal.con_sess,glocal.userids,key,r.val);
 												<f ok>
 													if (internal_error) tlmp_error ("bo_sessiond_client_setnotify internal error");
 												</f>
