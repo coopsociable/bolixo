@@ -133,26 +133,27 @@ void TICTACTO::testwin(vector<VARVAL> &res)
 		update_msg (true,MSG_U(I_WON,"Congratulation! You just won"),"blue",res);
 	}
 }
-void TICTACTO::draw_x(string &lines, unsigned x, unsigned y, unsigned len)
+void TICTACTO::draw_x(unsigned cellx, unsigned celly, string &lines, unsigned x, unsigned y, unsigned len, bool visible)
 {
-	const char *color = "black";
+	const char *color = visible ? "black" : "none";
 	const unsigned off = len/4;
 	x += off;
 	y += off;
 	len -= off*2;
-	lines += string_f("<path stroke='black' stroke-width='2' fill='%s' d='M%u,%u L%u %u'/>\n"
-		,color,x,y,x+len,y+len);
-	lines += string_f("<path stroke='black' stroke-width='2' fill='%s' d='M%u,%u L%u %u'/>\n"
-		,color,x,y+len,x+len,y);
+	lines += string_f("<path class=x_o id=xl%u,%u stroke='%s' stroke-width='2' fill='%s' d='M%u,%u L%u %u'/>\n"
+		,cellx,celly,visible ? "black" : "none",color,x,y,x+len,y+len);
+	lines += string_f("<path class=x_o id=xr%u,%u stroke='%s' stroke-width='2' fill='%s' d='M%u,%u L%u %u'/>\n"
+		,cellx,celly,color,color,x,y+len,x+len,y);
 }
-void TICTACTO::draw_o(string &lines, unsigned x, unsigned y, unsigned len)
+void TICTACTO::draw_o(unsigned cellx, unsigned celly, string &lines, unsigned x, unsigned y, unsigned len, bool visible)
 {
+	const char *color = visible ? "black" : "none";
 	const unsigned off = len/4;
 	x += off;
 	y += off;
 	len -= off*2;
-	lines += string_f("<circle stroke='black' stroke-width='2' fill='none' cx='%u' cy='%u' r='%u'/>\n"
-		,x+len/2,y+len/2,len/2);
+	lines += string_f("<circle class=x_o id=c%u,%u stroke='%s' stroke-width='2' fill='none' cx='%u' cy='%u' r='%u'/>\n"
+		,cellx,celly,color,x+len/2,y+len/2,len/2);
 }
 void TICTACTO::update_msg(
 	bool to_all,	// The message will be shown to all player or not
@@ -176,6 +177,7 @@ void TICTACTO::exec (
 {
 	string error;
 	VARVAL notify_var;
+	notify_var.var = VAR_NOTIFY;
 	setactivity();
 	if (strcmp(var,"print")==0){
 		string lines;
@@ -189,7 +191,7 @@ void TICTACTO::exec (
 		
 		lines += "<script>\n";
 		lines += "function gameplace(event){\n";
-		lines += "\tvar elm = document.getElementById('gametictgrid');\n";
+		lines += string_f("\tvar elm = document.getElementById('gamegrid-%s');\n",gameid.c_str());
 		lines += "\tvar rect = elm.getBoundingClientRect();\n";
 		lines += string_f("\tgameaction('place:'+Math.floor((event.clientY-rect.top)/%u)+','+Math.floor((event.clientX-rect.left)/%u));\n",h3,w3);
 		lines += "}\n";
@@ -202,14 +204,17 @@ void TICTACTO::exec (
 		documentd_button_end(lines);
 		lines += "</div>\n";
 		lines += "<div class=webtable id=doc_tictacto>\n";
-		lines += "<svg width='50px' height='200px' viewbox='0 0 50 200'>\n";
-		draw_x (lines,0,0,50);
-		draw_o (lines,0,100,50);
-		lines += string_f("<path stroke='black' stroke-width='2' fill='none' d='M0,%u h50 v50 h-50 z'/>\n"
-			,x_is_player ? 0 : 100);
+		lines += string_f("<svg id=player-%s width='50px' height='200px' viewbox='0 0 50 200'>\n",gameid.c_str());
+		draw_x (0,0,lines,0,0,50,true);
+		draw_o (0,0,lines,0,100,50,true);
+		lines += string_f("<path id=s0 stroke='%s' stroke-width='2' fill='none' d='M0,%u h50 v50 h-50 z'/>\n"
+			,x_is_player ? "black" : "none",0);
+		lines += string_f("<path id=s1 stroke='%s' stroke-width='2' fill='none' d='M0,%u h50 v50 h-50 z'/>\n"
+			,!x_is_player ? "black" : "none",100);
 		lines += "</svg>\n";
 		lines += "&nbsp;&nbsp;&nbsp;";
-		lines += string_f("<svg id='gametictgrid' onclick=gameplace(event) width='%upx' height='%upx' viewbox='0 0 %u %u'>\n",grid_width,grid_height,grid_width,grid_height);
+		lines += string_f("<svg id='gamegrid-%s' onclick=gameplace(event) width='%upx' height='%upx' viewbox='0 0 %u %u'>\n"
+			,gameid.c_str(),grid_width,grid_height,grid_width,grid_height);
 		// Draw the board
 		for (unsigned i=1; i<3; i++){
 			lines += string_f("<path stroke='black' stroke-width='2' fill='black' d='M%u,1 L%u %u'/>\n"
@@ -222,11 +227,8 @@ void TICTACTO::exec (
 		for (unsigned x=0; x<3; x++){
 			for (unsigned y=0; y<3; y++){
 				unsigned val = grid[x][y];
-				if (val == 1){
-					draw_x (lines,x*h3,y*h3,h3);
-				}else if (val == 2){
-					draw_o (lines,x*h3,y*h3,h3);
-				}
+				draw_x (x,y,lines,x*h3,y*h3,h3,val==1);
+				draw_o (x,y,lines,x*h3,y*h3,h3,val==2);
 			}
 		}
 		lines += "</svg>\n";
@@ -255,7 +257,25 @@ void TICTACTO::exec (
 						unsigned char &g = grid[y][x];
 						if (g == 0){
 							g = x_is_player ? 1 : 2;
+							js_find_loop_start_class(notify_var.val,"gamegrid","x_o");
+							notify_var.val += "\t\tfor (var i=0; i<elms.length; i++){\n";
+							notify_var.val += "\t\t\tvar e=elms[i];\n";
+							if (x_is_player){
+								string id1 = string_f("xl%u,%u",y,x);
+								string id2= string_f("xr%u,%u",y,x);
+								notify_var.val += string_f("\t\t\tif (e.id == '%s' || e.id == '%s'){\n",id1.c_str(),id2.c_str());
+								notify_var.val += "\t\t\t\te.style.stroke='black';\n";
+							}else{
+								string id1 = string_f("c%u,%u",y,x);
+								notify_var.val += string_f("\t\t\tif (e.id == '%s'){\n",id1.c_str());
+								notify_var.val += "\t\t\t\te.style.stroke='black';\n";
+							}
+							notify_var.val += "\t\t\t}\n";
+							notify_var.val += "\t\t}\n";
+							js_find_loop_end(notify_var.val);
 							x_is_player = !x_is_player;
+							js_find_loop_set(notify_var.val,"player","path","s0","style.stroke",x_is_player ? "black" : "none");
+							js_find_loop_set(notify_var.val,"player","path","s1","style.stroke",x_is_player ? "none" : "black");
 							ok = true;
 							setmodified(username);
 							documentd_setchanges(res);
@@ -271,9 +291,18 @@ void TICTACTO::exec (
 		}else if (strcmp(var,"newgame")==0 && maywrite){
 			resetgame();
 			setmodified(username);
+			js_find_loop_start_class(notify_var.val,"gamegrid","x_o");
+			notify_var.val += "\t\tfor (var i=0; i<elms.length; i++){\n";
+			notify_var.val += "\t\t\tvar e=elms[i];\n";
+			notify_var.val += "\t\t\te.style.stroke='none';\n";
+			notify_var.val += "\t\t\te.style.fill='none';\n";
+			notify_var.val += "\t\t}\n";
+			js_find_loop_end(notify_var.val);
+			js_find_loop_set(notify_var.val,"player","path","s0","style.stroke","black");
+			js_find_loop_set(notify_var.val,"player","path","s1","style.stroke","none");
 			documentd_setchanges(res);
 		}
-		documentd_forcerefresh(res);
+		//documentd_forcerefresh(res);
 	}else{
 		error = MSG_R(E_READONLY);
 	}

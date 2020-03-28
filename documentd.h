@@ -167,8 +167,8 @@ public:
 	TICTACTO();
 	const char *getclass() const;
 	void testwin(std::vector<VARVAL> &res);
-	void draw_x(std::string &lines, unsigned x, unsigned y, unsigned len);
-	void draw_o(std::string &lines, unsigned x, unsigned y, unsigned len);
+	void draw_x(unsigned cellx, unsigned celly, std::string &lines, unsigned x, unsigned y, unsigned len, bool visible);
+	void draw_o(unsigned cellx, unsigned celly, std::string &lines, unsigned x, unsigned y, unsigned len, bool visible);
 	void exec (const char *var, const char *val, const char *session, const char *username, bool maywrite, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
 };
 
