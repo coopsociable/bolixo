@@ -224,7 +224,7 @@ struct WORD_DOCPOS{
 		line = column = 0;
 	}
 };
-
+// WORDPROC user preference
 struct WORD_USERPREF{
 	bool maywrite=false;
 	unsigned offset=0;	// First line displayed
@@ -249,7 +249,7 @@ class WORDPROC: public GAME{
 	std::vector<WORDPROC_LINE> lines;
 	std::map<std::string,WORD_USERPREF> prefs;
 	void deletechar(std::set<unsigned> &updlines, WORD_USERPREF &pref);
-	void vmove (int move, unsigned visible_lines, unsigned lastline, WORD_USERPREF &pref, VARVAL &script_var, std::set<unsigned> &updlines);
+	void vmove (int move, unsigned visible_lines, unsigned lastline, WORD_USERPREF &pref, const DOC_UI_SPECS_receive &sp, VARVAL &script_var, std::set<unsigned> &updlines);
 	void page_up_down(int new_offset, unsigned visible_lines, unsigned lastline, WORD_USERPREF &pref, VARVAL &script_var,
 		std::set<unsigned> &script_lines, std::set<unsigned> &notify_lines);
 	void update_lines (std::string &line, std::set<unsigned> &updlines);
@@ -257,6 +257,8 @@ class WORDPROC: public GAME{
 	void execstep (const char *var,	const char *val, const char *session, const char *username, bool maywrite, const DOC_UI_SPECS_receive &sp,
 		VARVAL &script_var, std::set<unsigned> &script_lines, VARVAL &notify_var, std::set<unsigned> &notify_lines,
 		std::vector<VARVAL> &res);
+	void set_para_spec(class PARAGRAPH &para, unsigned noline, unsigned column, const DOC_UI_SPECS_receive &sp, unsigned &para_noline);
+	void set_para_spec(class PARAGRAPH &para, unsigned noline, const DOC_UI_SPECS_receive &sp);
 public:
 	const char *getclass() const{
 		return "WORD";
@@ -418,6 +420,7 @@ struct DOC_BUTTON_SPECS{
 void documentd_button (std::string &lines, unsigned command, PARAM_STRING txt, const DOC_BUTTON_SPECS &specs, bool highlit);
 void documentd_forcerefresh (std::vector<VARVAL> &res);
 void documentd_setchanges (std::vector<VARVAL> &res);
+unsigned documentd_displaylen (const char *line, unsigned fontsize, float size);
 void fflush (DOC_WRITER *);
 char *fgets(char *s, int size, DOC_READER *r);
 #endif

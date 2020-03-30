@@ -33,6 +33,258 @@
 
 using namespace std;
 
+struct WORDINFO{
+	const char *txt;
+	unsigned len;	// In pixel
+	unsigned txtlen;	// strlen(txt);
+	WORDINFO(const char *_txt, unsigned _len){
+		txt = _txt;
+		len = _len;
+		txtlen = strlen(txt);
+	}
+};
+class PARAGRAPH{
+	vector<string> tb;		// Will contain the paragraph splitted into words.
+public:
+	vector<WORDINFO> words;		// The paragraph is decomposed into words
+	vector<vector<WORDINFO>> lines;	// Then the words are put together in lines
+	vector<unsigned> line_cursors;	// character cursor position in each line, produced by locate_cursor()
+	vector<unsigned> line_homes;	// character cursor (paragraph) position of the start of each line
+	vector<unsigned> line_ends;	// character cursor (paragraph) position of the end of each line
+	vector<unsigned> line_heights;	// Height in pixel of each paragraph lines
+	unsigned fontsize=0;
+	void addline (unsigned line_start, unsigned line_end, unsigned height);
+	unsigned cursor_pos=0;		// Cursor position inside the line in pixel
+public:
+	PARAGRAPH();
+	PARAGRAPH(PARAM_STRING txt, unsigned width, unsigned fontsize);
+	void init(PARAM_STRING txt, unsigned width, unsigned fontsize);
+	void locate_cursor(unsigned para_cursor, unsigned &noline, unsigned &line_cursor);
+	void locate_pixel(unsigned x_pos, unsigned y_pos, unsigned &noline);
+	void locate_pixel(unsigned x_pos, unsigned y_pos);
+	unsigned get_para_cursor (unsigned noline);
+	unsigned get_para_home (unsigned noline);
+	unsigned get_para_end (unsigned noline);
+	unsigned get_line_cursor (unsigned noline);
+	unsigned get_nblines() const{
+		return lines.size();
+	}
+	unsigned get_cursor_xpos() const {
+		return cursor_pos;
+	}
+};
+
+static float para_fontsize=1.2;
+static unsigned displaylen_call=0;
+static unsigned wordproc_displaylen (PARAM_STRING txt, unsigned fontsize)
+{
+	displaylen_call++;
+	unsigned ret = 10*strlen(txt.ptr);
+	if (fontsize > 0){
+		ret = documentd_displaylen (txt.ptr,fontsize,para_fontsize);
+	}
+	//tlmp_warning ("displaylen :%s: fontsize=%u ret=%u",txt.ptr,fontsize,ret);
+	return ret;
+}
+PARAGRAPH::PARAGRAPH()
+{
+}
+PARAGRAPH::PARAGRAPH(PARAM_STRING txt, unsigned width, unsigned _fontsize)
+{
+	init (txt,width,_fontsize);
+}
+/*
+	Add the specification of one line in the paragraph
+*/
+void PARAGRAPH::addline (unsigned word_start, unsigned word_end, unsigned height)
+{
+	vector<WORDINFO> line;
+	unsigned charlen = 0;
+	for (unsigned i=word_start; i<word_end; i++){
+		auto &w = words[i];
+		line.push_back(w);
+		charlen += w.txtlen;
+	}
+	lines.emplace_back(move(line));
+	unsigned homepos = 0;
+	for (unsigned i=0; i<word_start; i++) homepos += words[i].txtlen;
+	line_ends.push_back(homepos+charlen+1);
+	if (homepos > 0) homepos++;	// We skip the space between the last word of the previous
+					// line and this line
+	line_homes.push_back(homepos);
+	line_heights.push_back(height);
+}
+
+void PARAGRAPH::init(PARAM_STRING txt, unsigned width, unsigned _fontsize)
+{
+	fontsize = _fontsize;
+	tb.clear();
+	words.clear();
+	lines.clear();	
+	line_homes.clear();
+	line_ends.clear();
+	line_heights.clear();
+	str_splitline (txt.ptr,' ',tb);
+	for (auto &w:tb){
+		w.insert(w.begin(),' ');
+		words.emplace_back(w.c_str(),wordproc_displaylen(w,fontsize));
+	}
+	unsigned offset = 0;
+	unsigned wordnum = 1;
+	while (wordnum < words.size()){
+		// We assemble a line made of words until its width is larger than the div width.
+		auto &wo = words[offset];
+		if (wo.txt[0] == ' '){
+			// Remove the space for the first word
+			wo.txtlen--;
+			wo.txt++;
+			wo.len = wordproc_displaylen(wo.txt,fontsize);
+		}
+		unsigned linelen = wo.len;
+		for (unsigned i=offset+1; i<=wordnum; i++) linelen += words[i].len;
+		//htmlprintf ("linelen=%u width=%u lines.size()=%lu<br>\n",linelen,width,lines.size());
+		if (linelen < width){
+			wordnum++;
+		}else{
+			addline (offset,wordnum,fontsize);
+			offset = wordnum;
+		}
+	}
+	{
+		addline (offset,words.size(),fontsize);
+	}
+}
+/*
+	Find the coordinate of a linear cursor (character offset in a paragraph): line, and pixel offset
+*/
+void PARAGRAPH::locate_cursor(unsigned para_cursor, unsigned &noline, unsigned &line_cursor)
+{
+	// The cursor represent a linear position into a paragraph
+	// Now that the text is splitted in lines, we will find the line the cursor belongs,
+	// then the offset in that line, and then, a pixel position in that line.
+	noline = 0;
+	line_cursors.clear();
+	for (unsigned i=0; i<lines.size(); i++){
+		auto &line = lines[i];
+		size_t line_size = 0;
+		for (auto &l:line) line_size += l.txtlen;
+		if (para_cursor < line_size){
+			noline = i;
+			line_cursor = para_cursor;
+			unsigned offset_cursor = 0;
+			cursor_pos=0;		// Cursor position inside the line in pixel
+			for (auto &w:line){
+				if (offset_cursor == para_cursor){
+					break;
+				}else{
+					unsigned next_offset = offset_cursor + w.txtlen;
+					if (next_offset > para_cursor){
+						// Ok the cursor is in that word
+						string tmp (w.txt,para_cursor-offset_cursor);
+						//htmlprintf ("last word :%s:<br>\n",tmp.c_str());
+						cursor_pos += wordproc_displaylen(tmp,fontsize);
+						para_cursor = 0;
+						break;
+					}
+					cursor_pos += w.len;
+					offset_cursor = next_offset;
+				}
+			}
+			break;
+		}
+		para_cursor -= line_size;
+	}
+	if (para_cursor > 0){
+		unsigned space_width = wordproc_displaylen(" ",fontsize);
+		while (para_cursor > 0){
+			para_cursor--;
+			cursor_pos += space_width;
+		}
+	}
+	locate_pixel (cursor_pos,0);
+}
+/*
+	Find the corresponding cursor position in each line based on position given in pixel
+*/
+void PARAGRAPH::locate_pixel(unsigned x_pos, unsigned y_pos, unsigned &noline)
+{
+	// We know the cursor horizonl and vertical position in pixel: x_pos,y_pos
+	// Now we will find the corresponding cursor position in each lines of the paragraph.
+	// This will be stored in line_offsets. This is the cursor position in character.
+	// We also locate the paragraph line number
+	noline=0;
+	unsigned y_offset = 0;
+	for (auto h:line_heights){
+		y_offset += h;
+		if (y_offset > y_pos) break;
+		noline++;
+	}
+	line_cursors.clear();
+	for (auto &l:lines){
+		unsigned pixel_offset = 0;
+		unsigned offset = 0;
+		for (auto &w:l){
+			unsigned next_pixel_offset = pixel_offset + w.len;
+			if (next_pixel_offset > x_pos){
+				// The cursor is located in that word.
+				const char *s = w.txt;
+				string tmp;
+				unsigned target_pos = x_pos - pixel_offset;
+				while (*s != '\0'){
+					tmp += *s++;
+					#if 0
+					htmlprintf ("line=%lu tmp=:%s: offset=%u target_pos=%u dlen=%u<br>\n"
+						,line_cursors.size(),tmp.c_str(),offset,target_pos,wordproc_displaylen(tmp,fontsize));
+					#endif
+					if (wordproc_displaylen(tmp,fontsize) > target_pos) break;
+					offset++;
+				}
+				break;
+			}
+			pixel_offset = next_pixel_offset;
+			offset += w.txtlen;
+		}
+		line_cursors.push_back(offset);
+	}
+}
+void PARAGRAPH::locate_pixel(unsigned x_pos, unsigned y_pos)
+{
+	unsigned paraline;
+	locate_pixel (x_pos,y_pos,paraline);
+}
+unsigned PARAGRAPH::get_para_home (unsigned noline)
+{
+	unsigned ret = 0;
+	if (noline < line_homes.size()){
+		return line_homes[noline];
+	}
+	return ret;
+}
+unsigned PARAGRAPH::get_para_end (unsigned noline)
+{
+	unsigned ret = 0;
+tlmp_warning ("get_para_end noline=%u line_ends.size()=%lu",noline,line_ends.size());
+	if (noline < line_ends.size()){
+tlmp_warning ("end=%u",line_ends[noline]);
+		return line_ends[noline];
+	}
+	return ret;
+}
+unsigned PARAGRAPH::get_para_cursor (unsigned noline)
+{
+	unsigned ret = 0;
+	if (noline < line_cursors.size()){
+		return line_homes[noline] + line_cursors[noline];
+	}
+	return ret;
+}
+unsigned PARAGRAPH::get_line_cursor (unsigned noline)
+{
+	unsigned ret = 0;
+	if (noline < line_cursors.size()) ret = line_cursors[noline];
+	return ret;
+}
+
 void WORDPROC::save(DOC_WRITER &w, bool save_session_info)
 {
 	documentd_wordproc_header (&w,revision);
@@ -493,14 +745,91 @@ void WORDPROC::deletechar (set<unsigned> &updlines, WORD_USERPREF &pref)
 		updlines.insert(pref.cursor.line);
 	}
 }
+const unsigned tab_width=30;
+
+/*
+	Initialise the PARAGRAPH layout for the current session/display.
+*/
+void WORDPROC::set_para_spec(
+	PARAGRAPH &para,
+	unsigned noline,	// paragraph number (entry in lines[])
+	unsigned column,	// paragraph cursor
+	const DOC_UI_SPECS_receive &sp,	// Specs of the sessions
+	unsigned &para_noline)	// line in the paragraph
+{
+	if (noline < lines.size()){
+		auto &l = lines[noline];
+		//long long start = fdpass_getnow();
+		//for (int i=0; i<1; i++){
+			para.init (l.line,sp.content_width-l.tab_level*tab_width,sp.fontsize);
+			unsigned line_cursor;
+			para.locate_cursor (column,para_noline,line_cursor);
+		//}
+		//long long end = fdpass_getnow();
+		//long long diff = end - start;
+		//tlmp_warning ("set_para_spec %Ld.%06Ld",diff/1000000,diff%1000000);
+	}else{
+		para_noline = 0;
+		para.init ("",sp.content_width,sp.fontsize);
+	}
+}
+void WORDPROC::set_para_spec(
+	PARAGRAPH &para,
+	unsigned noline,	// paragraph number (entry in lines[])
+	const DOC_UI_SPECS_receive &sp)	// Specs of the sessions
+{
+	unsigned para_noline;
+	set_para_spec (para,noline,0,sp,para_noline);
+}
 void WORDPROC::vmove (
 	int move,
 	unsigned visible_lines,		// How many <div> sent
 	unsigned lastline,		// last line partially visible
 	WORD_USERPREF &pref,
+	const DOC_UI_SPECS_receive &sp,
 	VARVAL &script_var,
 	set<unsigned> &updlines)
 {
+	if (pref.cursor.line < lines.size()){
+		// Move inside a paragraph
+		PARAGRAPH para;
+		unsigned noline;
+		set_para_spec (para,pref.cursor.line,pref.cursor.column,sp,noline);
+		unsigned nblines = para.get_nblines();
+		unsigned x_pos = para.get_cursor_xpos();
+		#if 0
+		tlmp_warning ("vmove %d content_width=%u nblines=%u noline=%u line_cursor=%u column=%u"
+			,move,spref.content_width,nblines,noline,line_cursor,pref.cursor.column);
+		for (unsigned i=0; i<nblines; i++){
+			tlmp_warning ("line %u: home=%u cursor=%u",i,para.line_homes[i],para.line_cursors[i]);
+		}
+		#endif
+			
+		updlines.insert(pref.cursor.line);
+		if (move == -1){
+			if (noline > 0){
+				pref.cursor.column = para.get_para_cursor(noline-1);
+				//tlmp_warning ("new column = %u",pref.cursor.column);
+				return;
+			}else if (pref.cursor.line > 0){
+				set_para_spec (para,pref.cursor.line-1,sp);
+				para.locate_pixel (x_pos,0);
+				pref.cursor.column = para.get_para_cursor(para.get_nblines()-1);
+			}
+		}else if (move == 1){
+			if (noline < nblines -1){
+				pref.cursor.column = para.get_para_cursor(noline+1);
+				//tlmp_warning ("new column = %u",pref.cursor.column);
+				return;
+			}else if (pref.cursor.line < lines.size()-1){
+				set_para_spec (para,pref.cursor.line+1,sp);
+				para.locate_pixel (x_pos,0);
+				pref.cursor.column = para.get_para_cursor(0);
+			}else{
+				pref.cursor.column = para.get_para_cursor(nblines-1);
+			}
+		}
+	}
 	if (move < 0 && abs(move) > pref.cursor.line) move = -pref.cursor.line;
 	unsigned nextline = pref.cursor.line + move;
 	if (nextline < pref.offset){
@@ -626,9 +955,11 @@ void WORDPROC::execstep (
 {
 	auto &pref = prefs[username];
 	pref.maywrite = maywrite;
-	unsigned visible_lines = sp.content_height/sp.fontsize + 10;
-	visible_lines = 50;
-	// tlmp_warning ("visible_lines=%u content_height=%u fontsize=%u",visible_lines,sp.content_height,sp.fontsize);
+	unsigned visible_lines = 60;
+	if (sp.content_height != 0 && sp.fontsize != 0) visible_lines = sp.content_height/sp.fontsize + 10;
+	//tlmp_warning ("visible_lines=%u content_height=%u fontsize=%u",visible_lines,sp.content_height,sp.fontsize);
+	// Force visible_lines to 60 because the specs are not always available, for now
+	//visible_lines = 60;
 	if (strcmp(var,"print")==0){
 		if (strcmp(val,"console")==0){
 			VARVAL v;
@@ -675,7 +1006,6 @@ void WORDPROC::execstep (
 				v.val += string_f("\twidth:%u;\n",sp_width);
 				v.val += "}\n";
 
-				const unsigned tab_width=30;
 				const unsigned bullet_width=15+5;
 				//unsigned offsets[]={5,tab_width-15,2*tab_width-15,3*tab_width-15};
 				for (unsigned i=0; i<4; i++){
@@ -690,12 +1020,14 @@ void WORDPROC::execstep (
 					v.val += "\tflex:0 1 auto;\n";
 					v.val += string_f("\twidth:%u;\n",sp_width-i*tab_width);
 					v.val += string_f("\tmargin-left:%u;\n",i*tab_width);
+					v.val += "\tfont-family:'Lucida Console';\n";
 					v.val += "}\n";
 					v.val += string_f(".tab%u-bullet{\n",i);
 					v.val += "\toverflow-wrap: break-word;\n";
 					v.val += "\tflex:0 1 auto;\n";
-					v.val += string_f("width:%u;\n",sp_width-i*tab_width-bullet_width);
+					v.val += string_f("\twidth:%u;\n",sp_width-i*tab_width-bullet_width);
 					v.val += "\tmargin-left:0;\n";
+					v.val += "\tfont-family:'Lucida Console';\n";
 					v.val += "}\n";
 				}
 			}
@@ -734,13 +1066,34 @@ void WORDPROC::execstep (
 			v.val += "\t}\n";
 			v.val += "}\n";
 			// Function called when the user uses the keyboard
+			v.val += "var gamekey=null;\n";
+			v.val += "var gamecode=null;\n";
+			v.val += "var altKey=null;\n";
+			v.val += "var ctrlKey=null;\n";
+			v.val += "var shiftKey=null;\n";
+
 			v.val += "function gamepress(event){\n";
-			v.val += "\tconsole.log ('key='+event.key+' '+event.altKey+' '+event.ctrlKey+' '+event.shiftKey);\n";
-			v.val += string_f("\tgameaction('kbd:'+event.code + ' ' + event.key+' '+event.altKey+' '+event.ctrlKey+' '+event.shiftKey+' '+getlastline());\n");
+			v.val += "\tconsole.log ('press key='+event.key+' '+' code='+event.code+' '+event.altKey+' '+event.ctrlKey+' '+event.shiftKey);\n";
+			v.val += "\tgamekey=event.key;\n";
+			v.val += "\tgamecode=event.code;\n";
+			v.val += "\taltKey=event.altKey;\n";
+			v.val += "\tctrlKey=event.ctrlKey;\n";
+			v.val += "\tshiftKey=event.shiftKey;\n";
+			//v.val += "\tif (gamecode.substring(0,3)!='Key' && gamekey != 'Dead' && gamekey != 'Process'){\n";
+			v.val += "\tgameaction('kbd:'+gamecode + ' ' + gamekey+' '+altKey+' '+ctrlKey+' '+shiftKey+' '+getlastline());\n";
+			//v.val += "\t}\n";
+			v.val += "\tevent.stopPropagation();\n";
+			v.val += "\treturn false;\n";
+			v.val += "}\n";
+			v.val += "function funcinput(event){\n";
+			v.val += "\tif (event.data == null) gamekey=event.data;\n";
+			v.val += "\tgameaction('kbd:'+gamecode + ' ' + gamekey+' '+altKey+' '+ctrlKey+' '+shiftKey+' '+getlastline());\n";
+			v.val += "\tconsole.log('kbd:'+gamecode + ' ' + gamekey+' '+altKey+' '+ctrlKey+' '+shiftKey+' '+getlastline());\n";
 			v.val += "\tevent.stopPropagation();\n";
 			v.val += "\treturn false;\n";
 			v.val += "}\n";
 			v.val += "function gamefalse(event){\n";
+			//v.val += "\tconsole.log ('gamefalse type='+event.type+' data='+event.data);\n";
 			v.val += "\tevent.stopPropagation();\n";
 			v.val += "\treturn false;\n";
 			v.val += "}\n";
@@ -789,8 +1142,11 @@ void WORDPROC::execstep (
 			v.val += "</div>\n";
 			// Document
 			v.val += "<div class=webtable id=doc_wordproc style='display:flex; flex-flow:row;'>\n";
-			v.val += string_f("<div id='text-%s' onkeydown=gamepress(event) onkeypress=gamefalse(event) onclick=gameselect(event)"
-				" tabindex=0 style='flex:0 0 auto; overflow: hidden; margin-right:%u; width:%u'>\n",gameid.c_str(),10,width);
+			v.val += string_f("<div id='text-%s' onkeydown=gamepress(event) oninput=funcinput(event) onclick=gameselect(event)"
+				//" contenteditable"
+				" spellcheck"
+				" tabindex=0 style='flex:0 0 auto; overflow: hidden; margin-right:%u; width:%u'"
+				" style='font-family=\"Lucida Console\";'>\n",gameid.c_str(),10,width);
 			unsigned line = 0;
 			if (pref.offset < lines.size()){
 				for (auto p=lines.begin()+pref.offset; p != lines.end() && line < visible_lines; p++){
@@ -808,6 +1164,13 @@ void WORDPROC::execstep (
 			}
 			v.val += "</div>\n";
 			v.val += "</div>\n";
+			#if 0
+			v.val += "<script>\n";
+			v.val += string_f("document.getElementById('text-%s').addEventListener('compositionstart', gamefalse);\n",gameid.c_str());
+			v.val += string_f("document.getElementById('text-%s').addEventListener('compositionupupdate', gamefalse);\n",gameid.c_str());
+			v.val += string_f("document.getElementById('text-%s').addEventListener('compositionend', gamefalse);\n",gameid.c_str());
+			v.val += "</script>\n";
+			#endif
 			// Status line
 			v.val += "<div id=tab_form>\n";
 			v.val += "&nbsp;";
@@ -1042,7 +1405,7 @@ void WORDPROC::execstep (
 				// Move cursor
 				int move = atoi(val);
 				unsigned current_line = pref.cursor.line;
-				vmove (move,visible_lines,lastline,pref,script_var,script_lines);
+				vmove (move,visible_lines,lastline,pref,sp,script_var,script_lines);
 				if (current_line != pref.cursor.line){
 					notify_lines.insert(current_line);
 					notify_lines.insert(pref.cursor.line);
@@ -1056,7 +1419,7 @@ void WORDPROC::execstep (
 					if (pref.cursor.column == 0){
 						if (pref.cursor.line > 0){
 							notify_lines.insert(pref.cursor.line);
-							vmove (-1,visible_lines,lastline,pref,script_var,script_lines);
+							vmove (-1,visible_lines,lastline,pref,sp,script_var,script_lines);
 							if (lines.size() > pref.cursor.line){
 								pref.cursor.column = wordproc_linelen(lines[pref.cursor.line].line);
 							}
@@ -1115,23 +1478,26 @@ void WORDPROC::execstep (
 					}
 					notify_lines.insert(pref.cursor.line);
 				}
-			}else if (strcmp(var,"home")==0){
+			}else if (strcmp(var,"home")==0){	// KEY home
 				if (pref.cursor.column != 0){
-					pref.cursor.column = 0;
+					PARAGRAPH para;
+					unsigned noline;
+					set_para_spec (para,pref.cursor.line,pref.cursor.column,sp,noline);
+					tlmp_warning ("HOME noline=%u",noline);
+					pref.cursor.column = para.get_para_home(noline);
 					notify_lines.insert(pref.cursor.line);
 				}
-			}else if (strcmp(var,"end")==0){
-				unsigned column  = pref.cursor.column;
-				if (lines.size() > pref.cursor.line){
-					column = wordproc_linelen(lines[pref.cursor.line].line);
-				}else{
-					column = 0;
-				}
+			}else if (strcmp(var,"end")==0){	// KEY end
+				PARAGRAPH para;
+				unsigned noline;
+				set_para_spec (para,pref.cursor.line,pref.cursor.column,sp,noline);
+				unsigned column = para.get_para_end(noline);
+				tlmp_warning ("END noline=%u",noline);
 				if (column != pref.cursor.column){
 					pref.cursor.column = column;
 					notify_lines.insert(pref.cursor.line);
 				}
-			}else if (strcmp(var,"select")==0){
+			}else if (strcmp(var,"select")==0){	// Position cursor using the mouse
 				vector<string> tb;
 				//tlmp_warning ("select=%s",val);
 				int n = str_splitline(val,' ',tb);
@@ -1146,6 +1512,12 @@ void WORDPROC::execstep (
 						// We have to figure out where 
 						if (pref.cursor.line < lines.size()){
 							unsigned xcoor = atoi(tb[1].c_str());
+							unsigned ycoor = atoi(tb[2].c_str());
+							PARAGRAPH para;
+							set_para_spec (para,pref.cursor.line,sp);
+							para.locate_pixel (xcoor,ycoor,noline);
+							pref.cursor.column = para.get_para_cursor(noline);
+							#if 0
 							auto &line = lines[pref.cursor.line].line;
 							unsigned len = wordproc_linelen(line);
 							unsigned xpos = 0;
@@ -1163,6 +1535,7 @@ void WORDPROC::execstep (
 									break;
 								}
 							}
+							#endif
 						}
 						notify_lines.insert(pref.cursor.line);
 					}
@@ -1232,7 +1605,7 @@ void WORDPROC::execstep (
 				}else{
 					pref.cursor.line = pref.offset + visible_lines - 1;
 				}
-				vmove (move,visible_lines,lastline,pref,script_var,script_lines);
+				vmove (move,visible_lines,lastline,pref,sp,script_var,script_lines);
 			}else if (is_any_of(var,"pageup","pagedown")){
 				int new_offset = strcmp(var,"pageup")==0 ? pref.offset-lastline : pref.offset + lastline;
 				set<unsigned> notify_lines;
@@ -1267,12 +1640,16 @@ void WORDPROC::manyexec (
 	for (auto &v:steps){
 		execstep (v.var,v.val,session,username,maywrite,sp,script_var,script_lines,notify_var,notify_lines,res);
 	}
+	#if 0
 	size_t script_size = script_var.val.size();
 	size_t notify_size = notify_var.val.size();
+	#endif
 	update_lines (script_var.val,script_lines);
 	update_lines (notify_var.val,notify_lines);
-	tlmp_warning ("manyexec stats script_size=%lu -> %lu notify_size=%lu -> %lu script_lines=%lu notify_lines=%lu"
-		,script_size,script_var.val.size(),notify_size,notify_var.val.size(),script_lines.size(),notify_lines.size());
+	#if 0
+	tlmp_warning ("manyexec steps=%lu stats script_size=%lu -> %lu notify_size=%lu -> %lu script_lines=%lu notify_lines=%lu"
+		,steps.size(),script_size,script_var.val.size(),notify_size,notify_var.val.size(),script_lines.size(),notify_lines.size());
+	#endif
 	res.emplace_back(notify_var);
 	res.emplace_back(script_var);
 }

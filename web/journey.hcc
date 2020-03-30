@@ -21,6 +21,7 @@
 #include <unistd.h>
 #include <tlmplib.h>
 #include <tlmpweb.h>
+#include <trlitool.h>
 #include <tlmp/translat.h>
 #include "../instrument.h"
 
@@ -1199,12 +1200,271 @@ static void journey_click()
 	htmlout ("</span>\n");
 }
 </mod>
-static void test_displen (const char *s)
+static void test_displen (const char *s, const char *font)
 {
-	unsigned len = tlmpweb_displaylen(s,0.9);
-	DIV d; d.border(1,"black").wpx(len).print();
-	htmlprintf ("<font style=font-size:0.9em>%s</font>\n",s);
+	unsigned len = tlmpweb_displaylen(s,1.2);
+	unsigned fact=1;
+	DIV d; d.id("box").border(1,"black").wpx(len*fact).hpx(tlmpweb_fontsize()*fact).print();
+	htmlprintf ("<font style='font-size:%uem; font-family:\"%s\";'>%s</font>\n",fact,font,s);
 	d.end();
+	/- <br>
+	<?
+		<script>
+		var el = document.getElementById('box');
+		var style = window.getComputedStyle(el, null).getPropertyValue('font-size');
+		var fontSize = parseFloat(style);
+		var fstyle = window.getComputedStyle(el, null).getPropertyValue('font-style');
+		var type = window.getComputedStyle(el, null).getPropertyValue('font-name');
+		console.log ('fontSize='+fontSize+' type='+type+' style='+fstyle);
+		</script>
+	?>
+}
+struct WORDINFO{
+	const char *txt;
+	unsigned len;	// In pixel
+	unsigned txtlen;	// strlen(txt);
+	WORDINFO(const char *_txt, unsigned _len){
+		txt = _txt;
+		len = _len;
+		txtlen = strlen(txt);
+	}
+};
+class PARAGRAPH{
+	vector<string> tb;		// Will contain the paragraph splitted into words.
+public:
+	vector<WORDINFO> words;		// The paragraph is decomposed into words
+	vector<vector<WORDINFO>> lines;	// Then the words are put together in lines
+	unsigned cursor_pos=0;		// Cursor position inside the line in pixel
+	vector<unsigned> line_cursors;	// character cursor position in each line, produced by locate_cursor()
+	vector<unsigned> line_homes;	// character cursor (paragraph) position of the start of each line
+	vector<unsigned> line_ends;	// character cursor (paragraph) position of the end of each line
+public:
+	PARAGRAPH();
+	PARAGRAPH(PARAM_STRING txt, unsigned width);
+	void init(PARAM_STRING txt, unsigned width);
+	void locate_cursor(unsigned para_cursor, unsigned &noline, unsigned &line_cursor);
+	unsigned get_para_cursor (unsigned noline);
+	unsigned get_para_home (unsigned noline);
+	unsigned get_para_end (unsigned noline);
+	unsigned get_line_cursor (unsigned noline);
+};
+
+static float para_fontsize=1;
+static unsigned displaylen_call=0;
+static unsigned journey_displaylen (PARAM_STRING txt)
+{
+	displaylen_call++;
+	return tlmpweb_displaylen (txt.ptr,para_fontsize);
+}
+PARAGRAPH::PARAGRAPH()
+{
+}
+PARAGRAPH::PARAGRAPH(PARAM_STRING txt, unsigned width)
+{
+	init (txt,width);
+}
+void PARAGRAPH::init(PARAM_STRING txt, unsigned width)
+{
+	tb.clear();
+	words.clear();
+	lines.clear();	
+	line_homes.clear();
+	line_ends.clear();
+	str_splitline (txt.ptr,' ',tb);
+	for (auto &w:tb){
+		w.insert(w.begin(),' ');
+		words.emplace_back(w.c_str(),journey_displaylen(w));
+	}
+	unsigned offset = 0;
+	unsigned wordnum = 1;
+	while (wordnum < words.size()){
+		// We assemble a line made of words until its width is larger than the div width.
+		auto &wo = words[offset];
+		if (wo.txt[0] == ' '){
+			// Remove the space for the first word
+			wo.txtlen--;
+			wo.txt++;
+			wo.len = journey_displaylen(wo.txt);
+		}
+		unsigned linelen = wo.len;
+		for (unsigned i=offset+1; i<=wordnum; i++) linelen += words[i].len;
+		//htmlprintf ("linelen=%u width=%u lines.size()=%lu<br>\n",linelen,width,lines.size());
+		if (linelen < width){
+			wordnum++;
+		}else{
+			vector<WORDINFO> line;
+			for (unsigned i=offset; i<wordnum; i++) line.push_back(words[i]);
+			lines.emplace_back(move(line));
+			unsigned charlen = 0;
+			for (unsigned i=offset; i<wordnum; i++) charlen += words[i].txtlen;
+			unsigned homepos = 0;
+			for (unsigned i=0; i<offset; i++) homepos += words[i].txtlen;
+			line_homes.push_back(homepos);
+			line_ends.push_back(homepos+charlen);
+			offset = wordnum;
+		}
+	}
+	{
+		vector<WORDINFO> line;
+		for (unsigned i=offset; i<words.size(); i++) line.push_back(words[i]);
+		lines.emplace_back(move(line));
+	}
+}
+/*
+	Find the coordinate of a linear cursor (character offset in a paragraph): line, and pixel offset
+*/
+void PARAGRAPH::locate_cursor(unsigned para_cursor, unsigned &noline, unsigned &line_cursor)
+{
+	// The cursor represent a linear position into a paragraph
+	// Now that the text is splitted in lines, we will find the line the cursor belongs,
+	// then the offset in that line, and then, a pixel position in that line.
+	noline = 0;
+	line_cursors.clear();
+	for (unsigned i=0; i<lines.size(); i++){
+		auto &line = lines[i];
+		size_t line_size = 0;
+		for (auto &l:line) line_size += l.txtlen;
+		if (para_cursor < line_size){
+			noline = i;
+			line_cursor = para_cursor;
+			unsigned offset_cursor = 0;
+			cursor_pos = 0;
+			for (auto &w:line){
+				if (offset_cursor == para_cursor){
+					break;
+				}else{
+					unsigned next_offset = offset_cursor + w.txtlen;
+					if (next_offset > para_cursor){
+						// Ok the cursor is in that word
+						string tmp (w.txt,para_cursor-offset_cursor);
+						//htmlprintf ("last word :%s:<br>\n",tmp.c_str());
+						cursor_pos += journey_displaylen(tmp);
+						break;
+					}
+					cursor_pos += w.len;
+					offset_cursor = next_offset;
+				}
+			}
+			break;
+		}
+		para_cursor -= line_size;
+	}
+	// We know the cursor horizonl position in pixel: cursor_pos
+	// Now we will find the corresponding cursor position in each lines of the paragraph.
+	// This will be stored in line_offsets. This is the cursor position in character.
+	line_cursors.clear();
+	for (auto &l:lines){
+		unsigned pixel_offset = 0;
+		unsigned offset = 0;
+		for (auto &w:l){
+			unsigned next_pixel_offset = pixel_offset + w.len;
+			if (next_pixel_offset > cursor_pos){
+				// The cursor is located in that word.
+				const char *s = w.txt;
+				string tmp;
+				unsigned target_pos = cursor_pos - pixel_offset;
+				while (*s != '\0'){
+					tmp += *s++;
+					#if 0
+					htmlprintf ("line=%lu tmp=:%s: offset=%u target_pos=%u dlen=%u<br>\n"
+						,line_cursors.size(),tmp.c_str(),offset,target_pos,journey_displaylen(tmp));
+					#endif
+					if (journey_displaylen(tmp) > target_pos) break;
+					offset++;
+				}
+				break;
+			}
+			pixel_offset = next_pixel_offset;
+			offset += w.txtlen;
+		}
+		line_cursors.push_back(offset);
+	}
+}
+unsigned PARAGRAPH::get_para_home (unsigned noline)
+{
+	unsigned ret = 0;
+	if (noline < line_cursors.size()){
+		return line_homes[noline];
+	}
+	return ret;
+}
+unsigned PARAGRAPH::get_para_end (unsigned noline)
+{
+	unsigned ret = 0;
+	if (noline < line_cursors.size()){
+		return line_ends[noline];
+	}
+	return ret;
+}
+unsigned PARAGRAPH::get_para_cursor (unsigned noline)
+{
+	unsigned ret = 0;
+	if (noline < line_cursors.size()){
+		return line_homes[noline] + line_cursors[noline];
+	}
+	return ret;
+}
+unsigned PARAGRAPH::get_line_cursor (unsigned noline)
+{
+	unsigned ret = 0;
+	if (noline < line_cursors.size()) ret = line_cursors[noline];
+	return ret;
+}
+/*
+	We display a text in a div having a specified width. It forms a paragraph.
+	The cursor represents the offset in the text as if the text was displayed on a single line.
+
+	We do two job here. We try to convert the linear cursor into a line number and of column number inside the line.
+	Then we try to find the corresponding column number in each line of the paragraph.
+
+	We display first the paragraph with the cursor shown as a |.
+	Then we display the paragraph with | on each line.
+*/
+	
+static void journey_paragraph(unsigned width, const char *txt, unsigned cursor)
+{
+	DIV d; d.border(1,"black").wpx(width).print();
+	unsigned len = strlen(txt);
+	if (len > cursor){
+		htmlprintf ("%*.*s<b>%c</b>%s",cursor,cursor,txt,txt[cursor],txt+cursor+1);
+	}else{
+		htmlout (txt);
+		for (unsigned w=cursor; w<len; w++) htmlout ('.');
+		htmlout ('|');
+	}
+	d.end();
+	// Now we convert the text into a set of lines.
+	long long start = fdpass_getnow();
+	PARAGRAPH para;
+	unsigned noline = 0, line_cursor=0;
+	for (unsigned loop=0; loop<1; loop++){
+		displaylen_call = 0;
+		// We split the paragraph in lines.
+		para.init (txt,width);
+		para.locate_cursor(cursor,noline,line_cursor);
+	}
+	long long end = fdpass_getnow();
+	long long diff = end - start;
+	//for (auto &w:para.words) htmlprintf ("w[%u]=%s ",w.txtlen,w.txt);
+	htmlprintf ("<br>\n");
+	htmlprintf ("exec=%Lu.%06Lu noline=%u cursor_pos=%u dispplaylen=%u<br>\n",diff/1000000,diff%1000000,noline,para.cursor_pos,displaylen_call);
+	//for (auto o:line_offsets) htmlprintf ("offset=%u ",o);
+	htmlout ("<br>\n");
+	// We make the DIV larger so the browser paragraph formatting is not used.
+	// We display the paragraph line by line as PARAGRAPH understands it.
+	DIV dd; dd.border(1,"black").wpx(width+100).print();
+	for (unsigned i=0; i<para.lines.size(); i++){
+		unsigned offset = para.get_line_cursor(i);
+		auto &l = para.lines[i];
+		string tmp;
+		for (auto &w:l) tmp += w.txt;
+		const char *pts = tmp.c_str();
+		htmlprintf("%*.*s|%s<br>\n",offset,offset,pts,pts+offset);
+	}
+	dd.end();
+	DIV ddd; dd.border(1,"black").wpx(width).print();
+	unsigned cur = para.get_para_cursor(noline);
+	htmlprintf("%*.*s<b>%c</b>%s<br>\n",cur,cur,txt,txt[cur],txt+cur+1);
 	/- <br>
 }
 void util_defstyles();
@@ -1215,6 +1475,7 @@ void util_defstyles();
 static void journey_displaylen()
 {
 	util_defstyles();
+	htmlprintf ("fontsize=%u<br>\n",tlmpweb_fontsize());
 	for (auto s:{
 		"Inbox",
 		"hello",
@@ -1224,12 +1485,91 @@ static void journey_displaylen()
 		"Jacques_Gélinas",
 		"Jacques_Gélinas@alpha.bolixo.org",
 		"Jacques_éèôÉÀ",
-		"Jacques_éèôÉÀ@alpha.bolixo.org"
+		"Jacques_éèôÉÀ@alpha.bolixo.org",
 		}){
-		test_displen(s);
+		test_displen(s,"Arial");
 	}
+	for (auto f:{
+		"Times New Roman", "Times", "serif",
+		"Arial", "Helvetica", "sans-serif",
+		"Lucida Console", "Courier", "monospace"
+		}){
+		htmlprintf ("%s<br>\n",f);
+		test_displen("hello how are you today ? How was it yesterday ?hello how are you today ? How",f);
+	}
+	if (!tlmpweb_is_repost()){
+		/- <script>
+		htmlprintf ("formsubmit(\"%s?repost=1\");\n",tlmpweb_curpage());
+		/- </script>
+	}
+	#if 1
+	string txt1 = "hello how are you today ? How was it yesterday ?";
+	string txt;
+	for (int i=0; i<4; i++) txt += txt1;
+	for (auto cursor:{15,115}){
+		htmlprintf ("CURSOR=%d<br>\n",cursor);
+		for (auto w:{400,500,600}){
+			journey_paragraph(w,txt.c_str(),cursor);
+		}	
+	}
+	#endif
 }
 </mod>
+<mod>
+static void journey_keypress()
+{
+	<?
+	<html>
+	<body>
+	<script>
+	function func(event){
+		console.log ('key='+event.key+' code='+event.code+' isComp='+event.isComposing+' location='+event.location);
+		//var e = document.getElementById('doc');
+		//e.innerHTML += event.key;
+		event.stopPropagation();
+		return false;
+	}
+	function funcinput(event){
+		console.log ('input data='+event.data+' composing='+event.isComposing);
+		var e = document.getElementById('doc');
+		event.stopPropagation();
+		e.innerHTML = 'allo'+event.data;
+		return false;
+	}
+	function funcfocus(){
+		var e = document.getElementById('input');
+		e.focus();
+		var d = document.getElementById('doc');
+		d.style.borderWidth='thick';
+		d.style.borderColor='blue';
+	}
+	function compstart(event){
+		console.log ('start data='+event.data);
+	}
+	function compupdate(event){
+		console.log ('update data='+event.data);
+	}
+	function compend(event){
+		console.log ('end data='+event.data);
+	}
+	</script>
+	<input id=input type=text size=1 />
+	<object id=obj>
+	<div tabindex=0 id=doc style='width:600; height:30; cursor:none;' contenteditable spellcheck oninput=funcinput(event); >All<blink>o</blink> comment</div>
+	</object>
+	<script>
+	var input = document.getElementById('doc');
+	console.log ('input='+input);
+	//input.addEventListener('input',funcinput);
+	//input.addEventListener('compositionstart',compstart);
+	//input.addEventListener('compositionupdate',compupdate);
+	//input.addEventListener('compositionend',compend);
+	input.addEventListener('keydown',func);
+	</script>
+	</body>
+	</html>
+	?>
+}
 extern "C" void webmain()
 {
 	tlmpweb_title ("This is the start of a long long journey");
@@ -1247,5 +1587,6 @@ extern "C" void webmain()
 	//journey_click();
 	//journey_formanim();
 	journey_displaylen();
+	//journey_keypress();
 }
 
