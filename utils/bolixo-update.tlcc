@@ -40,6 +40,7 @@ int main (int argc, char *argv[])
 	glocal const char *newstate_file = nullptr;
 	glocal bool doit = false;
 	glocal bool test = false;
+	glocal bool list_updates = false;
 	glocal.ret = <call tlmpprogram>(argc,argv,"bolixo");
 	<f init>
 		setproginfo ("bolixo-update",VERSION
@@ -48,6 +49,7 @@ int main (int argc, char *argv[])
 		setarg ('c',"script",MSG_U(I_SCRIPTFILE,"Path of the update-script file"),glocal.update_script,false);
 		setarg ('n',"newstatefile",MSG_U(I_NEWSTATEFILE,"File which will hold the updated states"),glocal.newstate_file,false);
 		setarg ('s',"statefile",MSG_U(I_STATEFILE,"File holding the current state of the system"),glocal.state_file,true);
+		setarg (' ',"list-updates",MSG_U(I_LISTUPDATES,"List all entries in tne update script"),glocal.list_updates,false);
 		setarg (' ',"test",MSG_U(I_TEST,"Show what will be done only"),glocal.test,false);
 		setarg (' ',"doit",MSG_U(I_DOIT,"Execute the commands"),glocal.doit,false);
 	</f>
@@ -57,16 +59,18 @@ int main (int argc, char *argv[])
 		glocal vector<string> newstates;	// States to add
 		glocal vector<string> commands;		// Commands to execute
 		glocal vector<string> end_commands;	// Commands to execute after commands.
-		<call loadfile>(glocal.state_file,true);
-		<f oneline>
-			glocal.states.insert(line);
-			return 0;
-		</f>
-		<f missing>
-			tlmp_error (MSG_U(E_STATEFILEMISSING,"State file %s is missing, can't continue\n"),fname);
-			exit (-1);
-		</f>
-		</call>
+		if (!glocal.list_updates){
+			<call loadfile>(glocal.state_file,true);
+			<f oneline>
+				glocal.states.insert(line);
+				return 0;
+			</f>
+			<f missing>
+				tlmp_error (MSG_U(E_STATEFILEMISSING,"State file %s is missing, can't continue\n"),fname);
+				exit (-1);
+			</f>
+			</call>
+		}
 		glocal bool processing = false;
 		<call loadfile>(glocal.update_script,true);
 		<f oneline>
@@ -98,40 +102,43 @@ int main (int argc, char *argv[])
 			exit (-1);
 		</f>
 		</call>
-		if (!glocal.test && !glocal.doit){
+		if (glocal.list_updates){
+			for (auto &s:glocal.newstates) printf ("%s\n",s.c_str());
+		}else if (!glocal.test && !glocal.doit){
 			tlmp_error (MSG_U(E_OPTTESTORDOIT,"Option --test or --doit is required, can't continue\n"));
 			exit (-1);
-		}
-		if (glocal.test){
-			for (auto &s:glocal.newstates) printf ("newstate: %s\n",s.c_str());
-			for (auto &s:glocal.commands) printf ("    command: %s\n",s.c_str());
-			for (auto &s:glocal.end_commands) printf ("end command: %s\n",s.c_str());
-		}
-		if (glocal.doit){
-			for (auto &s:glocal.commands){
-				printf ("    command: %s\n",s.c_str());
-				if (system(s.c_str())!=0){
-					tlmp_error (MSG_U(E_ONEERROR,"One error, aborting\n"));
-					exit (-1);
-				}
-			}
-			for (auto &s:glocal.end_commands){
-				printf ("end command: %s\n",s.c_str());
-				if (system(s.c_str())!=0){
-					tlmp_error (MSG_R(E_ONEERROR));
-					exit (-1);
-				}
-			}
-			if (glocal.newstate_file != nullptr){
-				<call savefile>(glocal.newstate_file,false);
-				<f dowrite>
-					for (auto &s:glocal.newstates) fprintf (fout,"%s\n",s.c_str());
-					return 0;
-				</f>
-				</call>
-			}
 		}else{
-			if (glocal.newstates.size() > 0) ret = -1;
+			if (glocal.test){
+				for (auto &s:glocal.newstates) printf ("newstate: %s\n",s.c_str());
+				for (auto &s:glocal.commands) printf ("    command: %s\n",s.c_str());
+				for (auto &s:glocal.end_commands) printf ("end command: %s\n",s.c_str());
+			}
+			if (glocal.doit){
+				for (auto &s:glocal.commands){
+					printf ("    command: %s\n",s.c_str());
+					if (system(s.c_str())!=0){
+						tlmp_error (MSG_U(E_ONEERROR,"One error, aborting\n"));
+						exit (-1);
+					}
+				}
+				for (auto &s:glocal.end_commands){
+					printf ("end command: %s\n",s.c_str());
+					if (system(s.c_str())!=0){
+						tlmp_error (MSG_R(E_ONEERROR));
+						exit (-1);
+					}
+				}
+				if (glocal.newstate_file != nullptr){
+					<call savefile>(glocal.newstate_file,false);
+					<f dowrite>
+						for (auto &s:glocal.newstates) fprintf (fout,"%s\n",s.c_str());
+						return 0;
+					</f>
+					</call>
+				}
+			}else{
+				if (glocal.newstates.size() > 0) ret = -1;
+			}
 		}
 		return ret;
 	</f>

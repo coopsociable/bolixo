@@ -85,7 +85,7 @@ elif [ "$1" = "users" ] ; then # db: Access users database
 elif [ "$1" = "bolixo" ] ; then # db: Access bolixo (directory) database
 	shift
 	mysql -S /var/lib/lxc/bosqldbolixo/rootfs/var/lib/mysql/mysql.sock $DBNAMEBOLIXO $*
-elif [ "$1" = "createdb" ] ; then # db: Access trliusers database
+elif [ "$1" = "createdb" ] ; then # db: Create databases
 	if [ "$MYSQL_PWD" = "" ] ; then
 		echo -n "mysql root password : "
 		read pass

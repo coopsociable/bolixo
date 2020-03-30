@@ -741,6 +741,16 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 		echo -n "Enter password: "	
 		read ADMINPASSWORD
 	fi
+	# Fill the updates table
+	if [ -x utils/bolixo-update ] ; then
+		CMD="utils/bolixo-update --list-updates -c update-script --statefile /dev/null"
+	else
+		CMD="/usr/lib/bolixo-update --list-updates --statefile /dev/null"
+	fi
+	$CMD | while read name
+	do
+		echo "insert into updates (name) values ('$name');" | $0 users
+	done
 elif [ "$1" = "createdb-patch1" ]; then # db: add nodes table to db files
 	ENGINE=myisam
 	mysql -uroot -S $SOCKN $DBNAME <<-EOF
@@ -1369,11 +1379,13 @@ elif [ "$1" = "lxc0-documentd" ]; then # prod:
 	mkdir -p /var/lib/lxc/documentd
 	strace -o /tmp/log.qqwing qqwing --generate 1 --compact --solution --difficulty easy >/dev/null
 	trli-lxc0 $LXC0USELINK \
-		--filelist /var/lib/lxc/documentd/publishd.files \
+		--filelist /var/lib/lxc/documentd/documentd.files \
 		--savefile /var/lib/lxc/documentd/documentd.save \
 		--restorefile /var/lib/lxc/documentd/documentd.restore \
 		$EXTRALXCPROG \
 		$INCLUDELANGS \
+		-e /usr/share/fonts/dejavu/DejaVuSans.ttf \
+		-e /usr/share/fonts/liberation*/LiberationSans-Regular.ttf \
 		-e /bin/sh \
 		-i /usr/sbin/trli-init -l /tmp/log -l /tmp/log.qqwing -n documentd -p $BOLIXOPATH/documentd >/var/lib/lxc/documentd/documentd-lxc0.sh
 	chmod +x /var/lib/lxc/documentd/documentd-lxc0.sh
