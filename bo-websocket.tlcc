@@ -205,7 +205,8 @@ struct _F_bo_websocket{
 	void send (PARAM_STRING msg){
 		bo_websocket_send (tcp,fd,1,msg);
 	}
-	#define _F_bo_websocket_commands(name) void name commands(const vector<string> &cmds, CONNECT_INFO &con_bod, CONNECT_INFO &con_sessiond, const char *session, const char *gameid, bool &endserver)
+	#define _F_bo_websocket_commands(name) void name commands(const vector<string> &cmds, CONNECT_INFO &con_bod, CONNECT_INFO &con_sessiond, \
+		const char *session, const char *gameid, const DOC_UI_SPECS &sp, bool &endserver)
 	virtual _F_bo_websocket_commands( )=0;
 	#define _F_bo_websocket_waitnote(name) void name waitnote(CONNECT_INFO &con_sessiond, const char *session, int &sequence, const set<string> &project_notifications, bool &endserver)
 	virtual _F_bo_websocket_waitnote( )=0;
@@ -245,6 +246,7 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 	glocal unsigned nbping = 0;	// number of ping sent without an answer
 	glocal time_t lastactivity = time(nullptr);
 	glocal string gameid;
+	glocal DOC_UI_SPECS sp;
 	glocal int sequence = -1;
 	glocal int sessionfd = -1;
 	glocal set<string> project_notifications;
@@ -441,7 +443,20 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 				const char *pt;
 				auto p = glocal.messages.begin();
 				if (is_start_any_of(*p,pt,"gameid=")){
-					glocal.gameid = pt;
+					vector<string> tb;
+					if (str_splitline(pt,' ',tb)!=7){
+						tlmp_warning ("Invalid gameid spec: %s",p->c_str());
+						bo_websocket_send (&glocal.TCPSERVER,no,1,"callrefresh();");
+						endserver = true;
+					}else{
+						glocal.gameid = tb[0];
+						glocal.sp.width = atoi(tb[1].c_str());
+						glocal.sp.height = atoi(tb[2].c_str());
+						glocal.sp.content_width = atoi(tb[3].c_str());
+						glocal.sp.content_height = atoi(tb[4].c_str());
+						glocal.sp.mobile = atoi(tb[5].c_str()) != 0;
+						glocal.sp.fontsize = atoi(tb[6].c_str());
+					}
 					//tlmp_warning ("gameid:%s",glocal.gameid.c_str());
 					glocal.messages.erase (p);
 				}else if (is_start_any_of(*p,pt,"sequence=")){
@@ -457,7 +472,7 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 					}
 					glocal.messages.erase (p);
 				}else if (glocal.gameid.size() > 0){
-					glocal.c.commands(glocal.messages,glocal.con_bod,glocal.con_sessiond,glocal.session.c_str(),glocal.gameid.c_str(),endserver);
+					glocal.c.commands(glocal.messages,glocal.con_bod,glocal.con_sessiond,glocal.session.c_str(),glocal.gameid.c_str(),glocal.sp,endserver);
 					break;
 				}else{
 					tlmp_error ("bo_websocket_game: gameid or sequence not set, ending: messages.size()=%lu message[0]=%s"
@@ -583,10 +598,6 @@ static void bo_websocket_game (int fd, int waitfd, CONNECT_INFO &con_bod, CONNEC
 			}
 		}
 		if (steps.size() > 0){
-			DOC_UI_SPECS sp;
-			sp.mobile = 0;	//tlmpweb_ismobile();
-			sp.fontsize = 13; //tlmpweb_fontsize();
-			sp.height = sp.width = sp.content_height = sp.content_width = 0;
 			//for (auto m:cmds) tlmp_warning ("m=%s",m.c_str());
 			<call bod_client_playstep>(con_bod,session,"",gameid,steps,sp);
 			<f ok>
