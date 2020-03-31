@@ -28,6 +28,7 @@
 #include "documentd.h"
 #include "bolixo.m"
 
+#define documentd_wordproc_lines_NOTNEED
 #include "proto/documentd_wordproc.protoch"
 #include "proto/documentd_wordproc.protoh"
 
@@ -299,16 +300,17 @@ void WORDPROC::save(DOC_WRITER &w, bool save_session_info)
 		users.emplace_back(user);
 	}
 	documentd_wordproc_users (&w,users);
-	vector<WORDPROC_PARA> paras;
+	vector<WORDPROC_PARA_V2> paras;
 	for (auto &l:lines){
-		WORDPROC_PARA para;
+		WORDPROC_PARA_V2 para;
 		para.listtype = l.listtype;
-		para.title_level = l.title_level;
+		para.title_level = l.get_paragraph_type();
+		para.line_spec = l.get_paragraph_spec();
 		para.tab_level = l.tab_level;
 		para.line = l.line;
 		paras.emplace_back(para);
 	}
-	documentd_wordproc_lines (&w,paras);
+	documentd_wordproc_lines_v2 (&w,paras);
 }
 <mod>
 void WORDPROC::load(DOC_READER &r, string &msg)
@@ -336,7 +338,19 @@ void WORDPROC::load(DOC_READER &r, string &msg)
 		for (auto &l:lines){
 			WORDPROC_LINE line;
 			line.listtype = l.listtype;
-			line.title_level = l.title_level;
+			line.set_paragraph_type(l.title_level);
+			line.set_paragraph_spec(line.is_image() ? 30 : 0);
+			line.tab_level = l.tab_level;
+			line.line = l.line;
+			glocal.lines.push_back(line);
+		}
+	</f>
+	<f lines_v2>
+		for (auto &l:lines){
+			WORDPROC_LINE line;
+			line.listtype = l.listtype;
+			line.set_paragraph_type(l.title_level);
+			line.set_paragraph_spec(l.line_spec);
 			line.tab_level = l.tab_level;
 			line.line = l.line;
 			glocal.lines.push_back(line);
@@ -566,7 +580,7 @@ string WORDPROC::formatline(unsigned noline)
 		unsigned column = cursors.size() > 0 ? cursors[0].column : (unsigned)-1;
 		unsigned cursor_no = 0;
 		unsigned pos=0;
-		static float tb[]={1,1.2,1.5,2,2.5};
+		static float tb[]={1, 1.2, 1.5, 2, 2.5};
 		if (para.listtype == LIST_BULLET){
 			ret += string_f("<div class=bullet%u>&bull;</div><div class=tab%u-bullet>",para.tab_level,para.tab_level);
 		}else if (para.listtype == LIST_NUM){
@@ -580,113 +594,146 @@ string WORDPROC::formatline(unsigned noline)
 				}
 			}
 			ret += string_f("<div class=bullet%u><span style=font-size:%1.2fem>%u.</span></div><div class=tab%u-bullet>"
-				,para.tab_level,tb[para.title_level],num,para.tab_level);
+				,para.tab_level,tb[para.get_title_level()],num,para.tab_level);
 		}else if (para.listtype == LIST_CENTER){
 			ret += "<div class=tab-center>";
 		}else{
 			ret += string_f("<div class=tab%u>",para.tab_level);
 		}
 		closetab = "</div>";
-		if (para.title_level > 0){
-			ret += string_f("<span style=font-size:%1.2fem;>",tb[para.title_level]);
+		bool format = true;
+		if (para.is_title()){
+			ret += string_f("<span style=font-size:%1.2fem;>",tb[para.get_title_level()]);
 			closetitle = "</span>";
-		}
-				
-		for (auto p=line.begin(); p!=line.end(); ){
-			auto c = *p;
-			if (c == CAR_START_EFFECT){
-				// tlmp_warning ("Start effect");
-				string effect;
-				p++;
-				while (p != line.end()){
-					if (*p == ';'){
-						p++;
-						break;
-					}else{
-						effect += *p++;
+		}else if (para.is_image()){
+			const char *url = str_skip(para.line.c_str());
+			if (strchr(url,'<')==nullptr){
+				// If the < character is there, which is illegal, we simply display the line (format=true)
+				// We do some validation and if the <img tag is generated, then we set format=false
+				if (cursors.size() > 0) ret += "<div class=imgcursor>";
+				const char *project;
+				if (is_start_any_ofnc(url,NONEED,"http://","https://")){
+					ret += string_f("<img width=%u%% src=%s>",para.get_image_width(),url);
+					format = false;
+				}else if (is_start_any_of(gameid,project,"/projects")){
+					// We are sure that gameid starts with /projects/, but we test it anyway
+					// This is a file stored in the bolixo project
+					// We extract the bolixo project from the gameid;
+					const char *slash = strrchr(project,'/');
+					if (slash != nullptr){
+						// Now we have the project and sub-folder without the document name
+						string path(project,slash-project);
+						if (url[0] == '/'){
+							auto sl = path.find(1,'/');
+							if (sl != string::npos) path.resize(sl);
+						}
+						path += url;
+						ret += string_f("<img width=%u%% src=/index.hc?webstep=5&image=/projects%s>"
+							,para.get_image_width(),path.c_str());
+						format = false;
 					}
 				}
-				// tlmp_warning ("effect=%s",effect.c_str());
-				if (effect == EFFECT_BOLD){
-					ret += "<b>";
-					effects.push("</b>");
-				}else if (effect == EFFECT_ITALIC){
-					ret += "<i>";
-					effects.push("</i>");
-				}else if (effect == EFFECT_UNDERLINE){
-					ret += "<u>";
-					effects.push("</u>");
-				}else if (effect == EFFECT_SUP){
-					ret += "<sup>";
-					effects.push("</sup>");
-				}else if (effect == EFFECT_SUB){
-					ret += "<sub>";
-					effects.push("</sub>");
-				}else if (effect == EFFECT_FONT1){
-					ret += "<span style=font-size:1.5em;>";
-					effects.push("</span>");
-				}
-			}else if (is_any_of(c,CAR_END_EFFECT,CAR_END2_EFFECT)){
-				// tlmp_warning ("effects.size()=%lu",effects.size());
-				p++;
-				ret += effects.top();
-				effects.pop();
-			}else{
-				if (pos == column){
-					const char *cursor=cursors[cursor_no].insertmode
-						? "<span style=background-color:lightgray;>" : "<span style=background-color:lightpink;>";
-					ret += cursor;
-				}
-				if (c == ' '){
-					// The first space is passed as is so the browser knows there are multiple words
-					// The extra spaces are changed to &nbsp; so they are not skipped by the browser
-					if (p == line.begin()
-						|| (p > line.begin() && p[-1] == ' ')){
-						ret += "&nbsp;";
-					}else{
-						ret += ' ';
-					}
-					p++;
-				}else if (c == '<'){
-					ret += "&lt;";
-					p++;
-				}else if (c == '>'){
-					ret += "&gt;";
-					p++;
-				}else if (c == '\\'){
-					ret += "&bsol;";
-					p++;
-				}else if (c == '\''){
-					ret += "&#39;";
-					p++;
-				}else{
-					size_t sizecar = utf8_codepoint_size(c);
-					while (sizecar > 0 && p != line.end()){
-						ret += *p++;
-						sizecar--;
-					}
-				}
-				if (pos == column){
-					ret += "</span>";
-					cursor_no++;
-					if (cursor_no < cursors.size()){
-						column = cursors[cursor_no].column;
-					}
-				}
-				pos++;
+				if (cursors.size() > 0) ret += "</div>";
 			}
 		}
-		if (pos <= column){
-			while (cursor_no < cursors.size()){
-				column = cursors[cursor_no].column;
-				while (pos < column){
+				
+		if (format){
+			for (auto p=line.begin(); p!=line.end(); ){
+				auto c = *p;
+				if (c == CAR_START_EFFECT){
+					// tlmp_warning ("Start effect");
+					string effect;
+					p++;
+					while (p != line.end()){
+						if (*p == ';'){
+							p++;
+							break;
+						}else{
+							effect += *p++;
+						}
+					}
+					// tlmp_warning ("effect=%s",effect.c_str());
+					if (effect == EFFECT_BOLD){
+						ret += "<b>";
+						effects.push("</b>");
+					}else if (effect == EFFECT_ITALIC){
+						ret += "<i>";
+						effects.push("</i>");
+					}else if (effect == EFFECT_UNDERLINE){
+						ret += "<u>";
+						effects.push("</u>");
+					}else if (effect == EFFECT_SUP){
+						ret += "<sup>";
+						effects.push("</sup>");
+					}else if (effect == EFFECT_SUB){
+						ret += "<sub>";
+						effects.push("</sub>");
+					}else if (effect == EFFECT_FONT1){
+						ret += "<span style=font-size:1.5em;>";
+						effects.push("</span>");
+					}
+				}else if (is_any_of(c,CAR_END_EFFECT,CAR_END2_EFFECT)){
+					// tlmp_warning ("effects.size()=%lu",effects.size());
+					p++;
+					ret += effects.top();
+					effects.pop();
+				}else{
+					if (pos == column){
+						const char *cursor=cursors[cursor_no].insertmode
+							? "<span style=background-color:lightgray;>" : "<span style=background-color:lightpink;>";
+						ret += cursor;
+					}
+					if (c == ' '){
+						// The first space is passed as is so the browser knows there are multiple words
+						// The extra spaces are changed to &nbsp; so they are not skipped by the browser
+						if (p == line.begin()
+							|| (p > line.begin() && p[-1] == ' ')){
+							ret += "&nbsp;";
+						}else{
+							ret += ' ';
+						}
+						p++;
+					}else if (c == '<'){
+						ret += "&lt;";
+						p++;
+					}else if (c == '>'){
+						ret += "&gt;";
+						p++;
+					}else if (c == '\\'){
+						ret += "&bsol;";
+						p++;
+					}else if (c == '\''){
+						ret += "&#39;";
+						p++;
+					}else{
+						size_t sizecar = utf8_codepoint_size(c);
+						while (sizecar > 0 && p != line.end()){
+							ret += *p++;
+							sizecar--;
+						}
+					}
+					if (pos == column){
+						ret += "</span>";
+						cursor_no++;
+						if (cursor_no < cursors.size()){
+							column = cursors[cursor_no].column;
+						}
+					}
 					pos++;
-					ret += "&nbsp;";
 				}
-				const char *cursor=cursors[cursor_no].insertmode
-					? "<span style=background-color:lightgray;>" : "<span style=background-color:lightpink;>";
-				ret += string(cursor) + "&nbsp;</span>";
-				cursor_no++;
+			}
+			if (pos <= column){
+				while (cursor_no < cursors.size()){
+					column = cursors[cursor_no].column;
+					while (pos < column){
+						pos++;
+						ret += "&nbsp;";
+					}
+					const char *cursor=cursors[cursor_no].insertmode
+						? "<span style=background-color:lightgray;>" : "<span style=background-color:lightpink;>";
+					ret += string(cursor) + "&nbsp;</span>";
+					cursor_no++;
+				}
 			}
 		}
 	}
@@ -992,13 +1039,19 @@ void WORDPROC::execstep (
 			{
 				unsigned sp_width = width-30;	// Space for line numbers, during development
 				v.val += "<style>\n";
+				v.val += ".imgcursor{\n";
+				v.val += "\tborder:2px solid lightgray;\n";
+				v.val += "}\n";
+
 				v.val += ".onecol, .oneline{\n";
 				v.val += "\tflex:0 1 auto;\n";
 				v.val += "}\n";
+
 				v.val += ".oneline .col{\n";
 				v.val += "\tdisplay:flex;\n";
 				v.val += "\tflex-flow:row;\n";
 				v.val += "}\n";
+
 				v.val += ".tab-center{\n";
 				v.val += "\ttext-align:center;\n";
 				v.val += "\toverflow-wrap: break-word;\n";
@@ -1113,6 +1166,7 @@ void WORDPROC::execstep (
 				#define BUTTON_SUP		10
 				#define BUTTON_SUB		11
 				#define BUTTON_CENTER		12
+				#define BUTTON_IMAGE		13
 				DOC_BUTTON_SPECS specs;
 				if (sp.mobile){
 					specs.width = 60;
@@ -1134,6 +1188,7 @@ void WORDPROC::execstep (
 				documentd_button (v.val,BUTTON_CENTER,"<>",specs,false);
 				documentd_button (v.val,BUTTON_BULLET,"&bull;",specs,false);
 				documentd_button (v.val,BUTTON_NUMLIST,"N.",specs,false);
+				documentd_button (v.val,BUTTON_IMAGE,"_",specs,false);
 				documentd_button_end(v.val);
 			}else{
 				v.val += "<div id=tab_form style='margin-top:5; margin-bottom:5; background-color: lightgray;'>\n";
@@ -1299,10 +1354,10 @@ void WORDPROC::execstep (
 					if (wl.tab_level > 0) wl.tab_level--;
 					update_num_lines = true;
 				}else if (strcmp(val,"t")==0 && mod.alt){
-					if (wl.title_level < 4) wl.title_level++;
+					wl.increase_title_level();
 					update_num_lines = true;
 				}else if (strcmp(val,"T")==0 && mod.alt){
-					if (wl.title_level > 0) wl.title_level--;
+					wl.decrease_title_level();
 					update_num_lines = true;
 				}else if (strcmp(val,"l")==0 && mod.alt){
 					if (wl.listtype == LIST_BULLET){
@@ -1357,7 +1412,7 @@ void WORDPROC::execstep (
 						newl.line += string_f("%c%s;",CAR_START_EFFECT,e.c_str());
 					}
 					newl.line += l.substr(pos);
-					if (para.title_level == 0){
+					if (para.std_paragraph()){
 						newl.listtype = para.listtype;
 						newl.tab_level = para.tab_level;
 					}
@@ -1415,7 +1470,18 @@ void WORDPROC::execstep (
 				page_up_down(new_offset,visible_lines,lastline,pref,script_var,script_lines,notify_lines);
 			}else if (strcmp(var,"hmove")==0){
 				int move = atoi(val);
-				if (move < 0){
+				if (pref.cursor.line < lines.size() && lines[pref.cursor.line].is_image()){
+					auto &para = lines[pref.cursor.line];
+					unsigned rep = mod.ctrl ? 10 : 1;
+					for (unsigned i=0; i<rep; i++){
+						if (move < 0){
+							para.decrease_image_width();
+						}else{
+							para.increase_image_width();
+						}
+					}
+					notify_lines.insert(pref.cursor.line);
+				}else if (move < 0){
 					if (pref.cursor.column == 0){
 						if (pref.cursor.line > 0){
 							notify_lines.insert(pref.cursor.line);
@@ -1554,10 +1620,10 @@ void WORDPROC::execstep (
 					if (wl.tab_level > 0) wl.tab_level--;
 					update_num_lines = true;
 				}else if (uval == BUTTON_TITLE_PLUS){
-					if (wl.title_level < 4) wl.title_level++;
+					wl.increase_title_level();
 					update_num_lines = true;
 				}else if (uval == BUTTON_TITLE_LESS){
-					if (wl.title_level > 0) wl.title_level--;
+					wl.decrease_title_level();
 					update_num_lines = true;
 				}else if (uval == BUTTON_BULLET){
 					if (wl.listtype == LIST_BULLET){
@@ -1590,6 +1656,14 @@ void WORDPROC::execstep (
 					wordproc_insert_effect (l,pos,EFFECT_SUP);
 				}else if (uval == BUTTON_SUB){
 					wordproc_insert_effect (l,pos,EFFECT_SUB);
+				}else if (uval == BUTTON_IMAGE){
+					if (wl.is_image()){
+						wl.set_image(false);
+						update_num_lines = true;
+					}else if (wl.std_paragraph()){
+						wl.set_image(true);
+						update_num_lines = true;
+					}
 				}
 				if (update_num_lines) wordproc_update_num_lines (pref.cursor.line,lines,notify_lines);
 				notify_lines.insert(pref.cursor.line);

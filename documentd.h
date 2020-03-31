@@ -235,14 +235,78 @@ struct WORD_USERPREF{
 
 enum WORDPROC_LISTTYPE { LIST_NONE, LIST_BULLET,LIST_NUM,LIST_CENTER};
 
-struct WORDPROC_LINE{	// Well, a line is a paragraph...
-	std::string line;
-	WORDPROC_LISTTYPE listtype=LIST_NONE;
+class WORDPROC_LINE{	// Well, a line is a paragraph...
 	unsigned char title_level=0;
+	unsigned char line_spec=0;	// Used for tables and images
+public:
 	unsigned char tab_level=0;
+	WORDPROC_LISTTYPE listtype=LIST_NONE;
+	std::string line;
+public:
 	WORDPROC_LINE(){}
 	WORDPROC_LINE(const std::string &l):line(l){}
 	WORDPROC_LINE(const char *l):line(l){}
+	bool is_image() const {
+		return title_level == 10;
+	}
+	void set_paragraph_type(unsigned type){
+		title_level = type;
+	}
+	unsigned get_paragraph_type() const{
+		return title_level;
+	}
+	void set_paragraph_spec(unsigned spec){
+		line_spec = spec;
+	}
+	unsigned get_paragraph_spec() const{
+		return line_spec;
+	}
+	void increase_title_level(){
+		if (title_level < 4) title_level++;
+	}
+	void decrease_title_level(){
+		if (title_level > 0 && title_level < 5) title_level--;
+	}
+	void set_image(bool on){
+		if (on){
+			if (title_level == 0){
+				title_level = 10;
+				if (line_spec == 0) line_spec = 30;
+			}
+		}else if (title_level == 10){
+			title_level = 0;
+		}
+	}
+	void increase_image_width(){
+		if (is_image() && line_spec < 100) line_spec++;
+	}
+	void decrease_image_width(){
+		if (is_image() && line_spec > 0) line_spec--;
+	}
+	unsigned get_image_width() const {
+		return is_image() ? line_spec : 0;
+	}
+	void set_table(bool on){
+		if (on){
+			if (title_level == 0){
+				title_level = 11;
+			}
+		}else if (title_level == 11){
+			title_level = 0;
+		}
+	}
+	bool is_table() const {
+		return title_level == 11;
+	}
+	bool is_title() const {
+		return title_level > 0 && title_level < 4;
+	}
+	bool std_paragraph() const {
+		return title_level == 0;
+	}
+	unsigned get_title_level() const {
+		return title_level < 5 ? title_level : 0;
+	}
 };
 
 class WORDPROC: public GAME{
