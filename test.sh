@@ -1354,6 +1354,7 @@ elif [ "$1" = "lxc0-bolixod" ]; then # prod:
 	bolixod_restore bolixod
 elif [ "$1" = "lxc0-publishd" ]; then # prod:
 	export LANG=eng
+	export LXCSOCK=off
 	$0 publishd lxc0 &
 	sleep 1
 	# Force publishd to make a resolver request
@@ -1373,6 +1374,7 @@ elif [ "$1" = "lxc0-publishd" ]; then # prod:
 	publishd_restore publishd
 elif [ "$1" = "lxc0-documentd" ]; then # prod:
 	export LANG=eng
+	export LXCSOCK=off
 	$0 documentd lxc0 &
 	sleep 1
 	$0 documentd-control quit
