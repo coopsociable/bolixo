@@ -46,6 +46,32 @@ static unsigned wordproc_displaylen (PARAM_STRING txt, unsigned fontsize)
 	//tlmp_warning ("displaylen :%s: fontsize=%u ret=%u",txt.ptr,fontsize,ret);
 	return ret;
 }
+#define UTF8_ONE_BYTE_MASK 0b10000000
+#define UTF8_ONE_BYTE_COUNT 0
+
+#define UTF8_TWO_BYTE_MASK 0b11100000
+#define UTF8_TWO_BYTE_COUNT 0b11000000
+
+#define UTF8_THREE_BYTE_MASK 0b11110000
+#define UTF8_THREE_BYTE_COUNT 0b11100000
+
+#define UTF8_FOUR_BYTE_MASK 0b11111000
+#define UTF8_FOUR_BYTE_COUNT 0b11110000
+static size_t utf8_codepoint_size(uint8_t text)
+{
+	if((text & UTF8_ONE_BYTE_MASK) == UTF8_ONE_BYTE_COUNT) {
+		return 1;
+	}
+
+	if((text & UTF8_TWO_BYTE_MASK) == UTF8_TWO_BYTE_COUNT) {
+		return 2;
+	}
+
+	if((text & UTF8_THREE_BYTE_MASK) == UTF8_THREE_BYTE_COUNT) {
+        	return 3;
+	}
+	return 4;
+}
 
 #define CAR_START_EFFECT	11		
 #define CAR_END_EFFECT		12
@@ -72,12 +98,24 @@ struct WORDCHUNK{
 	unsigned len = 0;
 	unsigned txtlen = 0;
 	EFFECTS_STATE effects;
-	WORDCHUNK(const char *_txt, unsigned _txtlen, const EFFECTS_STATE &_effects, unsigned fontsize)
-		:txt(_txt,_txtlen), txtlen(_txtlen), effects(_effects){
+	WORDCHUNK(
+		const char *_txt,	// Start of chunk
+		unsigned _strlen,	// Length of chunk in bytes
+		unsigned _txtlen,	// Length of chunk in UTF-8 character
+		const EFFECTS_STATE &_effects,	// Current effects applied to the chunk
+		unsigned fontsize)	// Browser default font size
+		:txt(_txt,_strlen), txtlen(_txtlen), effects(_effects){
 		len = wordproc_displaylen(txt,fontsize);
 	}
 	string startstr (unsigned nbchar){
-		return txt.substr(0,nbchar);
+		const char *start = txt.c_str();
+		const char *pt = start;
+		while (nbchar > 0 && *pt != '\0'){
+			size_t sizecar = utf8_codepoint_size(*pt);
+			pt += sizecar;
+			nbchar--;
+		}
+		return txt.substr(0,pt-start);
 	}
 };
 	
@@ -91,10 +129,10 @@ struct WORDINFO{
 		len = 0;
 		txtlen = 0;
 	}
-	void addchunk (const char *txt, unsigned _txtlen, const EFFECTS_STATE &effects, unsigned fontsize){
+	void addchunk (const char *txt, unsigned _strlen, unsigned _txtlen, const EFFECTS_STATE &effects, unsigned fontsize){
 		if (_txtlen > 0){
 			txtlen += _txtlen;
-			WORDCHUNK chunk(txt,_txtlen,effects,fontsize);
+			WORDCHUNK chunk(txt,_strlen, _txtlen,effects,fontsize);
 			len += chunk.len;
 			chunks.emplace_back(move(chunk));
 		}
@@ -197,13 +235,14 @@ void PARAGRAPH::init(PARAM_STRING txt, unsigned width, unsigned _fontsize)
 		// Only the first space is used to split word. The other are turned into &nbsp; at format time, so are part of the word
 		// The user entered extra space, so they are kept in the format.
 		const char *start = pt;
+		unsigned txtlen=0;	// UTF-8 character len
 		bool word_start = true;	// Spaces are accepted only at word start
 		while (*pt != '\0'){
 			if (*pt == ' '){
 				if (!word_start) break;
 				pt++;
 			}else if (*pt == CAR_START_EFFECT){
-				word.addchunk (start,pt-start,state,fontsize);
+				word.addchunk (start,pt-start,txtlen,state,fontsize);
 				pt++;
 				const char *effect = pt;
 				while (*pt != '\0' && *pt != ';') pt++;
@@ -224,29 +263,34 @@ void PARAGRAPH::init(PARAM_STRING txt, unsigned width, unsigned _fontsize)
 				if (*pt == ';') pt++;
 				effects.push(state);
 				start = pt;
+				txtlen = 0;
 			}else if (is_any_of(*pt,CAR_END_EFFECT,CAR_END2_EFFECT)){
-				word.addchunk (start,pt-start,state,fontsize);
+				word.addchunk (start,pt-start,pt-start,state,fontsize);
 				state = effects.top();
 				effects.pop();
 				pt++;
 				start = pt;
+				txtlen = 0;
 			}else if (*pt == CAR_BREAK){
 				// This ends the line
-				word.addchunk (start,pt-start,state,fontsize);
+				word.addchunk (start,pt-start,txtlen,state,fontsize);
 				words.emplace_back(move(word));
 				word.reset();
 				// After the loop, the emplace_back will add an empty word (no chunks).
 				// This will be used to detect BREAK later when building paragraph.
 				pt++;
 				start = pt;
+				txtlen = 0;
 				break;
 			}else{
 				// Non space character
 				word_start = false;
-				pt++;
+				size_t sizecar = utf8_codepoint_size(*pt);
+				pt+=sizecar;
+				txtlen++;
 			}
 		}
-		word.addchunk (start,pt-start,state,fontsize);
+		word.addchunk (start,pt-start,txtlen,state,fontsize);
 		words.emplace_back(move(word));
 		word.reset();
 	}
@@ -358,7 +402,11 @@ void PARAGRAPH::locate_pixel(unsigned x_pos, unsigned y_pos, unsigned &noline)
 						string tmp;
 						unsigned target_pos = x_pos - pixel_offset;
 						while (*s != '\0'){
-							tmp += *s++;
+							size_t sizecar = utf8_codepoint_size(*s);
+							while (sizecar > 0 && *s != '\0'){
+								tmp += *s++;
+								sizecar--;
+							}
 							#if 0
 							htmlprintf ("line=%lu tmp=:%s: offset=%u target_pos=%u dlen=%u<br>\n"
 								,line_cursors.size(),tmp.c_str(),offset,target_pos,wordproc_displaylen(tmp,fontsize));
@@ -531,32 +579,6 @@ void WORDPROC::testwin(vector<VARVAL> &res)
 {
 }
 
-#define UTF8_ONE_BYTE_MASK 0b10000000
-#define UTF8_ONE_BYTE_COUNT 0
-
-#define UTF8_TWO_BYTE_MASK 0b11100000
-#define UTF8_TWO_BYTE_COUNT 0b11000000
-
-#define UTF8_THREE_BYTE_MASK 0b11110000
-#define UTF8_THREE_BYTE_COUNT 0b11100000
-
-#define UTF8_FOUR_BYTE_MASK 0b11111000
-#define UTF8_FOUR_BYTE_COUNT 0b11110000
-static size_t utf8_codepoint_size(uint8_t text)
-{
-	if((text & UTF8_ONE_BYTE_MASK) == UTF8_ONE_BYTE_COUNT) {
-		return 1;
-	}
-
-	if((text & UTF8_TWO_BYTE_MASK) == UTF8_TWO_BYTE_COUNT) {
-		return 2;
-	}
-
-	if((text & UTF8_THREE_BYTE_MASK) == UTF8_THREE_BYTE_COUNT) {
-        	return 3;
-	}
-	return 4;
-}
 
 static string::const_iterator wordproc_skipeffect(const string &line, string::const_iterator p)
 {
@@ -892,6 +914,12 @@ string WORDPROC::formatline(unsigned noline)
 				}
 			}
 		}
+	}
+	// This should not happen. Effect started on one line/paragraph must end in this paragraph.
+	// Bug pending, we may end up here with unclosed effects. So we close them all here.
+	while (effects.size() > 0){
+		ret += effects.top();
+		effects.pop();
 	}
 	ret += closetitle + closetab;
 	ret += "</div>";
