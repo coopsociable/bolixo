@@ -336,6 +336,34 @@ int main (int argc, char *argv[])
 			fprintf (stderr,"%s",msg);
 		}
 	</f>
+	<f main>
+		// This is used for testing/debug
+		void wordproc_testparagraph (const char *line, unsigned width, unsigned fontsize, unsigned para_cursor);
+		if (strcmp(argv[0],"testparagraph")==0){
+			if (argc > 1){
+				for (int i=1; i<argc; i++){
+					const char *arg = argv[i];
+					printf ("----%s\n",arg);
+					for (unsigned col=0; col<15; col++){
+						wordproc_testparagraph(arg,300,14,col);
+					}
+				}
+			}else{
+				for (auto s:{
+					"1234\013b;BOLD\014abcd",
+					//"1234\016abcd",
+					//"this is a short line",
+					//"this is a short paragraph using a much longer line that is talking about nothing useful and even more"
+					}){
+					printf ("----%s\n",s);
+					for (unsigned col=0; col<15; col++){
+						wordproc_testparagraph(s,300,14,col);
+					}
+				}
+			}
+		}
+		return 0;
+	</f>
 	<f main_noarg>
 		int ret = -1;
 		glocal map<string,GAME_P> games;
@@ -782,20 +810,20 @@ unsigned documentd_displaylen (const char *title, unsigned fontsize, float size)
 		}
 
 	}
+	unsigned font_charsize = fontsize*64*size;
 	if (!some_errors){
 		static unsigned last_charsize=0;
-		unsigned charsize = fontsize*64*size;
 		//unsigned charsize = 13.6*64*size;
-		if (charsize != last_charsize){
-			last_charsize = charsize;
+		if (font_charsize != last_charsize){
+			last_charsize = font_charsize;
 			int error = FT_Set_Char_Size(
 				face,    /* handle to face object           */
 				0,       /* char_width in 1/64th of points  */
-				charsize,   /* char_height in 1/64th of points */
+				font_charsize,   /* char_height in 1/64th of points */
 				0,     /* horizontal device resolution    */
 				0 );   /* vertical device resolution      */
 			if (error){
-				tlmp_error ("Set_Char_Size %u error\n",charsize);
+				tlmp_error ("Set_Char_Size %u error\n",font_charsize);
 			}else{
 				some_errors = false;
 			}
@@ -822,17 +850,17 @@ unsigned documentd_displaylen (const char *title, unsigned fontsize, float size)
 			}
 			struct CACHECHAR{
 				unsigned car;
-				unsigned fontsize;
-				CACHECHAR(unsigned _car, unsigned _fontsize){
+				unsigned font_charsize;
+				CACHECHAR(unsigned _car, unsigned _font_charsize){
 					car = _car;
-					fontsize = _fontsize;
+					font_charsize = _font_charsize;
 				}
 				bool operator < (const CACHECHAR &n) const {
-					return tie(fontsize,car) < tie(n.fontsize,n.car);
+					return tie(font_charsize,car) < tie(n.font_charsize,n.car);
 				}
 			};
 			static map<CACHECHAR,unsigned short> cache;
-			auto &cached_width = cache[CACHECHAR(t,fontsize)];
+			auto &cached_width = cache[CACHECHAR(t,font_charsize)];
 			if (cached_width == 0){
 				unsigned glyph_index = FT_Get_Char_Index( face, t );
 

@@ -34,18 +34,92 @@
 
 using namespace std;
 
+static float para_fontsize=1;
+static unsigned displaylen_call=0;
+static unsigned wordproc_displaylen (PARAM_STRING txt, unsigned fontsize)
+{
+	displaylen_call++;
+	unsigned ret = 10*strlen(txt.ptr);
+	if (fontsize > 0){
+		ret = documentd_displaylen (txt.ptr,fontsize,para_fontsize);
+	}
+	//tlmp_warning ("displaylen :%s: fontsize=%u ret=%u",txt.ptr,fontsize,ret);
+	return ret;
+}
+
+#define CAR_START_EFFECT	11		
+#define CAR_END_EFFECT		12
+#define CAR_END2_EFFECT		13	// This is like END, except the cursor moves over it
+#					// This is useful to stop expanding an effect while entering character
+#define CAR_BREAK		14
+#define EFFECT_BOLD	"b"
+#define EFFECT_ITALIC	"i"
+#define EFFECT_UNDERLINE "u"
+#define EFFECT_SUP	"S"
+#define EFFECT_SUB	"s"
+#define EFFECT_FONT1	"F"
+
+struct EFFECTS_STATE{
+	bool bold = false;
+	bool italic = false;
+	bool underline = false;
+	bool sup = false;
+	bool sub = false;
+	bool font1 = false;
+};
+struct WORDCHUNK{
+	string txt;
+	unsigned len = 0;
+	unsigned txtlen = 0;
+	EFFECTS_STATE effects;
+	WORDCHUNK(const char *_txt, unsigned _txtlen, const EFFECTS_STATE &_effects, unsigned fontsize)
+		:txt(_txt,_txtlen), txtlen(_txtlen), effects(_effects){
+		len = wordproc_displaylen(txt,fontsize);
+	}
+	string startstr (unsigned nbchar){
+		return txt.substr(0,nbchar);
+	}
+};
+	
+	
+
 struct WORDINFO{
-	const char *txt;
-	unsigned len;	// In pixel
-	unsigned txtlen;	// strlen(txt);
-	WORDINFO(const char *_txt, unsigned _len){
-		txt = _txt;
-		len = _len;
-		txtlen = strlen(txt);
+	vector<WORDCHUNK> chunks;	// A word may have different font attributes, so is cut in chunks
+	unsigned len;			// In pixel
+	unsigned txtlen;		// strlen(txt);
+	WORDINFO(){
+		len = 0;
+		txtlen = 0;
+	}
+	void addchunk (const char *txt, unsigned _txtlen, const EFFECTS_STATE &effects, unsigned fontsize){
+		if (_txtlen > 0){
+			txtlen += _txtlen;
+			WORDCHUNK chunk(txt,_txtlen,effects,fontsize);
+			len += chunk.len;
+			chunks.emplace_back(move(chunk));
+		}
+	}
+	void reset(){
+		chunks.clear();
+		len = 0;
+		txtlen = 0;
+	}
+	void remove_first_space(unsigned fontsize){
+		if (chunks.size() > 0){
+			auto &c = chunks[0];
+			if (c.txt[0] == ' '){
+				// Remove the space for the first word
+				c.txt = c.txt.substr(1);
+				c.txtlen--;
+				txtlen--;
+				unsigned space_width = wordproc_displaylen(" ",fontsize);
+				c.len -= space_width;
+				len -= space_width;
+			}
+		}
 	}
 };
 class PARAGRAPH{
-	vector<string> tb;		// Will contain the paragraph splitted into words.
 public:
 	vector<WORDINFO> words;		// The paragraph is decomposed into words
 	vector<vector<WORDINFO>> lines;	// Then the words are put together in lines
@@ -75,18 +149,6 @@ public:
 	}
 };
 
-static float para_fontsize=1.2;
-static unsigned displaylen_call=0;
-static unsigned wordproc_displaylen (PARAM_STRING txt, unsigned fontsize)
-{
-	displaylen_call++;
-	unsigned ret = 10*strlen(txt.ptr);
-	if (fontsize > 0){
-		ret = documentd_displaylen (txt.ptr,fontsize,para_fontsize);
-	}
-	//tlmp_warning ("displaylen :%s: fontsize=%u ret=%u",txt.ptr,fontsize,ret);
-	return ret;
-}
 PARAGRAPH::PARAGRAPH()
 {
 }
@@ -101,17 +163,18 @@ void PARAGRAPH::addline (unsigned word_start, unsigned word_end, unsigned height
 {
 	vector<WORDINFO> line;
 	unsigned charlen = 0;
+	//unsigned breaklen = 0;
 	for (unsigned i=word_start; i<word_end; i++){
 		auto &w = words[i];
 		line.push_back(w);
 		charlen += w.txtlen;
+		//if (w.txtlen == 0) breaklen=1;	// CAR_BREAK
 	}
 	lines.emplace_back(move(line));
 	unsigned homepos = 0;
-	for (unsigned i=0; i<word_start; i++) homepos += words[i].txtlen;
-	line_ends.push_back(homepos+charlen+1);
-	if (homepos > 0) homepos++;	// We skip the space between the last word of the previous
-					// line and this line
+	unsigned last_end = line_ends.size();
+	if (last_end > 0) homepos = line_ends[last_end-1]+1;
+	line_ends.push_back(homepos+charlen);
 	line_homes.push_back(homepos);
 	line_heights.push_back(height);
 }
@@ -119,34 +182,89 @@ void PARAGRAPH::addline (unsigned word_start, unsigned word_end, unsigned height
 void PARAGRAPH::init(PARAM_STRING txt, unsigned width, unsigned _fontsize)
 {
 	fontsize = _fontsize;
-	tb.clear();
 	words.clear();
 	lines.clear();	
 	line_homes.clear();
 	line_ends.clear();
 	line_heights.clear();
-	str_splitline (txt.ptr,' ',tb);
-	for (auto &w:tb){
-		w.insert(w.begin(),' ');
-		words.emplace_back(w.c_str(),wordproc_displaylen(w,fontsize));
+
+	const char *pt = txt.ptr;
+	WORDINFO word;
+	stack<EFFECTS_STATE> effects;
+	EFFECTS_STATE state;
+	while (*pt != '\0'){
+		// A word is composed of spaces at the start and then non spaces
+		// Only the first space is used to split word. The other are turned into &nbsp; at format time, so are part of the word
+		// The user entered extra space, so they are kept in the format.
+		const char *start = pt;
+		bool word_start = true;	// Spaces are accepted only at word start
+		while (*pt != '\0'){
+			if (*pt == ' '){
+				if (!word_start) break;
+				pt++;
+			}else if (*pt == CAR_START_EFFECT){
+				word.addchunk (start,pt-start,state,fontsize);
+				pt++;
+				const char *effect = pt;
+				while (*pt != '\0' && *pt != ';') pt++;
+				if (is_start_any_of(effect,NONEED,EFFECT_BOLD)){
+					state.bold = true;
+				}else if (is_start_any_of(effect,NONEED,EFFECT_ITALIC)){
+					state.italic = true;
+				}else if (is_start_any_of(effect,NONEED,EFFECT_UNDERLINE)){
+					state.underline = true;
+				}else if (is_start_any_of(effect,NONEED,EFFECT_SUB)){
+					state.sub = true;
+				}else if (is_start_any_of(effect,NONEED,EFFECT_SUP)){
+					state.sup = true;
+				}else if (is_start_any_of(effect,NONEED,EFFECT_FONT1)){
+					state.font1 = true;
+				}
+				while (*pt != ';') pt++;
+				if (*pt == ';') pt++;
+				effects.push(state);
+				start = pt;
+			}else if (is_any_of(*pt,CAR_END_EFFECT,CAR_END2_EFFECT)){
+				word.addchunk (start,pt-start,state,fontsize);
+				state = effects.top();
+				effects.pop();
+				pt++;
+				start = pt;
+			}else if (*pt == CAR_BREAK){
+				// This ends the line
+				word.addchunk (start,pt-start,state,fontsize);
+				words.emplace_back(move(word));
+				word.reset();
+				// After the loop, the emplace_back will add an empty word (no chunks).
+				// This will be used to detect BREAK later when building paragraph.
+				pt++;
+				start = pt;
+				break;
+			}else{
+				// Non space character
+				word_start = false;
+				pt++;
+			}
+		}
+		word.addchunk (start,pt-start,state,fontsize);
+		words.emplace_back(move(word));
+		word.reset();
 	}
+
 	unsigned offset = 0;
 	unsigned wordnum = 1;
 	while (wordnum < words.size()){
 		// We assemble a line made of words until its width is larger than the div width.
 		auto &wo = words[offset];
-		if (wo.txt[0] == ' '){
-			// Remove the space for the first word
-			wo.txtlen--;
-			wo.txt++;
-			wo.len = wordproc_displaylen(wo.txt,fontsize);
-		}
+		wo.remove_first_space(fontsize);
 		unsigned linelen = wo.len;
 		for (unsigned i=offset+1; i<=wordnum; i++) linelen += words[i].len;
 		//htmlprintf ("linelen=%u width=%u lines.size()=%lu<br>\n",linelen,width,lines.size());
-		if (linelen < width){
+		bool empty_word = words[wordnum].len==0;// CAR_BREAK
+		if (linelen < width && !empty_word){
 			wordnum++;
 		}else{
+			if (empty_word) wordnum++;
 			addline (offset,wordnum,fontsize);
 			offset = wordnum;
 		}
@@ -165,35 +283,40 @@ void PARAGRAPH::locate_cursor(unsigned para_cursor, unsigned &noline, unsigned &
 	// then the offset in that line, and then, a pixel position in that line.
 	noline = 0;
 	line_cursors.clear();
+	unsigned last_line = lines.size()-1;
 	for (unsigned i=0; i<lines.size(); i++){
 		auto &line = lines[i];
-		size_t line_size = 0;
-		for (auto &l:line) line_size += l.txtlen;
-		if (para_cursor < line_size){
+		unsigned homepos = line_homes[i];
+		unsigned endpos = i<last_line ? line_homes[i+1] : line_ends[i];
+		if (para_cursor < endpos
+			|| i==last_line){
 			noline = i;
-			line_cursor = para_cursor;
+			line_cursor = para_cursor - homepos;
 			unsigned offset_cursor = 0;
 			cursor_pos=0;		// Cursor position inside the line in pixel
 			for (auto &w:line){
-				if (offset_cursor == para_cursor){
+				if (offset_cursor == line_cursor){
+					para_cursor = 0;
 					break;
 				}else{
-					unsigned next_offset = offset_cursor + w.txtlen;
-					if (next_offset > para_cursor){
-						// Ok the cursor is in that word
-						string tmp (w.txt,para_cursor-offset_cursor);
-						//htmlprintf ("last word :%s:<br>\n",tmp.c_str());
-						cursor_pos += wordproc_displaylen(tmp,fontsize);
-						para_cursor = 0;
-						break;
+					for (auto &c:w.chunks){
+						unsigned next_offset = offset_cursor + c.txtlen;
+						if (next_offset > line_cursor){
+							// Ok the cursor is in that word
+							string tmp = c.startstr(line_cursor-offset_cursor);
+							//printf ("last chunk :%s: para_cursor %u offset_cursor %u\n",tmp.c_str(),para_cursor,offset_cursor);
+							cursor_pos += wordproc_displaylen(tmp,fontsize);
+							para_cursor = 0;
+							break;
+						}
+						cursor_pos += c.len;
+						offset_cursor = next_offset;
 					}
-					cursor_pos += w.len;
-					offset_cursor = next_offset;
+					if (para_cursor == 0) break;
 				}
 			}
 			break;
 		}
-		para_cursor -= line_size;
 	}
 	if (para_cursor > 0){
 		unsigned space_width = wordproc_displaylen(" ",fontsize);
@@ -228,17 +351,25 @@ void PARAGRAPH::locate_pixel(unsigned x_pos, unsigned y_pos, unsigned &noline)
 			unsigned next_pixel_offset = pixel_offset + w.len;
 			if (next_pixel_offset > x_pos){
 				// The cursor is located in that word.
-				const char *s = w.txt;
-				string tmp;
-				unsigned target_pos = x_pos - pixel_offset;
-				while (*s != '\0'){
-					tmp += *s++;
-					#if 0
-					htmlprintf ("line=%lu tmp=:%s: offset=%u target_pos=%u dlen=%u<br>\n"
-						,line_cursors.size(),tmp.c_str(),offset,target_pos,wordproc_displaylen(tmp,fontsize));
-					#endif
-					if (wordproc_displaylen(tmp,fontsize) > target_pos) break;
-					offset++;
+				for (auto &c:w.chunks){
+					unsigned next_chunk_pixel = pixel_offset + c.len;
+					if (next_chunk_pixel > x_pos){
+						const char *s = c.txt.c_str();
+						string tmp;
+						unsigned target_pos = x_pos - pixel_offset;
+						while (*s != '\0'){
+							tmp += *s++;
+							#if 0
+							htmlprintf ("line=%lu tmp=:%s: offset=%u target_pos=%u dlen=%u<br>\n"
+								,line_cursors.size(),tmp.c_str(),offset,target_pos,wordproc_displaylen(tmp,fontsize));
+							#endif
+							if (wordproc_displaylen(tmp,fontsize) > target_pos) break;
+							offset++;
+						}
+						break;
+					}
+					pixel_offset = next_chunk_pixel;
+					offset += c.txtlen;
 				}
 				break;
 			}
@@ -264,9 +395,9 @@ unsigned PARAGRAPH::get_para_home (unsigned noline)
 unsigned PARAGRAPH::get_para_end (unsigned noline)
 {
 	unsigned ret = 0;
-tlmp_warning ("get_para_end noline=%u line_ends.size()=%lu",noline,line_ends.size());
+	//tlmp_warning ("get_para_end noline=%u line_ends.size()=%lu",noline,line_ends.size());
 	if (noline < line_ends.size()){
-tlmp_warning ("end=%u",line_ends[noline]);
+		//tlmp_warning ("end=%u",line_ends[noline]);
 		return line_ends[noline];
 	}
 	return ret;
@@ -284,6 +415,35 @@ unsigned PARAGRAPH::get_line_cursor (unsigned noline)
 	unsigned ret = 0;
 	if (noline < line_cursors.size()) ret = line_cursors[noline];
 	return ret;
+}
+
+void wordproc_testparagraph(const char *line, unsigned width, unsigned fontsize, unsigned para_cursor)
+{
+	PARAGRAPH para (line,width,fontsize);
+	unsigned noline,line_cursor;
+	para.locate_cursor(para_cursor,noline,line_cursor);
+	printf ("para_cursor=%u -> noline=%u line_cursor=%u cursor_xpos=%u\n",para_cursor,noline,line_cursor,para.get_cursor_xpos());
+	for (unsigned i=0; i<para.lines.size(); i++){
+		auto &l = para.lines[i];
+		unsigned txtlen=0;
+		unsigned len = 0;
+		for (auto &w:l){
+			txtlen += w.txtlen;
+			len += w.len;
+		}
+		printf ("line %u [h=%u,e=%u,c=%u,%u,%u]:",i,para.get_para_home(i),para.get_para_end(i),para.get_para_cursor(i),txtlen,len);
+		len = 0;
+		for (auto &w:l){
+			printf ("[%u,%u](",w.txtlen,w.len);
+			for (auto &c:w.chunks){
+				printf ("%u,%u,%s ",c.txtlen,c.len,c.txt.c_str());
+				len += c.len;
+			}
+			printf (") ");
+		}
+		printf ("\n");
+		printf ("len=%u\n",len);
+	}
 }
 
 void WORDPROC::save(DOC_WRITER &w, bool save_session_info)
@@ -397,16 +557,6 @@ static size_t utf8_codepoint_size(uint8_t text)
 	}
 	return 4;
 }
-#define CAR_START_EFFECT	11		
-#define CAR_END_EFFECT		12
-#define CAR_END2_EFFECT		13	// This is like END, except the cursor moves over it
-#					// This is useful to stop expanding an effect while entering character
-#define EFFECT_BOLD	"b"
-#define EFFECT_ITALIC	"i"
-#define EFFECT_UNDERLINE "u"
-#define EFFECT_SUP	"S"
-#define EFFECT_SUB	"s"
-#define EFFECT_FONT1	"F"
 
 static string::const_iterator wordproc_skipeffect(const string &line, string::const_iterator p)
 {
@@ -550,6 +700,7 @@ static unsigned wordproc_jump2col (const string &line, unsigned pos, size_t &ret
 	}else{
 		ret_sizecar = 0;
 	}
+tlmp_warning ("jump2col ret=%u ret_sizecar=%lu %d",ret,ret_sizecar,line[ret]);
 	return ret;
 }
 static unsigned wordproc_jump2col (const string &line, unsigned pos)
@@ -705,6 +856,10 @@ string WORDPROC::formatline(unsigned noline)
 					}else if (c == '\''){
 						ret += "&#39;";
 						p++;
+					}else if (c == CAR_BREAK){
+						ret += "&nbsp;";	// Place a space so the cursor is visible
+									// add a <br> after the code to close the cursor <span>
+						p++;
 					}else{
 						size_t sizecar = utf8_codepoint_size(c);
 						while (sizecar > 0 && p != line.end()){
@@ -720,6 +875,7 @@ string WORDPROC::formatline(unsigned noline)
 						}
 					}
 					pos++;
+					if (c == CAR_BREAK) ret += "<br>";
 				}
 			}
 			if (pos <= column){
@@ -767,6 +923,7 @@ void WORDPROC::deletechar (set<unsigned> &updlines, WORD_USERPREF &pref)
 	if (lines.size() > pref.cursor.line){
 		string &l = lines[pref.cursor.line].line;
 		unsigned len = wordproc_linelen(l);
+tlmp_warning ("deletechar column=%u len=%u",pref.cursor.column,len);
 		if (len > pref.cursor.column){
 			// We are inside the line, we remove the current character
 			size_t sizecar;
@@ -776,9 +933,9 @@ void WORDPROC::deletechar (set<unsigned> &updlines, WORD_USERPREF &pref)
 			}
 		}else{
 			unsigned nextline = pref.cursor.line+1;
-			if (lines.size() > nextline){
+			if (lines.size() > nextline && !lines[nextline].is_image()){
 				// We are at the end of the line, or further.
-				// So we merge the previous line here.
+				// So we merge the next line here.
 				// First we grow the line
 				while (len < pref.cursor.column){
 					l += ' ';
@@ -1343,130 +1500,7 @@ void WORDPROC::execstep (
 			}
 		}
 		if (maywrite){
-			if (strcmp(var,"insertmode")==0){
-				pref.insertmode = !pref.insertmode;
-				notify_lines.insert(pref.cursor.line);
-			}else if (strcmp(var,"insertchar")==0){
-				while (lines.size() <= pref.cursor.line) lines.push_back("");
-				auto &wl = lines[pref.cursor.line];
-				string &l = wl.line;
-				while (wordproc_linelen(l) < pref.cursor.column) l += ' ';
-				unsigned pos = wordproc_jump2col(l,pref.cursor.column);
-				bool update_num_lines = false;
-				if (strcmp(val,"b")==0 && mod.alt){
-					wordproc_insert_effect (l,pos,EFFECT_BOLD);
-				}else if (strcmp(val,"f")==0 && mod.alt){
-					wordproc_insert_effect (l,pos,EFFECT_FONT1);
-				}else if (strcmp(val,">")==0 && mod.alt){
-					if (wl.tab_level < 4) wl.tab_level++;
-					update_num_lines = true;
-				}else if (strcmp(val,"<")==0 && mod.alt){
-					if (wl.tab_level > 0) wl.tab_level--;
-					update_num_lines = true;
-				}else if (strcmp(val,"t")==0 && mod.alt){
-					wl.increase_title_level();
-					update_num_lines = true;
-				}else if (strcmp(val,"T")==0 && mod.alt){
-					wl.decrease_title_level();
-					update_num_lines = true;
-				}else if (strcmp(val,"l")==0 && mod.alt){
-					if (wl.listtype == LIST_BULLET){
-						wl.listtype = LIST_NONE;
-					}else{
-						wl.listtype = LIST_BULLET;
-					}
-					update_num_lines = true;
-				}else if (strcmp(val,"L")==0 && mod.alt){
-					if (wl.listtype == LIST_NUM){
-						wl.listtype = LIST_NONE;
-					}else{
-						wl.listtype = LIST_NUM;
-					}
-					update_num_lines = true;
-				}else if (strcmp(val,"z")==0 && mod.alt){
-					if (lines.size()==1 && lines[0].line.size()==0){
-						// Fill with many lines
-						resetgame();
-						string para;
-						para = "allo comment ca va le monde et toi et encore et encore et encore";
-						for (unsigned i=0; i<2; i++) para += " allo comment ca va le monde et toi et encore et encore et encore";
-						for (unsigned i=0; i<100; i++) lines.push_back(string_f("line %lu:",lines.size())+para);
-					}else{
-						resetgame();
-					}
-					documentd_forcerefresh (res);
-				}else{
-					l.insert(pos,val);
-					pref.cursor.column ++;
-				}
-				if (update_num_lines) wordproc_update_num_lines (pref.cursor.line,lines,notify_lines);
-				notify_lines.insert(pref.cursor.line);
-			}else if (strcmp(var,"break")==0){
-				while (lines.size() <= pref.cursor.line) lines.emplace_back(WORDPROC_LINE());
-				auto &para = lines[pref.cursor.line];
-				string &l = para.line;
-				auto nextline = lines.begin() + (pref.cursor.line+1);
-				unsigned pos = l.size();
-				if (wordproc_linelen(l) > pref.cursor.column){
-					pos = wordproc_jump2col(l,pref.cursor.column);
-				}
-				{
-					// We have to transport the active effects to the next line.
-					// effects started after pos are simply copied
-					vector<string> effects;
-					wordproc_current_effects (l,pos,effects);
-					WORDPROC_LINE newl;
-					tlmp_warning ("break effects.size()=%lu",effects.size());
-					for (auto &e:effects){
-						tlmp_warning ("break insert %s",e.c_str());
-						newl.line += string_f("%c%s;",CAR_START_EFFECT,e.c_str());
-					}
-					newl.line += l.substr(pos);
-					if (para.std_paragraph()){
-						newl.listtype = para.listtype;
-						newl.tab_level = para.tab_level;
-					}
-					lines.insert(nextline,newl);
-					lines[pref.cursor.line].line.resize(pos);
-					for (unsigned i=0; i<effects.size(); i++) lines[pref.cursor.line].line += CAR_END_EFFECT;
-				}
-				for (unsigned l=pref.cursor.line; l<lines.size(); l++) notify_lines.insert(l);
-				pref.cursor.line++;
-				pref.cursor.column=0;
-			}else if (strcmp(var,"backspace")==0){
-				notify_lines.insert(pref.cursor.line);
-				// We start by moving the cursor back one character if possible.
-				// If we are at the start of a line, we go at the end of the previous line.
-				// We do a deletechar after that
-				if (pref.cursor.column > 0){
-					pref.cursor.column--;
-					deletechar(notify_lines,pref);
-				}else if (pref.cursor.line > 0){
-					pref.cursor.line--;
-					pref.cursor.column=0;
-					if (lines.size() > pref.cursor.line){
-						string &l = lines[pref.cursor.line].line;
-						unsigned len = wordproc_linelen(l);
-						pref.cursor.column = len;
-					}
-					notify_lines.insert(pref.cursor.line);
-					deletechar(notify_lines,pref);
-				}
-			}else if (strcmp(var,"deletechar")==0){
-				deletechar(notify_lines,pref);
-			}else if (strcmp(var,"voffset")==0){
-				// Change page up or down
-				int move = atoi(val);
-				if (move > 0){
-					pref.offset += move;
-				}else{
-					if ((unsigned)-move > pref.offset){
-						pref.offset = 0;
-					}else{
-						pref.offset += move;
-					}
-				}
-			}else if (strcmp(var,"vmove")==0){
+			if (strcmp(var,"vmove")==0){
 				// Move cursor
 				int move = atoi(val);
 				unsigned current_line = pref.cursor.line;
@@ -1478,101 +1512,6 @@ void WORDPROC::execstep (
 			}else if (is_any_of(var,"pageup","pagedown")){
 				int new_offset = strcmp(var,"pageup")==0 ? pref.offset-lastline : pref.offset + lastline;
 				page_up_down(new_offset,visible_lines,lastline,pref,script_var,script_lines,notify_lines);
-			}else if (strcmp(var,"hmove")==0){
-				int move = atoi(val);
-				if (pref.cursor.line < lines.size() && lines[pref.cursor.line].is_image()){
-					auto &para = lines[pref.cursor.line];
-					unsigned rep = mod.ctrl ? 10 : 1;
-					for (unsigned i=0; i<rep; i++){
-						if (move < 0){
-							para.decrease_image_width();
-						}else{
-							para.increase_image_width();
-						}
-					}
-					notify_lines.insert(pref.cursor.line);
-				}else if (move < 0){
-					if (pref.cursor.column == 0){
-						if (pref.cursor.line > 0){
-							notify_lines.insert(pref.cursor.line);
-							vmove (-1,visible_lines,lastline,pref,sp,script_var,script_lines);
-							if (lines.size() > pref.cursor.line){
-								pref.cursor.column = wordproc_linelen(lines[pref.cursor.line].line);
-							}
-							notify_lines.insert(pref.cursor.line);
-						}
-							
-					}else{
-						if (pref.cursor.line < lines.size() && mod.ctrl){
-							// skip word back
-							auto &line = lines[pref.cursor.line].line;
-							unsigned len = wordproc_linelen(line);
-							if (pref.cursor.column > len){
-								pref.cursor.column = len;
-							}else{
-								// First, skip spaces
-								while (pref.cursor.column > 0){
-									unsigned pos = wordproc_jump2col (line, pref.cursor.column);
-									if (line[pos] != ' ') break;
-									pref.cursor.column--;
-								}
-								// Then skip word
-								while (pref.cursor.column > 0){
-									unsigned pos = wordproc_jump2col (line, pref.cursor.column);
-									if (line[pos] == ' ') break;
-									pref.cursor.column--;
-								}
-							}
-						}else{
-							pref.cursor.column += move;
-						}
-						notify_lines.insert(pref.cursor.line);
-					}
-				}else{
-					if (pref.cursor.line < lines.size() && mod.ctrl){
-						// skip word
-						auto &line = lines[pref.cursor.line].line;
-						unsigned len = wordproc_linelen(line);
-						if (pref.cursor.column >= len){
-							pref.cursor.column++;
-						}else{
-							// First, skip spaces
-							while (pref.cursor.column < len){
-								unsigned pos = wordproc_jump2col (line, pref.cursor.column);
-								if (line[pos] != ' ') break;
-								pref.cursor.column++;
-							}
-							// Then skip word
-							while (pref.cursor.column < len){
-								unsigned pos = wordproc_jump2col (line, pref.cursor.column);
-								if (line[pos] == ' ') break;
-								pref.cursor.column++;
-							}
-						}
-					}else{
-						pref.cursor.column += move;
-					}
-					notify_lines.insert(pref.cursor.line);
-				}
-			}else if (strcmp(var,"home")==0){	// KEY home
-				if (pref.cursor.column != 0){
-					PARAGRAPH para;
-					unsigned noline;
-					set_para_spec (para,pref.cursor.line,pref.cursor.column,sp,noline);
-					tlmp_warning ("HOME noline=%u",noline);
-					pref.cursor.column = para.get_para_home(noline);
-					notify_lines.insert(pref.cursor.line);
-				}
-			}else if (strcmp(var,"end")==0){	// KEY end
-				PARAGRAPH para;
-				unsigned noline;
-				set_para_spec (para,pref.cursor.line,pref.cursor.column,sp,noline);
-				unsigned column = para.get_para_end(noline);
-				tlmp_warning ("END noline=%u",noline);
-				if (column != pref.cursor.column){
-					pref.cursor.column = column;
-					notify_lines.insert(pref.cursor.line);
-				}
 			}else if (strcmp(var,"select")==0){	// Position cursor using the mouse
 				vector<string> tb;
 				//tlmp_warning ("select=%s",val);
@@ -1678,6 +1617,247 @@ void WORDPROC::execstep (
 				if (update_num_lines) wordproc_update_num_lines (pref.cursor.line,lines,notify_lines);
 				notify_lines.insert(pref.cursor.line);
 				script_var.val += string_f("document.getElementById('text-%s').focus();\n",gameid.c_str());
+			// This is a catch all for images
+			// It means that all other case (other else) are not reached if the current line is an image.
+			}else if (pref.cursor.line < lines.size() && lines[pref.cursor.line].is_image()){
+				if (strcmp(var,"break")==0){
+					unsigned cur_line = pref.cursor.line;
+					if (mod.shift){
+						// Append a new line just after the image
+						pref.cursor.line++;
+					}
+					lines.insert(lines.begin()+pref.cursor.line,WORDPROC_LINE());
+					for (unsigned l=cur_line; l<lines.size(); l++) notify_lines.insert(l);
+					pref.cursor.column=0;
+				}else if (strcmp(var,"hmove")==0){
+					int move = atoi(val);
+					auto &para = lines[pref.cursor.line];
+					unsigned rep = mod.ctrl ? 10 : 1;
+					for (unsigned i=0; i<rep; i++){
+						if (move < 0){
+							para.decrease_image_width();
+						}else{
+							para.increase_image_width();
+						}
+					}
+					notify_lines.insert(pref.cursor.line);
+				}
+			}else if (strcmp(var,"insertmode")==0){
+				pref.insertmode = !pref.insertmode;
+				notify_lines.insert(pref.cursor.line);
+			}else if (strcmp(var,"insertchar")==0){
+				while (lines.size() <= pref.cursor.line) lines.push_back("");
+				auto &wl = lines[pref.cursor.line];
+				string &l = wl.line;
+				while (wordproc_linelen(l) < pref.cursor.column) l += ' ';
+				unsigned pos = wordproc_jump2col(l,pref.cursor.column);
+				bool update_num_lines = false;
+				if (strcmp(val,"b")==0 && mod.alt){
+					wordproc_insert_effect (l,pos,EFFECT_BOLD);
+				}else if (strcmp(val,"f")==0 && mod.alt){
+					wordproc_insert_effect (l,pos,EFFECT_FONT1);
+				}else if (strcmp(val,">")==0 && mod.alt){
+					if (wl.tab_level < 4) wl.tab_level++;
+					update_num_lines = true;
+				}else if (strcmp(val,"<")==0 && mod.alt){
+					if (wl.tab_level > 0) wl.tab_level--;
+					update_num_lines = true;
+				}else if (strcmp(val,"t")==0 && mod.alt){
+					wl.increase_title_level();
+					update_num_lines = true;
+				}else if (strcmp(val,"T")==0 && mod.alt){
+					wl.decrease_title_level();
+					update_num_lines = true;
+				}else if (strcmp(val,"l")==0 && mod.alt){
+					if (wl.listtype == LIST_BULLET){
+						wl.listtype = LIST_NONE;
+					}else{
+						wl.listtype = LIST_BULLET;
+					}
+					update_num_lines = true;
+				}else if (strcmp(val,"L")==0 && mod.alt){
+					if (wl.listtype == LIST_NUM){
+						wl.listtype = LIST_NONE;
+					}else{
+						wl.listtype = LIST_NUM;
+					}
+					update_num_lines = true;
+				}else if (strcmp(val,"z")==0 && mod.alt){
+					if (lines.size()==1 && lines[0].line.size()==0){
+						// Fill with many lines
+						resetgame();
+						string para;
+						para = "allo comment ca va le monde et toi et encore et encore et encore";
+						for (unsigned i=0; i<2; i++) para += " allo comment ca va le monde et toi et encore et encore et encore";
+						for (unsigned i=0; i<100; i++) lines.push_back(string_f("line %lu:",lines.size())+para);
+					}else{
+						resetgame();
+					}
+					documentd_forcerefresh (res);
+				}else{
+					l.insert(pos,val);
+					pref.cursor.column ++;
+				}
+				if (update_num_lines) wordproc_update_num_lines (pref.cursor.line,lines,notify_lines);
+				notify_lines.insert(pref.cursor.line);
+			}else if (strcmp(var,"break")==0){
+				while (lines.size() <= pref.cursor.line) lines.emplace_back(WORDPROC_LINE());
+				auto &para = lines[pref.cursor.line];
+				string &l = para.line;
+				auto nextline = lines.begin() + (pref.cursor.line+1);
+				unsigned pos = l.size();
+				if (wordproc_linelen(l) > pref.cursor.column){
+					pos = wordproc_jump2col(l,pref.cursor.column);
+				}
+				if (mod.shift){
+					// We insert a \r in the current line
+					l.insert(l.begin()+pos,CAR_BREAK);
+					pref.cursor.column++;
+					notify_lines.insert(pref.cursor.line);
+				}else{
+					// We have to transport the active effects to the next line.
+					// effects started after pos are simply copied
+					vector<string> effects;
+					wordproc_current_effects (l,pos,effects);
+					WORDPROC_LINE newl;
+					tlmp_warning ("break effects.size()=%lu",effects.size());
+					for (auto &e:effects){
+						tlmp_warning ("break insert %s",e.c_str());
+						newl.line += string_f("%c%s;",CAR_START_EFFECT,e.c_str());
+					}
+					newl.line += l.substr(pos);
+					if (para.std_paragraph()){
+						newl.listtype = para.listtype;
+						newl.tab_level = para.tab_level;
+					}
+					lines.insert(nextline,newl);
+					lines[pref.cursor.line].line.resize(pos);
+					for (unsigned i=0; i<effects.size(); i++) lines[pref.cursor.line].line += CAR_END_EFFECT;
+					for (unsigned l=pref.cursor.line; l<lines.size(); l++) notify_lines.insert(l);
+					pref.cursor.line++;
+					pref.cursor.column=0;
+				}
+			}else if (strcmp(var,"backspace")==0){
+				notify_lines.insert(pref.cursor.line);
+				// We start by moving the cursor back one character if possible.
+				// If we are at the start of a line, we go at the end of the previous line.
+				// We do a deletechar after that
+				if (pref.cursor.column > 0){
+					tlmp_warning ("backspace column=%u",pref.cursor.column);
+					pref.cursor.column--;
+					deletechar(notify_lines,pref);
+				}else if (pref.cursor.line > 0){
+					bool prec_is_image = pref.cursor.line < lines.size() && lines[pref.cursor.line-1].is_image();
+					if (!prec_is_image){
+						pref.cursor.line--;
+						pref.cursor.column=0;
+						if (lines.size() > pref.cursor.line){
+							string &l = lines[pref.cursor.line].line;
+							unsigned len = wordproc_linelen(l);
+							pref.cursor.column = len;
+						}
+						notify_lines.insert(pref.cursor.line);
+						deletechar(notify_lines,pref);
+					}
+				}
+			}else if (strcmp(var,"deletechar")==0){
+				deletechar(notify_lines,pref);
+			}else if (strcmp(var,"voffset")==0){
+				// Change page up or down
+				int move = atoi(val);
+				if (move > 0){
+					pref.offset += move;
+				}else{
+					if ((unsigned)-move > pref.offset){
+						pref.offset = 0;
+					}else{
+						pref.offset += move;
+					}
+				}
+			}else if (strcmp(var,"hmove")==0){
+				int move = atoi(val);
+				if (move < 0){
+					if (pref.cursor.column == 0){
+						if (pref.cursor.line > 0){
+							notify_lines.insert(pref.cursor.line);
+							vmove (-1,visible_lines,lastline,pref,sp,script_var,script_lines);
+							if (lines.size() > pref.cursor.line){
+								pref.cursor.column = wordproc_linelen(lines[pref.cursor.line].line);
+							}
+							notify_lines.insert(pref.cursor.line);
+						}
+							
+					}else{
+						if (pref.cursor.line < lines.size() && mod.ctrl){
+							// skip word back
+							auto &line = lines[pref.cursor.line].line;
+							unsigned len = wordproc_linelen(line);
+							if (pref.cursor.column > len){
+								pref.cursor.column = len;
+							}else{
+								// First, skip spaces
+								while (pref.cursor.column > 0){
+									unsigned pos = wordproc_jump2col (line, pref.cursor.column);
+									if (line[pos] != ' ') break;
+									pref.cursor.column--;
+								}
+								// Then skip word
+								while (pref.cursor.column > 0){
+									unsigned pos = wordproc_jump2col (line, pref.cursor.column);
+									if (line[pos] == ' ') break;
+									pref.cursor.column--;
+								}
+							}
+						}else{
+							pref.cursor.column += move;
+						}
+						notify_lines.insert(pref.cursor.line);
+					}
+				}else{
+					if (pref.cursor.line < lines.size() && mod.ctrl){
+						// skip word
+						auto &line = lines[pref.cursor.line].line;
+						unsigned len = wordproc_linelen(line);
+						if (pref.cursor.column >= len){
+							pref.cursor.column++;
+						}else{
+							// First, skip spaces
+							while (pref.cursor.column < len){
+								unsigned pos = wordproc_jump2col (line, pref.cursor.column);
+								if (line[pos] != ' ') break;
+								pref.cursor.column++;
+							}
+							// Then skip word
+							while (pref.cursor.column < len){
+								unsigned pos = wordproc_jump2col (line, pref.cursor.column);
+								if (line[pos] == ' ') break;
+								pref.cursor.column++;
+							}
+						}
+					}else{
+						pref.cursor.column += move;
+					}
+					notify_lines.insert(pref.cursor.line);
+				}
+			}else if (strcmp(var,"home")==0){	// KEY home
+				if (pref.cursor.column != 0){
+					PARAGRAPH para;
+					unsigned noline;
+					set_para_spec (para,pref.cursor.line,pref.cursor.column,sp,noline);
+					tlmp_warning ("HOME noline=%u",noline);
+					pref.cursor.column = para.get_para_home(noline);
+					notify_lines.insert(pref.cursor.line);
+				}
+			}else if (strcmp(var,"end")==0){	// KEY end
+				PARAGRAPH para;
+				unsigned noline;
+				set_para_spec (para,pref.cursor.line,pref.cursor.column,sp,noline);
+				unsigned column = para.get_para_end(noline);
+				tlmp_warning ("END noline=%u",noline);
+				if (column != pref.cursor.column){
+					pref.cursor.column = column;
+					notify_lines.insert(pref.cursor.line);
+				}
 			}
 			setmodified(username);
 		}else{
