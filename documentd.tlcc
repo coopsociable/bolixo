@@ -123,6 +123,7 @@ char *fgets(char *s, int size, DOC_READER *r)
 }
 #include "proto/bod_client.protodef"
 #include "proto/documentd_control.protoh"
+#define documentd_client_rep_waitevent_NEEDED
 #include "proto/documentd_client.protoh"
 
 static string documentd_path (const char *name)
@@ -195,6 +196,38 @@ void documentd_button (string &lines, unsigned command, PARAM_STRING txt, const 
 
 using GAME_P = shared_ptr<GAME>;
 
+void GAME::add_notification (PARAM_STRING script)
+{
+	notifications.emplace_back(script,sequence);
+	for (auto fd:notification_fds){
+		documentd_client_rep_waitevent(fd,true,"",script,sequence);
+	}
+	notification_fds.clear();
+	sequence++;
+	// We keep around the last 10 notifications
+	while (notifications.size() > 10) notifications.erase(notifications.begin());
+}
+void GAME::add_notification_fd(int fd)
+{
+	notification_fds.insert(fd);
+}
+int GAME::del_notification_fd(int fd)
+{
+	return notification_fds.erase(fd) > 0 ? 0 : -1;
+}
+
+const char *GAME::locate_event (unsigned &sequence)
+{
+	const char *ret = nullptr;
+	for (auto &n:notifications){
+		if (n.sequence > sequence){
+			sequence = n.sequence;
+			ret = n.script.c_str();
+			break;
+		}
+	}
+	return ret;
+}
 
 void GAME::manyexec (
 	const std::vector<VARVAL_receive> &steps,
@@ -226,8 +259,12 @@ static bool documentd_playstep (
 	auto g = games.find(gameid);
 	if (g != games.end()){
 		success = true;
-		g->second->manyexec(steps,session,username,maywrite,sp,res);
-		g->second->testwin(res);
+		GAME_P game = g->second;
+		game->manyexec(steps,session,username,maywrite,sp,res);
+		game->testwin(res);
+		for (auto &r:res){
+			if (r.var == VAR_NOTIFY && r.val.size() > 0) game->add_notification(r.val);
+		}
 	}else{
 		msg = "Unknown game id";
 		unknown = true;
@@ -387,6 +424,12 @@ int main (int argc, char *argv[])
 			}
 		</f>
 		<f endclient>
+			// Is this client waiting for a notification ?
+			for (auto g:glocal.games){
+				if (g.second->del_notification_fd(no)!=-1){
+					break;
+				}
+			}
 		</f>
 		<f receive>
 			debug_printf (D_PROTO,"receive line: %s\n",line);
@@ -399,13 +442,18 @@ int main (int argc, char *argv[])
 					vector<string> tb;
 					tb.push_back(string_f ("Version %s",VERSION));
 					instrument_status(tb);
+					unsigned nbwait=0;
 					for (auto g:glocal.games){
 						DATEASC act,mod;
 						fdpass_asctime(g.second->get_last_activity(),act);
 						if (g.second->is_modified()) fdpass_asctime(g.second->get_modified(),mod);
-						tb.push_back(string_f("gameid: %s last_activity=%s modified=%s modified_by=%s revision=%u",g.first.c_str()
-							,act.buf,mod.buf,g.second->get_modified_by(),g.second->get_revision()));
+						tb.push_back(string_f("gameid: %s last_activity=%s modified=%s modified_by=%s revision=%u nbwait=%u sequence=%u"
+							,g.first.c_str()
+							,act.buf,mod.buf,g.second->get_modified_by(),g.second->get_revision()
+							,g.second->get_nbwait(),g.second->get_sequence()));
+						nbwait += g.second->get_nbwait();
 					}
+					tb.push_back(string_f("nbwaiting: %u",nbwait));
 					rep_status(tb);
 				</f>
 				<f listgames>
@@ -654,6 +702,21 @@ int main (int argc, char *argv[])
 						rep_is_modified(false,msg,false,"",0);
 					}else{
 						rep_is_modified(true,"",modified,modified_by,g->second->get_revision());
+					}
+				</f>
+				<f waitevent>	// gameid sequence:u = success:b msg script sequence:u
+					auto g = glocal.games.find(gameid);
+					if (g == glocal.games.end()){
+						rep_waitevent (false,"Invalid gameid","",0);
+					}else{
+						GAME_P game = g->second;
+						// We either reply immediatly, or when an event occur
+						const char *script = game->locate_event(sequence);
+						if (script != nullptr){
+							rep_waitevent (true,"",script,sequence);
+						}else{
+							game->add_notification_fd(no);
+						}
 					}
 				</f>
 				<f invalid>

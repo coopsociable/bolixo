@@ -52,17 +52,17 @@
 
 static DEBUG_KEY D_PROTO ("proto","Protocol information");
 
-enum CONNECT_TYPE { TYPE_NONE, TYPE_CONTROL, TYPE_CLIENT, TYPE_ADMIN };
+enum CONNECT_TYPE { TYPE_NONE, TYPE_CONTROL, TYPE_CLIENT, TYPE_ADMIN, TYPE_DOCUMENTD };
 
 struct HANDLE_INFO: public ARRAY_OBJ{
-	CONNECT_TYPE type;
-	int no;
+	CONNECT_TYPE type = TYPE_NONE;
+	int no=-1;
 	std::string host;
 	REQUEST_INFO req;
 	std::string userid;
+	int documentd_no = -1;	// handle used for waitevent
+				// This handle is TYPE_DOCUMENTD
 	HANDLE_INFO(){
-		no = -1;
-		type = TYPE_NONE;
 	}
 };
 struct DIRENTRY{
@@ -164,6 +164,7 @@ struct DIRENTRY{
 
 
 #include "proto/bod_control.protoh"
+#define bod_client_rep_waitevent_NEEDED
 #include "proto/bod_client.protoh"
 #include "proto/bod_admin.protoh"
 
@@ -175,6 +176,7 @@ using namespace std;
 #define documentd_client_startgame_NOTNEED
 #define documentd_client_loadmore_NOTNEED	// For now, incomplete
 #define documentd_client_savemore_NOTNEED	// For now, incomplete
+#define documentd_client_waitevent_ASYNC
 #include "proto/documentd_client.protoch"
 #define bo_sessiond_client_getsessioninfovars_NOTNEED
 #define bo_sessiond_client_setvar_NOTNEED
@@ -1697,6 +1699,13 @@ static int bod_main (
 		}
 	</f>
 	<f endclient>
+		HANDLE_INFO *c = (HANDLE_INFO*)info.data;
+		// See <f waitevent>
+		if (c->documentd_no != -1){
+			closeclient (c->documentd_no);
+		}else if (c->type == TYPE_DOCUMENTD){
+			closeclient (c->no);
+		}
 	</f>
 	<f receive>
 		HANDLE_INFO *c = (HANDLE_INFO*)info.data;
@@ -1733,6 +1742,16 @@ static int bod_main (
 				tb.push_back(useline);
 				instrument_status(tb);
 				tb.push_back(string_f("nonstrict: %d",nonstrict));
+				unsigned nbwaiting = 0,doc_waiting=0;
+				void *data;
+				int fd = glocal.TCPSERVER.iter_init (data);
+				while (fd != -1){
+					auto c = (HANDLE_INFO*)data;
+					if (c->documentd_no != -1) nbwaiting++;
+					if (c->type == TYPE_DOCUMENTD) doc_waiting++;
+					fd = glocal.TCPSERVER.iter_next (data);
+				}
+				tb.push_back(string_f("nbwaiting: %u %u",nbwaiting,doc_waiting));
 				rep_status(tb);
 			</f>
 			<f helptest> // dotimes:b readproc:b = lines:v
@@ -3972,11 +3991,46 @@ static int bod_main (
 					rep_playstep(glocal.success,"",glocal.res);
 				}
 			</f>
+			<f waitevent>
+				// We use a separate connection to documentd
+				ENTRY entry;
+				if (bod_findentry (glocal.con_sess,sessionid,path,entry,"")!=-1){
+					CONNECT_INFO con;
+					con.secret = glocal.con_doc.secret;
+					con.port = glocal.con_doc.port;
+					if (c->documentd_no != -1){
+						con.fd = c->documentd_no;
+					}
+					documentd_client_waitevent_SEND(con,path,sequence);
+					//tlmp_warning ("waitevent con.fd=%d %d",con.fd,c->documentd_no);
+					if (c->documentd_no == -1){
+						c->documentd_no = con.fd;
+						HANDLE_INFO *cc = new HANDLE_INFO;
+						cc->type = TYPE_DOCUMENTD;
+						cc->no = no;
+						glocal.TCPSERVER.inject (con.fd,cc);
+						glocal.TCPSERVER.setmonitormode (con.fd,true);
+					}
+					con.fd = -1;
+				}else{
+					rep_waitevent (false,entry.msg,"",0);
+				}
+			</f>
 			<f invalid>
 				tlmp_error ("CLIENT: Invalid command: %s\n",line);
 				endclient = true;
 			</f>
 			</call>
+		}else if (c->type == TYPE_DOCUMENTD){
+			glocal int no = c->no;
+			CONNECT_INFO con;
+			con.fd = no;
+			<call documentd_client_waitevent>(con);
+			<f ok>
+				bod_client_rep_waitevent(glocal.no,success,msg,script,sequence);
+			</f>
+			</call>
+			con.fd = -1;
 		}else if (c->type == TYPE_ADMIN){
 			glocal.nbrequest_admin++;
 			<call bod_admin>(this,c->req,line, info.linelen,endserver, endclient, no,c,c->host.c_str());

@@ -25,10 +25,21 @@ public:
 	DOC_READER(){}
 };	
 
+struct GAMENOTE{
+	std::string script;
+	unsigned sequence=0;
+	GAMENOTE(PARAM_STRING _script, unsigned _sequence)
+		: script(_script.ptr), sequence(_sequence){
+	}
+};
+
 class GAME{
+	unsigned sequence=0;	// For notifications
 	time_t modified = (time_t)0;
 	time_t last_activity = time(nullptr);
 	std::string modified_by;
+	std::vector<GAMENOTE> notifications;	// Script to send to all active users (users with the game opened and displayed)
+	std::set<int> notification_fds;		// Handles waiting for notifications
 protected:
 	unsigned revision = 0;
 	std::string gameid;
@@ -106,6 +117,16 @@ protected:
 		lines += "}\n";
 	}
 public:
+	unsigned get_nbwait() const {
+		return notification_fds.size();
+	}
+	unsigned get_sequence() const {
+		return sequence;
+	}
+	void add_notification (PARAM_STRING script);
+	void add_notification_fd(int fd);
+	int del_notification_fd(int fd);
+	const char *locate_event (unsigned &sequence);
 	void setgameid(const char *_gameid){
 		gameid = _gameid;
 	}
