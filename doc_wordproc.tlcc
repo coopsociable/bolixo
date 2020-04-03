@@ -85,24 +85,16 @@ static size_t utf8_codepoint_size(uint8_t text)
 #define EFFECT_SUB	"s"
 #define EFFECT_FONT1	"F"
 
-struct EFFECTS_STATE{
-	bool bold = false;
-	bool italic = false;
-	bool underline = false;
-	bool sup = false;
-	bool sub = false;
-	bool font1 = false;
-};
 struct WORDCHUNK{
 	string txt;
 	unsigned len = 0;
 	unsigned txtlen = 0;
-	EFFECTS_STATE effects;
+	WORD_EFFECTS_STATE effects;
 	WORDCHUNK(
 		const char *_txt,	// Start of chunk
 		unsigned _strlen,	// Length of chunk in bytes
 		unsigned _txtlen,	// Length of chunk in UTF-8 character
-		const EFFECTS_STATE &_effects,	// Current effects applied to the chunk
+		const WORD_EFFECTS_STATE &_effects,	// Current effects applied to the chunk
 		unsigned fontsize)	// Browser default font size
 		:txt(_txt,_strlen), txtlen(_txtlen), effects(_effects){
 		len = wordproc_displaylen(txt,fontsize);
@@ -129,7 +121,7 @@ struct WORDINFO{
 		len = 0;
 		txtlen = 0;
 	}
-	void addchunk (const char *txt, unsigned _strlen, unsigned _txtlen, const EFFECTS_STATE &effects, unsigned fontsize){
+	void addchunk (const char *txt, unsigned _strlen, unsigned _txtlen, const WORD_EFFECTS_STATE &effects, unsigned fontsize){
 		if (_txtlen > 0){
 			txtlen += _txtlen;
 			WORDCHUNK chunk(txt,_strlen, _txtlen,effects,fontsize);
@@ -228,8 +220,8 @@ void PARAGRAPH::init(PARAM_STRING txt, unsigned width, unsigned _fontsize)
 
 	const char *pt = txt.ptr;
 	WORDINFO word;
-	stack<EFFECTS_STATE> effects;
-	EFFECTS_STATE state;
+	stack<WORD_EFFECTS_STATE> effects;
+	WORD_EFFECTS_STATE state;
 	while (*pt != '\0'){
 		// A word is composed of spaces at the start and then non spaces
 		// Only the first space is used to split word. The other are turned into &nbsp; at format time, so are part of the word
@@ -635,6 +627,33 @@ static void wordproc_current_effects (string &line, unsigned pos, vector<string>
 	wordproc_current_effects (line,pos,effects,last);
 }
 /*
+	Remove dead effect sequences.
+	A dead effect is an effect applied to an empty content.
+	So it looks like CAR_START_EFFECT effect_string ; CAR_END2_EFFECT.
+	A dead effect is not reachable by the end user.
+
+	Note that an empty effect ended by CAR_END_EFFECT is still reachable by the end user.
+	The user moves the cursor until one button in the button bar is highlited.
+*/
+static void wordproc_remove_dead_effects(string &l)
+{
+	for (unsigned i=0; i<l.size(); i++){
+		if (l[i] == CAR_START_EFFECT){
+			unsigned start = i;
+			i++;
+			while (l[i] != ';' && l[i] != '\0') i++;
+			if (l[i] == ';'){
+				i++;
+				if (l[i] == CAR_END2_EFFECT){
+					i++;
+					l = l.erase(start,i-start);
+					i=start-1;
+				}
+			}
+		}
+	}
+}
+/*
 
 	If we are currently at the end of this effect, we toggle the END marker (END <-> END2). This allows the user to extend
 	the line by inserting character inside or outside the effect area.
@@ -654,6 +673,7 @@ tlmp_warning ("insert cur_effects.size()=%lu :%s:",cur_effects.size(),cur_effect
 tlmp_warning ("p=%d",*p);
 		if (*p == CAR_END_EFFECT){	
 			*p = CAR_END2_EFFECT;
+			wordproc_remove_dead_effects(line);
 		}else{
 			// We remove the effect.
 		}
@@ -943,6 +963,47 @@ static void wordproc_update_num_lines (unsigned noline, const vector<WORDPROC_LI
 	}
 }
 
+static void wordproc_update_button (string &script, bool &curstate, bool newstate, unsigned button_id)
+{
+	if (curstate != newstate){
+		curstate = newstate;
+		script += string_f("var button = document.getElementById('button%u');\n",button_id);
+		script += "if (button != null){\n";
+		script += string_f("\tbutton.style.background='%s';\n",newstate ? "lightblue" : "lightgray");
+		script += "}\n";
+	}
+}
+#define BUTTON_TITLE_PLUS	0
+#define BUTTON_TITLE_LESS	1
+#define BUTTON_TAB_PLUS		3
+#define BUTTON_TAB_LESS		4
+#define BUTTON_BULLET		5
+#define BUTTON_NUMLIST		6
+#define BUTTON_BOLD		7
+#define BUTTON_ITALIC		8
+#define BUTTON_UNDERLINE	9
+#define BUTTON_SUP		10
+#define BUTTON_SUB		11
+#define BUTTON_CENTER		12
+#define BUTTON_IMAGE		13
+
+static void wordproc_update_buttons (string &script, WORD_USERPREF &pref, const WORD_EFFECTS_STATE &newstates)
+{
+	if (!pref.states_valid){
+		// We invalidate all states to update all buttons.
+		pref.states.bold = !newstates.bold;
+		pref.states.italic = !newstates.italic;
+		pref.states.underline = !newstates.underline;
+		pref.states.sup = !newstates.sup;
+		pref.states.sub = !newstates.sub;
+		pref.states_valid = true;
+	}
+	wordproc_update_button (script,pref.states.bold,newstates.bold,BUTTON_BOLD);
+	wordproc_update_button (script,pref.states.italic,newstates.italic,BUTTON_ITALIC);
+	wordproc_update_button (script,pref.states.underline,newstates.underline,BUTTON_UNDERLINE);
+	wordproc_update_button (script,pref.states.sup,newstates.sup,BUTTON_SUP);
+	wordproc_update_button (script,pref.states.sub,newstates.sub,BUTTON_SUB);
+}
 /*
 	Delete the character at the cursor
 */
@@ -957,7 +1018,26 @@ tlmp_warning ("deletechar column=%u len=%u",pref.cursor.column,len);
 			size_t sizecar;
 			unsigned pos = wordproc_jump2col(l,pref.cursor.column,sizecar);
 			if (sizecar > 0){
+				// When positionned at the end of an effect, if the marker is
+				// CAR_END_EFFECT, wordproc_jump2col() returns a pos right
+				// on CAR_END_EFFECT. This way, inserted chars are inserted in the
+				// effect. If it is CAR_END2_EFFECT, pos is right after, so
+				// insert chars are placed after the effect.
+				// When deleting a caracter, we have to delete after the effect
+				// if we are positionned on CAR_END_EFFECT.
+				if (l[pos] == CAR_END_EFFECT) pos++;
 				l = l.substr(0,pos) + l.substr(pos+sizecar);
+				// When deleting a character, we can create a dead/empty effect.
+				// A dead effect is a effect in the line that can't be reached.
+				// CAR_START_EFFECT effectname ; CAR_END2_EFFECT
+				// An empty effect, ending with CAR_END_EFFECT is still reachable.
+				// You move your cursor until you reach the effect. The button in
+				// the button bar shows up.
+				// But with CAR_END2_EFFECT, it is not possible. The effect just
+				// ends in the line forever.
+				// So we do a cleanup here.
+				wordproc_remove_dead_effects(l);
+				// The cleanup is also done when we use the button to turn off an effect
 			}
 		}else{
 			unsigned nextline = pref.cursor.line+1;
@@ -1340,19 +1420,6 @@ void WORDPROC::execstep (
 			// Buttons line
 			if (maywrite){
 				v.val += "<div id=tab_form style='margin-top:5; margin-bottom:5; background-color: lightgray;'>\n";
-				#define BUTTON_TITLE_PLUS	0
-				#define BUTTON_TITLE_LESS	1
-				#define BUTTON_TAB_PLUS		3
-				#define BUTTON_TAB_LESS		4
-				#define BUTTON_BULLET		5
-				#define BUTTON_NUMLIST		6
-				#define BUTTON_BOLD		7
-				#define BUTTON_ITALIC		8
-				#define BUTTON_UNDERLINE	9
-				#define BUTTON_SUP		10
-				#define BUTTON_SUB		11
-				#define BUTTON_CENTER		12
-				#define BUTTON_IMAGE		13
 				DOC_BUTTON_SPECS specs;
 				if (sp.mobile){
 					specs.width = 60;
@@ -1886,6 +1953,28 @@ void WORDPROC::execstep (
 					pref.cursor.column = column;
 					notify_lines.insert(pref.cursor.line);
 				}
+			}
+			// Update the buttons bar
+			if (pref.cursor.line < lines.size()){
+				auto &l = lines[pref.cursor.line].line;
+				unsigned pos = wordproc_jump2col(l,pref.cursor.column);
+				vector<string> effects;
+				wordproc_current_effects (l,pos,effects);
+				WORD_EFFECTS_STATE newstates;
+				for (auto &e:effects){
+					if (e == EFFECT_BOLD){
+						newstates.bold = true;
+					}else if (e == EFFECT_ITALIC){
+						newstates.italic = true;
+					}else if (e == EFFECT_UNDERLINE){
+						newstates.underline = true;
+					}else if (e == EFFECT_SUP){
+						newstates.sup = true;
+					}else if (e == EFFECT_SUB){
+						newstates.sub = true;
+					}
+				}
+				wordproc_update_buttons (script_var.val,pref,newstates);
 			}
 			setmodified(username);
 		}else{

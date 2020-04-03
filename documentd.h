@@ -217,6 +217,14 @@ public:
 	void exec (const char *var, const char *val, const char *session, const char *username, bool maywrite, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
 };
 
+struct WORD_EFFECTS_STATE{
+	bool bold = false;
+	bool italic = false;
+	bool underline = false;
+	bool sup = false;
+	bool sub = false;
+	bool font1 = false;
+};
 struct WORD_DOCPOS{
 	unsigned line=0;
 	unsigned column=0;
@@ -231,6 +239,8 @@ struct WORD_USERPREF{
 	WORD_DOCPOS cursor;
 	bool insertmode = true;
 	WORD_DOCPOS mark1,mark2;	// Cut & Paste
+	bool states_valid = false;	// Tell if the UI is in sync with the states variable below
+	WORD_EFFECTS_STATE states;
 };
 
 enum WORDPROC_LISTTYPE { LIST_NONE, LIST_BULLET,LIST_NUM,LIST_CENTER};
