@@ -447,6 +447,10 @@ buildspec:
 	sed s/RPMREV/$(RPMREV)/ <$(CURDIR).spec \
 		| sed s/REV/$(PACKAGE_REV)/ \
 		| sed s/BUILDOPTIONS/$(BUILDOPTIONS)/ \
+		| utils/rpmdepend tlmp TLMPVERSION \
+		| utils/rpmdepend tlmpsql TLMPSQLVERSION \
+		| utils/rpmdepend trlitool TRLITOOLVERSION \
+		| utils/rpmdepend tlmpweb TLMPWEBVERSION \
 		> $(RPMTOPDIR)/SPECS/$(CURDIR)-$(PACKAGE_REV).spec
 	rm -fr /tmp/$(CURDIR)-$(PACKAGE_REV)
 	mkdir /tmp/$(CURDIR)-$(PACKAGE_REV)
