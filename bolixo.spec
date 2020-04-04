@@ -8,7 +8,7 @@ Group: Networking/util
 Source0: bolixo-REV.src.tar.gz
 BuildRoot: /var/tmp/bolixo
 BuildRequires: tlmp-devel mariadb-devel trlitool tlmpsql tlmpweb
-Requires: mariadb-connector-c tlmp tlmpsql trlitool tlmpweb
+Requires: mariadb-connector-c, tlmp >= TLMPVERSION, tlmpsql >= TLMPSQLVERSION, trlitool >= TRLITOOLVERSION, tlmpweb >= TLMPWEBVERSION
 
 %description
 Bolixo is a distributed social media. This package includes everything
@@ -26,6 +26,7 @@ bolixo-production install-required
 %package utils
 Summary: Client command line utility to access Bolixo
 Group: Networking/util
+Requires: tlmp >= TLMPVERSION
 %description utils
 Provide the bofs command line tool. This tool allows you to access and maintain
 Bolixo.
