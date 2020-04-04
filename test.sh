@@ -1386,6 +1386,7 @@ elif [ "$1" = "lxc0-documentd" ]; then # prod:
 		--restorefile /var/lib/lxc/documentd/documentd.restore \
 		$EXTRALXCPROG \
 		$INCLUDELANGS \
+		-e /usr/share/fonts/dejavu/DejaVuSerif.ttf \
 		-e /usr/share/fonts/dejavu/DejaVuSans.ttf \
 		-e /usr/share/fonts/liberation*/LiberationSans-Regular.ttf \
 		-e /bin/sh \
@@ -1535,6 +1536,7 @@ elif [ "$1" = "lxc0-web" ]; then # prod:
 			-e /usr/lib/tlmp/help.fr/tlmpsql.fr \
 			-e /usr/lib/tlmp/help.fr/tlmpweb.fr \
 			-e /var/www/html/.tlmplibs \
+			-e /usr/share/fonts/dejavu/DejaVuSerif.ttf \
 			-e /usr/share/fonts/dejavu/DejaVuSans.ttf \
 			-e /usr/share/fonts/liberation*/LiberationSans-Regular.ttf \
 			-e /var/www/html/no-mini-photo.jpg \

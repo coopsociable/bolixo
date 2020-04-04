@@ -34,7 +34,7 @@
 
 using namespace std;
 
-static float para_fontsize=1.2;
+static float para_fontsize=1;
 static unsigned displaylen_call=0;
 static unsigned wordproc_displaylen (PARAM_STRING txt, unsigned fontsize)
 {
@@ -871,9 +871,7 @@ string WORDPROC::formatline(unsigned noline)
 					effects.pop();
 				}else{
 					if (pos == column){
-						const char *cursor=cursors[cursor_no].insertmode
-							? "<span style=background-color:lightgray;>" : "<span style=background-color:lightpink;>";
-						ret += cursor;
+						ret += string_f("<span class=%ccursor>",cursors[cursor_no].insertmode ? 'i' : 'r');
 					}
 					if (c == ' '){
 						// The first space is passed as is so the browser knows there are multiple words
@@ -1056,7 +1054,8 @@ void WORDPROC::deletechar (set<unsigned> &updlines, WORD_USERPREF &pref)
 		updlines.insert(pref.cursor.line);
 	}
 }
-const unsigned tab_width=30;
+const unsigned bullet_width=15+5;	// width of a bullet
+const unsigned tab_width=30;		// width per tab level
 
 /*
 	Initialise the PARAGRAPH layout for the current session/display.
@@ -1070,15 +1069,13 @@ void WORDPROC::set_para_spec(
 {
 	if (noline < lines.size()){
 		auto &l = lines[noline];
-		//long long start = fdpass_getnow();
-		//for (int i=0; i<1; i++){
-			para.init (l.line,sp.content_width-l.tab_level*tab_width,sp.fontsize);
-			unsigned line_cursor;
-			para.locate_cursor (column,para_noline,line_cursor);
-		//}
-		//long long end = fdpass_getnow();
-		//long long diff = end - start;
-		//tlmp_warning ("set_para_spec %Ld.%06Ld",diff/1000000,diff%1000000);
+		unsigned bul_width = is_any_of (l.listtype,LIST_BULLET,LIST_NUM) ? bullet_width : 0;
+		unsigned level_width = l.tab_level * tab_width;
+		// 30 is for line numbers
+		unsigned width = sp.content_width - 30 - bul_width - level_width;
+		para.init (l.line,width,sp.fontsize);
+		unsigned line_cursor;
+		para.locate_cursor (column,para_noline,line_cursor);
 	}else{
 		para_noline = 0;
 		para.init ("",sp.content_width,sp.fontsize);
@@ -1303,6 +1300,16 @@ void WORDPROC::execstep (
 			{
 				unsigned sp_width = width-30;	// Space for line numbers, during development
 				v.val += "<style>\n";
+				// Cursor insert mode
+				v.val += ".icursor{\n";
+				v.val += "\tbackground-color:lightgray;>";
+				v.val += "}\n";
+				// Cursor replace mode
+				v.val += ".rcursor{\n";
+				v.val += "\tbackground-color:lightpink;>";
+				v.val += "}\n";
+
+				// Border around image, when focus
 				v.val += ".imgcursor{\n";
 				v.val += "\tborder:2px solid lightgray;\n";
 				v.val += "}\n";
@@ -1324,7 +1331,6 @@ void WORDPROC::execstep (
 				v.val += string_f("\twidth:%u;\n",sp_width);
 				v.val += "}\n";
 
-				const unsigned bullet_width=15+5;
 				//unsigned offsets[]={5,tab_width-15,2*tab_width-15,3*tab_width-15};
 				for (unsigned i=0; i<4; i++){
 					v.val += string_f(".bullet%u{\n",i);
