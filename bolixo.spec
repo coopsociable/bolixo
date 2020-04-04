@@ -9,6 +9,7 @@ Source0: bolixo-REV.src.tar.gz
 BuildRoot: /var/tmp/bolixo
 BuildRequires: tlmp-devel mariadb-devel trlitool tlmpsql tlmpweb
 Requires: mariadb-connector-c, tlmp >= TLMPVERSION, tlmpsql >= TLMPSQLVERSION, trlitool >= TRLITOOLVERSION, tlmpweb >= TLMPWEBVERSION
+Requires: dejavu-serif-fonts
 
 %description
 Bolixo is a distributed social media. This package includes everything
