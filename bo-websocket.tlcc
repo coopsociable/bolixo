@@ -578,7 +578,11 @@ static void bo_websocket_game (int fd, int waitfd, CONNECT_INFO &con_bod, CONNEC
 					buf += "}\n";
 				}
 			}
-			if (!is_start_any_of(content,NONEED,"/projects/")){
+			// Notitication /projects/....
+			// are used to send update scripts to all listener. This will go away
+			// as all listener used the gamesequence system (bod_client_waitevent).
+			bool not_project = !is_start_any_of(content,NONEED,"/projects/");
+			if (not_project){
 				// Now we turn the subtab orange
 				buf += string_f ("var e = document.getElementById('tabrect%s');\n",content);
 				buf += "if (e!=null){\n";
@@ -622,7 +626,9 @@ static void bo_websocket_game (int fd, int waitfd, CONNECT_INFO &con_bod, CONNEC
 				buf += "\te.setAttribute('fill', 'orange');\n";
 				buf += "}\n";
 			}
-			buf += "if (document.hidden && document.title[0] != '[') document.title = '[' + document.title + ']';\n";
+			if (not_project){
+				buf += "if (document.hidden && document.title[0] != '[') document.title = '[' + document.title + ']';\n";
+			}
 			if (!glocal.gamewaiting){
 				if (script[0] != '\0') buf += script;
 			}
