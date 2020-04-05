@@ -881,16 +881,18 @@ static void index_msgs_style(_F_webtable &c)
 static void index_show_shortmsg(
 	CONNECT_INFO &con,
 	CONNECT_INFO &con_sess,
+	const char *id,
 	_F_webtabs &webtabs,
 	PARAM_STRING groupname,
 	PARAM_STRING groupowner,
 	unsigned &offset,	// First row displayed
 	unsigned &nbhidden)	// How many message are not shown
 {
+	glocal id;
 	glocal nbhidden;
 	glocal webtabs;
-	glocal CONNECT_INFO *con = &con;
-	glocal CONNECT_INFO *con_sess = &con_sess;
+	glocal con;
+	glocal con_sess;
 	glocal const char *groupname = groupname.ptr;
 	glocal const char *groupowner = groupowner.ptr;
 	glocal bool is_inbox = strcmp(glocal.groupname,"inbox")==0;
@@ -906,16 +908,16 @@ static void index_show_shortmsg(
 	<f click>
 		glocal unsigned dropmenu = dropmenu;
 		if (dropmenu == MENU_UNDELETE){
-			<call bod_client_undelete> (*glocal.con,w_session.c_str(),glocal.path);
+			<call bod_client_undelete> (glocal.con,w_session.c_str(),glocal.path);
 			<f ok>
 				if (!success) htmlprintf (MSG_R(E_CANTUNDELETEENTRY),msg);
 			</f>
 			</call>
 		}else if (dropmenu == MENU_PASTE){
-			index_paste (*glocal.con,glocal.path,glocal.groupowner,glocal.groupname);
+			index_paste (glocal.con,glocal.path,glocal.groupowner,glocal.groupname);
 		}else{
 			vector<string> fullt;
-			<call bod_client_list_talk>(*glocal.con,w_session.c_str(),"",glocal.groupname,glocal.groupowner,fullt,noline,1,firstseens[glocal.table].last);
+			<call bod_client_list_talk>(glocal.con,w_session.c_str(),"",glocal.groupname,glocal.groupowner,fullt,noline,1,firstseens[glocal.table].last);
 			<f ok>
 				if (messages.size()!=1){
 					htmlprintf ("Internal error: %s\n",msg);
@@ -928,19 +930,19 @@ static void index_show_shortmsg(
 					index_msg_name (m.file_type,filename,extension);
 					glocal.suggested_name = filename + "." + extension;
 					if (glocal.dropmenu == MENU_DELETE){
-						<call bod_client_delfile> (*glocal.con,w_session.c_str(),glocal.fname);
+						<call bod_client_delfile> (glocal.con,w_session.c_str(),glocal.fname);
 						<f ok>
 							if (!success){
 								htmlprintf (MSG_R(E_CANTDELETEENTRY),msg);
 							}else{
-								index_setcopyitem(*glocal.con_sess,glocal.fname,glocal.eventdate,glocal.suggested_name);
+								index_setcopyitem(glocal.con_sess,glocal.fname,glocal.eventdate,glocal.suggested_name);
 							}
 						</f>
 						</call>
 					}else if (glocal.dropmenu == MENU_COPY){
-						index_setcopyitem(*glocal.con_sess,glocal.fname,glocal.eventdate,glocal.suggested_name);
+						index_setcopyitem(glocal.con_sess,glocal.fname,glocal.eventdate,glocal.suggested_name);
 					}else if (glocal.dropmenu == MENU_DOWNLOAD){
-						index_download (*glocal.con,m.file_type,glocal.fname);
+						index_download (glocal.con,m.file_type,glocal.fname);
 					}else if (glocal.dropmenu == MENU_REPLY){
 						vector<string> tb;
 						str_splitline(m.recipients,' ',tb);
@@ -962,7 +964,7 @@ static void index_show_shortmsg(
 						glocal.webtabs.addtab (string_f("2:%s",glocal.fname.c_str()),MSG_U(I_TEXT,"Text"));
 					}else if (file_is_video(m.file_type) || file_is_sound(m.file_type)){
 						tlmpweb_flushheader();
-						util_popup (*glocal.con,m.content,m.file_type,m.submit,m.from
+						util_popup (glocal.con,m.content,m.file_type,m.submit,m.from
 							,string_f("/msgs/%s/short-inbox/%s/%s"
 							,glocal.groupowner,glocal.groupname,m.uuid));
 					}
@@ -986,8 +988,22 @@ static void index_show_shortmsg(
 		index_msgs_style(*this);
 		auto &fseen = firstseens[glocal.table];
 		const char *last = fseen.last.c_str();
-		if (w_showhidden == 1) last = "";
-		<call bod_client_list_talk>(*glocal.con,w_session.c_str(),"",glocal.groupname,glocal.groupowner
+		if (w_showhidden == 1){
+			last = "";
+			util_delnotify (glocal.con_sess,"talks",glocal.id);
+			bool talks_found = false;
+			for (auto &s:userinfo.notifies){
+				if (is_start_any_of (s,NONEED,"talks:")) talks_found = true;
+			}
+			userinfo.talk_notify = talks_found;
+			if (!talks_found){
+				/- <script>
+				/- document.getElementById('tabrecttalks').setAttribute('fill', 'white');
+				/- tabcolor['tabrecttalks'] = 'white';
+				/- </script>
+			}
+		}
+		<call bod_client_list_talk>(glocal.con,w_session.c_str(),"",glocal.groupname,glocal.groupowner
 			,fulltext,nbskip,nblines,last);
 		<f ok>
 			glocal.webtable.setdrop_default({MENU_PASTE,MENU_UNDELETE});
@@ -999,7 +1015,7 @@ static void index_show_shortmsg(
 				glocal.webtable.sethiddens(nbnew);
 				glocal.webtable.sethidden_title (tlmpweb_ismobile() ? MSG_U(I_NEWM,"new") : MSG_U(I_NEWMESSAGES,"new messages"));
 				if (glocal.rownum == 0 && nbnew == 0 && messages.size() > 0){
-					web_update_firstseen(*glocal.con_sess,glocal.table, messages[0].uuid);
+					web_update_firstseen(glocal.con_sess,glocal.table, messages[0].uuid);
 				}
 				string day;
 				static const char *line_styles[]={"sep","sep1"};
@@ -1099,7 +1115,7 @@ static void index_show_shortmsg(
 							,tlmpweb_curpage(),step_image,path.c_str(),tmp.c_str());
 					}else if (file_is_text(m.file_type)){
 						// Large text file
-						<call bod_client_readfile_bob>(*glocal.con,w_session.c_str(),path,"",true);
+						<call bod_client_readfile_bob>(glocal.con,w_session.c_str(),path,"",true);
 						<f ok>
 							if (!success){
 								htmlprintf (MSG_U(E_CANTREADFILE,"Can't read file: %s\n"),msg);
@@ -2304,12 +2320,12 @@ extern "C" void webmain_real()
 			vector<string> tb;
 			int n = str_splitline (id,':',tb);
 			if (n != 2) return;
+			glocal id;
 			glocal string groupowner = tb[0];
 			glocal string groupname = tb[1];
 			glocal const char *formid = formid;
 			glocal unsigned offset = 0;	// First row displayed
 			glocal unsigned nbhidden = 0;	// Number of hidden message (not yet seen by the user)
-			util_delnotify (glocal.con_sess,"talks",id);
 			<call webflip>();
 			<f first>
 				if (glocal.groupname != "anonymous"){
@@ -2422,7 +2438,7 @@ extern "C" void webmain_real()
 				}
 			</f>
 			<f second>
-				index_show_shortmsg (glocal.con,glocal.con_sess,glocal.webtabs,glocal.groupname,glocal.groupowner,glocal.offset,glocal.nbhidden);
+				index_show_shortmsg (glocal.con,glocal.con_sess,glocal.id,glocal.webtabs,glocal.groupname,glocal.groupowner,glocal.offset,glocal.nbhidden);
 			</f>
 			</call>
 		</f>
