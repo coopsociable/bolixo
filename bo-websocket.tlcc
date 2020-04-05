@@ -138,6 +138,7 @@ struct HANDLE_INFO: public ARRAY_OBJ{
 #define bod_client_systemsign_NOTNEED
 #define bod_client_info_read_NOTNEED
 #define bod_client_info_write_NOTNEED
+#define bod_client_waitevent_ASYNC
 #include "proto/bod_client.protoch"
 /*
         Read the secret used to communicate with internal service
@@ -208,10 +209,14 @@ struct _F_bo_websocket{
 	#define _F_bo_websocket_commands(name) void name commands(const vector<string> &cmds, CONNECT_INFO &con_bod, CONNECT_INFO &con_sessiond, \
 		const char *session, const char *gameid, const DOC_UI_SPECS &sp, bool &endserver)
 	virtual _F_bo_websocket_commands( )=0;
-	#define _F_bo_websocket_waitnote(name) void name waitnote(CONNECT_INFO &con_sessiond, const char *session, int &sequence, const set<string> &project_notifications, bool &endserver)
+	#define _F_bo_websocket_waitnote(name) void name waitnote(CONNECT_INFO &con_sessiond, const char *session, int &sequence, const set<string> &project_notifications, bool gamewaiting, bool &endserver)
 	virtual _F_bo_websocket_waitnote( )=0;
 	#define _F_bo_websocket_waitnote_call(name) int name waitnote_call(CONNECT_INFO &con_sessiond, const char *session, int &sequence, bool &endserver)
 	virtual _F_bo_websocket_waitnote_call( )=0;
+	#define _F_bo_websocket_waitevent_call(name) int name waitevent_call(CONNECT_INFO &con_waitevent, const char *session, const char *gameid, int &gamesequence, bool &endserver)
+	virtual _F_bo_websocket_waitevent_call( )=0;
+	#define _F_bo_websocket_waitevent(name) void name waitevent(CONNECT_INFO &con_waitevent, const char *session, const char *gameid, int &gamesequence, bool &endserver)
+	virtual _F_bo_websocket_waitevent( )=0;
 };
 
 /*
@@ -231,13 +236,14 @@ static void webtab_init (const vector<SNAMEVAL_receive> &vals, set<string> &noti
 }
 static unsigned idle_delay=5*60;
 <mod>
-static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &con_bod, CONNECT_INFO &con_sessiond, bool paused)
+static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &con_bod, CONNECT_INFO &con_sessiond, CONNECT_INFO &con_waitevent, bool paused)
 {
 	glocal int waitfd = waitfd;
 	glocal int fd = fd;
 	glocal c;
 	glocal con_bod;
 	glocal con_sessiond;
+	glocal con_waitevent;
 	glocal STREAMP_BUF buf;
 	glocal bool header_seen = false;
 	glocal string acceptkey;
@@ -249,6 +255,8 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 	glocal DOC_UI_SPECS sp;
 	glocal int sequence = -1;
 	glocal int sessionfd = -1;
+	glocal int gamesequence = -1;
+	glocal int waiteventfd = -1;
 	glocal set<string> project_notifications;
 	c.fd = fd;
 	<obj TCPSERVER s>();
@@ -291,6 +299,11 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 							closeclient (glocal.sessionfd);
 							glocal.sessionfd = -1;
 						}
+						if (glocal.waiteventfd != -1){
+							glocal.con_waitevent.close();
+							closeclient (glocal.waiteventfd);
+							glocal.waiteventfd = -1;
+						}
 						setlisten (glocal.fd,false);
 					}else if (req->cmd == WORKER_COMMAND::REQ_RESUME){
 						if (glocal.sequence != -1){
@@ -298,6 +311,12 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 							glocal.sessionfd = glocal.con_sessiond.fd;
 							glocal.TCPSERVER.inject(glocal.sessionfd,nullptr);
 							glocal.TCPSERVER.setmonitormode(glocal.sessionfd,true);
+						}
+						if (glocal.gamesequence != -1){
+							glocal.c.waitevent_call(glocal.con_waitevent, glocal.session.c_str(),glocal.gameid.c_str(),glocal.gamesequence, endserver);
+							glocal.waiteventfd = glocal.con_waitevent.fd;
+							glocal.TCPSERVER.inject(glocal.waiteventfd,nullptr);
+							glocal.TCPSERVER.setmonitormode(glocal.waiteventfd,true);
 						}
 						setlisten (glocal.fd,true);
 					}
@@ -309,10 +328,14 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 				tlmp_error ("Invalid packet size for worker request");
 			}
 		}else if (no == glocal.sessionfd){
-			// tlmp_warning ("waitnote");
-			glocal.c.waitnote(glocal.con_sessiond, glocal.session.c_str(),glocal.sequence, glocal.project_notifications,endserver);
+			glocal.c.waitnote(glocal.con_sessiond, glocal.session.c_str(),glocal.sequence, glocal.project_notifications
+				,glocal.gamesequence!=-1,endserver);
 			// We are always calling back sessiond to wait for more events.
 			if (!glocal.endserver) glocal.c.waitnote_call(glocal.con_sessiond, glocal.session.c_str(),glocal.sequence, endserver);
+		}else if (no == glocal.waiteventfd){
+			glocal.c.waitevent(glocal.con_waitevent, glocal.session.c_str(),glocal.gameid.c_str(),glocal.gamesequence, endserver);
+			// We are always calling back bod to wait for more events.
+			if (!glocal.endserver) glocal.c.waitevent_call(glocal.con_waitevent, glocal.session.c_str(),glocal.gameid.c_str(),glocal.gamesequence, endserver);
 		}else if (!glocal.header_seen){
 			const char *pt;
 			if (is_start_any_ofnc(line,pt,"Sec-WebSocket-Key:")){
@@ -479,6 +502,19 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 						glocal.TCPSERVER.setmonitormode(glocal.sessionfd,true);
 					}
 					glocal.messages.erase (p);
+				}else if (is_start_any_of(*p,pt,"gamesequence=")){
+					// We had to wait until we received the sequence number before doing the first
+					// waitevent call to bod.
+					// After that, every success completed call is followed by a new one (see above)
+					glocal.gamesequence = atoi(pt);
+tlmp_warning ("gamesequence=%d",glocal.gamesequence);
+					if (glocal.waiteventfd == -1){
+						glocal.c.waitevent_call(glocal.con_waitevent, glocal.session.c_str(),glocal.gameid.c_str(),glocal.gamesequence, endserver);
+						glocal.waiteventfd = glocal.con_waitevent.fd;
+						glocal.TCPSERVER.inject(glocal.waiteventfd,nullptr);
+						glocal.TCPSERVER.setmonitormode(glocal.waiteventfd,true);
+					}
+					glocal.messages.erase (p);
 				}else if (glocal.gameid.size() > 0){
 					glocal.c.commands(glocal.messages,glocal.con_bod,glocal.con_sessiond,glocal.session.c_str(),glocal.gameid.c_str(),glocal.sp,endserver);
 					break;
@@ -503,9 +539,9 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 </mod>
 
 <mod>
-static void bo_websocket_game (int fd, int waitfd, CONNECT_INFO &con_bod, CONNECT_INFO &con_sessiond, bool paused)
+static void bo_websocket_game (int fd, int waitfd, CONNECT_INFO &con_bod, CONNECT_INFO &con_sessiond, CONNECT_INFO &con_waitevent, bool paused)
 {
-	<call bo_websocket>(fd,waitfd,con_bod,con_sessiond,paused);
+	<call bo_websocket>(fd,waitfd,con_bod,con_sessiond,con_waitevent,paused);
 	<f waitnote_call>
 		int ret = bo_sessiond_client_waitevent_SEND(con_sessiond,session,sequence);
 		return ret;
@@ -514,6 +550,7 @@ static void bo_websocket_game (int fd, int waitfd, CONNECT_INFO &con_bod, CONNEC
 		glocal endserver;
 		glocal sequence;
 		glocal project_notifications;
+		glocal gamewaiting;
 		<call bo_sessiond_client_waitevent>(con_sessiond);
 		<f ok>
 			if (!success){
@@ -541,17 +578,19 @@ static void bo_websocket_game (int fd, int waitfd, CONNECT_INFO &con_bod, CONNEC
 					buf += "}\n";
 				}
 			}
-			// Now we turn the subtab orange
-			buf += string_f ("var e = document.getElementById('tabrect%s');\n",content);
-			buf += "if (e!=null){\n";
-			buf += "\te.setAttribute('fill', 'orange');\n";
-			buf += string_f("\ttabcolor['tabrect%s'] = 'orange';\n",content);
-			buf += "}\n";
-			// And the X in the subtab
-			buf += string_f ("e = document.getElementById('tabsrect%s');\n",content);
-			buf += "if (e!=null){\n";
-			buf += "\te.setAttribute('fill', 'orange');\n";
-			buf += "}\n";
+			if (!is_start_any_of(content,NONEED,"/projects/")){
+				// Now we turn the subtab orange
+				buf += string_f ("var e = document.getElementById('tabrect%s');\n",content);
+				buf += "if (e!=null){\n";
+				buf += "\te.setAttribute('fill', 'orange');\n";
+				buf += string_f("\ttabcolor['tabrect%s'] = 'orange';\n",content);
+				buf += "}\n";
+				// And the X in the subtab
+				buf += string_f ("e = document.getElementById('tabsrect%s');\n",content);
+				buf += "if (e!=null){\n";
+				buf += "\te.setAttribute('fill', 'orange');\n";
+				buf += "}\n";
+			}
 			// Turn the table entry in the webtable orange
 			if (is_start_any_of(content,pt,"talks")){
 				buf += string_f ("var e = document.getElementById('talktbl%s');\n",pt);
@@ -584,10 +623,29 @@ static void bo_websocket_game (int fd, int waitfd, CONNECT_INFO &con_bod, CONNEC
 				buf += "}\n";
 			}
 			buf += "if (document.hidden && document.title[0] != '[') document.title = '[' + document.title + ']';\n";
-			if (script[0] != '\0') buf += script;
+			if (!glocal.gamewaiting){
+				if (script[0] != '\0') buf += script;
+			}
 			buf += string_f("sequence=%u;\n",sequence);
 			glocal.bo_websocket.send (buf);
 			glocal.sequence = sequence;
+		</f>
+		</call>
+	</f>
+	<f waitevent_call>
+		int ret = bod_client_waitevent_SEND(con_waitevent,session,gameid,gamesequence);
+		return ret;
+	</f>
+	<f waitevent>
+		glocal gamesequence;
+		<call bod_client_waitevent>(con_waitevent);
+		<f ok>
+			if (success){
+				glocal.gamesequence = sequence;
+				string buf(script);
+				buf += string_f("gamesequence=%u;\n",sequence);
+				glocal.bo_websocket.send (buf);
+			}
 		</f>
 		</call>
 	</f>
@@ -682,10 +740,13 @@ int main (int argc, char *argv[])
 		glocal vector<int> workers;
 		glocal CONNECT_INFO con_bod;
 		glocal CONNECT_INFO con_sessiond;
+		glocal CONNECT_INFO con_waitevent;
 		glocal.con_bod.port = glocal.bodsock;
 		glocal.con_sessiond.port = glocal.sessiondsock;
 		glocal.con_bod.secret = util_readsecret();
 		glocal.con_sessiond.secret = glocal.con_bod.secret;
+		glocal.con_waitevent.secret = glocal.con_bod.secret;
+		glocal.con_waitevent.port = glocal.bodsock;
 		int ret = -1;
 		signal (SIGCHLD,SIG_IGN);
 		<obj TCPSERVER s>(string_f("unix:%s",glocal.port),10);
@@ -706,7 +767,7 @@ int main (int argc, char *argv[])
 					pid_t pid = fork();
 					if (pid == 0){
 						close (tb[0]);
-						bo_websocket_game(no,tb[1],glocal.con_bod,glocal.con_sessiond,glocal.paused);
+						bo_websocket_game(no,tb[1],glocal.con_bod,glocal.con_sessiond,glocal.con_waitevent,glocal.paused);
 						_exit (0);
 					}else if (pid == (pid_t)-1){
 						close (tb[0]);

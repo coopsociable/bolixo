@@ -206,7 +206,7 @@ void PARAGRAPH::addline (unsigned word_start, unsigned word_end, unsigned height
 	if (last_end > 0) homepos = line_ends[last_end-1]+1;
 	line_ends.push_back(homepos+charlen);
 	line_homes.push_back(homepos);
-	line_heights.push_back(height);
+	line_heights.push_back(height+2);	// 2 pixel between lines of a paragraph
 }
 
 void PARAGRAPH::init(PARAM_STRING txt, unsigned width, unsigned _fontsize)
@@ -377,6 +377,7 @@ void PARAGRAPH::locate_pixel(unsigned x_pos, unsigned y_pos, unsigned &noline)
 	unsigned y_offset = 0;
 	for (auto h:line_heights){
 		y_offset += h;
+		tlmp_warning ("noline=%u y_offset=%u y_pos=%u",noline,y_offset,y_pos);
 		if (y_offset > y_pos) break;
 		noline++;
 	}
@@ -1073,6 +1074,9 @@ void WORDPROC::set_para_spec(
 		unsigned level_width = l.tab_level * tab_width;
 		// 30 is for line numbers
 		unsigned width = sp.content_width - 30 - bul_width - level_width;
+		width++;	// Add one pixel, because browser really use all the space
+				// another solution would be to put an >= in para.init
+		//tlmp_warning ("set_para_spec content_width=%u bul_width=%u level_width=%u width=%u",sp.content_width,bul_width,level_width,width);
 		para.init (l.line,width,sp.fontsize);
 		unsigned line_cursor;
 		para.locate_cursor (column,para_noline,line_cursor);
@@ -1314,8 +1318,12 @@ void WORDPROC::execstep (
 				v.val += "\tborder:2px solid lightgray;\n";
 				v.val += "}\n";
 
-				v.val += ".onecol, .oneline{\n";
+				v.val += ".oneline{\n";
 				v.val += "\tflex:0 1 auto;\n";
+				v.val += "}\n";
+				v.val += ".onecol{\n";
+				v.val += "\tflex:0 1 auto;\n";
+				v.val += "\twidth:30;\n";
 				v.val += "}\n";
 
 				v.val += ".oneline .col{\n";
@@ -1617,6 +1625,8 @@ void WORDPROC::execstep (
 				//tlmp_warning ("select=%s",val);
 				int n = str_splitline(val,' ',tb);
 				if (n == 4){
+					// We receive 4 arguments: relative paragraph number, X coordinate inside the paragraph, Y coordinate
+					// and lastline (last visible paragraph)
 					unsigned noline = atoi(tb[0].c_str());
 					if (noline < visible_lines){
 						unsigned newline = pref.offset + noline;
@@ -1632,25 +1642,6 @@ void WORDPROC::execstep (
 							set_para_spec (para,pref.cursor.line,sp);
 							para.locate_pixel (xcoor,ycoor,noline);
 							pref.cursor.column = para.get_para_cursor(noline);
-							#if 0
-							auto &line = lines[pref.cursor.line].line;
-							unsigned len = wordproc_linelen(line);
-							unsigned xpos = 0;
-							for (unsigned i=0; i<len; i++){
-								// We have to compute the length of every character in the line
-								#if 0
-								size_t sizecar;
-								unsigned pos = wordproc_jump2col(line,i,sizecar);
-								#endif
-								// assume a fixed length for now
-								unsigned width=10;
-								xpos += width;
-								if (xpos  > xcoor){
-									pref.cursor.column = i;
-									break;
-								}
-							}
-							#endif
 						}
 						notify_lines.insert(pref.cursor.line);
 					}

@@ -1164,6 +1164,8 @@ void index_setgameid(PARAM_STRING id)
 extern "C" void webmain_real()
 {
 	glocal bool displayjs=false;	// Display notification JS scripts in console
+	glocal bool use_gamesequence = true;	// Used for testing while we are moving from game notification by sessiond
+						// to bo-websocket doing a waitevent with bod -> documentd
 	glocal unsigned waitevent_delay=0;
 	glocal bool account_confirmed = false;
 	glocal CONNECT_INFO con;
@@ -1194,6 +1196,8 @@ extern "C" void webmain_real()
 			util_setnonstrict(true);
 		}else if (strcmp(line,"displayjs")==0){
 			glocal.displayjs=true;
+		}else if (strcmp(line,"nogamesequence")==0){
+			glocal.use_gamesequence=false;
 		}else if (strcmp(line,"experimental")==0){
 			util_set_experimental();
 		}else if (is_start_any_of(line,pt,"mobilespecs")){
@@ -1203,6 +1207,8 @@ extern "C" void webmain_real()
 			}
 		}else if (strcmp(line,"debug-agent")==0){
 			tlmpweb_debug_agent();
+		}else{
+			tlmp_warning ("Invalid entry in /etc/bolixonode.conf: %s",line);
 		}
 		return 0;
 	</f>
@@ -1586,6 +1592,9 @@ extern "C" void webmain_real()
 				htmlprintf ("notesocket.send('gameid=%s');\n",gameid.c_str());
 			}
 			/-    notesocket.send('sequence='+sequence);
+			if (glocal.use_gamesequence){
+				/-    if (typeof gamesequence != 'undefined') notesocket.send('gamesequence='+gamesequence);
+			}
 			/-  }
 
 			/-  notesocket.onmessage = function(event) {

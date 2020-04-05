@@ -263,7 +263,13 @@ static bool documentd_playstep (
 		game->manyexec(steps,session,username,maywrite,sp,res);
 		game->testwin(res);
 		for (auto &r:res){
-			if (r.var == VAR_NOTIFY && r.val.size() > 0) game->add_notification(r.val);
+			if (r.var == VAR_NOTIFY){
+				if (r.val.size() > 0) game->add_notification(r.val);
+			}else if (r.var == VAR_CONTENT){
+				r.val += "<script>\n";
+				r.val += string_f("var gamesequence=%u;\n",game->get_sequence());
+				r.val += "</script>\n";
+			}
 		}
 	}else{
 		msg = "Unknown game id";
@@ -386,7 +392,7 @@ int main (int argc, char *argv[])
 					const char *arg = argv[i];
 					printf ("----%s\n",arg);
 					for (unsigned col=0; col<15; col++){
-						wordproc_testparagraph(arg,300,14,col);
+						wordproc_testparagraph(arg,1300,14,col);
 					}
 				}
 			}else{
