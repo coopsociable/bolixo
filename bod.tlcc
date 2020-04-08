@@ -4022,12 +4022,18 @@ static int bod_main (
 			</f>
 			</call>
 		}else if (c->type == TYPE_DOCUMENTD){
+			glocal endclient;
 			glocal int no = c->no;
 			CONNECT_INFO con;
 			con.fd = no;
 			<call documentd_client_waitevent>(con);
 			<f ok>
-				bod_client_rep_waitevent(glocal.no,success,msg,script,sequence);
+				if (internal_error){
+					glocal.endclient = true;
+					glocal.TCPSERVER.closeclient (glocal.no);
+				}else{
+					bod_client_rep_waitevent(glocal.no,success,msg,script,sequence);
+				}
 			</f>
 			</call>
 			con.fd = -1;
