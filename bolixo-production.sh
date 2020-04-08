@@ -241,7 +241,7 @@ elif [ "$1" = "instrument" ] ; then # prod: Turn instrumentation on and off
 		echo "bolixo-production instrument 0|1"
 		exit 1
 	fi
-	CTRL="bod-controls bo-mon-control bo-writed-control bo-sessiond-control publishd-control documentd-control"
+	CTRL="bod-controls bo-mon-control bo-writed-control bo-sessiond-control publishd-control documentd-control bo-websocket-control"
 	if [ -d /var/lib/lxc/bolixod/rootfs ] ; then
 		CTRL="$CTRL bolixod-controls"
 	fi
