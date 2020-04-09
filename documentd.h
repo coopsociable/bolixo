@@ -3,6 +3,7 @@
 
 #include <set>
 
+#define CLASS_CHESS	"CHES"
 class DOC_UI_SPECS_receive;
 
 class DOC_WRITER{
@@ -30,6 +31,57 @@ struct GAMENOTE{
 	unsigned sequence=0;
 	GAMENOTE(PARAM_STRING _script, unsigned _sequence)
 		: script(_script.ptr), sequence(_sequence){
+	}
+};
+
+struct SUBPROGRAM_REQUEST{
+	std::string gameid;
+	std::string line;
+	SUBPROGRAM_REQUEST(PARAM_STRING _gameid, PARAM_STRING _line)
+		:gameid(_gameid.ptr), line(_line.ptr){
+	}
+};
+
+class SUBPROGRAM{
+	std::vector<SUBPROGRAM_REQUEST> tosend;
+	std::string command;	// shell command to start the program
+	std::string gameclass;	// This engine is suitable when gameclass==GAME::getclass()
+	pid_t pid=(pid_t)-1;
+	int fdin=-1;		// handle to send command
+	int fdout=-1;		// Output of the command
+	int fderr=-1;		// Errors from the command
+	std::string gameid;	// gameid associated with this subprogram
+public:
+	~SUBPROGRAM();
+	SUBPROGRAM(PARAM_STRING _gameclass, PARAM_STRING _command);
+	SUBPROGRAM(const SUBPROGRAM &n) = delete;
+	SUBPROGRAM(SUBPROGRAM &&n);
+	SUBPROGRAM &operator =(const SUBPROGRAM &n) = delete;
+	void send(PARAM_STRING gameid, PARAM_STRING line);
+	int sendmore ();
+	const char *get_gameid() const {
+		return gameid.c_str();
+	}
+	void reset_gameid(){
+		gameid.clear();
+	}
+	bool is_fdout(int no) const {
+		return no == fdout;
+	}
+	bool is_fderr(int no) const {
+		return no == fderr;
+	}
+	int get_fdout() const {
+		return fdout;
+	}
+	int get_fderr() const {
+		return fderr;
+	}
+	const char *getclass() const {
+		return gameclass.c_str();
+	}
+	bool is_class (PARAM_STRING cls){
+		return gameclass == cls.ptr;
 	}
 };
 
@@ -174,6 +226,7 @@ public:
 	virtual void testwin(std::vector<VARVAL> &res) = 0;
 	virtual void exec (const char *var, const char *val, const char *session, const char *username, bool maywrite, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res) = 0;
 	virtual void manyexec (const std::vector<VARVAL_receive> &steps, const char *session, const char *username, bool maywrite, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
+	virtual void engine_reply (const char *line, std::string &notify, bool &done);
 	virtual ~GAME(){};
 };
 
@@ -401,6 +454,7 @@ public:
 	void exec (const char *var, const char *val, const char *session, const char *username, bool maywrite, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
 };
 struct CHESS_PLAYER{
+	unsigned robot_level=0;
 	unsigned col=11;
 	unsigned line=11;
 	std::string name;
@@ -440,6 +494,9 @@ struct CHESS_PLAYER{
 		return col < 8 && line < 8;
 	}
 	std::string dump() const;
+	bool is_robot() const {
+		return robot_level > 0;
+	}
 };
 
 class CHESSMOVE_EFFECTS;
@@ -480,15 +537,18 @@ class CHESS: public GAME{
 	bool check_expose(bool king_is_white, std::vector<CHESS_COOR> &pieces);
 	void undoone(VARVAL &notify_var);
 	void show_marked_pieces (VARVAL &notify_var, const char *color);
+	std::string format_fen();
+	void robot_request (std::vector<VARVAL> &res);
 public:
 	const char *getclass() const{
-		return "CHES";
+		return CLASS_CHESS;
 	}
 	void save(DOC_WRITER &w, bool save_session_info);
 	void load(DOC_READER &r, std::string &msg);
 	void resetgame();
 	void testwin(std::vector<VARVAL> &res);
 	void exec (const char *var, const char *val, const char *session, const char *username, bool maywrite, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
+	void engine_reply(const char *line, std::string &notify, bool &done);
 };
 
 #define VAR_CONTENT	"content"	// HTML content to display
@@ -498,6 +558,7 @@ public:
 #define VAR_REFRESH	"refresh"	// Trigger a screen refresh
 #define VAR_SCRIPT	"script"	// Javascript for this user only
 #define VAR_CHANGES	"changes"	// A change was done in the game or document worth telling everyone
+#define VAR_ENGINE	"engine"	// A message must be sent to an engine (gnuchess for now) for this game
 
 std::string documentd_escape(PARAM_STRING msg);
 void documentd_error (std::vector<VARVAL> &res, PARAM_STRING s);

@@ -24,6 +24,7 @@
 #include <errno.h>
 #include <signal.h>
 #include <syslog.h>
+#include <fcntl.h>
 #include <unistd.h>
 #include <tlmpsql.h>
 #include <tlmplib.h>
@@ -45,7 +46,7 @@
 using namespace std;
 static DEBUG_KEY D_PROTO ("proto","Protocol information");
 
-enum CONNECT_TYPE { TYPE_NONE, TYPE_CONTROL, TYPE_CLIENT, TYPE_WORKER};
+enum CONNECT_TYPE { TYPE_NONE, TYPE_CONTROL, TYPE_CLIENT, TYPE_SUBPROGRAM};
 
 // Load and save may be spread over several calls
 // We save the gameid to make sure
@@ -198,14 +199,16 @@ using GAME_P = shared_ptr<GAME>;
 
 void GAME::add_notification (PARAM_STRING script)
 {
-	notifications.emplace_back(script,sequence);
-	for (auto fd:notification_fds){
-		documentd_client_rep_waitevent(fd,true,"",script,sequence);
+	if (script.ptr[0] != '\0'){
+		notifications.emplace_back(script,sequence);
+		for (auto fd:notification_fds){
+			documentd_client_rep_waitevent(fd,true,"",script,sequence);
+		}
+		notification_fds.clear();
+		sequence++;
+		// We keep around the last 10 notifications
+		while (notifications.size() > 10) notifications.erase(notifications.begin());
 	}
-	notification_fds.clear();
-	sequence++;
-	// We keep around the last 10 notifications
-	while (notifications.size() > 10) notifications.erase(notifications.begin());
 }
 void GAME::add_notification_fd(int fd)
 {
@@ -242,7 +245,12 @@ void GAME::manyexec (
 	}
 }
 
+void GAME::engine_reply(const char *line, string &notify, bool &done)
+{
+	done = true;
+}
 static bool documentd_playstep (
+	vector<SUBPROGRAM> &programs,
 	map<string,GAME_P> &games,
 	const char *gameid,
 	const vector<VARVAL_receive> &steps,
@@ -269,6 +277,18 @@ static bool documentd_playstep (
 				r.val += "<script>\n";
 				r.val += string_f("var gamesequence=%u;\n",game->get_sequence());
 				r.val += "</script>\n";
+			}else if (r.var == VAR_ENGINE){
+				bool found = false;
+				for (auto &p:programs){
+					if (p.is_class(game->getclass())){
+						p.send(gameid,r.val);
+						found = true;
+						break;
+					}
+				}
+				if (!found){
+					tlmp_error ("No engine for game type %s, gameid=%s",game->getclass(),gameid);
+				}
 			}
 		}
 	}else{
@@ -339,6 +359,187 @@ static bool documentd_endgame (
 	return ret;
 }
 
+static void closetb(int tb[2])
+{
+	close (tb[0]);
+	close (tb[1]);
+}
+static void forgettb(int tb[2])
+{
+	tb[0] = tb[1] = -1;
+}
+
+static void dup_close (int fd, int target_fd)
+{
+	dup2 (fd,target_fd);
+	close (fd);
+}
+SUBPROGRAM::SUBPROGRAM(PARAM_STRING _gameclass, PARAM_STRING _command)
+	:command(_command.ptr), gameclass(_gameclass.ptr)
+{
+	int tbin[2];
+	if (pipe2(tbin,O_DIRECT)!=-1){
+		int tbout[2];
+		if (pipe(tbout)!=-1){
+			int tberr[2];
+			if (pipe(tberr)!=-1){
+				pid = fork();
+				if (pid == (pid_t)0){
+					for (int i=0; i<1024; i++){
+						if (!is_any_of(i,tbin[0],tbout[1],tberr[1])) close (i);
+					}
+					dup_close (tbin[0],0);
+					dup_close (tbout[1],1);
+					dup_close (tberr[1],2);
+					vector<string> tb;
+					str_splitline (_command.ptr,' ',tb);
+					const char *tbp[tb.size()+1];
+					for (unsigned i=0; i<tb.size(); i++) tbp[i] = tb[i].c_str();
+					tbp[tb.size()] = nullptr;
+					execv (tbp[0],(char**)tbp);
+					_exit (0);
+				}else if (pid != (pid_t)-1){
+					fdin = tbin[1];
+					fdout = tbout[0];
+					fderr = tberr[0];
+					close(tbin[0]);
+					close(tbout[1]);
+					close(tberr[1]);
+					forgettb(tbin);
+					forgettb(tbout);
+					forgettb(tberr);
+				}else{
+					tlmp_error ("Can't fork: %s",strerror(errno));
+				}
+				closetb(tberr);
+			}
+			closetb(tbout);
+		}
+		closetb (tbin);
+	}
+}
+SUBPROGRAM::SUBPROGRAM(SUBPROGRAM &&n)
+{
+	swap(pid,n.pid);
+	swap(fdin,n.fdin);
+	swap(fdout,n.fdout);
+	swap(fderr,n.fderr);
+	//printf ("pid=%d %d %d %d\n",(int)pid,fdin,fdout,fderr);
+	//printf ("npid=%d %d %d %d\n",(int)n.pid,n.fdin,n.fdout,n.fderr);
+	swap(command,n.command);
+	swap(gameid,n.gameid);
+	swap(gameclass,n.gameclass);
+	swap(tosend,n.tosend);
+}
+SUBPROGRAM::~SUBPROGRAM()
+{
+	//printf ("pid=%d fdin=%d fdout=%d fderr=%d command=%s\n",(int)pid,fdin,fdout,fderr,command.c_str());
+	close (fdin);
+	close (fdout);
+	close (fderr);
+	if (pid != (pid_t)-1){
+		//printf ("kill %u\n",pid);
+		kill (pid,SIGTERM);
+	}
+}
+void SUBPROGRAM::send(PARAM_STRING gameid, PARAM_STRING line)
+{
+	tosend.emplace_back(gameid,line);
+	sendmore();
+}
+/*
+	Send more lines to the engine until we reach an empty line.
+	This means we expect some answer from the engine before sending more.
+*/
+int SUBPROGRAM::sendmore()
+{
+	int ret = 0;
+	if (tosend.size() > 0
+		&& (gameid.empty() || tosend[0].gameid == gameid)){
+		gameid = tosend[0].gameid;
+		for (auto &l:tosend){
+			if (l.gameid != gameid){
+				break;
+			}else{
+				ret++;
+				write (fdin,l.line.c_str(),l.line.size());
+			}
+		}
+		tosend.erase(tosend.begin(),tosend.begin()+ret);
+	}
+	return ret;
+}
+void subprogram_exec (PARAM_STRING gameid, const char *cmd)
+{
+}
+
+static void documentd_chess_move(vector<SUBPROGRAM> &programs, map<string,GAME_P> &games, const char *gameid, PARAM_STRING move)
+{
+	if (strlen(move.ptr)==4
+		&& isalpha(move.ptr[0])
+		&& isdigit(move.ptr[1])
+		&& isalpha(move.ptr[2])
+		&& isdigit(move.ptr[3])){
+		DOC_UI_SPECS_receive sp;
+		sp.width = sp.height = sp.content_width = sp.content_height = 1000;
+		sp.mobile = false;
+		sp.fontsize = 14;
+		vector<VARVAL> res;
+		unsigned col1 = move.ptr[0] - 'a';
+		unsigned line1 = 8-(move.ptr[1] - '0');
+		unsigned col2 = move.ptr[2] - 'a';
+		unsigned line2 = 8-(move.ptr[3] - '0');
+		
+		string cmd1 = string_f("%u,%u,1",line1,col1);
+		string cmd2 = string_f("%u,%u,1",line2,col2);
+		vector<VARVAL_receive> steps;
+		VARVAL_receive st;
+		st.var = "place";
+		st.val = cmd1.c_str();
+		steps.emplace_back(st);
+		st.val = cmd2.c_str();
+		steps.emplace_back(st);
+		string msg;
+		bool unknown;
+		documentd_playstep (programs,games,gameid,steps,"session","user",true,sp,res,msg,unknown);
+	}
+}
+static void documentd_chess_print (const char *user, map<string,GAME_P> &games, const char *gameid)
+{
+	DOC_UI_SPECS_receive sp;
+	sp.width = sp.height = sp.content_width = sp.content_height = 1000;
+	sp.mobile = false;
+	sp.fontsize = 14;
+	vector<VARVAL> res;
+	string msg;
+	bool unknown;
+	vector<VARVAL_receive> steps;
+	VARVAL_receive st;
+	st.var = "print";
+	st.val = "console";
+	steps.emplace_back(st);
+	vector<SUBPROGRAM> programs;
+	documentd_playstep (programs,games,gameid,steps,"session",user,true,sp,res,msg,unknown);
+	for (auto &r:res){
+		if (r.var == VAR_CONTENT){
+			printf("\n%s\n",r.val.c_str());
+			break;
+		}
+	}
+}
+/*
+	Start all available game engines
+*/
+static void documentd_start_engines(vector<SUBPROGRAM> &programs)
+{
+	if (file_type("/usr/bin/gnuchess")!=-1){
+		programs.emplace_back(CLASS_CHESS,"/usr/bin/gnuchess -u");
+		auto &s = programs[programs.size()-1];
+		for (auto line:{"uci\n","","ucinewgame\n","isready\n"}){
+			s.send ("",line);
+		}
+	}
+}
 <mod>
 int main (int argc, char *argv[])
 {
@@ -350,6 +551,7 @@ int main (int argc, char *argv[])
 	glocal const char *client_secretfile = "/etc/bolixo/secrets.client";
 	glocal const char *pidfile = "/var/run/documentd.pid";
 	glocal const char *hostname = NULL;
+	glocal vector<SUBPROGRAM> programs;
 
 	translat_setlang ("eng,fr");
 	static const char *tbdic[]={"bolixo",NULL};
@@ -409,7 +611,70 @@ int main (int argc, char *argv[])
 					}
 				}
 			}
+		}else if (strcmp(argv[0],"subprogram")==0){
+			glocal const char *gameid = "id";
+			string msg;
+			glocal map<string,GAME_P> games;
+			documentd_startgame(glocal.games,"boBOCHES",glocal.gameid,msg);
+			// Trick to assign the users
+			documentd_chess_print ("user1",glocal.games,glocal.gameid);
+			documentd_chess_print ("robot",glocal.games,glocal.gameid);
+			if (argc == 1){
+				documentd_start_engines(glocal.programs);
+			}else{
+				string cmd = argv[1];
+				for (int i=2; i<argc; i++) cmd += string_f(" %s",argv[i]);
+				SUBPROGRAM p(CLASS_CHESS,cmd);
+				for (auto line:{"uci\n","","ucinewgame\n","isready\n",""}){
+					p.send ("",line);
+				}
+				glocal.programs.push_back(move(p));
+			}
+			<obj TCPSERVER o>();
+			<f newclient>
+			</f>
+			<f endclient>
+				printf ("endclient %d\n",no);
+			</f>
+			<f receive>
+				auto &s = glocal.programs[0];
+				if (no == 0){
+					// stdin
+					documentd_chess_move(glocal.programs,glocal.games,glocal.gameid,line);
+					documentd_chess_print("user1",glocal.games,glocal.gameid);
+				}else if (s.is_fdout(no)){
+					const char *gameid = s.get_gameid();
+					if (gameid[0] == '\0'){
+						printf ("out: %s\n",line);
+					}else{
+						for (auto &m:glocal.games){
+							if (m.first == gameid){
+								string notify;
+								bool done = false;
+								m.second->engine_reply(line,notify,done);
+								if (notify.size() > 0) documentd_chess_print("user1",glocal.games,glocal.gameid);
+								if (done) s.reset_gameid();
+								s.sendmore();
+								break;
+							}
+						}
+					}
+				}else if (s.is_fderr(no)){
+					printf ("err: %s\n",line);
+				}
+			</f>
+			</obj>
+			for (auto &s:glocal.programs){
+				o.inject (s.get_fdout(),nullptr);
+				o.inject (s.get_fderr(),nullptr);
+			}
+			o.inject (0,nullptr);
+			o.loop();
+			
+		}else{
+			tlmp_error ("Invalid test command\n");
 		}
+
 		return 0;
 	</f>
 	<f main_noarg>
@@ -422,6 +687,7 @@ int main (int argc, char *argv[])
 		glocal pid_t pid = (pid_t)-1;
 		fdpass_readsecrets (glocal.client_secretfile,glocal.client_secrets);
 		signal (SIGCHLD,SIG_IGN);
+		documentd_start_engines(glocal.programs);
 		<obj TCPSERVER s>(glocal.clientport,5);
 		<f newclient>
 			HANDLE_INFO *n = new HANDLE_INFO;
@@ -549,7 +815,7 @@ int main (int argc, char *argv[])
 					sp.content_width = sp.content_height = 1000;
 					sp.mobile = false;
 					sp.fontsize = 14;
-					bool success = documentd_playstep (glocal.games,gameid,steps,"sessadmin","admin",true,sp,res,msg,unknown);
+					bool success = documentd_playstep (glocal.programs,glocal.games,gameid,steps,"sessadmin","admin",true,sp,res,msg,unknown);
 					rep_playstep(success,unknown,msg,res);
 				</f>
 				<f save> // gameid = success:b msg
@@ -625,7 +891,7 @@ int main (int argc, char *argv[])
 					string msg;
 					translat_selectlang(lang);
 					bool unknown;
-					bool success = documentd_playstep (glocal.games,gameid,steps,session,username,maywrite,sp,res,msg,unknown);
+					bool success = documentd_playstep (glocal.programs,glocal.games,gameid,steps,session,username,maywrite,sp,res,msg,unknown);
 					rep_playstep(success,unknown,msg,res);
 				</f>
 				<f rename>
@@ -735,12 +1001,40 @@ int main (int argc, char *argv[])
 					endclient = true;
 				</f>
 				</call>
+			}else if (c->type == TYPE_SUBPROGRAM){
+				for (auto &s:glocal.programs){
+					if (s.is_fdout(no)){
+						//printf ("out %s: %s\n",s.get_gameid(),line);
+						for (auto &m:glocal.games){
+							if (m.first == s.get_gameid()){
+								string notify;
+								bool done = false;
+								m.second->engine_reply(line,notify,done);
+								if (done) s.reset_gameid();
+								s.sendmore();
+								m.second->add_notification(notify);
+								break;
+							}
+						}
+					}else if (s.is_fderr(no)){
+						tlmp_error ("engine %s error: %s\n",s.get_gameid(),line);
+					}
+				}
 			}
 		</f>
 		</obj>
 		bool some_errors = false;
 		if (fdpass_setcontrol(s,glocal.control,glocal.user)==-1){
 			some_errors = true;
+		}
+		// Register all subprograms
+		for (auto &p:glocal.programs){
+			HANDLE_INFO *n = new HANDLE_INFO;
+			n->type = TYPE_SUBPROGRAM;
+			s.inject (p.get_fdout(),n);
+			n = new HANDLE_INFO;
+			n->type = TYPE_SUBPROGRAM;
+			s.inject (p.get_fderr(),n);
 		}
 
 		if (!some_errors && s.is_ok()){

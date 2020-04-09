@@ -461,6 +461,7 @@ static void copy_player (const CHESS_FILE_PLAYER_receive &fplayer, CHESS_PLAYER 
 static void copy_player (const CHESS_FILE_PLAYER2_receive &fplayer, CHESS_PLAYER &player)
 {
 	player.name = fplayer.name;
+	player.robot_level = (player.name == "robot") ? 4 : 0;
 	player.line = fplayer.line;
 	player.col  = fplayer.col;
 	player.king_moved = fplayer.king_moved;
@@ -726,6 +727,71 @@ void CHESS::show_marked_pieces (
 		js_find_loop_set (notify_var.val,"grid","circle",id,"style.fill",color,"style.stroke",color);
 	}
 }
+string CHESS::format_fen()
+{
+	string lines;
+	for (unsigned i=0; i<8; i++){
+		if (i > 0) lines += '/';
+		unsigned nbspaces=0;
+		for (auto c:grid[i]){
+			if (c == ' '){
+				nbspaces++;
+			}else{
+				if (nbspaces > 0){
+					lines += (char)('0'+nbspaces);
+					nbspaces=0;
+				}
+				lines += c;
+			}
+		}
+		if (nbspaces > 0) lines += (char)('0'+nbspaces);
+	}		
+	// Who must play
+	lines += ' ';
+	lines += player1_playing ? 'w' : 'b';
+	lines += ' ';
+	// castling
+	size_t curlen = lines.size();
+	if (!player1.king_moved){
+		if (!player1.right_rook_moved) lines += 'K';
+		if (!player1.left_rook_moved) lines += 'Q';
+	}
+	if (!player2.king_moved){
+		if (!player2.right_rook_moved) lines += 'k';
+		if (!player2.left_rook_moved) lines += 'q';
+	}
+	if (lines.size()==curlen) lines += '-';
+	lines += ' ';
+	if (player1_playing){
+		if (player1.has_en_passant()){
+			lines += (char)('a'+player1.en_passant.col);
+			lines += (char)('8'-player1.en_passant.line);
+		}else{
+			lines += '-';
+		}
+	}else if (player2.has_en_passant()){
+		lines += (char)('a'+player2.en_passant.col);
+		lines += (char)('8'-player2.en_passant.line);
+	}else{
+		lines += '-';
+	}
+	lines += string_f(" 0 %lu",undos.size()/2);
+	return lines;
+}
+// If the next player is a robot, we send it some work
+void CHESS::robot_request(vector<VARVAL> &res)
+{
+	CHESS_PLAYER *next_player = &player2;
+	if (player1_playing) next_player = &player1;
+	if (next_player->is_robot()){
+		VARVAL robot;
+		robot.var = VAR_ENGINE;
+		string fen = format_fen();
+		robot.val = string_f("position fen %s\ngo searchmoves depth %u\n"
+			,fen.c_str(),next_player->robot_level);
+		res.push_back(robot);
+	}
+}
 void CHESS::exec (
 	const char *var,
 	const char *val,
@@ -740,11 +806,14 @@ void CHESS::exec (
 	VARVAL notify_var;
 	notify_var.var = VAR_NOTIFY;
 	if (maywrite){
+		unsigned robot_level = strcmp(username,"robot")==0 ? 4 : 0;
 		if (player1.name.size() == 0){
 			player1.name = username;
+			player1.robot_level = robot_level;
 			js_find_set(notify_var.val,"player0","innerHTML",username);
 		}else if (player2.name.size() == 0){
 			player2.name = username;
+			player2.robot_level = robot_level;
 			js_find_set(notify_var.val,"player1","innerHTML",username);
 		}	
 	}
@@ -752,6 +821,23 @@ void CHESS::exec (
 	if (strcmp(var,"print")==0){
 		string lines;
 		if (strcmp(val,"console")==0){
+			lines += "   a b c d e f g h\n";
+			lines += "  ----------------\n";
+			unsigned nol=8;
+			for (auto &g:grid){
+				lines += string_f("%u|",nol);
+				for (auto c:g){
+					lines += ' ';
+					lines += c;
+				}
+				lines += '\n';
+				nol--;
+			} 
+			lines += "  ----------------\n";
+			lines += "   a b c d e f g h\n";
+		}else if (strcmp(val,"fen")==0){
+			// Single line chess notation
+			lines = format_fen();
 		}else{
 			// tlmp_warning ("sp w=%u h=%u cw=%u ch=%u",sp.width,sp.height,sp.content_width,sp.content_height);
 			// The layout is a square, constrained by the width
@@ -773,7 +859,7 @@ void CHESS::exec (
 			lines += "\tevent.stopPropagation();\n";
 			lines += "}\n";
 			lines += "function playersel(event,num){\n";
-			lines += "\tgameaction('playersel:'+num);\n";
+			lines += "\tgameaction('playersel:'+num+','+event.which);\n";
 			lines += "\tevent.stopPropagation();\n";
 			lines += "}\n";
 			lines += "function gamereverse(event){\n";
@@ -994,7 +1080,7 @@ void CHESS::exec (
 							string old_text_id = string_f("c%u,%u",player->line,player->col);
 							execmove (player,other_player,lo,co,effects);
 							setmodified(username);
-							documentd_setchanges(res);
+							if (!player->is_robot()) documentd_setchanges(res);
 							js_find_loop_set (notify_var.val,"grid","text",old_text_id,"innerHTML"," ");
 							string new_text_id = string_f("c%u,%u",lo,co);
 							js_find_loop_set (notify_var.val,"grid","text",new_text_id,"innerHTML",cnv_cell_html(new_cell)
@@ -1021,6 +1107,7 @@ void CHESS::exec (
 								undoone(notify_var);
 							}
 							show_marked_pieces (notify_var,"red");
+							robot_request(res);
 						}
 					}
 				}else if (new_cell == ' '){
@@ -1059,16 +1146,26 @@ void CHESS::exec (
 						}
 						notify_var.val += string_f("\t\telms[%u].style.fill='%s';\n",item,fill_color);
 						notify_var.val += string_f("\t\telms[%u].style.stroke='%s';\n",item,stroke_color);
-						notify_var.val += string_f("\t\telms[%u].innerHTML='%c';\n",item,cell);
+						const char *utf8 = cnv_cell_html(cell);
+						notify_var.val += string_f("\t\telms[%u].innerHTML='%s';\n",item,utf8);
 						item++;
 					}
 				}
 				js_find_loop_end (notify_var.val);
+				// Clear all circle/markers
+				js_find_loop_start (notify_var.val,"grid","circle");
+				notify_var.val += "\tfor (var i=0; i<elms.length; i++){\n";
+				notify_var.val += "\t\telms[i].style.fill='none';\n";
+				notify_var.val += "\t\telms[i].style.stroke='none';\n";
+				notify_var.val += "\t}\n";
+				js_find_loop_end (notify_var.val);
 				js_find_set(notify_var.val,"player0","style.backgroundColor","lightblue");
 				js_find_set(notify_var.val,"player1","style.backgroundColor","white");
 				// tlmp_warning ("val.size=%lu",notify_var.val.size());
-				documentd_forcerefresh(res);
+				//documentd_forcerefresh(res);
 				setmodified(username);
+				robot_request(res);
+				documentd_setchanges(res);
 			}else if (uval == 1){
 				// Not really a new game, but an undo
 				if (undos.size() > 0){
@@ -1086,14 +1183,45 @@ void CHESS::exec (
 				tlmp_error ("checkers newgame=%d",uval);
 			}
 		}else if (strcmp(var,"playersel")==0){
-			CHESS_PLAYER *player = &player1;
-			if (strcmp(val,"1")==0){
-				player = &player2;
+			unsigned playernum,button;
+			if (sscanf(val,"%u,%u",&playernum,&button)==2){
+				// One player has selected a color (white or black).
+				// If the player name is already in the other color, we do a swap.
+				// For example, player A is playing the whites and B, the blacks.
+				// Player A selects the blacks. Player B will be playing the whites.
+				// If this is done with button 2, then robot mode (play against the computer).
+				// The same rule applies.
+				// Player A is playing the whites and robot is playing the blacks.
+				// If anyone select the whites using button 2, a swap is applied.
+				CHESS_PLAYER *player = &player1;
+				CHESS_PLAYER *other_player = &player2;
+				if (playernum==1){
+					player = &player2;
+					other_player = &player1;
+				}
+				if (button == 2){
+					if (file_type("/usr/bin/gnuchess")==-1){
+						error = MSG_U(E_NOGNUCHESS,"Gnuchess is not installed on this server");
+					}else if (other_player->is_robot()){
+						swap(other_player->name,player->name);
+						player->robot_level = 4;
+						other_player->robot_level = 0;
+					}else{
+						player->name = "robot";
+						player->robot_level = 4;
+					}
+				}else if (other_player->name == username){
+					swap(other_player->name,player->name);
+					swap(other_player->robot_level,player->robot_level);
+				}else{
+					player->name = username;
+					player->robot_level = 0;
+				}
+				setmodified(username);
+				js_find_set(notify_var.val,"player0","innerHTML",player1.name.c_str());
+				js_find_set(notify_var.val,"player1","innerHTML",player2.name.c_str());
+				robot_request(res);
 			}
-			player->name = username;
-			setmodified(username);
-			js_find_set(notify_var.val,"player0","innerHTML",player1.name.c_str());
-			js_find_set(notify_var.val,"player1","innerHTML",player2.name.c_str());
 		}else if (strcmp(var,"loadline")==0){
 			// For automated tests purpose
 			// val=line:line_content
@@ -1185,4 +1313,46 @@ void CHESS::exec (
 	}
 }
 
+void CHESS::engine_reply (const char *line, string &notify, bool &done)
+{
+	const char *pt;
+	done = false;
+	//tlmp_warning ("engine_reply: %s",line);
+	if (is_start_any_of(line,pt,"bestmove ")){
+		pt = str_skip(pt);
+		if (strlen(pt) >= 4
+			&& isalpha(pt[0])
+			&& isdigit(pt[1])
+			&& isalpha(pt[2])
+			&& isdigit(pt[3])
+			&& is_any_of(pt[4],' ','\0')){
+			DOC_UI_SPECS_receive sp;
+			sp.width = sp.height = sp.content_width = sp.content_height = 1000;
+			sp.mobile = false;
+			sp.fontsize = 14;
+			vector<VARVAL> res;
+			unsigned col1 = pt[0] - 'a';
+			unsigned line1 = 8-(pt[1] - '0');
+			unsigned col2 = pt[2] - 'a';
+			unsigned line2 = 8-(pt[3] - '0');
+			
+			string cmd1 = string_f("%u,%u,1",line1,col1);
+			string cmd2 = string_f("%u,%u,1",line2,col2);
+			vector<VARVAL_receive> steps;
+			VARVAL_receive st;
+			st.var = "place";
+			st.val = cmd1.c_str();
+			steps.emplace_back(st);
+			st.val = cmd2.c_str();
+			steps.emplace_back(st);
+			manyexec (steps,"session","robot",true,sp,res);
+			for (auto &r:res){
+				if (r.var == VAR_NOTIFY){
+					notify += r.val;
+				}
+			}
+		}
+		done = true;
+	}
+}
 

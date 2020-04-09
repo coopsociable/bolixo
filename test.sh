@@ -1390,7 +1390,8 @@ elif [ "$1" = "lxc0-documentd" ]; then # prod:
 		-e /usr/share/fonts/dejavu/DejaVuSans.ttf \
 		-e /usr/share/fonts/liberation*/LiberationSans-Regular.ttf \
 		-e /bin/sh \
-		-i /usr/sbin/trli-init -l /tmp/log -l /tmp/log.qqwing -n documentd -p $BOLIXOPATH/documentd >/var/lib/lxc/documentd/documentd-lxc0.sh
+		-i /usr/sbin/trli-init -l /tmp/log -l /tmp/log.qqwing \
+		-n documentd -p $BOLIXOPATH/documentd >/var/lib/lxc/documentd/documentd-lxc0.sh
 	chmod +x /var/lib/lxc/documentd/documentd-lxc0.sh
 	documentd_save documentd
 	documentd_restore documentd
