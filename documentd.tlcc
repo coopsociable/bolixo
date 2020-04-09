@@ -270,18 +270,22 @@ static bool documentd_playstep (
 		GAME_P game = g->second;
 		game->manyexec(steps,session,username,maywrite,sp,res);
 		game->testwin(res);
-		for (auto &r:res){
-			if (r.var == VAR_NOTIFY){
-				if (r.val.size() > 0) game->add_notification(r.val);
-			}else if (r.var == VAR_CONTENT){
-				r.val += "<script>\n";
-				r.val += string_f("var gamesequence=%u;\n",game->get_sequence());
-				r.val += "</script>\n";
-			}else if (r.var == VAR_ENGINE){
+		for (auto r = res.begin(); r != res.end(); ){
+			if (r->var == VAR_NOTIFY){
+				// Notifications are sent using the waitevent system
+				if (r->val.size() > 0) game->add_notification(r->val);
+				r = res.erase(r);
+			}else if (r->var == VAR_CONTENT){
+				r->val += "<script>\n";
+				r->val += string_f("var gamesequence=%u;\n",game->get_sequence());
+				r->val += "</script>\n";
+				r++;
+			}else if (r->var == VAR_ENGINE){
+				// We send commands to the engine, and removes it.
 				bool found = false;
 				for (auto &p:programs){
 					if (p.is_class(game->getclass())){
-						p.send(gameid,r.val);
+						p.send(gameid,r->val);
 						found = true;
 						break;
 					}
@@ -289,6 +293,9 @@ static bool documentd_playstep (
 				if (!found){
 					tlmp_error ("No engine for game type %s, gameid=%s",game->getclass(),gameid);
 				}
+				r = res.erase(r);
+			}else{
+				r++;
 			}
 		}
 	}else{
@@ -418,7 +425,7 @@ SUBPROGRAM::SUBPROGRAM(PARAM_STRING _gameclass, PARAM_STRING _command)
 		closetb (tbin);
 	}
 }
-SUBPROGRAM::SUBPROGRAM(SUBPROGRAM &&n)
+void SUBPROGRAM::subswap(SUBPROGRAM &&n)
 {
 	swap(pid,n.pid);
 	swap(fdin,n.fdin);
@@ -430,6 +437,19 @@ SUBPROGRAM::SUBPROGRAM(SUBPROGRAM &&n)
 	swap(gameid,n.gameid);
 	swap(gameclass,n.gameclass);
 	swap(tosend,n.tosend);
+	swap(nbrec,n.nbrec);
+	swap(nbsend,n.nbsend);
+}
+SUBPROGRAM::SUBPROGRAM(SUBPROGRAM &&n)
+{
+	subswap(forward<SUBPROGRAM>(n));
+}
+SUBPROGRAM &SUBPROGRAM::operator =(SUBPROGRAM &&n)
+{
+	if (this != &n){
+		subswap(forward<SUBPROGRAM>(n));
+	}
+	return *this;
 }
 SUBPROGRAM::~SUBPROGRAM()
 {
@@ -466,6 +486,7 @@ int SUBPROGRAM::sendmore()
 			}
 		}
 		tosend.erase(tosend.begin(),tosend.begin()+ret);
+		nbsend += ret;
 	}
 	return ret;
 }
@@ -532,7 +553,13 @@ static void documentd_chess_print (const char *user, map<string,GAME_P> &games, 
 */
 static void documentd_start_engines(vector<SUBPROGRAM> &programs)
 {
-	if (file_type("/usr/bin/gnuchess")!=-1){
+	if (file_type("/usr/bin/stockfish")!=-1){
+		programs.emplace_back(CLASS_CHESS,"/usr/bin/stockfish");
+		auto &s = programs[programs.size()-1];
+		for (auto line:{"uci\n","ucinewgame\n","setoption name Skill Level value 0\n","isready\n"}){
+			s.send ("",line);
+		}
+	}else if (file_type("/usr/bin/gnuchess")!=-1){
 		programs.emplace_back(CLASS_CHESS,"/usr/bin/gnuchess -u");
 		auto &s = programs[programs.size()-1];
 		for (auto line:{"uci\n","","ucinewgame\n","isready\n"}){
@@ -647,6 +674,7 @@ int main (int argc, char *argv[])
 					if (gameid[0] == '\0'){
 						printf ("out: %s\n",line);
 					}else{
+						printf ("out %s: %s\n",gameid,line);
 						for (auto &m:glocal.games){
 							if (m.first == gameid){
 								string notify;
@@ -702,9 +730,20 @@ int main (int argc, char *argv[])
 		</f>
 		<f endclient>
 			// Is this client waiting for a notification ?
+			bool found = false;
 			for (auto g:glocal.games){
 				if (g.second->del_notification_fd(no)!=-1){
+					found = true;
 					break;
+				}
+			}
+			if (!found){
+				for (auto p=glocal.programs.begin(); p != glocal.programs.end(); p++){
+					if (p->is_fdout(no) || p->is_fderr(no)){
+						tlmp_error ("Engine %s ending",p->getclass());
+						glocal.programs.erase(p);
+						break;
+					}
 				}
 			}
 		</f>
@@ -731,6 +770,11 @@ int main (int argc, char *argv[])
 						nbwait += g.second->get_nbwait();
 					}
 					tb.push_back(string_f("nbwaiting: %u",nbwait));
+					tb.push_back(string_f("subprograms: %lu",glocal.programs.size()));
+					for (auto &p:glocal.programs){
+						tb.push_back(string_f("subprogram %s: nbsend=%u nbrec=%u gameid=%s command=%s"
+							,p.getclass(),p.getnbsend(),p.getnbrec(),p.getgameid(),p.getcommand()));
+					}
 					rep_status(tb);
 				</f>
 				<f listgames>
@@ -1005,6 +1049,7 @@ int main (int argc, char *argv[])
 				for (auto &s:glocal.programs){
 					if (s.is_fdout(no)){
 						//printf ("out %s: %s\n",s.get_gameid(),line);
+						s.inc_nbrec();
 						for (auto &m:glocal.games){
 							if (m.first == s.get_gameid()){
 								string notify;

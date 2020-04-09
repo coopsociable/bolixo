@@ -79,6 +79,16 @@ string CHESS_PLAYER::dump() const {
 		,king_moved,left_rook_moved,right_rook_moved,en_passant.line,en_passant.col);
 	return ret;
 }
+CHESS::CHESS()
+{
+	resetgame();
+	robot_type = ROBOT_NONE;
+	if (file_type("/usr/bin/stockfish")!=-1){
+		robot_type = ROBOT_STOCKFISH;
+	}else if (file_type("/usr/bin/gnuchess")!=-1){
+		robot_type = ROBOT_GNUCHESS;
+	}
+}
 /*
 	Check if a move is valid.
 	Return true if the move is valid.
@@ -787,8 +797,13 @@ void CHESS::robot_request(vector<VARVAL> &res)
 		VARVAL robot;
 		robot.var = VAR_ENGINE;
 		string fen = format_fen();
-		robot.val = string_f("position fen %s\ngo searchmoves depth %u\n"
-			,fen.c_str(),next_player->robot_level);
+		if (robot_type == ROBOT_GNUCHESS){
+			robot.val = string_f("position fen %s\ngo searchmoves depth %u\n"
+				,fen.c_str(),next_player->robot_level);
+		}else if (robot_type == ROBOT_STOCKFISH){	
+			robot.val = string_f("position fen %s\ngo searchmoves\n"
+				,fen.c_str());
+		}
 		res.push_back(robot);
 	}
 }
@@ -801,12 +816,13 @@ void CHESS::exec (
 	const DOC_UI_SPECS_receive &sp,
 	vector<VARVAL> &res)
 {
+	const unsigned ROBOT_DEPTH_LEVEL=4;	// Trick to limit skill of gnuchess
 	string error,status;
 	setactivity();
 	VARVAL notify_var;
 	notify_var.var = VAR_NOTIFY;
 	if (maywrite){
-		unsigned robot_level = strcmp(username,"robot")==0 ? 4 : 0;
+		unsigned robot_level = strcmp(username,"robot")==0 ? ROBOT_DEPTH_LEVEL : 0;
 		if (player1.name.size() == 0 && player2.name != username){
 			player1.name = username;
 			player1.robot_level = robot_level;
@@ -1200,15 +1216,15 @@ void CHESS::exec (
 					other_player = &player1;
 				}
 				if (button == 2){
-					if (file_type("/usr/bin/gnuchess")==-1){
-						error = MSG_U(E_NOGNUCHESS,"Gnuchess is not installed on this server");
+					if (robot_type == ROBOT_NONE){
+						error = MSG_U(E_NOGNUCHESS,"No chess engine installed on this server (gnuchess,stockfish)");
 					}else if (other_player->is_robot()){
 						swap(other_player->name,player->name);
-						player->robot_level = 4;
+						player->robot_level = ROBOT_DEPTH_LEVEL;
 						other_player->robot_level = 0;
 					}else{
 						player->name = "robot";
-						player->robot_level = 4;
+						player->robot_level = ROBOT_DEPTH_LEVEL;
 					}
 				}else if (other_player->name == username){
 					swap(other_player->name,player->name);

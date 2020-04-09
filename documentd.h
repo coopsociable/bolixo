@@ -51,12 +51,16 @@ class SUBPROGRAM{
 	int fdout=-1;		// Output of the command
 	int fderr=-1;		// Errors from the command
 	std::string gameid;	// gameid associated with this subprogram
+	unsigned nbsend=0;	// Number of request sent to the engine
+	unsigned nbrec=0;	// Number of lines received from the engine
+	void subswap(SUBPROGRAM &&n);
 public:
 	~SUBPROGRAM();
 	SUBPROGRAM(PARAM_STRING _gameclass, PARAM_STRING _command);
 	SUBPROGRAM(const SUBPROGRAM &n) = delete;
 	SUBPROGRAM(SUBPROGRAM &&n);
 	SUBPROGRAM &operator =(const SUBPROGRAM &n) = delete;
+	SUBPROGRAM &operator =(SUBPROGRAM &&n);
 	void send(PARAM_STRING gameid, PARAM_STRING line);
 	int sendmore ();
 	const char *get_gameid() const {
@@ -79,6 +83,21 @@ public:
 	}
 	const char *getclass() const {
 		return gameclass.c_str();
+	}
+	const char *getcommand() const {
+		return command.c_str();
+	}
+	const char *getgameid() const {
+		return gameid.c_str();
+	}
+	unsigned getnbrec() const {
+		return nbrec;
+	}
+	unsigned getnbsend() const {
+		return nbsend;
+	}
+	void inc_nbrec(){
+		nbrec++;
 	}
 	bool is_class (PARAM_STRING cls){
 		return gameclass == cls.ptr;
@@ -521,7 +540,9 @@ struct CHESS_UNDO{
 	char cell=' ';
 	CHESS_UNDO_TYPE type;
 };
+enum ROBOT_TYPE{ ROBOT_NONE, ROBOT_GNUCHESS, ROBOT_STOCKFISH};
 class CHESS: public GAME{
+	ROBOT_TYPE robot_type = ROBOT_NONE;
 	char grid[8][8];
 	CHESS_PLAYER player1,player2;
 	bool player1_playing = true;
@@ -540,6 +561,7 @@ class CHESS: public GAME{
 	std::string format_fen();
 	void robot_request (std::vector<VARVAL> &res);
 public:
+	CHESS();
 	const char *getclass() const{
 		return CLASS_CHESS;
 	}
