@@ -730,7 +730,7 @@ elif [ "$1" = "install-required" ] ; then # config: install required packages
 		gd \
 		mariadb-server mariadb-connector-c boost-date-time \
 		liberation-sans-fonts dejavu-sans-fonts freetype httpd mod_ssl \
-		dejavu-serif-fonts \
+		dejavu-serif-fonts gnuchess \
 		libvirt-daemon libvirt-daemon-driver-network \
 		libvirt-daemon-config-network libvirt-client \
 		libvirt-daemon-driver-qemu bridge-utils \
