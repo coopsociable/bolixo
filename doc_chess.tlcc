@@ -660,7 +660,7 @@ void CHESS::undoone(VARVAL &notify_var)
 						,"style.stroke",stroke_color,"style.fill",fill_color);
 					grid[u.line][u.col] = u.cell;	
 				}else if (u.type == CHESS_UNDO_LASTMOVE){
-tlmp_warning ("undo lastmove %u %u",u.line,u.col);
+					// tlmp_warning ("undo lastmove %u %u",u.line,u.col);
 					player->lastmove.line = u.line;
 					player->lastmove.col = u.col;
 					string last_id = string_f("cl%u,%u",u.line,u.col);
@@ -709,9 +709,9 @@ static void print_player(string &lines, PARAM_STRING gameid, PARAM_STRING name, 
 		width = 250;
 		margin = 10;
 	}
-	lines += string_f("<div onmousedown=playersel(event,%u)"
+	lines += string_f("<div onmousedown=playersel(event,%u,0) oncontextmenu='playersel(event,%u,1); return false;'"
 		" style='flex:0 0 %upx; overflow: hidden; border: 2px solid black; margin-bottom:%upx; margin-top:%upx; margin-left:%upx; padding: 0px'>\n"
-		,playernum,width,margin,margin,margin);
+		,playernum,playernum,width,margin,margin,margin);
 	const char *player_color = "white";
 	const char *bgcolor = "black";
 	const char *msg = MSG_U(I_WHITE,"WHITE");
@@ -874,9 +874,12 @@ void CHESS::exec (
 			lines += string_f("\tgameaction('place:'+Math.floor((event.clientY-rect.top)/%u)+','+Math.floor((event.clientX-rect.left)/%u)+ ','+event.which);\n",h8,w8);
 			lines += "\tevent.stopPropagation();\n";
 			lines += "}\n";
-			lines += "function playersel(event,num){\n";
-			lines += "\tgameaction('playersel:'+num+','+event.which);\n";
+			lines += "function playersel(event,num,ctx){\n";
+			lines += "\tvar which = event.which;\n";
+			lines += "\tif (ctx==1) which = 2;\n";	// Trick with oncontextmenu
+			lines += "\tgameaction('playersel:'+num+','+which);\n";
 			lines += "\tevent.stopPropagation();\n";
+			lines += "\treturn false;\n";
 			lines += "}\n";
 			lines += "function gamereverse(event){\n";
 			lines += "\tgameaction('reverse:');\n";
