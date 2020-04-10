@@ -252,7 +252,7 @@ proto/bolixoapi.protoh: proto/bolixoapi.proto proto/bolixod_client.protoh
 DOCGAMES=doc_tictacto.o doc_sudoku.o doc_wordproc.o doc_checkers.o doc_chess.o
 documentd: documentd.o _dict.o \
 	${DOCGAMES}
-	cctlcc -Wall $(OPTIONS) documentd.o ${DOCGAMES} _dict.o -o documentd $(LIBS) -lfreetype
+	cctlcc -Wall $(OPTIONS) documentd.o ${DOCGAMES} _dict.o -o documentd $(LIBS) -lfreetype -lm
 
 documentd.o: documentd.tlcc documentd.h proto/documentd_control.protoh proto/documentd_client.protoh 
 	cctlcc -Wall $(OPTIONS) `freetype-config --cflags` -c documentd.tlcc -o documentd.o

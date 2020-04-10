@@ -19,6 +19,7 @@
 #include <trlitool.h>
 #include <string>
 #include <stdlib.h>
+#include <math.h>
 #include <vector>
 #include <map>
 #include <tlmplib.h>
@@ -954,8 +955,11 @@ void CHESS::exec (
 			lines += "</svg>\n";
 			lines += "</div>\n";
 
-			lines += "<div style='flex:1 1 auto; overflow: hidden;' onmousedown='gameplace(event); return false;' style=color:blue;cursor:pointer>\n";
-			lines += string_f("<svg id='grid-%s' width='%upx' height='%upx' viewbox='0 0 %u %u'>\n",gameid.c_str(),grid_width,grid_height,grid_width,grid_height);
+			lines += "<div style='flex:1 1 auto; overflow: hidden;color:blue;'>\n";
+			lines += string_f("<svg id='grid-%s' width='%upx' height='%upx' viewbox='0 0 %u %u'"
+				" style=cursor:pointer"
+				" onmousedown='gameplace(event); return false;'>\n"
+				,gameid.c_str(),grid_width,grid_height,grid_width,grid_height);
 			unsigned w8_2 = w8/2;
 			unsigned h8_2 = h8/2;
 			unsigned circle_x = w8/4;
@@ -1166,8 +1170,12 @@ void CHESS::exec (
 								undoone(notify_var);
 							}
 							notify_var.val += "};\n";	// End of fctend
-							notify_var.val += string_f("fctanimate(%u,%u,%u,%u,0,100,1000,\"%s\",fctend);\n"
-								,player_col,player_line,co,lo,cnv_cell_html(new_cell));
+							// Compute the duration based on distance
+							float dist = sqrt(pow((int)(co-player_col),2)+pow((int)(lo-player_line),2));
+							unsigned duration = 1000/8*dist;	// Distance maximum is 8. Max duration is 1000ms
+							// tlmp_warning ("dist=%f duration=%u",dist,duration);
+							notify_var.val += string_f("fctanimate(%u,%u,%u,%u,0,100,%u,\"%s\",fctend);\n"
+								,player_col,player_line,co,lo,duration,cnv_cell_html(new_cell));
 							notify_var.val += "};\n";
 							notify_var.val += "if (tbanim.length==1) tbanim[0]();\n";
 							show_marked_pieces (notify_var,"red");
