@@ -30,6 +30,7 @@ index.hc: index.os /usr/lib64/trlitool/trlitool.pic.a util.os webtabs.os documen
 		--name $(basename $(notdir $@)).tlcc - /tmp/$(basename $(notdir $@)).cc
 	@g++ $(OPTIONS) -DEXPORT= -fPIC $(FLAGS) -I. -I/usr/include/tlmp -I/usr/include/trlitool \
 		-c /tmp/$(basename $(notdir $@)).cc  -o $@
+	@rm -f /tmp/$(basename $(notdir $@)).cc
 
 webapi.os: webapi.hcc ../proto/webapi.protoh
 bolixoapi.os: bolixoapi.hcc ../proto/bolixoapi.protoh ../proto/bolixod_client.protoh
@@ -50,6 +51,7 @@ util.os: util.hcc util.h /usr/include/tlmp/tlmpweb.h /usr/include/tlmp/tlmpweb.p
 		| tlcc \
 		--name $(basename $(notdir $@)).tlcc - /tmp/$(basename $(notdir $@)).cc
 	@g++ -fPIC -Wall -DEXPORT= $(OPTIONS) -I. -c /tmp/util.cc -o util.os
+	@rm -f /tmp/$(basename $(notdir $@)).cc
 
 webtabs.os: webtabs.tlcc webtabs.h util.h /usr/include/tlmp/tlmpweb.h /usr/include/tlmp/tlmpweb.p
 	cctlcc -fPIC -Wall $(OPTIONS) -c webtabs.tlcc -o webtabs.os

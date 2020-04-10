@@ -1571,6 +1571,83 @@ static void journey_keypress()
 	</html>
 	?>
 }
+</mod>
+/*
+	Try to move something over an SVG
+*/
+<mod>
+static void journey_animation()
+{
+	<?
+	<script>
+	var todo = [];
+	function fctanimate(x0,y0,x1,y1,nostep,steps,duration,fctend){
+		var txt = document.getElementById('txtanim');
+		console.log ('txt='+' nostep='+nostep+' steps='+steps);
+		var stepx = (x1-x0)/steps;
+		var stepy = (y1-y0)/steps;
+		console.log ('stepx='+stepx+' stepy='+stepy);
+		txt.setAttribute('x',x0+stepx*nostep);
+		txt.setAttribute('y',y0+stepy*nostep);
+		txt.style.fill='black';
+		txt.style.stroke='red';
+		nostep++;
+		if (nostep < steps){
+			console.log ('timer='+duration/steps);
+			window.setTimeout(function(){
+				fctanimate(x0,y0,x1,y1,nostep,steps,duration,fctend);
+				},duration/steps);
+		}else{
+			fctend();
+			// Remove the first todo entry
+			todo.shift();
+			// and starts the next one
+			if (todo.length > 0) todo[0]();
+		}
+	}
+	var number=0;
+	function addanim(event){
+		todo[todo.length] = function(){
+			var fctend = function(){
+				var circleid='wait'+(number % 5);
+				var circle = document.getElementById(circleid);
+				circle.style.fill = 'red';
+			}
+			if ((number % 4) == 0){
+				fctanimate(0,0,600,600,0,100,2000,fctend);
+			}else if ((number % 4) == 1){
+				fctanimate(0,600,600,0,0,100,2000,fctend);
+			}else if ((number % 4) == 2){
+				fctanimate(600,600,0,0,0,100,2000,fctend);
+			}else{
+				fctanimate(600,0,0,600,0,100,2000,fctend);
+			}
+		};
+		// We execute the function only if there is only one.
+		// If there is more, it means there is currently one running.
+		if (todo.length == 1) todo[0]();
+		number++;
+	}
+	</script>
+	</head>
+	<body>
+	?>
+	unsigned width=600;
+	unsigned height=600;
+	htmlprintf ("<svg width='%upx' height='%upx' viewbox='0 0 %u %u' onmousedown=addanim(event);>\n"
+		,width,height,width,height);
+		unsigned w1 = width/5;
+		unsigned w1_2 = w1/2;
+		unsigned h1 = height/2;
+		const unsigned ray = w1/4;
+		for (unsigned i=0; i<5; i++){
+			htmlprintf ("<circle id='wait%u' cx=%u cy=%u r=%u stroke='black' stroke-width=2 fill='%s'/>\n"
+				,i,i*w1+w1_2,h1,ray,i==0 ? "blue" : "white");
+		}
+		/- <text id='txtanim' X=100 Y=100 style='stroke:none;fill:none;font-size:20;font-family: Times New Roman;'>XX</text>
+	/- </svg>
+}
+</mod>
 extern "C" void webmain()
 {
 	tlmpweb_title ("This is the start of a long long journey");
@@ -1587,7 +1664,8 @@ extern "C" void webmain()
 	//journey_subtabs();
 	//journey_click();
 	//journey_formanim();
-	journey_displaylen();
+	//journey_displaylen();
 	//journey_keypress();
+	journey_animation();
 }
 

@@ -713,14 +713,13 @@ static void print_player(string &lines, PARAM_STRING gameid, PARAM_STRING name, 
 		" style='flex:0 0 %upx; overflow: hidden; border: 2px solid black; margin-bottom:%upx; margin-top:%upx; margin-left:%upx; padding: 0px'>\n"
 		,playernum,playernum,width,margin,margin,margin);
 	const char *player_color = "white";
-	const char *bgcolor = "black";
+	const char *bgcolor = "lightgray";
 	const char *msg = MSG_U(I_WHITE,"WHITE");
 	if (playernum == 1){
 		player_color = "black";
-		bgcolor = "white";
 		msg = MSG_U(I_BLACK,"BLACK");
 	}
-	lines += string_f("<div style='border: 1px solid black; background-color:%s;padding-left:5px;'>\n",bgcolor);
+	lines += string_f("<div style='border: 1px solid black; background-color:%s;padding-left:5px;text-align:center;'>\n",bgcolor);
 	lines += string_f("<font style='color:%s; font-size:1.5em;'>%s</font>\n",player_color,msg);
 	lines += "</div>\n";
 	lines += string_f("<div id=player%u-%s style='background-color:%s; padding:5px;'>\n",playernum,gameid.ptr,color);
@@ -866,6 +865,8 @@ void CHESS::exec (
 			unsigned grid_width = w8*8;
 			unsigned grid_height = w8*8;
 			unsigned font_size = h8*6/10;
+			unsigned w8_4 = w8/4;
+			unsigned h8_3_4 = 3*h8/4;
 	
 			lines += "<script>\n";
 			lines += "function gameplace(event){\n";
@@ -884,6 +885,35 @@ void CHESS::exec (
 			lines += "function gamereverse(event){\n";
 			lines += "\tgameaction('reverse:');\n";
 			lines += "\tevent.stopPropagation();\n";
+			lines += "}\n";
+			// fctanimate receive a starting cell position and perform an animation on the grid
+			// tbanim[] records animation to execute. At the end of fctanimate, the next animation
+			// is started.
+			lines += "var tbanim=[];\n";
+			lines += "function fctanimate(x0,y0,x1,y1,nostep,steps,duration,utf8,fctend){\n";
+			lines += "\tvar txt = document.getElementById('txtanim');\n";
+			lines += "\ttxt.innerHTML = utf8;\n";
+			//lines += "\tconsole.log ('txt='+' nostep='+nostep+' steps='+steps+' x0='+x0+' y0='+y0+' x1='+x1+' y1='+y1+' utf8='+utf8);\n";
+			lines += string_f ("\tvar stepx = (x1-x0)*%u/steps;\n",w8);
+			lines += string_f ("\tvar stepy = (y1-y0)*%u/steps;\n",w8);
+			//lines += "\tconsole.log ('stepx='+stepx+' stepy='+stepy);\n";
+			lines += string_f("\ttxt.setAttribute('x',x0*%u+stepx*nostep+%u);\n",w8,w8_4);
+			lines += string_f("\ttxt.setAttribute('y',y0*%u+stepy*nostep+%u);\n",w8,h8_3_4);
+			lines += "\ttxt.style.fill='black';\n";
+			lines += "\ttxt.style.stroke='red';\n";
+			lines += "\tnostep++;\n";
+			lines += "\tif (nostep < steps){\n";
+			//lines += "\t\tconsole.log ('timer='+duration/steps);\n";
+			lines += "\t\twindow.setTimeout(function(){\n";
+			lines += "\t\t\tfctanimate(x0,y0,x1,y1,nostep,steps,duration,utf8,fctend);\n";
+			lines += "\t\t\t},duration/steps);\n";
+			lines += "\t}else{\n";
+			lines += "\t\ttxt.style.fill='none';\n";
+			lines += "\t\ttxt.style.stroke='none';\n";
+			lines += "\t\tfctend();\n";
+			lines += "\t\ttbanim.shift();\n";
+			lines += "\t\tif (tbanim.length > 0) tbanim[0]();\n";
+			lines += "\t}\n";
 			lines += "}\n";
 			lines += "</script>\n";
 			
@@ -928,8 +958,6 @@ void CHESS::exec (
 			lines += string_f("<svg id='grid-%s' width='%upx' height='%upx' viewbox='0 0 %u %u'>\n",gameid.c_str(),grid_width,grid_height,grid_width,grid_height);
 			unsigned w8_2 = w8/2;
 			unsigned h8_2 = h8/2;
-			unsigned w8_4 = w8/4;
-			unsigned h8_3_4 = 3*h8/4;
 			unsigned circle_x = w8/4;
 			unsigned circle_y = h8*5/6;
 			unsigned circle_radius = w8/12;
@@ -996,6 +1024,8 @@ void CHESS::exec (
 						,line,col,w8_col+w8-circle_x,h8_line+circle_y,marked_radius,marked_color,marked_color);
 				}
 			}
+			lines += string_f("<text id='txtanim' X=0 Y=0 style='stroke:none;fill:none;font-size:%u;font-family: Times New Roman;'>XX</text>\n"
+				,font_size);
 			lines += "</svg>\n";
 			lines += "</div>\n";
 			lines += "</div>\n";
@@ -1040,6 +1070,12 @@ void CHESS::exec (
 						bool move_ok = checkmove (player,lo,co,other_player,effects,error);
 						if (move_ok){
 							save_lastmove(player);
+							// We record the animation. We create a function in tbanim[]
+							// Inside this function, we create fctend. All the javascript generated below
+							// ends up in fctend.
+							// At the end of fctend, there is the call to fctanimate
+							notify_var.val += "tbanim[tbanim.length]=function(){\n";
+							notify_var.val += "\tvar fctend=function(){\n";
 							if (effects.clear_en_passant){
 								CHESS_UNDO undo;
 								undo.player1_playing = player1_playing;
@@ -1097,10 +1133,14 @@ void CHESS::exec (
 								grid[from_line][5] = rook;
 							}
 							string old_text_id = string_f("c%u,%u",player->line,player->col);
-							execmove (player,other_player,lo,co,effects);
-							setmodified(username);
-							if (!player->is_robot()) documentd_setchanges(res);
 							js_find_loop_set (notify_var.val,"grid","text",old_text_id,"innerHTML"," ");
+							unsigned player_line=player->line;	// Save player action for the fctanimate call
+							unsigned player_col=player->col;
+							execmove (player,other_player,lo,co,effects);
+							if (!player->is_robot()){
+								setmodified(username);
+								documentd_setchanges(res);
+							}
 							string new_text_id = string_f("c%u,%u",lo,co);
 							js_find_loop_set (notify_var.val,"grid","text",new_text_id,"innerHTML",cnv_cell_html(new_cell)
 								,"style.stroke","black","style.fill",isupper(new_cell) ? "white" : "black");
@@ -1125,6 +1165,11 @@ void CHESS::exec (
 								error = MSG_U(I_KINGEXPOSED,"Your king becomes in check. Illegal move.");
 								undoone(notify_var);
 							}
+							notify_var.val += "};\n";	// End of fctend
+							notify_var.val += string_f("fctanimate(%u,%u,%u,%u,0,100,1000,\"%s\",fctend);\n"
+								,player_col,player_line,co,lo,cnv_cell_html(new_cell));
+							notify_var.val += "};\n";
+							notify_var.val += "if (tbanim.length==1) tbanim[0]();\n";
 							show_marked_pieces (notify_var,"red");
 							robot_request(res);
 						}
