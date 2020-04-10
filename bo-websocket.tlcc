@@ -215,7 +215,7 @@ struct _F_bo_websocket{
 	virtual _F_bo_websocket_waitnote_call( )=0;
 	#define _F_bo_websocket_waitevent_call(name) int name waitevent_call(CONNECT_INFO &con_waitevent, const char *session, const char *gameid, int &gamesequence, bool &endserver)
 	virtual _F_bo_websocket_waitevent_call( )=0;
-	#define _F_bo_websocket_waitevent(name) void name waitevent(CONNECT_INFO &con_waitevent, const char *session, const char *gameid, int &gamesequence, bool &endserver)
+	#define _F_bo_websocket_waitevent(name) void name waitevent(CONNECT_INFO &con_waitevent, const char *session, const char *gameid, int &gamesequence, bool &endserver, bool &fail)
 	virtual _F_bo_websocket_waitevent( )=0;
 };
 
@@ -333,9 +333,17 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 			// We are always calling back sessiond to wait for more events.
 			if (!glocal.endserver) glocal.c.waitnote_call(glocal.con_sessiond, glocal.session.c_str(),glocal.sequence, endserver);
 		}else if (no == glocal.waiteventfd){
-			glocal.c.waitevent(glocal.con_waitevent, glocal.session.c_str(),glocal.gameid.c_str(),glocal.gamesequence, endserver);
+			bool fail = false;
+			glocal.c.waitevent(glocal.con_waitevent, glocal.session.c_str(),glocal.gameid.c_str(),glocal.gamesequence, endserver,fail);
 			// We are always calling back bod to wait for more events.
-			if (!glocal.endserver) glocal.c.waitevent_call(glocal.con_waitevent, glocal.session.c_str(),glocal.gameid.c_str(),glocal.gamesequence, endserver);
+			// If it failed, there is no point to call again. When the user will realise something is odd
+			// he will request a refresh and connection will be established again.
+			if (fail){
+				closeclient (no);
+				glocal.waiteventfd = -1;
+			}else if (!glocal.endserver){
+				glocal.c.waitevent_call(glocal.con_waitevent, glocal.session.c_str(),glocal.gameid.c_str(),glocal.gamesequence, endserver);
+			}
 		}else if (!glocal.header_seen){
 			const char *pt;
 			if (is_start_any_ofnc(line,pt,"Sec-WebSocket-Key:")){
@@ -645,6 +653,8 @@ static void bo_websocket_game (int fd, int waitfd, CONNECT_INFO &con_bod, CONNEC
 	</f>
 	<f waitevent>
 		glocal gamesequence;
+		glocal fail;
+		fail = false;
 		<call bod_client_waitevent>(con_waitevent);
 		<f ok>
 			if (success){
@@ -652,6 +662,9 @@ static void bo_websocket_game (int fd, int waitfd, CONNECT_INFO &con_bod, CONNEC
 				string buf(script);
 				buf += string_f("gamesequence=%u;\n",sequence);
 				glocal.bo_websocket.send (buf);
+			}else{
+				tlmp_warning ("waitevent failed");
+				glocal.fail = true;
 			}
 		</f>
 		</call>

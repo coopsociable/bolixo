@@ -197,6 +197,10 @@ void documentd_button (string &lines, unsigned command, PARAM_STRING txt, const 
 
 using GAME_P = shared_ptr<GAME>;
 
+GAME::~GAME()
+{
+	for (auto fd:notification_fds) close (fd);
+}
 void GAME::add_notification (PARAM_STRING script)
 {
 	if (script.ptr[0] != '\0'){
@@ -356,6 +360,8 @@ static bool documentd_endgame (
 	if (g != games.end()){
 		if (g->second->get_revision() != revision){
 			msg = "Revision mismatch";
+		}else if (g->second->get_nbwait() > 0){
+			msg = "User waitings";
 		}else{
 			ret = true;
 			games.erase (g);

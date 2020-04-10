@@ -246,7 +246,7 @@ public:
 	virtual void exec (const char *var, const char *val, const char *session, const char *username, bool maywrite, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res) = 0;
 	virtual void manyexec (const std::vector<VARVAL_receive> &steps, const char *session, const char *username, bool maywrite, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
 	virtual void engine_reply (const char *line, std::string &notify, bool &done);
-	virtual ~GAME(){};
+	virtual ~GAME();
 };
 
 class TICTACTO: public GAME{
