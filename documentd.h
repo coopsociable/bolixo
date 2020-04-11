@@ -112,6 +112,7 @@ class GAME{
 	std::vector<GAMENOTE> notifications;	// Script to send to all active users (users with the game opened and displayed)
 	std::set<int> notification_fds;		// Handles waiting for notifications
 protected:
+	std::vector<std::string> chat;
 	unsigned revision = 0;
 	std::string gameid;
 	inline void js_find_set(std::string &lines, const char *prefix, const char *feature, const char *val){
@@ -598,6 +599,7 @@ struct DOC_BUTTON_SPECS{
 void documentd_button (std::string &lines, unsigned command, PARAM_STRING txt, const DOC_BUTTON_SPECS &specs, bool highlit);
 void documentd_forcerefresh (std::vector<VARVAL> &res);
 void documentd_setchanges (std::vector<VARVAL> &res);
+void documentd_chat(std::string &lines, PARAM_STRING username, const std::vector<std::string> &content, unsigned width, unsigned height);
 unsigned documentd_displaylen (const char *line, unsigned fontsize, float size);
 void fflush (DOC_WRITER *);
 char *fgets(char *s, int size, DOC_READER *r);

@@ -195,6 +195,46 @@ void documentd_button (string &lines, unsigned command, PARAM_STRING txt, const 
 		,specs.radius,specs.width,specs.margin_left,specs.margin_top,specs.margin_bottom,txt.ptr);
 }
 
+/*
+	Create a small one line chat
+*/
+void documentd_chat(string &lines, PARAM_STRING username, const vector<string> &content, unsigned width, unsigned height)
+{
+	lines +=
+		"<script>\n"
+		"function appendchat(line){\n"
+		"\tvar chat = document.getElementById('chat');\n"
+		"\tif (chat != null){\n"
+		"\t\tif (chat.innerHTML != ''){\n"
+		"\t\t\tchat.innerHTML += '<br>\\n';\n"
+		"\t\t}\n"
+		"\t\tchat.innerHTML += line;\n"
+		"\t\tchat.scrollTop = chat.scrollHeight;\n"
+		"\t}\n"
+		"}\n"
+		"function funcchat(event){\n"
+		"\tif (event.key=='Enter'){\n"
+		"\tvar txt = document.getElementById('inputchat');\n";
+	lines += string_f("\t\tgameaction('chat:<b>%s:</b> '+txt.value);\n",username.ptr);
+	lines +=
+		"\t\ttxt.value = '';\n"
+		"\t}\n"
+		"\tevent.stopPropagation();\n"
+		"\treturn false;\n"
+		"}\n"
+		"</script>\n";
+	lines += string_f("<div id=chat style='width:%u; height:%u; cursor:default;padding-left:5px;border:1px black solid; overflow: auto;' >"
+		,width,height);
+	const char *br = "";
+	for (auto &c:content){
+		lines += br + c;
+		br = "<br>\n";
+	}
+	lines += "</div>\n";;
+	lines += string_f("<input id=inputchat type=text style=width:%u; onkeypress=funcchat(event); placeholder='%s' />\n"
+		,width,MSG_U(I_CHAT,"Chat"));
+}
+
 using GAME_P = shared_ptr<GAME>;
 
 GAME::~GAME()
