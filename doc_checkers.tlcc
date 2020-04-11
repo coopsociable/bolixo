@@ -48,6 +48,7 @@ void CHECKERS::save(DOC_WRITER &w, bool save_session_info)
 	vector<unsigned> cells;
 	for (auto &g:grid) for (auto &gg:g) cells.push_back(gg);
 	documentd_checkers_cells(&w,cells);
+	documentd_checkers_chat(&w,chat);
 	if (save_session_info){
 		for (auto &s:sessions){
 			documentd_checkers_session (&w,s.first,s.second);
@@ -66,6 +67,8 @@ void CHECKERS::load(DOC_READER &r, string &msg)
 	glocal player2;
 	glocal sessions;
 	glocal unsigned max_grid_size = MAX_GRID_SIZE;
+	glocal chat;
+	chat.clear();
 	resetgame();
 	sessions.clear();
 	<call documentd_checkers>(&r);
@@ -95,6 +98,9 @@ void CHECKERS::load(DOC_READER &r, string &msg)
 				col = 0;
 			}
 		}
+	</f>
+	<f chat>
+		for (auto l:lines) glocal.chat.push_back(l);
 	</f>
 	<f session>
 		glocal.sessions[session] = reverse;
@@ -264,7 +270,8 @@ void CHECKERS::exec (
 			// The layout is a square, constrained by the width
 			unsigned reverse_width = sp.mobile ? 45 : 25;
 			unsigned reverse_margin = 25;
-			unsigned dim = (sp.content_width < sp.content_height ? sp.content_width : sp.content_height) - (reverse_width+reverse_margin);
+			unsigned limited_width = sp.content_width - (reverse_width+reverse_margin);
+			unsigned dim = limited_width < sp.content_height ? limited_width : sp.content_height;
 			unsigned width = dim - dim % nbcol;
 			unsigned w8 = width/(nbcol);
 			unsigned h8 = w8; 
@@ -321,24 +328,21 @@ void CHECKERS::exec (
 			lines += "</svg>\n";
 			lines += "</div>\n";
 
-			lines += "<div style='flex:1 1 auto; overflow: hidden;' onmousedown='gameplace(event); return false;' style=color:blue;cursor:pointer>\n";
-			lines += string_f("<svg id='grid-%s' width='%upx' height='%upx' viewbox='0 0 %u %u'>\n",gameid.c_str(),grid_width,grid_height,grid_width,grid_height);
+			lines += "<div style='flex:1 1 auto; overflow: hidden;text-align:center;' >\n";
+			lines += string_f("<svg id='grid-%s' width='%upx' height='%upx' viewbox='0 0 %u %u' style=cursor:pointer; "
+				" onmousedown='gameplace(event); return false;' >\n"
+				,gameid.c_str(),grid_width,grid_height,grid_width,grid_height);
 			unsigned w8_2 = w8/2;
 			unsigned h8_2 = h8/2;
 			unsigned circle_radius = h8_2 - h8/10;
-			lines += string_f("<path stroke='green' stroke-width='2' fill='white' d='M%u %u H %u V %u H %u Z'/>\n"
-				,0,0,grid_width-1,grid_height-1,0);
 			for (unsigned vline=0; vline<nbcol; vline++){
-				lines += string_f("<path stroke=%s stroke-width=1 d='M%u,%u H %u'/>\n","lightgray"
-					,0,h8*vline,grid_width);
 				unsigned line = reverse ? (nbcol-1-vline) : vline;
 				unsigned l1 = line & 1;
 				for (unsigned col=0; col<nbcol; col++){
 					unsigned w8_col = w8*col;
 					unsigned h8_line = h8*vline;
-					lines += string_f("<path stroke=%s stroke-width=1 d='M%u,%u V %u'/>\n","lightgray"
-						,w8*col,0,grid_height);
 					if ((l1+col)&1){
+						// Draw a filled cell
 						lines += string_f("<path stroke='black' stroke-width=1 d='M%u,%u h %u v %u h -%u Z' fill='lightgray'/>\n"
 							,w8*col,h8*vline,w8,h8,w8);
 					}
@@ -372,11 +376,23 @@ void CHECKERS::exec (
 						,line,col,w8_col+w8_2,h8_line+h8_2,circle_radius-18,select_color,select_color);
 				}
 			}
+			lines += string_f("<path stroke='black' stroke-width='2' fill='none' d='M%u %u H %u V %u H %u Z'/>\n"
+				,1,1,grid_width-1,grid_height-1,1);
+			for (unsigned vline=0; vline<nbcol; vline++){
+				static const char *linecolor = "darkgray";
+				lines += string_f("<path stroke=%s stroke-width=1 d='M%u,%u H %u'/>\n",linecolor
+					,0,h8*vline,grid_width);
+				for (unsigned col=0; col<nbcol; col++){
+					lines += string_f("<path stroke=%s stroke-width=1 d='M%u,%u V %u'/>\n",linecolor
+						,w8*col,0,grid_height);
+				}
+			}
 			lines += "</svg>\n";
 			lines += "</div>\n";
 			lines += "</div>\n";
 			lines += "<div id=tab_form>\n";
-			lines += string_f("<div id=msg-%s style=color:white>XXXXXXXX</div>\n",gameid.c_str());
+			lines += string_f("<div id=msg-%s style=color:white;>&nbsp;</div>\n",gameid.c_str());
+			documentd_chat (lines,username,chat,sp.width-20,sp.mobile ? 200 : 100);
 			lines += "</div>\n";
 		}
 		VARVAL v;
@@ -386,6 +402,11 @@ void CHECKERS::exec (
 	}else if (strcmp(var,"reverse")==0){
 		sessions[session] = !reverse;
 		documentd_forcerefresh(res);
+	}else if (strcmp(var,"chat")==0){
+		chat.push_back(val);
+		while (chat.size() > 10) chat.erase(chat.begin());
+		notify_var.val += string_f("appendchat('%s');\n",documentd_escape(val).c_str());
+		documentd_setchanges(res);
 	}else if (maywrite){
 		if (strcmp(var,"place")==0){
 			unsigned lo,co;
@@ -585,7 +606,7 @@ void CHECKERS::exec (
 	if (error.size() > 0){
 		update_msg(false,error,"red",res);
 	}else{
-		update_msg(false,"","white",res);
+		update_msg(false,"&nbsp;","white",res);
 	}
 }
 

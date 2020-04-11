@@ -875,9 +875,16 @@ void CHESS::exec (
 			unsigned grid_width = w8*8;
 			unsigned grid_height = w8*8;
 			unsigned font_size = h8*6/10;
-			unsigned w8_4 = w8/4;
+			unsigned w8_2 = w8/2;
 			unsigned h8_3_4 = 3*h8/4;
 	
+			lines += "<style>\n";
+			lines += ".piece{\n";
+			lines += "\ttext-anchor:middle;\n";
+			lines += string_f("\tfont-size:%u;\n",font_size);
+			lines += "\tfont-family: Times New Roman;\n";
+			lines += "}\n";
+			lines += "</style>\n";
 			lines += "<script>\n";
 			lines += "function gameplace(event){\n";
 			lines += string_f("\tvar elm = document.getElementById('grid-%s');\n",gameid.c_str());
@@ -907,7 +914,7 @@ void CHESS::exec (
 			lines += string_f ("\tvar stepx = (x1-x0)*%u/steps;\n",w8);
 			lines += string_f ("\tvar stepy = (y1-y0)*%u/steps;\n",w8);
 			//lines += "\tconsole.log ('stepx='+stepx+' stepy='+stepy);\n";
-			lines += string_f("\ttxt.setAttribute('x',x0*%u+stepx*nostep+%u);\n",w8,w8_4);
+			lines += string_f("\ttxt.setAttribute('x',x0*%u+stepx*nostep+%u);\n",w8,w8_2);
 			lines += string_f("\ttxt.setAttribute('y',y0*%u+stepy*nostep+%u);\n",w8,h8_3_4);
 			lines += "\ttxt.style.fill='black';\n";
 			lines += "\ttxt.style.stroke='red';\n";
@@ -969,15 +976,12 @@ void CHESS::exec (
 				" style=cursor:pointer"
 				" onmousedown='gameplace(event); return false;'>\n"
 				,gameid.c_str(),grid_width,grid_height,grid_width,grid_height);
-			unsigned w8_2 = w8/2;
 			unsigned h8_2 = h8/2;
 			unsigned circle_x = w8/4;
 			unsigned circle_y = h8*5/6;
 			unsigned circle_radius = w8/12;
 			unsigned last_radius = w8_2-3;
 			unsigned marked_radius = w8/12;
-			lines += string_f("<path stroke='green' stroke-width='2' fill='white' d='M%u %u H %u V %u H %u Z'/>\n"
-				,0,0,grid_width-1,grid_height-1,0);
 			for (unsigned vline=0; vline<8; vline++){
 				lines += string_f("<path stroke=%s stroke-width=1 d='M%u,%u H %u'/>\n","lightgray"
 					,0,h8*vline,grid_width);
@@ -1020,8 +1024,8 @@ void CHESS::exec (
 						,line,col,w8_col+w8_2,h8_line+h8_2,last_radius,last_color);
 					// Piece
 					const char *utf8 = cnv_cell_html(cell);
-					lines += string_f("<text id='c%u,%u' X=%u Y=%u style='stroke:%s;fill:%s;font-size:%u;font-family: Times New Roman;'>%s</text>\n"
-						,line,col,w8_col+w8_4,h8_line+h8_3_4,stroke_color,fill_color,font_size,utf8);
+					lines += string_f("<text class=piece id='c%u,%u' X=%u Y=%u style='stroke:%s;fill:%s;'>%s</text>\n"
+						,line,col,w8_col+w8_2,h8_line+h8_3_4,stroke_color,fill_color,utf8);
 					// Circle to the left to show a selected piece
 					lines += string_f("<circle id='cs%u,%u' cx=%u cy=%u r=%u stroke='%s' stroke-width=2 fill='%s'/>\n"
 						,line,col,w8_col+circle_x,h8_line+circle_y,circle_radius,select_color,select_color);
@@ -1037,8 +1041,19 @@ void CHESS::exec (
 						,line,col,w8_col+w8-circle_x,h8_line+circle_y,marked_radius,marked_color,marked_color);
 				}
 			}
-			lines += string_f("<text id='txtanim' X=0 Y=0 style='stroke:none;fill:none;font-size:%u;font-family: Times New Roman;'>XX</text>\n"
-				,font_size);
+			// Draw the lines over the grid
+			lines += string_f("<path stroke='black' stroke-width='2' fill='none' d='M%u %u H %u V %u H %u Z'/>\n"
+				,1,1,grid_width-1,grid_height-1,1);
+			for (unsigned vline=0; vline<8; vline++){
+				static const char *linecolor="darkgray";
+				lines += string_f("<path stroke=%s stroke-width=1 d='M%u,%u H %u'/>\n",linecolor
+					,0,h8*vline,grid_width);
+				for (unsigned col=0; col<8; col++){
+					lines += string_f("<path stroke=%s stroke-width=1 d='M%u,%u V %u'/>\n",linecolor
+						,w8*col,0,grid_height);
+				}
+			}
+			lines += "<text class=piece id='txtanim' X=0 Y=0 style='stroke:none;fill:none;'>XX</text>\n";
 			lines += "</svg>\n";
 			lines += "</div>\n";
 			lines += "</div>\n";
@@ -1059,6 +1074,7 @@ void CHESS::exec (
 		chat.push_back(val);
 		while (chat.size() > 10) chat.erase(chat.begin());
 		notify_var.val += string_f("appendchat('%s');\n",documentd_escape(val).c_str());
+		documentd_setchanges(res);
 	}else if (maywrite){
 		if (strcmp(var,"place")==0){
 			unsigned lo,co;

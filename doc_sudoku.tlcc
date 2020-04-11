@@ -68,6 +68,7 @@ void SUDOKU::save (DOC_WRITER &w, bool save_session_info)
 		}
 	}
 	documentd_sudoku_cell3(&w,cells);
+	documentd_sudoku_chat(&w,chat);
 }
 <mod>
 void SUDOKU::load (DOC_READER &r, string &msg)
@@ -80,6 +81,8 @@ void SUDOKU::load (DOC_READER &r, string &msg)
 	glocal revision;
 	glocal difficulty;
 	glocal prefs;
+	glocal chat;
+	chat.clear();
 	resetgame();
 	<call documentd_sudoku>(&r);
 	<f header>
@@ -149,6 +152,9 @@ void SUDOKU::load (DOC_READER &r, string &msg)
 			p.last_column = u.last_column;
 			p.last_line = u.last_line;
 		}
+	</f>
+	<f chat>
+		for (auto l:lines) glocal.chat.push_back(l);
 	</f>
 	<f invalid>
 		glocal.msg = "Invalid format for sudoku file";
@@ -393,12 +399,17 @@ void SUDOKU::exec (
 			lines += dashes;
 			lines += normal;
 		}else{
-			// The layout is a square, constrained by the width
-			unsigned dim = sp.content_width < sp.content_height ? sp.content_width : sp.content_height;
-			unsigned width = dim - dim % 10;
-			unsigned g_offx=17;
-			unsigned g_offy=20;
-			unsigned w9 = (width-g_offy)/10;
+			// The layout is a not a square.
+			// We have 9 cells high, but 10 cells width (the digit selector count as a cell).
+			// There are various offsets.
+			// So we compute the largest cell width and then the largest cell height.
+			// We pick the smallest of the two.
+			unsigned g_offx=17;	// Extra spaces for the letters on the left side
+			unsigned g_offy=20;	// Extra spaces for the letters on the top
+			unsigned cellw = (sp.content_width - g_offx)/10;
+			unsigned cellh = (sp.content_height - g_offy)/9;
+			unsigned celldim = cellw < cellh ? cellw : cellh;
+			unsigned w9 = celldim;
 			unsigned h9 = w9; 
 			unsigned grid_width = w9*9+g_offx;
 			unsigned grid_height = w9*9+g_offy;
@@ -548,12 +559,21 @@ void SUDOKU::exec (
 			}
 			lines += "</svg>\n";
 			lines += string_f("<div id=msg-%s style=color:white>This is a messageCeci est un message</div>\n",gameid.c_str());
+			documentd_chat (lines,username,chat,sp.width-20,sp.mobile ? 200 : 100);
 			lines += "</div>\n";
 		}
 		VARVAL v;
 		v.var = VAR_CONTENT;
 		v.val = lines;
 		res.push_back(v);
+	}else if (strcmp(var,"chat")==0){
+		chat.push_back(val);
+		while (chat.size() > 10) chat.erase(chat.begin());
+		VARVAL notify_var;
+		notify_var.var = VAR_NOTIFY;
+		notify_var.val += string_f("appendchat('%s');\n",documentd_escape(val).c_str());
+		res.push_back(notify_var);
+		documentd_setchanges(res);
 	}else if (maywrite){
 		if (strcmp(var,"place")==0){
 			unsigned lo,co,guess;
@@ -771,7 +791,7 @@ void SUDOKU::exec (
 	if (error.size() > 0){
 		update_msg(false,error,"red",res);
 	}else{
-		update_msg(false,"","white",res);
+		update_msg(false,"&nbsp;","white",res);
 	}
 		
 }
