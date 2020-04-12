@@ -4179,6 +4179,7 @@ int main (int argc, char *argv[])
 	glocal bool listpubcache = false;
 	glocal const char *pubsite = NULL;
 	glocal const char *pubuser = NULL;
+	glocal bool listusers = false;
 	glocal.ret = <call tlmpprogram>(argc,argv,"bolixo");
 	<f init>
 		setproginfo ("bofs",VERSION
@@ -4201,6 +4202,7 @@ int main (int argc, char *argv[])
 			);
 		setarg ('u',"user",MSG_U(O_SELECT,"Select one user from .bofs.conf"),glocal.user,false);
 		setarg (' ',"nonstrict",MSG_U(O_NONSTRICT,"Allow SSL connection to self-sign certificate"),nonstrict,false);
+		setarg (' ',"listusers",MSG_U(O_LISTUSERS,"List user entries in .bofs.conf"),glocal.listusers,false);
 		setgrouparg (MSG_U(H_TESTS,"Tests"));
 		setarg (' ',"repeat",MSG_U(O_REPEAT,"Repeat the operation N time (speed test)"),glocal.nbrep,false);
 		setarg ('t',"testmode",MSG_U(O_TESTMODE,"Test mode, normalize output"),testmode,false);
@@ -4222,6 +4224,17 @@ int main (int argc, char *argv[])
 			bofs_loadconf(ctx,glocal.user);
 			printf ("export WEBTEST_EMAIL=%s\nexport WEBTEST_PASSWORD=%s\n",ctx.email.c_str(),ctx.password.c_str());
 			ret = 0;
+		}else if (glocal.listusers){
+			<call loadfile>(string_f("%s/.bofs.conf",getenv("HOME")),true);
+			<f oneline>
+				const char *pt;
+				if (is_start_any_of(line,pt,"user:")){
+					pt = str_skip(pt);
+					printf ("%s\n",pt);
+				}
+				return 0;
+			</f>
+			</call>
 		}else if (glocal.login){
 			CONTEXT ctx;
 			bofs_loadconf(ctx,glocal.user);
