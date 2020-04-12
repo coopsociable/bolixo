@@ -1021,6 +1021,7 @@ elif [ "$1" = "cmp-sequence" ] ; then # S: Execute QA tests
 			read line
 		fi
 	done
+	$0 bo-sessiond-control resetnotifies
 	cd ../cmp-test
 	NBREF=`ls | wc -l`
 	NBTST=`cd /tmp/cmp-test && ls | wc -l`

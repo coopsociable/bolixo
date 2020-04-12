@@ -43,6 +43,8 @@ enum FILE_TYPE {
 	FILE_TGZ,
 	FILE_DOC_WORDPROC,
 	FILE_DOC_WHITEBOARD,
+	FILE_WEBM,
+	// Do not forget to edit the table tbftype below and tbhttptype in web/util.hcc
 };
 
 enum VIEWED_STATUS{
@@ -61,7 +63,7 @@ inline bool file_is_image (FILE_TYPE type){
 	return is_any_of (type,FILE_IMAGE_JPG,FILE_IMAGE_GIF,FILE_IMAGE_PNG);
 }
 inline bool file_is_video (FILE_TYPE type){
-	return type == FILE_VIDEO;
+	return type == FILE_VIDEO || type == FILE_WEBM;
 }
 // is_doc contains documents and games
 inline bool file_is_game (FILE_TYPE type){
@@ -94,6 +96,7 @@ const char *tbftype[]={
 	"tgz",	//FILE_TGZ
 	"wrd",	//FILE_DOC_WORDPROC
 	"whi",	//FILE_DOC_WHITEBOARD
+	"wbm",	//FILE_WEBM
 };
 #else
 extern const char *tbftype[];

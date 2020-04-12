@@ -1706,6 +1706,7 @@ void WORDPROC::execstep (
 					}
 				}
 				if (update_num_lines) wordproc_update_num_lines (pref.cursor.line,lines,notify_lines);
+				setmodified(username);
 				notify_lines.insert(pref.cursor.line);
 				script_var.val += string_f("document.getElementById('text-%s').focus();\n",gameid.c_str());
 			// This is a catch all for images
@@ -1720,6 +1721,7 @@ void WORDPROC::execstep (
 					lines.insert(lines.begin()+pref.cursor.line,WORDPROC_LINE());
 					for (unsigned l=cur_line; l<lines.size(); l++) notify_lines.insert(l);
 					pref.cursor.column=0;
+					setmodified(username);
 				}else if (strcmp(var,"hmove")==0){
 					int move = atoi(val);
 					auto &para = lines[pref.cursor.line];
@@ -1791,6 +1793,7 @@ void WORDPROC::execstep (
 				}
 				if (update_num_lines) wordproc_update_num_lines (pref.cursor.line,lines,notify_lines);
 				notify_lines.insert(pref.cursor.line);
+				setmodified(username);
 			}else if (strcmp(var,"break")==0){
 				while (lines.size() <= pref.cursor.line) lines.emplace_back(WORDPROC_LINE());
 				auto &para = lines[pref.cursor.line];
@@ -1828,6 +1831,7 @@ void WORDPROC::execstep (
 					pref.cursor.line++;
 					pref.cursor.column=0;
 				}
+				setmodified(username);
 			}else if (strcmp(var,"backspace")==0){
 				notify_lines.insert(pref.cursor.line);
 				// We start by moving the cursor back one character if possible.
@@ -1851,8 +1855,10 @@ void WORDPROC::execstep (
 						deletechar(notify_lines,pref);
 					}
 				}
+				setmodified(username);
 			}else if (strcmp(var,"deletechar")==0){
 				deletechar(notify_lines,pref);
+				setmodified(username);
 			}else if (strcmp(var,"voffset")==0){
 				// Change page up or down
 				int move = atoi(val);
@@ -1972,7 +1978,6 @@ void WORDPROC::execstep (
 				}
 				wordproc_update_buttons (script_var.val,pref,newstates);
 			}
-			setmodified(username);
 		}else{
 			if (strcmp(var,"vmove")==0){
 				// Vertical arrows are producing scrolls in read only mode.

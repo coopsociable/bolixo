@@ -1001,6 +1001,9 @@ static const char *tbhttptype[]={
 	"application/octet-stream",	//FILE_DOC_TICTACTO
 	"application/octet-stream",	//FILE_ZIP
 	"application/octet-stream",	//FILE_TGZ
+	"application/octet-stream",	//FILE_DOC_WORDPROC
+	"application/octet-stream",	//FILE_DOC_WHITEBOARD
+	"video/webm",	//FILE_WEBM
 };
 <mod>
 static void util_sendfile_common(CONNECT_INFO &con, const READINFO_receive &info, const BOB_TYPE &content, bool more, const char *handle, const char *session)
@@ -1440,12 +1443,13 @@ static void util_urls (_F_public_page &c, const SHORTMSG &m, string &content, bo
 	}else if (file_is_image(m.file_type)){
 		content = string_f("<img width=%u%s src=%s>",width,percent,url.c_str());
 	}else if (file_is_video(m.file_type)){
+		const char *extension = m.file_type == FILE_WEBM ? "webm" : "mp4";
 		content = string_f(
 			"<video width=\"%u%s\" height=\"%u%s\" controls>\n"
-			"<source src=\"%s\" type=\"video/mp4\">\n"
+			"<source src=\"%s\" type=\"video/%s\">\n"
 			"Your browser does not support the video tag.\n"
 			"</video>"
-			,width,percent,width,percent,url.c_str());
+			,width,percent,width,percent,url.c_str(),extension);
 	}
 }
 <mod>
@@ -1984,11 +1988,12 @@ void util_popup (CONNECT_INFO &con, int step, const char *content, FILE_TYPE fil
 			"</audio>"
 			,tlmpweb_curpage(),step,path,tbftype[file_type]);
 	}else if (file_is_video(file_type)){
+		const char *extension = file_type == FILE_WEBM ? "webm" : "mp4";
 		htmlprintf ("<video width=\"800\" height=\"600\" controls>\n"
-			"<source src=\"%s?webstep=%u&image=%s\" type=\"video/mp4\">\n"
+			"<source src=\"%s?webstep=%u&image=%s\" type=\"video/%s\">\n"
 			"Your browser does not support the video tag.\n"
 			"</video>\n"
-			,tlmpweb_curpage(),step,path);
+			,tlmpweb_curpage(),step,path,extension);
 	}else if (file_is_image(file_type)){
 		string img = util_img (step,"",path,modified);
 		htmlout (img);
