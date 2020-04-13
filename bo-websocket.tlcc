@@ -35,6 +35,7 @@
 #include "helper.h"
 #include "instrument.h"
 #include "bolixo.h"
+#include "documentd_req.h"
 
 
 using namespace std;
@@ -689,10 +690,12 @@ static void bo_websocket_game (int fd, int waitfd, CONNECT_INFO &con_bod, CONNEC
 			<f ok>
 				if (success){
 					for (auto &r:res){
-						if (is_any_of(r.var,"notify","script")){
+						if (is_any_of(r.var,VAR_NOTIFY,VAR_SCRIPT)){
 							glocal.bo_websocket.send (r.val);
-						}else if (strcmp(r.var,"refresh")==0){
+						}else if (strcmp(r.var,VAR_REFRESH)==0){
 							glocal.bo_websocket.send ("callrefresh();");
+						}else if (strcmp(r.var,VAR_DIALOG)==0){
+							glocal.bo_websocket.send (string_f("calldialog(\"%s\");",r.val));
 						}
 					}
 				}else{

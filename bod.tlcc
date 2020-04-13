@@ -48,6 +48,7 @@
 #define INSTRUMENT_DONOTOPEN
 #include "instrument.h"
 #include "helper.h"
+#include "documentd_req.h"
 
 
 static DEBUG_KEY D_PROTO ("proto","Protocol information");
@@ -3948,7 +3949,7 @@ static int bod_main (
 										glocal.success = success;
 										glocal.entry.msg = msg;
 										for (auto &r:res){
-											if (is_any_of(r.var,"notify","changes")){
+											if (is_any_of(r.var,VAR_NOTIFY,VAR_CHANGES)){
 												glocal vector<unsigned> userids;
 												<call sql_query>(
 													"select distinct group_members.userid from group_lists"
@@ -3963,7 +3964,7 @@ static int bod_main (
 												</call>
 												string change;
 												const char *key = glocal.path;
-												if (strcmp(r.var,"changes")==0){
+												if (strcmp(r.var,VAR_CHANGES)==0){
 													// We remove the current user from the notifications as he created the changes
 													glocal.userids.erase(find(glocal.userids.begin(),glocal.userids.end(),glocal.entry.userid));
 													change = string_f("Projects:%s",key+10);

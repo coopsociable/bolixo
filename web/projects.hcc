@@ -36,12 +36,28 @@
 #include "w_var.h"
 #include "steps.h"
 #include "../helper.h"
+#include "../documentd_req.h"
 
 void index_doc (DOCUMENT_POINTER &pt, DOC_ID &jump, bool index);
 void index_doc (DOCUMENT_POINTER &pt, DOC_ID &jump);
 void index_paste(CONNECT_INFO &con, PARAM_STRING path);
 void index_setpastemenu (_F_webtable *c, PARAM_STRING path);
 void index_setcopyitem(CONNECT_INFO &con_sess, PARAM_STRING path, PARAM_STRING modified, PARAM_STRING name);
+
+static W_SSTRING w_dialog("dialog");	// Used to request a dialog for a document or game
+static W_SSTRING w_field1("field1");
+static W_SSTRING w_field2("field2");
+static W_SSTRING w_field3("field3");
+static W_SSTRING w_field4("field4");
+static W_UNSIGNED w_check1("check1");
+static W_UNSIGNED w_check2("check2");
+
+struct DIALOG_FIELD{
+	string name;
+	string value;
+	DIALOG_FIELD(PARAM_STRING _name, PARAM_STRING _value)
+		:name(_name.ptr), value(_value.ptr){}
+};
 
 <mod>
 static int index_loadfile(CONNECT_INFO &con, PARAM_STRING filename, string &text)
@@ -134,7 +150,137 @@ static string projects_autoname(CONNECT_INFO &con, PARAM_STRING dir, PARAM_STRIN
 	return ret;
 }
 </mod>
-
+/*
+	Dialogs for the chess game
+*/
+<mod>
+static void projects_dialog_chess (
+	CONNECT_INFO &con,
+	const char *dialog_name,
+	const vector<DIALOG_FIELD> &fields,
+	const char *session,
+	PARAM_STRING path,
+	const DOC_UI_SPECS &sp)
+{
+	glocal fields;
+	glocal con;
+	glocal dialog_name;
+	glocal vector<VARVAL> steps;
+	FORM_HIDDEN h1(w_dialog);
+	FORM_HIDDEN h2(w_mousex);
+	FORM_HIDDEN h3(w_mousey);
+	glocal string error;
+	<call form>(dialog_name);
+	<f top>
+		DIV a("popup","popup-id"); a.print();
+		DIV d("popup-content","popup"); d.print();
+		DIV dd; dd.dispflex().flowrow().print();
+		DIV left; left.flexfixe().margins(10,10).vmargins(5,0).print();
+		a.donotend();
+		d.donotend();
+		dd.donotend();
+		left.donotend();
+	</f>
+	<f bottom>
+		/- </div>
+		tlmpweb_dialog_x();
+		/- </div></div></div>
+		tlmpweb_position_popup();
+	</f>
+	<f load>
+		if (strcmp(glocal.dialog_name,DIALOG_CHESS_CONFIG)==0){
+			for (auto &f:glocal.fields){
+				if (f.name == "player1"){
+					w_field1 = f.value;
+				}else if (f.name == "player2"){
+					w_field2 = f.value;
+				}
+			}
+		}
+	</f>
+	<f setup>
+		if (strcmp(glocal.dialog_name,DIALOG_CHESS_CONFIG)==0){
+			/- <center>Chess configuration</center>
+			/- <p>
+			/- <table border=0>
+			/- <tr><td>Game name<td>
+			field_string(w_field4,"");
+			/- <tr><td>&nbsp;
+			/- <tr><td>Whites<td>
+			field_list (w_field1,"");
+			field_list_item("robot");
+			field_list_end();
+			/-<tr><td><td>
+			field_checkbox(w_check1,"");
+			/- Send invite
+			/- <tr><td>&nbsp;
+			/- <tr><td>Blacks<td>
+			field_list (w_field2,"");
+			field_list_item("robot");
+			field_list_end();
+			/- <tr><td><td>
+			field_checkbox(w_check2,"");
+			/- Send invite
+			/- <tr><td>&nbsp;
+			/- <tr><td>Timer<td>
+			field_string(w_field3,"");
+			/- </table>
+			/- <p>
+			if (glocal.error.size() > 0){
+				htmlprintf ("<span style=color:red; >%s</span><br>\n",glocal.error.c_str());
+			}else{
+				/- &nbsp;<br>
+			}
+			button_submit();
+		}else if (strcmp(glocal.dialog_name,DIALOG_CHESS_NEWGAME)==0){
+			/- <center>Attention</center>
+			/- <br>
+			/- Starting a new game
+			/- <br>
+			/- Are you sure ?
+			/- <br>
+			/- <br><center>
+			button_submit("Yes");	
+			/- </center>
+		}
+	</f>
+	<f validate>
+		bool ret = true;
+		if (strcmp(glocal.dialog_name,DIALOG_CHESS_CONFIG)==0){
+			if (strcmp(w_field1.c_str(),w_field2.c_str())==0){
+				glocal.error = "Can't be equal";
+				ret = false;
+			}
+		}
+		return ret;
+	</f>
+	<f process>
+		VARVAL var;
+		if (strcmp(glocal.dialog_name,DIALOG_CHESS_CONFIG)==0){
+			var.var = "config";
+			var.val = string_f("player1:%s\n",w_field1.c_str());
+			var.val += string_f("player2:%s\n",w_field2.c_str());
+			var.val += string_f("name:%s\n",w_field4.c_str());
+			var.val += string_f("timer:%s\n",w_field3.c_str());
+		}else if (strcmp(glocal.dialog_name,DIALOG_CHESS_NEWGAME)==0){
+			var.var = "resetgame";
+		}
+		glocal.steps.emplace_back(var);
+	</f>
+	</call>
+	if (glocal.steps.size() > 0){
+		<call bod_client_playstep>(glocal.con,session,"",path,glocal.steps,sp);
+		<f ok>
+			for (auto &r:res){
+				if (strcmp(r.var,VAR_CONTENT)==0){
+					htmlout (r.val);
+				}
+			}
+		</f>
+		</call>
+	}
+}
+</mod>
 <mod>
 void projects(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER> &docpointers)
 {
@@ -783,6 +929,7 @@ void projects(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER
 			</f>
 			</call>
 		}else if (file_is_doc(info.file_type)){
+			glocal vector<DIALOG_FIELD> fields;	// Field definition and value for document dialogs
 			const char *content_id = "doc";
 			if (info.file_type == FILE_DOC_TICTACTO){
 				sethelp2 ("help_tictacto",MSG_U(T_TICTACTO,"Tictacto"));
@@ -804,11 +951,18 @@ void projects(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER
 				content_id = "doc_whiteboard";
 			}
 			/- <script>
-			/- function gameaction(action){
+			/- var action_mousex=0;
+			/- var action_mousey=0;
+			/- function gameaction(event,action){
+			/-  action_mousex=event.clientX;
+			/-  action_mousey=event.clientY;
 			/-  notesocket.send(action);
 			/- }
 			/- function callrefresh(){
 			htmlprintf ("\tformsubmit('%s?webstep=%d');\n",tlmpweb_curpage(),step_projects);
+			/- }
+			/- function calldialog(name){
+			htmlprintf ("\tformsubmit('%s?webstep=%d&dialog='+name+'&mousex='+action_mousex+'&mousey='+action_mousey);\n",tlmpweb_curpage(),step_projects);
 			/- }
 			/- </script>
 			vector<VARVAL> steps;
@@ -824,8 +978,14 @@ void projects(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER
 			}
 			{
 				VARVAL var;
-				var.var = "print";
-				steps.push_back(var);
+				var.var = REQ_PRINT;
+				steps.emplace_back(var);
+			}
+			if (w_dialog.isset()){
+				VARVAL var;
+				var.var = REQ_GETFIELDS;
+				var.val = w_dialog.c_str();
+				steps.emplace_back(var);
 			}
 			DOC_UI_SPECS sp;
 			sp.width = tab_width;
@@ -848,12 +1008,24 @@ void projects(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER
 				}else{
 					string error,result;
 					for (auto &r:res){
-						if (strcmp(r.var,"content")==0){
+						if (strcmp(r.var,VAR_CONTENT)==0){
 							htmlout (r.val);
-						}else if (strcmp(r.var,"error")==0){
+						}else if (strcmp(r.var,VAR_ERROR)==0){
 							error = r.val;
-						}else if (strcmp(r.var,"result")==0){
+						}else if (strcmp(r.var,VAR_RESULT)==0){
 							result = r.val;
+						}else if (strcmp(r.var,VAR_FIELDS)==0){
+							// r.val is a list of fields. Each field has a name and a value on a single text line.
+							// name:value\nname:value\n
+							vector<string>tb;
+							str_splitline (r.val,'\n',tb);
+							for (auto &l:tb){
+								const char *start = l.c_str();
+								const char *pt = strchr(start,':');
+								if (pt != nullptr){
+									glocal.fields.emplace_back(string(start,pt-start),pt+1);
+								}
+							}
 						}
 					}
 					if (error.size() > 0){
@@ -865,6 +1037,12 @@ void projects(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER
 				}
 			</f>
 			</call>
+			if (w_dialog.isset()){
+				for (auto &f:glocal.fields) tlmp_warning ("fields :%s: :%s:",f.name.c_str(),f.value.c_str());
+				if (info.file_type == FILE_DOC_CHESS){
+					projects_dialog_chess (glocal.con,w_dialog.c_str(),glocal.fields,w_session.c_str(),glocal.path,sp);	
+				}
+			}
 		}else{
 			tlmp_error ("No rule to display document type %d\n",info.file_type);
 		}

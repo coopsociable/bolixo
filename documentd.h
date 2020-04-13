@@ -105,7 +105,7 @@ public:
 };
 
 class GAME{
-	unsigned sequence=0;	// For notifications
+	unsigned sequence=1;	// For notifications
 	time_t modified = (time_t)0;
 	time_t last_activity = time(nullptr);
 	std::string modified_by;
@@ -574,14 +574,7 @@ public:
 	void engine_reply(const char *line, std::string &notify, bool &done);
 };
 
-#define VAR_CONTENT	"content"	// HTML content to display
-#define VAR_ERROR	"error"
-#define VAR_RESULT	"result"
-#define VAR_NOTIFY	"notify"	// Javascript applied to all users
-#define VAR_REFRESH	"refresh"	// Trigger a screen refresh
-#define VAR_SCRIPT	"script"	// Javascript for this user only
-#define VAR_CHANGES	"changes"	// A change was done in the game or document worth telling everyone
-#define VAR_ENGINE	"engine"	// A message must be sent to an engine (gnuchess for now) for this game
+#include "documentd_req.h"
 
 std::string documentd_escape(PARAM_STRING msg);
 void documentd_error (std::vector<VARVAL> &res, PARAM_STRING s);
@@ -600,6 +593,7 @@ void documentd_button (std::string &lines, unsigned command, PARAM_STRING txt, c
 void documentd_forcerefresh (std::vector<VARVAL> &res);
 void documentd_setchanges (std::vector<VARVAL> &res);
 void documentd_chat(std::string &lines, PARAM_STRING username, const std::vector<std::string> &content, unsigned width, unsigned height);
+void documentd_parsefields (const char *val, std::vector<VARVAL> &fields);
 unsigned documentd_displaylen (const char *line, unsigned fontsize, float size);
 void fflush (DOC_WRITER *);
 char *fgets(char *s, int size, DOC_READER *r);

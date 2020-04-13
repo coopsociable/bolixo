@@ -181,16 +181,17 @@ void documentd_button_label (string &lines, PARAM_STRING txt)
 void documentd_button (string &lines, unsigned command, PARAM_STRING txt, bool highlit)
 {
 	lines += "&nbsp;";
-	lines += string_f("<div class=button id=button%u onclick=gameaction('newgame:%u')"
-		" style='background-color:%s;flex:0 1 auto; border-radius:4px; text-align:center; border:1px solid black;"
+	lines += string_f("<div class=button id=button%u onclick=gameaction(event,'newgame:%u')"
+		" style='background-color:%s;flex:0 1 auto; border-radius:4px; text-align:center; border:1px solid black;cursor:default;"
 		" padding-left:5; padding-right:5;  margin-left:5; margin-top:2; margin-bottom:2;'>%s</div>\n"
 		,command,command,highlit ? "lightblue" : "lightgray",txt.ptr);
 }
 void documentd_button (string &lines, unsigned command, PARAM_STRING txt, const DOC_BUTTON_SPECS &specs, bool highlit)
 {
 	lines += "&nbsp;";
-	lines += string_f("<div class=button id=button%u onclick=gameaction('newgame:%u')"
-		" style='background-color:%s;flex:0 1 auto; border-radius:%upx; width:%u; text-align:center; border:1px solid black; margin-left:%u; margin-top:%u; margin-bottom:%u;'>%s</div>\n"
+	lines += string_f("<div class=button id=button%u onclick=gameaction(event,'newgame:%u')"
+		" style='background-color:%s;flex:0 1 auto; border-radius:%upx; width:%u; text-align:center;cursor:default;"
+		" border:1pxsolid black; margin-left:%u; margin-top:%u; margin-bottom:%u;'>%s</div>\n"
 		,command,command,highlit ? "lightblue" : "lightgray"
 		,specs.radius,specs.width,specs.margin_left,specs.margin_top,specs.margin_bottom,txt.ptr);
 }
@@ -215,7 +216,7 @@ void documentd_chat(string &lines, PARAM_STRING username, const vector<string> &
 		"function funcchat(event){\n"
 		"\tif (event.key=='Enter'){\n"
 		"\tvar txt = document.getElementById('inputchat');\n";
-	lines += string_f("\t\tgameaction('chat:<b>%s:</b> '+txt.value);\n",username.ptr);
+	lines += string_f("\t\tgameaction(event,'chat:<b>%s:</b> '+txt.value);\n",username.ptr);
 	lines +=
 		"\t\ttxt.value = '';\n"
 		"\t}\n"
@@ -233,6 +234,24 @@ void documentd_chat(string &lines, PARAM_STRING username, const vector<string> &
 	lines += "</div>\n";;
 	lines += string_f("<input id=inputchat type=text style=width:%u; onkeypress=funcchat(event); placeholder='%s' />\n"
 		,width,MSG_U(I_CHAT,"Chat"));
+}
+
+// r.val is a list of fields. Each field has a name and a value on a single text line.
+// name:value\nname:value\n
+void documentd_parsefields (const char *val, vector<VARVAL> &fields)
+{
+	vector<string>tb;
+	str_splitline (val,'\n',tb);
+	for (auto &l:tb){
+		const char *start = l.c_str();
+		const char *pt = strchr(start,':');
+		if (pt != nullptr){
+			VARVAL var;
+			var.var = string(start,pt-start);
+			var.val = pt+1;
+			fields.emplace_back(move(var));
+		}
+	}
 }
 
 using GAME_P = shared_ptr<GAME>;
@@ -321,7 +340,7 @@ static bool documentd_playstep (
 				r = res.erase(r);
 			}else if (r->var == VAR_CONTENT){
 				r->val += "<script>\n";
-				r->val += string_f("var gamesequence=%u;\n",game->get_sequence());
+				r->val += string_f("var gamesequence=%u;\n",game->get_sequence()-1);
 				r->val += "</script>\n";
 				r++;
 			}else if (r->var == VAR_ENGINE){
