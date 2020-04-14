@@ -269,11 +269,14 @@ void GAME::appendchat(const char *line, string &notify, vector<VARVAL> &res)
 	notify += string_f("appendchat(%ld,'%s');\n",now,documentd_escape(line).c_str());
 	documentd_setchanges(res);
 }
+static size_t total_notify_size=0;
 void GAME::add_notification (PARAM_STRING script)
 {
 	if (script.ptr[0] != '\0'){
 		notifications.emplace_back(script,sequence);
+		size_t len_script = strlen(script.ptr);
 		for (auto fd:notification_fds){
+			total_notify_size += len_script;
 			documentd_client_rep_waitevent(fd,true,"",script,sequence);
 		}
 		notification_fds.clear();
@@ -321,6 +324,10 @@ void GAME::engine_reply(const char *line, string &notify, bool &done)
 {
 	done = true;
 }
+static bool protocol_stats=false;	// produce a tlmp_warning showing how much is sent back
+static size_t total_content_size = 0;
+static unsigned total_requests=0;
+
 static bool documentd_playstep (
 	vector<SUBPROGRAM> &programs,
 	map<string,GAME_P> &games,
@@ -342,12 +349,16 @@ static bool documentd_playstep (
 		GAME_P game = g->second;
 		game->manyexec(steps,session,username,maywrite,sp,res);
 		game->testwin(res);
+		size_t content_size = 0;
+		size_t notify_size = 0;
 		for (auto r = res.begin(); r != res.end(); ){
 			if (r->var == VAR_NOTIFY){
 				// Notifications are sent using the waitevent system
+				notify_size += r->val.size();
 				if (r->val.size() > 0) game->add_notification(r->val);
 				r = res.erase(r);
 			}else if (r->var == VAR_CONTENT){
+				content_size += r->val.size();
 				r->val += "<script>\n";
 				r->val += string_f("var gamesequence=%u;\n",game->get_sequence()-1);
 				r->val += "</script>\n";
@@ -370,6 +381,9 @@ static bool documentd_playstep (
 				r++;
 			}
 		}
+		if (protocol_stats) tlmp_warning ("protocol content_size=%lu notify_size=%lu",content_size,notify_size);
+		total_content_size += content_size;
+		total_requests++;
 	}else{
 		msg = "Unknown game id";
 		unknown = true;
@@ -843,6 +857,8 @@ int main (int argc, char *argv[])
 							,g.second->get_nbwait(),g.second->get_sequence()));
 						nbwait += g.second->get_nbwait();
 					}
+					tb.push_back(string_f("protocolstats: %d",protocol_stats));
+					tb.push_back(string_f("bytes sent: requests=%u content=%lu notify=%lu",total_requests,total_content_size,total_notify_size));
 					tb.push_back(string_f("nbwaiting: %u",nbwait));
 					tb.push_back(string_f("subprograms: %lu",glocal.programs.size()));
 					for (auto &p:glocal.programs){
@@ -866,6 +882,9 @@ int main (int argc, char *argv[])
 				</f>
 				<f instrument>
 					toggle_instrument_file(on);
+				</f>
+				<f protocolstats>
+					protocol_stats = on;
 				</f>
 				<f quit>
 					// Save all games/documents in a file
@@ -1108,6 +1127,7 @@ int main (int argc, char *argv[])
 						// We either reply immediatly, or when an event occur
 						const char *script = game->locate_event(sequence);
 						if (script != nullptr){
+							total_notify_size += strlen(script);
 							rep_waitevent (true,"",script,sequence);
 						}else{
 							game->add_notification_fd(no);
