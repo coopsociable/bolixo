@@ -199,17 +199,23 @@ void documentd_button (string &lines, unsigned command, PARAM_STRING txt, const 
 /*
 	Create a small one line chat
 */
-void documentd_chat(string &lines, PARAM_STRING username, const vector<string> &content, unsigned width, unsigned height)
+void documentd_chat(string &lines, PARAM_STRING username, const vector<CHATLINE> &content, unsigned width, unsigned height)
 {
+	lines += string_f("<div id=chat style='width:%u; height:%u; cursor:default;padding-left:5px;border:1px black solid; overflow: auto;' >"
+		,width,height);
+	lines += "</div>\n";;
+	lines += string_f("<input id=inputchat type=text style=width:%u; onkeypress=funcchat(event); placeholder='%s' />\n"
+		,width,MSG_U(I_CHAT,"Chat"));
 	lines +=
 		"<script>\n"
-		"function appendchat(line){\n"
+		"function appendchat(unixdate,line){\n"
 		"\tvar chat = document.getElementById('chat');\n"
 		"\tif (chat != null){\n"
 		"\t\tif (chat.innerHTML != ''){\n"
 		"\t\t\tchat.innerHTML += '<br>\\n';\n"
 		"\t\t}\n"
-		"\t\tchat.innerHTML += line;\n"
+		"\t\tvar date = new Date(unixdate*1000);\n"
+		"\t\tchat.innerHTML += date.toLocaleString() + ' ' + line;\n"
 		"\t\tchat.scrollTop = chat.scrollHeight;\n"
 		"\t}\n"
 		"}\n"
@@ -222,18 +228,13 @@ void documentd_chat(string &lines, PARAM_STRING username, const vector<string> &
 		"\t}\n"
 		"\tevent.stopPropagation();\n"
 		"\treturn false;\n"
-		"}\n"
-		"</script>\n";
-	lines += string_f("<div id=chat style='width:%u; height:%u; cursor:default;padding-left:5px;border:1px black solid; overflow: auto;' >"
-		,width,height);
-	const char *br = "";
+		"}\n";
+	// We can't write the content directly to the following div. Instead we are sending the content using the appendchat
+	// This allows the browser to convert the time_t in localised date.
 	for (auto &c:content){
-		lines += br + c;
-		br = "<br>\n";
+		lines += string_f("appendchat(%ld,\"%s\");\n",c.time,documentd_escape(c.line).c_str());
 	}
-	lines += "</div>\n";;
-	lines += string_f("<input id=inputchat type=text style=width:%u; onkeypress=funcchat(event); placeholder='%s' />\n"
-		,width,MSG_U(I_CHAT,"Chat"));
+	lines += "</script>\n";
 }
 
 // r.val is a list of fields. Each field has a name and a value on a single text line.
@@ -259,6 +260,14 @@ using GAME_P = shared_ptr<GAME>;
 GAME::~GAME()
 {
 	for (auto fd:notification_fds) close (fd);
+}
+void GAME::appendchat(const char *line, string &notify, vector<VARVAL> &res)
+{
+	time_t now = time(nullptr);
+	chat.emplace_back(now,line);
+	while (chat.size() > 10) chat.erase(chat.begin());
+	notify += string_f("appendchat(%ld,'%s');\n",now,documentd_escape(line).c_str());
+	documentd_setchanges(res);
 }
 void GAME::add_notification (PARAM_STRING script)
 {

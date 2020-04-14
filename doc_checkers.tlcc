@@ -29,6 +29,7 @@
 using namespace std;
 
 #include "proto/documentd_checkers.protoh"
+#define documentd_checkers_chat_NOTNEED
 #include "proto/documentd_checkers.protoch"
 
 
@@ -48,7 +49,9 @@ void CHECKERS::save(DOC_WRITER &w, bool save_session_info)
 	vector<unsigned> cells;
 	for (auto &g:grid) for (auto &gg:g) cells.push_back(gg);
 	documentd_checkers_cells(&w,cells);
-	documentd_checkers_chat(&w,chat);
+	vector<CHECKERS_CHAT> schat;
+	documentd_copychat (schat,chat);
+	documentd_checkers_chat2(&w,schat);
 	if (save_session_info){
 		for (auto &s:sessions){
 			documentd_checkers_session (&w,s.first,s.second);
@@ -100,7 +103,10 @@ void CHECKERS::load(DOC_READER &r, string &msg)
 		}
 	</f>
 	<f chat>
-		for (auto l:lines) glocal.chat.push_back(l);
+		for (auto l:lines) glocal.chat.emplace_back(0,l);
+	</f>
+	<f chat2>
+		for (auto l:lines) glocal.chat.emplace_back(l.time,l.line);
 	</f>
 	<f session>
 		glocal.sessions[session] = reverse;
@@ -403,10 +409,7 @@ void CHECKERS::exec (
 		sessions[session] = !reverse;
 		documentd_forcerefresh(res);
 	}else if (strcmp(var,"chat")==0){
-		chat.push_back(val);
-		while (chat.size() > 10) chat.erase(chat.begin());
-		notify_var.val += string_f("appendchat('%s');\n",documentd_escape(val).c_str());
-		documentd_setchanges(res);
+		appendchat(val,notify_var.val,res);
 	}else if (maywrite){
 		if (strcmp(var,"place")==0){
 			unsigned lo,co;

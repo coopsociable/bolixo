@@ -161,6 +161,7 @@ struct DIRENTRY{
 #define webapi_list_groups_NOTNEED
 #define webapi_list_contacts_NOTNEED
 #define webapi_delete_list_NOTNEED
+#define webapi_list_members_NOTNEED
 #include "proto/webapi.protoch"
 
 
@@ -2644,6 +2645,7 @@ static int bod_main (
 				rep_list_lists (ret,glocal.msg,glocal.lists);
 			</f>
 			<f list_contacts> // sessionid owner = success:b msg members:v
+				// List all contacts
 				glocal string msg;
 				glocal vector<string> members;
 				unsigned userid = bo_writed_get_group_owner (glocal.con_sess, sessionid, owner, glocal.msg);
@@ -2662,6 +2664,48 @@ static int bod_main (
 					rep_list_contacts(false,glocal.msg,glocal.members);
 				}else{
 					rep_list_contacts(true,"",glocal.members);
+				}
+			</f>
+			<f list_members> // sessionid owner listname = success:b msg members:v
+				// List the members of a list. This is allowed if the user is a member or is admin
+				glocal string msg;
+				glocal vector<string> members;
+				glocal bool user_is_member = false;
+				glocal unsigned userid = bo_writed_get_group_owner (glocal.con_sess, sessionid, owner, glocal.msg);
+				if (glocal.userid != 0){
+					int ownerid = fs_rec_getid("select userid from id2name where name='%s'",owner);
+					if (ownerid == -1){
+						glocal.msg = MSG_R(E_UNKNOWNUSER);
+					}else{
+						int listid = fs_rec_getid("select id from group_lists where ownerid=%d and name='%s'",ownerid,listname);
+						if (listid == -1){
+							glocal.msg =  string_f(MSG_R(E_PRJNOTEXIST),listname);
+						}else{
+							<call sql_query>(
+								"select distinct group_members.userid,id2name.name from group_lists"
+								" join group_list_members on group_lists.id = group_list_members.group_list_id"
+								" join groups on groups.id = group_list_members.groupid"
+								" join group_members on group_members.groupid = groups.id"
+								" join id2name on id2name.userid=group_members.userid"
+								" where group_lists.id = %u"
+								,listid);
+							<f onerow>
+								unsigned member_id = atoi(row[0]);
+								if (member_id == glocal.userid) glocal.user_is_member = true;
+								glocal.members.push_back(row[1]);
+							</f>
+							</call>
+						}
+					}
+				}
+				if (!glocal.user_is_member){
+					glocal.msg = MSG_U(E_ACCESS,"Access denied");
+				}
+				if (glocal.msg.size() > 0){
+					glocal.members.clear();
+					rep_list_members(false,glocal.msg,glocal.members);
+				}else{
+					rep_list_members(true,"",glocal.members);
 				}
 			</f>
 			<f list_groups>	// sessionid owner only_onwer:b = success:b msg groups:v users:vv access:vv

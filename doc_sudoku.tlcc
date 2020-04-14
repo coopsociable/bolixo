@@ -32,6 +32,7 @@ using namespace std;
 #define documentd_sudoku_cell_NOTNEED
 #define documentd_sudoku_cell2_NOTNEED
 #define documentd_sudoku_header_NOTNEED
+#define documentd_sudoku_chat_NOTNEED
 #include "proto/documentd_sudoku.protoch"
 
 static DEBUG_KEY D_SUDOKU("sudoku","sudoku game");
@@ -68,7 +69,9 @@ void SUDOKU::save (DOC_WRITER &w, bool save_session_info)
 		}
 	}
 	documentd_sudoku_cell3(&w,cells);
-	documentd_sudoku_chat(&w,chat);
+	vector<SUDOKU_CHAT> schat;
+	documentd_copychat (schat,chat);
+	documentd_sudoku_chat2(&w,schat);
 }
 <mod>
 void SUDOKU::load (DOC_READER &r, string &msg)
@@ -154,7 +157,10 @@ void SUDOKU::load (DOC_READER &r, string &msg)
 		}
 	</f>
 	<f chat>
-		for (auto l:lines) glocal.chat.push_back(l);
+		for (auto l:lines) glocal.chat.emplace_back(0,l);
+	</f>
+	<f chat2>
+		for (auto l:lines) glocal.chat.emplace_back(l.time,l.line);
 	</f>
 	<f invalid>
 		glocal.msg = "Invalid format for sudoku file";
@@ -571,13 +577,10 @@ void SUDOKU::exec (
 		v.val = lines;
 		res.push_back(v);
 	}else if (strcmp(var,"chat")==0){
-		chat.push_back(val);
-		while (chat.size() > 10) chat.erase(chat.begin());
 		VARVAL notify_var;
 		notify_var.var = VAR_NOTIFY;
-		notify_var.val += string_f("appendchat('%s');\n",documentd_escape(val).c_str());
-		res.push_back(notify_var);
-		documentd_setchanges(res);
+		appendchat(val,notify_var.val,res);
+		res.emplace_back(move(notify_var));
 	}else if (maywrite){
 		if (strcmp(var,"place")==0){
 			unsigned lo,co,guess;

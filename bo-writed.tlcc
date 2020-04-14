@@ -1051,16 +1051,16 @@ static void bo_writed_set_group (
 	glocal const char *listname = listname;
 	glocal const char *groupname = groupname;
 	glocal const char *access = access;
-	glocal string *msg = &msg;
+	glocal msg;
 	<call sql_query>("select id from group_lists where ownerid=%u and name='%s'",userid,listname);
 	<f empty>
-		(*glocal.msg) = string_f(MSG_U(E_PRJNOTEXIST,"Project %s does not exist"),glocal.listname);
+		glocal.msg = string_f(MSG_U(E_PRJNOTEXIST,"Project %s does not exist"),glocal.listname);
 	</f>
 	<f onerow>
 		glocal unsigned group_list_id = atoi(row[0]);
 		<call sql_query>("select id from groups where ownerid=%u and name='%s'",glocal.userid,glocal.groupname);
 		<f empty>
-			(*glocal.msg) = "Group does not exist";
+			glocal.msg = string_f(MSG_U(E_GROUPNOTEXIST,"Group %s does not exist"),glocal.groupname);
 		</f>
 		<f onerow>
 			glocal unsigned groupid = atoi(row[0]);
@@ -1072,20 +1072,20 @@ static void bo_writed_set_group (
 					if (sql_action("delete from group_list_members"
 						" where group_list_id=%u and groupid=%u"
 						,glocal.group_list_id,glocal.groupid)==-1){
-						(*glocal.msg) = "Internal error (group_list_members table)";
+						glocal.msg = "Internal error (group_list_members table)";
 					}
 				}else if (sql_action("update group_list_members set defaultaccess='%s'"
 					" where group_list_id=%u and groupid=%u"
 					,glocal.access,glocal.group_list_id,glocal.groupid)==-1){
-					(*glocal.msg) = "Internal error (group_list_members table)";
+					glocal.msg = "Internal error (group_list_members table)";
 				}
 			</f>
 			<f empty>
 				if (glocal.access[0] == '-'){
-					(*glocal.msg) = "Group was not a member of that list";
+					glocal.msg = "Group was not a member of that list";
 				}else if (sql_action("insert into group_list_members (group_list_id,groupid,defaultaccess) values (%u,%u,'%s')"
 					,glocal.group_list_id,glocal.groupid,glocal.access)==-1){
-					(*glocal.msg) = "Internal error (group_list_members table)";
+					glocal.msg = "Internal error (group_list_members table)";
 				}
 			</f>
 			</call>

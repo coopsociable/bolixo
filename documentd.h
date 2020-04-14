@@ -104,6 +104,22 @@ public:
 	}
 };
 
+struct CHATLINE{
+	time_t time;
+	std::string line;
+	CHATLINE(time_t _time, PARAM_STRING _line)
+		:time(_time),line(_line.ptr){
+	}
+};
+template<typename T> void documentd_copychat(std::vector<T> &dst, const std::vector<CHATLINE> &src)
+{
+	for (auto &c:src){
+		T t;
+		t.time = c.time;
+		t.line = c.line;
+		dst.emplace_back(std::move(t));
+	}
+}
 class GAME{
 	unsigned sequence=1;	// For notifications
 	time_t modified = (time_t)0;
@@ -112,7 +128,7 @@ class GAME{
 	std::vector<GAMENOTE> notifications;	// Script to send to all active users (users with the game opened and displayed)
 	std::set<int> notification_fds;		// Handles waiting for notifications
 protected:
-	std::vector<std::string> chat;
+	std::vector<CHATLINE> chat;
 	unsigned revision = 0;
 	std::string gameid;
 	inline void js_find_set(std::string &lines, const char *prefix, const char *feature, const char *val){
@@ -188,6 +204,7 @@ protected:
 		lines += "\t}\n";
 		lines += "}\n";
 	}
+	void appendchat(const char *line, std::string &notify, std::vector<VARVAL> &res);
 public:
 	unsigned get_nbwait() const {
 		return notification_fds.size();
@@ -543,6 +560,8 @@ struct CHESS_UNDO{
 };
 enum ROBOT_TYPE{ ROBOT_NONE, ROBOT_GNUCHESS, ROBOT_STOCKFISH};
 class CHESS: public GAME{
+	std::string gamename;	// User selected name for the current game
+	std::string timer;		// Timer specification
 	ROBOT_TYPE robot_type = ROBOT_NONE;
 	char grid[8][8];
 	CHESS_PLAYER player1,player2;
@@ -561,6 +580,7 @@ class CHESS: public GAME{
 	void show_marked_pieces (VARVAL &notify_var, const char *color);
 	std::string format_fen();
 	void robot_request (std::vector<VARVAL> &res);
+	void update_players(std::string &notify);
 public:
 	CHESS();
 	const char *getclass() const{
@@ -592,7 +612,7 @@ struct DOC_BUTTON_SPECS{
 void documentd_button (std::string &lines, unsigned command, PARAM_STRING txt, const DOC_BUTTON_SPECS &specs, bool highlit);
 void documentd_forcerefresh (std::vector<VARVAL> &res);
 void documentd_setchanges (std::vector<VARVAL> &res);
-void documentd_chat(std::string &lines, PARAM_STRING username, const std::vector<std::string> &content, unsigned width, unsigned height);
+void documentd_chat(std::string &lines, PARAM_STRING username, const std::vector<CHATLINE> &content, unsigned width, unsigned height);
 void documentd_parsefields (const char *val, std::vector<VARVAL> &fields);
 unsigned documentd_displaylen (const char *line, unsigned fontsize, float size);
 void fflush (DOC_WRITER *);

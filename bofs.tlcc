@@ -1790,6 +1790,7 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 	glocal bool delete_group = false;
 
 	glocal bool print_lists = false;
+	glocal bool print_list_members = false;
 	glocal bool print_groups = false;
 	glocal bool print_contacts = false;
 
@@ -1834,6 +1835,7 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 		setarg (' ',"print-contacts",MSG_U(O_PRINTCONTACTS,"Print members of the contacts group"),glocal.print_contacts,false);
 		setarg (' ',"print-lists",MSG_U(O_PRINTLISTS,"Print the content of a lists/projects"),glocal.print_lists,false);
 		setarg (' ',"print-groups",MSG_U(O_PRINTGROUPS,"Print the content of groups"),glocal.print_groups,false);
+		setarg (' ',"print-list-members",MSG_U(O_PRINTLISTMEMBERS,"Print the members of a list/project"),glocal.print_list_members,false);
 		setgrouparg ("Access");
 		setarg ('a',"set-access","Assign a user/list name to a file or directory",glocal.set_access,false);
 		setarg ('M',"listmode","list mode override (' ','p','r','w','a')",glocal.listmode,false);
@@ -1853,8 +1855,8 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 		glocal int ret = -1;
 		if (glocal.ctx->login()==-1){
 		}else if (glocal.create_group_list){
-			if (glocal.listname == NULL){
-				bofs_error ("groups",false,"You must specify the list name");
+			if (glocal.listname == nullptr){
+				bofs_error ("groups",false,MSG_U(E_NOLISTNAME,"You must specify the list name"));
 			}else if (glocal.ctx->is_internal()){
 				<call bod_client_create_group_list> (glocal.ctx->con,glocal.ctx->sessionid,glocal.listname,glocal.owner);
 				<f ok>
@@ -1869,8 +1871,8 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 				notdone();	// create_group_list
 			}
 		}else if (glocal.create_group){
-			if (glocal.groupname == NULL){
-				bofs_error ("groups",false,"You must specify the group name");
+			if (glocal.groupname == nullptr){
+				bofs_error ("groups",false,MSG_U(E_NOGROUPNAME,"You must specify the group name"));
 			}else if (glocal.ctx->is_internal()){
 				<call bod_client_create_group> (glocal.ctx->con,glocal.ctx->sessionid,glocal.groupname,glocal.owner);
 				<f ok>
@@ -1893,10 +1895,10 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 				</call>
 			}
 		}else if (glocal.set_list_desc){
-			if (glocal.listname == NULL){
-				bofs_error ("groups",false,"You must specify the list name");
+			if (glocal.listname == nullptr){
+				bofs_error ("groups",false,MSG_R(E_NOLISTNAME));
 			}else if (glocal.description == NULL){
-				bofs_error ("groups",false,"You must specify the description");
+				bofs_error ("groups",false,MSG_U(E_NODESCRIPTION,"You must specify the description"));
 			}else if (glocal.ctx->is_internal()){
 				<call bod_client_set_list_desc> (glocal.ctx->con,glocal.ctx->sessionid,glocal.listname,glocal.description,glocal.owner);
 				<f ok>
@@ -1911,10 +1913,10 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 				notdone();	// set_list_desc
 			}
 		}else if (glocal.set_group_desc){
-			if (glocal.groupname == NULL){
-				bofs_error ("groups",false,"You must specify the group name");
+			if (glocal.groupname == nullptr){
+				bofs_error ("groups",false,MSG_R(E_NOGROUPNAME));
 			}else if (glocal.description == NULL){
-				bofs_error ("groups",false,"You must specify the description");
+				bofs_error ("groups",false,MSG_R(E_NODESCRIPTION));
 			}else if (glocal.ctx->is_internal()){
 				<call bod_client_set_group_desc> (glocal.ctx->con,glocal.ctx->sessionid,glocal.groupname,glocal.description,glocal.owner);
 				<f ok>
@@ -1929,10 +1931,10 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 				notdone();	// set_group_desc
 			}
 		}else if (glocal.set_group){
-			if (glocal.listname == NULL){
-				bofs_error ("groups",false,"You must specify the list name");
-			}else if (glocal.groupname == NULL){
-				bofs_error ("groups",false,"You must specify the group name");
+			if (glocal.listname == nullptr){
+				bofs_error ("groups",false,MSG_R(E_NOLISTNAME));
+			}else if (glocal.groupname == nullptr){
+				bofs_error ("groups",false,MSG_R(E_NOGROUPNAME));
 			}else if (glocal.ctx->is_internal()){
 				<call bod_client_set_group> (glocal.ctx->con,glocal.ctx->sessionid,glocal.listname,glocal.groupname,glocal.access,glocal.owner);
 				<f ok>
@@ -1947,8 +1949,8 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 				notdone();	// set_group
 			}
 		}else if (glocal.set_member){
-			if (glocal.groupname == NULL){
-				bofs_error ("groups",false,"You must specify the group name");
+			if (glocal.groupname == nullptr){
+				bofs_error ("groups",false,MSG_R(E_NOGROUPNAME));
 			}else if (glocal.ctx->is_internal()){
 				<call bod_client_set_member> (glocal.ctx->con,glocal.ctx->sessionid,glocal.groupname,glocal.user,glocal.access,glocal.role,glocal.owner);
 				<f ok>
@@ -1971,8 +1973,8 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 				</call>
 			}
 		}else if (glocal.create_project_dir){
-			if (glocal.listname == NULL){
-				bofs_error ("groups",false,"You must specify the list name");
+			if (glocal.listname == nullptr){
+				bofs_error ("groups",false,MSG_R(E_NOLISTNAME));
 			}else if (glocal.ctx->is_internal()){
 				<call bod_client_create_project_dir>(glocal.ctx->con,glocal.ctx->sessionid,glocal.listname,glocal.owner);
 				<f ok>
@@ -1987,8 +1989,8 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 				notdone();	// create_project_dir
 			}
 		}else if (glocal.delete_list){
-			if (glocal.listname == NULL){
-				bofs_error ("groups",false,"You must specify the list name");
+			if (glocal.listname == nullptr){
+				bofs_error ("groups",false,MSG_R(E_NOLISTNAME));
 			}else if (glocal.ctx->is_internal()){
 				<call bod_client_delete_list> (glocal.ctx->con,glocal.ctx->sessionid,glocal.listname,glocal.owner);
 				<f ok>
@@ -2011,8 +2013,8 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 				</call>
 			}
 		}else if (glocal.delete_group){
-			if (glocal.groupname == NULL){
-				bofs_error ("groups",false,"You must specify the group name");
+			if (glocal.groupname == nullptr){
+				bofs_error ("groups",false,MSG_R(E_NOGROUPNAME));
 			}else if (glocal.ctx->is_internal()){
 				<call bod_client_delete_group> (glocal.ctx->con,glocal.ctx->sessionid,glocal.groupname,glocal.owner);
 				<f ok>
@@ -2052,6 +2054,30 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 						glocal.ret = bofs_print_lists(*glocal.ctx,glocal.owner,lists);
 					}else{
 						bofs_error ("groups",internal_error,"Can't list lists: %s",msg);
+					}
+				</f>
+				</call>
+			}
+		}else if (glocal.print_list_members){
+			if (glocal.listname == nullptr){
+				bofs_error ("groups",false,MSG_R(E_NOLISTNAME));
+			}else if (glocal.ctx->is_internal()){
+				<call bod_client_list_members> (glocal.ctx->con,glocal.ctx->sessionid,glocal.owner,glocal.listname);
+				<f ok>
+					if (success){
+						for (auto m:members) printf ("%s\n",m);
+					}else{
+						bofs_error ("groups",internal_error,"Can't print list members: %s",msg);
+					}
+				</f>
+				</call>
+			}else{
+				<call webapi_list_members> (glocal.ctx->hcon,glocal.ctx->hsessionid,glocal.owner,glocal.listname);
+				<f ok>
+					if (success){
+						for (auto m:members) printf ("%s\n",m);
+					}else{
+						bofs_error ("groups",internal_error,"Can't print list members: %s",msg);
 					}
 				</f>
 				</call>

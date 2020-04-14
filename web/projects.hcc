@@ -49,6 +49,7 @@ static W_SSTRING w_field1("field1");
 static W_SSTRING w_field2("field2");
 static W_SSTRING w_field3("field3");
 static W_SSTRING w_field4("field4");
+static W_SSTRING w_field5("field5");
 static W_UNSIGNED w_check1("check1");
 static W_UNSIGNED w_check2("check2");
 
@@ -151,6 +152,55 @@ static string projects_autoname(CONNECT_INFO &con, PARAM_STRING dir, PARAM_STRIN
 }
 </mod>
 /*
+	Send a private message to a player, inviting him to a game
+*/
+<mod>
+static int projects_sendinvite(
+	CONNECT_INFO &con,
+	const char *session,
+	const char *path,
+	const char *gametype,
+	const char *player,
+	const char *otherplayer,
+	const char *message,
+	string &msg)
+{
+	glocal int ret = 0;
+	glocal msg;
+	string content;
+	const char *docpath = path;
+	const char *pt;
+	if (is_start_any_of(path,pt,"/projects/")){
+		docpath = pt;
+	}
+	if (userinfo.name == otherplayer){
+		content = string_f(MSG_U(INVITEHIMSELF,"%s is inviting you %s against himself\nThe game is here: _DOC=%s\n")
+			,userinfo.name.c_str(),gametype,docpath);
+	}else{
+		content = string_f(MSG_U(I_INVITEOTHER,"%s is inviting you %s against %s\nThe game is here: _DOC=%s\n")
+			,userinfo.name.c_str(),gametype,otherplayer,docpath);
+	}
+	if (message[0] != '\0'){
+		content += "\n";
+		content += message;
+	}
+	BOB_TYPE bob;
+	bob.setbuffer (content.c_str(),content.size(),false);
+	vector<string> recipients;
+	recipients.push_back(player);
+	<call bod_client_sendtalk>(con,session,"",recipients,"","",bob,false,"","","");
+	<f ok>
+		if (!success){
+			glocal.msg = msg;
+			glocal.ret = -1;
+		}
+	</f>
+	</call>
+	return glocal.ret;
+
+}
+</mod>
+/*
 	Dialogs for the chess game
 */
 <mod>
@@ -164,6 +214,8 @@ static void projects_dialog_chess (
 {
 	glocal fields;
 	glocal con;
+	glocal session;
+	glocal const char *path = path.ptr;
 	glocal dialog_name;
 	glocal vector<VARVAL> steps;
 	FORM_HIDDEN h1(w_dialog);
@@ -191,38 +243,69 @@ static void projects_dialog_chess (
 		if (strcmp(glocal.dialog_name,DIALOG_CHESS_CONFIG)==0){
 			for (auto &f:glocal.fields){
 				if (f.name == "player1"){
-					w_field1 = f.value;
+					if (f.value == CHESS_ROBOT){
+						w_field1 = MSG_R(I_COMPUTER);
+					}else{
+						w_field1 = f.value;
+					}
 				}else if (f.name == "player2"){
-					w_field2 = f.value;
+					if (f.value == CHESS_ROBOT){
+						w_field2 = MSG_R(I_COMPUTER);
+					}else{
+						w_field2 = f.value;
+					}
+				}else if (f.name == "name"){
+					w_field4 = f.value;
+				}else if (f.name == "timer"){
+					w_field3 = f.value;
 				}
 			}
 		}
 	</f>
 	<f setup>
 		if (strcmp(glocal.dialog_name,DIALOG_CHESS_CONFIG)==0){
-			/- <center>Chess configuration</center>
+			glocal vector<string> members;
+			const char *owner = "";
+			const char *listname = "";
+			vector<string> tb;
+			int n = str_splitline (glocal.path,'/',tb);
+			if (n >= 4){
+				owner = tb[2].c_str();
+				listname = tb[3].c_str();
+			}
+			<call bod_client_list_members>(glocal.con,glocal.session,owner,listname);
+			<f ok>
+				for (auto m:members) glocal.members.push_back(m);
+			</f>
+			</call>
+			sort (glocal.members.begin(),glocal.members.end());
+			htmlprintf ("<center>%s</center>\n",MSG_U(T_CHESSCONFIG,"Chess configuration"));
 			/- <p>
 			/- <table border=0>
-			/- <tr><td>Game name<td>
+			htmlprintf ("<tr><td>%s<td>\n",MSG_U(F_GAMENAME,"Game name"));
 			field_string(w_field4,"");
 			/- <tr><td>&nbsp;
-			/- <tr><td>Whites<td>
+			htmlprintf ("<tr><td>%s<td>",MSG_R(I_WHITE));
 			field_list (w_field1,"");
-			field_list_item("robot");
+			field_list_item(MSG_U(I_COMPUTER,"'computer'"));
+			for (auto &m:glocal.members) field_list_item(m.c_str());
 			field_list_end();
 			/-<tr><td><td>
 			field_checkbox(w_check1,"");
-			/- Send invite
+			/-#I_INVITE Send invite
 			/- <tr><td>&nbsp;
-			/- <tr><td>Blacks<td>
+			htmlprintf ("<tr><td>%s<td>",MSG_R(I_BLACK));
 			field_list (w_field2,"");
-			field_list_item("robot");
+			field_list_item(MSG_R(I_COMPUTER));
+			for (auto &m:glocal.members) field_list_item(m.c_str());
 			field_list_end();
 			/- <tr><td><td>
 			field_checkbox(w_check2,"");
-			/- Send invite
+			htmlout(MSG_R(I_INVITE));
+			htmlprintf ("<tr><td>%s<td>",MSG_U(I_INVITEMSG,"Message"));
+			field_textarea(w_field5,5,50,"");
 			/- <tr><td>&nbsp;
-			/- <tr><td>Timer<td>
+			htmlprintf ("<tr><td>%s<td>",MSG_U(I_TIMER,"Timer"));
 			field_string(w_field3,"");
 			/- </table>
 			/- <p>
@@ -233,14 +316,16 @@ static void projects_dialog_chess (
 			}
 			button_submit();
 		}else if (strcmp(glocal.dialog_name,DIALOG_CHESS_NEWGAME)==0){
-			/- <center>Attention</center>
-			/- <br>
-			/- Starting a new game
-			/- <br>
-			/- Are you sure ?
-			/- <br>
+			/- <center>
+			/-#T_ATTENTION Attention
+			/- </center><br>
+			<?#I_STARTNEWGAME You are starting a new game.
+			<br>
+			Are you sure ?
+			<br>
+			?>
 			/- <br><center>
-			button_submit("Yes");	
+			button_submit(MSG_U(B_YES,"Yes"));	
 			/- </center>
 		}
 	</f>
@@ -248,7 +333,19 @@ static void projects_dialog_chess (
 		bool ret = true;
 		if (strcmp(glocal.dialog_name,DIALOG_CHESS_CONFIG)==0){
 			if (strcmp(w_field1.c_str(),w_field2.c_str())==0){
-				glocal.error = "Can't be equal";
+				glocal.error = MSG_U(E_SAMENAME,"The two players can't be the same");
+				ret = false;
+			}else if (strcmp(w_field1.c_str(),MSG_R(I_COMPUTER))==0 && w_check1){
+				glocal.error = MSG_U(E_INVITECOMPUTER,"You can't send an invite to the computer");
+				ret = false;
+			}else if (strcmp(w_field2.c_str(),MSG_R(I_COMPUTER))==0 && w_check2){
+				glocal.error = MSG_R(E_INVITECOMPUTER);
+				ret = false;
+			}else if (strcmp(userinfo.name.c_str(),w_field1.c_str())==0 && w_check1){
+				glocal.error = MSG_U(E_INVITEYOURSELF,"You can't invite yourself");
+				ret = false;
+			}else if (strcmp(userinfo.name.c_str(),w_field2.c_str())==0 && w_check2){
+				glocal.error = MSG_R(E_INVITEYOURSELF);
 				ret = false;
 			}
 		}
@@ -258,14 +355,27 @@ static void projects_dialog_chess (
 		VARVAL var;
 		if (strcmp(glocal.dialog_name,DIALOG_CHESS_CONFIG)==0){
 			var.var = "config";
-			var.val = string_f("player1:%s\n",w_field1.c_str());
-			var.val += string_f("player2:%s\n",w_field2.c_str());
+			const char *player1 = w_field1.c_str();
+			if (strcmp(player1,MSG_R(I_COMPUTER))==0) player1 = CHESS_ROBOT;
+			const char *player2 = w_field2.c_str();
+			if (strcmp(player2,MSG_R(I_COMPUTER))==0) player2 = CHESS_ROBOT;
+			var.val = string_f("player1:%s\n",player1);
+			var.val += string_f("player2:%s\n",player2);
 			var.val += string_f("name:%s\n",w_field4.c_str());
 			var.val += string_f("timer:%s\n",w_field3.c_str());
 		}else if (strcmp(glocal.dialog_name,DIALOG_CHESS_NEWGAME)==0){
 			var.var = "resetgame";
 		}
 		glocal.steps.emplace_back(var);
+		if (w_check1
+			&& projects_sendinvite(glocal.con,glocal.session,glocal.path,MSG_U(I_PLAYCHESSGAME,"to play a chess game")
+				,w_field1.c_str(),w_field2.c_str(),w_field5.c_str(),glocal.error)==-1){
+			fail = true;
+		}else if (w_check2
+			&& projects_sendinvite(glocal.con,glocal.session,glocal.path,MSG_R(I_PLAYCHESSGAME)
+				,w_field2.c_str(),w_field1.c_str(),w_field5.c_str(),glocal.error)==-1){
+			fail = true;
+		}
 	</f>
 	</call>
 	if (glocal.steps.size() > 0){

@@ -20,4 +20,5 @@
 // Various per document dialog
 #define DIALOG_CHESS_CONFIG	"config"
 #define DIALOG_CHESS_NEWGAME	"newgame"
+#define CHESS_ROBOT		"--robot--"
 #endif

@@ -2,7 +2,7 @@ extern const char **_dictionary_bolixo;
 #ifndef DICTIONARY_REQUEST
 	#define DICTIONARY_REQUEST \
 	const char **_dictionary_bolixo;\
-	TRANSLATE_SYSTEM_REQ _dictionary_req_bolixo("bolixo",_dictionary_bolixo,675,19);\
+	TRANSLATE_SYSTEM_REQ _dictionary_req_bolixo("bolixo",_dictionary_bolixo,696,20);\
 	void dummy_dict_bolixo(){}
 #endif
 #ifndef MSG_U
@@ -688,3 +688,24 @@ extern const char **_dictionary_bolixo;
 #define I_CHAT	672
 #define O_LISTUSERS	673
 #define I_CONFIG	674
+#define T_ATTENTION	675
+#define B_YES	676
+#define I_STARTNEWGAME	677
+#define E_GROUPNOTEXIST	678
+#define E_ACCESS	679
+#define O_PRINTLISTMEMBERS	680
+#define E_NOLISTNAME	681
+#define E_NOGROUPNAME	682
+#define E_NODESCRIPTION	683
+#define I_COMPUTER	684
+#define E_SAMENAME	685
+#define F_GAMENAME	686
+#define I_INVITE	687
+#define I_TIMER	688
+#define T_CHESSCONFIG	689
+#define E_INVITECOMPUTER	690
+#define E_INVITEYOURSELF	691
+#define I_INVITEMSG	692
+#define INVITEHIMSELF	693
+#define I_INVITEOTHER	694
+#define I_PLAYCHESSGAME	695

@@ -32,6 +32,7 @@ using namespace std;
 
 #include "proto/documentd_chess.protoh"
 #define documentd_chess_players_NOTNEED
+#define documentd_chess_chat_NOTNEED
 #include "proto/documentd_chess.protoch"
 
 inline bool chs_is_king(char cell){
@@ -473,7 +474,7 @@ const unsigned ROBOT_DEPTH_LEVEL=4;	// Trick to limit skill of gnuchess
 static void copy_player (const CHESS_FILE_PLAYER2_receive &fplayer, CHESS_PLAYER &player)
 {
 	player.name = fplayer.name;
-	player.robot_level = (player.name == "robot") ? ROBOT_DEPTH_LEVEL : 0;
+	player.robot_level = (player.name == CHESS_ROBOT) ? ROBOT_DEPTH_LEVEL : 0;
 	player.line = fplayer.line;
 	player.col  = fplayer.col;
 	player.king_moved = fplayer.king_moved;
@@ -508,7 +509,10 @@ void CHESS::save(DOC_WRITER &w, bool save_session_info)
 		uns.push_back(un);
 	}
 	documentd_chess_undo(&w,uns);
-	documentd_chess_chat(&w,chat);
+	vector<CHESS_CHAT> schat;
+	documentd_copychat (schat,chat);
+	documentd_chess_chat2(&w,schat);
+	documentd_chess_gameinfo(&w,gamename,timer);
 }
 <mod>
 void CHESS::load(DOC_READER &r, string &msg)
@@ -522,6 +526,8 @@ void CHESS::load(DOC_READER &r, string &msg)
 	glocal sessions;
 	glocal undos;
 	glocal chat;
+	glocal gamename;
+	glocal timer;
 	chat.clear();
 	resetgame();
 	sessions.clear();
@@ -565,7 +571,14 @@ void CHESS::load(DOC_READER &r, string &msg)
 		}
 	</f>
 	<f chat>
-		for (auto l:lines) glocal.chat.push_back(l);
+		for (auto l:lines) glocal.chat.emplace_back(0,l);
+	</f>
+	<f chat2>
+		for (auto l:lines) glocal.chat.emplace_back(l.time,l.line);
+	</f>
+	<f gameinfo>
+		glocal.gamename = gamename;
+		glocal.timer = timer;
 	</f>
 	<f invalid>
 		glocal.msg = "Invalid format for sudoku file";
@@ -724,14 +737,40 @@ void CHESS::update_msg(
 	js_find_set (mvar.val,"msg","style.color",color,"innerHTML",documentd_escape(msg).c_str());
 	res.emplace_back(mvar);
 }
+const unsigned BOX_PLAYER_WIDTH=150;
+const unsigned BOX_PLAYER_HEIGHT=20;
+const unsigned BOX_PLAYER_WIDTH_MOBILE=300;
+const unsigned BOX_PLAYER_HEIGHT_MOBILE=40;
+static const char *svg_robot = "<svg id=chessrobot viewport=\"0 0 140 18\">"
+	"<path stroke=black stroke-width=1 d=\"M0,0 h 140 v 18 H 0 Z\" fill=gray />"
+	"<circle cx=20 cy=9 fill=yellow r=4 />"
+	"<circle cx=40 cy=9 fill=blue r=4 />"
+	"<circle cx=60 cy=9 fill=red r=4 />"
+	"<circle cx=80 cy=9 fill=black r=4 />"
+	"<circle cx=100 cy=9 fill=yellow r=4 />"
+	"<circle cx=120 cy=9 fill=red r=4 />"
+	"</svg>";
+static const char *svg_robot_mobile = "<svg width=300 height=60 viewport=\"0 0 140 18\">"
+	"<path stroke=black stroke-width=1 d=\"M0,0 h 140 v 18 H 0 Z\" fill=gray />"
+	"<circle cx=20 cy=9 fill=yellow r=4 />"
+	"<circle cx=40 cy=9 fill=blue r=4 />"
+	"<circle cx=60 cy=9 fill=red r=4 />"
+	"<circle cx=80 cy=9 fill=black r=4 />"
+	"<circle cx=100 cy=9 fill=yellow r=4 />"
+	"<circle cx=120 cy=9 fill=red r=4 />"
+	"</svg>";
 		
 static void print_player(string &lines, PARAM_STRING gameid, PARAM_STRING name, unsigned playernum, bool playing, bool mobile)
 {
 	const char *color = playing ? "lightblue" : "white";
 	unsigned margin = 5;
-	unsigned width=150;
+	unsigned width=BOX_PLAYER_WIDTH;
+	unsigned height=BOX_PLAYER_HEIGHT;
+	const char *svg = svg_robot;
 	if (mobile){
-		width = 250;
+		width = BOX_PLAYER_WIDTH_MOBILE;
+		height=BOX_PLAYER_HEIGHT_MOBILE;
+		svg = svg_robot_mobile;
 		margin = 10;
 	}
 	lines += string_f("<div onmousedown=playersel(event,%u,0) oncontextmenu='playersel(event,%u,1); return false;'"
@@ -747,8 +786,10 @@ static void print_player(string &lines, PARAM_STRING gameid, PARAM_STRING name, 
 	lines += string_f("<div style='border: 1px solid black; background-color:%s;padding-left:5px;text-align:center;'>\n",bgcolor);
 	lines += string_f("<font style='color:%s; font-size:1.5em;'>%s</font>\n",player_color,msg);
 	lines += "</div>\n";
-	lines += string_f("<div id=player%u-%s style='background-color:%s; padding:5px;'>\n",playernum,gameid.ptr,color);
+	lines += string_f("<div id=player%u-%s style='width:%u;height:%u;background-color:%s; padding:5px;'>\n"
+		,playernum,gameid.ptr,width,height,color);
 	const char *namept = name.ptr;
+	if(strcmp(namept,CHESS_ROBOT)==0) namept = svg;
 	if (namept[0] == '\0') namept = "&nbsp;";
 	lines += string_f("%s\n",namept);
 	lines += "</div>\n";
@@ -833,6 +874,13 @@ void CHESS::robot_request(vector<VARVAL> &res)
 		res.push_back(robot);
 	}
 }
+void CHESS::update_players(string &notify)
+{
+	const char *player = player1.name == CHESS_ROBOT ? svg_robot : player1.name.c_str();
+	js_find_set(notify,"player0","innerHTML",player);
+	player = player2.name == CHESS_ROBOT ? svg_robot : player2.name.c_str();
+	js_find_set(notify,"player1","innerHTML",player);
+}
 void CHESS::exec (
 	const char *var,
 	const char *val,
@@ -847,7 +895,7 @@ void CHESS::exec (
 	VARVAL notify_var;
 	notify_var.var = VAR_NOTIFY;
 	if (maywrite){
-		unsigned robot_level = strcmp(username,"robot")==0 ? ROBOT_DEPTH_LEVEL : 0;
+		unsigned robot_level = strcmp(username,CHESS_ROBOT)==0 ? ROBOT_DEPTH_LEVEL : 0;
 		if (player1.name.size() == 0 && player2.name != username){
 			player1.name = username;
 			player1.robot_level = robot_level;
@@ -951,21 +999,39 @@ void CHESS::exec (
 			lines += "}\n";
 			lines += "</script>\n";
 			
-			lines += string_f("<div id=tab_form style='display:flex; flex-flow:row; margin-bottom:%upx; width:%u'>\n",sp.mobile ? 30 : 0,sp.content_width);
-			lines += "<div style='margin-top:10; margin-right:30;'>\n";
-			documentd_button_start(lines,gameid);
-			documentd_button (lines,0,MSG_R(I_NEWGAME),false);
-			documentd_button_end(lines);
-			lines += "</div>\n";
-			print_player(lines,gameid,player1.name,0,player1_playing,sp.mobile);
-			print_player(lines,gameid,player2.name,1,!player1_playing,sp.mobile);
-			lines += "<div style='margin-top:10;'>\n";
-			documentd_button_start(lines,gameid);
-			documentd_button (lines,1,MSG_U(I_UNDO,"Undo"),false);
-			documentd_button (lines,2,MSG_U(I_CONFIG,"Config"),false);
-			documentd_button_end(lines);
-			lines += "</div>\n";
-			lines += "</div>\n";
+			// We center the players, knowing the content_width;
+			{
+				lines += string_f("<div id=tab_form style='display:flex; flex-flow:row; margin-bottom:%upx; width:%u'>\n",sp.mobile ? 30 : 0,sp.content_width);
+				unsigned player_width = sp.mobile ? BOX_PLAYER_WIDTH_MOBILE : BOX_PLAYER_WIDTH;
+				unsigned extra_width = (sp.content_width-2*player_width)/2;
+				if (sp.mobile){
+					lines += string_f("<div style='width:%u;margin-top:10; margin-right:30;'></div>\n",extra_width);
+				}else{
+					lines += string_f("<div style='width:%u;margin-top:10; margin-right:30;'>\n",extra_width);
+					documentd_button_start(lines,gameid);
+					documentd_button (lines,0,MSG_R(I_NEWGAME),false);
+					documentd_button_end(lines);
+					lines += string_f("<div id=gamename-%s style='width:%u;padding-left:5; margin-left:5;' >"
+						,gameid.c_str(),extra_width-30-5-5);
+					lines += string_f("%s\n",gamename.c_str());
+					lines += "</div>";
+					lines += "</div>\n";
+				}
+				print_player(lines,gameid,player1.name,0,player1_playing,sp.mobile);
+				print_player(lines,gameid,player2.name,1,!player1_playing,sp.mobile);
+				if (!sp.mobile){
+					lines += "<div style='margin-top:10;'>\n";
+					documentd_button_start(lines,gameid);
+					documentd_button (lines,1,MSG_U(I_UNDO,"Undo"),false);
+					documentd_button (lines,2,MSG_U(I_CONFIG,"Config"),false);
+					documentd_button_end(lines);
+					lines += string_f("<div id=timer-%s style='width:100;padding-left:5; margin-left:5;' >",gameid.c_str());
+					lines += timer;
+					lines += "</div>\n";
+					lines += "</div>\n";
+				}
+				lines += "</div>\n";
+			}
 			lines += "<div class=webtable id=doc_chess style='display:flex; flex-flow:row;'>\n";
 			lines += string_f("<div style='flex:0 0 auto; overflow: hidden; margin-right:%u;'>\n",reverse_margin);
 			lines += string_f("<svg width='%upx' height='%upx' viewbox='0 0 %u %u'"
@@ -1080,16 +1146,15 @@ void CHESS::exec (
 		documentd_forcerefresh(res);
 		if (maywrite) setmodified(username);
 	}else if (strcmp(var,"chat")==0){
-		chat.push_back(val);
-		while (chat.size() > 10) chat.erase(chat.begin());
-		notify_var.val += string_f("appendchat('%s');\n",documentd_escape(val).c_str());
-		documentd_setchanges(res);
+		appendchat(val,notify_var.val,res);
 	}else if (strcmp(var,REQ_GETFIELDS)==0){
 		VARVAL var;
 		var.var = VAR_FIELDS;
 		if (strcmp(val,DIALOG_CHESS_CONFIG)==0){
 			var.val = string_f("player1:%s\n",player1.name.c_str());
 			var.val += string_f("player2:%s\n",player2.name.c_str());
+			var.val += string_f("name:%s\n",gamename.c_str());
+			var.val += string_f("timer:%s\n",timer.c_str());
 		}
 		res.emplace_back(var);
 	}else if (maywrite){
@@ -1319,13 +1384,18 @@ void CHESS::exec (
 					player1.name = f.val;
 				}else if (f.var == "player2"){
 					player2.name = f.val;
+				}else if (f.var == "name"){
+					gamename = f.val;
+				}else if (f.var == "timer"){
+					timer = f.val;
 				}
 			}
-			player1.robot_level = player1.name == "robot" ? ROBOT_DEPTH_LEVEL : 0;
-			player2.robot_level = player2.name == "robot" ? ROBOT_DEPTH_LEVEL : 0;
+			player1.robot_level = player1.name == CHESS_ROBOT ? ROBOT_DEPTH_LEVEL : 0;
+			player2.robot_level = player2.name == CHESS_ROBOT ? ROBOT_DEPTH_LEVEL : 0;
 			setmodified(username);
-			js_find_set(notify_var.val,"player0","innerHTML",player1.name.c_str());
-			js_find_set(notify_var.val,"player1","innerHTML",player2.name.c_str());
+			update_players(notify_var.val);
+			js_find_set(notify_var.val,"gamename","innerHTML",gamename.c_str());
+			js_find_set(notify_var.val,"timer","innerHTML",timer.c_str());
 			robot_request(res);
 		}else if (strcmp(var,"playersel")==0){
 			unsigned playernum,button;
@@ -1352,7 +1422,7 @@ void CHESS::exec (
 						player->robot_level = ROBOT_DEPTH_LEVEL;
 						other_player->robot_level = 0;
 					}else{
-						player->name = "robot";
+						player->name = CHESS_ROBOT;
 						player->robot_level = ROBOT_DEPTH_LEVEL;
 					}
 				}else if (other_player->name == username){
@@ -1363,8 +1433,7 @@ void CHESS::exec (
 					player->robot_level = 0;
 				}
 				setmodified(username);
-				js_find_set(notify_var.val,"player0","innerHTML",player1.name.c_str());
-				js_find_set(notify_var.val,"player1","innerHTML",player2.name.c_str());
+				update_players(notify_var.val);
 				robot_request(res);
 			}
 		}else if (strcmp(var,"loadline")==0){
@@ -1490,7 +1559,7 @@ void CHESS::engine_reply (const char *line, string &notify, bool &done)
 			steps.emplace_back(st);
 			st.val = cmd2.c_str();
 			steps.emplace_back(st);
-			manyexec (steps,"session","robot",true,sp,res);
+			manyexec (steps,"session",CHESS_ROBOT,true,sp,res);
 			for (auto &r:res){
 				if (r.var == VAR_NOTIFY){
 					notify += r.val;
