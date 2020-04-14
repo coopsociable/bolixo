@@ -973,14 +973,21 @@ void CHESS::exec (
 			// is started.
 			lines += "var tbanim=[];\n";
 			lines += "function fctanimate(x0,y0,x1,y1,nostep,steps,duration,utf8,stroke,fill,fctend){\n";
+			if (reverse){
+				lines += "\tvar ly0=7-y0;\n";
+				lines += "\tvar ly1=7-y1;\n";
+			}else{
+				lines += "\tvar ly0=y0;\n";
+				lines += "\tvar ly1=y1;\n";
+			}
 			lines += "\tvar txt = document.getElementById('txtanim');\n";
 			lines += "\ttxt.innerHTML = utf8;\n";
 			//lines += "\tconsole.log ('txt='+' nostep='+nostep+' steps='+steps+' x0='+x0+' y0='+y0+' x1='+x1+' y1='+y1+' utf8='+utf8);\n";
 			lines += string_f ("\tvar stepx = (x1-x0)*%u/steps;\n",w8);
-			lines += string_f ("\tvar stepy = (y1-y0)*%u/steps;\n",w8);
+			lines += string_f ("\tvar stepy = (ly1-ly0)*%u/steps;\n",w8);
 			//lines += "\tconsole.log ('stepx='+stepx+' stepy='+stepy);\n";
 			lines += string_f("\ttxt.setAttribute('x',x0*%u+stepx*nostep+%u);\n",w8,w8_2);
-			lines += string_f("\ttxt.setAttribute('y',y0*%u+stepy*nostep+%u);\n",w8,h8_3_4);
+			lines += string_f("\ttxt.setAttribute('y',ly0*%u+stepy*nostep+%u);\n",w8,h8_3_4);
 			lines += "\ttxt.style.fill=fill;\n";
 			lines += "\ttxt.style.stroke=stroke;\n";
 			lines += "\tnostep++;\n";
@@ -1004,23 +1011,22 @@ void CHESS::exec (
 				lines += string_f("<div id=tab_form style='display:flex; flex-flow:row; margin-bottom:%upx; width:%u'>\n",sp.mobile ? 30 : 0,sp.content_width);
 				unsigned player_width = sp.mobile ? BOX_PLAYER_WIDTH_MOBILE : BOX_PLAYER_WIDTH;
 				unsigned extra_width = (sp.content_width-2*player_width)/2;
-				if (sp.mobile){
-					lines += string_f("<div style='width:%u;margin-top:10; margin-right:30;'></div>\n",extra_width);
-				}else{
-					lines += string_f("<div style='width:%u;margin-top:10; margin-right:30;'>\n",extra_width);
+				{
+					unsigned side_width = sp.mobile ? sp.content_width/2 : extra_width;
+					lines += string_f("<div style='width:%u;margin-top:10; margin-right:30;'>\n",side_width);
 					documentd_button_start(lines,gameid);
 					documentd_button (lines,0,MSG_R(I_NEWGAME),false);
 					documentd_button_end(lines);
 					lines += string_f("<div id=gamename-%s style='width:%u;padding-left:5; margin-left:5;' >"
-						,gameid.c_str(),extra_width-30-5-5);
+						,gameid.c_str(),side_width-30-5-5);
 					lines += string_f("%s\n",gamename.c_str());
 					lines += "</div>";
 					lines += "</div>\n";
-				}
-				print_player(lines,gameid,player1.name,0,player1_playing,sp.mobile);
-				print_player(lines,gameid,player2.name,1,!player1_playing,sp.mobile);
-				if (!sp.mobile){
-					lines += "<div style='margin-top:10;'>\n";
+					if (!sp.mobile){
+						print_player(lines,gameid,player1.name,0,player1_playing,sp.mobile);
+						print_player(lines,gameid,player2.name,1,!player1_playing,sp.mobile);
+					}
+					lines += string_f("<div style='margin-top:10;text-align:right;width:%u;'>\n",side_width);
 					documentd_button_start(lines,gameid);
 					documentd_button (lines,1,MSG_U(I_UNDO,"Undo"),false);
 					documentd_button (lines,2,MSG_U(I_CONFIG,"Config"),false);
@@ -1031,6 +1037,13 @@ void CHESS::exec (
 					lines += "</div>\n";
 				}
 				lines += "</div>\n";
+				if (sp.mobile){
+					lines += string_f("<div id=tab_form style='display:flex; flex-flow:row; margin-bottom:%upx; width:%u'>\n",sp.mobile ? 30 : 0,sp.content_width);
+					lines += string_f("<div style='width:%u;margin-top:10; margin-right:30;'></div>\n",extra_width);
+					print_player(lines,gameid,player1.name,0,player1_playing,sp.mobile);
+					print_player(lines,gameid,player2.name,1,!player1_playing,sp.mobile);
+					lines += "</div>\n";
+				}
 			}
 			lines += "<div class=webtable id=doc_chess style='display:flex; flex-flow:row;'>\n";
 			lines += string_f("<div style='flex:0 0 auto; overflow: hidden; margin-right:%u;'>\n",reverse_margin);
