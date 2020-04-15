@@ -608,7 +608,16 @@ struct CELL_SPEC{
 	const char *stroke_color;
 	const char *fill_color;
 };
-static void cnv_cell_html (char cell, CELL_SPEC &spec)
+/*
+	We convert a cell letter into HTML and we include the proper stroke and fill color.
+	We use a trick. On the desktop, we use the HTML corresponding to the lower case piece
+	and play with the stroke and fill color. This looks much nicer.
+
+	On mobile (Android at least), a different font is used and the trick fails.
+	So on mobile, we use both lower and upper case letter.
+	We do the same trick in the javascript function showpiece() below.
+*/
+static void cnv_cell_html (char cell, CELL_SPEC &spec, bool mobile)
 {
 	spec.utf8 = " ";
 	if (isupper(cell)){
@@ -621,15 +630,9 @@ static void cnv_cell_html (char cell, CELL_SPEC &spec)
 		spec.fill_color = "none";
 		spec.stroke_color = "none";
 	}
-	#if 1
+	if (!mobile){
 		cell = tolower (cell);	// We are using the same chars, but using a different fill color. Looks nicer
-	#else
-		if (isupper(cell)){
-			cell = tolower(cell);
-		}else{
-			cell = toupper(cell);
-		}
-	#endif
+	}
 	if (cell == 'K'){
 		spec.utf8 = "&#9812;";
 	}else if (cell == 'Q'){
@@ -655,6 +658,10 @@ static void cnv_cell_html (char cell, CELL_SPEC &spec)
 	}else if (cell == 'p'){
 		spec.utf8 = "&#9823;";
 	}
+}
+inline void update_cell (VARVAL &var, PARAM_STRING id, char cell)
+{
+	var.val += string_f("findupdpiece('%s','%c');\n",id.ptr,cell);
 }
 /*
 	Undo one step
@@ -692,10 +699,7 @@ void CHESS::undoone(VARVAL &notify_var)
 						player->reset_lastmove();
 					}
 					string text_id = string_f("c%u,%u",u.line,u.col);
-					CELL_SPEC spec;
-					cnv_cell_html (u.cell,spec);
-					js_find_loop_set (notify_var.val,"grid","text",text_id,"innerHTML",spec.utf8
-						,"style.stroke",spec.stroke_color,"style.fill",spec.fill_color);
+					update_cell(notify_var,text_id,u.cell);
 					grid[u.line][u.col] = u.cell;	
 				}else if (u.type == CHESS_UNDO_LASTMOVE){
 					// tlmp_warning ("undo lastmove %u %u",u.line,u.col);
@@ -940,6 +944,7 @@ void CHESS::exec (
 			unsigned grid_width = w8*8;
 			unsigned grid_height = w8*8;
 			unsigned font_size = h8*9/10;
+			if (sp.mobile) font_size -= 15;
 			unsigned w8_2 = w8/2;
 			unsigned h8_3_4 = 3*h8/4;
 	
@@ -968,11 +973,57 @@ void CHESS::exec (
 			lines += "\tgameaction(event,'reverse:');\n";
 			lines += "\tevent.stopPropagation();\n";
 			lines += "}\n";
+			// Convert chess piece into HTML
+			lines += "var tbhtml=[];\n";
+			lines += "tbhtml['K'] = '&#9812;';\n";
+			lines += "tbhtml['Q'] = '&#9813;';\n";
+			lines += "tbhtml['R'] = '&#9814;';\n";
+			lines += "tbhtml['B'] = '&#9815;';\n";
+			lines += "tbhtml['N'] = '&#9816;';\n";
+			lines += "tbhtml['P'] = '&#9817;';\n";
+			lines += "tbhtml['k'] = '&#9818;';\n";
+			lines += "tbhtml['q'] = '&#9819;';\n";
+			lines += "tbhtml['r'] = '&#9820;';\n";
+			lines += "tbhtml['b'] = '&#9821;';\n";
+			lines += "tbhtml['n'] = '&#9822;';\n";
+			lines += "tbhtml['p'] = '&#9823;';\n";
+			lines += "tbhtml[' '] = ' ';\n";
+
+			lines += "function showpiece(elm,piece){\n";
+			lines += "\tvar fill_color='none';\n";
+			lines += "\tvar stroke_color='none';\n";
+			lines += "\tif (piece===piece.toUpperCase()){\n";
+			lines += "\t\tfill_color = 'white';\n";
+			lines += "\t\tstroke_color = 'black';\n";
+			lines += "\t}else if (piece===piece.toLowerCase()){\n";
+			lines += "\t\tfill_color = 'black';\n";
+			lines += "\t\tstroke_color = 'white';\n";
+			lines += "\t}\n";
+			if (sp.mobile){
+				// See comment in cnv_
+				lines += "\telm.innerHTML=tbhtml[piece];\n";
+			}else{
+				lines += "\telm.innerHTML=tbhtml[piece.toLowerCase()];\n";
+			}
+			lines += "\telm.style.stroke=stroke_color;\n";
+			lines += "\telm.style.fill=fill_color;\n";
+			lines += "}\n";
+			lines += "function findupdpiece(id,piece){\n";
+			lines += string_f ("\tvar elm = document.getElementById('grid-%s');\n",gameid.c_str());
+			lines += "\tif (elm != null){\n";
+			lines += "\t\tvar elms = elm.getElementsByTagName('text');\n";
+			lines += "\t\tfor (var i=0; i<elms.length; i++){\n";
+			lines += "\t\t\tvar e = elms[i];\n";
+			lines += "\t\t\tif (e.id == id) showpiece(e,piece);\n";
+			lines += "\t\t}\n";
+			lines += "\t}\n";
+			lines += "}\n";
+
 			// fctanimate receive a starting cell position and perform an animation on the grid
 			// tbanim[] records animation to execute. At the end of fctanimate, the next animation
 			// is started.
 			lines += "var tbanim=[];\n";
-			lines += "function fctanimate(x0,y0,x1,y1,nostep,steps,duration,utf8,stroke,fill,fctend){\n";
+			lines += "function fctanimate(x0,y0,x1,y1,nostep,steps,duration,piece,fctend){\n";
 			if (reverse){
 				lines += "\tvar ly0=7-y0;\n";
 				lines += "\tvar ly1=7-y1;\n";
@@ -981,20 +1032,18 @@ void CHESS::exec (
 				lines += "\tvar ly1=y1;\n";
 			}
 			lines += "\tvar txt = document.getElementById('txtanim');\n";
-			lines += "\ttxt.innerHTML = utf8;\n";
+			lines += "\tshowpiece(txt,piece);\n";
 			//lines += "\tconsole.log ('txt='+' nostep='+nostep+' steps='+steps+' x0='+x0+' y0='+y0+' x1='+x1+' y1='+y1+' utf8='+utf8);\n";
 			lines += string_f ("\tvar stepx = (x1-x0)*%u/steps;\n",w8);
 			lines += string_f ("\tvar stepy = (ly1-ly0)*%u/steps;\n",w8);
 			//lines += "\tconsole.log ('stepx='+stepx+' stepy='+stepy);\n";
 			lines += string_f("\ttxt.setAttribute('x',x0*%u+stepx*nostep+%u);\n",w8,w8_2);
 			lines += string_f("\ttxt.setAttribute('y',ly0*%u+stepy*nostep+%u);\n",w8,h8_3_4);
-			lines += "\ttxt.style.fill=fill;\n";
-			lines += "\ttxt.style.stroke=stroke;\n";
 			lines += "\tnostep++;\n";
 			lines += "\tif (nostep < steps){\n";
 			//lines += "\t\tconsole.log ('timer='+duration/steps);\n";
 			lines += "\t\twindow.setTimeout(function(){\n";
-			lines += "\t\t\tfctanimate(x0,y0,x1,y1,nostep,steps,duration,utf8,stroke,fill,fctend);\n";
+			lines += "\t\t\tfctanimate(x0,y0,x1,y1,nostep,steps,duration,piece,fctend);\n";
 			lines += "\t\t\t},duration/steps);\n";
 			lines += "\t}else{\n";
 			lines += "\t\ttxt.style.fill='none';\n";
@@ -1111,7 +1160,7 @@ void CHESS::exec (
 						,line,col,w8_col+w8_2,h8_line+h8_2,last_radius,last_color);
 					// Piece
 					CELL_SPEC spec;
-					cnv_cell_html (cell,spec);
+					cnv_cell_html (cell,spec,sp.mobile);
 					lines += string_f("<text class=piece id='c%u,%u' X=%u Y=%u style='stroke:%s;fill:%s;'>%s</text>\n"
 						,line,col,w8_col+w8_2,h8_line+h8_3_4,spec.stroke_color,spec.fill_color,spec.utf8);
 					// Circle to the left to show a selected piece
@@ -1214,7 +1263,7 @@ void CHESS::exec (
 								undo.type = CHESS_UNDO_MOVE;
 								undos.push_back(undo);
 								string id = string_f("c%u,%u",other_player->en_passant.line,other_player->en_passant.col);
-								js_find_loop_set (notify_var.val,"grid","text",id,"innerHTML"," ");
+								update_cell (notify_var,id,' ');
 								grid[undo.line][undo.col] = ' ';
 							}
 							if (effects.left_castling){
@@ -1231,13 +1280,9 @@ void CHESS::exec (
 								undo.cell = ' ';
 								undos.push_back(undo);
 								string id = string_f("c%u,%u",from_line,0);
-								js_find_loop_set (notify_var.val,"grid","text",id,"innerHTML"," "
-									,"style.stroke","none","style.fill","none");
+								update_cell (notify_var,id,' ');
 								id = string_f("c%u,%u",from_line,3);
-								CELL_SPEC spec;
-								cnv_cell_html (rook,spec);
-								js_find_loop_set (notify_var.val,"grid","text",id,"innerHTML",spec.utf8
-									,"style.stroke",spec.stroke_color,"style.fill",spec.fill_color);
+								update_cell (notify_var,id,rook);
 								grid[from_line][0] = ' ';
 								grid[from_line][3] = rook;
 							}
@@ -1255,18 +1300,14 @@ void CHESS::exec (
 								undo.cell = ' ';
 								undos.push_back(undo);
 								string id = string_f("c%u,%u",from_line,7);
-								js_find_loop_set (notify_var.val,"grid","text",id,"innerHTML"," "
-									,"style.stroke","none","style.fill","none");
+								update_cell (notify_var,id,' ');
 								id = string_f("c%u,%u",from_line,5);
-								CELL_SPEC spec;
-								cnv_cell_html (rook,spec);
-								js_find_loop_set (notify_var.val,"grid","text",id,"innerHTML",spec.utf8
-									,"style.stroke",spec.stroke_color,"style.fill",spec.fill_color);
+								update_cell (notify_var,id,rook);
 								grid[from_line][7] = ' ';
 								grid[from_line][5] = rook;
 							}
 							string old_text_id = string_f("c%u,%u",player->line,player->col);
-							js_find_loop_set (notify_var.val,"grid","text",old_text_id,"innerHTML"," ");
+							update_cell(notify_var,old_text_id,' ');
 							unsigned player_line=player->line;	// Save player action for the fctanimate call
 							unsigned player_col=player->col;
 							execmove (player,other_player,lo,co,effects);
@@ -1275,10 +1316,7 @@ void CHESS::exec (
 								documentd_setchanges(res);
 							}
 							string new_text_id = string_f("c%u,%u",lo,co);
-							CELL_SPEC spec;
-							cnv_cell_html (new_cell,spec);
-							js_find_loop_set (notify_var.val,"grid","text",new_text_id,"innerHTML",spec.utf8
-								,"style.stroke",spec.stroke_color,"style.fill",spec.fill_color);
+							update_cell (notify_var,new_text_id,new_cell);
 							js_find_loop_set (notify_var.val,"grid","circle",sel_id,"style.fill","none","style.stroke","none");
 							show_marked_pieces (notify_var,"none");
 							if (check_expose (player1_playing,marked_pieces)){
@@ -1305,8 +1343,8 @@ void CHESS::exec (
 							float dist = sqrt(pow((int)(co-player_col),2)+pow((int)(lo-player_line),2));
 							unsigned duration = 1000/8*dist;	// Distance maximum is 8. Max duration is 1000ms
 							// tlmp_warning ("dist=%f duration=%u",dist,duration);
-							notify_var.val += string_f("fctanimate(%u,%u,%u,%u,0,100,%u,\"%s\",\"%s\",\"%s\",fctend);\n"
-								,player_col,player_line,co,lo,duration,spec.utf8,spec.stroke_color,spec.fill_color);
+							notify_var.val += string_f("fctanimate(%u,%u,%u,%u,0,100,%u,\"%c\",fctend);\n"
+								,player_col,player_line,co,lo,duration,new_cell);
 							notify_var.val += "};\n";
 							notify_var.val += "if (tbanim.length==1) tbanim[0]();\n";
 							show_marked_pieces (notify_var,"red");
@@ -1364,11 +1402,7 @@ void CHESS::exec (
 			for (unsigned i=0; i<8; i++){
 				for (unsigned j=0; j<8; j++){
 					char cell = grid[i][j];
-					CELL_SPEC spec;
-					cnv_cell_html (cell,spec);
-					notify_var.val += string_f("\t\telms[%u].style.fill='%s';\n",item,spec.fill_color);
-					notify_var.val += string_f("\t\telms[%u].style.stroke='%s';\n",item,spec.stroke_color);
-					notify_var.val += string_f("\t\telms[%u].innerHTML='%s';\n",item,spec.utf8);
+					notify_var.val += string_f("\t\tshowpiece(elms[%u],\"%c\");\n",item,cell);
 					item++;
 				}
 			}
