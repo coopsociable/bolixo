@@ -990,18 +990,6 @@ static void index_show_shortmsg(
 		const char *last = fseen.last.c_str();
 		if (w_showhidden == 1){
 			last = "";
-			//util_delnotify (glocal.con_sess,"talks",glocal.id);
-			bool talks_found = false;
-			for (auto &s:userinfo.notifies){
-				if (is_start_any_of (s,NONEED,"talks:")) talks_found = true;
-			}
-			userinfo.talk_notify = talks_found;
-			if (!talks_found){
-				/- <script>
-				/- document.getElementById('tabrecttalks').setAttribute('fill', 'white');
-				/- tabcolor['tabrecttalks'] = 'white';
-				/- </script>
-			}
 		}
 		<call bod_client_list_talk>(glocal.con,w_session.c_str(),"",glocal.groupname,glocal.groupowner
 			,fulltext,nbskip,nblines,last);
@@ -1017,7 +1005,20 @@ static void index_show_shortmsg(
 				if (glocal.rownum == 0 && nbnew == 0 && messages.size() > 0){
 					web_update_firstseen(glocal.con_sess,glocal.table, messages[0].uuid);
 				}
-				if (nbnew == 0)  util_delnotify (glocal.con_sess,"talks",glocal.id);
+				if (nbnew == 0){
+					util_delnotify (glocal.con_sess,"talks",glocal.id);
+					bool talks_found = false;
+					for (auto &s:userinfo.notifies){
+						if (is_start_any_of (s,NONEED,"talks:")) talks_found = true;
+					}
+					userinfo.talk_notify = talks_found;
+					if (!talks_found){
+						/- <script>
+						/- document.getElementById('tabrecttalks').setAttribute('fill', 'white');
+						/- tabcolor['tabrecttalks'] = 'white';
+						/- </script>
+					}
+				}
 				string day;
 				static const char *line_styles[]={"sep","sep1"};
 				unsigned line_style = 0;
