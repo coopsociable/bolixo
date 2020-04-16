@@ -2,7 +2,7 @@ extern const char **_dictionary_bolixo;
 #ifndef DICTIONARY_REQUEST
 	#define DICTIONARY_REQUEST \
 	const char **_dictionary_bolixo;\
-	TRANSLATE_SYSTEM_REQ _dictionary_req_bolixo("bolixo",_dictionary_bolixo,696,20);\
+	TRANSLATE_SYSTEM_REQ _dictionary_req_bolixo("bolixo",_dictionary_bolixo,723,22);\
 	void dummy_dict_bolixo(){}
 #endif
 #ifndef MSG_U
@@ -709,3 +709,30 @@ extern const char **_dictionary_bolixo;
 #define INVITEHIMSELF	693
 #define I_INVITEOTHER	694
 #define I_PLAYCHESSGAME	695
+#define I_SKILLMINIMAL	696
+#define I_SKILLLOW	697
+#define I_SKILLMEDIUM	698
+#define I_COMPUTERSKILL	699
+#define I_USERPLAYED	700
+#define I_USERPLAYEDTOOK	701
+#define I_COMPCANTDO	702
+#define I_USERCOMPUTER	703
+#define I_SKILLSTRONG	704
+#define I_SKILLVSTRONG	705
+#define I_THE_PAWN	706
+#define I_A_PAWN	707
+#define I_HIS_ROOK	708
+#define I_ITS_ROOK	709
+#define I_THE_ROOK	710
+#define I_HIS_KNIGHT	711
+#define I_ITS_KNIGHT	712
+#define I_THE_KNIGHT	713
+#define I_HIS_BISHOP	714
+#define I_ITS_BISHOP	715
+#define I_THE_BISHOP	716
+#define I_HIS_QUEEN	717
+#define I_ITS_QUEEN	718
+#define I_THE_QUEEN	719
+#define I_HIS_KING	720
+#define I_ITS_KING	721
+#define I_THE_KING	722

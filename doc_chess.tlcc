@@ -33,8 +33,19 @@ using namespace std;
 #include "proto/documentd_chess.protoh"
 #define documentd_chess_players_NOTNEED
 #define documentd_chess_chat_NOTNEED
+#define documentd_chess_gameinfo_NOTNEED
 #include "proto/documentd_chess.protoch"
 
+static unsigned maxskill=3;	// Max skill level offered to users
+
+void chess_setmaxskill (unsigned _maxskill)
+{
+	if (_maxskill > 0 && _maxskill <= 5) maxskill = _maxskill;
+}
+unsigned chess_getmaxskill()
+{
+	return maxskill;
+}
 inline bool chs_is_king(char cell){
 	return is_any_of(cell,'k','K');
 }
@@ -470,11 +481,10 @@ static void copy_player (const CHESS_FILE_PLAYER_receive &fplayer, CHESS_PLAYER 
 	player.en_passant.line = fplayer.en_passant_line;
 	player.en_passant.col = fplayer.en_passant_col;
 }
-const unsigned ROBOT_DEPTH_LEVEL=4;	// Trick to limit skill of gnuchess
 static void copy_player (const CHESS_FILE_PLAYER2_receive &fplayer, CHESS_PLAYER &player)
 {
 	player.name = fplayer.name;
-	player.robot_level = (player.name == CHESS_ROBOT) ? ROBOT_DEPTH_LEVEL : 0;
+	player.robot = player.name == CHESS_ROBOT;
 	player.line = fplayer.line;
 	player.col  = fplayer.col;
 	player.king_moved = fplayer.king_moved;
@@ -512,7 +522,7 @@ void CHESS::save(DOC_WRITER &w, bool save_session_info)
 	vector<CHESS_CHAT> schat;
 	documentd_copychat (schat,chat);
 	documentd_chess_chat2(&w,schat);
-	documentd_chess_gameinfo(&w,gamename,timer);
+	documentd_chess_gameinfo2(&w,gamename,timer,robotskill);
 }
 <mod>
 void CHESS::load(DOC_READER &r, string &msg)
@@ -528,6 +538,7 @@ void CHESS::load(DOC_READER &r, string &msg)
 	glocal chat;
 	glocal gamename;
 	glocal timer;
+	glocal robotskill;
 	chat.clear();
 	resetgame();
 	sessions.clear();
@@ -579,6 +590,12 @@ void CHESS::load(DOC_READER &r, string &msg)
 	<f gameinfo>
 		glocal.gamename = gamename;
 		glocal.timer = timer;
+		glocal.robotskill = 0;
+	</f>
+	<f gameinfo2>
+		glocal.gamename = gamename;
+		glocal.timer = timer;
+		glocal.robotskill = robotskill;
 	</f>
 	<f invalid>
 		glocal.msg = "Invalid format for sudoku file";
@@ -869,11 +886,23 @@ void CHESS::robot_request(vector<VARVAL> &res)
 		robot.var = VAR_ENGINE;
 		string fen = format_fen();
 		if (robot_type == ROBOT_GNUCHESS){
+			static unsigned tbskill[]={4,8};
+			unsigned gnuskill = robotskill < 2 ? robotskill : 1;
 			robot.val = string_f("position fen %s\ngo searchmoves depth %u\n"
-				,fen.c_str(),next_player->robot_level);
+				,fen.c_str(),tbskill[gnuskill]);
 		}else if (robot_type == ROBOT_STOCKFISH){	
-			robot.val = string_f("position fen %s\ngo searchmoves\n"
-				,fen.c_str());
+			static unsigned char tbskill[]={0,5,10,15,20};
+			static unsigned char tbdepth[]={4,10,20,30,200};
+			//static unsigned char tbnodes[]={4,10,20,30,50};
+			static unsigned short tbmovetime[]={100,300,500,1000,10000};
+			unsigned stockskill = robotskill < maxskill ? robotskill : 4;
+			robot.val = string_f(
+				"setoption name Skill Level value %u\n"
+				"position fen %s\n"
+				"go depth %u movetime %u\n"
+				,tbskill[stockskill]
+				,fen.c_str()
+				,tbdepth[stockskill],tbmovetime[stockskill]);
 		}
 		res.push_back(robot);
 	}
@@ -899,14 +928,14 @@ void CHESS::exec (
 	VARVAL notify_var;
 	notify_var.var = VAR_NOTIFY;
 	if (maywrite){
-		unsigned robot_level = strcmp(username,CHESS_ROBOT)==0 ? ROBOT_DEPTH_LEVEL : 0;
+		bool robot = strcmp(username,CHESS_ROBOT)==0;
 		if (player1.name.size() == 0 && player2.name != username){
 			player1.name = username;
-			player1.robot_level = robot_level;
+			player1.robot = robot;
 			js_find_set(notify_var.val,"player0","innerHTML",username);
 		}else if (player2.name.size() == 0 && player1.name != username){
 			player2.name = username;
-			player2.robot_level = robot_level;
+			player2.robot = robot;
 			js_find_set(notify_var.val,"player1","innerHTML",username);
 		}	
 	}
@@ -946,8 +975,9 @@ void CHESS::exec (
 			unsigned font_size = h8*9/10;
 			if (sp.mobile) font_size -= 15;
 			unsigned w8_2 = w8/2;
-			unsigned h8_3_4 = 3*h8/4;
+			unsigned font_base = sp.mobile ? font_size : 4*h8/5;	// Vertical position for the font. Not perfect.
 	
+			// tlmp_warning ("font_size=%u h8=%u h8_3_4=%u",font_size,h8,font_base);
 			lines += "<style>\n";
 			lines += ".piece{\n";
 			lines += "\ttext-anchor:middle;\n";
@@ -1038,7 +1068,7 @@ void CHESS::exec (
 			lines += string_f ("\tvar stepy = (ly1-ly0)*%u/steps;\n",w8);
 			//lines += "\tconsole.log ('stepx='+stepx+' stepy='+stepy);\n";
 			lines += string_f("\ttxt.setAttribute('x',x0*%u+stepx*nostep+%u);\n",w8,w8_2);
-			lines += string_f("\ttxt.setAttribute('y',ly0*%u+stepy*nostep+%u);\n",w8,h8_3_4);
+			lines += string_f("\ttxt.setAttribute('y',ly0*%u+stepy*nostep+%u);\n",w8,font_base);
 			lines += "\tnostep++;\n";
 			lines += "\tif (nostep < steps){\n";
 			//lines += "\t\tconsole.log ('timer='+duration/steps);\n";
@@ -1162,7 +1192,7 @@ void CHESS::exec (
 					CELL_SPEC spec;
 					cnv_cell_html (cell,spec,sp.mobile);
 					lines += string_f("<text class=piece id='c%u,%u' X=%u Y=%u style='stroke:%s;fill:%s;'>%s</text>\n"
-						,line,col,w8_col+w8_2,h8_line+h8_3_4,spec.stroke_color,spec.fill_color,spec.utf8);
+						,line,col,w8_col+w8_2,h8_line+font_base,spec.stroke_color,spec.fill_color,spec.utf8);
 					// Circle to the left to show a selected piece
 					lines += string_f("<circle id='cs%u,%u' cx=%u cy=%u r=%u stroke='%s' stroke-width=2 fill='%s'/>\n"
 						,line,col,w8_col+circle_x,h8_line+circle_y,circle_radius,select_color,select_color);
@@ -1217,6 +1247,8 @@ void CHESS::exec (
 			var.val += string_f("player2:%s\n",player2.name.c_str());
 			var.val += string_f("name:%s\n",gamename.c_str());
 			var.val += string_f("timer:%s\n",timer.c_str());
+			var.val += string_f("skill:%u\n",robotskill);
+			var.val += string_f("maxskill:%u\n",maxskill);
 		}
 		res.emplace_back(var);
 	}else if (maywrite){
@@ -1310,6 +1342,7 @@ void CHESS::exec (
 							update_cell(notify_var,old_text_id,' ');
 							unsigned player_line=player->line;	// Save player action for the fctanimate call
 							unsigned player_col=player->col;
+							char old_cell = new_cell;		// Keep a copy of the target cell
 							execmove (player,other_player,lo,co,effects);
 							if (!player->is_robot()){
 								setmodified(username);
@@ -1349,6 +1382,12 @@ void CHESS::exec (
 							notify_var.val += "if (tbanim.length==1) tbanim[0]();\n";
 							show_marked_pieces (notify_var,"red");
 							robot_request(res);
+							if (!player->is_robot()){
+								unsigned rlo=8-lo;
+								unsigned rplayer_line=8-player_line;
+								string chessmove = string_f("%c%u%c%u",'a'+player_col,rplayer_line,'a'+co,rlo);
+								appendmove2chat (username,true,old_cell,new_cell,chessmove,notify_var.val);
+							}
 						}
 					}
 				}else if (new_cell == ' '){
@@ -1435,10 +1474,12 @@ void CHESS::exec (
 					gamename = f.val;
 				}else if (f.var == "timer"){
 					timer = f.val;
+				}else if (f.var == "skill"){
+					robotskill = atoi(f.val.c_str());
 				}
 			}
-			player1.robot_level = player1.name == CHESS_ROBOT ? ROBOT_DEPTH_LEVEL : 0;
-			player2.robot_level = player2.name == CHESS_ROBOT ? ROBOT_DEPTH_LEVEL : 0;
+			player1.robot = player1.name == CHESS_ROBOT;
+			player2.robot = player2.name == CHESS_ROBOT;
 			setmodified(username);
 			update_players(notify_var.val);
 			js_find_set(notify_var.val,"gamename","innerHTML",gamename.c_str());
@@ -1466,18 +1507,18 @@ void CHESS::exec (
 						error = MSG_U(E_NOGNUCHESS,"No chess engine installed on this server (gnuchess,stockfish)");
 					}else if (other_player->is_robot()){
 						swap(other_player->name,player->name);
-						player->robot_level = ROBOT_DEPTH_LEVEL;
-						other_player->robot_level = 0;
+						player->robot = true;
+						other_player->robot = false;
 					}else{
 						player->name = CHESS_ROBOT;
-						player->robot_level = ROBOT_DEPTH_LEVEL;
+						player->robot = true;
 					}
 				}else if (other_player->name == username){
 					swap(other_player->name,player->name);
-					swap(other_player->robot_level,player->robot_level);
+					swap(other_player->robot,player->robot);
 				}else{
 					player->name = username;
-					player->robot_level = 0;
+					player->robot = false;
 				}
 				setmodified(username);
 				update_players(notify_var.val);
@@ -1573,12 +1614,59 @@ void CHESS::exec (
 		update_msg(false,"&nbsp;","white",res);
 	}
 }
+inline const char *chs_sel_name(bool took, bool is_human, const char *took_str, const char *human_str, const char *computer_str)
+{
+	if (took) return took_str;
+	if (is_human) return human_str;
+	return computer_str;
+}
+/*
+	Convert a piece (letter) into a readable string. This string represent a piece owned by a human or the computer.
+	Further, the string represent the piece who made the action, or the piece which was taken.
+
+	The distinction between the 3 cases hopefully will be enough for all languages.
+*/
+static const char *piece2name(char cellval, bool is_human, bool took)
+{
+	char cell = tolower(cellval);
+	const char *piece = "";
+	if (chs_is_pawn(cell)){
+		piece = chs_sel_name(took,is_human,MSG_U(I_THE_PAWN,"the pawn"),MSG_U(I_A_PAWN,"a pawn"),MSG_R(I_A_PAWN));
+	}else if (chs_is_rook(cell)){
+		piece = chs_sel_name(took,is_human,MSG_U(I_THE_ROOK,"the rook"),MSG_U(I_HIS_ROOK,"his rook"),MSG_U(I_ITS_ROOK,"its rook"));
+	}else if (chs_is_knight(cell)){
+		piece = chs_sel_name(took,is_human,MSG_U(I_THE_KNIGHT,"the knight"),MSG_U(I_HIS_KNIGHT,"his knight"),MSG_U(I_ITS_KNIGHT,"its knight"));
+	}else if (chs_is_bishop(cell)){
+		piece = chs_sel_name(took,is_human,MSG_U(I_THE_BISHOP,"the bishop"),MSG_U(I_HIS_BISHOP,"his bishop"),MSG_U(I_ITS_BISHOP,"its bishop"));
+	}else if (chs_is_queen(cell)){
+		piece = chs_sel_name(took,is_human,MSG_U(I_THE_QUEEN,"the queen"),MSG_U(I_HIS_QUEEN,"his queen"),MSG_U(I_ITS_QUEEN,"its queen"));
+	}else if (chs_is_king(cell)){
+		piece = chs_sel_name(took,is_human,MSG_U(I_THE_KING,"the king"),MSG_U(I_HIS_KING,"his king"),MSG_U(I_ITS_KING,"its king"));
+	}
+	return piece;
+}
+
+/*
+	Append a message in the chat about a chess move. Try to make this readable
+*/
+void CHESS::appendmove2chat(const char *username,bool is_human, char oldcell, char newcell, PARAM_STRING chessmove, string &notify)
+{
+	const char *piece = piece2name(newcell,is_human,false);
+	string msg;
+	if (oldcell == ' '){
+		msg = string_f(MSG_U(I_USERPLAYED,"%s moved %s: %s"),username,piece,chessmove.ptr);
+	}else{
+		const char *oldpiece = piece2name(oldcell,is_human,true);
+		msg = string_f(MSG_U(I_USERPLAYEDTOOK,"%s moved %s and took %s: %s"),username,piece,oldpiece,chessmove.ptr);
+	}
+	appendchat (msg,notify);	
+}
 
 void CHESS::engine_reply (const char *line, string &notify, bool &done)
 {
 	const char *pt;
 	done = false;
-	//tlmp_warning ("engine_reply: %s",line);
+	tlmp_warning ("engine_reply: %s",line);
 	if (is_start_any_of(line,pt,"bestmove ")){
 		pt = str_skip(pt);
 		if (strlen(pt) >= 4
@@ -1596,7 +1684,8 @@ void CHESS::engine_reply (const char *line, string &notify, bool &done)
 			unsigned line1 = 8-(pt[1] - '0');
 			unsigned col2 = pt[2] - 'a';
 			unsigned line2 = 8-(pt[3] - '0');
-			
+
+			char oldcell = grid[line2][col2];	// Value of the target cell before the move
 			string cmd1 = string_f("%u,%u,1",line1,col1);
 			string cmd2 = string_f("%u,%u,1",line2,col2);
 			vector<VARVAL_receive> steps;
@@ -1612,6 +1701,11 @@ void CHESS::engine_reply (const char *line, string &notify, bool &done)
 					notify += r.val;
 				}
 			}
+			string chessmove(pt,4);
+			appendmove2chat(MSG_U(I_USERCOMPUTER,"Computer"),false,oldcell,grid[line2][col2],chessmove,notify);
+		}else{
+			const char *msg = MSG_U(I_COMPCANTDO,"The computer does not know what to do");
+			js_find_set (notify,"msg","style.color","red","innerHTML",documentd_escape(msg).c_str());
 		}
 		done = true;
 	}

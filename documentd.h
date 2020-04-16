@@ -204,7 +204,8 @@ protected:
 		lines += "\t}\n";
 		lines += "}\n";
 	}
-	void appendchat(const char *line, std::string &notify, std::vector<VARVAL> &res);
+	void appendchat(PARAM_STRING line, std::string &notify);
+	void appendchat(PARAM_STRING line, std::string &notify, std::vector<VARVAL> &res);
 public:
 	unsigned get_nbwait() const {
 		return notification_fds.size();
@@ -491,7 +492,7 @@ public:
 	void exec (const char *var, const char *val, const char *session, const char *username, bool maywrite, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
 };
 struct CHESS_PLAYER{
-	unsigned robot_level=0;
+	bool robot = false;
 	unsigned col=11;
 	unsigned line=11;
 	std::string name;
@@ -532,7 +533,7 @@ struct CHESS_PLAYER{
 	}
 	std::string dump() const;
 	bool is_robot() const {
-		return robot_level > 0;
+		return robot;
 	}
 };
 
@@ -569,6 +570,7 @@ class CHESS: public GAME{
 	std::string message;
 	std::vector<CHESS_UNDO> undos;
 	std::vector<CHESS_COOR> marked_pieces;
+	unsigned robotskill=0;
 	std::map<std::string,bool> sessions; // Display mode (reverse) per session
 	void update_msg (bool to_all, PARAM_STRING msg, const char *color, std::vector<VARVAL> &res);
 	bool checkmove (CHESS_PLAYER *player, unsigned to_line, unsigned to_col, CHESS_PLAYER *other_player, CHESSMOVE_EFFECTS &, std::string &error);
@@ -581,6 +583,7 @@ class CHESS: public GAME{
 	std::string format_fen();
 	void robot_request (std::vector<VARVAL> &res);
 	void update_players(std::string &notify);
+	void appendmove2chat(const char *username,bool is_human,char oldcell, char newcell, PARAM_STRING chessmove, std::string &notify);
 public:
 	CHESS();
 	const char *getclass() const{
@@ -617,4 +620,6 @@ void documentd_parsefields (const char *val, std::vector<VARVAL> &fields);
 unsigned documentd_displaylen (const char *line, unsigned fontsize, float size);
 void fflush (DOC_WRITER *);
 char *fgets(char *s, int size, DOC_READER *r);
+unsigned chess_getmaxskill();
+void chess_setmaxskill(unsigned maxskill);
 #endif

@@ -181,10 +181,19 @@ void documentd_button_label (string &lines, PARAM_STRING txt)
 void documentd_button (string &lines, unsigned command, PARAM_STRING txt, bool highlit)
 {
 	lines += "&nbsp;";
+	lines += "<div class='button-wrapper' style='float: left;' >\n";
+	#if 1
 	lines += string_f("<div class=button id=button%u onclick=gameaction(event,'newgame:%u')"
-		" style='background-color:%s;flex:0 1 auto; border-radius:4px; text-align:center; border:1px solid black;cursor:default;"
+		" style='%sflex:0 1 auto; cursor:default;'"
+		" >%s</div>\n"
+		,command,command,highlit ? "background-color:lightblue;" : "",txt.ptr);
+	#else
+	lines += string_f("<div class=button id=button%u onclick=gameaction(event,'newgame:%u')"
+		" style='%sflex:0 1 auto; border-radius:4px; text-align:center; border:1px solid black;cursor:default;"
 		" padding-left:5; padding-right:5;  margin-left:5; margin-top:2; margin-bottom:2;'>%s</div>\n"
-		,command,command,highlit ? "lightblue" : "lightgray",txt.ptr);
+		,command,command,highlit ? "background-color:lightblue;" : "",txt.ptr);
+	#endif
+	lines += "</div>\n";
 }
 void documentd_button (string &lines, unsigned command, PARAM_STRING txt, const DOC_BUTTON_SPECS &specs, bool highlit)
 {
@@ -261,12 +270,16 @@ GAME::~GAME()
 {
 	for (auto fd:notification_fds) close (fd);
 }
-void GAME::appendchat(const char *line, string &notify, vector<VARVAL> &res)
+void GAME::appendchat(PARAM_STRING line, string &notify)
 {
 	time_t now = time(nullptr);
-	chat.emplace_back(now,line);
-	while (chat.size() > 10) chat.erase(chat.begin());
-	notify += string_f("appendchat(%ld,'%s');\n",now,documentd_escape(line).c_str());
+	chat.emplace_back(now,line.ptr);
+	while (chat.size() > 20) chat.erase(chat.begin());
+	notify += string_f("appendchat(%ld,'%s');\n",now,documentd_escape(line.ptr).c_str());
+}
+void GAME::appendchat(PARAM_STRING line, string &notify, vector<VARVAL> &res)
+{
+	appendchat(line,notify);
 	documentd_setchanges(res);
 }
 static size_t total_notify_size=0;
@@ -858,6 +871,7 @@ int main (int argc, char *argv[])
 						nbwait += g.second->get_nbwait();
 					}
 					tb.push_back(string_f("protocolstats: %d",protocol_stats));
+					tb.push_back(string_f("chessmaxskill: %u",chess_getmaxskill()));
 					tb.push_back(string_f("bytes sent: requests=%u content=%lu notify=%lu",total_requests,total_content_size,total_notify_size));
 					tb.push_back(string_f("nbwaiting: %u",nbwait));
 					tb.push_back(string_f("subprograms: %lu",glocal.programs.size()));
@@ -885,6 +899,9 @@ int main (int argc, char *argv[])
 				</f>
 				<f protocolstats>
 					protocol_stats = on;
+				</f>
+				<f chessmaxskill>
+					 chess_setmaxskill(maxskill);
 				</f>
 				<f quit>
 					// Save all games/documents in a file

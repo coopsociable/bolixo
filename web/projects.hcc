@@ -50,6 +50,7 @@ static W_SSTRING w_field2("field2");
 static W_SSTRING w_field3("field3");
 static W_SSTRING w_field4("field4");
 static W_SSTRING w_field5("field5");
+static W_SSTRING w_field6("field6");
 static W_UNSIGNED w_check1("check1");
 static W_UNSIGNED w_check2("check2");
 
@@ -222,6 +223,12 @@ static void projects_dialog_chess (
 	FORM_HIDDEN h2(w_mousex);
 	FORM_HIDDEN h3(w_mousey);
 	glocal string error;
+	glocal unsigned maxskill=0;
+	for (auto &f:fields){
+		if (f.name == "maxskill"){
+			glocal.maxskill=atoi(f.value.c_str());
+		}
+	}
 	<call form>(dialog_name);
 	<f top>
 		DIV a("popup","popup-id"); a.print();
@@ -258,6 +265,8 @@ static void projects_dialog_chess (
 					w_field4 = f.value;
 				}else if (f.name == "timer"){
 					w_field3 = f.value;
+				}else if (f.name == "skill"){
+					w_field6 = f.value;
 				}
 			}
 		}
@@ -302,11 +311,27 @@ static void projects_dialog_chess (
 			/- <tr><td><td>
 			field_checkbox(w_check2,"");
 			htmlout(MSG_R(I_INVITE));
+			/- <tr><td>&nbsp;
 			htmlprintf ("<tr><td>%s<td>",MSG_U(I_INVITEMSG,"Message"));
 			field_textarea(w_field5,5,tlmpweb_ismobile() ? 30 : 50,"");
-			/- <tr><td>&nbsp;
-			htmlprintf ("<tr><td>%s<td>",MSG_U(I_TIMER,"Timer"));
-			field_string(w_field3,"");
+			#if 0
+				htmlprintf ("<tr><td>%s<td>",MSG_U(I_TIMER,"Timer"));
+				field_string(w_field3,"");
+			#endif
+			htmlprintf ("<tr><td>%s<td>",MSG_U(I_COMPUTERSKILL,"Computer"));
+			field_list(w_field6,"");
+			static TRANS_NOTLOAD *tbskill[]={
+				P_MSG_U(I_SKILLMINIMAL,"Minimal skill"),
+				P_MSG_U(I_SKILLLOW,"Low skill"),
+				P_MSG_U(I_SKILLMEDIUM,"Medium skill"),
+				P_MSG_U(I_SKILLSTRONG,"Strong skill"),
+				P_MSG_U(I_SKILLVSTRONG,"Very strong skill")
+			};
+			for (unsigned i=0; i<glocal.maxskill; i++){
+				string id = string_f("%u",i);
+				field_list_item(id.c_str(),tbskill[i]->get());
+			}
+			field_list_end();
 			/- </table>
 			/- <p>
 			if (glocal.error.size() > 0){
@@ -363,6 +388,7 @@ static void projects_dialog_chess (
 			var.val += string_f("player2:%s\n",player2);
 			var.val += string_f("name:%s\n",w_field4.c_str());
 			var.val += string_f("timer:%s\n",w_field3.c_str());
+			var.val += string_f("skill:%s\n",w_field6.c_str());
 		}else if (strcmp(glocal.dialog_name,DIALOG_CHESS_NEWGAME)==0){
 			var.var = "resetgame";
 		}
@@ -1148,7 +1174,7 @@ void projects(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER
 			</f>
 			</call>
 			if (w_dialog.isset()){
-				for (auto &f:glocal.fields) tlmp_warning ("fields :%s: :%s:",f.name.c_str(),f.value.c_str());
+				//for (auto &f:glocal.fields) tlmp_warning ("fields :%s: :%s:",f.name.c_str(),f.value.c_str());
 				if (info.file_type == FILE_DOC_CHESS){
 					projects_dialog_chess (glocal.con,w_dialog.c_str(),glocal.fields,w_session.c_str(),glocal.path,sp);	
 				}
