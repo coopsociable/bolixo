@@ -1904,6 +1904,14 @@ elif [ "$1" = "perfsql" ] ; then # A: run a performance test on a query
 		exit 1
 	fi
 	./perfsql -s localhost -p $MYSQL_PWD -Q $1
+elif [ "$1" = "test_firstlines" ]; then # A: test the bod_firstlines function
+	TESTFILE=/tmp/firstlines.txt
+	>$TESTFILE
+	for ((i=0; i<10; i++))
+	do
+		echo "hello how are you this morning. I was hoping to see you later today, but if it can't be, well, tomorrow is fine." >>$TESTFILE
+	done
+	./bod --mysecret toto --nodename toto --dbuser toto test_firstlines `cat $TESTFILE`
 else
 	echo test.sh command ...
 fi

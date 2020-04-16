@@ -1240,6 +1240,37 @@ static void util_remove_dot(string &line, string &dot)
 		}
 	}
 }
+
+#define UTF8_ONE_BYTE_MASK 0b10000000
+#define UTF8_ONE_BYTE_COUNT 0
+
+#define UTF8_TWO_BYTE_MASK 0b11100000
+#define UTF8_TWO_BYTE_COUNT 0b11000000
+
+#define UTF8_THREE_BYTE_MASK 0b11110000
+#define UTF8_THREE_BYTE_COUNT 0b11100000
+
+#define UTF8_FOUR_BYTE_MASK 0b11111000
+#define UTF8_FOUR_BYTE_COUNT 0b11110000
+
+// This one could use a better name, I just don't know a better one (yet?)
+#define UTF8_OTHER_MASK 0b00111111
+
+static size_t utf8_codepoint_size(uint8_t text)
+{
+	if((text & UTF8_ONE_BYTE_MASK) == UTF8_ONE_BYTE_COUNT) {
+		return 1;
+	}
+
+	if((text & UTF8_TWO_BYTE_MASK) == UTF8_TWO_BYTE_COUNT) {
+		return 2;
+	}
+
+	if((text & UTF8_THREE_BYTE_MASK) == UTF8_THREE_BYTE_COUNT) {
+        	return 3;
+	}
+	return 4;
+}
 /*
 	Format a short message, remove the signature
 	Escapes < and >
@@ -1370,7 +1401,12 @@ string util_format_shortmsg (PARAM_STRING msg, unsigned nblines, size_t size, un
 				}
 				txt--;
 			}else{
-				ret += *txt;
+				size_t sizecar = utf8_codepoint_size(*txt);
+				while (sizecar > 0){
+					ret += *txt++;
+					sizecar--;
+				}
+				txt--;
 				pos++;
 			}
 		}
