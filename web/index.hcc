@@ -47,6 +47,7 @@ extern void bolixo_techdoc (DOCUMENT_POINTER &, DOC_ID &jump, const char *userna
 extern void profile(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER> &docpointers);
 extern void mail(CONNECT_INFO &con, vector<DOCUMENT_POINTER> &docpointers);
 extern void projects(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER> &docpointers);
+extern void projects_documents(CONNECT_INFO &con, CONNECT_INFO &con_sess, const char *formid, const char *id, unsigned tab_width, unsigned tab_height);
 
 static WEBID ID_MAIL("mail");
 static WEBID ID_FOLLOW("follow");
@@ -81,6 +82,7 @@ W_UNSIGNED w_public_view("public_view");
 W_SSTRING w_dateformat("dateformat");
 W_UNSIGNED w_anon_messages("anonmsgs");
 W_SSTRING w_timezone("timezone");
+W_SSTRING w_document("document");
 
 W_SSTRING w_recipients("recipients");
 W_SSTRING w_recipients2("recipients2");		// Allow override of w_recipients
@@ -273,7 +275,7 @@ struct SEENS{
 static map<string,SEENS> firstseens;
 static string org("Bolixo.org");
 <mod>
-static void bolixo_title (const char *title, _F_websteps *c)
+static void bolixo_title (const char *title, _F_websteps *c, bool doc_full_screen)
 {
 	glocal int step = c->getcurstep();
 
@@ -287,7 +289,7 @@ static void bolixo_title (const char *title, _F_websteps *c)
 	DIV head; head.id("head").flexfixe().style("background-image","linear-gradient(to right, #03a9f4 , #ffffff)").print();
 	/- <table border=0 width=100% cellpadding=0 cellspacing=0>
 	htmlprintf ("<table border=0 width=100%% cellspacing=0 cellpadding=0><tr><td rowspan=2 align=left>\n");	//,newscolor);
-	if (is_mobile){
+	if (doc_full_screen || is_mobile){
 		// /- <font color=gray>
 		// htmlprintf (MSG_U(I_NODENAME,"Node %s"),util_getnodename());
 		// /- </font>
@@ -302,34 +304,37 @@ static void bolixo_title (const char *title, _F_websteps *c)
 		/- </table>
 		/- </td>
 	}
-	/- <td align=right valign=top>
-	show_buttons_right (c);
-	/- </td></tr>
-	/- <tr><td align=right valign=bottom>
-	if (w_robot == 0 && userinfo.name.size() > 0){
-		<call button_row>(0,newscolor,false);
-		<f draw>
-			split();
-			print_button ("main",MSG_U(M_MAIN,"Main"),1,glocal.step,userinfo.main_notify);
-			split();
-			print_button ("talks",MSG_U(M_TALK,"Talk"),step_talks,glocal.step,userinfo.talk_notify);
-			#if 0
-			split();
-			print_button (MSG_U(M_MAIL,"Mail"),step_mails,glocal.step,userinfo.mail_notify);
-			#endif
-			split();
-			print_button ("Projects",MSG_U(M_PROJECTS,"Projects"),step_projects,glocal.step,false);
-			split();
-			vector<DOTMENU> menu;
-			menu.emplace_back(DOTMENU(MSG_U(M_PROFILE,"Profile"),step_profile));
-			menu.emplace_back(DOTMENU(MSG_U(M_DOCUM,"Documentation"),step_doc));
-			menu.emplace_back(DOTMENU(MSG_U(M_TECHDOCUM,"Technical doc."),step_techdoc));
-			menu.emplace_back(DOTMENU(MSG_U(I_LOGOUT,"Logout"),step_logout));
-			util_dotmenu(menu,is_any_of(glocal.step,step_profile,step_doc),glocal.step==step_profile ? false : userinfo.menu_notify);
-		</f>
-		</call>
+	if (!doc_full_screen){
+		/- <td align=right valign=top>
+		show_buttons_right (c);
+		/- </td></tr>
+		/- <tr><td align=right valign=bottom>
+		if (w_robot == 0 && userinfo.name.size() > 0){
+			<call button_row>(0,newscolor,false);
+			<f draw>
+				split();
+				print_button ("main",MSG_U(M_MAIN,"Main"),1,glocal.step,userinfo.main_notify);
+				split();
+				print_button ("talks",MSG_U(M_TALK,"Talk"),step_talks,glocal.step,userinfo.talk_notify);
+				#if 0
+				split();
+				print_button (MSG_U(M_MAIL,"Mail"),step_mails,glocal.step,userinfo.mail_notify);
+				#endif
+				split();
+				print_button ("Projects",MSG_U(M_PROJECTS,"Projects"),step_projects,glocal.step,false);
+				split();
+				vector<DOTMENU> menu;
+				menu.emplace_back(DOTMENU(MSG_U(M_PROFILE,"Profile"),step_profile));
+				menu.emplace_back(DOTMENU(MSG_U(M_DOCUM,"Documentation"),step_doc));
+				menu.emplace_back(DOTMENU(MSG_U(M_TECHDOCUM,"Technical doc."),step_techdoc));
+				menu.emplace_back(DOTMENU(MSG_U(I_LOGOUT,"Logout"),step_logout));
+				util_dotmenu(menu,is_any_of(glocal.step,step_profile,step_doc),glocal.step==step_profile ? false : userinfo.menu_notify);
+			</f>
+			</call>
+		}
+		/- </tr>
 	}
-	/- </tr></table>
+	/- </table>
 	/- </table>
 	head.end();
 	DIV body; body.id("body").flexfixe().print();
@@ -337,6 +342,10 @@ static void bolixo_title (const char *title, _F_websteps *c)
 	main.donotend();
 }
 </mod>
+static void bolixo_title (const char *title, _F_websteps *c)
+{
+	bolixo_title (title,c,false);
+}
 <mod>
 static bool valid_context (CONNECT_INFO &con, _F_websteps *c, const char *subject, bool check_news, bool check_proof)
 {
@@ -1578,7 +1587,7 @@ extern "C" void webmain_real()
 	<f end>
 		/- </div>
 		/- </div>
-		util_endscript(string_f("webstep=%u&subtab=%u",getcurstep(),webtabs_getsubtab()));
+		util_endscript(string_f("webstep=%u&subtab=%u%s",getcurstep(),webtabs_getsubtab(),getextraargs()));
 		{
 			// Save the position in the document
 			bool one_changed = false;
@@ -2584,6 +2593,23 @@ extern "C" void webmain_real()
 			ptdoc = &section_none;
 		}
 		index_doc(glocal.docpointers[SECTION_NONE],*ptdoc,true);
+	</f>
+	<f step15>	// View a document in its own browser tab
+		setextraargs(string_f("&document=%s",w_document.c_str()));
+		const char *id = w_document.c_str();
+		const char *name = strrchr(id,'/');
+		if (name != nullptr){
+			name++;
+		}else{
+			name = id;
+		}
+		bolixo_title (name,this,true);
+		WEBID wid("browser");
+		unsigned content_width,content_height;
+		tlmpweb_gettablegeometry(wid,content_height,content_width);
+		DIV d("tabs","browser"); d.w(100).print();
+		FORM_HIDDEN h(w_document);
+		projects_documents (glocal.con,glocal.con_sess,id,id,content_width,content_height);
 	</f>
 	<f step17>
 		bolixo_title (MSG_R(M_TECHDOCUM),this);

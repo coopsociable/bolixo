@@ -201,6 +201,17 @@ static int projects_sendinvite(
 
 }
 </mod>
+static void projects_documents(
+	CONNECT_INFO &con,
+	CONNECT_INFO &con_sess,
+	const char *formid,
+	const char *id,
+	unsigned tab_width,
+	unsigned tab_height,
+	_F_webtabs *webtabs,
+	unsigned webstep,
+	const char *extraargs,
+	const char *uicontext);
 /*
 	Dialogs for the chess game
 */
@@ -352,6 +363,7 @@ static void projects_dialog_chess (
 			/- <br><center>
 			button_submit(MSG_U(B_YES,"Yes"));	
 			/- </center>
+			/- <br>
 		}
 	</f>
 	<f validate>
@@ -710,6 +722,11 @@ void projects(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER
 								string tmp = string_f("%s/%s",glocal.id,f.name);
 								glocal.webtabs.addtab(string_f("2:preview-%s",tmp.c_str()),tmp);
 							}
+						}else if (glocal.dropmenu == MENU_OPENINBTAB){
+							/- <script>
+							htmlprintf ("viewintab('%s?webstep=%d&document=%s/%s');\n"
+								,tlmpweb_curpage(),step_fullscreen,glocal.id,f.name);
+							/- </script>	
 						}else if (glocal.dropmenu != 0){
 							if (file_is_text(f.file_type)){
 								if (f.islarge){
@@ -747,6 +764,8 @@ void projects(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER
 			adddrop_opt (MENU_DOWNLOAD,MSG_U(M_DOWNLOAD,"Download"));
 			adddrop_opt (MENU_PREVIEW,MSG_U(M_PREVIEWPUB,"Public preview"));
 			adddrop_opt (MENU_HELPPREVIEW,MSG_U(M_HELPPREVIEW,"Preview help"));
+			adddrop_opt (MENU_OPENINBTAB,MSG_U(M_OPENINBROWSERTAB,"Open in browser tab"));
+			
 			if (!glocal.is_public) setdrop_hidden (MENU_HELPPREVIEW);
 			if (glocal.is_public){
 				glocal.webtable.setdrop_default({MENU_PASTE,MENU_PREVIEW,MENU_HELPPREVIEW});
@@ -756,6 +775,7 @@ void projects(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER
 			if (tlmpweb_ismobile()){
 				hide_columns ({2,4});
 				glocal.status_width=60;
+				setdrop_hidden (MENU_OPENINBTAB);
 			}else if (width != 0 && width < 400){
 				hide_columns ({2,4});
 			}
@@ -769,6 +789,7 @@ void projects(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER
 					string path = string_f ("%s/%s",glocal.id,f.name);
 					glocal.webtable.setdrop_hidden (MENU_PREVIEW);
 					if (bolixo_isdir(f.type)){
+						glocal.webtable.setdrop_disable (MENU_OPENINBTAB);
 						if (glocal.is_public && !glocal.is_public_sub){
 							glocal.webtable.setdrop_visible (MENU_PREVIEW);
 						}
@@ -812,12 +833,12 @@ void projects(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER
 		glocal string path = string_f("/projects/%s",glocal.filename);
 		glocal bool newdocument = false;
 		util_delnotify (glocal.con_sess,"Projects",id);
-		sethelp2();
 		FILEINFO info;
 		if (util_entrytype(glocal.con,glocal.path,info)==ENTRY_DIR){
 			glocal.newdocument = true;
 			info.file_type = FILE_TEXT;
 		}
+		sethelp2();
 		if (strcmp(id,"help")==0){
 			DIV d("webtable"); d.print();
 			index_doc(glocal.docpointers[SECTION_PROJECT],section_project);
@@ -962,13 +983,6 @@ void projects(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER
 				util_sendfile(glocal.con,w_session.c_str(),fname);
 			</f>
 			</call>
-		}else if (file_is_image(info.file_type)){
-			DIV d("webtable"); d.print();
-			DIV dd; dd.id(TAB_FORM).bg("#F1F1F1").paddings(5,5).print();
-			htmlprintf (MSG_R(I_DOCNAME),glocal.filename);
-			/- <br>
-			dd.end();
-			htmlout (util_img(step_image,"max-height:95%;",glocal.path,info.modified));
 		}else if (info.file_type == FILE_TEXT){
 			<call form>(formid);
 			<f load>
@@ -1060,127 +1074,179 @@ void projects(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER
 				}
 			</f>
 			</call>
-		}else if (file_is_doc(info.file_type)){
-			glocal vector<DIALOG_FIELD> fields;	// Field definition and value for document dialogs
-			const char *content_id = "doc";
-			if (info.file_type == FILE_DOC_TICTACTO){
-				sethelp2 ("help_tictacto",MSG_U(T_TICTACTO,"Tictacto"));
-				content_id = "doc_tictacto";
-			}else if (info.file_type == FILE_DOC_SUDOKU){
-				sethelp2 ("help_sudoku",MSG_U(T_SUDOKY,"Sudoku"));
-				content_id = "doc_sudoku";
-			}else if (info.file_type == FILE_DOC_CHECKER){
-				sethelp2 ("help_checkers",MSG_U(T_CHECKERS,"Checkers"));
-				content_id = "doc_checkers";
-			}else if (info.file_type == FILE_DOC_CHESS){
-				sethelp2 ("help_chess",MSG_U(T_CHESS,"Chess"));
-				content_id = "doc_chess";
-			}else if (info.file_type == FILE_DOC_WORDPROC){
-				sethelp2 ("help_wordproc",MSG_U(T_WORDPROC,"Document"));
-				content_id = "doc_wordproc";
-			}else if (info.file_type == FILE_DOC_WHITEBOARD){
-				sethelp2 ("help_whiteboard",MSG_U(T_WHITEBOARD,"WhiteBoard"));
-				content_id = "doc_whiteboard";
-			}
-			/- <script>
-			/- var action_mousex=0;
-			/- var action_mousey=0;
-			/- function gameaction(event,action){
-			/-  action_mousex=event.clientX;
-			/-  action_mousey=event.clientY;
-			/-  notesocket.send(action);
-			/- }
-			/- function callrefresh(){
-			htmlprintf ("\tformsubmit('%s?webstep=%d');\n",tlmpweb_curpage(),step_projects);
-			/- }
-			/- function calldialog(name){
-			htmlprintf ("\tformsubmit('%s?webstep=%d&dialog='+name+'&mousex='+action_mousex+'&mousey='+action_mousey);\n",tlmpweb_curpage(),step_projects);
-			/- }
-			/- </script>
-			vector<VARVAL> steps;
-			if (w_action.isset()){
-				vector<string> tb;
-				int n = str_splitline(w_action.c_str(),'=',tb);
-				if (n == 2){
-					VARVAL var;
-					var.var = tb[0];
-					var.val = tb[1];
-					steps.push_back(var);
-				}
-			}
-			{
-				VARVAL var;
-				var.var = REQ_PRINT;
-				steps.emplace_back(var);
-			}
-			if (w_dialog.isset()){
-				VARVAL var;
-				var.var = REQ_GETFIELDS;
-				var.val = w_dialog.c_str();
-				steps.emplace_back(var);
-			}
-			DOC_UI_SPECS sp;
-			sp.width = tab_width;
-			sp.height = tab_height;
-			sp.mobile = tlmpweb_ismobile();
-			sp.fontsize = tlmpweb_fontsize();
-			WEBID id(content_id);
-			tlmpweb_gettablegeometry(id,sp.content_height,sp.content_width);
-			index_setgameid(string_f("\"%s\" %u %u %u %u %d %u",glocal.path.c_str(),sp.width,sp.height,sp.content_width,sp.content_height,sp.mobile,sp.fontsize));
-			if (sp.content_width == 0){
-				// We don't know the content size yet, but a requested refresh will tell us.
-				// So we enter a default value for now.
-				sp.content_width = sp.width;
-				sp.content_height = sp.height;
-			}
-			<call bod_client_playstep>(glocal.con,w_session.c_str(),"",glocal.path,steps,sp);
-			<f ok>
-				if (!success){
-					htmlprintf ("<p>%s\n",msg);
-				}else{
-					string error,result;
-					for (auto &r:res){
-						if (strcmp(r.var,VAR_CONTENT)==0){
-							htmlout (r.val);
-						}else if (strcmp(r.var,VAR_ERROR)==0){
-							error = r.val;
-						}else if (strcmp(r.var,VAR_RESULT)==0){
-							result = r.val;
-						}else if (strcmp(r.var,VAR_FIELDS)==0){
-							// r.val is a list of fields. Each field has a name and a value on a single text line.
-							// name:value\nname:value\n
-							vector<string>tb;
-							str_splitline (r.val,'\n',tb);
-							for (auto &l:tb){
-								const char *start = l.c_str();
-								const char *pt = strchr(start,':');
-								if (pt != nullptr){
-									glocal.fields.emplace_back(string(start,pt-start),pt+1);
-								}
-							}
-						}
-					}
-					if (error.size() > 0){
-						htmlprintf ("<font color=red>%s</font>\n",error.c_str());
-					}
-					if (result.size() > 0){
-						htmlprintf ("<font color=blue>%s</font>\n",result.c_str());
-					}
-				}
-			</f>
-			</call>
-			if (w_dialog.isset()){
-				//for (auto &f:glocal.fields) tlmp_warning ("fields :%s: :%s:",f.name.c_str(),f.value.c_str());
-				if (info.file_type == FILE_DOC_CHESS){
-					projects_dialog_chess (glocal.con,w_dialog.c_str(),glocal.fields,w_session.c_str(),glocal.path,sp);	
-				}
-			}
 		}else{
-			tlmp_error ("No rule to display document type %d\n",info.file_type);
+			projects_documents(glocal.con,glocal.con_sess,formid,id,tab_width,tab_height,this,step_projects,"","");
 		}
 	</f>
 	</call>
-	/- </table>
 }
 </mod>
-
+static void sethelp2(_F_webtabs *webtabs, PARAM_STRING id, PARAM_STRING title)
+{
+	if (webtabs != nullptr) webtabs->sethelp2(id,title);
+}
+<mod>
+static void projects_documents(
+	CONNECT_INFO &con,
+	CONNECT_INFO &con_sess,
+	const char *formid,
+	const char *id,
+	unsigned tab_width,
+	unsigned tab_height,
+	_F_webtabs *webtabs,
+	unsigned webstep,	// Calling context
+	const char *extraargs,
+	const char *uicontext)	// empty if we are running in normal mode
+				// full  if we are running fullscreen
+				// task  if we are running in a miniature task overview
+{
+	glocal con;
+	glocal con_sess;
+	glocal const char *filename = id;
+	glocal string path = string_f("/projects/%s",glocal.filename);
+	FILEINFO info;
+	util_entrytype(glocal.con,glocal.path,info);
+	if (file_is_image(info.file_type)){
+		DIV d("webtable"); d.print();
+		DIV dd; dd.id(TAB_FORM).bg("#F1F1F1").paddings(5,5).print();
+		htmlprintf (MSG_R(I_DOCNAME),glocal.filename);
+		/- <br>
+		dd.end();
+		htmlout (util_img(step_image,"max-height:95%;",glocal.path,info.modified));
+	}else if (file_is_doc(info.file_type)){
+		glocal vector<DIALOG_FIELD> fields;	// Field definition and value for document dialogs
+		const char *base_content_id = "doc";
+		if (info.file_type == FILE_DOC_TICTACTO){
+			sethelp2 (webtabs,"help_tictacto",MSG_U(T_TICTACTO,"Tictacto"));
+			base_content_id = "doc_tictacto";
+		}else if (info.file_type == FILE_DOC_SUDOKU){
+			sethelp2 (webtabs,"help_sudoku",MSG_U(T_SUDOKY,"Sudoku"));
+			base_content_id = "doc_sudoku";
+		}else if (info.file_type == FILE_DOC_CHECKER){
+			sethelp2 (webtabs,"help_checkers",MSG_U(T_CHECKERS,"Checkers"));
+			base_content_id = "doc_checkers";
+		}else if (info.file_type == FILE_DOC_CHESS){
+			sethelp2 (webtabs,"help_chess",MSG_U(T_CHESS,"Chess"));
+			base_content_id = "doc_chess";
+		}else if (info.file_type == FILE_DOC_WORDPROC){
+			sethelp2 (webtabs,"help_wordproc",MSG_U(T_WORDPROC,"Document"));
+			base_content_id = "doc_wordproc";
+		}else if (info.file_type == FILE_DOC_WHITEBOARD){
+			sethelp2 (webtabs,"help_whiteboard",MSG_U(T_WHITEBOARD,"WhiteBoard"));
+			base_content_id = "doc_whiteboard";
+		}
+		string content_id = string_f("%s%s",uicontext,base_content_id);
+		/- <script>
+		/- var action_mousex=0;
+		/- var action_mousey=0;
+		/- function gameaction(event,action){
+		/-  action_mousex=event.clientX;
+		/-  action_mousey=event.clientY;
+		/-  notesocket.send(action);
+		/- }
+		/- function callrefresh(){
+		htmlprintf ("\tformsubmit('%s?webstep=%d%s');\n",tlmpweb_curpage(),webstep,extraargs);
+		/- }
+		/- function calldialog(name){
+		htmlprintf ("\tformsubmit('%s?webstep=%d%s&dialog='+name+'&mousex='+action_mousex+'&mousey='+action_mousey);\n"
+			,tlmpweb_curpage(),webstep,extraargs);
+		/- }
+		/- </script>
+		vector<VARVAL> steps;
+		if (w_action.isset()){
+			vector<string> tb;
+			int n = str_splitline(w_action.c_str(),'=',tb);
+			if (n == 2){
+				VARVAL var;
+				var.var = tb[0];
+				var.val = tb[1];
+				steps.push_back(var);
+			}
+		}
+		{
+			VARVAL var;
+			var.var = REQ_PRINT;
+			var.val = uicontext;
+			steps.emplace_back(var);
+		}
+		if (w_dialog.isset()){
+			VARVAL var;
+			var.var = REQ_GETFIELDS;
+			var.val = w_dialog.c_str();
+			steps.emplace_back(var);
+		}
+		DOC_UI_SPECS sp;
+		sp.width = tab_width;
+		sp.height = tab_height;
+		sp.mobile = tlmpweb_ismobile();
+		sp.fontsize = tlmpweb_fontsize();
+		WEBID id(content_id);
+		tlmpweb_gettablegeometry(id,sp.content_height,sp.content_width);
+		index_setgameid(string_f("\"%s\" %u %u %u %u %d %u",glocal.path.c_str(),sp.width,sp.height,sp.content_width,sp.content_height,sp.mobile,sp.fontsize));
+		if (sp.content_width == 0){
+			// We don't know the content size yet, but a requested refresh will tell us.
+			// So we enter a default value for now.
+			sp.content_width = sp.width;
+			sp.content_height = sp.height;
+		}
+		<call bod_client_playstep>(glocal.con,w_session.c_str(),"",glocal.path,steps,sp);
+		<f ok>
+			if (!success){
+				htmlprintf ("<p>%s\n",msg);
+			}else{
+				string error,result;
+				for (auto &r:res){
+					if (strcmp(r.var,VAR_CONTENT)==0){
+						htmlout (r.val);
+					}else if (strcmp(r.var,VAR_ERROR)==0){
+						error = r.val;
+					}else if (strcmp(r.var,VAR_RESULT)==0){
+						result = r.val;
+					}else if (strcmp(r.var,VAR_FIELDS)==0){
+						// r.val is a list of fields. Each field has a name and a value on a single text line.
+						// name:value\nname:value\n
+						vector<string>tb;
+						str_splitline (r.val,'\n',tb);
+						for (auto &l:tb){
+							const char *start = l.c_str();
+							const char *pt = strchr(start,':');
+							if (pt != nullptr){
+								glocal.fields.emplace_back(string(start,pt-start),pt+1);
+							}
+						}
+					}
+				}
+				if (error.size() > 0){
+					htmlprintf ("<font color=red>%s</font>\n",error.c_str());
+				}
+				if (result.size() > 0){
+					htmlprintf ("<font color=blue>%s</font>\n",result.c_str());
+				}
+			}
+		</f>
+		</call>
+		if (w_dialog.isset()){
+			//for (auto &f:glocal.fields) tlmp_warning ("fields :%s: :%s:",f.name.c_str(),f.value.c_str());
+			if (info.file_type == FILE_DOC_CHESS){
+				projects_dialog_chess (glocal.con,w_dialog.c_str(),glocal.fields,w_session.c_str(),glocal.path,sp);	
+			}
+		}
+	}else{
+		tlmp_error ("No rule to display document type %d\n",info.file_type);
+	}
+}
+</mod>
+/*
+	Use to present a document in its own browser tab
+*/
+void projects_documents(
+	CONNECT_INFO &con,
+	CONNECT_INFO &con_sess,
+	const char *formid,
+	const char *id,
+	unsigned tab_width,
+	unsigned tab_height)
+{
+	string extraargs = string_f("&document=%s",id);
+	projects_documents(con,con_sess,formid,id,tab_width,tab_height,nullptr,step_fullscreen,extraargs.c_str(),"full");
+}

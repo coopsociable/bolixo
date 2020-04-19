@@ -70,6 +70,7 @@ const unsigned MENU_RENAME=7;
 const unsigned MENU_REPLY=8;
 const unsigned MENU_NOTIFICATIONS=9;
 const unsigned MENU_OPENINTAB=10;
+const unsigned MENU_OPENINBTAB=11;
 const unsigned MENU_DOWNLOAD=100;
 
 // Special DIV class used to control the layout
