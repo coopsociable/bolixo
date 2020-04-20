@@ -316,6 +316,7 @@ void form_space()
 }
 </mod>
 static W_SSTRING w_file("file");
+static W_SSTRING w_name("name");
 static W_UNSIGNED w_delay("delay");
 
 
@@ -1800,6 +1801,70 @@ static void journey_filebutton()
 	</call>
 }
 </mod>
+<mod>
+static void journey_forminforms()
+{
+	util_defstyles();
+	/- You enter s to get to the sub-dialog.
+	/- <br>
+	/- You enter ok to end the sub-dialog
+	/- <p>
+	htmlprintf ("validate name=:%s: file=:%s:\n",w_name.c_str(),w_file.c_str());
+	/- <p>
+	<call form>("f");
+	<f setup>
+		/- file
+		field_string (w_file,"");
+	</f>
+	<f validate>
+		glocal bool ret = true;
+		tlmp_warning ("validate1 name=:%s:",w_name.c_str());
+		htmlprintf ("w_file = :%s:<br>\n",w_file.c_str());
+		return glocal.ret;
+	</f>
+	<f process>
+		glocal bool fail = false;
+		htmlprintf ("Process file=:%s:<br>\n",w_file.c_str());
+		if (strcmp(w_file.c_str(),"s")==0){
+			glocal.fail= true;
+			<call form>("f");
+			<f top>
+				DIV d; d.bg("blue").print();
+				d.donotend();
+			</f>
+			<f bottom>
+				/- </div>
+			</f>
+			<f setup>
+				/- name
+				field_string (w_name,"");
+			</f>
+			<f validate>
+				bool ret = false;
+				tlmp_warning ("validate2 name=:%s:",w_name.c_str());
+				if (strcmp(w_name.c_str(),"ok")==0){
+					ret = true;
+				}else{
+					/- You must enter ok
+				}
+				htmlprintf ("subform validate ret=%d<br>\n",ret);
+				return ret;
+			</f>
+			<f process>
+				htmlprintf ("name=:%s: file=:%s:\n",w_name.c_str(),w_file.c_str());
+				glocal.fail = false;
+			</f>
+			</call>
+			/- <p>
+		}
+		fail = glocal.fail;
+		keepediting = true;
+	</f>
+	</call>
+	/- <p>
+	htmlprintf ("<a href=%s>Restart</a>\n",tlmpweb_curpage());
+}
+</mod>
 extern "C" void webmain()
 {
 	tlmpweb_title ("This is the start of a long long journey");
@@ -1820,6 +1885,7 @@ extern "C" void webmain()
 	//journey_keypress();
 	//journey_animation();
 	//journey_chat();
-	journey_filebutton();	
+	//journey_filebutton();	
+	journey_forminforms();
 }
 

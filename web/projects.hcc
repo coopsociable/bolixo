@@ -16,6 +16,7 @@
 */
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <tlmpweb.h>
 #include <tlmplib.h>
 #include <trlitool.h>
@@ -212,6 +213,25 @@ static void projects_documents(
 	unsigned webstep,
 	const char *extraargs,
 	const char *uicontext);
+
+static void projects_popup_top()
+{
+	DIV a("popup","popup-id"); a.print();
+	DIV d("popup-content","popup"); d.print();
+	DIV dd; dd.dispflex().flowrow().print();
+	DIV left; left.flexfixe().margins(10,10).vmargins(5,0).print();
+	a.donotend();
+	d.donotend();
+	dd.donotend();
+	left.donotend();
+}
+static void projects_popup_bottom()
+{
+	/- </div>
+	tlmpweb_dialog_x();
+	/- </div></div></div>
+	tlmpweb_position_popup();
+}
 /*
 	Dialogs for the chess game
 */
@@ -242,20 +262,10 @@ static void projects_dialog_chess (
 	}
 	<call form>(dialog_name);
 	<f top>
-		DIV a("popup","popup-id"); a.print();
-		DIV d("popup-content","popup"); d.print();
-		DIV dd; dd.dispflex().flowrow().print();
-		DIV left; left.flexfixe().margins(10,10).vmargins(5,0).print();
-		a.donotend();
-		d.donotend();
-		dd.donotend();
-		left.donotend();
+		projects_popup_top();
 	</f>
 	<f bottom>
-		/- </div>
-		tlmpweb_dialog_x();
-		/- </div></div></div>
-		tlmpweb_position_popup();
+		projects_popup_bottom();
 	</f>
 	<f load>
 		if (strcmp(glocal.dialog_name,DIALOG_CHESS_CONFIG)==0){
@@ -462,6 +472,7 @@ void projects(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER
 		</call>
 	</f>
 	<f docmain>
+		glocal const char *formid = formid;
 		glocal const char *id = id;
 		glocal string path = string_f ("/projects/%s",id);
 		glocal bool is_public = false;
@@ -485,11 +496,6 @@ void projects(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER
 				DIV d; d.dispflex().flowcol().print();
 				const unsigned vspace=tlmpweb_ismobile() ? 10: 3;
 				const unsigned hspace=3;
-				if (0){
-					DIV dd; dd.w(100).flexfixe().vmargins(vspace,vspace).print();
-					url_self (string_f("webtab_add=2:%s%c%ld~%s",glocal.id,WEBTAB_MARK,time(NULL),MSG_U(I_NEWDOC,"New_document"))
-						,MSG_U(I_CREATENEWDOC,"Create a new document"));
-				}
 				{
 					DIV dd; dd.w(100).flexfixe().vmargins(vspace,0).print();
 					DIV ddd; ddd.dispflex().flowrow().print();
@@ -604,29 +610,100 @@ void projects(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER
 						</call>
 					}
 				}
-				if (strcmp(w_upload.c_str(),"")!=0){
+				if (strcmp(w_upload.c_str(),"")!=0 || w_name.is_filled()){
+					// We test if the upload file name already exist. If this is the case
+					// we create a popup dialog allowing the user to rename the file
+					// Having form inside form is supported, but there is a catch. The
+					// subform must have the same id as the parent (same argument for <call form>(id) )
+					// And normally, it has to be a popup.
+					// PATCH: There is currently a flaw in the implementation. The temporary file
+					// uploaded will be deleted (and won't be re-uploaded). For now, we rename
+					// it to /tmp/newfile. So it is preserved. This is not multi-user at all.
+					// A better solution is needed.
+					glocal bool ok = true;
+					glocal string filepath = string_f("%s/%s",glocal.path.c_str(),w_upload.c_str());
 					const char *tempname = tlmpweb_getfilename(w_upload);
-					string filepath = string_f("%s/%s",glocal.path.c_str(),w_upload.c_str());
-					<call sendfile>(filepath,tempname,glocal.fail,glocal.errmsg);
-					<f start>
-						<call bod_client_addfile_bob>(glocal.con,w_session.c_str(),filepath,content,more,"");
-						<f ok>
-							glocal.sendfile.sethandle(handle);
-							glocal.sendfile.setresult(success,msg);
+					string newfile = string_f("/tmp/newfile.%s",w_session.c_str());
+					if (w_name.is_filled()){
+						tempname = newfile.c_str();
+						glocal.filepath = string_f("%s/%s",glocal.path.c_str(),w_name.c_str());
+					}
+					if (util_entrytype(glocal.con,glocal.filepath)!=ENTRY_NONE){
+						// This name already exist
+						glocal string error;
+						glocal.ok = false;
+						if (rename (tempname,newfile.c_str())==-1){
+							tlmp_warning ("rename failed");
+						}
+						tempname = newfile.c_str();
+						<call form>(glocal.formid);
+						<f top>
+							projects_popup_top();
+						</f>
+						<f bottom>
+							projects_popup_bottom();
+						</f>
+						<f load>
+							w_name = w_upload.c_str();
+						</f>
+						<f setup>
+							/- <center>
+							htmlout (MSG_R(T_ATTENTION));
+							/- </center><br>
+							/- <table><tr><td>
+							htmlout (MSG_R(F_NEWNAME));
+							/- <td>
+							field_string (w_name,"");
+							/- <tr><td colspan=2>
+							if (glocal.error.size()==0){
+								/- &nbsp;
+							}else{
+								htmlprintf ("<span style='color:red;'>%s</span>\n",glocal.error.c_str());
+							}
+							/- <tr><td>
+							button_submit();
+							/- </table>
+						</f>
+						<f validate>
+							bool ret = true;
+							string newpath = string_f("%s/%s",glocal.path.c_str(),w_name.c_str());
+							if (util_entrytype(glocal.con,newpath)!=ENTRY_NONE){
+								glocal.error = MSG_R(E_FILEEXIST);
+								ret = false;
+							}
+							return ret;
+						</f>
+						<f process>
+							glocal.filepath = string_f("%s/%s",glocal.path.c_str(),w_name.c_str());
+							glocal.ok = true;
 						</f>
 						</call>
-					</f>
-					<f rest>
-						<call bod_client_appendfile>(glocal.con,w_session.c_str(),handle,content,more);
-						<f ok>
-							glocal.sendfile.setresult(success,msg);
+					}
+					if (glocal.ok){
+						<call sendfile>(glocal.filepath,tempname,glocal.fail,glocal.errmsg);
+						<f start>
+							<call bod_client_addfile_bob>(glocal.con,w_session.c_str(),filepath,content,more,"");
+							<f ok>
+								glocal.sendfile.sethandle(handle);
+								glocal.sendfile.setresult(success,msg);
+							</f>
+							</call>
+						</f>
+						<f rest>
+							<call bod_client_appendfile>(glocal.con,w_session.c_str(),handle,content,more);
+							<f ok>
+								glocal.sendfile.setresult(success,msg);
+							</f>
+							</call>
 						</f>
 						</call>
-					</f>
-					</call>
+						unlink (tempname);
+					}else{
+						glocal.fail = true;
+					}
 				}
-				keepediting = true;
 				fail = glocal.fail;
+				keepediting = true;
 			</f>
 			</call>
 		}
@@ -679,6 +756,9 @@ void projects(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER
 						}else if (glocal.dropmenu == MENU_RENAME){
 							glocal const char *oldname = f.name;
 							<call form>("rename");
+							<f load>
+								w_name = glocal.oldname;
+							</f>
 							<f setup>
 								/- <table border=0>
 								/- <tr><td>
