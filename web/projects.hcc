@@ -755,6 +755,7 @@ void projects(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER
 							index_setcopyitem(glocal.con_sess,glocal.fname,f.eventdate,f.name);
 						}else if (glocal.dropmenu == MENU_RENAME){
 							glocal const char *oldname = f.name;
+							glocal bool is_dir = bolixo_isdir(f.type);
 							<call form>("rename");
 							<f load>
 								w_name = glocal.oldname;
@@ -787,10 +788,12 @@ void projects(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER
 								</call>
 								fail = glocal.fail;
 								if (!fail){
+									string newid = string_f("%s/%s",glocal.id,w_name.c_str());
+									const char *newname = glocal.is_dir ? newid.c_str():w_name.c_str();
 									glocal.webtabs.replacetab(
 										string_f("%s/%s",glocal.id,glocal.name)
-										,string_f("%s/%s",glocal.id,w_name.c_str())
-										,w_name.c_str());
+										,newid
+										,newname);
 								}
 							</f>
 							</call>
@@ -874,6 +877,7 @@ void projects(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER
 					glocal.webtable.setdrop_hidden (MENU_PREVIEW);
 					if (bolixo_isdir(f.type)){
 						glocal.webtable.setdrop_disable (MENU_OPENINBTAB);
+						glocal.webtable.setdrop_hidden (MENU_DOWNLOAD);
 						if (glocal.is_public && !glocal.is_public_sub){
 							glocal.webtable.setdrop_visible (MENU_PREVIEW);
 						}

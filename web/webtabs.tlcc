@@ -107,17 +107,27 @@ const char *_F_webtabs::getstate () const
 	This is generally used when a document is renamed, so the corresponding tab must be fixed.
 	Now, renaming a document not currently displayed is supported as well (this function does nothing then and returns -1).
 	Return -1 if the tab was not found. Return 0 otherwise.
+
+	If the item renamed was a folder, this function may affect several tabs.
 */
 int _F_webtabs::replacetab(PARAM_STRING oldid, PARAM_STRING newid, PARAM_STRING title)
 {
 	int ret = -1;
+	// We have to loop through all the tabs. We may have to rename a tab for the folder itself
+	// and tabs for documents in that folder.
 	for (auto &t:*tabs){
+		const char *pt;
 		if (t.tab == oldid.ptr){
 			t.tab = newid.ptr;
 			t.title = title.ptr;
 			changed = true;
 			ret = 0;
-			break;
+		}else if (is_start_any_of(t.tab,pt,oldid.ptr) && pt[0] == '/'){
+			// OK, we are renaming a folder and this tab correspond to a document in that folder
+			t.tab = string_f("%s%s",newid.ptr,pt);
+			// The title of the document (the name of the file) is not changed
+			changed = true;
+			ret = 0;
 		}
 	}
 	return ret;

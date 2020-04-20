@@ -1049,19 +1049,39 @@ int main (int argc, char *argv[])
 					rep_playstep(success,unknown,msg,res);
 				</f>
 				<f rename>
+					// Rename a document. It is possible that old_gameid is not a document, but a folder, so we must
+					// rename all documents in this folder.
 					string msg;
 					translat_selectlang(lang);
-					auto oldg = glocal.games.find(old_gameid);
-					if (oldg != glocal.games.end()){
+					vector<pair<string,string>> to_renames;	// Will contain the entries to rename
+										// We do a first pass to identify all entries to rename
+										// The second pass will complete the work.
+										// We do this because glocal.games must not be changes during
+										// the first pass.
+					for (auto &g:glocal.games){
+						const char *pt;
+						if (g.first == old_gameid){
+							// We have found a document with this name
+							to_renames.emplace_back(old_gameid,new_gameid);
+							break;
+						}else if (is_start_any_of(g.first,pt,old_gameid) && pt[0] == '/'){
+							// old_gameid is in fact a directory.
+							// We assume new_gameid is the new name of the directory.
+							to_renames.emplace_back(g.first,string_f("%s%s",new_gameid,pt));
+						}
+					}
+					for (auto &r:to_renames){
 						// This is ok if the old document is missing
-						auto newg = glocal.games.find(new_gameid);
+						auto oldg = glocal.games.find(r.first);
+						auto newg = glocal.games.find(r.second);
 						if (newg != glocal.games.end()){
 							msg = MSG_U(E_NEWEXIST,"Can't rename document, new name exist");
+							break;
 						}else{
 							auto doc = oldg->second;
-							glocal.games.erase(oldg);
-							doc->setgameid(new_gameid);
-							glocal.games[new_gameid] = doc;
+							doc->setgameid(r.second);
+							glocal.games.erase(r.first);
+							glocal.games[r.second] = doc;
 						}
 					}
 					if (msg.size() > 0){

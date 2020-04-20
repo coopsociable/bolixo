@@ -217,8 +217,8 @@ public:
 	void add_notification_fd(int fd);
 	int del_notification_fd(int fd);
 	const char *locate_event (unsigned &sequence);
-	void setgameid(const char *_gameid){
-		gameid = _gameid;
+	void setgameid(PARAM_STRING _gameid){
+		gameid = _gameid.ptr;
 	}
 	void set_revision(unsigned _revision){
 		revision = _revision;
