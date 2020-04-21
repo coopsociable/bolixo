@@ -1079,6 +1079,54 @@ int main (int argc, char *argv[])
 							break;
 						}else{
 							auto doc = oldg->second;
+							static const char *tb[][2]={
+								{"CHEC","doc_checkers"},
+								{"CHES","doc_chess"},
+								{"SUDO","doc_sudoku"},
+								{"WORD","doc_wordproc"},
+								{"TICT","doc_tictacto"},
+							};
+							const char *type = doc->getclass();
+							const char *docid=nullptr;
+							for (auto &t:tb){
+								if (strcmp(t[0],type)==0){
+									docid=t[1];
+									break;
+								}
+							}
+							tlmp_warning ("class=%s docid=%s",type,docid);
+							const char *relname = r.second.c_str();
+							const char *pt;
+							if (is_start_any_of(r.second,pt,"/projects/")) relname = pt;
+							
+							string script;
+							script = 
+								"let div = document.createElement(\"div\");\n"
+								"console.log ('div='+div);\n"
+								"div.setAttribute(\"class\", \"popup\");\n"
+								"div.innerHTML=\""
+								"<div class='popup-content' id='popup' style='padding:10px 10px 10px 10px;'>";
+							script += string_f(MSG_U(I_RENAMED,"<center>Attention</center><p>"
+								"The document has been renamed by %s<br>"
+								"Its new name is<br>"
+								"<center>%s</center><p>"
+								"Close the document and reopen it using the new name<br>"
+								"All your modifications are preserved"),username,relname);
+							script +=
+								"</div>"
+								"\";\n"
+								"document.body.appendChild(div);\n"
+								"var pop=document.getElementById('popup');\n"
+								"pop.classList.toggle('show');\n";
+							script += string_f("var doc=document.getElementById('%s');\n",docid);
+							script += "if (doc == null){\n";
+							script += string_f("\tdoc=document.getElementById('full%s');\n",docid);
+							script += "}\n";
+							script += "var rectpop = pop.getBoundingClientRect();\n";
+							script += "var rectdoc = doc.getBoundingClientRect();\n";
+							script += "pop.style.left=rectdoc.left+(rectdoc.right-rectdoc.left)/2-(rectpop.right-rectpop.left)/2;\n"
+								"pop.style.top=rectdoc.top+(rectdoc.bottom-rectdoc.top)/2;\n";
+							doc->add_notification (script);
 							doc->setgameid(r.second);
 							glocal.games.erase(r.first);
 							glocal.games[r.second] = doc;
