@@ -160,7 +160,6 @@ struct DIRENTRY{
 #define webapi_list_lists_NOTNEED
 #define webapi_list_groups_NOTNEED
 #define webapi_list_contacts_NOTNEED
-#define webapi_delete_list_NOTNEED
 #define webapi_list_members_NOTNEED
 #include "proto/webapi.protoch"
 
@@ -1148,6 +1147,14 @@ static void bod_remote_contact_remove(
 	}
 }
 </mod>
+struct REMPROJECT{
+	string name;
+	string access;
+	bool modify=false;
+	REMPROJECT(PARAM_STRING _name, PARAM_STRING _access)
+		:name(_name.ptr), access(_access.ptr){
+	}
+};
 /*
 	Perform a remote set_member
 */
@@ -1163,18 +1170,50 @@ static void bod_remote_set_member(
 	PARAM_STRING server,	// Server where this user lives
 	PARAM_STRING access,
 	PARAM_STRING role,
-	const char *nodename)	// Our nodename
+	const char *nodename,	// Our nodename
+	const vector<REMPROJECT> &remprojects)	// Projects to manage on the remote server
 {
+	glocal bool success = true;
 	CONNECT_HTTP_INFO hcon;
 	bod_inithcon(hcon,server);
 	string session;
 	if (bod_remotelogin (con,hcon,caller,nodename,sessionid,session)!=-1){
 		if (create_group){
-			<call webapi_create_group> (hcon,session,groupname,"");
-			<f ok>
-				if (!success) tlmp_error ("remote_set_member create_group: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
-			</f>
-			</call>
+			// The public group is created on the fly at account creation time, including remote account creation.
+			if (groupname != "public"){
+				<call webapi_create_group> (hcon,session,groupname,"");
+				<f ok>
+					if (!success){
+						tlmp_error ("remote_set_member create_group: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
+						glocal.success = false;
+					}
+				</f>
+				</call>
+			}
+			// If we create a remote group, remprojects contains a list of project to create on the remote server.
+			for (auto &r:remprojects){
+				if (glocal.success){
+					<call webapi_create_group_list> (hcon,session,r.name,"");
+					<f ok>
+						if (!success){
+							tlmp_error ("remote_set_member create_project: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
+							glocal.success = false;
+						}
+					</f>
+					</call>
+					// We must add the group in the project
+					if (glocal.success){
+						<call webapi_set_group>(hcon,session,r.name,groupname,r.access,"");
+						<f ok>
+							if (!success){
+								tlmp_error ("remote_set_member set_group: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
+								glocal.success = false;
+							}
+						</f>
+						</call>
+					}
+				}
+			}
 		}
 		<call webapi_set_member> (hcon,session,groupname,user,access,role,"");
 		<f ok>
@@ -1182,13 +1221,70 @@ static void bod_remote_set_member(
 		</f>
 		</call>
 		if (delete_group){
-			<call webapi_delete_group> (hcon,session,groupname,"");
-			<f ok>
-				if (!success) tlmp_error ("remote_set_member delete_group: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
-			</f>
-			</call>
+			// We never delete the remote public group
+			if (groupname != "public"){
+				<call webapi_delete_group> (hcon,session,groupname,"");
+				<f ok>
+					if (!success){
+						tlmp_error ("remote_set_member delete_group: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
+						glocal.success = false;
+					}
+				</f>
+				</call>
+			}
+			// If we remove a remote group, remprojects contains a list of project to remove
+			for (auto &r:remprojects){
+				if (glocal.success){
+					<call webapi_delete_list> (hcon,session,r.name,"");
+					<f ok>
+						if (!success){
+							tlmp_error ("remote_set_member delete_list: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
+							glocal.success = false;
+						}
+					</f>
+					</call>
+				}
+			}
 		}
 		bod_remotelogout(hcon,session);
+	}
+}
+</mod>
+/*
+	Perform a remote set_group for listname/groupname.
+	The group may be either assigned, create, deassigned or delete
+*/
+<mod>
+static void bod_remote_set_group (
+	CONNECT_INFO &con,
+	const char *sessionid,
+	PARAM_STRING caller,
+	const char *nodename,
+	const char *listname,
+	const char *groupname,
+	map<string,set<string>> &servers,
+	const char *defaultaccess,
+	bool was_member)
+{
+	glocal bool success = true;
+	for (auto &m:servers){
+		CONNECT_HTTP_INFO hcon;
+		bod_inithcon(hcon,m.first);
+		string session;
+		if (bod_remotelogin (con,hcon,caller,nodename,sessionid,session)!=-1){
+			// We create the project/list, but it may already exist, so we do not check the error
+			<call webapi_create_group_list>(hcon,session,listname,"");
+			<f ok>
+			</f>
+			</call>
+			<call webapi_set_group>(hcon,session,listname,groupname,defaultaccess,"");
+			<f ok>
+				if (!success) glocal.success = false;
+			</f>
+			</call>
+			bod_remotelogout(hcon,session);
+		}
+		if (!glocal.success) break;
 	}
 }
 </mod>
@@ -1668,6 +1764,34 @@ static int bod_check_createdby(CONNECT_INFO &con, const char *createdby, const c
 	}
 	return ret;
 }
+/*
+	Find the remote users members of a group.
+	Organise then by server and then, for each server, the list of remote user.
+*/
+<mod>
+static void bod_get_remote_user(
+	map<string,set<string>> &servers,
+	unsigned userid,
+	const char *groupname,
+	const char *nodename)
+{
+	glocal servers;
+	glocal nodename;
+	<call sql_query>("select id2name.name from groups"
+		" left join group_members on groups.id = group_members.groupid"
+		" join id2name on group_members.userid=id2name.userid"
+		" where groups.ownerid=%u and groups.name='%s'",userid,groupname);
+	<f onerow>
+		string local_user,remote_user,server;
+		if (bod_parse_user (row[0],local_user,remote_user,server,glocal.nodename)==-1){
+			tlmp_error ("set_member bod_parse_user error %s\n",row[0]);
+		}else if (remote_user.size() > 0){
+			glocal.servers[server].insert(remote_user);
+		}
+	</f>
+	</call>
+}
+</mod>
 <mod>
 static int bod_main (
 	const char *bind,
@@ -2548,11 +2672,49 @@ static int bod_main (
 				</call>
 			</f>
 			<f set_group>	// sessionid listname groupname defaultaccess owner = success:b msg
-				<call bo_writed_client_set_group>(glocal.con,sessionid,listname,groupname,defaultaccess,owner);
-				<f ok>
-					glocal.bod_client.rep_set_group(success,msg);
-				</f>
-				</call>
+				/*
+					We are either assigning a group to a list, changing its defaultaccess, or removing it (defaultaccess == '-')
+					We have to check if this group hold some remote account.
+					If this is the case, we have to manage the list/group relation on the remote servers.
+				*/
+				glocal string msg;
+				string username;
+				unsigned userid = bo_writed_get_group_owner (glocal.con_sess, sessionid, owner, username,glocal.msg);
+				if (userid != 0){
+					// We have to know if this group was already a member of the list
+					glocal bool was_member = false;
+					<call sql_query>("select 1 from group_lists"
+						" join group_list_members on group_list_members.group_list_id = group_lists.id"
+						" join groups on group_list_members.groupid = groups.id"
+						" where group_lists.ownerid=%u and groups.name='%s'"
+						,userid,groupname);
+					<f onerow>
+						glocal.was_member = true;
+					</f>
+					</call>
+					<call bo_writed_client_set_group>(glocal.con,sessionid,listname,groupname,defaultaccess,owner);
+					<f ok>
+						glocal.msg = msg;
+					</f>
+					</call>
+					if (glocal.msg.size() == 0){
+						// Extract all servers related to the list
+						// We get the members of the group. From these members, we locate remote users and take note of their server.
+						// tlmp_warning ("set_member groupname=%s username=%s user=%s access=%s role=%s",groupname,username.c_str(),user,access,role);
+						map<string,set<string>> servers;	// Record per remote server accounts
+						bod_get_remote_user (servers,userid,groupname,glocal.nodename);
+						if (servers.size() > 0){
+							// Some job to do on remote servers
+							bod_remote_set_group (glocal.con,sessionid,username,glocal.nodename
+								,listname,groupname,servers,defaultaccess,glocal.was_member);
+						}
+					}
+				}
+				if (glocal.msg.size() > 0){
+					rep_set_group(false,glocal.msg);
+				}else{
+					rep_set_group(true,"");
+				}
 			</f>
 			<f set_member>	// sessionid groupname user access owner = success:b msg
 				glocal bool success = false;
@@ -2560,23 +2722,12 @@ static int bod_main (
 				string username;
 				unsigned userid = bo_writed_get_group_owner (glocal.con_sess, sessionid, owner, username,glocal.msg);
 				if (userid != 0){
-					// Extract all member of the group before calling bo-writed.
-					// We will be able to figure out of a group has to be created or deleted on a remote server
+					// Extract all members of the group before calling bo-writed.
+					// We will be able to figure out if a group has to be created or deleted on a remote server
+					// Note that we may create a project as well on the remote server if this group is a member.
 					// tlmp_warning ("set_member groupname=%s username=%s user=%s access=%s role=%s",groupname,username.c_str(),user,access,role);
 					glocal map<string,set<string>> servers;	// Record per remote server accounts
-					<call sql_query>("select id2name.name from groups"
-						" left join group_members on groups.id = group_members.groupid"
-						" join id2name on group_members.userid=id2name.userid"
-						" where groups.ownerid=%u and groups.name='%s'",userid,groupname);
-					<f onerow>
-						string local_user,remote_user,server;
-						if (bod_parse_user (row[0],local_user,remote_user,server,glocal.nodename)==-1){
-							tlmp_error ("set_member bod_parse_user error %s\n",row[0]);
-						}else if (remote_user.size() > 0){
-							glocal.servers[server].insert(remote_user);
-						}
-					</f>
-					</call>
+					bod_get_remote_user (glocal.servers,userid,groupname,glocal.nodename);
 					<call bo_writed_client_set_member>(glocal.con,sessionid,groupname,user,access,role,owner);
 					<f ok>
 						//tlmp_warning ("writed set_member success=%d msg=%s",success,msg);
@@ -2589,7 +2740,7 @@ static int bod_main (
 						string local_user,remote_user,server;
 						if (bod_parse_user (username.c_str(),local_user,remote_user,server,glocal.nodename)==-1){
 						}else if (remote_user.size() == 0){
-							// Check if glocal.user is a remote user. If this is the case, we run the request
+							// Check if user is a remote user. If this is the case, we run the request
 							// on the remote server.
 							if (bod_parse_user (user,local_user,remote_user,server,glocal.nodename)!=-1
 								&& remote_user.size() > 0){
@@ -2604,8 +2755,24 @@ static int bod_main (
 										delete_group = true;
 									}
 								}
+								glocal vector<REMPROJECT> remprojects;
+								if (create_group || delete_group){
+									// We have to either create or delete the group on the remote server.
+									// We must find all the projects using this group.
+									// We must create, delete or modify those projects on the remote server.
+									<call sql_query>("select group_lists.name,group_list_members.defaultaccess from group_lists"
+										" join group_list_members on group_lists.id=group_list_members.group_list_id"
+										" join groups on groups.id = group_list_members.groupid"
+										" where group_lists.ownerid = %u and groups.name='%s' and group_lists.name not like '#%%'"
+										,userid,groupname);
+									<f onerow>
+tlmp_warning ("projects :%s: :%s:",row[0],row[1]);
+										glocal.remprojects.emplace_back(row[0],row[1]);
+									</f>
+									</call>
+								}
 								bod_remote_set_member (glocal.con,sessionid,username,groupname,create_group,delete_group
-									,remote_user,server,access,role,glocal.nodename);
+									,remote_user,server,access,role,glocal.nodename,glocal.remprojects);
 							}
 						}
 					}
@@ -2613,6 +2780,7 @@ static int bod_main (
 				glocal.bod_client.rep_set_member(glocal.success,glocal.msg);
 			</f>
 			<f set_members>		// sessionid groupname members owner = success:b msg
+				// Not implemented yet in bo-writed.
 				vector<GROUPMEMBER> v;
 				for (auto &m:members) v.push_back(m);
 				<call bo_writed_client_set_members>(glocal.con,sessionid,groupname,v,owner);

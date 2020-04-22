@@ -470,6 +470,29 @@ elif [ "$1" = "remote-group" ] ; then # test: group with remote members, create,
 	$0 remote-group-create
 	$0 remote-group-messages
 	$0 remote-group-cleanup
+elif [ "$1" = "remote-project" ] ; then # test: project with remote members, create,send,cleanup
+	USER=jacques-A
+	showlists(){
+		echo ---Local
+		./bofs -u $USER groups --print-lists
+		echo ---Remote
+		ssh root@preprod.bolixo.org bofs -u admin groups --print-lists --owner $USER@test1.bolixo.org
+	}
+	echo ------- Before
+	#ssh root@preprod.bolixo.org bofs -u admin groups --print-groups --owner jacques-A@test1.bolixo.org
+	showlists
+	echo ------ Add group public to project newprj
+	./bofs -u jacques-A groups --set-group --listname newprj --groupname public --access W
+	showlists
+	echo ----- Add remote user to group public
+	./bofs -u jacques-A groups --set-member --groupname public --user jacquesg@preprod.bolixo.org --access R
+	showlists
+	echo ----- Remove group public from project newprj
+	./bofs -u jacques-A groups --set-group --listname newprj --groupname public --access -
+	showlists
+	echo ----- Remove remote user from group public
+	./bofs -u jacques-A groups --set-member --groupname public --user jacquesg@preprod.bolixo.org --access -
+	showlists
 else
 	echo command
 fi

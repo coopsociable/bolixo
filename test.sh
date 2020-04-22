@@ -239,6 +239,53 @@ documentd_restore(){
 	echo "fi" >>$REST
 	chmod +x $REST
 }
+cmpsequence(){
+	STOP=$1
+	shift
+	rm -f /tmp/bofs.testuuids
+	ssh root@preprod.bolixo.org rm -f /tmp/bofs.testuuids
+	ssh root@preprod2.bolixo.org rm -f /tmp/bofs.testuuids
+	ssh root@preprod.bolixo.org bofs --clearpubcache --pubsite test1.bolixo.org
+	ssh root@preprod2.bolixo.org bofs --clearpubcache --pubsite test1.bolixo.org
+	unset LANG
+	CMPDIR=/tmp/cmp-test
+	rm -fr $CMPDIR
+	mkdir $CMPDIR
+	for test in $*
+	do
+		OPT=
+		if [ "$test" = "public" ]; then
+			OPT=jacques-A
+		fi
+		$0 syslog-clear
+		echo test=$test
+		./scripts/access.sh $test $OPT >$CMPDIR/$test.out 2>$CMPDIR/$test.err
+		$0 syslog-logs >$CMPDIR/$test.log
+		if [ "$STOP" != "" ] ; then
+			$0 test-system
+			echo == $test.out
+			diff -c ../cmp-test/$test.out /tmp/cmp-test/$test.out
+			echo == $test.err
+			diff -c ../cmp-test/$test.err /tmp/cmp-test/$test.err
+			echo == $test.log
+			diff -c ../cmp-test/$test.log /tmp/cmp-test/$test.log
+			echo -n "Enter to continue "
+			read line
+		fi
+	done
+	$0 bo-sessiond-control resetnotifies
+	cd ../cmp-test
+	NBREF=`ls | wc -l`
+	NBTST=`cd /tmp/cmp-test && ls | wc -l`
+	if [ "$NBREF" != "$NBTST" ] ; then
+		echo NBREF=$NBREF NBTST=$NBTST
+	else
+		for file in *
+		do
+			diff -c $file /tmp/cmp-test/$file
+		done
+	fi
+}
 if [ "$1" = "" ] ; then
 	if [ -x /usr/sbin/menutest ] ; then
 		/usr/sbin/menutest -s $0
@@ -940,6 +987,7 @@ elif [ "$1" = "test-sequence" ] ; then # S: Reloads database (big,medium,real,no
 	ALL=
 	MANY=
 	CMP=
+	CMPSANE=
 	shift
 	$0 bo-writed-control mailctrl 0 keep
 	while [ "$1" != "" ]
@@ -950,6 +998,8 @@ elif [ "$1" = "test-sequence" ] ; then # S: Reloads database (big,medium,real,no
 			ALL=1
 		elif [ "$1" = "cmp" ]; then
 			CMP=1
+		elif [ "$1" = "cmpsane" ]; then
+			CMPSANE=1
 		elif [ "$1" = "many" ]; then
 			MANY=many
 		else
@@ -982,6 +1032,9 @@ elif [ "$1" = "test-sequence" ] ; then # S: Reloads database (big,medium,real,no
 	if [ "$CMP" = 1 ] ; then
 		echo ======= cmp ======
 		$0 cmp-sequence
+	elif [ "$CMPSANE" = 1 ] ; then
+		echo ======= cmpsane ======
+		$0 cmpsane-sequence
 	fi
 elif [ "$1" = "wait-for-keysd" ] ; then # S: wait until keysd has generated all keys
 	echo ======= wait for keysd ====
@@ -989,50 +1042,11 @@ elif [ "$1" = "wait-for-keysd" ] ; then # S: wait until keysd has generated all 
 elif [ "$1" = "test-sendmail" ] ;then # prod: ask writed to send one email
 	./bo-writed-control -p /var/lib/lxc/writed/rootfs/tmp/bo-writed-0.sock sendmail jack@dns.solucorp.qc.ca test body1
 elif [ "$1" = "cmp-sequence" ] ; then # S: Execute QA tests
-	rm -f /tmp/bofs.testuuids
-	ssh root@preprod.bolixo.org rm -f /tmp/bofs.testuuids
-	ssh root@preprod2.bolixo.org rm -f /tmp/bofs.testuuids
-	ssh root@preprod.bolixo.org bofs --clearpubcache --pubsite test1.bolixo.org
-	ssh root@preprod2.bolixo.org bofs --clearpubcache --pubsite test1.bolixo.org
-	unset LANG
-	CMPDIR=/tmp/cmp-test
-	rm -fr $CMPDIR
-	mkdir $CMPDIR
-	for test in cleartest1 directory createsubdir projects msgs ivldsession public remote-contact remote-interest contact-utf8 notifications \
+	cmpsequence "$2" cleartest1 directory createsubdir projects msgs ivldsession public remote-contact remote-interest contact-utf8 notifications \
 		remote-sendlarge cp-admin badnames setaccess remote-member delete-group remote-group remote-contact-fail
-	do
-		OPT=
-		if [ "$test" = "public" ]; then
-			OPT=jacques-A
-		fi
-		$0 syslog-clear
-		echo test=$test
-		./scripts/access.sh $test $OPT >$CMPDIR/$test.out 2>$CMPDIR/$test.err
-		$0 syslog-logs >$CMPDIR/$test.log
-		if [ "$2" != "" ] ; then
-			$0 test-system
-			echo == $test.out
-			diff -c ../cmp-test/$test.out /tmp/cmp-test/$test.out
-			echo == $test.err
-			diff -c ../cmp-test/$test.err /tmp/cmp-test/$test.err
-			echo == $test.log
-			diff -c ../cmp-test/$test.log /tmp/cmp-test/$test.log
-			echo -n "Enter to continue "
-			read line
-		fi
-	done
-	$0 bo-sessiond-control resetnotifies
-	cd ../cmp-test
-	NBREF=`ls | wc -l`
-	NBTST=`cd /tmp/cmp-test && ls | wc -l`
-	if [ "$NBREF" != "$NBTST" ] ; then
-		echo NBREF=$NBREF NBTST=$NBTST
-	else
-		for file in *
-		do
-			diff -c $file /tmp/cmp-test/$file
-		done
-	fi
+elif [ "$1" = "cmpsane-sequence" ] ; then # S: Execute QA tests
+	cmpsequence "$2" cleartest1 directory createsubdir projects msgs  public remote-contact remote-interest contact-utf8 notifications \
+		remote-sendlarge cp-admin setaccess remote-member remote-group
 elif [ "$1" = "eraseanon-lxc" ] ; then # prod: [  time [ anonymous normal admin ] ]
 	export LXCSOCK=on
 	OLD=0d

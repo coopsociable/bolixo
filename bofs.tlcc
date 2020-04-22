@@ -1745,7 +1745,7 @@ static int bofs_print_groups (CONTEXT &ctx, const char *owner, const char *onegr
 /*
 	Pretty print lists (projects)
 */
-static int bofs_print_lists(CONTEXT &ctx, const char *owner, const vector<LIST_receive> &lists)
+static int bofs_print_lists(CONTEXT &ctx, bool showpound, const char *owner, const vector<LIST_receive> &lists)
 {
 	int ret = 0;
 	unsigned max_listname=0;
@@ -1753,12 +1753,13 @@ static int bofs_print_lists(CONTEXT &ctx, const char *owner, const vector<LIST_r
 	// 2 passes to compute the maximum field length
 	for (int r=0; r<2; r++){
 		for (unsigned i=0; i<lists.size(); i++){
-			const LIST_receive &l = lists[i];
+			auto &l = lists[i];
 			const char *listname = l.name;
+			if (listname[0] == '#' && !showpound) continue;
 			bofs_maxlen (listname,max_listname);
 			const vector<const char *> &gs = l.groups;
 			if (gs.size() == 0){
-				printf ("%s\n",listname);
+				if (r==1) printf ("%s\n",listname);
 			}else{
 				const vector<const char *> &as = l.access;
 				for (unsigned j=0; j<gs.size(); j++){
@@ -1811,6 +1812,7 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 	glocal const char *user = nullptr;
 	glocal const char *role = "";
 	glocal bool only_owner = false;
+	glocal bool showpound = false;
 
 	glocal const char *owner = "";
         int ret = <call tlmpprogram>(argc,argv);
@@ -1850,6 +1852,7 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 		setarg ('R',"role","(for set-member) Activity of this member",glocal.role,false);
 		setarg ('O',"owner",MSG_R(O_OWNER),glocal.owner,false);
 		setarg (' ',"only_owner","Shows only groups owned by this user (--print-groups)",glocal.only_owner,false);
+		setarg (' ',"show_hidden_lists","Show hidden lists (name starts with #)",glocal.showpound,false);
 	</f>
 	<f main_noarg>
 		glocal int ret = -1;
@@ -1868,7 +1871,15 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 				</f>
 				</call>
 			}else{
-				notdone();	// create_group_list
+				<call webapi_create_group_list> (glocal.ctx->hcon,glocal.ctx->hsessionid,glocal.listname,glocal.owner);
+				<f ok>
+					if (success){
+						glocal.ret = 0;
+					}else{
+						bofs_error ("groups",internal_error, MSG_R(E_CREATEGROUPLIST),msg);
+					}
+				</f>
+				</call>
 			}
 		}else if (glocal.create_group){
 			if (glocal.groupname == nullptr){
@@ -1946,7 +1957,15 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 				</f>
 				</call>
 			}else{
-				notdone();	// set_group
+				<call webapi_set_group> (glocal.ctx->hcon,glocal.ctx->hsessionid,glocal.listname,glocal.groupname,glocal.access,glocal.owner);
+				<f ok>
+					if (success){
+						glocal.ret = 0;
+					}else{
+						bofs_error ("groups",internal_error,"Can't assign group to a list: %s",msg);
+					}
+				</f>
+				</call>
 			}
 		}else if (glocal.set_member){
 			if (glocal.groupname == nullptr){
@@ -2041,7 +2060,7 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 				<call bod_client_list_lists> (glocal.ctx->con,glocal.ctx->sessionid,glocal.owner);
 				<f ok>
 					if (success){
-						glocal.ret = bofs_print_lists(*glocal.ctx,glocal.owner,lists);
+						glocal.ret = bofs_print_lists(*glocal.ctx,glocal.showpound,glocal.owner,lists);
 					}else{
 						bofs_error ("groups",internal_error,"Can't list lists: %s",msg);
 					}
@@ -2051,7 +2070,7 @@ static int bofs_groups(CONTEXT &ctx, int argc, char *argv[])
 				<call webapi_list_lists> (glocal.ctx->hcon,glocal.ctx->hsessionid,glocal.owner);
 				<f ok>
 					if (success){
-						glocal.ret = bofs_print_lists(*glocal.ctx,glocal.owner,lists);
+						glocal.ret = bofs_print_lists(*glocal.ctx,glocal.showpound,glocal.owner,lists);
 					}else{
 						bofs_error ("groups",internal_error,"Can't list lists: %s",msg);
 					}
