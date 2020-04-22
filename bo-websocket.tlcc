@@ -268,11 +268,15 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 		endserver = true;
 	</f>
 	<f idle>
-		unsigned diff = time(nullptr) - glocal.lastactivity;
-		if (diff > idle_delay){
-			if (glocal.nbping > 2) endserver = true;
-			tlmp_warning ("idle since=%d diff=%u ping sent nbping=%u gameid=%s",since,diff,glocal.nbping,glocal.gameid.c_str());
-			bo_websocket_send (this,glocal.fd,9,"hello");
+		if (glocal.session.size() == 0){
+			endserver = true;
+		}else{
+			unsigned diff = time(nullptr) - glocal.lastactivity;
+			if (diff > idle_delay){
+				if (glocal.nbping > 2) endserver = true;
+				tlmp_warning ("idle since=%d diff=%u ping sent nbping=%u gameid=%s",since,diff,glocal.nbping,glocal.gameid.c_str());
+				bo_websocket_send (this,glocal.fd,9,"hello");
+			}
 		}
 	</f>
 	<f receive>
@@ -367,9 +371,9 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 						}
 					}
 					if (glocal.session.size() == 0){
-						tlmp_warning ("No session received");
+						tlmp_warning ("No session in cookie");
 						// This is odd. For some reason, we are receiving tons of those from the same IP
-						endserver = true;
+						// We will keep the session opened and close it in the idle functag.
 					}else{
 						<call bo_sessiond_client_getsessioninfovars>(glocal.con_sessiond,glocal.session);
 						<f ok>
@@ -398,7 +402,6 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 				if (glocal.session.size() == 0){
 					tlmp_warning ("No session received");
 					// This is odd. For some reason, we are receiving tons of those from the same IP
-					endserver = true;
 				}else{
 					// tlmp_warning ("session=%s",glocal.session.c_str());
 					glocal.header_seen = true;
@@ -411,7 +414,7 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 					setrawmode(true);
 				}
 			}
-		}else{
+		}else if (glocal.session.size() > 0){
 			glocal.lastactivity = time(nullptr);
 			<call streamp_do>(glocal.buf,line,info.linelen);
 			<f process>
