@@ -213,7 +213,7 @@ static void config_form_title(const char *title)
 static void config_printmsg(const char *color, const string &msg)
 {
 	if (msg.size() > 0){
-		htmlprintf ("<font color=%s>%s</font>\n",color,msg.c_str());
+		htmlprintf ("&nbsp;<font color=%s>%s</font>\n",color,msg.c_str());
 	}
 }
 /*
@@ -312,6 +312,29 @@ static void config_search(const char *id, string &userid)
 	</call>
 }
 </mod>
+struct GROUP_MEMBER{
+	string user;
+	string access;
+	string role;
+	GROUP_MEMBER(PARAM_STRING _user, PARAM_STRING _access, PARAM_STRING _role)
+		: user(_user.ptr), access(_access.ptr), role(_role.ptr)
+	{
+	}
+};
+static void config_parsemembers(vector<GROUP_MEMBER> &members)
+{
+	const char *pt = w_content.c_str();
+	while (*pt != '\0'){
+		string word;
+		pt = str_copyword(word,pt);
+		vector<string> tb;
+		int n = str_splitline(word.c_str(),':',tb);
+		if (n > 0){
+			while (tb.size() < 3) tb.push_back("");
+			members.emplace_back (tb[0],tb[1],tb[2]);
+		}
+	}
+}
 <mod>
 void profile(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER> &docpointers)
 {
@@ -513,141 +536,182 @@ void profile(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER>
 			</f>
 			</call>
 		}else if (strncmp(id,"group:",6)==0){
+			glocal id;
 			glocal const char *grpname = id+6;
 			glocal bool adding = glocal.grpname[0] == '\0';
-			glocal string error;
-			<call form>(id);
-			<f top>
-				/- <table border=0 width=100%><tr><td><td><table border=0 width=100%>
-				if (!glocal.adding) htmlprintf ("<tr><td>%s<td width=99%%><b>%s</b>\n",MSG_R(I_GROUP),glocal.grpname);
-			</f>
-			<f bottom>
-				/- </table></table>
-			</f>
-			<f load>
-				<call bod_client_list_groups>(glocal.con,w_session.c_str(),"",true);
-				<f ok>
-					for (auto &g:groups){
-						if (strcmp(g.name,glocal.grpname)==0){
-							w_desc = g.description;
-							w_content = "";
-							for (unsigned i=0; i<g.users.size(); i++){
-								w_content += string_f ("%s:%s:%s\n",g.users[i],g.access[i],g.roles[i]);
-							}
-							break;
-						}
-					}
+			glocal string picked_userid;
+			<call webflip>();
+			<f first>
+				glocal string error;
+				DIV f; f.id(TAB_FORM).print();
+				<call form>(glocal.id);
+				<f top>
+					/- <table border=0 width=100%><tr><td><td><table border=0 width=100%>
+					if (!glocal.adding) htmlprintf ("<tr><td>%s<td width=99%%><b>%s</b>\n",MSG_R(I_GROUP),glocal.grpname);
 				</f>
-				</call>
-			</f>
-			<f setup>
-				if (glocal.adding){
-					htmlprintf ("<tr><td>%s&nbsp;<td>",MSG_U(I_GROUP,"Group"));
-					field_string (w_group,"size=30");
-				}
-				/-#I_DESCRIPTION <tr><td>Description&nbsp;<td width=99%>
-				field_string (w_desc,"style=width:100%");
-				/- <tr><td>&nbsp;
-				/-#I_MEMBERS <tr><td valign=top>Members<td width=99%>
-				field_textarea (w_content,20,-100,"");
-				/- <tr><td colspan=2>
-				button_submit();
-				config_printmsg ("red",glocal.error); 
-			</f>
-			<f validate>
-				bool ret = true;
-				return ret;
-			</f>
-			<f process>
-				glocal bool fail = false;
-				if (glocal.adding){
-					glocal.grpname = w_group.c_str();
-					<call bod_client_create_group>(glocal.con,w_session.c_str(),glocal.grpname,"");
-					<f ok>
-						if (!success){
-							glocal.fail = true;
-							glocal.error = string_f(MSG_U(E_CANTCREATEGROUP,"Can't create group: %s"),msg);
-						}else{
-							// The group has been added, the tab name will change.
-							glocal.webtabs.setid(string_f("group:%s",glocal.grpname));
-							glocal.webtabs.settitle(string_f("%s %s",MSG_R(I_GROUP),glocal.grpname));
-						}
-					</f>
-					</call>
-				}
-				if (!glocal.fail){
-					glocal vector<string> oldusers;
+				<f bottom>
+					/- </table></table>
+				</f>
+				<f load>
 					<call bod_client_list_groups>(glocal.con,w_session.c_str(),"",true);
 					<f ok>
 						for (auto &g:groups){
 							if (strcmp(g.name,glocal.grpname)==0){
-								for (auto u:g.users) glocal.oldusers.push_back(u);
+								w_desc = g.description;
+								w_content = "";
+								for (unsigned i=0; i<g.users.size(); i++){
+									w_content += string_f ("%s:%s:%s\n",g.users[i],g.access[i],g.roles[i]);
+								}
 								break;
 							}
 						}
 					</f>
 					</call>
-					<call bod_client_set_group_desc>(glocal.con,w_session.c_str(),glocal.grpname,w_desc.c_str(),"");
-					<f ok>
-						if (!success){
-							glocal.error = string_f (MSG_U(E_CANTSETGROUPDESC,"Can't set group description: %s"),msg);
-							glocal.fail = true;
-						}
-					</f>
-					</call>
-					vector<string> newusers,newaccesses,newroles;
-					const char *pt = w_content.c_str();
-					while (*pt != '\0'){
-						string word;
-						pt = str_copyword(word,pt);
-						vector<string> tb;
-						int n = str_splitline(word.c_str(),':',tb);
-						if (n > 0){
-							while (tb.size() < 3) tb.push_back("");
-							newusers.push_back (tb[0]);
-							newaccesses.push_back(tb[1]);
-							newroles.push_back(tb[2]);
+				</f>
+				<f setup>
+					if (glocal.picked_userid.size() > 0){
+						vector<GROUP_MEMBER> members;
+						config_parsemembers(members);
+						auto it = find_if(members.begin(),members.end()
+							,[this](auto &m){
+								return m.user == glocal.picked_userid;
+							});
+						if (it!=members.end()){
+							glocal.error = string_f(MSG_U(E_ALREADYMEMBER,"%s is already in the list"),glocal.picked_userid.c_str());
+						}else{
+							string content = w_content.c_str();
+							if (content.size() > 0 && content[content.size()-1] != '\n') content += '\n';
+							content += glocal.picked_userid;
+							content += ":W:";
+							tlmpweb_forcevar(w_content,content);
 						}
 					}
-					for (unsigned i=0; !glocal.fail && i<newusers.size(); i++){
-						glocal const char *user = newusers[i].c_str();
-						<call bod_client_set_member>(glocal.con,w_session.c_str(),glocal.grpname
-							,glocal.user,newaccesses[i].c_str(),newroles[i].c_str(),"");
+					if (glocal.adding){
+						htmlprintf ("<tr><td>%s&nbsp;<td>",MSG_U(I_GROUP,"Group"));
+						field_string (w_group,"size=30");
+					}
+					/-#I_DESCRIPTION <tr><td>Description&nbsp;<td width=99%>
+					field_string (w_desc,"style=width:100%");
+					/- <tr><td>&nbsp;
+					/-#I_MEMBERS <tr><td valign=top>Members<td width=99%>
+					field_textarea (w_content,20,-100,"");
+					/- <tr><td colspan=2>
+					button_submit();
+					config_printmsg ("red",glocal.error); 
+				</f>
+				<f validate>
+					bool ret = true;
+					return ret;
+				</f>
+				<f process>
+					glocal bool fail = false;
+					if (glocal.adding){
+						glocal.grpname = w_group.c_str();
+						<call bod_client_create_group>(glocal.con,w_session.c_str(),glocal.grpname,"");
 						<f ok>
 							if (!success){
 								glocal.fail = true;
-								glocal.error = string_f (MSG_U(E_CANTSETMEMBER,"Can't set member %s: %s"),glocal.user,msg);
+								glocal.error = string_f(MSG_U(E_CANTCREATEGROUP,"Can't create group: %s"),msg);
+							}else{
+								// The group has been added, the tab name will change.
+								glocal.webtabs.setid(string_f("group:%s",glocal.grpname));
+								glocal.webtabs.settitle(string_f("%s %s",MSG_R(I_GROUP),glocal.grpname));
 							}
 						</f>
 						</call>
 					}
 					if (!glocal.fail){
-						// We have to remove the users that are gone
-						index_delete_new_from_old(newusers,glocal.oldusers);
-						// what remains in oldusers have to be deleted (setting access to - does this)
-						for (auto &g:glocal.oldusers){
-							glocal const char *user = g.c_str();
+						glocal vector<string> oldusers;
+						<call bod_client_list_groups>(glocal.con,w_session.c_str(),"",true);
+						<f ok>
+							for (auto &g:groups){
+								if (strcmp(g.name,glocal.grpname)==0){
+									for (auto u:g.users) glocal.oldusers.push_back(u);
+									break;
+								}
+							}
+						</f>
+						</call>
+						<call bod_client_set_group_desc>(glocal.con,w_session.c_str(),glocal.grpname,w_desc.c_str(),"");
+						<f ok>
+							if (!success){
+								glocal.error = string_f (MSG_U(E_CANTSETGROUPDESC,"Can't set group description: %s"),msg);
+								glocal.fail = true;
+							}
+						</f>
+						</call>
+						vector<GROUP_MEMBER> newmembers;
+						config_parsemembers(newmembers);
+						for (auto &member:newmembers){
+							glocal const char *user = member.user.c_str();
 							<call bod_client_set_member>(glocal.con,w_session.c_str(),glocal.grpname
-								,glocal.user,"-","","");
+								,glocal.user,member.access.c_str(),member.role.c_str(),"");
 							<f ok>
 								if (!success){
 									glocal.fail = true;
-									glocal.error = string_f (MSG_U(E_CANTDELMEMBER,"Can't delete member %s: %s"),glocal.user,msg);
+									glocal.error = string_f (MSG_U(E_CANTSETMEMBER,"Can't set member %s: %s"),glocal.user,msg);
 								}
 							</f>
 							</call>
+							if (glocal.fail) break;
+						}
+						if (!glocal.fail){
+							// We have to remove the users that are gone
+							vector<string> newusers;
+							for (auto &m:newmembers) newusers.push_back(m.user);
+							index_delete_new_from_old(newusers,glocal.oldusers);
+							// what remains in oldusers have to be deleted (setting access to - does this)
+							for (auto &g:glocal.oldusers){
+								glocal const char *user = g.c_str();
+								<call bod_client_set_member>(glocal.con,w_session.c_str(),glocal.grpname
+									,glocal.user,"-","","");
+								<f ok>
+									if (!success){
+										glocal.fail = true;
+										glocal.error = string_f (MSG_U(E_CANTDELMEMBER,"Can't delete member %s: %s"),glocal.user,msg);
+									}
+								</f>
+								</call>
+							}
 						}
 					}
-				}
-				fail = glocal.fail;
-				if (!fail){
-					if (glocal.adding){
-						glocal.webtabs.redotab();
-						resetstate();
+					fail = glocal.fail;
+					if (!fail){
+						if (glocal.adding){
+							glocal.webtabs.redotab();
+							resetstate();
+						}
+						keepediting = true;
+						reload();
 					}
-					keepediting = true;
-					reload();
-				}
+				</f>
+				</call>
+			</f>
+			<f second>
+				static string table ("group_contacts");
+				static WEBID id_contacts(table);
+				DIV c(TAB_SUBTABS); c.borderradius(5).border(1,"black").vmargins(2,5).paddings(2,2).vpaddings(2,2).print();
+				<call webtable>(id_contacts,currents[table],offsets[table],5);
+				<f load>
+					glocal selected_row;
+					<call bod_client_list_contacts>(glocal.con,w_session.c_str(),"");
+					<f ok>
+						unsigned rownum = 0;
+						unsigned mini_image_width = tlmpweb_ismobile() ? 60 : 40;
+						for (auto m:members){
+							if (rownum == glocal.selected_row){
+								glocal.picked_userid = m;
+							}
+							glocal.webtable.setclickopt (true,"","");
+							string dir = string_f("/projects/%s/public",m);
+							string img = util_mini_img(step_image,mini_image_width,dir,"mini-photo.jpg","");
+							glocal.webtable.setrow("white",rownum,"%s\t%s",img.c_str(),m);
+							rownum++;
+						}
+					</f>
+					</call>
+				</f>
+				</call>
 			</f>
 			</call>
 		}else if (strcmp(id,"sendcontact")==0){		// CONF sendcontact
