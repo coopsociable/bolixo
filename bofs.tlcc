@@ -4078,18 +4078,33 @@ static int bofs_documents (CONTEXT &ctx, int argc, char *argv[])
 				sp.width = sp.content_width = 1000;
 				sp.height = sp.content_height = 1000;
 				sp.mobile = false;
-				<call bod_client_playstep>(glocal.ctx.con,glocal.ctx.sessionid,"",glocal.docname,steps,sp);
-				<f ok>
-					if (!success){
-						bofs_error ("document",internal_error,MSG_U(E_PLAYSTEP,"Error while doing playstep msg=%s\n"),msg);
-					}else{
-						for (auto &r:res){
-							if (glocal.noscripts && is_any_of(r.var,"notify","script","refresh")) continue;
-							printf ("r=var=%s r.val=%s\n",r.var,r.val);
+				if (glocal.ctx.is_internal()){
+					<call bod_client_playstep>(glocal.ctx.con,glocal.ctx.sessionid,"",glocal.docname,steps,sp);
+					<f ok>
+						if (!success){
+							bofs_error ("document",internal_error,MSG_U(E_PLAYSTEP,"Error while doing playstep msg=%s\n"),msg);
+						}else{
+							for (auto &r:res){
+								if (glocal.noscripts && is_any_of(r.var,"notify","script","refresh")) continue;
+								printf ("r=var=%s r.val=%s\n",r.var,r.val);
+							}
 						}
-					}
-				</f>
-				</call>
+					</f>
+					</call>
+				}else{
+					<call webapi_playstep>(glocal.ctx.hcon,glocal.ctx.hsessionid,"",glocal.docname,steps,sp);
+					<f ok>
+						if (!success){
+							bofs_error ("document",internal_error,MSG_R(E_PLAYSTEP),msg);
+						}else{
+							for (auto &r:res){
+								if (glocal.noscripts && is_any_of(r.var,"notify","script","refresh")) continue;
+								printf ("r=var=%s r.val=%s\n",r.var,r.val);
+							}
+						}
+					</f>
+					</call>
+				}
 			}
 		}else if (glocal.waitevent){
 			if (glocal.docname == nullptr){

@@ -50,6 +50,7 @@
 #include "helper.h"
 #include "documentd_req.h"
 
+using namespace std;
 
 static DEBUG_KEY D_PROTO ("proto","Protocol information");
 
@@ -126,21 +127,7 @@ struct DIRENTRY{
 
 #define webapi_test_NOTNEED
 #define webapi_login_NOTNEED
-#define webapi_addfile_NOTNEED
-#define webapi_addfile_bob_NOTNEED
-#define webapi_delfile_NOTNEED
-#define webapi_undelete_NOTNEED
-#define webapi_modifyfile_NOTNEED
-#define webapi_modifyfile_bob_NOTNEED
-#define webapi_rename_NOTNEED
-#define webapi_copy_NOTNEED
-#define webapi_readfile_NOTNEED
-#define webapi_mkdir_NOTNEED
-#define webapi_rmdir_NOTNEED
-#define webapi_listdir_NOTNEED
-#define webapi_stat_NOTNEED
 #define webapi_set_access_NOTNEED
-#define webapi_markview_NOTNEED
 #define webapi_verifysign_NOTNEED
 #define webapi_list_inboxes_NOTNEED
 #define webapi_list_msgs_NOTNEED
@@ -169,7 +156,6 @@ struct DIRENTRY{
 #include "proto/bod_client.protoh"
 #include "proto/bod_admin.protoh"
 
-using namespace std;
 
 
 #include "proto/bo-writed_client.protoch"
@@ -1291,6 +1277,12 @@ static void bod_remote_set_group (
 /*
 	When bod performs a remote file operation and it must return a handle to the caller, it allocates this
 	to keep the context, like filesystem.tlcc does with local file handle.
+
+	There are two usage to this system. There are two addto() methods.
+	appendfile is used by addfile_bob/modifyfile_bod and sendtalk.
+
+	addfile_bob used the addto() to associate on local handle to a remote handle.
+	sendtalk associates a local handle with multiple remote handles.
 */
 struct REMOTE_INFO{
 	string server;
@@ -1298,6 +1290,9 @@ struct REMOTE_INFO{
 	string handle;
 	CONNECT_HTTP_INFO con;
 	void logout();
+	REMOTE_INFO(){};
+	REMOTE_INFO(const REMOTE_INFO &c) = default;
+	REMOTE_INFO(REMOTE_INFO &&c) = default;
 	~REMOTE_INFO();
 	void initcon();
 };
@@ -1339,14 +1334,22 @@ struct REMOTE_HANDLE{
 		r.groupname = groupname.ptr;
 		r.server = server.ptr;
 		r.groupowner = groupowner.ptr;
-tlmp_warning ("addgroup g=%s s=%s o=%s",groupname.ptr,server.ptr,groupowner.ptr);
+		//tlmp_warning ("addgroup g=%s s=%s o=%s",groupname.ptr,server.ptr,groupowner.ptr);
 		to.emplace_back(r);
 	}
 	void addto (PARAM_STRING server, const vector<string> &users){
 		REMOTE_INFO_TO r;
 		r.server = server.ptr;
 		r.users = users;
-		to.emplace_back(r);
+		to.emplace_back(move(r));
+	}
+	void addto (PARAM_STRING server, PARAM_STRING handle, PARAM_STRING session){
+		REMOTE_INFO_TO r;
+		r.server = server.ptr;
+		r.handle = handle.ptr;
+		r.sessionid = session.ptr;
+		r.initcon();
+		to.emplace_back(move(r));
 	}
 };
 using REMOTE_HANDLE_P = unique_ptr<REMOTE_HANDLE>;
@@ -1477,18 +1480,27 @@ static void bod_remote_sendtalk(
 </mod>
 <mod>
 static void bod_remote_appendfile(
+	CONNECT_INFO &con,
+	const char *sessionid,
 	REMOTE_HANDLE &rem,
+	const char *nodename,
 	const BOB_TYPE &content,
-	bool more)
+	bool more,
+	string &msg)
 {
+	glocal msg;
 	for (auto &r:rem.to){
 		glocal REMOTE_INFO_TO *r = &r;
 		<call webapi_appendfile>(r.con,r.sessionid,r.handle,content,more);
 		<f ok>
-			if (!success) tlmp_error ("remote_appendfile failed: %s@%s %s\n"
-				,glocal.r->users[0].c_str(),glocal.r->server.c_str(),msg);
+			if (!success){
+				glocal.msg = msg;
+				tlmp_error ("remote_appendfile failed: %s@%s %s\n"
+					,glocal.r->users[0].c_str(),glocal.r->server.c_str(),msg);
+			}
 		</f>
 		</call>
+		if (glocal.msg.size() > 0) break;
 	}
 }
 </mod>
@@ -1632,6 +1644,108 @@ static int bod_parse_user (
 static bool bod_is_remote_user (PARAM_STRING user)
 {
 	return strchr(user.ptr,'@') != nullptr;
+}
+#define _TLMP_bod_localremote
+struct _F_bod_localremote{
+	string srcproject;	// Part of fname representing the local project
+	string dstproject;	// remote project
+	string mapfname (PARAM_STRING path);
+	bool dologout = true;
+	void donotlogout() { dologout = false;}
+	#define _F_bod_localremote_remote(x) void x remote(CONNECT_HTTP_INFO &con, const char *session, const char *fname, const char *username, const char *threshold, const char *server, string &msg)
+	virtual _F_bod_localremote_remote( )=0;
+	#define _F_bod_localremote_local(x) void x local(CONNECT_INFO &con, const char *session, const char *fname, const char *username, ENTRY &entry, const char *threshold, string &msg)
+	virtual _F_bod_localremote_local( )=0;
+};
+
+/*
+	path is a remote path. Convert it to local path.
+
+	So path looks like /projects/user@some-server/public/file and it is convert to /projects/user/public/file
+	so it is usable on the remote server.
+
+	Validate that the path is in the same remote project as fname supplied in the bod_localremote() call.
+*/
+string _F_bod_localremote::mapfname (PARAM_STRING path)
+{
+	string ret;
+	const char *pt;
+	if (is_start_any_of(path.ptr,pt,srcproject.c_str())){
+		ret = dstproject + pt;
+	}
+	return ret;
+}
+
+static void bod_localremote(
+	_F_bod_localremote &c,
+	CONNECT_INFO &con,
+	CONNECT_INFO &con_sess,
+	const char *sessionid,
+	const char *fname,
+	bool expect_exist,
+	const char *threshold,
+	const char *nodename,
+	string &msg)
+{
+	string username;
+	ENTRY entry;
+	entry.userid = trli_getsessionuser (con_sess, sessionid, entry.is_admin, username, msg);
+	if (entry.userid != 0){
+		string local_user,remote_user,server;
+		const char *pt;
+		vector<string> tb;	// Decomposed path after /projects/ and /msgs/
+		if (is_start_any_of(fname,pt,"/projects/","/msgs/")){
+			int n = str_splitline (pt,'/',tb);
+			if (n >= 2){
+				c.srcproject = string(fname,pt-fname)+tb[0]+'/'+tb[1]+'/';
+				c.dstproject = c.srcproject;
+			}
+			if (n >= 1){
+				if (bod_parse_user (tb[0].c_str(),local_user,remote_user,server,nodename)==-1){
+					msg = MSG_R(E_IVLDPATH);
+				}
+			}
+		}
+		if (msg.empty()){
+			if (remote_user.size() > 0){
+				if (tb.size() >= 2){
+					c.dstproject = string(fname,pt-fname)+remote_user+'/'+tb[1] + '/';
+					CONNECT_HTTP_INFO hcon;
+					bod_inithcon(hcon,server);
+					string session;
+					if (bod_remotelogin (con,hcon,username,nodename,sessionid,session)!=-1){
+						string rem_fname (fname,pt-fname);
+						rem_fname += remote_user;
+						for (auto p=tb.begin()+1; p != tb.end(); p++){
+							rem_fname += '/';
+							rem_fname += *p;
+						}
+						c.remote(hcon,session.c_str(),rem_fname.c_str(),username.c_str(),threshold,server.c_str(),msg);
+						if (c.dologout){
+							bod_remotelogout(hcon,session);
+						}
+					}
+				}else{
+					msg = MSG_R(E_IVLDPATH);
+				}
+			}else{
+				bool ok = true;
+				if (expect_exist){
+					ok = fs_findentry (fname,entry,true,threshold) != -1;
+					if (!ok){
+						msg = entry.msg; 
+					}
+				}
+				if (ok){	
+					c.local(con,sessionid,fname,username.c_str(),entry,threshold,msg);
+				}
+			}
+		}
+	}
+}
+static void bod_localremote(_F_bod_localremote &c, CONNECT_INFO &con, CONNECT_INFO &con_sess, const char *sessionid, const char *fname, const char *nodename, string &msg)
+{
+	bod_localremote (c,con,con_sess,sessionid,fname,false,"",nodename,msg);
 }
 /*
 	Get the public key of a node
@@ -1792,6 +1906,7 @@ static void bod_get_remote_user(
 	</call>
 }
 </mod>
+#define REPLYMSG(f,msg) if (msg.size()>0){ f(false,msg.c_str()); }else{ f(true,""); }
 <mod>
 static int bod_main (
 	const char *bind,
@@ -1991,11 +2106,7 @@ static int bod_main (
 					bod_record_email (glocal.con,glocal.name,glocal.email,glocal.dirserver,glocal.nodename);
 				</f>
 				</call>
-				if (glocal.msg.size() > 0){
-					rep_publishemail (false,glocal.msg);
-				}else{
-					rep_publishemail (true,"");
-				}
+				REPLYMSG(rep_publishemail,glocal.msg);
 			</f>
 			<f nodelogin>	// node = success:b msg session
 				CONNECT_HTTP_INFO hcon;
@@ -2115,131 +2226,312 @@ static int bod_main (
 				</call>
 			</f>
 			<f mkdir> // sessionid name = success:b dirid msg
-				<call bo_writed_client_mkdir>(glocal.con,sessionid,name);
-				<f ok>
-					glocal.bod_client.rep_mkdir(success,msg);
+				glocal string msg;
+				<call bod_localremote>(glocal.con,glocal.con_sess,sessionid,name,glocal.nodename,glocal.msg);
+				<f local>
+					<call bo_writed_client_mkdir>(con,session,fname);
+					<f ok>
+						if (!success) glocal.msg = msg;
+					</f>
+					</call>
+				</f>
+				<f remote>
+					<call webapi_mkdir>(con,session,fname);
+					<f ok>
+						if (!success) glocal.msg = msg;
+					</f>
+					</call>
 				</f>
 				</call>
+				REPLYMSG(rep_mkdir,glocal.msg);
 			</f>
 			<f rmdir> // sessionid name = success:b msg
-				<call bo_writed_client_rmdir>(glocal.con,sessionid,name);
-				<f ok>
-					glocal.bod_client.rep_rmdir(success,msg);
+				glocal string msg;
+				<call bod_localremote>(glocal.con,glocal.con_sess,sessionid,name,glocal.nodename,glocal.msg);
+				<f local>
+					<call bo_writed_client_rmdir>(con,session,fname);
+					<f ok>
+						if (!success) glocal.msg = msg;
+					</f>
+					</call>
+				</f>
+				<f remote>
+					<call webapi_rmdir>(con,session,fname);
+					<f ok>
+						if (!success) glocal.msg = msg;
+					</f>
+					</call>
 				</f>
 				</call>
+				REPLYMSG(rep_rmdir,glocal.msg);
 			</f>
-			<f addfile> // sessionid name content = success:b fileid msg
-				<call bo_writed_client_addfile>(glocal.con,sessionid,name,content);
-				<f ok>
-					glocal.bod_client.rep_addfile(success,msg);
+			<f addfile> // sessionid name content = success:b msg
+				glocal content;
+				glocal string msg;
+				<call bod_localremote>(glocal.con,glocal.con_sess,sessionid,name,glocal.nodename,glocal.msg);
+				<f local>
+					<call bo_writed_client_addfile>(con,session,fname,glocal.content);
+					<f ok>
+						if (!success) glocal.msg = msg;
+					</f>
+					</call>
+				</f>
+				<f remote>
+					<call webapi_addfile>(con,session,fname,glocal.content);
+					<f ok>
+						if (!success) glocal.msg = msg;
+					</f>
+					</call>
 				</f>
 				</call>
+				REPLYMSG(rep_addfile,glocal.msg);
 			</f>
 			<f addfile_bob> // sessionid name content:o more:b owner = success:b fileid msg
+				glocal content;
+				glocal more;
+				glocal owner;
+				glocal string msg;
+				glocal string handle;
 				debug_printf ("bob size=%lu\n",content.getsize());
-				<call bo_writed_client_addfile_bob>(glocal.con,sessionid,name,content,more,owner);
-				<f ok>
-					glocal.bod_client.rep_addfile_bob(success,handle,msg);
+				<call bod_localremote>(glocal.con,glocal.con_sess,sessionid,name,glocal.nodename,glocal.msg);
+				<f local>
+					<call bo_writed_client_addfile_bob>(con,session,fname,glocal.content,glocal.more,glocal.owner);
+					<f ok>
+						if (!success){
+							glocal.msg = msg;
+						}else{
+							glocal.handle = handle;
+						}
+					</f>
+					</call>
+				</f>
+				<f remote>
+					glocal server;
+					glocal username;
+					glocal session;
+					<call webapi_addfile_bob>(con,session,fname,glocal.content,glocal.more,glocal.owner);
+					<f ok>
+						if (!success){
+							glocal.msg = msg;
+						}else if (handle[0] != '\0'){
+							auto rem = make_unique<REMOTE_HANDLE>();
+							rem->username = glocal.username;
+							rem->addto(glocal.server,handle,glocal.session);
+							rem_handles[handle] = move(rem);
+							glocal.handle = handle;
+							glocal.bod_localremote.donotlogout();
+						}
+					</f>
+					</call>
 				</f>
 				</call>
+				if (glocal.msg.size() > 0){
+					rep_addfile_bob(false,"",glocal.msg);
+				}else{
+					rep_addfile_bob(true,glocal.handle,"");
+				}
 			</f>
 			<f appendfile> // sessionid handle content:o more:b = success:b msg
-				glocal bool success = false;
 				glocal string msg;
 				// handle may be a remote_handle.
 				auto r = rem_handles.find(handle);
 				if (r != rem_handles.end()){
 					handle = r->second->handle.c_str();	// Retrieve the local handle.
 				}
-				<call bo_writed_client_appendfile>(glocal.con,sessionid,handle,content,more);
-				<f ok>
-					glocal.success = success;
-					glocal.msg = msg;
-				</f>
-				</call>
+				if (handle[0] != '\0'){
+					<call bo_writed_client_appendfile>(glocal.con,sessionid,handle,content,more);
+					<f ok>
+						if (!success) glocal.msg = msg;
+					</f>
+					</call>
+				}
 				if (r != rem_handles.end()){
-					if (glocal.success){
-						bod_remote_appendfile(*r->second,content,more);
-					}else{
-						more = false;
+					if (glocal.msg.empty()){
+						bod_remote_appendfile(glocal.con,sessionid,*r->second,glocal.nodename,content,more,glocal.msg);
 					}
-					if (!more){
+					if (glocal.msg.size() > 0){
 						rem_handles.erase(r);
 					}
 				}
-				rep_appendfile(glocal.success,glocal.msg);
+				REPLYMSG(rep_appendfile,glocal.msg);
 			</f>
 			<f delfile> // sessionid name = success:b msg
-				<call bo_writed_client_delfile>(glocal.con,sessionid,name);
-				<f ok>
-					glocal.bod_client.rep_delfile(success,msg);
+				glocal string msg;
+				<call bod_localremote>(glocal.con,glocal.con_sess,sessionid,name,glocal.nodename,glocal.msg);
+				<f local>
+					<call bo_writed_client_delfile>(con,session,fname);
+					<f ok>
+						if (!success) glocal.msg = msg;
+					</f>
+					</call>
+				</f>
+				<f remote>
+					<call webapi_delfile>(con,session,fname);
+					<f ok>
+						if (!success) glocal.msg = msg;
+					</f>
+					</call>
 				</f>
 				</call>
+				REPLYMSG(rep_delfile,glocal.msg);
 			</f>
 			<f undelete> // sessionid dirname = success:b msg
-				<call bo_writed_client_undelete>(glocal.con,sessionid,dirname);
-				<f ok>
-					glocal.bod_client.rep_undelete(success,msg);
+				glocal string msg;
+				<call bod_localremote>(glocal.con,glocal.con_sess,sessionid,dirname,glocal.nodename,glocal.msg);
+				<f local>
+					<call bo_writed_client_undelete>(con,session,fname);
+					<f ok>
+						if (!success) glocal.msg = msg;
+					</f>
+					</call>
+				</f>
+				<f remote>
+					<call webapi_undelete>(con,session,fname);
+					<f ok>
+						if (!success) glocal.msg = msg;
+					</f>
+					</call>
 				</f>
 				</call>
+				REPLYMSG(rep_undelete,glocal.msg);
 			</f>
 			<f modifyfile> // sessionid name content = success:b msg
-				<call bo_writed_client_modifyfile>(glocal.con,sessionid,name,content);
-				<f ok>
-					glocal.bod_client.rep_modifyfile(success,msg);
+				glocal content;
+				glocal string msg;
+				<call bod_localremote>(glocal.con,glocal.con_sess,sessionid,name,glocal.nodename,glocal.msg);
+				<f local>
+					<call bo_writed_client_modifyfile>(con,session,fname,glocal.content);
+					<f ok>
+						if (!success) glocal.msg = msg;
+					</f>
+					</call>
+				</f>
+				<f remote>
+					glocal server;
+					glocal username;
+					<call webapi_modifyfile>(con,session,fname,glocal.content);
+					<f ok>
+						if (!success) glocal.msg = msg;
+					</f>
+					</call>
 				</f>
 				</call>
+				REPLYMSG(rep_modifyfile,glocal.msg);
 			</f>
 			<f modifyfile_bob> // sessionid name content:o more:b owner = success:b handle msg
-				<call bo_writed_client_modifyfile_bob>(glocal.con,sessionid,name,content,more,owner);
-				<f ok>
-					glocal.bod_client.rep_modifyfile_bob(success,handle,msg);
+				glocal content;
+				glocal more;
+				glocal owner;
+				glocal string msg;
+				glocal string handle;
+				<call bod_localremote>(glocal.con,glocal.con_sess,sessionid,name,glocal.nodename,glocal.msg);
+				<f local>
+					<call bo_writed_client_modifyfile_bob>(con,session,fname,glocal.content,glocal.more,glocal.owner);
+					<f ok>
+						if (!success){
+							glocal.msg = msg;
+						}else{
+							glocal.handle = handle;
+						}
+					</f>
+					</call>
+				</f>
+				<f remote>
+					glocal server;
+					glocal username;
+					glocal session;
+					<call webapi_modifyfile_bob>(con,session,fname,glocal.content,glocal.more,glocal.owner);
+					<f ok>
+						if (!success){
+							glocal.msg = msg;
+						}else if (handle[0] != '\0'){
+							auto rem = make_unique<REMOTE_HANDLE>();
+							rem->username = glocal.username;
+							rem->addto(glocal.server,handle,glocal.session);
+							rem_handles[handle] = move(rem);
+							glocal.handle = handle;
+							glocal.bod_localremote.donotlogout();
+						}
+					</f>
+					</call>
 				</f>
 				</call>
+				if (glocal.msg.size() > 0){
+					rep_modifyfile_bob(false,"",glocal.msg);
+				}else{
+					rep_modifyfile_bob(true,glocal.handle,"");
+				}
 			</f>
 			<f rename> // sessionid oldname newname = success:b msg
 				// Rename file, directory or symlink
 				glocal oldname;
 				glocal newname;
-				bool is_admin;
-				glocal string username;
-				string msg;
-				// We need this so current_lang is initialized
-				if (trli_getsessionuser (glocal.con, sessionid, is_admin, glocal.username, msg) == (unsigned)-1){
-					rep_rename (false,msg);
-				}else{
-					<call bo_writed_client_rename>(glocal.con,sessionid,oldname,newname);
+				glocal string msg;
+				<call bod_localremote>(glocal.con,glocal.con_sess,sessionid,oldname,glocal.nodename,glocal.msg);
+				<f local>
+					glocal username;
+					<call bo_writed_client_rename>(con,session,fname,glocal.newname);
 					<f ok>
-						glocal string msg;
 						if (success){
 							<call documentd_client_rename>(glocal.con_doc,glocal.oldname,glocal.newname,glocal.username,current_lang);
 							<f ok>
-								if (!success) tlmp_warning ("documentd_client_rename: %s",msg);
-								glocal.msg = msg;
+								if (!success){
+									tlmp_warning ("documentd_client_rename: %s",msg);
+									glocal.msg = msg;
+								}
 							</f>
 							</call>
-							msg = glocal.msg.c_str();
+						}else{
+							glocal.msg = msg;
 						}
-						glocal.bod_client.rep_rename(success,msg);
 					</f>
 					</call>
-				}
-			</f>
-			<f copy> // sessionid srcname srcdate srcname = success:b msg
-				// Copy file, directory or symlink
-				<call bo_writed_client_copy>(glocal.con,sessionid,srcname,srcdate,dstname);
-				<f ok>
-					glocal.bod_client.rep_copy(success,msg);
+				</f>
+				<f remote>
+					string newname = mapfname(glocal.newname);
+					<call webapi_rename>(con,session,fname,newname);
+					<f ok>
+						if (!success) glocal.msg = msg;
+					</f>
+					</call>
 				</f>
 				</call>
+				REPLYMSG(rep_rename,glocal.msg);
 			</f>
-			<f readfile> // sessionid name = success:b msg content
-				glocal ENTRY entry;
+			<f copy> // sessionid srcname srcdate dstname = success:b msg
+				// Copy file, directory or symlink
+				glocal srcdate;
+				glocal dstname;
+				glocal string msg;
+				<call bod_localremote>(glocal.con,glocal.con_sess,sessionid,srcname,glocal.nodename,glocal.msg);
+				<f local>
+					<call bo_writed_client_copy>(con,session,fname,glocal.srcdate,glocal.dstname);
+					<f ok>
+						if (!success) glocal.msg = msg;
+					</f>
+					</call>
+				</f>
+				<f remote>
+					string dstname = mapfname(glocal.dstname);
+					<call webapi_copy>(con,session,fname,glocal.srcdate,dstname);
+					<f ok>
+						if (!success) glocal.msg = msg;
+					</f>
+					</call>
+				</f>
+				</call>
+				REPLYMSG(rep_copy,glocal.msg);
+			</f>
+			<f readfile> // sessionid name threshold= success:b msg content
 				glocal READINFO info;
-				if (bod_findentry (glocal.con_sess,sessionid,name,glocal.entry,threshold)!=-1){
-					if (!bolixo_isfile(glocal.entry.type)){
-						glocal.entry.msg = MSG_U(E_NOTAFILE,"Entry is not a file");
+				glocal string content;
+				glocal string msg;
+				<call bod_localremote>(glocal.con,glocal.con_sess,sessionid,name,true,threshold,glocal.nodename,glocal.msg);
+				<f local>
+					if (!bolixo_isfile(entry.type)){
+						glocal.msg = MSG_U(E_NOTAFILE,"Entry is not a file");
 					}else{
+						glocal entry;
 						// See readfile_bob for the limit 1 here. This is a patch.
 						<call sql_query>("select content,title,signature,filetype,modifiedby from files where id=%d and modified='%s' limit 1"
 							,glocal.entry.entryid,glocal.entry.modified.c_str());
@@ -2250,22 +2542,37 @@ static int bod_main (
 								glocal.info.modified = glocal.entry.modified;
 								glocal.info.file_type = (FILE_TYPE)atoi(row[3]);
 								glocal.info.size = strlen(row[0]); 
-								glocal.bod_client.rep_readfile (true,"",row[0],glocal.info);
+								glocal.content = row[0];
 								glocal.info.owner = bod_getname (glocal.entry.ownerid);
 								unsigned ownerid = atoi(row[4]);
 								glocal.info.modifiedby = bod_getname (ownerid);
 							}else{
-								glocal.entry.msg = MSG_U(E_USEREADBOB,"Internal error, must use readfile_bob for large content");
+								glocal.msg = MSG_U(E_USEREADBOB,"Internal error, must use readfile_bob for large content");
 							}
 						</f>
 						<f empty>
-							glocal.entry.msg = "Internal error, reading table files";
+							glocal.msg = "Internal error, reading table files";
 						</f>
 						</call>
 					}
-				}
-				if (glocal.entry.msg.size()!=0){
-					rep_readfile(false,glocal.entry.msg,"",glocal.info);
+				</f>
+				<f remote>
+					<call webapi_readfile>(con,session,fname,threshold);
+					<f ok>
+						if (!success){
+							glocal.msg = msg;
+						}else{
+							glocal.content = content;
+							glocal.info = info;
+						}
+					</f>
+					</call>
+				</f>
+				</call>
+				if (glocal.msg.size()!=0){
+					rep_readfile(false,glocal.msg,"",glocal.info);
+				}else{
+					rep_readfile(true,"",glocal.content,glocal.info);
 				}
 			</f>
 			<f readfile_bob> // sessionid name threshold nomore:b = success:b msg content:o handle more:b
@@ -2431,16 +2738,30 @@ static int bod_main (
 				</call>
 			</f>
 			<f markview> // sessionid name = success:b msg
-				<call bo_writed_client_markview>(glocal.con,sessionid,name);
-				<f ok>
-					glocal.bod_client.rep_set_access(success,msg);
+				glocal string msg;
+				<call bod_localremote>(glocal.con,glocal.con_sess,sessionid,name,glocal.nodename,glocal.msg);
+				<f local>
+					<call bo_writed_client_markview>(con,session,fname);
+					<f ok>
+						if (!success) glocal.msg = msg;
+					</f>
+					</call>
+				</f>
+				<f remote>
+					<call webapi_markview>(con,session,fname);
+					<f ok>
+						if (!success) glocal.msg = msg;
+					</f>
+					</call>
 				</f>
 				</call>
+				REPLYMSG(rep_markview,glocal.msg);
 			</f>
 			<f stat> // sessionid name threshold = success:b msg file:U{FILEINFO}
 				glocal FILEINFO file;
-				glocal ENTRY entry;
-				if (bod_findentry (glocal.con_sess,sessionid,name,glocal.entry,threshold)!=-1){
+				glocal string msg;
+				<call bod_localremote>(glocal.con,glocal.con_sess,sessionid,name,true,threshold,glocal.nodename,glocal.msg);
+				<f local>
 					if (threshold[0] == '\0') threshold = END_OF_TIME;
 					<call sql_query>("select dirs_content.name,dirs_content.modified,type,id2name.name"
 						",group_list_id,group_lists.name,ids.listmode"
@@ -2453,7 +2774,7 @@ static int bod_main (
 						" left join files on dirs_content.itemid=files.id and dirs_content.modified=files.modified"
 						" left join marks on marks.itemid=dirs_content.itemid and marks.userid=%u"
 						" where dirid=%d and dirs_content.name='%s' and dirs_content.eventtime <= '%s' order by eventtime desc limit 1"
-						,glocal.entry.userid,glocal.entry.dirid,glocal.entry.basename.c_str(),threshold);
+						,entry.userid,entry.dirid,entry.basename.c_str(),threshold);
 					<f onerow>
 						const char *name = row[0];
 						const char *modified = row[1];
@@ -2493,33 +2814,48 @@ static int bod_main (
 							glocal.file.eventdate = eventdate;
 							glocal.file.file_type = file_type;
 							glocal.file.viewed = viewed;
-							glocal.entry.msg.clear();
+							glocal.msg.clear();
 						}
 					</f>
 					</call>
-				}
-				if (glocal.entry.msg.size() > 0){
+				</f>
+				<f remote>
+					<call webapi_stat>(con,session,fname,threshold);
+					<f ok>
+						if (!success){
+							glocal.msg = msg;
+						}else{
+							glocal.file = file;
+						}
+					</f>
+					</call>
+				</f>
+				</call>
+				if (glocal.msg.size() > 0){
 					glocal.file.clear();
-					rep_stat (false,glocal.entry.msg,glocal.file);
+					rep_stat (false,glocal.msg,glocal.file);
 				}else{
 					rep_stat (true,"",glocal.file);
 				}
 			</f>
 			<f listdir>
-				ENTRY entry;
+				glocal history;
+				glocal offset;
+				glocal nb;
 				glocal bool deletes=false;	// Is there some entries to undelete
 				glocal vector<FILEINFO> files;
-				glocal map<string,DIRENTRY> mp;
-				glocal bool history = history;
 				#ifdef INSTRUMENT
 				glocal long long start = fdpass_getnow();
 				#endif
-				if (bod_findentry (glocal.con_sess,sessionid,name,entry,threshold)!=-1){
+				glocal string msg;
+				<call bod_localremote>(glocal.con,glocal.con_sess,sessionid,name,true,threshold,glocal.nodename,glocal.msg);
+				<f local>
+					glocal map<string,DIRENTRY> mp;
 					#ifdef INSTRUMENT
 					if (f_instrument != NULL){
 						long long end = fdpass_getnow();
 						fprintf (f_instrument,"%Ld listdir:findentry %lf userid=%u dirid=%d name=%s\n"
-							,glocal.start,(end-glocal.start)/1000000.0,entry.userid,entry.entryid,name);
+							,glocal.start,(end-glocal.start)/1000000.0,entry.userid,entry.entryid,fname);
 						glocal.start = end;
 					}
 					#endif
@@ -2635,18 +2971,30 @@ static int bod_main (
 							}
 						}
 					}
-				}
+					bod_trim (glocal.files,glocal.offset,glocal.nb);
+				</f>
+				<f remote>
+					<call webapi_listdir>(con,session,fname,threshold,glocal.history,glocal.offset,glocal.nb);
+					<f ok>
+						if (!success){
+							glocal.msg = msg;
+						}else{
+							for (auto &f:files) glocal.files.push_back(f);
+						}
+					</f>
+					</call>
+				</f>
+				</call>	
 				#ifdef INSTRUMENT
 				if (f_instrument != NULL){
 					long long end = fdpass_getnow();
 					fprintf (f_instrument,"%Ld listdir:rep %lf\n",glocal.start,(end-glocal.start)/1000000.0);
 				}
 				#endif
-				if (entry.msg.size() > 0){
+				if (glocal.msg.size() > 0){
 					glocal.files.clear();
-					rep_listdir (false,entry.msg,glocal.files,false);
+					rep_listdir (false,glocal.msg,glocal.files,false);
 				}else{
-					bod_trim (glocal.files,offset,nb);
 					rep_listdir (true,"",glocal.files,glocal.deletes);
 				}
 			</f>
@@ -2710,11 +3058,7 @@ static int bod_main (
 						}
 					}
 				}
-				if (glocal.msg.size() > 0){
-					rep_set_group(false,glocal.msg);
-				}else{
-					rep_set_group(true,"");
-				}
+				REPLYMSG(rep_set_group,glocal.msg);
 			</f>
 			<f set_member>	// sessionid groupname user access owner = success:b msg
 				glocal bool success = false;
@@ -2766,7 +3110,6 @@ static int bod_main (
 										" where group_lists.ownerid = %u and groups.name='%s' and group_lists.name not like '#%%'"
 										,userid,groupname);
 									<f onerow>
-tlmp_warning ("projects :%s: :%s:",row[0],row[1]);
 										glocal.remprojects.emplace_back(row[0],row[1]);
 									</f>
 									</call>
@@ -3190,17 +3533,17 @@ tlmp_warning ("projects :%s: :%s:",row[0],row[1]);
 
 								There is an exception. When a group message originates on a server which
 								is not the owner of the group, it is copied here to the owner server.
-								The owner server will do the propagation to the all other members
+								The owner server will do the propagation to all other members
 								of the group. This is so because:
 									-remote server only knowns about their local group members.
 									 They lack the full definition of the group.
-									-remote servers can't connect the the group owner remote accounts.
+									-remote servers can't connect to the group owner remote accounts.
 
 								In the following code, we extract the remote recipients in glocal.to and
 								organize them per server. Messages are copied once per server since
 								Bolixo use shared folders for group messages.
 
-								The we check if this is a remote group name. If so, we copy the message to the
+								Then we check if this is a remote group name. If so, we copy the message to the
 								group owner server.
 							*/
 							// tlmp_warning ("propagate message %s from user %s",fileuuid,glocal.username.c_str());
@@ -3983,11 +4326,7 @@ tlmp_warning ("projects :%s: :%s:",row[0],row[1]);
 					</f>
 					</call>
 				}	
-				if (glocal.msg.size() > 0){
-					rep_form_deletevar(false,glocal.msg);
-				}else{
-					rep_form_deletevar(true,"");
-				}
+				REPLYMSG(rep_form_deletevar,glocal.msg);
 			</f>
 			<f form_deleteall>	// session = success:b msg
 				glocal string msg;
@@ -4003,11 +4342,7 @@ tlmp_warning ("projects :%s: :%s:",row[0],row[1]);
 					</f>
 					</call>
 				}	
-				if (glocal.msg.size() > 0){
-					rep_form_deleteall(false,glocal.msg);
-				}else{
-					rep_form_deleteall(true,"");
-				}
+				REPLYMSG(rep_form_deleteall,glocal.msg);
 			</f>
 			<f systempubkey>
 				glocal string pubkey;
@@ -4029,11 +4364,7 @@ tlmp_warning ("projects :%s: :%s:",row[0],row[1]);
 					</f>
 					</call>
 				}
-				if (glocal.msg.size() > 0){
-					rep_registernode(false,glocal.msg);
-				}else{
-					rep_registernode(true,"");
-				}
+				REPLYMSG(rep_registernode,glocal.msg);
 			</f>
 			<f systemsign> // msg = sign
 				glocal string sign;
@@ -4098,11 +4429,7 @@ tlmp_warning ("projects :%s: :%s:",row[0],row[1]);
 					if (!success) glocal.msg = msg;
 				</f>
 				</call>
-				if (glocal.msg.size() > 0){
-					rep_remotepass(false,glocal.msg);
-				}else{
-					rep_remotepass(true,"");
-				}
+				REPLYMSG(rep_remotepass,glocal.msg);
 			</f>
 			<f info_read>	// sessionid user owner = success:b msg info:U{USERPUBLICINFO}
 				glocal USERPUBLICINFO info;
@@ -4162,47 +4489,49 @@ tlmp_warning ("projects :%s: :%s:",row[0],row[1]);
 				/*
 					In a single operation, we request the presentation of a document, and apply a command to it.
 				*/
-				glocal path;
+				glocal uispecs;
+				glocal steps;
 				glocal vector<VARVAL> res;
-				glocal bool success = false;
-				glocal ENTRY entry;
-				string username;
+				glocal string msg;
+				glocal owner;
 				if (glocal.slowplaystep != 0) usleep(glocal.slowplaystep*1000);
-				if (bod_findentry (glocal.con_sess,sessionid,path,glocal.entry,"",username)!=-1){
-					if (!bolixo_isfile(glocal.entry.type)){
-						glocal.entry.msg = MSG_R(E_NOTAFILE);
+				<call bod_localremote>(glocal.con,glocal.con_sess,sessionid,path,true,"",glocal.nodename,glocal.msg);
+				<f local>
+					glocal entry;
+					glocal fname;
+					if (!bolixo_isfile(entry.type)){
+						glocal.msg = MSG_R(E_NOTAFILE);
 					}else{
 						glocal FILE_TYPE file_type = FILE_UNKNOWN;
 						<call sql_query>("select filetype from files where id=%d and modified='%s'"
-							,glocal.entry.entryid,glocal.entry.modified.c_str());
+							,entry.entryid,entry.modified.c_str());
 						<f onerow>
 							glocal.file_type = (FILE_TYPE)atoi(row[0]);
 						</f>
 						<f empty>
-							glocal.entry.msg = "Internal error, reading table files";
+							glocal.msg = "Internal error, reading table files";
 						</f>
 						</call>
 						if (!file_is_doc(glocal.file_type)){
-							glocal.entry.msg = MSG_U(E_NOTADOC,"File is not a game or document");
+							glocal.msg = MSG_U(E_NOTADOC,"File is not a game or document");
 						}else{
 							vector<VARVAL> vsteps;
-							for (auto &s:steps) vsteps.push_back(s);
+							for (auto &s:glocal.steps) vsteps.push_back(s);
 							// We may have to call playstep twice because the document is unknown to documentd
 							glocal unsigned pass = 0;
 							do{
 								glocal.pass++;
-								<call documentd_client_playstep>(glocal.con_doc,path,vsteps,current_lang
-									,glocal.entry.may_modify,sessionid,username,uispecs);
+								<call documentd_client_playstep>(glocal.con_doc,glocal.fname,vsteps,current_lang
+									,entry.may_modify,session,username,glocal.uispecs);
 								<f ok>
 									if (!success){
 										if (unknown){
 											// We must load the document first
-											bod_document_load (glocal.con_doc,glocal.entry,glocal.path);
+											bod_document_load (glocal.con_doc,glocal.entry,glocal.fname);
 										}
 									}else{
 										glocal.pass = 2;
-										glocal.success = success;
-										glocal.entry.msg = msg;
+										glocal.msg = msg;
 										for (auto &r:res){
 											if (is_any_of(r.var,VAR_NOTIFY,VAR_CHANGES)){
 												glocal vector<unsigned> userids;
@@ -4218,7 +4547,7 @@ tlmp_warning ("projects :%s: :%s:",row[0],row[1]);
 												</f>
 												</call>
 												string change;
-												const char *key = glocal.path;
+												const char *key = glocal.fname;
 												if (strcmp(r.var,VAR_CHANGES)==0){
 													// We remove the current user from the notifications as he created the changes
 													glocal.userids.erase(find(glocal.userids.begin(),glocal.userids.end(),glocal.entry.userid));
@@ -4239,12 +4568,26 @@ tlmp_warning ("projects :%s: :%s:",row[0],row[1]);
 							} while (glocal.pass < 2);
 						}
 					}
-				}
-				if (glocal.entry.msg.size() != 0){
+				</f>
+				<f remote>
+					vector<VARVAL> steps;
+					for (auto &s:glocal.steps) steps.push_back(s);
+					<call webapi_playstep>(con,session,glocal.owner,fname,steps,glocal.uispecs);
+					<f ok>
+						if (!success){
+							glocal.msg = msg;
+						}else{
+							for (auto &r:res) glocal.res.push_back(r);
+						}
+					</f>
+					</call>
+				</f>
+				</call>
+				if (glocal.msg.size() != 0){
 					glocal.res.clear();
-					rep_playstep(false,glocal.entry.msg,glocal.res);
+					rep_playstep(false,glocal.msg,glocal.res);
 				}else{
-					rep_playstep(glocal.success,"",glocal.res);
+					rep_playstep(true,"",glocal.res);
 				}
 			</f>
 			<f waitevent>

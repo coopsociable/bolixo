@@ -2,29 +2,19 @@
 #include "proto/bod_client.protodef"
 
 struct ENTRY {
-	unsigned userid;
-	bool is_admin;
+	unsigned userid = 0;
+	bool is_admin = false;
 	std::string basename;
-	int dirid;
-	int entryid;
-	unsigned ownerid;
-	unsigned group_list_id;
-	ENTRY_TYPE type;
-	char listmode;
-	bool may_add;		// May add an entry in the directory
-	bool may_modify;	// May update the entry
+	int dirid = -1;
+	int entryid = -1;
+	unsigned ownerid = (unsigned)-1;
+	unsigned group_list_id = (unsigned)-1;
+	ENTRY_TYPE type = ENTRY_NONE;
+	char listmode = ' ';
+	bool may_add = false;		// May add an entry in the directory
+	bool may_modify = false;	// May update the entry
 	std::string modified;
 	std::string msg;
-	ENTRY(){
-		may_add = false;
-		may_modify = false;
-		userid = 0;
-		dirid = -1;
-		entryid = -1;
-		ownerid = (unsigned)-1;
-		type = ENTRY_NONE;
-		listmode = ' ';
-	}
 };
 
 #define END_OF_TIME	"3000/01/01 00:00:00"

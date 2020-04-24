@@ -184,14 +184,16 @@ static void webmain_real()
 		glocal string msg = "Internal error";
 		glocal bool success = false;
 		glocal string content;
+		glocal READINFO info;
 		<call bod_client_readfile>(glocal.con,sessionid,name,threshold);
 		<f ok>
 			glocal.success = success;
 			glocal.msg = msg;
 			glocal.content = content;
+			glocal.info = info;
 		</f>
 		</call>
-		rep_readfile(glocal.success,glocal.msg,glocal.content);
+		rep_readfile(glocal.success,glocal.msg,glocal.content,glocal.info);
 	</f>
 	<f readfile_bob>	// sessionid name threshold nomore:b = success:b msg content:o info:U{READINFO} handle more:b
 		glocal string msg = "Internal error";
@@ -660,6 +662,27 @@ static void webmain_real()
 			glocal.webapi.rep_set_member(success,msg);
 		</f>
 		</call>
+	</f>
+	<f playstep>	// sessionid owner path steps:U{VARVAL}v uispecs:U{DOC_UI_SPECS} = success:b msg res:U{VARVAL}v
+		glocal vector<VARVAL> res;
+		glocal string msg;
+		vector<VARVAL> lsteps;
+		for (auto &s:steps) lsteps.push_back(s);
+		<call bod_client_playstep>(glocal.con,sessionid,owner,path,lsteps,uispecs);
+		<f ok>
+			if (!success){
+				glocal.msg = msg;
+			}else{
+				for (auto &r:res) glocal.res.push_back(r);
+			}
+		</f>
+		</call>
+		if (glocal.msg.size() > 0){
+			glocal.res.clear();
+			rep_playstep (false,glocal.msg,glocal.res);
+		}else{
+			rep_playstep (true,"",glocal.res);
+		}
 	</f>
 	<f invalid>
 		tlmp_warning ("webapi: invalid request");
