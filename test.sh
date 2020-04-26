@@ -275,15 +275,18 @@ cmpsequence(){
 	done
 	$0 bo-sessiond-control resetnotifies
 	cd ../cmp-test
-	NBREF=`ls | wc -l`
-	NBTST=`cd /tmp/cmp-test && ls | wc -l`
+	REFTESTDIR=`pwd`
+	RUNTESTDIR=/tmp/cmp-test
+	cd $RUNTESTDIR
+	for file in *
+	do
+		diff -c $REFTESTDIR/$file /tmp/cmp-test/$file
+	done
+	NBREF=`ls $REFTESTDIR | wc -l`
+	NBTST=`ls $RUNTESTDIR | wc -l`
 	if [ "$NBREF" != "$NBTST" ] ; then
+		echo "******"
 		echo NBREF=$NBREF NBTST=$NBTST
-	else
-		for file in *
-		do
-			diff -c $file /tmp/cmp-test/$file
-		done
 	fi
 }
 if [ "$1" = "" ] ; then

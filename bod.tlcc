@@ -49,12 +49,15 @@
 #include "instrument.h"
 #include "helper.h"
 #include "documentd_req.h"
+#include "websocket-client.h"
 
 using namespace std;
 
 static DEBUG_KEY D_PROTO ("proto","Protocol information");
 
-enum CONNECT_TYPE { TYPE_NONE, TYPE_CONTROL, TYPE_CLIENT, TYPE_ADMIN, TYPE_DOCUMENTD };
+using HANDLE_WSS_P = shared_ptr<HANDLE_WSS>;
+
+enum CONNECT_TYPE { TYPE_NONE, TYPE_CONTROL, TYPE_CLIENT, TYPE_ADMIN, TYPE_DOCUMENTD, TYPE_WEBSOCKET };
 
 struct HANDLE_INFO: public ARRAY_OBJ{
 	CONNECT_TYPE type = TYPE_NONE;
@@ -63,7 +66,8 @@ struct HANDLE_INFO: public ARRAY_OBJ{
 	REQUEST_INFO req;
 	std::string userid;
 	int documentd_no = -1;	// handle used for waitevent
-				// This handle is TYPE_DOCUMENTD
+				// This handle is TYPE_DOCUMENTD or TYPE_WEBSOCKET
+	HANDLE_WSS_P wss=nullptr;
 	HANDLE_INFO(){
 	}
 };
@@ -1987,7 +1991,7 @@ static int bod_main (
 		// See <f waitevent>
 		if (c->documentd_no != -1){
 			closeclient (c->documentd_no);
-		}else if (c->type == TYPE_DOCUMENTD){
+		}else if (is_any_of (c->type,TYPE_DOCUMENTD,TYPE_WEBSOCKET)){
 			closeclient (c->no);
 		}
 	</f>
@@ -4591,28 +4595,59 @@ static int bod_main (
 				}
 			</f>
 			<f waitevent>
-				// We use a separate connection to documentd
-				ENTRY entry;
-				if (bod_findentry (glocal.con_sess,sessionid,path,entry,"")!=-1){
-					CONNECT_INFO con;
-					con.secret = glocal.con_doc.secret;
-					con.port = glocal.con_doc.port;
-					if (c->documentd_no != -1){
-						con.fd = c->documentd_no;
+				glocal c;
+				glocal string msg;
+				glocal sequence;
+				glocal no;
+				glocal uispecs;
+				<call bod_localremote>(glocal.con,glocal.con_sess,sessionid,path,true,"",glocal.nodename,glocal.msg);
+				<f local>
+					// We use a separate connection to documentd
+					CONNECT_INFO con_doc;
+					con_doc.secret = glocal.con_doc.secret;
+					con_doc.port = glocal.con_doc.port;
+					if (glocal.c->documentd_no != -1){
+						con_doc.fd = glocal.c->documentd_no;
 					}
-					documentd_client_waitevent_SEND(con,path,sequence);
+					documentd_client_waitevent_SEND(con_doc,fname,glocal.sequence);
 					//tlmp_warning ("waitevent con.fd=%d %d",con.fd,c->documentd_no);
-					if (c->documentd_no == -1){
-						c->documentd_no = con.fd;
+					if (glocal.c->documentd_no == -1){
+						glocal.c->documentd_no = con_doc.fd;
 						HANDLE_INFO *cc = new HANDLE_INFO;
 						cc->type = TYPE_DOCUMENTD;
-						cc->no = no;
-						glocal.TCPSERVER.inject (con.fd,cc);
-						glocal.TCPSERVER.setmonitormode (con.fd,true);
+						cc->no = glocal.no;
+						glocal.TCPSERVER.inject (con_doc.fd,cc);
+						glocal.TCPSERVER.setmonitormode (con_doc.fd,true);
 					}
-					con.fd = -1;
-				}else{
-					rep_waitevent (false,entry.msg,"",0);
+					con_doc.fd = -1;
+				</f>
+				<f remote>
+					// The waitevent for remote is transformed into a websocket.
+					// bod_localremote has established a connection/session with the remote
+					// We will reuse this connection to start the websocket.
+					int fd;
+					BIO_get_fd(con.bio,&fd);
+					glocal.c->documentd_no = fd;
+					glocal.c->type = TYPE_WEBSOCKET;
+					HANDLE_INFO *cc = new HANDLE_INFO;
+					cc->type = TYPE_WEBSOCKET;
+					cc->no = glocal.no;
+					cc->wss = make_shared<HANDLE_WSS>();
+					cc->wss->con = move(con);
+					cc->wss->session = session;
+					cc->wss->addinitmsg (string_f("gameid=\"%s\" %u %u %u %u %u %u",fname
+						,glocal.uispecs.width,glocal.uispecs.height,glocal.uispecs.content_width
+						,glocal.uispecs.content_height,glocal.uispecs.mobile,glocal.uispecs.fontsize));
+					cc->wss->addinitmsg (string_f("gamesequence=%u",glocal.sequence));
+					donotlogout();
+					glocal.TCPSERVER.inject (fd,cc);
+					glocal.TCPSERVER.setmonitormode (fd,true);
+					cc->wss->sendheader(server);
+				</f>
+				</call>
+				// We only reply if there was an error.
+				if (glocal.msg.size() > 0){
+					rep_waitevent (false,glocal.msg,"",0,false);
 				}
 			</f>
 			<f invalid>
@@ -4631,11 +4666,30 @@ static int bod_main (
 					glocal.endclient = true;
 					glocal.TCPSERVER.closeclient (glocal.no);
 				}else{
-					bod_client_rep_waitevent(glocal.no,success,msg,script,sequence);
+					bod_client_rep_waitevent(glocal.no,success,msg,script,sequence,false);
 				}
 			</f>
 			</call>
 			con.fd = -1;
+		}else if (c->type == TYPE_WEBSOCKET){
+			// Once a websocket is established, we simply copy back and forth. bod is not adding any
+			// messages.
+			if (c->wss == nullptr){
+				HANDLE_INFO *cc = (HANDLE_INFO*)getclientdata(c->documentd_no);
+				// tlmp_warning ("WEBSOCKET documentd_no=%d linelen=%d",c->documentd_no,info.linelen);
+				cc->wss->con.write(line,info.linelen);
+			}else{
+				bool now_running = false;
+				// process handle both websocket initialization
+				// Once running, it copies back to client.
+				c->wss->process(endclient,now_running,c->no);
+				if (now_running){
+					// Initialization is done, informs the client that from now
+					// on, the c->no socket carries websocket protocol.
+					//tlmp_warning ("websocket now_running");
+					bod_client_rep_waitevent(c->no,true,"","",0,true);
+				}
+			}
 		}else if (c->type == TYPE_ADMIN){
 			glocal.nbrequest_admin++;
 			<call bod_admin>(this,c->req,line, info.linelen,endserver, endclient, no,c,c->host.c_str());

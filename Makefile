@@ -44,10 +44,19 @@ bolixod: bolixod.tlcc proto/bolixod_control.protoh proto/bolixod_client.protoh f
 bolixod-control: bolixod-control.tlcc proto/bolixod_control.protoh
 	cctlcc -Wall $(OPTIONS) bolixod-control.tlcc _dict.o -o bolixod-control $(LIBS) 
 
-bod: bod.tlcc filesystem.o proto/bod_control.protoh proto/bod_client.protoh proto/bod_admin.protoh \
+bod: bod.o filesystem.o websocket-client.o _dict.o verify.o
+	cctlcc -Wall $(OPTIONS) bod.o filesystem.o websocket-client.o verify.o _dict.o -o bod $(LIBS) -lssl -ltlmpsql -L/usr/lib64/mysql -lmysqlclient
+
+bod.o: bod.tlcc proto/bod_control.protoh proto/bod_client.protoh proto/bod_admin.protoh \
 	proto/bo-writed_client.protoh proto/bo-sessiond_client.protoh proto/bolixod_client.protoh \
 	proto/documentd_client.protoh proto/bolixoapi.protoh proto/webapi.protoh _dict.o filesystem.o verify.o
-	cctlcc -Wall $(OPTIONS) bod.tlcc filesystem.o verify.o _dict.o -o bod $(LIBS) -lssl -ltlmpsql -L/usr/lib64/mysql -lmysqlclient
+	cctlcc -Wall $(OPTIONS) -c bod.tlcc -o bod.o
+
+websocket-client.o: websocket-client.tlcc websocket-client.h proto/webapi.protoh
+	cctlcc -Wall $(OPTIONS) -c websocket-client.tlcc -o websocket-client.o
+
+testwebsock: testwebsock.tlcc websocket-client.o
+	cctlcc -g -Wall $(OPTIONS) -I/usr/include/trlitool testwebsock.tlcc websocket-client.o -o /tmp/testwebsock $(LIBS) -lssl
 
 bod-client: bod-client.tlcc proto/bod_client.protoh proto/bod_admin.protoh \
 	proto/bo-sessiond_admin.protoh

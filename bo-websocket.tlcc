@@ -215,9 +215,9 @@ struct _F_bo_websocket{
 	virtual _F_bo_websocket_waitnote( )=0;
 	#define _F_bo_websocket_waitnote_call(name) int name waitnote_call(CONNECT_INFO &con_sessiond, const char *session, int &sequence, bool &endserver)
 	virtual _F_bo_websocket_waitnote_call( )=0;
-	#define _F_bo_websocket_waitevent_call(name) int name waitevent_call(CONNECT_INFO &con_waitevent, const char *session, const char *gameid, int &gamesequence, bool &endserver)
+	#define _F_bo_websocket_waitevent_call(name) int name waitevent_call(CONNECT_INFO &con_waitevent, const char *session, const char *gameid, const DOC_UI_SPECS &sp, int &gamesequence, bool &endserver)
 	virtual _F_bo_websocket_waitevent_call( )=0;
-	#define _F_bo_websocket_waitevent(name) void name waitevent(CONNECT_INFO &con_waitevent, const char *session, const char *gameid, int &gamesequence, bool &endserver, bool &fail)
+	#define _F_bo_websocket_waitevent(name) void name waitevent(CONNECT_INFO &con_waitevent, const char *session, const char *gameid, int &gamesequence, bool &websocket, bool &endserver, bool &fail)
 	virtual _F_bo_websocket_waitevent( )=0;
 };
 
@@ -259,6 +259,8 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 	glocal int sessionfd = -1;
 	glocal int gamesequence = -1;
 	glocal int waiteventfd = -1;
+	glocal bool websocket = false;	// We connect to a remote websocket through bod.
+	glocal STREAMP_BUF waiteventbuf;	// In websocket mode, handling of waiteventfd
 	glocal set<string> project_notifications;
 	c.fd = fd;
 	<obj TCPSERVER s>();
@@ -319,7 +321,8 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 							glocal.TCPSERVER.setmonitormode(glocal.sessionfd,true);
 						}
 						if (glocal.gamesequence != -1){
-							glocal.c.waitevent_call(glocal.con_waitevent, glocal.session.c_str(),glocal.gameid.c_str(),glocal.gamesequence, endserver);
+							glocal.c.waitevent_call(glocal.con_waitevent, glocal.session.c_str(),glocal.gameid.c_str()
+								,glocal.sp,glocal.gamesequence, endserver);
 							glocal.waiteventfd = glocal.con_waitevent.fd;
 							glocal.TCPSERVER.inject(glocal.waiteventfd,nullptr);
 							glocal.TCPSERVER.setmonitormode(glocal.waiteventfd,true);
@@ -339,17 +342,71 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 			// We are always calling back sessiond to wait for more events.
 			if (!glocal.endserver) glocal.c.waitnote_call(glocal.con_sessiond, glocal.session.c_str(),glocal.sequence, endserver);
 		}else if (no == glocal.waiteventfd){
-			bool fail = false;
-			glocal.c.waitevent(glocal.con_waitevent, glocal.session.c_str(),glocal.gameid.c_str(),glocal.gamesequence, endserver,fail);
-			// We are always calling back bod to wait for more events.
-			// If it failed, there is no point to call again. When the user will realise something is odd
-			// he will request a refresh and connection will be established again.
-			if (fail){
-				closeclient (no);
-				glocal.waiteventfd = -1;
-			}else if (!glocal.endserver){
-				glocal.c.waitevent_call(glocal.con_waitevent, glocal.session.c_str(),glocal.gameid.c_str(),glocal.gamesequence, endserver);
+			if (glocal.websocket){
+				// In this mode, we receive websocket packets. We can't copy them to the caller directly
+				// because bo-websocket (this program) is also sending its own packet (for notifications, obtained from bo-sessiond).
+				// So our own packets may end up in the middle of a received packet.
+				// So we must accumulate a full packet and then write it.
+				char buf[100*1024];
+				int ret = read(no,buf,sizeof(buf));
+				if (ret <= 0){
+					endserver = true;
+				}else{
+					<call streamp_do>(glocal.waiteventbuf,buf,ret);
+					<f process>
+						int ret = 0;
+						// We only check if we have a complete websocket packet. Once we do, we write it to the client.
+						const unsigned char *line = (const unsigned char *)buf;
+						if (len > 4){
+							bool fin = (line[0] &0x80) != 0;
+							if (!fin){
+								tlmp_error ("fin != %d",fin);
+								glocal.endserver = true;
+								return 0;
+							}
+							unsigned opcode = line[0] &0xf;
+							if (opcode == 8){	// Close
+								glocal.endserver = true;
+							}else{
+								bool mask = (line[1]&0x80)!=0;
+								unsigned len1 = line[1] &0x7f;
+								unsigned data_len = len1;
+								int frame_len = 2 + len1; 
+								if (len1 == 126){
+									data_len = (line[2]<<8)+line[3];
+									frame_len = 2 + 2 + data_len; 
+								}
+								if (mask){
+									frame_len += 4;
+								}
+								if (frame_len <= len){
+									ret = frame_len;
+									//tlmp_warning ("write websocket packet to client ret = %d",ret);
+									write (glocal.fd,line,ret);
+								}
+							}
+						}
+						return ret;
+					</f>
+					</call>
+				}
+			}else{
+				bool fail = false;
+				glocal.c.waitevent(glocal.con_waitevent, glocal.session.c_str(),glocal.gameid.c_str(),glocal.gamesequence, glocal.websocket,endserver,fail);
+				if (fail){
+					closeclient (no);
+					glocal.waiteventfd = -1;
+				}else if (!endserver && !glocal.websocket){
+					// We are always calling back bod to wait for more events.
+					// If it failed, there is no point to call again. When the user will realise something is odd
+					// he will request a refresh and connection will be established again.
+					glocal.c.waitevent_call(glocal.con_waitevent, glocal.session.c_str(),glocal.gameid.c_str()
+						,glocal.sp,glocal.gamesequence, endserver);
+				}
 			}
+		}else if (glocal.websocket){
+			//tlmp_warning ("write websocket packet to server linelen=%d",info.linelen);
+			write (glocal.waiteventfd,line,info.linelen);
 		}else if (!glocal.header_seen){
 			const char *pt;
 			if (is_start_any_ofnc(line,pt,"Sec-WebSocket-Key:")){
@@ -365,6 +422,7 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 				if (cookies.size() > 0){
 					for (auto &c:cookies){
 						const char *val;
+						if (c.size() > 0 && c[c.size()-1] == ';') c.resize(c.size()-1);
 						if (is_start_any_of(c,val,"session=")){
 							glocal.session = val;
 							break;
@@ -523,7 +581,8 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 					// After that, every success completed call is followed by a new one (see above)
 					glocal.gamesequence = atoi(pt);
 					if (glocal.waiteventfd == -1){
-						glocal.c.waitevent_call(glocal.con_waitevent, glocal.session.c_str(),glocal.gameid.c_str(),glocal.gamesequence, endserver);
+						glocal.c.waitevent_call(glocal.con_waitevent, glocal.session.c_str(),glocal.gameid.c_str()
+							,glocal.sp,glocal.gamesequence, endserver);
 						glocal.waiteventfd = glocal.con_waitevent.fd;
 						glocal.TCPSERVER.inject(glocal.waiteventfd,nullptr);
 						glocal.TCPSERVER.setmonitormode(glocal.waiteventfd,true);
@@ -655,13 +714,14 @@ static void bo_websocket_game (int fd, int waitfd, CONNECT_INFO &con_bod, CONNEC
 		</call>
 	</f>
 	<f waitevent_call>
-		int ret = bod_client_waitevent_SEND(con_waitevent,session,gameid,gamesequence);
+		int ret = bod_client_waitevent_SEND(con_waitevent,session,gameid,sp,gamesequence);
 		return ret;
 	</f>
 	<f waitevent>
 		glocal gamesequence;
 		glocal fail;
 		fail = false;
+		glocal websocket;
 		<call bod_client_waitevent>(con_waitevent);
 		<f ok>
 			if (success){
@@ -669,6 +729,8 @@ static void bo_websocket_game (int fd, int waitfd, CONNECT_INFO &con_bod, CONNEC
 				string buf(script);
 				buf += string_f("gamesequence=%u;\n",sequence);
 				glocal.bo_websocket.send (buf);
+				//tlmp_warning ("websocket=%d",websocket);
+				glocal.websocket = websocket;
 			}else{
 				tlmp_warning ("waitevent failed");
 				glocal.fail = true;

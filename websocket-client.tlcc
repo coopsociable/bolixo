@@ -1,0 +1,328 @@
+/*
+	This file is part of Bolixo.
+
+	Bolixo is free software: you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation, either version 3 of the License, or
+	(at your option) any later version.
+
+	Bolixo is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+	GNU General Public License for more details.
+
+	You should have received a copy of the GNU General Public License
+	along with Bolixo.  If not, see <https://www.gnu.org/licenses/>.
+*/
+/*
+	websocket client using CONNECT_HTTP_INFO.
+	Works with TCPSERVER.
+*/
+#include <stdio.h>
+#include <string.h>
+#include <errno.h>
+#include <unistd.h>
+#include <sys/wait.h>
+#include <dialog.h>
+#include <tlmplib.h>
+#include <tlmpnet.h>
+#include <string>
+#include <memory>
+#include <trlitool.h>
+#include <openssl/ssl.h>
+#define INSTRUMENT_EXTERN
+#include "instrument.h"
+#include "helper.h"
+#include "websocket-client.h"
+
+using namespace std;
+
+#define webapi_test_NOTNEED
+#define webapi_addfile_NOTNEED
+#define webapi_addfile_bob_NOTNEED
+#define webapi_appendfile_NOTNEED
+#define webapi_delfile_NOTNEED
+#define webapi_undelete_NOTNEED
+#define webapi_modifyfile_NOTNEED
+#define webapi_modifyfile_bob_NOTNEED
+#define webapi_rename_NOTNEED
+#define webapi_copy_NOTNEED
+#define webapi_readfile_NOTNEED
+#define webapi_readfile_bob_NOTNEED
+#define webapi_readmore_NOTNEED
+#define webapi_mkdir_NOTNEED
+#define webapi_rmdir_NOTNEED
+#define webapi_listdir_NOTNEED
+#define webapi_stat_NOTNEED
+#define webapi_set_access_NOTNEED
+#define webapi_markview_NOTNEED
+#define webapi_list_inboxes_NOTNEED
+#define webapi_list_msgs_NOTNEED
+#define webapi_sendmsg_NOTNEED
+#define webapi_sendmsg_project_NOTNEED
+#define webapi_replymsg_NOTNEED
+#define webapi_replymsg_project_NOTNEED
+#define webapi_sendattach_NOTNEED
+#define webapi_sendtalk_NOTNEED
+#define webapi_sendtalk_file_NOTNEED
+#define webapi_list_talk_NOTNEED
+#define webapi_public_listdir_NOTNEED
+#define webapi_public_readfile_NOTNEED
+#define webapi_public_list_talk_NOTNEED
+#define webapi_systempubkey_NOTNEED
+#define webapi_verifysign_NOTNEED
+#define webapi_getpubkey_NOTNEED
+#define webapi_registernode_NOTNEED
+#define webapi_remotelogin_NOTNEED
+#define webapi_remotepass_NOTNEED
+#define webapi_remote_interest_set_NOTNEED
+#define webapi_remote_interest_unset_NOTNEED
+#define webapi_nodelogin_NOTNEED
+#define webapi_nodepass_NOTNEED
+#define webapi_config_read_NOTNEED
+#define webapi_config_write_NOTNEED
+#define webapi_contact_request_NOTNEED
+#define webapi_contact_manage_NOTNEED
+#define webapi_contact_list_NOTNEED
+#define webapi_list_contacts_NOTNEED
+#define webapi_list_lists_NOTNEED
+#define webapi_list_groups_NOTNEED
+#define webapi_create_group_NOTNEED
+#define webapi_delete_group_NOTNEED
+#define webapi_delete_list_NOTNEED
+#define webapi_set_member_NOTNEED
+#define webapi_contact_remove_NOTNEED
+#define webapi_list_members_NOTNEED
+#define webapi_create_group_list_NOTNEED
+#define webapi_set_group_NOTNEED
+#define webapi_playstep_NOTNEED
+#define webapi_login_NOTNEED
+#include "proto/webapi.protoch"
+
+static DEBUG_KEY D_HEADER("header","Print request header");
+static DEBUG_KEY D_PROTO("proto","HTTP protocol");
+
+
+static void bo_websocket_send (CONNECT_HTTP_INFO &con, unsigned opcode, PARAM_STRING msg)
+{
+	size_t lenmsg = strlen(msg.ptr);
+	size_t lenframe = 2+2+4+lenmsg;	// Longest frame for message < 65536
+	char buf[lenframe];
+	buf[0] = 128+opcode;
+	char *ptmask = buf+2;
+	if (lenmsg <= 125){
+		buf[1] = (char)lenmsg;
+		lenframe = 6 + lenmsg;
+	}else if (lenmsg < 65536){
+		buf[1] = 126;
+		buf[2] = (lenmsg >> 8) &0xff;
+		buf[3] = lenmsg & 0xff;
+		ptmask = buf+4;
+	}else{
+		tlmp_error ("bo_websocket_send lenmsg=%lu not supported",lenmsg);
+		return;
+	}
+	buf[1] |= 0x80;	// There is a 4 bytes mask
+	char *ptbuf = ptmask+4;
+	long long usec = fdpass_getnow();
+	ptmask[0] = usec & 0xff;
+	ptmask[1] = (usec >> 8) &0xff;
+	ptmask[2] = (usec >> 16) & 0xff;
+	ptmask[3] = (usec >> 24) & 0xff;
+	for (unsigned i=0; i<lenmsg; i++){
+		ptbuf[i] = (char)(msg.ptr[i] ^ ptmask[i%4]);
+	}
+	con.write (buf,lenframe);
+}
+/*
+	Receive a websocket packet.
+	Process the pings.
+
+	Return the number of bytes used in buf.
+*/
+static int bo_websocket_receive (CONNECT_HTTP_INFO &con, const void *buf, int len, string &msg)
+{
+	int ret = 0;
+	const unsigned char *line = (const unsigned char *)buf;
+	if (len > 4){
+		bool fin = (line[0] &0x80) != 0;
+		if (!fin){
+			tlmp_error ("fin != %d",fin);
+			return 0;
+		}
+		unsigned opcode = line[0] &0xf;
+		if (opcode == 8){	// Close
+			//
+		}else{
+			bool mask = (line[1]&0x80)!=0;
+			unsigned len1 = line[1] &0x7f;
+			unsigned data_len = len1;
+			int frame_len = 2 + len1; 
+			const unsigned char *data = line+2;
+			const unsigned char *maskb = line+2;
+			if (len1 == 126){
+				data_len = (line[2]<<8)+line[3];
+				frame_len = 2 + 2 + data_len; 
+				data = line + 4;
+				maskb = line + 4;
+			}
+			if (mask){
+				frame_len += 4;
+				data += 4;
+			}
+			if (frame_len <= len){
+				ret = frame_len;
+				//FILE *fout = fopen ("/tmp/log","a");
+				//fprintf (fout,"data:");
+				if (mask){
+					for (unsigned i=0; i<data_len; i++){
+						char carac = (char)(data[i] ^ maskb[i%4]);
+						msg += carac;
+						//fprintf (fout,"%c",carac);
+					}
+				}else{
+					for (unsigned i=0; i<data_len; i++){
+						msg += (char)data[i];
+						//fprintf (fout,"%c",carac);
+					}
+				}
+				//fprintf (fout,"\n");
+				//fclose (fout);
+				if (opcode == 9){	//
+					tlmp_warning ("ping msg=%s",msg.c_str());
+					bo_websocket_send(con,10,msg);
+				}else if (opcode == 10){	//
+					tlmp_warning ("pong msg=%s",msg.c_str());
+				}
+			}
+		}
+	}
+	return ret;
+}
+
+
+<mod>
+void HANDLE_WSS::process(
+	bool &endclient,
+	bool &now_running,	// Will be true if the websocket received the confirmation header and is not running.
+	int clientfd)		// Once the websocket is running, we simply copy to this handle.
+{
+	glocal HANDLE_WSS *wss = this;
+	glocal now_running;
+	glocal initmsgs;
+	now_running = false;
+	char buf[100*1024];
+	int ret = con.receive (buf,sizeof(buf));
+	if (0 && con.ssl != nullptr){
+		int ssl_error = SSL_get_error(con.ssl,ret);
+		int pending = SSL_pending(con.ssl);
+		printf ("ssl_error=%d pending=%d\n",ssl_error,pending);
+	}
+	// printf ("receive ret=%d\n",ret);
+	if (ret <= 0){
+		debug_printf (D_PROTO,"fill ret=%d %d(%s)\n",ret,errno,strerror(errno));
+		endclient = true;
+	}else if (state == WSS_RUNNING){
+		//tlmp_warning ("write to clientfd ret=%d",ret);
+		write (clientfd,buf,ret);
+	}else{
+		<call streamp_do>(sbuf,buf,ret);
+		<f process>
+			int ret = 0;
+			auto line = (const char *)buf;
+			if (glocal.wss->state == WSS_IN_HEADER){
+				// We parse lines until the end of the header
+				auto pt = line;
+				int offset = 0;
+				string hline;
+				while (offset < len){
+					offset++;
+					auto car = *pt++;
+					if (is_any_of(car,'\r','\n')){
+						hline = string(line,offset-1);
+						if (*pt == '\n'){
+							pt++;
+							offset++;
+						}
+						ret = offset;
+						break;
+					}
+				}
+				if (ret > 0){
+					//tlmp_warning ("line=%s\n",hline.c_str());
+					const char *pt;
+					if (hline.size() == 0){
+						glocal.now_running = true;
+						glocal.wss->state = WSS_RUNNING;
+						for (auto &m:glocal.initmsgs) glocal.wss->send (m);
+					}else if (is_start_any_ofnc(hline,pt,"Sec-WebSocket-Accept:")){
+						pt = str_skip(pt);
+						string tmp = glocal.wss->challenge + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+						unsigned char* sha_str = SHA1(reinterpret_cast<const unsigned char*>(tmp.c_str()), tmp.length(), nullptr);
+						string acceptkey = base64_encode(reinterpret_cast<const char*>(sha_str), 20);
+						if (acceptkey != pt){
+							tlmp_warning ("websocket: Invalid challenge\n");
+						}
+					}
+				}
+			}else if (glocal.wss->state == WSS_RUNNING){
+				// This is a websocket packet, potentially incomplete
+				tlmp_warning ("running len=%d\n",len);
+				string msg;
+				ret = bo_websocket_receive (glocal.wss->con,buf,len,msg);
+				if (msg.size() > 0) tlmp_warning ("msg=%s\n",msg.c_str());
+			}
+			//printf ("ret=%d len=%d\n",ret,len);
+			return ret;
+		</f>
+		</call>
+	}
+}
+</mod>
+void HANDLE_WSS::sendheader (PARAM_STRING hostname)
+{
+	string buf;
+	buf = string_f ("GET /wss HTTP/1.1\r\nhost: %s\r\nUser-Agent: bo-webtest\r\n",hostname.ptr);
+	if (session.size() > 0){
+		buf += string_f ("cookie: session=%s;\r\n",session.c_str());
+	}
+	buf += "Upgrade: websocket\r\n";
+	buf += "Connection: Upgrade\r\n";
+	challenge = string_f ("%Ld",fdpass_getnow());
+	buf += string_f("Sec-WebSocket-Key: %s\r\n",challenge.c_str());
+	buf += "Sec-WebSocket-Version: 13\r\n";
+	buf += "\r\n";
+	con.send (buf.c_str());
+	debug_printf (D_HEADER,"%s-----\n",buf.c_str());
+}
+void HANDLE_WSS::send (PARAM_STRING msg) 
+{
+	//tlmp_warning ("send :%s:",msg.ptr);
+	bo_websocket_send(con,1,msg);
+}
+
+/*
+	Add a message to send at connection time.
+	(When the state change to running)
+*/
+void HANDLE_WSS::addinitmsg(PARAM_STRING msg)
+{
+	initmsgs.push_back(msg.ptr);
+}
+
+<mod>
+HANDLE_WSS::~HANDLE_WSS()
+{
+	if (session.size() > 0){
+		//tlmp_warning ("HANDLE_WSS logout\n");
+		// We were running in websocket mode, so the current connection can't be reuse to talk to webapi.
+		con.close();
+		<call webapi_logout>(con,session);
+		<f ok>
+			//printf ("Internal error=%d\n",internal_error);
+		</f>
+		</call>
+	}
+}
+</mod>
+
