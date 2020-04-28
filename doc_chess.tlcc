@@ -680,6 +680,14 @@ inline void update_cell (VARVAL &var, PARAM_STRING id, char cell)
 {
 	var.val += string_f("findupdpiece('%s','%c');\n",id.ptr,cell);
 }
+inline void update_circle (VARVAL &var, PARAM_STRING id, const char *fill, const char *stroke)
+{
+	var.val += string_f("findupdcircle('%s','%s','%s');\n",id.ptr,fill,stroke);
+}
+inline void update_player_bg (VARVAL &var, unsigned player, const char *color)
+{
+	var.val += string_f("updplayerbg('%u','%s');\n",player,color);
+}
 /*
 	Undo one step
 */
@@ -690,11 +698,11 @@ void CHESS::undoone(VARVAL &notify_var)
 		bool last_playing = undos[last].player1_playing;
 		if (player1.has_selected()){
 			string sel_id = string_f("cs%u,%u",player1.line,player1.col);
-			js_find_loop_set (notify_var.val,"grid","circle",sel_id,"style.fill","none","style.stroke","none");
+			update_circle(notify_var,sel_id,"none","none");
 			player1.reset_sel();
 		}else if (player2.has_selected()){
 			string sel_id = string_f("cs%u,%u",player2.line,player2.col);
-			js_find_loop_set (notify_var.val,"grid","circle",sel_id,"style.fill","none","style.stroke","none");
+			update_circle(notify_var,sel_id,"none","none");
 			player2.reset_sel();
 		}
 		while (undos.size() > 0){
@@ -712,7 +720,7 @@ void CHESS::undoone(VARVAL &notify_var)
 				if (u.type == CHESS_UNDO_MOVE){
 					if (player->has_lastmove()){
 						string last_id = string_f("cl%u,%u",player->lastmove.line,player->lastmove.col);
-						js_find_loop_set (notify_var.val,"grid","circle",last_id,"style.stroke","none");
+						update_circle(notify_var,last_id,"none","none");
 						player->reset_lastmove();
 					}
 					string text_id = string_f("c%u,%u",u.line,u.col);
@@ -723,7 +731,7 @@ void CHESS::undoone(VARVAL &notify_var)
 					player->lastmove.line = u.line;
 					player->lastmove.col = u.col;
 					string last_id = string_f("cl%u,%u",u.line,u.col);
-					js_find_loop_set (notify_var.val,"grid","circle",last_id,"style.stroke","black");
+					update_circle(notify_var,last_id,"none","black");
 				}else if (u.type == CHESS_UNDO_KING_MOVED){
 					player->king_moved = false;
 				}else if (u.type == CHESS_UNDO_LEFT_ROOK_MOVED){
@@ -738,8 +746,8 @@ void CHESS::undoone(VARVAL &notify_var)
 			}
 		}
 		player1_playing = !player1_playing;
-		js_find_set(notify_var.val,"player0","style.backgroundColor",player1_playing ? "lightblue" : "white");
-		js_find_set(notify_var.val,"player1","style.backgroundColor",!player1_playing ? "lightblue" : "white");
+		update_player_bg (notify_var,0,player1_playing ? "lightblue" : "white");
+		update_player_bg (notify_var,1,!player1_playing ? "lightblue" : "white");
 	}
 }
 void CHESS::testwin(vector<VARVAL> &res)
@@ -755,7 +763,7 @@ void CHESS::update_msg(
 {
 	VARVAL mvar;
 	mvar.var = to_all ? VAR_NOTIFY : VAR_SCRIPT;
-	js_find_set (mvar.val,"msg","style.color",color,"innerHTML",documentd_escape(msg).c_str());
+	mvar.val += string_f("updmsg('%s','%s');\n",color,documentd_escape(msg).c_str());
 	res.emplace_back(mvar);
 }
 const unsigned BOX_PLAYER_WIDTH=150;
@@ -822,7 +830,7 @@ void CHESS::show_marked_pieces (
 {
 	for (auto &m:marked_pieces){
 		string id=string_f("cm%u,%u",m.line,m.col);
-		js_find_loop_set (notify_var.val,"grid","circle",id,"style.fill",color,"style.stroke",color);
+		update_circle(notify_var,id,color,color);
 	}
 }
 string CHESS::format_fen()
@@ -1039,13 +1047,25 @@ void CHESS::exec (
 			lines += "\telm.style.fill=fill_color;\n";
 			lines += "}\n";
 			lines += "function findupdpiece(id,piece){\n";
-			lines += string_f ("\tvar elm = document.getElementById('grid-%s');\n",gameid.c_str());
+			js_find_loop_set_META(lines,"grid","text");
+			lines += "\t\t\t\tshowpiece(e,piece);\n";
+			js_find_loop_set_end_META(lines);
+			lines += "function findupdcircle(id,fill,stroke){\n";
+			js_find_loop_set_META(lines,"grid","circle");
+			lines += "\t\t\t\te.style.fill=fill;\n";
+			lines += "\t\t\t\te.style.stroke=stroke;\n";
+			js_find_loop_set_end_META(lines);
+			lines += "function updplayerbg(player,color){\n";
+			lines += string_f("\tvar elm = document.getElementById('player'+player+'-%s');\n",gameid.c_str());
 			lines += "\tif (elm != null){\n";
-			lines += "\t\tvar elms = elm.getElementsByTagName('text');\n";
-			lines += "\t\tfor (var i=0; i<elms.length; i++){\n";
-			lines += "\t\t\tvar e = elms[i];\n";
-			lines += "\t\t\tif (e.id == id) showpiece(e,piece);\n";
-			lines += "\t\t}\n";
+			lines += "\t\telm.style.backgroundColor=color;\n";
+			lines += "\t}\n";
+			lines += "}\n";
+			lines += "function updmsg(color,msg){\n";
+			lines += string_f("\tvar elm = document.getElementById('msg-%s');\n",gameid.c_str());
+			lines += "\tif (elm != null){\n";
+			lines += "\t\telm.style.color=color;\n";
+			lines += "\t\telm.innerHTML=msg;\n";
 			lines += "\t}\n";
 			lines += "}\n";
 
@@ -1271,7 +1291,7 @@ void CHESS::exec (
 					string new_id = string_f("cs%u,%u",lo,co);
 					if (player->line == lo && player->col == co){
 						// The player is unselecting the cell
-						js_find_loop_set (notify_var.val,"grid","circle",new_id,"style.fill","none","style.stroke","none");
+						update_circle (notify_var,new_id,"none","none");
 						player->reset_sel();
 						setmodified(username);
 					}else{
@@ -1350,21 +1370,21 @@ void CHESS::exec (
 							}
 							string new_text_id = string_f("c%u,%u",lo,co);
 							update_cell (notify_var,new_text_id,new_cell);
-							js_find_loop_set (notify_var.val,"grid","circle",sel_id,"style.fill","none","style.stroke","none");
+							update_circle(notify_var,sel_id,"none","none");
 							show_marked_pieces (notify_var,"none");
 							if (check_expose (player1_playing,marked_pieces)){
 								status = MSG_U(I_KINGCHECK,"Check");
 							}
-							js_find_set(notify_var.val,"player0","style.backgroundColor",player1_playing ? "lightblue" : "white");
-							js_find_set(notify_var.val,"player1","style.backgroundColor",!player1_playing ? "lightblue" : "white");
+							update_player_bg(notify_var,0,player1_playing ? "lightblue" : "white");
+							update_player_bg(notify_var,1,player1_playing ? "white" : "lightblue");
 							if (player->has_lastmove()){
 								string last_id = string_f("cl%u,%u",player->lastmove.line,player->lastmove.col);
-								js_find_loop_set (notify_var.val,"grid","circle",last_id,"style.stroke","none");
+								update_circle (notify_var,last_id,"none","none");
 							}
 							player->lastmove.line = lo;
 							player->lastmove.col = co;
 							string last_id = string_f("cl%u,%u",lo,co);
-							js_find_loop_set (notify_var.val,"grid","circle",last_id,"style.stroke","black");
+							update_circle(notify_var,last_id,"none","black");
 							vector<CHESS_COOR> exposing_pieces;
 							if (check_expose (!player1_playing,exposing_pieces)){
 								marked_pieces = exposing_pieces;	
@@ -1399,7 +1419,7 @@ void CHESS::exec (
 					player->line = lo;
 					const char *color = player1_playing ? "blue" : "blue";
 					string id = string_f("cs%u,%u",lo,co);
-					js_find_loop_set (notify_var.val,"grid","circle",id,"style.fill",color,"style.stroke",color);
+					update_circle(notify_var,id,color,color);
 				}else{
 					error = MSG_U(E_CANTSELECT,"You can't select an opponent piece");
 				}
@@ -1453,8 +1473,8 @@ void CHESS::exec (
 			notify_var.val += "\t\telms[i].style.stroke='none';\n";
 			notify_var.val += "\t}\n";
 			js_find_loop_end (notify_var.val);
-			js_find_set(notify_var.val,"player0","style.backgroundColor","lightblue");
-			js_find_set(notify_var.val,"player1","style.backgroundColor","white");
+			update_player_bg (notify_var,0,"lightblue");
+			update_player_bg (notify_var,1,"white");
 			// tlmp_warning ("val.size=%lu",notify_var.val.size());
 			setmodified(username);
 			robot_request(res);

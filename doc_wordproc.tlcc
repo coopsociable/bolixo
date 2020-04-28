@@ -1003,6 +1003,27 @@ static void wordproc_update_buttons (string &script, WORD_USERPREF &pref, const 
 	wordproc_update_button (script,pref.states.sub,newstates.sub,BUTTON_SUB);
 }
 /*
+	Return true if the cursor if on a space
+*/
+bool WORDPROC::isspace(WORD_USERPREF &pref, bool &inside_doc)
+{
+	bool ret = false;
+	inside_doc = false;
+	if (lines.size() > pref.cursor.line){
+		string &l = lines[pref.cursor.line].line;
+		unsigned len = wordproc_linelen(l);
+		// tlmp_warning ("deletechar column=%u len=%u",pref.cursor.column,len);
+		if (len > pref.cursor.column){
+			inside_doc = true;
+			// We are inside the line, we remove the current character
+			size_t sizecar;
+			unsigned pos = wordproc_jump2col(l,pref.cursor.column,sizecar);
+			if (sizecar == 1 && l[pos] == ' ') ret = true;
+		}
+	}
+	return ret;
+}
+/*
 	Delete the character at the cursor
 */
 void WORDPROC::deletechar (set<unsigned> &updlines, WORD_USERPREF &pref)
@@ -1429,6 +1450,15 @@ void WORDPROC::execstep (
 			v.val += "\tevent.stopPropagation();\n";
 			v.val += "\treturn false;\n";
 			v.val += "}\n";
+			// function called when the user uses the mouse wheel
+			v.val += "function gamewheel(event){\n";
+			//v.val += "\tconsole.log('deltaX='+event.deltaX+' deltaY='+event.deltaY);\n";
+			v.val += "\tif (event.deltaY < 0){\n";
+			v.val += "\t\tgameaction(event,'voffset:-1');\n";
+			v.val += "\t}else{\n";
+			v.val += "\t\tgameaction(event,'voffset:1');\n";
+			v.val += "\t}\n";
+			v.val += "}\n";
 			v.val += "</script>\n";
 			// Buttons line
 			if (maywrite){
@@ -1473,6 +1503,7 @@ void WORDPROC::execstep (
 			// Document
 			v.val += string_f("<div class=webtable id=%sdoc_wordproc style='display:flex; flex-flow:row;'>\n",val);
 			v.val += string_f("<div id='text-%s' onkeydown='gamepress(event);return false;' oninput=funcinput(event) onclick=gameselect(event)"
+				" onwheel='gamewheel(event); return false;'"
 				//" contenteditable"
 				" spellcheck"
 				" tabindex=0 style='flex:0 0 auto; overflow: hidden; margin-right:%u; width:%u'"
@@ -1839,8 +1870,27 @@ void WORDPROC::execstep (
 				// We do a deletechar after that
 				if (pref.cursor.column > 0){
 					tlmp_warning ("backspace column=%u",pref.cursor.column);
-					pref.cursor.column--;
-					deletechar(notify_lines,pref);
+					if (mod.ctrl){
+						// backspace to the start of the word. If we are on a space, we backspace until we reach a word
+						// then we backspace over the word.
+						pref.cursor.column--;
+						bool inside_doc;
+						while (isspace(pref,inside_doc)){
+							deletechar(notify_lines,pref);
+							if (pref.cursor.column == 0) break;
+							pref.cursor.column--;
+						}
+						while (1){
+							bool space = isspace(pref,inside_doc);
+							if (space || !inside_doc) break;
+							deletechar(notify_lines,pref);
+							if (pref.cursor.column == 0) break;
+							pref.cursor.column--;
+						}
+					}else{
+						pref.cursor.column--;
+						deletechar(notify_lines,pref);
+					}
 				}else if (pref.cursor.line > 0){
 					bool prec_is_image = pref.cursor.line < lines.size() && lines[pref.cursor.line-1].is_image();
 					if (!prec_is_image){
@@ -1857,19 +1907,46 @@ void WORDPROC::execstep (
 				}
 				setmodified(username);
 			}else if (strcmp(var,"deletechar")==0){
-				deletechar(notify_lines,pref);
+				if (mod.shift){
+					// Delete from cursor to the end of the line
+					PARAGRAPH para;
+					unsigned noline;
+					set_para_spec (para,pref.cursor.line,pref.cursor.column,sp,noline);
+					unsigned cursor = para.get_para_cursor(noline);
+					unsigned endline = para.get_para_end(noline);
+					while (cursor < endline){
+						deletechar(notify_lines,pref);
+						cursor++;
+					}
+				}else if (mod.ctrl){
+					// Delete to the end of the word. If we are on a space, delete to the start of the word, then the word.
+					bool inside_doc;
+					while (isspace(pref,inside_doc)) deletechar(notify_lines,pref);
+					while (1){
+						bool space = isspace(pref,inside_doc);
+						if (space || !inside_doc) break;
+						deletechar(notify_lines,pref);
+					}
+				}else{
+					deletechar(notify_lines,pref);
+				}
 				setmodified(username);
 			}else if (strcmp(var,"voffset")==0){
 				// Change page up or down
 				int move = atoi(val);
-				if (move > 0){
-					pref.offset += move;
-				}else{
-					if ((unsigned)-move > pref.offset){
-						pref.offset = 0;
+tlmp_warning ("voffset move = %d offset=%u",move,pref.offset);
+				if (move > 0 || pref.offset > 0){
+					unsigned cur_line = pref.cursor.line;
+					unsigned cur_column = pref.cursor.column;
+					if (move < 0){
+						pref.cursor.line = pref.offset;
 					}else{
-						pref.offset += move;
+						pref.cursor.line = pref.offset + visible_lines - 1;
 					}
+					vmove (move,visible_lines,lastline,pref,sp,script_var,script_lines);
+tlmp_warning ("apres vmove move=%d script_lines.size()=%lu",move,script_lines.size());
+					pref.cursor.line = cur_line;;
+					pref.cursor.column = cur_column;
 				}
 			}else if (strcmp(var,"hmove")==0){
 				int move = atoi(val);

@@ -144,6 +144,24 @@ protected:
 		lines += string_f("\telm.%s='%s';\n",feature2,val2);
 		lines += "}\n";
 	}
+	// Used when declaring an update function. The function has an argument called id
+	// and must perform updates on a variable named 'e'
+	inline void js_find_loop_set_META(std::string &lines, const char *prefix, const char *tag){
+		lines += string_f ("\tvar elm = document.getElementById('%s-%s');\n",prefix,gameid.c_str());
+		lines += "\tif (elm != null){\n";
+		lines += string_f("\t\tvar elms = elm.getElementsByTagName('%s');\n",tag);
+		//lines += string_f("\t\tconsole.log('%s.length='+elms.length);\n",tag);
+		lines += "\t\tfor (var i=0; i<elms.length; i++){\n";
+		lines += "\t\t\tvar e = elms[i];\n";
+		lines += "\t\t\tif (e.id == id){\n";
+	}
+	inline void js_find_loop_set_end_META(std::string &lines){
+		lines += "\t\t\t\tbreak;\n";
+		lines += "\t\t\t}\n";
+		lines += "\t\t}\n";
+		lines += "\t}\n";
+		lines += "}\n";
+	}
 	inline void js_find_loop_set(std::string &lines, const char *prefix, const char *tag, PARAM_STRING id, const char *feature, const char *val){
 		lines += string_f ("var elm = document.getElementById('%s-%s');\n",prefix,gameid.c_str());
 		lines += "if (elm != null){\n";
@@ -434,6 +452,7 @@ public:
 class WORDPROC: public GAME{
 	std::vector<WORDPROC_LINE> lines;
 	std::map<std::string,WORD_USERPREF> prefs;
+	bool isspace(WORD_USERPREF &pref, bool &inside_doc);
 	void deletechar(std::set<unsigned> &updlines, WORD_USERPREF &pref);
 	void vmove (int move, unsigned visible_lines, unsigned lastline, WORD_USERPREF &pref, const DOC_UI_SPECS_receive &sp, VARVAL &script_var, std::set<unsigned> &updlines);
 	void page_up_down(int new_offset, unsigned visible_lines, unsigned lastline, WORD_USERPREF &pref, VARVAL &script_var,
