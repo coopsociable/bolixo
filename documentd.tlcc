@@ -339,6 +339,8 @@ void GAME::engine_reply(const char *line, string &notify, bool &done)
 }
 static bool protocol_stats=false;	// produce a tlmp_warning showing how much is sent back
 static size_t total_content_size = 0;
+static size_t total_script_size = 0;
+static size_t total_unotify_size = 0;
 static unsigned total_requests=0;
 
 static bool documentd_playstep (
@@ -364,12 +366,16 @@ static bool documentd_playstep (
 		game->testwin(res);
 		size_t content_size = 0;
 		size_t notify_size = 0;
+		size_t script_size = 0;
 		for (auto r = res.begin(); r != res.end(); ){
 			if (r->var == VAR_NOTIFY){
 				// Notifications are sent using the waitevent system
 				notify_size += r->val.size();
 				if (r->val.size() > 0) game->add_notification(r->val);
 				r = res.erase(r);
+			}else if (r->var == VAR_SCRIPT){
+				script_size += r->val.size();
+				r++;
 			}else if (r->var == VAR_CONTENT){
 				content_size += r->val.size();
 				r->val += "<script>\n";
@@ -394,8 +400,10 @@ static bool documentd_playstep (
 				r++;
 			}
 		}
-		if (protocol_stats) tlmp_warning ("protocol content_size=%lu notify_size=%lu",content_size,notify_size);
+		if (protocol_stats) tlmp_warning ("protocol content_size=%lu script_size=%lu notify_size=%lu",content_size,script_size,notify_size);
 		total_content_size += content_size;
+		total_script_size += script_size;
+		total_unotify_size += notify_size;
 		total_requests++;
 	}else{
 		msg = "Unknown game id";
@@ -872,7 +880,8 @@ int main (int argc, char *argv[])
 					}
 					tb.push_back(string_f("protocolstats: %d",protocol_stats));
 					tb.push_back(string_f("chessmaxskill: %u",chess_getmaxskill()));
-					tb.push_back(string_f("bytes sent: requests=%u content=%lu notify=%lu",total_requests,total_content_size,total_notify_size));
+					tb.push_back(string_f("bytes sent: requests=%u content=%lu script=%lu unotify=%lu notify=%lu"
+						,total_requests,total_content_size,total_script_size,total_unotify_size,total_notify_size));
 					tb.push_back(string_f("nbwaiting: %u",nbwait));
 					tb.push_back(string_f("subprograms: %lu",glocal.programs.size()));
 					for (auto &p:glocal.programs){
