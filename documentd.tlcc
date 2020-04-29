@@ -32,7 +32,6 @@
 #include <trlitool.h>
 #include <translat.h>
 #include <deque>
-#include <memory>
 #include <string>
 #include "filesystem.h"
 #include "bolixo.h"
@@ -264,7 +263,6 @@ void documentd_parsefields (const char *val, vector<VARVAL> &fields)
 	}
 }
 
-using GAME_P = shared_ptr<GAME>;
 
 GAME::~GAME()
 {
@@ -416,18 +414,21 @@ static GAME_P documentd_newgame(const char *type, const char *gameid, string &ms
 {
 	GAME_P p = nullptr;
 	if (strncmp(type,"boBOTICT",8)==0){
-		p = make_shared<TICTACTO>();
+		p = make_TICTACTO();
 	}else if (strncmp(type,"boBOSUDO",8)==0){
-		p = make_shared<SUDOKU>();
+		p = make_SUDOKU();
 	}else if (strncmp(type,"boBOWORD",8)==0){
-		p = make_shared<WORDPROC>();
+		p = make_WORDPROC();
+	}else if (strncmp(type,"boBOWHIT",8)==0){
+		p = make_WHITEBOARD();
 	}else if (strncmp(type,"boBOCHEC",8)==0){
-		p = make_shared<CHECKERS>();
+		p = make_CHECKERS();
 	}else if (strncmp(type,"boBOCHES",8)==0){
-		p = make_shared<CHESS>();
+		p = make_CHESS();
 	}else{
 		msg = "Unknown game or document type";
 	}
+tlmp_warning ("gameid=%s p=%d",gameid,p!=nullptr);
 	if (p != nullptr) p->setgameid(gameid);
 	return p;
 }
@@ -859,7 +860,7 @@ int main (int argc, char *argv[])
 		<f receive>
 			debug_printf (D_PROTO,"receive line: %s\n",line);
 			HANDLE_INFO *c = (HANDLE_INFO*)info.data;
-			static const char *tbtype[]={"none","control request","client request"};
+			static const char *tbtype[]={"none","control request","client request","subprogram"};
 			ERROR_PREFIX prefix ("%s: ",tbtype[c->type]);
 			if (c->type == TYPE_CONTROL){
 				<call documentd_control>(this,c->req,line, info.linelen,endserver, endclient, no,c);
@@ -1093,6 +1094,7 @@ int main (int argc, char *argv[])
 								{"CHES","doc_chess"},
 								{"SUDO","doc_sudoku"},
 								{"WORD","doc_wordproc"},
+								{"WHIT","doc_whiteboard"},
 								{"TICT","doc_tictacto"},
 							};
 							const char *type = doc->getclass();

@@ -36,6 +36,55 @@ using namespace std;
 #include "proto/documentd_sudoku.protoch"
 
 static DEBUG_KEY D_SUDOKU("sudoku","sudoku game");
+struct SUDOKU_CELL{
+	unsigned char visible;		// This cell is visible
+	unsigned char value;		// Value of the cell. If visible, this value is shown in gray
+	unsigned char user_value;	// Value entered by the user, if user_value == value, user is right.
+	std::string username;		// User who solved this cell.
+	unsigned char user_guess;	// When trying to solve complex puzzle, a user
+					// may enter a guess in a cell to help his memory
+	unsigned char guess_color;	
+	void reset(){
+		visible = value = user_value = 0;
+		username.clear();
+		user_guess = guess_color = 0;
+	}
+	SUDOKU_CELL(){
+		reset();
+	}
+};
+struct SUDO_USERPREF{
+	unsigned color = 0;
+	unsigned last_column = 10;	// Last solve cell coordinate
+	unsigned last_line = 10;
+};
+class SUDOKU: public GAME{
+	SUDOKU_CELL grid[9][9];	
+	std::map<std::string,unsigned> seldigs; // Selected digit used when setting a value
+	std::map<std::string,SUDO_USERPREF> prefs;	// Preferences associated with a user
+	unsigned difficulty=0;	// What difficulty was used to initialize the game
+	bool grid_full[9];	// The grid is now complete for a given digit.
+	void compute_grid_full();
+	void redraw_notify(std::vector<VARVAL> &res);
+	void update_msg(bool to_all, PARAM_STRING msg, const char *color, std::vector<VARVAL> &res);
+public:
+	const char *getclass() const{
+		return "SUDO";
+	}
+	SUDOKU(){
+		resetgame();
+	}
+	void save(DOC_WRITER &fout, bool save_session_info);
+	void load(DOC_READER &r, std::string &msg);
+	void resetgame();
+	void testwin(std::vector<VARVAL> &res);
+	void exec (const char *var, const char *val, const char *session, const char *username, bool maywrite, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
+};
+
+GAME_P make_SUDOKU()
+{
+	return make_shared<SUDOKU>();
+}
 
 void SUDOKU::save (DOC_WRITER &w, bool save_session_info)
 {

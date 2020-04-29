@@ -32,6 +32,45 @@ using namespace std;
 #define documentd_checkers_chat_NOTNEED
 #include "proto/documentd_checkers.protoch"
 
+struct CHECKER_PLAYER{
+	unsigned col=11;
+	unsigned line=11;
+	bool onemove=false;	// The player has done one move over another player coin
+				// and may stop there or not.
+	std::string name;
+	void reset(){
+		onemove = false;
+		col = line = 11;
+	}
+	bool has_selected(){	// Has the player select the piece he wants to move
+		return col < 10 && line < 10;
+	}
+};
+
+class CHECKERS: public GAME{
+	unsigned nbcol=8;
+	static const unsigned MAX_GRID_SIZE = 10;
+	unsigned char grid[MAX_GRID_SIZE][MAX_GRID_SIZE];
+	CHECKER_PLAYER player1,player2;
+	bool player1_playing = true;
+	std::string message;
+	std::map<std::string,bool> sessions; // Display mode (reverse) per session
+	void update_msg (bool to_all, PARAM_STRING msg, const char *color, std::vector<VARVAL> &res);
+public:
+	const char *getclass() const{
+		return "CHEC";
+	}
+	void save(DOC_WRITER &w, bool save_session_info);
+	void load(DOC_READER &r, std::string &msg);
+	void resetgame();
+	void testwin(std::vector<VARVAL> &res);
+	void exec (const char *var, const char *val, const char *session, const char *username, bool maywrite, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
+};
+
+GAME_P make_CHECKERS()
+{
+	return make_shared<CHECKERS>();
+}
 
 void CHECKERS::save(DOC_WRITER &w, bool save_session_info)
 {

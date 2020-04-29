@@ -1,0 +1,156 @@
+/*
+	This file is part of Bolixo.
+
+	Bolixo is free software: you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation, either version 3 of the License, or
+	(at your option) any later version.
+
+	Bolixo is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+	GNU General Public License for more details.
+
+	You should have received a copy of the GNU General Public License
+	along with Bolixo.  If not, see <https://www.gnu.org/licenses/>.
+*/
+/*
+	White board drawing program.
+	The goal of this program is to create drawings very quickly. It may contain
+		text
+		graph
+
+	Anything we usually draw to explain an idea.
+*/
+#include <string.h>
+#include <stdio.h>
+#include <trlitool.h>
+#include <string>
+#include <stdlib.h>
+#include <vector>
+#include <tlmplib.h>
+#include "bolixo.h"
+#include "proto/bod_client.protodef"
+#include "documentd.h"
+#include "bolixo.m"
+
+using namespace std;
+struct WHITEBOARD_ELM{
+	std::string label;
+};
+
+class WHITEBOARD: public GAME{
+	std::vector<WHITEBOARD_ELM> elms;
+	void update_msg (bool to_all, PARAM_STRING msg, const char *color, std::vector<VARVAL> &res);
+public:
+	void save(DOC_WRITER &w, bool);
+	void load(DOC_READER &r, std::string &msg);
+	void resetgame();
+	WHITEBOARD();
+	const char *getclass() const;
+	void testwin(std::vector<VARVAL> &res);
+	void exec (const char *var, const char *val, const char *session, const char *username, bool maywrite, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
+};
+
+GAME_P make_WHITEBOARD()
+{
+	return make_shared<WHITEBOARD>();
+}
+
+WHITEBOARD::WHITEBOARD()
+{
+}
+void WHITEBOARD::update_msg (bool to_all, PARAM_STRING msg, const char *color, std::vector<VARVAL> &res)
+{
+}
+void WHITEBOARD::save(DOC_WRITER &w, bool)
+{
+}
+void WHITEBOARD::load(DOC_READER &r, std::string &msg)
+{
+}
+void WHITEBOARD::resetgame()
+{
+	elms.clear();
+}
+const char *WHITEBOARD::getclass() const
+{
+	return "WHIT";
+}
+void WHITEBOARD::testwin(std::vector<VARVAL> &res)
+{
+}
+void WHITEBOARD::exec (
+	const char *var,
+	const char *val,
+	const char *session,
+	const char *username,
+	bool maywrite,
+	const DOC_UI_SPECS_receive &sp,
+	std::vector<VARVAL> &res)
+{
+	string error,status;
+	setactivity();
+	VARVAL notify_var;
+	notify_var.var = VAR_NOTIFY;
+	if (strcmp(var,"print")==0){
+		if (is_any_of(val,"","full")){
+			unsigned width = sp.content_width;
+			VARVAL v;
+			v.var = VAR_CONTENT;
+			v.val += "<style>\n";
+			v.val += "</style>\n";
+			v.val += "<script>\n";
+			v.val += "</script>\n";
+			// Buttons line
+			if (maywrite){
+				v.val += "<div id=tab_form style='margin-top:5; margin-bottom:5; background-color: lightgray;'>\n";
+				DOC_BUTTON_SPECS specs;
+				if (sp.mobile){
+					specs.width = 60;
+					specs.radius = 6;
+					specs.margin_left = 10;
+					specs.margin_top = 4;
+					specs.margin_bottom = 4;
+				}
+				documentd_button_start(v.val,gameid);
+				documentd_button (v.val,0,"A",specs,false);
+				documentd_button (v.val,1,"B",specs,false);
+				documentd_button (v.val,2,"C",specs,false);
+				documentd_button_end(v.val);
+			}else{
+				v.val += "<div id=tab_form style='margin-top:5; margin-bottom:5; background-color: lightgray;'>\n";
+				v.val += "Read only";
+			}
+			v.val += "</div>\n";
+			// Board
+			v.val += string_f("<div class=webtable id=%sdoc_whiteboard style='display:flex; flex-flow:row;'>\n",val);
+			v.val += string_f("<div id='text-%s' onkeydown='gamepress(event);return false;' oninput=funcinput(event) onclick=gameselect(event)"
+				" onwheel='gamewheel(event); return false;'"
+				//" contenteditable"
+				" spellcheck"
+				" tabindex=0 style='flex:0 0 auto; overflow: hidden; width:%u'"
+				" >\n",gameid.c_str(),width);
+			v.val += "</div>\n";
+			v.val += "</div>\n";
+			// Status line
+			v.val += "<div id=tab_form>\n";
+			v.val += "&nbsp;";
+			v.val += "</div>\n";
+			res.emplace_back(v);
+		}
+	}else if (maywrite){
+	}else{
+		error = MSG_R(E_READONLY);
+	}
+	if (notify_var.val.size() > 0) res.emplace_back(move(notify_var));
+	if (error.size() > 0){
+		update_msg(false,error,"red",res);
+	}else if (status.size() > 0){
+		update_msg(true,status,"red",res);
+	}else{
+		update_msg(false,"&nbsp;","white",res);
+	}
+}
+
+
