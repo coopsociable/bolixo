@@ -1,0 +1,129 @@
+/*
+	This file is part of Bolixo.
+
+	Bolixo is free software: you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation, either version 3 of the License, or
+	(at your option) any later version.
+
+	Bolixo is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+	GNU General Public License for more details.
+
+	You should have received a copy of the GNU General Public License
+	along with Bolixo.  If not, see <https://www.gnu.org/licenses/>.
+*/
+/*
+	Read the log of container webssl and maps to Bolixo operations
+*/
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+#include <tlmplib.h>
+#include <string>
+#include <vector>
+
+using namespace std;
+
+static void display(const char *line)
+{
+	static vector<pair<string,string>> patterns={
+		{"GET /index.hc?webstep=12","Documentation"},
+		{"GET /index.hc?webstep=11","Profile"},
+		{"GET /index.hc?webstep=10","Confirmuser"},
+		{"GET /index.hc?webstep=9","Talk"},
+		{"GET /index.hc?webstep=8","Mails"},
+		{"GET /index.hc?webstep=7","Projects"},
+		{"GET /index.hc?webstep=6","Publicfile"},
+		{"GET /index.hc?webstep=5","Privatefile"},
+		{"GET /index.hc?webstep=4","Logout"},
+		{"GET /index.hc?webstep=3","Adduser"},
+		{"GET /index.hc?webstep=2","Login"},
+		{"GET /index.hc?webstep=1","Main page"},
+		{"GET / ","Main page"},
+		{"POST /index.hc ","POST"},
+		{"GET /wss ","WebSocket"},
+		{" 404 ","BAD"}
+	};
+	bool found = false;
+	for (auto &p:patterns){
+		if (strstr(line,p.first.c_str())!=nullptr){
+			printf ("%-20s: %s\n",p.second.c_str(),line);
+			found = true;
+			break;
+		}
+	}
+	if (!found){
+		printf ("%-20s: %s\n","Other",line);
+	}
+}
+
+
+<mod>
+static void process (const char *logfile, const char *date, unsigned tail)
+{
+	glocal tail;
+	glocal date;
+	glocal vector<string> lines;
+	<call loadfile>(logfile,true);
+	<f oneline>
+		if (glocal.date != nullptr){
+			if (strstr(line,glocal.date)==nullptr) return 0;
+		}
+		if (glocal.tail > 0){
+			glocal.lines.push_back(line);
+			if (glocal.lines.size() > glocal.tail) glocal.lines.erase(glocal.lines.begin());
+		}else{
+			display (line);
+		}
+		return 0;
+	</f>
+	</call>
+	for (auto &l:glocal.lines) display(l.c_str());
+}
+</mod>
+
+<mod>
+int main (int argc, char *argv[])
+{
+	glocal int ret = -1;
+	glocal const char *logfile = "/var/lib/lxc/webssl/rootfs/etc/httpd/logs/ssl_access_log";
+	glocal const char *date = nullptr;
+
+	glocal.ret = <call tlmpprogram>(argc,argv);
+	<f init>
+		setproginfo ("logssl",VERSION,"Analyse webssl logs");
+		setarg ('d',"date","Date dd/month/yyyy",glocal.date,false);
+		setarg ('l',"logfile","Apache ssl_access_log path",glocal.logfile,false);
+	</f>
+	<f main_noarg>
+		time_t now = time(nullptr);
+		struct tm *t = localtime(&now);
+		string date;
+		if (glocal.date == nullptr){
+			static const char *tbmonth[]={"Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"};
+			date = string_f("%02d/%s/%04d",t->tm_mday,tbmonth[t->tm_mon],t->tm_year+1900);
+			glocal.date = date.c_str();
+		}
+		process(glocal.logfile,glocal.date,15);
+		return 0;
+	</f>
+	<f main>
+		int ret = -1;
+		if (argc != 1){
+			usage();
+		}else if (strcmp(argv[0],"all")==0){
+			process (glocal.logfile,glocal.date,0);
+		}else{
+			int tail = atoi(argv[0]);
+			process (glocal.logfile,glocal.date,tail);
+		}
+		return ret;
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+

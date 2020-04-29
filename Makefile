@@ -10,7 +10,7 @@ PROGS=_dict.o bod bod-client bod-control bo-writed bo-writed-control bo-sessiond
       bo-mon bo-mon-control utils/eximexec utils/helpspell publishd publishd-control bo-webtest \
       documentd documentd-control rssd rssd-control deleteitems utils/cacheurl utils/email-log \
       utils/show-notifies utils/business-card waitevent utils/bo-remote-manage utils/bolixo-update \
-      utils/dnsrequest bo-websocket bo-websocket-control
+      utils/dnsrequest bo-websocket bo-websocket-control utils/logssl
 #bo-log bo-log-control \
 DOCS=
 OPTIONS=$(DINSTRUMENT) -funsigned-char -O2 -Wall -g -DVERSION=\"$(PACKAGE_REV)\" -I/usr/include/tlmp -I/usr/include/trlitool
@@ -148,6 +148,9 @@ utils/bolixo-update: utils/bolixo-update.tlcc _dict.o
 
 utils/dnsrequest: utils/dnsrequest.cc _dict.o
 	g++ $(OPTIONS) utils/dnsrequest.cc -o utils/dnsrequest
+
+utils/logssl: utils/logssl.tlcc
+	cctlcc $(OPTIONS) utils/logssl.tlcc -o utils/logssl -lstdc++
 
 
 proto/publishd_control.protoh: proto/publishd_control.proto
