@@ -28,6 +28,8 @@
 #include <string>
 #include <stdlib.h>
 #include <vector>
+#include <deque>
+#include <set>
 #include <tlmplib.h>
 #include "bolixo.h"
 #include "proto/bod_client.protodef"
@@ -35,14 +37,149 @@
 #include "bolixo.m"
 
 using namespace std;
+
+enum WHITEBOARD_ELMTYPE {	// Type of element
+	TYPE_ELLIPSE,
+	TYPE_RECT,
+	TYPE_LINE,	// One line or arrow
+	TYPE_HANDLINE,	// line drawn by hand
+};
+
+enum WHITEBOARD_SELMODE{
+	SEL_NONE,
+	SEL_SELECTED,	// This element is selected so we can act on it
+			// (move it, enlarge it).
+	SEL_STAR,	// This element is selected so we can attach
+			// more elements to it.
+	SEL_IMBED,	// This element is selected so we can insert
+			// more elements into it.
+};
+static const char *tbcolor[]={"black","red","yellow","green"};
+
 struct WHITEBOARD_ELM{
-	std::string label;
+	WHITEBOARD_SELMODE selmode = SEL_NONE;	// Make the element more visible
+						// for other actions
+	unsigned id = 0;
+	unsigned short x;	// Coordinates
+	unsigned short y;
+	unsigned short x1=0;	// end coordinates
+	unsigned short y1=0;
+	unsigned short width=0;
+	unsigned short height=0;
+	std::string label;	// Useful to reference the element in scripts ?
+	WHITEBOARD_ELMTYPE type;
+	std::string txt;	// Caption
+	vector<WHITEBOARD_ELM> insides;		// insides are drawn inside the element.
+	vector<WHITEBOARD_ELM> subelms;		// subelms are related elements.
+	void resize(int val, bool horizontal_only, bool vertical_only){
+		if (horizontal_only){
+			width += val;
+		}else if (vertical_only){
+			height += val;
+		}else if (width == height || width == 0 || height == 0){
+			width += val;
+			height += val;
+		}else{
+			// Here we should compute the aspect ratio of the object and preserve it.
+			double ratio = (double)width/height;
+			width += ratio*val;
+			height += val/ratio;
+		}
+	}
+	void move(int movex, int movey, set<unsigned> &ids){
+		ids.insert (id);
+		x += movex;
+		y += movey;
+		for (auto &e:insides){
+			e.move(movex,movey,ids);
+		}
+	}
+	void redraw(VARVAL &var){
+		const char *stroke_color = tbcolor[selmode];
+		unsigned w_2 = width/2;
+		unsigned h_2 = height/2;
+		if (type == TYPE_ELLIPSE){
+			var.val += string_f("replace_ellipse('e%u',%u,%u,%u,%u,'%s');\n",id,x,y,w_2,h_2,stroke_color);
+		}else if (type == TYPE_RECT){
+			var.val += string_f("replace_rect('e%u',%d,%d,%u,%u,'%s');\n",id,(int)x-w_2,(int)y-h_2,width,height,stroke_color);
+		}else{
+		}
+	}
+};
+
+struct WHITEBOARD_PREF{
+	bool selecting = true;
+	bool starmode = false;	// We are attaching more items to another.
+	bool imbedmode = false;	// We are inserting items inside another.
+	MOD_KBD mod;
 };
 
 class WHITEBOARD: public GAME{
 	std::vector<WHITEBOARD_ELM> elms;
+	map<string,WHITEBOARD_PREF> prefs;	// Per session state
+	unsigned alloc_id=0;
 	void update_msg (bool to_all, PARAM_STRING msg, const char *color, std::vector<VARVAL> &res);
+	void resetsel(WHITEBOARD_SELMODE, set<unsigned> &ids);
+	void redraw(const set<unsigned> &ids, VARVAL &var);
+	void alloc_elm(WHITEBOARD_ELM &elm, WHITEBOARD_ELMTYPE type, unsigned x0, unsigned y0){
+		elm.selmode = SEL_SELECTED;
+		elm.id = alloc_id++;
+		elm.type = type;
+		elm.x = x0;
+		elm.y = y0;
+	}
+	void add_element(WHITEBOARD_ELM *star_elm, WHITEBOARD_ELM *imbed_elm, WHITEBOARD_ELM &newelm){
+		if (star_elm != nullptr){
+			star_elm->subelms.emplace_back(move(newelm));
+		}else if (imbed_elm != nullptr){
+			imbed_elm->insides.emplace_back(move(newelm));
+		}else{
+			elms.emplace_back(move(newelm));
+		}
+	}
+	unsigned add_ellipse (WHITEBOARD_ELM *star_elm, WHITEBOARD_ELM *imbed_elm, unsigned x, unsigned y, unsigned x_ray, unsigned y_ray){
+		WHITEBOARD_ELM elm;
+		alloc_elm(elm,TYPE_ELLIPSE,x,y);
+		elm.width = x_ray*2;
+		elm.height = y_ray*2;
+		elm.selmode = SEL_SELECTED;
+		unsigned ret = elm.id;
+		add_element(star_elm,imbed_elm,elm);
+		return ret;
+	}
+	unsigned add_rect (WHITEBOARD_ELM *star_elm, WHITEBOARD_ELM *imbed_elm, unsigned x, unsigned y, unsigned width, unsigned height){
+		WHITEBOARD_ELM elm;
+		alloc_elm(elm,TYPE_RECT,x,y);
+		elm.width = width;
+		elm.height = height;
+		unsigned ret = elm.id;
+		add_element(star_elm,imbed_elm,elm);
+		return ret;
+	}
+	unsigned add_line (unsigned x0, unsigned y0, unsigned x1, unsigned y1){
+		WHITEBOARD_ELM elm;
+		alloc_elm(elm,TYPE_LINE,x0,y0);
+		elm.x1 = x1;
+		elm.y1 = y1;
+		unsigned ret = elm.id;
+		elms.emplace_back(move(elm));
+		return ret;
+	}
+	unsigned add_handline (unsigned x0, unsigned y0, unsigned x1, unsigned y1){
+		WHITEBOARD_ELM elm;
+		alloc_elm(elm,TYPE_HANDLINE,x0,y0);
+		elm.x1 = x1;
+		elm.y1 = y1;
+		unsigned ret = elm.id;
+		elms.emplace_back(move(elm));
+		return ret;
+	}
+	WHITEBOARD_ELM *locate (unsigned x, unsigned y);
+	vector<WHITEBOARD_ELM *> findselected (WHITEBOARD_SELMODE sel);
+	void execstep (const char *var, const char *val, const char *session, const char *username, bool maywrite, const DOC_UI_SPECS_receive &sp,
+		VARVAL &script_var, VARVAL &notify_var, set<unsigned> &notify_ids, std::vector<VARVAL> &res);
 public:
+	friend void walkboard(class _F_walkboard &c, WHITEBOARD *board);
 	void save(DOC_WRITER &w, bool);
 	void load(DOC_READER &r, std::string &msg);
 	void resetgame();
@@ -50,6 +187,7 @@ public:
 	const char *getclass() const;
 	void testwin(std::vector<VARVAL> &res);
 	void exec (const char *var, const char *val, const char *session, const char *username, bool maywrite, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
+	void manyexec (const vector<VARVAL_receive> &steps, const char *session, const char *username, bool maywrite, const DOC_UI_SPECS_receive &sp, vector<VARVAL> &res);
 };
 
 GAME_P make_WHITEBOARD()
@@ -69,9 +207,107 @@ void WHITEBOARD::save(DOC_WRITER &w, bool)
 void WHITEBOARD::load(DOC_READER &r, std::string &msg)
 {
 }
+#define _TLMP_walkboard
+struct _F_walkboard{
+	#define _F_walkboard_element(x) void x element(WHITEBOARD_ELM &elm, WHITEBOARD_ELM *parent, bool &end)
+	virtual _F_walkboard_element( )=0;
+};
+void walkboard(_F_walkboard &c, WHITEBOARD *board)
+{
+	struct ELEMENTS{
+		WHITEBOARD_ELM *parent;
+		vector<WHITEBOARD_ELM> *elms;
+		ELEMENTS(WHITEBOARD_ELM *_parent, vector<WHITEBOARD_ELM> *_elms)
+			: parent(_parent), elms(_elms){
+		}
+	}; 
+	deque<ELEMENTS> todo;
+	todo.emplace_back(nullptr,&board->elms);
+	bool end = false;
+	while (todo.size() > 0 && !end){
+		auto elms = todo.front();
+		todo.pop_front();
+		for (auto &e:*elms.elms){
+			c.element(e,elms.parent,end);
+			if (end) break;
+			if (e.insides.size() > 0) todo.emplace_back(nullptr,&e.insides);
+			if (e.subelms.size() > 0){
+				todo.emplace_back(&e,&e.subelms);
+			}
+		}
+	}
+}
+
+/*
+	Unselect the selected elements.
+	ids will contain the id of selected elements.
+*/
+<mod>
+void WHITEBOARD::resetsel(WHITEBOARD_SELMODE selmode, set<unsigned> &ids)
+{
+	glocal ids;
+	glocal selmode;
+	<call walkboard>(this);
+	<f element>
+		if (elm.selmode == glocal.selmode){
+			elm.selmode = SEL_NONE;
+			glocal.ids.insert(elm.id);
+		}
+	</f>
+	</call>
+}
+</mod>
+/*
+	Redraw all elments which have changed
+*/
+<mod>
+void WHITEBOARD::redraw(const set<unsigned> &ids, VARVAL &var)
+{
+	glocal ids;
+	glocal var;
+	<call walkboard>(this);
+	<f element>
+		if (glocal.ids.count(elm.id) > 0){
+			elm.redraw(glocal.var);
+			if (parent != nullptr){
+				auto parent_x = parent->x;
+				auto parent_y = parent->y+parent->height/2;
+				glocal.var.val += string_f("replace_line('l%u',%u,%u,%u,%u,'black');\n"
+					,elm.id,parent_x,parent_y,elm.x,elm.y-elm.height/2);
+			}
+		}else if (parent != nullptr && glocal.ids.count(parent->id)>0){
+			// The parent was moved, so we must redraw the line to each child.
+			auto parent_x = parent->x;
+			auto parent_y = parent->y+parent->height/2;
+			glocal.var.val += string_f("replace_line('l%u',%u,%u,%u,%u,'black');\n"
+				,elm.id,parent_x,parent_y,elm.x,elm.y-elm.height/2);
+		}
+	</f>
+	</call>
+}
+</mod>
+/*
+	Find the first selected item
+*/
+<mod>
+vector<WHITEBOARD_ELM *>WHITEBOARD::findselected(WHITEBOARD_SELMODE selmode)
+{
+	glocal vector<WHITEBOARD_ELM *> ret;
+	glocal selmode;
+	<call walkboard>(this);
+	<f element>
+		if (elm.selmode == glocal.selmode){
+			glocal.ret.push_back(&elm);
+		}
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
 void WHITEBOARD::resetgame()
 {
 	elms.clear();
+	alloc_id = 0;
 }
 const char *WHITEBOARD::getclass() const
 {
@@ -79,6 +315,68 @@ const char *WHITEBOARD::getclass() const
 }
 void WHITEBOARD::testwin(std::vector<VARVAL> &res)
 {
+}
+
+/*
+	Locate an element base on coordinates
+*/
+<mod>
+WHITEBOARD_ELM *WHITEBOARD::locate (unsigned x, unsigned y)
+{
+	glocal WHITEBOARD_ELM *ret = nullptr;
+	glocal x;
+	glocal y;
+	<call walkboard>(this);
+	<f element>
+		auto x = glocal.x;
+		auto y = glocal.y;
+		auto w_2 = elm.width/2;
+		auto h_2 = elm.height/2;
+		switch(elm.type){
+		case TYPE_ELLIPSE:
+		case TYPE_RECT:
+			// tlmp_warning ("x=%u x0=%d x1=%d y=%u y0=%d y1=%u",x,elm.x-elm.len,elm.x+elm.len,y,elm.y-elm.len,elm.y+elm.len);
+			if ((int)x > elm.x-w_2 && (int)x < elm.x+w_2 && (int)y > elm.y-h_2 && (int)y < elm.y+h_2){
+				glocal.ret = &elm;
+			}
+			break;
+		case TYPE_LINE:
+			break;
+		case TYPE_HANDLINE:
+			break;
+		}
+		// The following line is removed. We want the function to go deep so it locate objects inside objects.
+		//if (glocal.ret != nullptr) end = true;
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+static void whiteboard_update_button (string &script, bool oldstate, bool newstate, unsigned button_id)
+{
+	if (newstate != oldstate){
+		script += string_f("var button = document.getElementById('button%u');\n",button_id);
+		script += "if (button != null){\n";
+		script += string_f("\tbutton.style.background='%s';\n",newstate ? "lightblue" : "lightgray");
+		script += "}\n";
+	}
+}
+static void addsvgelement(
+	VARVAL &var,
+	const string &gameid,
+	const char *elmtype,
+	const char *color,
+	unsigned stroke_width,
+	char letterid,
+	unsigned id)
+{
+	var.val += string_f("var svg = document.getElementById('board-%s');\n",gameid.c_str());
+	var.val += string_f("var newElement = document.createElementNS('http://www.w3.org/2000/svg', '%s');\n",elmtype);
+	var.val += string_f("newElement.style.stroke = '%s';\n",color);
+	var.val += "newElement.style.fill = 'none';\n";
+	var.val += string_f("newElement.style.strokeWidth = '%u';\n",stroke_width);
+	var.val += string_f("newElement.id='%c%u';\n",letterid,id);
+	var.val += "svg.appendChild(newElement);\n";
 }
 void WHITEBOARD::exec (
 	const char *var,
@@ -89,18 +387,105 @@ void WHITEBOARD::exec (
 	const DOC_UI_SPECS_receive &sp,
 	std::vector<VARVAL> &res)
 {
+	tlmp_error ("WHITEBOARD::exec called");
+}
+<mod>
+void WHITEBOARD::execstep (
+	const char *var,
+	const char *val,
+	const char *session,
+	const char *username,
+	bool maywrite,
+	const DOC_UI_SPECS_receive &sp,
+	VARVAL &script_var,
+	VARVAL &notify_var,
+	set<unsigned> &notify_ids,
+	std::vector<VARVAL> &res)
+{
+	auto &pref = prefs[session];
 	string error,status;
 	setactivity();
-	VARVAL notify_var;
-	notify_var.var = VAR_NOTIFY;
 	if (strcmp(var,"print")==0){
 		if (is_any_of(val,"","full")){
-			unsigned width = sp.content_width;
 			VARVAL v;
 			v.var = VAR_CONTENT;
 			v.val += "<style>\n";
 			v.val += "</style>\n";
 			v.val += "<script>\n";
+
+			// Clicking on the board
+			v.val += "var mbuttons=[0,0,0];\n";
+			v.val += "var mod_ctrl=0;\n";
+			v.val += "var mod_shift=0;\n";
+			v.val += "var mod_alt=0;\n";
+			v.val += "function gameselect(event){\n";
+			v.val += "\tmbuttons[event.which-1] = 1;\n";
+			v.val += string_f("\tvar elm = document.getElementById('board-%s');\n",gameid.c_str());
+			v.val += "\tvar rect = elm.getBoundingClientRect();\n";
+			v.val += "\tgameaction(event,'select:'+(event.clientX-rect.left)+','+(event.clientY-rect.top)+ ','+event.which);\n";
+			v.val += "\tevent.stopPropagation();\n";
+			v.val += "}\n";
+			v.val += "function gamemouseup(event){\n";
+			v.val += "\tmbuttons[event.which-1] = 0;\n";
+			v.val += "}\n";
+
+			// Mouse wheel
+			v.val += "function gamewheel(event){\n";
+			v.val += "\tif (event.deltaY < 0){\n";
+                        v.val += "\t\tgameaction(event,'wheel:-1,'+mod_ctrl+','+mod_alt+','+mod_shift);\n";
+                        v.val += "\t}else{\n";
+                        v.val += "\t\tgameaction(event,'wheel:1,'+mod_ctrl+','+mod_alt+','+mod_shift);\n";
+                        v.val += "\t}\n";
+			v.val += "\tevent.stopPropagation();\n";
+			v.val += "}\n";
+			v.val += "var lastx = null;\n";
+			v.val += "var lasty = null;\n";
+
+			// Moving an object
+			v.val += "function gamemove(event){\n";
+			//v.val += "\tconsole.log('mbuttons[]='+mbuttons+' which='+event.which+' button='+event.button+' buttons='+event.buttons+' '+lastx+' '+lasty);\n";
+			v.val += "\tif (mbuttons[0]!=1){\n";
+			v.val += "\t\tlastx = null;\n";
+			v.val += "\t}else{\n";
+			v.val += "\t\tif (lastx){\n";
+                        v.val += "\t\t\tgameaction(event,'mousemove:'+(event.clientX-lastx)+','+(event.clientY-lasty));\n";
+                        v.val += "\t\t}\n";
+			v.val += "\t\tlastx=event.clientX;\n";
+			v.val += "\t\tlasty=event.clientY;\n";
+                        v.val += "\t}\n";
+			v.val += "\tevent.stopPropagation();\n";
+			v.val += "}\n";
+
+			// Updating an object 
+			v.val += "function replace_ellipse(id, x, y, rx,ry,color){\n";
+			js_find_loop_set_META(v.val,"board","ellipse");
+			v.val += "\t\t\t\te.setAttribute('cx',x);\n"; 
+			v.val += "\t\t\t\te.setAttribute('cy',y);\n"; 
+			v.val += "\t\t\t\te.setAttribute('rx',rx);\n"; 
+			v.val += "\t\t\t\te.setAttribute('ry',ry);\n"; 
+			v.val += "\t\t\t\te.style.stroke=color;\n"; 
+			js_find_loop_set_end_META(v.val);
+			v.val += "function replace_rect(id, x, y, w,h, color){\n";
+			js_find_loop_set_META(v.val,"board","rect");
+			v.val += "\t\t\t\te.setAttribute('x',x);\n"; 
+			v.val += "\t\t\t\te.setAttribute('y',y);\n"; 
+			v.val += "\t\t\t\te.setAttribute('width',w);\n"; 
+			v.val += "\t\t\t\te.setAttribute('height',h);\n"; 
+			v.val += "\t\t\t\te.style.stroke=color;\n"; 
+			js_find_loop_set_end_META(v.val);
+			v.val += "function replace_line(id, x1, y1, x2, y2,color){\n";
+			js_find_loop_set_META(v.val,"board","line");
+			v.val += "\t\t\t\te.setAttribute('x1',x1);\n"; 
+			v.val += "\t\t\t\te.setAttribute('y1',y1);\n"; 
+			v.val += "\t\t\t\te.setAttribute('x2',x2);\n"; 
+			v.val += "\t\t\t\te.setAttribute('y2',y2);\n"; 
+			v.val += "\t\t\t\te.style.stroke=color;\n"; 
+			js_find_loop_set_end_META(v.val);
+			wordproc_set_gamepress(v.val);
+			// Dummy needed by gamepress, shared with doc_wordproc
+			v.val += "function getlastline(){\n";
+			v.val += "\treturn 0;\n";
+			v.val += "}\n";
 			v.val += "</script>\n";
 			// Buttons line
 			if (maywrite){
@@ -114,9 +499,14 @@ void WHITEBOARD::exec (
 					specs.margin_bottom = 4;
 				}
 				documentd_button_start(v.val,gameid);
-				documentd_button (v.val,0,"A",specs,false);
-				documentd_button (v.val,1,"B",specs,false);
-				documentd_button (v.val,2,"C",specs,false);
+				documentd_button (v.val,0,"_",specs,false);
+				documentd_button (v.val,1,"C",specs,false);
+				documentd_button (v.val,2,"Q",specs,false);
+				documentd_button (v.val,3,"L",specs,false);
+				documentd_button (v.val,4,"H",specs,false);
+				documentd_button (v.val,5,"S",specs,pref.selecting);
+				documentd_button (v.val,6,"-*-",specs,pref.starmode);
+				documentd_button (v.val,7,"[]",specs,pref.imbedmode);
 				documentd_button_end(v.val);
 			}else{
 				v.val += "<div id=tab_form style='margin-top:5; margin-bottom:5; background-color: lightgray;'>\n";
@@ -124,13 +514,51 @@ void WHITEBOARD::exec (
 			}
 			v.val += "</div>\n";
 			// Board
-			v.val += string_f("<div class=webtable id=%sdoc_whiteboard style='display:flex; flex-flow:row;'>\n",val);
-			v.val += string_f("<div id='text-%s' onkeydown='gamepress(event);return false;' oninput=funcinput(event) onclick=gameselect(event)"
+			v.val += string_f("<div class=webtable id=%sdoc_whiteboard >\n",val);
+			v.val += string_f("<div id='text-%s'"
+				" onkeydown='gamepress(event);return false;'"
+				" onkeyup='gamepress(event);return false;'"
+				" tabindex=0 >\n",gameid.c_str());
+			v.val += string_f("<svg id='board-%s' width='%upx' height='%upx' viewbox='0 0 %u %u'"
+				" style=cursor:default;"
+				" onmousedown='gameselect(event);'"
+				" onmouseup='gamemouseup(event); return false;'"
 				" onwheel='gamewheel(event); return false;'"
-				//" contenteditable"
-				" spellcheck"
-				" tabindex=0 style='flex:0 0 auto; overflow: hidden; width:%u'"
-				" >\n",gameid.c_str(),width);
+				" onmousemove='gamemove(event); return false;'"
+				" >\n"
+				,gameid.c_str(),sp.content_width,sp.content_height,sp.content_width,sp.content_height);
+			
+			glocal v;
+			<call walkboard>(this);
+			<f element>
+				const char *color = tbcolor[elm.selmode];
+				switch(elm.type){
+				case TYPE_ELLIPSE:
+					glocal.v.val += string_f("<ellipse id='e%u' cx=%u cy=%u rx=%u ry=%u stroke='%s' stroke-width=2 fill='none'/>\n"
+						,elm.id,elm.x,elm.y,elm.width/2,elm.height/2,color);
+					break;
+				case TYPE_RECT:
+					glocal.v.val += string_f("<rect id='e%u' x=%d y=%d width=%u height=%u stroke='%s' stroke-width='2' fill='none'/>\n"
+						,elm.id,(int)elm.x-elm.width/2,(int)elm.y-elm.height/2,elm.width,elm.height,color);
+					break;
+				case TYPE_LINE:
+					glocal.v.val += string_f("<line id='e%u' x1=%u y1=%u x2=%u y2=%u stroke='%s' stroke-width='2' fill='none'/>\n"
+						,elm.id,elm.x,elm.y,elm.x1,elm.y1,color);
+					break;
+				case TYPE_HANDLINE:
+					glocal.v.val += string_f("<path id='e%u' stroke='%s' stroke-width='4' fill='none' d='M%u %u L %u %u'/>\n"
+						,elm.id,color,elm.x,elm.y,elm.x1,elm.y1);
+					break;
+				}
+				if (parent != nullptr){
+					auto parent_x = parent->x;
+					auto parent_y = parent->y+parent->height/2;
+					glocal.v.val += string_f("<line id='l%u' x1=%u y1=%u x2=%u y2=%u stroke-width=2 stroke='black'/>\n"
+						,elm.id,parent_x,parent_y,elm.x,elm.y-elm.height/2);
+				}
+			</f>
+			</call>
+			v.val += "</svg>\n";
 			v.val += "</div>\n";
 			v.val += "</div>\n";
 			// Status line
@@ -140,10 +568,153 @@ void WHITEBOARD::exec (
 			res.emplace_back(v);
 		}
 	}else if (maywrite){
+		unsigned lastline = 1000;
+		string tmpvar,tmpval;
+		if (strcmp(var,"kbd")==0){
+			wordproc_kbd(val,pref.mod,tmpvar,tmpval,lastline);
+			var = tmpvar.c_str();
+			val = tmpval.c_str();		
+		}
+		if (strcmp(var,"select")==0){
+			vector<string> tb;
+			int n = str_splitline(val,',',tb);
+			if (n == 3){
+				unsigned x = atoi(tb[0].c_str());
+				unsigned y = atoi(tb[1].c_str());
+				//unsigned button = atoi(tb[2].c_str());
+				if (!pref.mod.shift){
+					auto selmode = SEL_SELECTED;
+					if (pref.starmode){
+						selmode = SEL_STAR;
+					}else if(pref.imbedmode){
+						selmode = SEL_IMBED;
+					}
+					resetsel(selmode,notify_ids);
+				}
+				auto e = locate (x,y);
+				tlmp_warning ("select: val=%s x=%u y=%u e=%p",val,x,y,e);
+				if (e != nullptr){
+					if (pref.selecting){
+						e->selmode = e->selmode == SEL_SELECTED ? SEL_NONE : SEL_SELECTED;
+					}else if (pref.starmode){
+						e->selmode = e->selmode == SEL_STAR ? SEL_NONE : SEL_STAR;
+					}else if (pref.imbedmode){
+						e->selmode = e->selmode == SEL_IMBED ? SEL_NONE : SEL_IMBED;
+					}
+					notify_ids.insert(e->id);
+				}			
+			}
+		}else if (strcmp(var,"mousemove")==0){
+			auto elms = findselected(SEL_SELECTED);
+			if (elms.size() > 0){
+				vector<string> tb;
+				int n = str_splitline(val,',',tb);
+				tlmp_warning ("mousemove: n=%d %s",n,val);
+				if (n == 2){
+					int movex = atoi(tb[0].c_str());
+					int movey = atoi(tb[1].c_str());
+					for (auto elm:elms) elm->move(movex,movey,notify_ids);
+					setmodified(username);
+				}
+			}
+		}else if (strcmp(var,"wheel")==0){
+			auto elms = findselected(SEL_SELECTED);
+			if (elms.size() > 0){
+				vector<string> tb;
+				int n = str_splitline(val,',',tb);
+				if (n == 4){
+					int grow = atoi(tb[0].c_str())*5;
+					for (auto elm:elms){
+						elm->resize(grow,pref.mod.ctrl,pref.mod.shift);
+						notify_ids.insert(elm->id);
+					}
+					setmodified(username);
+				}
+			}
+		}else if (strcmp(var,"newgame")==0){
+			int uval = atoi(val);
+			auto oldpref = pref;
+			if (uval == 0){
+				resetgame();
+				setmodified(username);
+			}else if (is_any_of(uval,1,2,3,4)){
+				resetsel(SEL_SELECTED,notify_ids);
+				auto star_elms = findselected(SEL_STAR);
+				auto imbed_elms = findselected(SEL_IMBED);
+				tlmp_warning ("star_elm=%lu imbed_elm=%lu",star_elms.size(),imbed_elms.size());
+				
+				unsigned id=0;
+				const unsigned default_size=20;
+				const unsigned x=50;
+				const unsigned y=50;
+				auto star_elm = star_elms.size() > 0 ? star_elms[0] : nullptr;
+				auto imbed_elm = imbed_elms.size() > 0 ? imbed_elms[0] : nullptr;
+				const char *elmtype = "";
+				unsigned stroke_width = 2;
+				string extra;
+				bool addline = false;
+				if (uval == 1){
+					id = add_ellipse(star_elm,imbed_elm,x,y,default_size/2,default_size/2);
+					elmtype = "ellipse";
+					extra += string_f("newElement.setAttribute('cx',%u);\n",x);
+					extra += string_f("newElement.setAttribute('cy',%u);\n",y);
+					extra += string_f("newElement.setAttribute('rx',%u);\n",default_size/2);
+					extra += string_f("newElement.setAttribute('ry',%u);\n",default_size/2);
+					addline = star_elm != nullptr;
+				}else if (uval == 2){
+					id = add_rect(star_elm,imbed_elm,x,y,default_size,default_size);
+					elmtype = "rect";
+					extra += string_f("newElement.setAttribute('x',%u);\n",x-default_size/2);
+					extra += string_f("newElement.setAttribute('y',%u);\n",y-default_size/2);
+					extra += string_f("newElement.setAttribute('width',%u);\n",default_size);
+					extra += string_f("newElement.setAttribute('height',%u);\n",default_size);
+					addline = star_elm != nullptr;
+				}else if (uval == 3){
+					id = add_line(x,y,x+default_size,y+default_size);
+					elmtype = "line";
+					extra += string_f("newElement.setAttribute('x1',%u);\n",x);
+					extra += string_f("newElement.setAttribute('y1',%u);\n",y);
+					extra += string_f("newElement.setAttribute('x2',%u);\n",x+default_size);
+					extra += string_f("newElement.setAttribute('y2',%u);\n",y+default_size);
+				}else if (uval == 4){
+					stroke_width = 4;
+					id = add_handline(x,y,x+default_size,y+default_size);
+					elmtype = "path";
+				}
+				addsvgelement(notify_var,gameid,elmtype,"red",stroke_width,'e',id);
+				notify_var.val += extra;
+				if (addline){
+					addsvgelement(notify_var,gameid,"line","black",stroke_width,'l',id);
+				}
+				notify_ids.insert(id);
+				setmodified(username);
+				pref.selecting = true;
+				pref.starmode = pref.imbedmode = false;
+			}else if (is_any_of(uval,5,6,7)){
+				if (uval == 5){
+					pref.selecting = true;
+					resetsel(SEL_SELECTED,notify_ids);
+					pref.starmode = pref.imbedmode = false;
+				}else if (uval == 6){
+					resetsel(SEL_STAR,notify_ids);
+					pref.starmode = true;
+					pref.selecting = pref.imbedmode = false;
+				}else if (uval == 7){
+					resetsel(SEL_IMBED,notify_ids);
+					pref.imbedmode = true;
+					pref.selecting = pref.starmode = false;
+				}
+			}else{
+				tlmp_error ("checkers newgame=%d",uval);
+			}
+			whiteboard_update_button (script_var.val, oldpref.selecting,pref.selecting, 5);
+			whiteboard_update_button (script_var.val, oldpref.starmode,pref.starmode, 6);
+			whiteboard_update_button (script_var.val, oldpref.imbedmode,pref.imbedmode, 7);
+			script_var.val += string_f("document.getElementById('text-%s').focus();\n",gameid.c_str());
+		}
 	}else{
 		error = MSG_R(E_READONLY);
 	}
-	if (notify_var.val.size() > 0) res.emplace_back(move(notify_var));
 	if (error.size() > 0){
 		update_msg(false,error,"red",res);
 	}else if (status.size() > 0){
@@ -152,5 +723,24 @@ void WHITEBOARD::exec (
 		update_msg(false,"&nbsp;","white",res);
 	}
 }
-
-
+</mod>
+void WHITEBOARD::manyexec (
+	const vector<VARVAL_receive> &steps,
+	const char *session,
+	const char *username,
+	bool maywrite,
+	const DOC_UI_SPECS_receive &sp,
+	vector<VARVAL> &res)
+{
+	VARVAL script_var;
+	script_var.var = VAR_SCRIPT;
+	VARVAL notify_var;
+	notify_var.var = VAR_NOTIFY;
+	set<unsigned> notify_ids;	// Lines to update using SCRIPT
+	for (auto &v:steps){
+		execstep (v.var,v.val,session,username,maywrite,sp,script_var,notify_var,notify_ids,res);
+	}
+	redraw(notify_ids,notify_var);
+	res.emplace_back(move(notify_var));
+	res.emplace_back(move(script_var));
+}

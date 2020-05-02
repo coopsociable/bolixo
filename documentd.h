@@ -323,4 +323,11 @@ void fflush (DOC_WRITER *);
 char *fgets(char *s, int size, DOC_READER *r);
 unsigned chess_getmaxskill();
 void chess_setmaxskill(unsigned maxskill);
+void wordproc_set_gamepress(std::string &lines);
+struct MOD_KBD{
+	bool ctrl = false;
+	bool shift = false;
+	bool alt = false;
+};
+void wordproc_kbd (const char *val, MOD_KBD &mod, std::string &var, std::string &newval, unsigned &lastline);
 #endif
