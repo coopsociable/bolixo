@@ -147,10 +147,13 @@ protected:
 	}
 	// Used when declaring an update function. The function has an argument called id
 	// and must perform updates on a variable named 'e'
+	// if tag is "tag", it is taken as a javascript variable named tag.
+	// if tag is not "tag", it is an SVG type.
 	inline void js_find_loop_set_META(std::string &lines, const char *prefix, const char *tag){
 		lines += string_f ("\tvar elm = document.getElementById('%s-%s');\n",prefix,gameid.c_str());
 		lines += "\tif (elm != null){\n";
-		lines += string_f("\t\tvar elms = elm.getElementsByTagName('%s');\n",tag);
+		const char *quote = strcmp(tag,"tag")==0 ? "" : "\"";
+		lines += string_f("\t\tvar elms = elm.getElementsByTagName(%s%s%s);\n",quote,tag,quote);
 		//lines += string_f("\t\tconsole.log('%s.length='+elms.length);\n",tag);
 		lines += "\t\tfor (var i=0; i<elms.length; i++){\n";
 		lines += "\t\t\tvar e = elms[i];\n";

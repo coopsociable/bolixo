@@ -207,6 +207,10 @@ proto/bo-writed_client.protoh: proto/bo-writed_client.proto
 	build-protocol $(INSTRUMENT) --secretmode --arg "int no" --arg "HANDLE_INFO *c" --arg "const char *host" --name bo_writed_client \
 		--protoch proto/bo-writed_client.protoch proto/bo-writed_client.proto >proto/bo-writed_client.protoh
 
+proto/documentd_whiteboard.protoh: proto/documentd_whiteboard.proto
+	build-protocol --file_mode --req_reader_type DOC_READER --req_writer_type DOC_WRITER --name documentd_whiteboard \
+		--protoch proto/documentd_whiteboard.protoch proto/documentd_whiteboard.proto >proto/documentd_whiteboard.protoh
+
 proto/documentd_sudoku.protoh: proto/documentd_sudoku.proto
 	build-protocol --file_mode --req_reader_type DOC_READER --req_writer_type DOC_WRITER --name documentd_sudoku \
 		--protoch proto/documentd_sudoku.protoch proto/documentd_sudoku.proto >proto/documentd_sudoku.protoh
@@ -277,7 +281,7 @@ doc_chess.o: doc_chess.tlcc documentd.h proto/documentd_chess.protoh
 doc_wordproc.o: doc_wordproc.tlcc documentd.h proto/documentd_wordproc.protoh
 	cctlcc -Wall $(OPTIONS) -c doc_wordproc.tlcc -o doc_wordproc.o
 
-doc_whiteboard.o: doc_whiteboard.tlcc documentd.h
+doc_whiteboard.o: doc_whiteboard.tlcc documentd.h proto/documentd_whiteboard.protoh
 	cctlcc -Wall $(OPTIONS) -c doc_whiteboard.tlcc -o doc_whiteboard.o
 
 doc_sudoku.o: doc_sudoku.tlcc documentd.h proto/documentd_sudoku.protoh

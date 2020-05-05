@@ -30,6 +30,8 @@
 #include <vector>
 #include <deque>
 #include <set>
+#include <map>
+#include <algorithm>
 #include <tlmplib.h>
 #include "bolixo.h"
 #include "proto/bod_client.protodef"
@@ -37,6 +39,10 @@
 #include "bolixo.m"
 
 using namespace std;
+
+
+#include "proto/documentd_whiteboard.protoch"
+#include "proto/documentd_whiteboard.protoh"
 
 enum WHITEBOARD_ELMTYPE {	// Type of element
 	TYPE_ELLIPSE,
@@ -56,6 +62,31 @@ enum WHITEBOARD_SELMODE{
 };
 static const char *tbcolor[]={"black","red","yellow","green"};
 
+enum ARROW_TYPE{
+	ARROW_NONE,	// No line
+	ARROW_LINE,	// Just a line
+	ARROW_LAST,	// Last item in the list + 1
+	ARROW_END,	// A line with an arrow at tne end
+	ARROW_START,	// A line with an arrow at the start
+	ARROW_BOTH,	// A line with an arrow at the start and the end
+	ARROW_RETURN,	// A line with an arrow at the end and another line, curved, with an arrow at the start
+};
+struct SUBELM{
+	unsigned id = 0;
+	ARROW_TYPE arrow;
+	SUBELM(unsigned _id, ARROW_TYPE _arrow)
+		:id(_id), arrow(_arrow){
+	}
+};
+/*
+	Make sure size do not underflow
+*/
+inline void check_limit (unsigned short &size, int val)
+{
+	if (val > 0 || -val < size){
+		size += val;
+	}
+}
 struct WHITEBOARD_ELM{
 	WHITEBOARD_SELMODE selmode = SEL_NONE;	// Make the element more visible
 						// for other actions
@@ -69,29 +100,29 @@ struct WHITEBOARD_ELM{
 	std::string label;	// Useful to reference the element in scripts ?
 	WHITEBOARD_ELMTYPE type;
 	std::string txt;	// Caption
-	vector<WHITEBOARD_ELM> insides;		// insides are drawn inside the element.
-	vector<WHITEBOARD_ELM> subelms;		// subelms are related elements.
+	vector<unsigned> insides;		// insides are drawn inside the element.
+	vector<SUBELM> subelms;		// subelms are related elements.
 	void resize(int val, bool horizontal_only, bool vertical_only){
 		if (horizontal_only){
-			width += val;
+			check_limit(width,val);
 		}else if (vertical_only){
-			height += val;
+			check_limit(height,val);
 		}else if (width == height || width == 0 || height == 0){
-			width += val;
-			height += val;
+			check_limit (width,val);
+			check_limit (height,val);
 		}else{
 			// Here we should compute the aspect ratio of the object and preserve it.
 			double ratio = (double)width/height;
-			width += ratio*val;
-			height += val/ratio;
+			check_limit(width,ratio*val);
+			check_limit(height,val/ratio);
 		}
 	}
-	void move(int movex, int movey, set<unsigned> &ids){
+	void move(map<unsigned,WHITEBOARD_ELM> &elements, int movex, int movey, set<unsigned> &ids){
 		ids.insert (id);
 		x += movex;
 		y += movey;
 		for (auto &e:insides){
-			e.move(movex,movey,ids);
+			elements[e].move(elements,movex,movey,ids);
 		}
 	}
 	void redraw(VARVAL &var){
@@ -115,7 +146,8 @@ struct WHITEBOARD_PREF{
 };
 
 class WHITEBOARD: public GAME{
-	std::vector<WHITEBOARD_ELM> elms;
+	map<unsigned,WHITEBOARD_ELM> elms;
+	vector<unsigned> baseelms;
 	map<string,WHITEBOARD_PREF> prefs;	// Per session state
 	unsigned alloc_id=0;
 	void update_msg (bool to_all, PARAM_STRING msg, const char *color, std::vector<VARVAL> &res);
@@ -128,32 +160,33 @@ class WHITEBOARD: public GAME{
 		elm.x = x0;
 		elm.y = y0;
 	}
-	void add_element(WHITEBOARD_ELM *star_elm, WHITEBOARD_ELM *imbed_elm, WHITEBOARD_ELM &newelm){
-		if (star_elm != nullptr){
-			star_elm->subelms.emplace_back(move(newelm));
-		}else if (imbed_elm != nullptr){
-			imbed_elm->insides.emplace_back(move(newelm));
+	void add_element(const vector<WHITEBOARD_ELM *> &star_elms, const vector<WHITEBOARD_ELM *> &imbed_elms, WHITEBOARD_ELM &newelm){
+		if (star_elms.size() > 0){
+			for (auto p:star_elms) p->subelms.emplace_back(newelm.id,ARROW_LINE);
+		}else if (imbed_elms.size() > 0){
+			for (auto p:imbed_elms) p->insides.push_back(newelm.id);
 		}else{
-			elms.emplace_back(move(newelm));
+			baseelms.push_back(newelm.id);
 		}
+		elms[newelm.id] = move(newelm);
 	}
-	unsigned add_ellipse (WHITEBOARD_ELM *star_elm, WHITEBOARD_ELM *imbed_elm, unsigned x, unsigned y, unsigned x_ray, unsigned y_ray){
+	unsigned add_ellipse (const vector<WHITEBOARD_ELM *> &star_elms, const vector<WHITEBOARD_ELM *> &imbed_elms, unsigned x, unsigned y, unsigned x_ray, unsigned y_ray){
 		WHITEBOARD_ELM elm;
 		alloc_elm(elm,TYPE_ELLIPSE,x,y);
 		elm.width = x_ray*2;
 		elm.height = y_ray*2;
 		elm.selmode = SEL_SELECTED;
 		unsigned ret = elm.id;
-		add_element(star_elm,imbed_elm,elm);
+		add_element(star_elms,imbed_elms,elm);
 		return ret;
 	}
-	unsigned add_rect (WHITEBOARD_ELM *star_elm, WHITEBOARD_ELM *imbed_elm, unsigned x, unsigned y, unsigned width, unsigned height){
+	unsigned add_rect (const vector<WHITEBOARD_ELM *> &star_elms, const vector<WHITEBOARD_ELM *> &imbed_elms, unsigned x, unsigned y, unsigned width, unsigned height){
 		WHITEBOARD_ELM elm;
 		alloc_elm(elm,TYPE_RECT,x,y);
 		elm.width = width;
 		elm.height = height;
 		unsigned ret = elm.id;
-		add_element(star_elm,imbed_elm,elm);
+		add_element(star_elms,imbed_elms,elm);
 		return ret;
 	}
 	unsigned add_line (unsigned x0, unsigned y0, unsigned x1, unsigned y1){
@@ -162,7 +195,7 @@ class WHITEBOARD: public GAME{
 		elm.x1 = x1;
 		elm.y1 = y1;
 		unsigned ret = elm.id;
-		elms.emplace_back(move(elm));
+		elms[elm.id] = move(elm);
 		return ret;
 	}
 	unsigned add_handline (unsigned x0, unsigned y0, unsigned x1, unsigned y1){
@@ -171,13 +204,14 @@ class WHITEBOARD: public GAME{
 		elm.x1 = x1;
 		elm.y1 = y1;
 		unsigned ret = elm.id;
-		elms.emplace_back(move(elm));
+		elms[elm.id] = move(elm);
 		return ret;
 	}
 	WHITEBOARD_ELM *locate (unsigned x, unsigned y);
 	vector<WHITEBOARD_ELM *> findselected (WHITEBOARD_SELMODE sel);
 	void execstep (const char *var, const char *val, const char *session, const char *username, bool maywrite, const DOC_UI_SPECS_receive &sp,
 		VARVAL &script_var, VARVAL &notify_var, set<unsigned> &notify_ids, std::vector<VARVAL> &res);
+	void changeline (const vector<WHITEBOARD_ELM*> &parents, const vector<WHITEBOARD_ELM*> &elms, VARVAL &notify_var);
 public:
 	friend void walkboard(class _F_walkboard &c, WHITEBOARD *board);
 	void save(DOC_WRITER &w, bool);
@@ -200,39 +234,121 @@ WHITEBOARD::WHITEBOARD()
 }
 void WHITEBOARD::update_msg (bool to_all, PARAM_STRING msg, const char *color, std::vector<VARVAL> &res)
 {
+	VARVAL mvar;
+	mvar.var = to_all ? VAR_NOTIFY : VAR_SCRIPT;
+	mvar.val += string_f("updmsg('%s','%s');\n",color,documentd_escape(msg).c_str());
+	res.emplace_back(mvar);
 }
 void WHITEBOARD::save(DOC_WRITER &w, bool)
 {
+	documentd_whiteboard_header(&w,revision,alloc_id);
+	vector<WHITEBOARD_ELEMENT> elements;
+	for (auto &m:elms){
+		WHITEBOARD_ELEMENT elm;
+		WHITEBOARD_ELM &e = m.second;
+		elm.id = e.id;
+		elm.x = e.x;
+		elm.y = e.y;
+		elm.x1 = e.x1;
+		elm.y1 = e.y1;
+		elm.width = e.width;
+		elm.height = e.height;
+		elm.type = e.type;
+		elm.label = e.label;
+		elm.txt = e.txt;
+		elm.insides = e.insides;
+		for (auto &s:e.subelms){
+			WHITEBOARD_SUBELM selm;
+			selm.id = s.id;
+			selm.arrow = s.arrow;
+			elm.subelms.emplace_back(move(selm));
+		}
+		elements.emplace_back(move(elm));
+	}
+	documentd_whiteboard_elements (&w,elements);
+	documentd_whiteboard_baseelms (&w,baseelms);
 }
+<mod>
 void WHITEBOARD::load(DOC_READER &r, std::string &msg)
 {
+	resetgame();
+	glocal alloc_id;
+	glocal revision;
+	glocal elms;
+	glocal baseelms;
+	<call documentd_whiteboard>(&r);
+	<f header>
+		glocal.revision = revision;
+		glocal.alloc_id = alloc_id;
+	</f>
+	<f elements>
+		for (auto &e:elements){
+			WHITEBOARD_ELM elm;
+			elm.id = e.id;
+			elm.x = e.x;
+			elm.y = e.y;
+			elm.x1 = e.x1;
+			elm.y1 = e.y1;
+			elm.width = e.width;
+			elm.height = e.height;
+			elm.type = (WHITEBOARD_ELMTYPE)e.type;
+			elm.label = e.label;
+			elm.txt = e.txt;
+			elm.insides = e.insides;
+			for (auto &s:e.subelms) elm.subelms.emplace_back(s.id,(ARROW_TYPE)s.arrow);
+			glocal.elms[elm.id] = move(elm);
+		}
+	</f>
+	<f baseelms>
+		glocal.baseelms = baseelms;
+	</f>
+	<f invalid>
+	</f>
+	</call>
 }
+</mod>
 #define _TLMP_walkboard
 struct _F_walkboard{
-	#define _F_walkboard_element(x) void x element(WHITEBOARD_ELM &elm, WHITEBOARD_ELM *parent, bool &end)
+	#define _F_walkboard_element(x) void x element(WHITEBOARD_ELM &elm, WHITEBOARD_ELM *parent, ARROW_TYPE arrow, bool firstseen, bool &end)
 	virtual _F_walkboard_element( )=0;
 };
 void walkboard(_F_walkboard &c, WHITEBOARD *board)
 {
+	set<unsigned> seen;
 	struct ELEMENTS{
 		WHITEBOARD_ELM *parent;
-		vector<WHITEBOARD_ELM> *elms;
-		ELEMENTS(WHITEBOARD_ELM *_parent, vector<WHITEBOARD_ELM> *_elms)
-			: parent(_parent), elms(_elms){
+		vector<SUBELM> *subelms;
+		vector<unsigned> *insides;
+		ELEMENTS(WHITEBOARD_ELM *_parent, vector<SUBELM> *_subelms, vector<unsigned> *_insides)
+			: parent(_parent), subelms(_subelms), insides(_insides){
+		}
+		size_t size() const {
+			if (subelms != nullptr) return subelms->size();
+			return insides->size();
+		}
+		SUBELM operator [] (unsigned item) const{
+			if (subelms != nullptr){
+				return (*subelms)[item];
+			}else{
+				return SUBELM ((*insides)[item],ARROW_NONE);
+			}
 		}
 	}; 
 	deque<ELEMENTS> todo;
-	todo.emplace_back(nullptr,&board->elms);
+	todo.emplace_back(nullptr,nullptr,&board->baseelms);
 	bool end = false;
 	while (todo.size() > 0 && !end){
 		auto elms = todo.front();
 		todo.pop_front();
-		for (auto &e:*elms.elms){
-			c.element(e,elms.parent,end);
+		for (unsigned i=0; i<elms.size(); i++){
+			auto subelm = elms[i];
+			auto &elm = board->elms[subelm.id];
+			bool firstseen = seen.insert(subelm.id).second;
+			c.element(elm,elms.parent,subelm.arrow,firstseen,end);
 			if (end) break;
-			if (e.insides.size() > 0) todo.emplace_back(nullptr,&e.insides);
-			if (e.subelms.size() > 0){
-				todo.emplace_back(&e,&e.subelms);
+			if (elm.insides.size() > 0) todo.emplace_back(nullptr,nullptr,&elm.insides);
+			if (elm.subelms.size() > 0){
+				todo.emplace_back(&elm,&elm.subelms,nullptr);
 			}
 		}
 	}
@@ -272,15 +388,15 @@ void WHITEBOARD::redraw(const set<unsigned> &ids, VARVAL &var)
 			if (parent != nullptr){
 				auto parent_x = parent->x;
 				auto parent_y = parent->y+parent->height/2;
-				glocal.var.val += string_f("replace_line('l%u',%u,%u,%u,%u,'black');\n"
-					,elm.id,parent_x,parent_y,elm.x,elm.y-elm.height/2);
+				glocal.var.val += string_f("replace_line('l%u,%u',%u,%u,%u,%u,'black');\n"
+					,parent->id,elm.id,parent_x,parent_y,elm.x,elm.y-elm.height/2);
 			}
 		}else if (parent != nullptr && glocal.ids.count(parent->id)>0){
 			// The parent was moved, so we must redraw the line to each child.
 			auto parent_x = parent->x;
 			auto parent_y = parent->y+parent->height/2;
-			glocal.var.val += string_f("replace_line('l%u',%u,%u,%u,%u,'black');\n"
-				,elm.id,parent_x,parent_y,elm.x,elm.y-elm.height/2);
+			glocal.var.val += string_f("replace_line('l%u,%u',%u,%u,%u,%u,'black');\n"
+				,parent->id,elm.id,parent_x,parent_y,elm.x,elm.y-elm.height/2);
 		}
 	</f>
 	</call>
@@ -307,6 +423,7 @@ vector<WHITEBOARD_ELM *>WHITEBOARD::findselected(WHITEBOARD_SELMODE selmode)
 void WHITEBOARD::resetgame()
 {
 	elms.clear();
+	baseelms.clear();
 	alloc_id = 0;
 }
 const char *WHITEBOARD::getclass() const
@@ -351,6 +468,73 @@ WHITEBOARD_ELM *WHITEBOARD::locate (unsigned x, unsigned y)
 	</call>
 	return glocal.ret;
 }
+static void addsvgelement(
+	VARVAL &var,
+	const string &gameid,
+	const char *elmtype,
+	const char *color,
+	unsigned stroke_width,
+	PARAM_STRING id)
+{
+	var.val += string_f("var svg = document.getElementById('board-%s');\n",gameid.c_str());
+	var.val += string_f("var newElement = document.createElementNS('http://www.w3.org/2000/svg', '%s');\n",elmtype);
+	var.val += string_f("newElement.style.stroke = '%s';\n",color);
+	var.val += "newElement.style.fill = 'none';\n";
+	var.val += string_f("newElement.style.strokeWidth = '%u';\n",stroke_width);
+	var.val += string_f("newElement.id='%s';\n",id.ptr);
+	var.val += "svg.appendChild(newElement);\n";
+}
+<mod>
+void WHITEBOARD::changeline (const vector<WHITEBOARD_ELM*> &parents, const vector<WHITEBOARD_ELM*> &elms, VARVAL &notify_var)
+{
+	glocal parents;
+	glocal elms;
+	glocal notify_var;
+	glocal baseelms;
+	glocal gameid;
+	glocal set<unsigned> has_parent;	// All elements who are in parent.subelms[]
+	glocal vector<unsigned> lost_parent;	// This element was disconnected from a parent
+						// so it it does not has a parent, it
+						// most be added to baseelms;
+	<call walkboard>(this);
+	<f element>
+		if (find(glocal.parents.begin(),glocal.parents.end(),&elm)!=glocal.parents.end()){
+			for (auto child:glocal.elms){
+				auto sub = find_if(elm.subelms.begin(),elm.subelms.end(),[child](auto &s){return s.id == child->id;});
+				if (sub == elm.subelms.end()){
+					// This child is not related to the parent, so we add it
+					elm.subelms.emplace_back(child->id,ARROW_LINE);
+					// Remove it from baseelms if there
+					auto base = find(glocal.baseelms.begin(),glocal.baseelms.end(),child->id);
+					if (base != glocal.baseelms.end()) glocal.baseelms.erase(base);
+					glocal.has_parent.insert(child->id);
+					addsvgelement(glocal.notify_var,glocal.gameid,"line","black",2,string_f("l%u,%u",elm.id,child->id));
+				}else{
+					sub->arrow = (ARROW_TYPE)((unsigned)sub->arrow+1);
+					if (sub->arrow == ARROW_LAST){
+						// We loop back to ARROW_NONE.
+						// We just remove the entry
+						elm.subelms.erase(sub);
+						glocal.notify_var.val += string_f("removeelm('l%u,%u','line');\n",elm.id,child->id);
+						// Is it owned by another elements ? If not we have to add it to baseelms.
+						glocal.lost_parent.push_back(child->id);
+					}else{
+						glocal.has_parent.insert(child->id);
+					}
+				}
+			}
+		}	
+	</f>
+	</call>
+	for (auto id:glocal.lost_parent){
+		if (glocal.has_parent.count(id)==0){
+			// Add it to baseelms if not there
+			auto base = find (baseelms.begin(),baseelms.end(),id);
+			if (base == baseelms.end()) baseelms.push_back(id);
+		}
+	}
+}
+</mod>
 </mod>
 static void whiteboard_update_button (string &script, bool oldstate, bool newstate, unsigned button_id)
 {
@@ -360,23 +544,6 @@ static void whiteboard_update_button (string &script, bool oldstate, bool newsta
 		script += string_f("\tbutton.style.background='%s';\n",newstate ? "lightblue" : "lightgray");
 		script += "}\n";
 	}
-}
-static void addsvgelement(
-	VARVAL &var,
-	const string &gameid,
-	const char *elmtype,
-	const char *color,
-	unsigned stroke_width,
-	char letterid,
-	unsigned id)
-{
-	var.val += string_f("var svg = document.getElementById('board-%s');\n",gameid.c_str());
-	var.val += string_f("var newElement = document.createElementNS('http://www.w3.org/2000/svg', '%s');\n",elmtype);
-	var.val += string_f("newElement.style.stroke = '%s';\n",color);
-	var.val += "newElement.style.fill = 'none';\n";
-	var.val += string_f("newElement.style.strokeWidth = '%u';\n",stroke_width);
-	var.val += string_f("newElement.id='%c%u';\n",letterid,id);
-	var.val += "svg.appendChild(newElement);\n";
 }
 void WHITEBOARD::exec (
 	const char *var,
@@ -432,9 +599,9 @@ void WHITEBOARD::execstep (
 			// Mouse wheel
 			v.val += "function gamewheel(event){\n";
 			v.val += "\tif (event.deltaY < 0){\n";
-                        v.val += "\t\tgameaction(event,'wheel:-1,'+mod_ctrl+','+mod_alt+','+mod_shift);\n";
-                        v.val += "\t}else{\n";
                         v.val += "\t\tgameaction(event,'wheel:1,'+mod_ctrl+','+mod_alt+','+mod_shift);\n";
+                        v.val += "\t}else{\n";
+                        v.val += "\t\tgameaction(event,'wheel:-1,'+mod_ctrl+','+mod_alt+','+mod_shift);\n";
                         v.val += "\t}\n";
 			v.val += "\tevent.stopPropagation();\n";
 			v.val += "}\n";
@@ -486,6 +653,20 @@ void WHITEBOARD::execstep (
 			v.val += "function getlastline(){\n";
 			v.val += "\treturn 0;\n";
 			v.val += "}\n";
+			// Remove an element
+			v.val += "function removeelm(id,tag){\n";
+			js_find_loop_set_META(v.val,"board","tag");
+			v.val += "\t\t\t\te.parentNode.removeChild(e);\n";
+			js_find_loop_set_end_META(v.val);
+			// Update the message field
+			v.val += "function updmsg(color,msg){\n";
+			v.val += string_f("\tvar elm = document.getElementById('msg-%s');\n",gameid.c_str());
+			v.val += "\tif (elm != null){\n";
+			v.val += "\t\telm.style.color=color;\n";
+			v.val += "\t\telm.innerHTML=msg;\n";
+			v.val += "\t}\n";
+			v.val += "}\n";
+			
 			v.val += "</script>\n";
 			// Buttons line
 			if (maywrite){
@@ -531,30 +712,32 @@ void WHITEBOARD::execstep (
 			glocal v;
 			<call walkboard>(this);
 			<f element>
-				const char *color = tbcolor[elm.selmode];
-				switch(elm.type){
-				case TYPE_ELLIPSE:
-					glocal.v.val += string_f("<ellipse id='e%u' cx=%u cy=%u rx=%u ry=%u stroke='%s' stroke-width=2 fill='none'/>\n"
-						,elm.id,elm.x,elm.y,elm.width/2,elm.height/2,color);
-					break;
-				case TYPE_RECT:
-					glocal.v.val += string_f("<rect id='e%u' x=%d y=%d width=%u height=%u stroke='%s' stroke-width='2' fill='none'/>\n"
-						,elm.id,(int)elm.x-elm.width/2,(int)elm.y-elm.height/2,elm.width,elm.height,color);
-					break;
-				case TYPE_LINE:
-					glocal.v.val += string_f("<line id='e%u' x1=%u y1=%u x2=%u y2=%u stroke='%s' stroke-width='2' fill='none'/>\n"
-						,elm.id,elm.x,elm.y,elm.x1,elm.y1,color);
-					break;
-				case TYPE_HANDLINE:
-					glocal.v.val += string_f("<path id='e%u' stroke='%s' stroke-width='4' fill='none' d='M%u %u L %u %u'/>\n"
-						,elm.id,color,elm.x,elm.y,elm.x1,elm.y1);
-					break;
+				if (firstseen){
+					const char *color = tbcolor[elm.selmode];
+					switch(elm.type){
+					case TYPE_ELLIPSE:
+						glocal.v.val += string_f("<ellipse id='e%u' cx=%u cy=%u rx=%u ry=%u stroke='%s' stroke-width=2 fill='none'/>\n"
+							,elm.id,elm.x,elm.y,elm.width/2,elm.height/2,color);
+						break;
+					case TYPE_RECT:
+						glocal.v.val += string_f("<rect id='e%u' x=%d y=%d width=%u height=%u stroke='%s' stroke-width='2' fill='none'/>\n"
+							,elm.id,(int)elm.x-elm.width/2,(int)elm.y-elm.height/2,elm.width,elm.height,color);
+						break;
+					case TYPE_LINE:
+						glocal.v.val += string_f("<line id='e%u' x1=%u y1=%u x2=%u y2=%u stroke='%s' stroke-width='2' fill='none'/>\n"
+							,elm.id,elm.x,elm.y,elm.x1,elm.y1,color);
+						break;
+					case TYPE_HANDLINE:
+						glocal.v.val += string_f("<path id='e%u' stroke='%s' stroke-width='4' fill='none' d='M%u %u L %u %u'/>\n"
+							,elm.id,color,elm.x,elm.y,elm.x1,elm.y1);
+						break;
+					}
 				}
 				if (parent != nullptr){
 					auto parent_x = parent->x;
 					auto parent_y = parent->y+parent->height/2;
-					glocal.v.val += string_f("<line id='l%u' x1=%u y1=%u x2=%u y2=%u stroke-width=2 stroke='black'/>\n"
-						,elm.id,parent_x,parent_y,elm.x,elm.y-elm.height/2);
+					glocal.v.val += string_f("<line id='l%u,%u' x1=%u y1=%u x2=%u y2=%u stroke-width=2 stroke='black'/>\n"
+						,parent->id,elm.id,parent_x,parent_y,elm.x,elm.y-elm.height/2);
 				}
 			</f>
 			</call>
@@ -563,7 +746,7 @@ void WHITEBOARD::execstep (
 			v.val += "</div>\n";
 			// Status line
 			v.val += "<div id=tab_form>\n";
-			v.val += "&nbsp;";
+			v.val += string_f("<div id=msg-%s style=color:black>&nbsp;</div>\n",gameid.c_str());
 			v.val += "</div>\n";
 			res.emplace_back(v);
 		}
@@ -581,8 +764,8 @@ void WHITEBOARD::execstep (
 			if (n == 3){
 				unsigned x = atoi(tb[0].c_str());
 				unsigned y = atoi(tb[1].c_str());
-				//unsigned button = atoi(tb[2].c_str());
-				if (!pref.mod.shift){
+				unsigned button = atoi(tb[2].c_str());
+				if (button == 1 && !pref.mod.shift){
 					auto selmode = SEL_SELECTED;
 					if (pref.starmode){
 						selmode = SEL_STAR;
@@ -595,7 +778,20 @@ void WHITEBOARD::execstep (
 				tlmp_warning ("select: val=%s x=%u y=%u e=%p",val,x,y,e);
 				if (e != nullptr){
 					if (pref.selecting){
-						e->selmode = e->selmode == SEL_SELECTED ? SEL_NONE : SEL_SELECTED;
+						if (button == 2){
+							auto parents = findselected(SEL_STAR);
+							auto selects = findselected(SEL_SELECTED);
+							if (parents.size() == 0){
+								error = MSG_U(E_NOPARENT,"No parent node selected");
+							}else if (selects.size() == 0){
+								error = MSG_U(E_NONODE,"No node selected");
+							}else{
+								changeline (parents,selects,notify_var);
+								for (auto s:selects) notify_ids.insert(s->id);
+							}
+						}else{
+							e->selmode = SEL_SELECTED;
+						}
 					}else if (pref.starmode){
 						e->selmode = e->selmode == SEL_STAR ? SEL_NONE : SEL_STAR;
 					}else if (pref.imbedmode){
@@ -605,15 +801,15 @@ void WHITEBOARD::execstep (
 				}			
 			}
 		}else if (strcmp(var,"mousemove")==0){
-			auto elms = findselected(SEL_SELECTED);
-			if (elms.size() > 0){
+			auto selects = findselected(SEL_SELECTED);
+			if (selects.size() > 0){
 				vector<string> tb;
 				int n = str_splitline(val,',',tb);
 				tlmp_warning ("mousemove: n=%d %s",n,val);
 				if (n == 2){
 					int movex = atoi(tb[0].c_str());
 					int movey = atoi(tb[1].c_str());
-					for (auto elm:elms) elm->move(movex,movey,notify_ids);
+					for (auto elm:selects) elm->move(elms,movex,movey,notify_ids);
 					setmodified(username);
 				}
 			}
@@ -647,28 +843,26 @@ void WHITEBOARD::execstep (
 				const unsigned default_size=20;
 				const unsigned x=50;
 				const unsigned y=50;
-				auto star_elm = star_elms.size() > 0 ? star_elms[0] : nullptr;
-				auto imbed_elm = imbed_elms.size() > 0 ? imbed_elms[0] : nullptr;
 				const char *elmtype = "";
 				unsigned stroke_width = 2;
 				string extra;
 				bool addline = false;
 				if (uval == 1){
-					id = add_ellipse(star_elm,imbed_elm,x,y,default_size/2,default_size/2);
+					id = add_ellipse(star_elms,imbed_elms,x,y,default_size/2,default_size/2);
 					elmtype = "ellipse";
 					extra += string_f("newElement.setAttribute('cx',%u);\n",x);
 					extra += string_f("newElement.setAttribute('cy',%u);\n",y);
 					extra += string_f("newElement.setAttribute('rx',%u);\n",default_size/2);
 					extra += string_f("newElement.setAttribute('ry',%u);\n",default_size/2);
-					addline = star_elm != nullptr;
+					addline = star_elms.size() > 0;
 				}else if (uval == 2){
-					id = add_rect(star_elm,imbed_elm,x,y,default_size,default_size);
+					id = add_rect(star_elms,imbed_elms,x,y,default_size,default_size);
 					elmtype = "rect";
 					extra += string_f("newElement.setAttribute('x',%u);\n",x-default_size/2);
 					extra += string_f("newElement.setAttribute('y',%u);\n",y-default_size/2);
 					extra += string_f("newElement.setAttribute('width',%u);\n",default_size);
 					extra += string_f("newElement.setAttribute('height',%u);\n",default_size);
-					addline = star_elm != nullptr;
+					addline = star_elms.size() > 0;
 				}else if (uval == 3){
 					id = add_line(x,y,x+default_size,y+default_size);
 					elmtype = "line";
@@ -681,10 +875,10 @@ void WHITEBOARD::execstep (
 					id = add_handline(x,y,x+default_size,y+default_size);
 					elmtype = "path";
 				}
-				addsvgelement(notify_var,gameid,elmtype,"red",stroke_width,'e',id);
+				addsvgelement(notify_var,gameid,elmtype,"red",stroke_width,string_f("e%u",id));
 				notify_var.val += extra;
 				if (addline){
-					addsvgelement(notify_var,gameid,"line","black",stroke_width,'l',id);
+					for (auto p:star_elms) addsvgelement(notify_var,gameid,"line","black",stroke_width,string_f("l%u,%u",p->id,id));
 				}
 				notify_ids.insert(id);
 				setmodified(username);
