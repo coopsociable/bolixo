@@ -27,6 +27,7 @@
 #include <trlitool.h>
 #include <string>
 #include <stdlib.h>
+#include <math.h>
 #include <vector>
 #include <deque>
 #include <set>
@@ -64,12 +65,12 @@ static const char *tbcolor[]={"black","red","yellow","green"};
 
 enum ARROW_TYPE{
 	ARROW_NONE,	// No line
-	ARROW_LINE,	// Just a line
-	ARROW_LAST,	// Last item in the list + 1
 	ARROW_END,	// A line with an arrow at tne end
 	ARROW_START,	// A line with an arrow at the start
 	ARROW_BOTH,	// A line with an arrow at the start and the end
 	ARROW_RETURN,	// A line with an arrow at the end and another line, curved, with an arrow at the start
+	ARROW_LINE,	// Just a line
+	ARROW_LAST,	// Last item in the list + 1
 };
 struct SUBELM{
 	unsigned id = 0;
@@ -162,7 +163,7 @@ class WHITEBOARD: public GAME{
 	}
 	void add_element(const vector<WHITEBOARD_ELM *> &star_elms, const vector<WHITEBOARD_ELM *> &imbed_elms, WHITEBOARD_ELM &newelm){
 		if (star_elms.size() > 0){
-			for (auto p:star_elms) p->subelms.emplace_back(newelm.id,ARROW_LINE);
+			for (auto p:star_elms) p->subelms.emplace_back(newelm.id,ARROW_END);
 		}else if (imbed_elms.size() > 0){
 			for (auto p:imbed_elms) p->insides.push_back(newelm.id);
 		}else{
@@ -373,6 +374,21 @@ void WHITEBOARD::resetsel(WHITEBOARD_SELMODE selmode, set<unsigned> &ids)
 	</call>
 }
 </mod>
+struct LINE_SPEC{
+	unsigned x;
+	unsigned y;
+	unsigned len;
+	double angle;
+	LINE_SPEC (WHITEBOARD_ELM &parent, WHITEBOARD_ELM &elm){
+		x = parent.x;
+		y = parent.y+parent.height/2;
+		auto elm_y = elm.y - elm.height/2;
+		int diff_y = elm_y - y;
+		int diff_x = elm.x - x;
+		angle = atan2(diff_y,diff_x)/M_PI*180;
+		len = sqrt(diff_y*diff_y+diff_x*diff_x);
+	}
+};
 /*
 	Redraw all elments which have changed
 */
@@ -386,17 +402,15 @@ void WHITEBOARD::redraw(const set<unsigned> &ids, VARVAL &var)
 		if (glocal.ids.count(elm.id) > 0){
 			elm.redraw(glocal.var);
 			if (parent != nullptr){
-				auto parent_x = parent->x;
-				auto parent_y = parent->y+parent->height/2;
-				glocal.var.val += string_f("replace_line('l%u,%u',%u,%u,%u,%u,'black');\n"
-					,parent->id,elm.id,parent_x,parent_y,elm.x,elm.y-elm.height/2);
+				LINE_SPEC spec(*parent,elm);
+				glocal.var.val += string_f("replace_line('l%u,%u',%u,%u,%lf,%u,'black',%u);\n"
+					,parent->id,elm.id,spec.x,spec.y,spec.angle,spec.len,arrow);
 			}
 		}else if (parent != nullptr && glocal.ids.count(parent->id)>0){
 			// The parent was moved, so we must redraw the line to each child.
-			auto parent_x = parent->x;
-			auto parent_y = parent->y+parent->height/2;
-			glocal.var.val += string_f("replace_line('l%u,%u',%u,%u,%u,%u,'black');\n"
-				,parent->id,elm.id,parent_x,parent_y,elm.x,elm.y-elm.height/2);
+			LINE_SPEC spec(*parent,elm);
+			glocal.var.val += string_f("replace_line('l%u,%u',%u,%u,%lf,%u,'black',%u);\n"
+				,parent->id,elm.id,spec.x,spec.y,spec.angle,spec.len,arrow);
 		}
 	</f>
 	</call>
@@ -503,19 +517,19 @@ void WHITEBOARD::changeline (const vector<WHITEBOARD_ELM*> &parents, const vecto
 				auto sub = find_if(elm.subelms.begin(),elm.subelms.end(),[child](auto &s){return s.id == child->id;});
 				if (sub == elm.subelms.end()){
 					// This child is not related to the parent, so we add it
-					elm.subelms.emplace_back(child->id,ARROW_LINE);
+					elm.subelms.emplace_back(child->id,ARROW_END);
 					// Remove it from baseelms if there
 					auto base = find(glocal.baseelms.begin(),glocal.baseelms.end(),child->id);
 					if (base != glocal.baseelms.end()) glocal.baseelms.erase(base);
 					glocal.has_parent.insert(child->id);
-					addsvgelement(glocal.notify_var,glocal.gameid,"line","black",2,string_f("l%u,%u",elm.id,child->id));
+					addsvgelement(glocal.notify_var,glocal.gameid,"g","black",2,string_f("l%u,%u",elm.id,child->id));
 				}else{
 					sub->arrow = (ARROW_TYPE)((unsigned)sub->arrow+1);
 					if (sub->arrow == ARROW_LAST){
 						// We loop back to ARROW_NONE.
 						// We just remove the entry
 						elm.subelms.erase(sub);
-						glocal.notify_var.val += string_f("removeelm('l%u,%u','line');\n",elm.id,child->id);
+						glocal.notify_var.val += string_f("removeelm('l%u,%u','g');\n",elm.id,child->id);
 						// Is it owned by another elements ? If not we have to add it to baseelms.
 						glocal.lost_parent.push_back(child->id);
 					}else{
@@ -640,13 +654,45 @@ void WHITEBOARD::execstep (
 			v.val += "\t\t\t\te.setAttribute('height',h);\n"; 
 			v.val += "\t\t\t\te.style.stroke=color;\n"; 
 			js_find_loop_set_end_META(v.val);
-			v.val += "function replace_line(id, x1, y1, x2, y2,color){\n";
-			js_find_loop_set_META(v.val,"board","line");
-			v.val += "\t\t\t\te.setAttribute('x1',x1);\n"; 
-			v.val += "\t\t\t\te.setAttribute('y1',y1);\n"; 
-			v.val += "\t\t\t\te.setAttribute('x2',x2);\n"; 
-			v.val += "\t\t\t\te.setAttribute('y2',y2);\n"; 
-			v.val += "\t\t\t\te.style.stroke=color;\n"; 
+			v.val += "function replace_line(id, x, y, angle, len, color,arrow){\n";
+			js_find_loop_set_META(v.val,"board","g");
+			v.val += "\t\t\t\twhile (e.firstChild) {\n";
+			v.val += "\t\t\t\t\te.removeChild(e.lastChild);\n";
+			v.val += "\t\t\t\t}\n";
+			v.val += "\t\t\t\te.style.stroke = color;\n";
+			v.val += "\t\t\t\te.style.fill = color;\n";
+			v.val += "\t\t\t\te.style.strokeWidth = '2';\n";
+			v.val += "\t\t\t\tvar newElement = document.createElementNS('http://www.w3.org/2000/svg', 'path');\n";
+			v.val += "\t\t\t\te.appendChild(newElement);\n";
+			v.val += "\t\t\t\tlen-=10;\n";
+			v.val += "\t\t\t\tif(arrow==1){\n";
+			// ARROW_END
+			v.val += "\t\t\t\t\tnewElement.setAttribute('d','M0,0 l'+(len-10)+',0 l-2,-5 l10,5 l-10,5 l2,-5');\n"; 
+			v.val += "\t\t\t\t}else if(arrow==2){\n";
+			// ARROW_START
+			v.val += "\t\t\t\t\tnewElement.setAttribute('d','M0,0 l10,-5 l-2,5 l2,5 l-10,-5 l'+len+',0');\n"; 
+			v.val += "\t\t\t\t}else if(arrow==3){\n";
+			// ARROW_BOTH
+			v.val += "\t\t\t\t\tnewElement.setAttribute('d','M0,0 l10,-5 l-2,5 l2,5 l-10,-5 l'+(len-10)+',0 l-2,-5 l10,5 l-10,5 l2,-5');\n"; 
+			v.val += "\t\t\t\t}else if(arrow==4){\n";
+			// ARROW_RETURN
+			v.val += "\t\t\t\t\tnewElement.setAttribute('d','M0,0 l'+(len-10)+',0 l-2,-5 l10,5 l-10,5 l2,-5');\n"; 
+			v.val += "\t\t\t\t\tvar path2 = document.createElementNS('http://www.w3.org/2000/svg', 'path');\n";
+			v.val += "\t\t\t\t\te.appendChild(path2);\n";
+			v.val += "\t\t\t\t\tpath2.style.fill = 'none';\n";
+			v.val += "\t\t\t\t\tvar lenq=len-10;\n";
+			v.val += "\t\t\t\t\tpath2.setAttribute('d','M'+lenq+',-7 q-'+(lenq/2)+',-20,-'+(lenq-10)+',0');\n"; 
+			v.val += "\t\t\t\t\tvar subg = document.createElementNS('http://www.w3.org/2000/svg', 'g');\n";
+			v.val += "\t\t\t\t\te.appendChild(subg);\n";
+			v.val += "\t\t\t\t\tsubg.setAttribute('transform','rotate(-15,0,0)');\n";
+			v.val += "\t\t\t\t\tvar path3 = document.createElementNS('http://www.w3.org/2000/svg', 'path');\n";
+			v.val += "\t\t\t\t\tpath3.setAttribute('d','M10,-5 l2,-5 l-10,5 l10,5 l-2,-5');\n";
+			v.val += "\t\t\t\t\tsubg.appendChild(path3);\n";
+			v.val += "\t\t\t\t}else if(arrow==5){\n";
+			// ARROW_LINE
+			v.val += "\t\t\t\t\tnewElement.setAttribute('d','M0,0 l'+len+',0');\n"; 
+			v.val += "\t\t\t\t}\n";
+			v.val += "\t\t\t\te.setAttribute('transform','translate('+x+','+y+') rotate('+angle+',0,0) translate(5,0)');\n"; 
 			js_find_loop_set_end_META(v.val);
 			wordproc_set_gamepress(v.val);
 			// Dummy needed by gamepress, shared with doc_wordproc
@@ -734,10 +780,10 @@ void WHITEBOARD::execstep (
 					}
 				}
 				if (parent != nullptr){
-					auto parent_x = parent->x;
-					auto parent_y = parent->y+parent->height/2;
-					glocal.v.val += string_f("<line id='l%u,%u' x1=%u y1=%u x2=%u y2=%u stroke-width=2 stroke='black'/>\n"
-						,parent->id,elm.id,parent_x,parent_y,elm.x,elm.y-elm.height/2);
+					LINE_SPEC spec(*parent,elm);
+					glocal.v.val += string_f("<g id='l%u,%u'/>\n"
+						"<script>replace_line('l%u,%u',%u,%u,%lf,%u,'black',%u);</script>\n"
+						,parent->id,elm.id,parent->id,elm.id,spec.x,spec.y,spec.angle,spec.len,arrow);
 				}
 			</f>
 			</call>
@@ -878,7 +924,7 @@ void WHITEBOARD::execstep (
 				addsvgelement(notify_var,gameid,elmtype,"red",stroke_width,string_f("e%u",id));
 				notify_var.val += extra;
 				if (addline){
-					for (auto p:star_elms) addsvgelement(notify_var,gameid,"line","black",stroke_width,string_f("l%u,%u",p->id,id));
+					for (auto p:star_elms) addsvgelement(notify_var,gameid,"g","black",stroke_width,string_f("l%u,%u",p->id,id));
 				}
 				notify_ids.insert(id);
 				setmodified(username);
