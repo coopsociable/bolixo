@@ -347,7 +347,7 @@ elif [ "$1" = "doc-chess" ] ; then # test: various test on the chess game
 	echo boBOCHES >/tmp/test.chess
 	DOCNAME=/projects/jacques-A/public/test.chess
 	./bofs cp /tmp/test.chess bo:/$DOCNAME
-	./bofs documents --noscripts --playstep --docname $DOCNAME --step newgame=0
+	./bofs documents --noscripts --playstep --docname $DOCNAME --step resetgame=
 	echo "### Invalid moves on the first line, trapped by the second"
 	for ((col=0; col<8; col++))
 	do
@@ -375,6 +375,29 @@ elif [ "$1" = "doc-chess" ] ; then # test: various test on the chess game
 elif [ "$1" = "doc-chess-dump" ] ; then # test: help debug chess game
 	DOCNAME=/projects/jacques-A/public/test.chess
 	./bofs documents --noscripts --playstep --docname $DOCNAME --step dump=0
+elif [ "$1" = "doc-whiteboard" ] ; then # test: various test on the whiteboard document
+	echo boBOWHIT >/tmp/test.white
+	DOCNAME=/projects/jacques-A/public/test.white
+	./bofs cp /tmp/test.white bo:/$DOCNAME
+	./bofs documents --noscripts --playstep --docname $DOCNAME --step resetgame=
+	#addelm=label "text" type x y width height
+	# Add 2 circle and connect them with 2 arrows
+	./bofs documents --noscripts --playstep --docname $DOCNAME --step "addelm=elm1 elm1 ellipse 100 100 50 50"
+	./bofs documents --noscripts --playstep --docname $DOCNAME --step "addelm=elm2 elm2 ellipse 100 200 50 50"
+	./bofs documents --noscripts --playstep --docname $DOCNAME --step "addelm=elm3 elm3 ellipse 100 300 50 50"
+	# Connect first circle to second
+	./bofs documents --noscripts --playstep --docname $DOCNAME --step "resetselect=0"
+	./bofs documents --noscripts --playstep --docname $DOCNAME --step "labelselect=elm1 1"
+	./bofs documents --noscripts --playstep --docname $DOCNAME --step "labelselect=elm2 0"
+	./bofs documents --noscripts --playstep --docname $DOCNAME --step "selectline=1"
+	# Connect second circle to third
+	./bofs documents --noscripts --playstep --docname $DOCNAME --step "resetselect=0"
+	./bofs documents --noscripts --playstep --docname $DOCNAME --step "resetselect=1"
+	./bofs documents --noscripts --playstep --docname $DOCNAME --step "labelselect=elm2 1"
+	./bofs documents --noscripts --playstep --docname $DOCNAME --step "labelselect=elm3 0"
+	./bofs documents --noscripts --playstep --docname $DOCNAME --step "selectline=1"
+	# Erase the middle circle
+	./bofs documents --noscripts --playstep --docname $DOCNAME --step "labeldelete=elm2"
 elif [ "$1" = "remote-member" ] ; then # test: create groups with remote members
 	USER=jacques-A
 	echo "#### Create group remote, add 1 local member and 2 remote members"

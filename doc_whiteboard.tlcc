@@ -41,6 +41,15 @@
 
 using namespace std;
 
+enum WHITEBOARD_SELMODE{
+	SEL_NONE,
+	SEL_SELECTED,	// This element is selected so we can act on it
+			// (move it, enlarge it).
+	SEL_STAR,	// This element is selected so we can attach
+			// more elements to it.
+	SEL_IMBED,	// This element is selected so we can insert
+			// more elements into it.
+};
 
 #include "proto/documentd_whiteboard.protoch"
 #include "proto/documentd_whiteboard.protoh"
@@ -52,15 +61,6 @@ enum WHITEBOARD_ELMTYPE {	// Type of element
 	TYPE_HANDLINE,	// line drawn by hand
 };
 
-enum WHITEBOARD_SELMODE{
-	SEL_NONE,
-	SEL_SELECTED,	// This element is selected so we can act on it
-			// (move it, enlarge it).
-	SEL_STAR,	// This element is selected so we can attach
-			// more elements to it.
-	SEL_IMBED,	// This element is selected so we can insert
-			// more elements into it.
-};
 static const char *tbcolor[]={"black","red","yellow","green"};
 
 enum ARROW_TYPE{
@@ -212,7 +212,11 @@ class WHITEBOARD: public GAME{
 	vector<WHITEBOARD_ELM *> findselected (WHITEBOARD_SELMODE sel);
 	void execstep (const char *var, const char *val, const char *session, const char *username, bool maywrite, const DOC_UI_SPECS_receive &sp,
 		VARVAL &script_var, VARVAL &notify_var, set<unsigned> &notify_ids, std::vector<VARVAL> &res);
-	void changeline (const vector<WHITEBOARD_ELM*> &parents, const vector<WHITEBOARD_ELM*> &elms, VARVAL &notify_var);
+	void changeline (const vector<WHITEBOARD_ELM*> &parents, const vector<WHITEBOARD_ELM*> &elms, int direction, ARROW_TYPE arrow, VARVAL &notify_var);
+	void delete_elm(unsigned id, VARVAL &notify_var);
+	unsigned place_newelm(WHITEBOARD_ELMTYPE type, unsigned x, unsigned y, unsigned width, unsigned height,
+		vector<WHITEBOARD_ELM*> &star_elms, vector<WHITEBOARD_ELM*> &imbed_elms,
+		VARVAL &notify_var, set<unsigned> &notify_ids);
 public:
 	friend void walkboard(class _F_walkboard &c, WHITEBOARD *board);
 	void save(DOC_WRITER &w, bool);
@@ -248,6 +252,7 @@ void WHITEBOARD::save(DOC_WRITER &w, bool)
 		WHITEBOARD_ELEMENT elm;
 		WHITEBOARD_ELM &e = m.second;
 		elm.id = e.id;
+		elm.selmode = e.selmode;
 		elm.x = e.x;
 		elm.y = e.y;
 		elm.x1 = e.x1;
@@ -286,6 +291,7 @@ void WHITEBOARD::load(DOC_READER &r, std::string &msg)
 		for (auto &e:elements){
 			WHITEBOARD_ELM elm;
 			elm.id = e.id;
+			elm.selmode = e.selmode;
 			elm.x = e.x;
 			elm.y = e.y;
 			elm.x1 = e.x1;
@@ -304,6 +310,7 @@ void WHITEBOARD::load(DOC_READER &r, std::string &msg)
 		glocal.baseelms = baseelms;
 	</f>
 	<f invalid>
+		tlmp_error ("Invalid record while reading whiteboard file: %s",msg);
 	</f>
 	</call>
 }
@@ -498,11 +505,27 @@ static void addsvgelement(
 	var.val += string_f("newElement.id='%s';\n",id.ptr);
 	var.val += "svg.appendChild(newElement);\n";
 }
+/*
+	Change the arrow type between parents and child (elms).
+	In interactive mode, we cycle through the arrow type. The parameter direction is either -1 or 1 to control the
+	direction of the cycling.
+	When direction == 0, the arrow parameter force a specific arrow type.
+
+
+	Note that ARROW_NONE is never really applied. The relation between parents and elms are removed.
+*/
 <mod>
-void WHITEBOARD::changeline (const vector<WHITEBOARD_ELM*> &parents, const vector<WHITEBOARD_ELM*> &elms, VARVAL &notify_var)
+void WHITEBOARD::changeline (
+	const vector<WHITEBOARD_ELM*> &parents,
+	const vector<WHITEBOARD_ELM*> &elms,
+	int direction,
+	ARROW_TYPE arrow,
+	VARVAL &notify_var)
 {
 	glocal parents;
 	glocal elms;
+	glocal direction;
+	glocal arrow;
 	glocal notify_var;
 	glocal baseelms;
 	glocal gameid;
@@ -516,16 +539,24 @@ void WHITEBOARD::changeline (const vector<WHITEBOARD_ELM*> &parents, const vecto
 			for (auto child:glocal.elms){
 				auto sub = find_if(elm.subelms.begin(),elm.subelms.end(),[child](auto &s){return s.id == child->id;});
 				if (sub == elm.subelms.end()){
-					// This child is not related to the parent, so we add it
-					elm.subelms.emplace_back(child->id,ARROW_END);
-					// Remove it from baseelms if there
-					auto base = find(glocal.baseelms.begin(),glocal.baseelms.end(),child->id);
-					if (base != glocal.baseelms.end()) glocal.baseelms.erase(base);
-					glocal.has_parent.insert(child->id);
-					addsvgelement(glocal.notify_var,glocal.gameid,"g","black",2,string_f("l%u,%u",elm.id,child->id));
+					if (glocal.direction != 0 || glocal.arrow != ARROW_NONE){
+						// This child is not related to the parent, so we add it
+						ARROW_TYPE type = glocal.arrow;
+						if (glocal.direction != 0) type = glocal.direction==1 ? ARROW_END : ARROW_LINE;
+						elm.subelms.emplace_back(child->id,type);
+						// Remove it from baseelms if there
+						auto base = find(glocal.baseelms.begin(),glocal.baseelms.end(),child->id);
+						if (base != glocal.baseelms.end()) glocal.baseelms.erase(base);
+						glocal.has_parent.insert(child->id);
+						addsvgelement(glocal.notify_var,glocal.gameid,"g","black",2,string_f("l%u,%u",elm.id,child->id));
+					}
 				}else{
-					sub->arrow = (ARROW_TYPE)((unsigned)sub->arrow+1);
-					if (sub->arrow == ARROW_LAST){
+					if (glocal.direction != 0){
+						sub->arrow = (ARROW_TYPE)((unsigned)sub->arrow+glocal.direction);
+					}else{
+						sub->arrow = glocal.arrow;
+					}
+					if (is_any_of(sub->arrow,ARROW_NONE,ARROW_LAST)){
 						// We loop back to ARROW_NONE.
 						// We just remove the entry
 						elm.subelms.erase(sub);
@@ -549,6 +580,55 @@ void WHITEBOARD::changeline (const vector<WHITEBOARD_ELM*> &parents, const vecto
 	}
 }
 </mod>
+/*
+	Delete one element.
+	Remove all arrows related to this element (from and to).
+	subelms becoming orphans (not connect to any parent) are add to baseelms.
+*/
+<mod>
+void WHITEBOARD::delete_elm (unsigned id, VARVAL &notify_var)
+{
+	glocal id;
+	glocal notify_var;
+	glocal bool subelm_done = false;
+	glocal set<unsigned> has_parent;
+	<call walkboard>(this);
+	<f element>
+		if (elm.id == glocal.id){
+			if (!glocal.subelm_done){
+				glocal.subelm_done = true;
+				for (auto &s:elm.subelms){
+					glocal.notify_var.val += string_f("removeelm('l%u,%u','g');\n",elm.id,s.id);
+				}
+				// The subelms become orphan or are owned by another
+				elm.subelms.clear();
+			}
+			if (parent != nullptr){
+				glocal.notify_var.val += string_f("removeelm('l%u,%u','g');\n",parent->id,elm.id);
+				auto pt = find_if (parent->subelms.begin(),parent->subelms.end(),[elm](auto &selm){return elm.id==selm.id;});
+				parent->subelms.erase(pt);
+			}
+		}
+		for (auto s:elm.subelms) glocal.has_parent.insert(s.id);
+	</f>
+	</call>
+	auto pt = elms.find(id);
+	if (pt != elms.end()){
+		static const char *tbtag[]={"ellipse","rect","line","path"};
+		notify_var.val += string_f("removeelm('e%u','%s');\n",id,tbtag[pt->second.type]);
+		elms.erase(pt);
+		// Remove from baseelms if there
+		auto pt = find(baseelms.begin(),baseelms.end(),id);
+		if (pt != baseelms.end()) baseelms.erase(pt);
+	}
+	// We have to add the orphan sub-elements into baseelms
+	for (auto &e:elms){
+		if (glocal.has_parent.count(e.first)==0
+			&& find(baseelms.begin(),baseelms.end(),e.first)==baseelms.end()){
+			baseelms.push_back(e.first);
+		}
+	}
+}
 </mod>
 static void whiteboard_update_button (string &script, bool oldstate, bool newstate, unsigned button_id)
 {
@@ -569,6 +649,61 @@ void WHITEBOARD::exec (
 	std::vector<VARVAL> &res)
 {
 	tlmp_error ("WHITEBOARD::exec called");
+}
+unsigned WHITEBOARD::place_newelm(
+	WHITEBOARD_ELMTYPE type,
+	unsigned x,
+	unsigned y,
+	unsigned width,
+	unsigned height,
+	vector<WHITEBOARD_ELM*> &star_elms,
+	vector<WHITEBOARD_ELM*> &imbed_elms,
+	VARVAL &notify_var,
+	set<unsigned> &notify_ids)
+	
+{
+	const char *svgtype = "";
+	unsigned id = 0;
+	string extra;
+	bool addline = false;
+	unsigned width_2 = width/2;
+	unsigned height_2 = height/2;
+	unsigned stroke_width = 2;
+	if (type == TYPE_ELLIPSE){
+		id = add_ellipse(star_elms,imbed_elms,x,y,width_2,height_2);
+		svgtype = "ellipse";
+		extra += string_f("newElement.setAttribute('cx',%u);\n",x);
+		extra += string_f("newElement.setAttribute('cy',%u);\n",y);
+		extra += string_f("newElement.setAttribute('rx',%u);\n",width_2);
+		extra += string_f("newElement.setAttribute('ry',%u);\n",height_2);
+		addline = star_elms.size() > 0;
+	}else if (type == TYPE_RECT){
+		id = add_rect(star_elms,imbed_elms,x,y,width,height);
+		svgtype = "rect";
+		extra += string_f("newElement.setAttribute('x',%u);\n",x-width_2);
+		extra += string_f("newElement.setAttribute('y',%u);\n",y-height_2);
+		extra += string_f("newElement.setAttribute('width',%u);\n",width);
+		extra += string_f("newElement.setAttribute('height',%u);\n",height);
+		addline = star_elms.size() > 0;
+	}else if (type == TYPE_LINE){
+		id = add_line(x,y,x+width,y+height);
+		svgtype = "line";
+		extra += string_f("newElement.setAttribute('x1',%u);\n",x);
+		extra += string_f("newElement.setAttribute('y1',%u);\n",y);
+		extra += string_f("newElement.setAttribute('x2',%u);\n",x+width);
+		extra += string_f("newElement.setAttribute('y2',%u);\n",y+height);
+	}else if (type == TYPE_HANDLINE){
+		stroke_width = 4;
+		id = add_handline(x,y,x+width,y+height);
+		svgtype = "path";
+	}
+	addsvgelement(notify_var,gameid,svgtype,"red",stroke_width,string_f("e%u",id));
+	notify_var.val += extra;
+	if (addline){
+		for (auto p:star_elms) addsvgelement(notify_var,gameid,"g","black",stroke_width,string_f("l%u,%u",p->id,id));
+	}
+	notify_ids.insert(id);
+	return id;
 }
 <mod>
 void WHITEBOARD::execstep (
@@ -796,6 +931,10 @@ void WHITEBOARD::execstep (
 			v.val += "</div>\n";
 			res.emplace_back(v);
 		}
+	}else if (strcmp(var,REQ_GETFIELDS)==0){
+		VARVAL var;
+		var.var = VAR_FIELDS;
+		res.emplace_back(var);
 	}else if (maywrite){
 		unsigned lastline = 1000;
 		string tmpvar,tmpval;
@@ -804,7 +943,12 @@ void WHITEBOARD::execstep (
 			var = tmpvar.c_str();
 			val = tmpval.c_str();		
 		}
-		if (strcmp(var,"select")==0){
+		if (strcmp(var,"deletechar")==0){
+			auto selects = findselected(SEL_SELECTED);
+			for (auto s:selects){
+				delete_elm (s->id,notify_var);
+			}
+		}else if (strcmp(var,"select")==0){
 			vector<string> tb;
 			int n = str_splitline(val,',',tb);
 			if (n == 3){
@@ -832,7 +976,7 @@ void WHITEBOARD::execstep (
 							}else if (selects.size() == 0){
 								error = MSG_U(E_NONODE,"No node selected");
 							}else{
-								changeline (parents,selects,notify_var);
+								changeline (parents,selects,pref.mod.shift ? -1 : 1,ARROW_NONE,notify_var);
 								for (auto s:selects) notify_ids.insert(s->id);
 							}
 						}else{
@@ -851,7 +995,6 @@ void WHITEBOARD::execstep (
 			if (selects.size() > 0){
 				vector<string> tb;
 				int n = str_splitline(val,',',tb);
-				tlmp_warning ("mousemove: n=%d %s",n,val);
 				if (n == 2){
 					int movex = atoi(tb[0].c_str());
 					int movey = atoi(tb[1].c_str());
@@ -860,13 +1003,13 @@ void WHITEBOARD::execstep (
 				}
 			}
 		}else if (strcmp(var,"wheel")==0){
-			auto elms = findselected(SEL_SELECTED);
-			if (elms.size() > 0){
+			auto selects = findselected(SEL_SELECTED);
+			if (selects.size() > 0){
 				vector<string> tb;
 				int n = str_splitline(val,',',tb);
 				if (n == 4){
 					int grow = atoi(tb[0].c_str())*5;
-					for (auto elm:elms){
+					for (auto elm:selects){
 						elm->resize(grow,pref.mod.ctrl,pref.mod.shift);
 						notify_ids.insert(elm->id);
 					}
@@ -877,55 +1020,20 @@ void WHITEBOARD::execstep (
 			int uval = atoi(val);
 			auto oldpref = pref;
 			if (uval == 0){
-				resetgame();
-				setmodified(username);
+				VARVAL var;
+				var.var = VAR_DIALOG;
+				var.val = DIALOG_WHITEBOARD_NEW;
+				res.emplace_back(var);
 			}else if (is_any_of(uval,1,2,3,4)){
 				resetsel(SEL_SELECTED,notify_ids);
 				auto star_elms = findselected(SEL_STAR);
 				auto imbed_elms = findselected(SEL_IMBED);
 				tlmp_warning ("star_elm=%lu imbed_elm=%lu",star_elms.size(),imbed_elms.size());
-				
-				unsigned id=0;
+				static WHITEBOARD_ELMTYPE tbtype[]={TYPE_ELLIPSE,TYPE_RECT,TYPE_LINE,TYPE_HANDLINE};
 				const unsigned default_size=20;
 				const unsigned x=50;
 				const unsigned y=50;
-				const char *elmtype = "";
-				unsigned stroke_width = 2;
-				string extra;
-				bool addline = false;
-				if (uval == 1){
-					id = add_ellipse(star_elms,imbed_elms,x,y,default_size/2,default_size/2);
-					elmtype = "ellipse";
-					extra += string_f("newElement.setAttribute('cx',%u);\n",x);
-					extra += string_f("newElement.setAttribute('cy',%u);\n",y);
-					extra += string_f("newElement.setAttribute('rx',%u);\n",default_size/2);
-					extra += string_f("newElement.setAttribute('ry',%u);\n",default_size/2);
-					addline = star_elms.size() > 0;
-				}else if (uval == 2){
-					id = add_rect(star_elms,imbed_elms,x,y,default_size,default_size);
-					elmtype = "rect";
-					extra += string_f("newElement.setAttribute('x',%u);\n",x-default_size/2);
-					extra += string_f("newElement.setAttribute('y',%u);\n",y-default_size/2);
-					extra += string_f("newElement.setAttribute('width',%u);\n",default_size);
-					extra += string_f("newElement.setAttribute('height',%u);\n",default_size);
-					addline = star_elms.size() > 0;
-				}else if (uval == 3){
-					id = add_line(x,y,x+default_size,y+default_size);
-					elmtype = "line";
-					extra += string_f("newElement.setAttribute('x1',%u);\n",x);
-					extra += string_f("newElement.setAttribute('y1',%u);\n",y);
-					extra += string_f("newElement.setAttribute('x2',%u);\n",x+default_size);
-					extra += string_f("newElement.setAttribute('y2',%u);\n",y+default_size);
-				}else if (uval == 4){
-					stroke_width = 4;
-					id = add_handline(x,y,x+default_size,y+default_size);
-					elmtype = "path";
-				}
-				addsvgelement(notify_var,gameid,elmtype,"red",stroke_width,string_f("e%u",id));
-				notify_var.val += extra;
-				if (addline){
-					for (auto p:star_elms) addsvgelement(notify_var,gameid,"g","black",stroke_width,string_f("l%u,%u",p->id,id));
-				}
+				unsigned id = place_newelm(tbtype[uval-1],x,y,default_size,default_size,star_elms,imbed_elms,notify_var,notify_ids);
 				notify_ids.insert(id);
 				setmodified(username);
 				pref.selecting = true;
@@ -951,6 +1059,95 @@ void WHITEBOARD::execstep (
 			whiteboard_update_button (script_var.val, oldpref.starmode,pref.starmode, 6);
 			whiteboard_update_button (script_var.val, oldpref.imbedmode,pref.imbedmode, 7);
 			script_var.val += string_f("document.getElementById('text-%s').focus();\n",gameid.c_str());
+		// The other actions are Used to script modification of the document
+		}else if (strcmp(var,"addelm")==0){
+			// val format: label "text" type x y width height
+			vector<string>tb;
+			int n = str_splitlineq(val,tb);
+			if (n == 7){
+				const char *label = tb[0].c_str();
+				const char *text = tb[1].c_str();
+				auto &type = tb[2];
+				unsigned x = atoi(tb[3].c_str());
+				unsigned y = atoi(tb[4].c_str());
+				unsigned width = atoi(tb[5].c_str());
+				unsigned height = atoi(tb[6].c_str());
+				if (!is_any_of(type,"ellipse","rect","line","handline")){
+				}else{
+					WHITEBOARD_ELMTYPE elmtype = TYPE_ELLIPSE;
+					if (type == "rect"){
+						elmtype = TYPE_RECT;
+					}else if (type == "line"){
+						elmtype = TYPE_LINE;
+					}else if (type == "handline"){
+						elmtype = TYPE_HANDLINE;
+					}
+					auto star_elms = findselected(SEL_STAR);
+					auto imbed_elms = findselected(SEL_IMBED);
+					
+					unsigned id = place_newelm(elmtype,x,y,width,height,star_elms,imbed_elms,notify_var,notify_ids);
+					notify_ids.insert(id);
+					setmodified(username);
+					auto &elm = elms[id];
+					elm.label = label;
+					elm.txt = text;
+				}
+			}
+			
+		}else if (strcmp(var,"resetselect")==0){
+			// val format: 0|1|2
+			unsigned sel = atoi(val);
+			static WHITEBOARD_SELMODE tbmode[]={SEL_SELECTED,SEL_STAR, SEL_IMBED};
+			resetsel (tbmode[sel],notify_ids);
+		}else if (strcmp(var,"labelselect")==0){
+			// val format: label 0|1|2
+			vector<string> tb;
+			int n = str_splitline(val,' ',tb);
+			if (n == 2){
+				const char *label = tb[0].c_str();
+				unsigned sel = atoi(tb[1].c_str());
+				if (is_any_of((int)sel,0,1,2)){
+					for (auto &e:elms){
+						if (e.second.label==label){
+							static WHITEBOARD_SELMODE tbmode[]={SEL_SELECTED,SEL_STAR, SEL_IMBED};
+							e.second.selmode = tbmode[sel];
+							notify_ids.insert(e.first);
+							break;
+						}
+					}
+				}	
+			}
+		}else if (strcmp(var,"selectline")==0){
+			// val format: 0|1|... ARROW_TYPE 
+			unsigned uval = atoi(val);
+			if (uval < ARROW_LAST){
+				ARROW_TYPE type = (ARROW_TYPE)uval;
+				auto parents = findselected(SEL_STAR);
+				auto selects = findselected(SEL_SELECTED);
+				if (parents.size() == 0){
+					error = MSG_R(E_NOPARENT);
+				}else if (selects.size() == 0){
+					error = MSG_R(E_NONODE);
+				}else{
+					changeline (parents,selects,0,type,notify_var);
+					for (auto s:selects) notify_ids.insert(s->id);
+				}
+			}
+		}else if (strcmp(var,"labeldelete")==0){
+			// val format: label
+			for (auto &e:elms){
+				if (e.second.label==val){
+					delete_elm (e.first,notify_var);
+					break;
+				}
+			}
+		}else if (strcmp(var,"resetgame")==0){
+			resetgame();
+			notify_var.val += string_f("var svg = document.getElementById('board-%s');\n",gameid.c_str());
+			notify_var.val += "while (svg.firstChild) {\n";
+			notify_var.val += "\tsvg.removeChild(svg.lastChild);\n";
+			notify_var.val += "}\n";
+			setmodified(username);
 		}
 	}else{
 		error = MSG_R(E_READONLY);
