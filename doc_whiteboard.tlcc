@@ -58,6 +58,23 @@ enum WHITEBOARD_TEXTPOS{
 	TEXTPOS_RIGHT,
 	TEXTPOS_LAST
 };
+enum ARROW_TYPE{
+	ARROW_NONE,	// No line
+	ARROW_END,	// A line with an arrow at tne end
+	ARROW_START,	// A line with an arrow at the start
+	ARROW_BOTH,	// A line with an arrow at the start and the end
+	ARROW_RETURN,	// A line with an arrow at the end and another line, curved, with an arrow at the start
+	ARROW_LINE,	// Just a line
+	ARROW_DASH,	// Just a dash line
+	ARROW_DOT,	// Just a dot line
+	ARROW_LAST,	// Last item in the list + 1
+};
+enum BOX_TYPE{
+	BOX_SOLID,	// Solid line
+	BOX_DASH,	// Dash line
+	BOX_DOT,	// Dot line
+	BOX_LAST,	// Last item in the list + 1
+};
 
 #include "proto/documentd_whiteboard.protoch"
 #include "proto/documentd_whiteboard.protoh"
@@ -71,15 +88,6 @@ enum WHITEBOARD_ELMTYPE {	// Type of element
 
 static const char *tbcolor[]={"black","red","yellow","green"};
 
-enum ARROW_TYPE{
-	ARROW_NONE,	// No line
-	ARROW_END,	// A line with an arrow at tne end
-	ARROW_START,	// A line with an arrow at the start
-	ARROW_BOTH,	// A line with an arrow at the start and the end
-	ARROW_RETURN,	// A line with an arrow at the end and another line, curved, with an arrow at the start
-	ARROW_LINE,	// Just a line
-	ARROW_LAST,	// Last item in the list + 1
-};
 
 struct SUBELM{
 	unsigned id = 0;
@@ -100,6 +108,7 @@ inline void check_limit (unsigned short &size, int val)
 struct WHITEBOARD_ELM{
 	WHITEBOARD_SELMODE selmode = SEL_NONE;	// Make the element more visible
 						// for other actions
+	BOX_TYPE box_type = BOX_SOLID;
 	unsigned id = 0;
 	unsigned short x;	// Coordinates
 	unsigned short y;
@@ -132,6 +141,10 @@ struct WHITEBOARD_ELM{
 		ids.insert (id);
 		x += movex;
 		y += movey;
+		if (type == TYPE_LINE){
+			x1 += movex;
+			y1 += movey;
+		}
 		for (auto &e:insides){
 			elements[e].move(elements,movex,movey,ids);
 		}
@@ -181,9 +194,11 @@ struct WHITEBOARD_ELM{
 		unsigned w_2 = width/2;
 		unsigned h_2 = height/2;
 		if (type == TYPE_ELLIPSE){
-			var.val += string_f("replace_ellipse('e%u',%u,%u,%u,%u,'%s');\n",id,x,y,w_2,h_2,stroke_color);
+			var.val += string_f("replace_ellipse('e%u',%u,%u,%u,%u,'%s',%u);\n",id,x,y,w_2,h_2,stroke_color,box_type);
 		}else if (type == TYPE_RECT){
-			var.val += string_f("replace_rect('e%u',%d,%d,%u,%u,'%s');\n",id,(int)x-w_2,(int)y-h_2,width,height,stroke_color);
+			var.val += string_f("replace_rect('e%u',%d,%d,%u,%u,'%s',%u);\n",id,(int)x-w_2,(int)y-h_2,width,height,stroke_color,box_type);
+		}else if (type == TYPE_LINE){
+			var.val += string_f("replace_typeline('e%u',%u,%u,%u,%u,'%s',%u);\n",id,x,y,x1,y1,stroke_color,box_type);
 		}else{
 		}
 		unsigned textx,texty;
@@ -249,7 +264,8 @@ class WHITEBOARD: public GAME{
 		elm.x1 = x1;
 		elm.y1 = y1;
 		unsigned ret = elm.id;
-		elms[elm.id] = move(elm);
+		elms[ret] = move(elm);
+		baseelms.push_back(ret);
 		return ret;
 	}
 	unsigned add_handline (unsigned x0, unsigned y0, unsigned x1, unsigned y1){
@@ -258,7 +274,8 @@ class WHITEBOARD: public GAME{
 		elm.x1 = x1;
 		elm.y1 = y1;
 		unsigned ret = elm.id;
-		elms[elm.id] = move(elm);
+		elms[ret] = move(elm);
+		baseelms.push_back(ret);
 		return ret;
 	}
 	WHITEBOARD_ELM *locate (unsigned x, unsigned y);
@@ -306,6 +323,7 @@ void WHITEBOARD::save(DOC_WRITER &w, bool)
 		WHITEBOARD_ELM &e = m.second;
 		elm.id = e.id;
 		elm.selmode = e.selmode;
+		elm.box_type = e.box_type;
 		elm.x = e.x;
 		elm.y = e.y;
 		elm.x1 = e.x1;
@@ -346,6 +364,7 @@ void WHITEBOARD::load(DOC_READER &r, std::string &msg)
 			WHITEBOARD_ELM elm;
 			elm.id = e.id;
 			elm.selmode = e.selmode;
+			elm.box_type = e.box_type;
 			elm.x = e.x;
 			elm.y = e.y;
 			elm.x1 = e.x1;
@@ -357,7 +376,7 @@ void WHITEBOARD::load(DOC_READER &r, std::string &msg)
 			elm.txt = e.txt;
 			elm.textpos = e.textpos;
 			elm.insides = e.insides;
-			for (auto &s:e.subelms) elm.subelms.emplace_back(s.id,(ARROW_TYPE)s.arrow);
+			for (auto &s:e.subelms) elm.subelms.emplace_back(s.id,s.arrow);
 			glocal.elms[elm.id] = move(elm);
 		}
 	</f>
@@ -479,21 +498,16 @@ void WHITEBOARD::redraw(const set<unsigned> &ids, VARVAL &var)
 }
 </mod>
 /*
-	Find the first selected item
+	Find all selected items (matching selmode)
 */
 <mod>
 vector<WHITEBOARD_ELM *>WHITEBOARD::findselected(WHITEBOARD_SELMODE selmode)
 {
-	glocal vector<WHITEBOARD_ELM *> ret;
-	glocal selmode;
-	<call walkboard>(this);
-	<f element>
-		if (elm.selmode == glocal.selmode){
-			glocal.ret.push_back(&elm);
-		}
-	</f>
-	</call>
-	return glocal.ret;
+	vector<WHITEBOARD_ELM *> ret;
+	for (auto &e:elms){
+		if (e.second.selmode == selmode) ret.push_back(&e.second);
+	}
+	return ret;
 }
 </mod>
 void WHITEBOARD::resetgame()
@@ -534,6 +548,35 @@ WHITEBOARD_ELM *WHITEBOARD::locate (unsigned x, unsigned y)
 			}
 			break;
 		case TYPE_LINE:
+			/*
+				Selecting a line is harder of the user.
+				Here is the logic
+				1. We compute the angle of the line: angle
+				2. We compute the len of the line: len
+				3. We compute the angle of the line made from the start of the line to the pointer position x,y: angle2
+				4. We compute the len of this new line: len2
+				5. We compute the angle of a triangle rectangle made this way. We use len2 as the base and 5 as the side.
+				   This angle represent the how far away the user can click off the line. This is max_angle_diff.
+			*/	
+			{
+				int diffx = elm.x1 - elm.x;
+				int diffy = elm.y1 - elm.y;
+				double angle = atan2(diffy,diffx);
+				tlmp_warning ("diffy=%d diffx=%d angle=%lf",diffy,diffx,angle);
+				double len = sqrt(diffx*diffx+diffy*diffy);
+				diffx = glocal.x - elm.x;
+				diffy = glocal.y - elm.y;
+				double angle2 = atan2(diffy,diffx);
+				double len2 = sqrt(diffx*diffx+diffy*diffy);
+				tlmp_warning ("diffy=%d diffx=%d angle2=%lf",diffy,diffx,angle2);
+				tlmp_warning ("angle=%lf angle2=%lf fabs=%lf len=%lf len2=%lf",angle,angle2,fabs(angle2-angle),len,len2);
+				double max_angle_diff = atan2 (5,len2);
+				tlmp_warning ("max_angle_diff=%lf",max_angle_diff);
+				if (len2 <= len && fabs(angle2-angle) < max_angle_diff){
+tlmp_warning ("found line");
+					glocal.ret = &elm;
+				}
+			}
 			break;
 		case TYPE_HANDLINE:
 			break;
@@ -821,7 +864,7 @@ void WHITEBOARD::execstep (
 			v.val += "\t\tlastx = null;\n";
 			v.val += "\t}else{\n";
 			v.val += "\t\tif (lastx){\n";
-                        v.val += "\t\t\tgameaction(event,'mousemove:'+(event.clientX-lastx)+','+(event.clientY-lasty));\n";
+                        v.val += "\t\t\tgameaction(event,'mousemove:'+(event.clientX-lastx)+','+(event.clientY-lasty)+','+event.shiftKey+','+event.ctrlKey);\n";
                         v.val += "\t\t}\n";
 			v.val += "\t\tlastx=event.clientX;\n";
 			v.val += "\t\tlasty=event.clientY;\n";
@@ -830,22 +873,46 @@ void WHITEBOARD::execstep (
 			v.val += "}\n";
 
 			// Updating an object 
-			v.val += "function replace_ellipse(id, x, y, rx,ry,color){\n";
+			v.val += "function setboxtype(e,boxtype){\n";
+			v.val += "\tif(boxtype==0){\n";
+			v.val += "\t\te.removeAttribute('stroke-dasharray');\n";
+			v.val += "\t}else if(boxtype==1){\n";
+			v.val += "\t\te.setAttribute('stroke-dasharray','5,5');\n";
+			v.val += "\t}else if(boxtype==2){\n";
+			v.val += "\t\te.setAttribute('stroke-dasharray','2,5');\n";
+			v.val += "\t}\n";
+			v.val += "}\n";
+
+			v.val += "function replace_ellipse(id, x, y, rx,ry,color,boxtype){\n";
 			js_find_loop_set_META(v.val,"board","ellipse");
 			v.val += "\t\t\t\te.setAttribute('cx',x);\n"; 
 			v.val += "\t\t\t\te.setAttribute('cy',y);\n"; 
 			v.val += "\t\t\t\te.setAttribute('rx',rx);\n"; 
 			v.val += "\t\t\t\te.setAttribute('ry',ry);\n"; 
 			v.val += "\t\t\t\te.style.stroke=color;\n"; 
+			v.val += "\t\t\t\tsetboxtype(e,boxtype);\n";
 			js_find_loop_set_end_META(v.val);
 
-			v.val += "function replace_rect(id, x, y, w,h, color){\n";
+			v.val += "function replace_rect(id, x, y, w,h, color,boxtype){\n";
 			js_find_loop_set_META(v.val,"board","rect");
 			v.val += "\t\t\t\te.setAttribute('x',x);\n"; 
 			v.val += "\t\t\t\te.setAttribute('y',y);\n"; 
+			v.val += "\t\t\t\te.setAttribute('rx',5);\n"; 
+			v.val += "\t\t\t\te.setAttribute('ry',5);\n"; 
 			v.val += "\t\t\t\te.setAttribute('width',w);\n"; 
 			v.val += "\t\t\t\te.setAttribute('height',h);\n"; 
+			v.val += "\t\t\t\te.style.stroke=color;\n";
+			v.val += "\t\t\t\tsetboxtype(e,boxtype);\n";
+			js_find_loop_set_end_META(v.val);
+
+			v.val += "function replace_typeline(id, x1, y1, x2, y2, color,boxtype){\n";
+			js_find_loop_set_META(v.val,"board","line");
+			v.val += "\t\t\t\te.setAttribute('x1',x1);\n"; 
+			v.val += "\t\t\t\te.setAttribute('y1',y1);\n"; 
+			v.val += "\t\t\t\te.setAttribute('x2',x2);\n"; 
+			v.val += "\t\t\t\te.setAttribute('y2',y2);\n"; 
 			v.val += "\t\t\t\te.style.stroke=color;\n"; 
+			v.val += "\t\t\t\tsetboxtype(e,boxtype);\n";
 			js_find_loop_set_end_META(v.val);
 
 			v.val += "function replace_text(id, x, y, color, txt){\n";
@@ -857,6 +924,7 @@ void WHITEBOARD::execstep (
 			v.val += "\t\t\t\te.innerHTML=txt;\n"; 
 			js_find_loop_set_end_META(v.val);
 
+			// line between a parent and sub-element
 			v.val += "function replace_line(id, x, y, angle, len, color,arrow){\n";
 			js_find_loop_set_META(v.val,"board","g");
 			v.val += "\t\t\t\twhile (e.firstChild) {\n";
@@ -894,10 +962,21 @@ void WHITEBOARD::execstep (
 			v.val += "\t\t\t\t}else if(arrow==5){\n";
 			// ARROW_LINE
 			v.val += "\t\t\t\t\tnewElement.setAttribute('d','M0,0 l'+len+',0');\n"; 
+			v.val += "\t\t\t\t}else if(arrow==6){\n";
+			// ARROW_DASHLINE
+			v.val += "\t\t\t\t\tnewElement.setAttribute('d','M0,0 l'+len+',0');\n"; 
+			v.val += "\t\t\t\t\tnewElement.setAttribute('stroke-dasharray','5,5');\n"; 
+			v.val += "\t\t\t\t}else if(arrow==7){\n";
+			// ARROW_DOTLINE
+			v.val += "\t\t\t\t\tnewElement.setAttribute('d','M0,0 l'+len+',0');\n"; 
+			v.val += "\t\t\t\t\tnewElement.setAttribute('stroke-dasharray','2,4');\n"; 
+
 			v.val += "\t\t\t\t}\n";
 			v.val += "\t\t\t\te.setAttribute('transform','translate('+x+','+y+') rotate('+angle+',0,0) translate(5,0)');\n"; 
 			js_find_loop_set_end_META(v.val);
+
 			wordproc_set_gamepress(v.val);
+
 			// Dummy needed by gamepress, shared with doc_wordproc
 			v.val += "function getlastline(){\n";
 			v.val += "\treturn 0;\n";
@@ -919,6 +998,15 @@ void WHITEBOARD::execstep (
 			v.val += "</script>\n";
 			// Buttons line
 			if (maywrite){
+				#define BUTTON_NEWDOC	0
+				#define BUTTON_ELLIPSE	1
+				#define BUTTON_RECT	2 
+				#define BUTTON_LINE	3
+				#define BUTTON_HANDLINE	4
+				#define BUTTON_SELECT	5
+				#define BUTTON_STARMODE	6
+				#define BUTTON_IMBEDMODE 7
+				#define BUTTON_BOXTYPE	8
 				v.val += "<div id=tab_form style='margin-top:5; margin-bottom:5; background-color: lightgray;'>\n";
 				DOC_BUTTON_SPECS specs;
 				if (sp.mobile){
@@ -929,14 +1017,83 @@ void WHITEBOARD::execstep (
 					specs.margin_bottom = 4;
 				}
 				documentd_button_start(v.val,gameid);
-				documentd_button (v.val,0,"_",specs,false);
-				documentd_button (v.val,1,"C",specs,false);
-				documentd_button (v.val,2,"Q",specs,false);
-				documentd_button (v.val,3,"L",specs,false);
-				documentd_button (v.val,4,"H",specs,false);
-				documentd_button (v.val,5,"S",specs,pref.selecting);
-				documentd_button (v.val,6,"-*-",specs,pref.starmode);
-				documentd_button (v.val,7,"[]",specs,pref.imbedmode);
+				string svg_clear= string_f(
+					"<svg width=%upx height=%upx>"
+					"<rect stroke='black' fill=white stroke-width=1 rx=%u ry=%u x=%u y=%u width=%u height=%u />"
+					"</svg>"
+					,specs.width,specs.width
+					,specs.radius-1,specs.radius-1,2,2,specs.width-4,specs.width-4);
+				documentd_bar_button (v.val,BUTTON_NEWDOC,svg_clear,specs,false);
+				documentd_button_space(v.val);
+				string svg_ellipse= string_f(
+					"<svg width=%upx height=%upx>"
+					"<circle stroke='black' fill=none stroke-width=1 cx=%u cy=%u r=%u />"
+					"</svg>"
+					,specs.width,specs.width
+					,specs.width/2,specs.width/2,specs.width/2-4);
+				documentd_bar_button (v.val,BUTTON_ELLIPSE,svg_ellipse,specs,false);
+				string svg_rect= string_f(
+					"<svg width=%upx height=%upx>"
+					"<rect stroke='black' fill=none stroke-width=1 rx=%u ry=%u x=%u y=%u width=%u height=%u />"
+					"</svg>"
+					,specs.width,specs.width
+					,specs.radius-1,specs.radius-1,4,4,specs.width-8,specs.width-8);
+				documentd_bar_button (v.val,BUTTON_RECT,svg_rect,specs,false);
+				string svg_line= string_f(
+					"<svg width=%upx height=%upx>"
+					"<line stroke='black' fill=none stroke-width=1 x1=%u y1=%u x2=%u y2=%u />"
+					"</svg>"
+					,specs.width,specs.width
+					,4,4,specs.width-4,specs.width-4);
+				documentd_bar_button (v.val,BUTTON_LINE,svg_line,specs,false);
+				string svg_handline= string_f(
+					"<svg width=%upx height=%upx>"
+					"<path stroke='black' fill=none stroke-width=3 d='M%u,%u l%u,%u l%u,%u l%u,%u l%u,%u' />"
+					"</svg>"
+					,specs.width,specs.width
+					,4,4, 4,5, 5,4, 4,5, 5,4);
+				documentd_bar_button (v.val,BUTTON_HANDLINE,svg_handline,specs,false);
+				documentd_button_space(v.val);
+				string svg_select = string_f(
+					"<svg width=%upx height=%upx>"
+					"<g transform=rotate(45,0,0) >"
+					"<path stroke='black' fill=none stroke-width=2 d='M5,0 l%u,0 l-2,-2 l7,2 l-7,2 l2,-2' />"
+					"</g>"
+					"</svg>"
+					,specs.width,specs.width
+					,specs.width-4-5);
+				documentd_bar_button (v.val,BUTTON_SELECT,svg_select,specs,pref.selecting);
+				string svg_star= string_f(
+					"<svg width=%upx height=%upx>"
+					"<circle stroke='black' fill=none stroke-width=1 cx=%u cy=%u r=3 />"
+					"<circle stroke='black' fill=none stroke-width=1 cx=%u cy=%u r=3 />"
+					"<circle stroke='black' fill=none stroke-width=1 cx=%u cy=%u r=3 />"
+					"</svg>"
+					,specs.width,specs.width
+					,specs.width/4,2*specs.width/3
+					,2*specs.width/4,specs.width/3
+					,3*specs.width/4,2*specs.width/3);
+				documentd_bar_button (v.val,BUTTON_STARMODE,svg_star,specs,pref.starmode);
+				string svg_imbed= string_f(
+					"<svg width=%upx height=%upx>"
+					"<rect stroke='black' fill=none stroke-width=1 rx=%u ry=%u x=%u y=%u width=%u height=%u />"
+					"<circle stroke='black' fill=none stroke-width=1 cx=%u cy=%u r=3 />"
+					"<circle stroke='black' fill=none stroke-width=1 cx=%u cy=%u r=3 />"
+					"<circle stroke='black' fill=none stroke-width=1 cx=%u cy=%u r=3 />"
+					"</svg>"
+					,specs.width,specs.width
+					,specs.radius-1,specs.radius-1,2,2,specs.width-4,specs.width-4
+					,specs.width/4,specs.width/2
+					,2*specs.width/4,specs.width/2
+					,3*specs.width/4,specs.width/2);
+				documentd_bar_button (v.val,BUTTON_IMBEDMODE,svg_imbed,specs,pref.imbedmode);
+				string svg_dashrect= string_f(
+					"<svg width=%upx height=%upx>"
+					"<rect stroke='black' fill=none stroke-dasharray='5,5'stroke-width=1 rx=%u ry=%u x=%u y=%u width=%u height=%u />"
+					"</svg>"
+					,specs.width,specs.width
+					,specs.radius-1,specs.radius-1,4,4,specs.width-8,specs.width-8);
+				documentd_bar_button (v.val,BUTTON_BOXTYPE,svg_dashrect,specs,false);
 				documentd_button_end(v.val);
 			}else{
 				v.val += "<div id=tab_form style='margin-top:5; margin-bottom:5; background-color: lightgray;'>\n";
@@ -962,18 +1119,22 @@ void WHITEBOARD::execstep (
 			<f element>
 				if (firstseen){
 					const char *color = tbcolor[elm.selmode];
+					static const char *tbdash[]={
+						""," stroke-dasharray='5,5'"," stroke-dasharray='2,5'"
+					};
+					const char *dasharray = tbdash[elm.box_type];
 					switch(elm.type){
 					case TYPE_ELLIPSE:
-						glocal.v.val += string_f("<ellipse id='e%u' cx=%u cy=%u rx=%u ry=%u stroke='%s' stroke-width=2 fill='none'/>\n"
-							,elm.id,elm.x,elm.y,elm.width/2,elm.height/2,color);
+						glocal.v.val += string_f("<ellipse id='e%u' cx=%u cy=%u rx=%u ry=%u stroke='%s' stroke-width=2 fill='none'%s />\n"
+							,elm.id,elm.x,elm.y,elm.width/2,elm.height/2,color,dasharray);
 						break;
 					case TYPE_RECT:
-						glocal.v.val += string_f("<rect id='e%u' x=%d y=%d width=%u height=%u stroke='%s' stroke-width='2' fill='none'/>\n"
-							,elm.id,(int)elm.x-elm.width/2,(int)elm.y-elm.height/2,elm.width,elm.height,color);
+						glocal.v.val += string_f("<rect id='e%u' x=%d y=%d rx=5 ry=5 width=%u height=%u stroke='%s' stroke-width='2' fill='none'%s />\n"
+							,elm.id,(int)elm.x-elm.width/2,(int)elm.y-elm.height/2,elm.width,elm.height,color,dasharray);
 						break;
 					case TYPE_LINE:
-						glocal.v.val += string_f("<line id='e%u' x1=%u y1=%u x2=%u y2=%u stroke='%s' stroke-width='2' fill='none'/>\n"
-							,elm.id,elm.x,elm.y,elm.x1,elm.y1,color);
+						glocal.v.val += string_f("<line id='e%u' x1=%u y1=%u x2=%u y2=%u stroke='%s' stroke-width='2' fill='none'%s />\n"
+							,elm.id,elm.x,elm.y,elm.x1,elm.y1,color,dasharray);
 						break;
 					case TYPE_HANDLINE:
 						glocal.v.val += string_f("<path id='e%u' stroke='%s' stroke-width='4' fill='none' d='M%u %u L %u %u'/>\n"
@@ -1005,6 +1166,30 @@ void WHITEBOARD::execstep (
 	}else if (strcmp(var,REQ_GETFIELDS)==0){
 		VARVAL var;
 		var.var = VAR_FIELDS;
+		res.emplace_back(var);
+	}else if (strcmp(var,"dump")==0){
+		VARVAL var;
+		var.var = "elements";
+		for (auto &s:elms){
+			var.val += string_f("element: id=%u label=%s txt=%s type=%u selmode=%u boxtype=%u x=%u y=%u x1=%u y1=%u width=%u height=%u\n"
+				,s.first,s.second.label.c_str(),s.second.txt.c_str(),s.second.type,s.second.selmode,s.second.box_type
+				,s.second.x,s.second.y,s.second.x1,s.second.y1,s.second.width,s.second.height);
+			if (s.second.subelms.size() > 0){
+				var.val += "subelms[]=";
+				for (auto &sub:s.second.subelms) var.val += string_f(" id=%d,arrow=%u",sub.id,sub.arrow);
+				var.val += "\n";
+			}
+			if (s.second.insides.size() > 0){
+				var.val += "insides[]=";
+				for (auto id:s.second.insides) var.val += string_f(" id=%d",id);
+				var.val += "\n";
+			}
+		}
+		var.val += "baseelms[]=";
+		for (auto id:baseelms){
+			var.val += string_f(" id=%u",id);
+		}
+		var.val += "\n";
 		res.emplace_back(var);
 	}else if (maywrite){
 		unsigned lastline = 1000;
@@ -1041,14 +1226,17 @@ void WHITEBOARD::execstep (
 				unsigned button = atoi(tb[2].c_str());
 				bool shiftkey = tb[3] == "true";
 				bool ctrlkey = tb[4] == "true";
-				if (button == 1 && !shiftkey && !ctrlkey){
-					auto selmode = SEL_SELECTED;
-					if (pref.starmode){
-						selmode = SEL_STAR;
-					}else if(pref.imbedmode){
-						selmode = SEL_IMBED;
-					}
-					resetsel(selmode,notify_ids);
+				/*
+					The logic for pref.selecting, star_mode and imbed_mode is different
+					In pref.selecting, select one item unselect all others unless the shift key is activivated.
+					This is standard. Selecting again the same item keeps it selected. This is useful when
+					moving the item.
+					In imbed_mode, only one item may be selected at once. Re-selecting the item unselect it.
+					In star_mode, you may select multiple items without using the shift key. Re-selecting the
+					item unselect it.
+				*/
+				if (button == 1 && pref.selecting && !shiftkey && !ctrlkey){
+					resetsel(SEL_SELECTED,notify_ids);
 				}
 				auto e = locate (x,y);
 				//tlmp_warning ("select: val=%s x=%u y=%u e=%p",val,x,y,e);
@@ -1073,6 +1261,13 @@ void WHITEBOARD::execstep (
 									for (auto s:selects) notify_ids.insert(s->id);
 								}
 							}
+						}else if (shiftkey && ctrlkey){
+							if (e->selmode == SEL_NONE){
+								resetsel(SEL_IMBED,notify_ids);	// Only one SEL_IMBED at once
+								e->selmode = SEL_IMBED;
+							}else{
+								e->selmode = SEL_NONE;
+							}
 						}else if (ctrlkey){
 							if (e->selmode == SEL_NONE){
 								e->selmode = SEL_STAR;
@@ -1085,7 +1280,12 @@ void WHITEBOARD::execstep (
 					}else if (pref.starmode){
 						e->selmode = e->selmode == SEL_STAR ? SEL_NONE : SEL_STAR;
 					}else if (pref.imbedmode){
-						e->selmode = e->selmode == SEL_IMBED ? SEL_NONE : SEL_IMBED;
+						if (e->selmode == SEL_NONE){
+							resetsel(SEL_IMBED,notify_ids);	// Only one SEL_IMBED at once
+							e->selmode = SEL_IMBED;
+						}else{
+							e->selmode = SEL_NONE;
+						}
 					}
 					notify_ids.insert(e->id);
 				}			
@@ -1095,10 +1295,27 @@ void WHITEBOARD::execstep (
 			if (selects.size() > 0){
 				vector<string> tb;
 				int n = str_splitline(val,',',tb);
-				if (n == 2){
+				if (n == 4){
 					int movex = atoi(tb[0].c_str());
 					int movey = atoi(tb[1].c_str());
-					for (auto elm:selects) elm->move(elms,movex,movey,notify_ids);
+					bool shiftkey = tb[2] == "true";
+					bool ctrlkey = tb[3] == "true";
+					for (auto elm:selects){
+						if (elm->type == TYPE_LINE){
+							if(shiftkey){
+								check_limit (elm->x,movex);
+								check_limit (elm->y,movey);
+							}else if (ctrlkey){
+								check_limit (elm->x1,movex);
+								check_limit (elm->y1,movey);
+							}else{
+								elm->move(elms,movex,movey,notify_ids);
+							}
+							notify_ids.insert(elm->id);
+						}else{
+							elm->move(elms,movex,movey,notify_ids);
+						}
+					}
 					setmodified(username);
 				}
 			}
@@ -1121,12 +1338,12 @@ void WHITEBOARD::execstep (
 		}else if (strcmp(var,"newgame")==0){
 			int uval = atoi(val);
 			auto oldpref = pref;
-			if (uval == 0){
+			if (uval == BUTTON_NEWDOC){
 				VARVAL var;
 				var.var = VAR_DIALOG;
 				var.val = DIALOG_WHITEBOARD_NEW;
 				res.emplace_back(var);
-			}else if (is_any_of(uval,1,2,3,4)){
+			}else if (is_any_of(uval,BUTTON_ELLIPSE,BUTTON_RECT,BUTTON_LINE,BUTTON_HANDLINE)){
 				resetsel(SEL_SELECTED,notify_ids);
 				auto star_elms = findselected(SEL_STAR);
 				auto imbed_elms = findselected(SEL_IMBED);
@@ -1135,31 +1352,39 @@ void WHITEBOARD::execstep (
 				const unsigned default_size=20;
 				const unsigned x=50;
 				const unsigned y=50;
-				unsigned id = place_newelm(tbtype[uval-1],x,y,default_size,default_size,star_elms,imbed_elms,notify_var,notify_ids);
+				unsigned id = place_newelm(tbtype[uval-BUTTON_ELLIPSE],x,y,default_size,default_size,star_elms,imbed_elms,notify_var,notify_ids);
 				notify_ids.insert(id);
 				setmodified(username);
 				pref.selecting = true;
 				pref.starmode = pref.imbedmode = false;
-			}else if (is_any_of(uval,5,6,7)){
-				if (uval == 5){
+			}else if (is_any_of(uval,BUTTON_SELECT,BUTTON_STARMODE,BUTTON_IMBEDMODE)){
+				if (uval == BUTTON_SELECT){
 					pref.selecting = true;
-					resetsel(SEL_SELECTED,notify_ids);
 					pref.starmode = pref.imbedmode = false;
-				}else if (uval == 6){
-					resetsel(SEL_STAR,notify_ids);
+				}else if (uval == BUTTON_STARMODE){
 					pref.starmode = true;
 					pref.selecting = pref.imbedmode = false;
-				}else if (uval == 7){
-					resetsel(SEL_IMBED,notify_ids);
+				}else if (uval == BUTTON_IMBEDMODE){
 					pref.imbedmode = true;
 					pref.selecting = pref.starmode = false;
 				}
+			}else if (uval == BUTTON_BOXTYPE){
+				auto selects = findselected (SEL_SELECTED);
+				if (selects.size()==0){
+					error = MSG_R(E_NONODE);
+				}else{
+					for (auto s:selects){
+						s->box_type = (BOX_TYPE)((unsigned)s->box_type+1);
+						if (s->box_type == BOX_LAST) s->box_type = BOX_SOLID;
+						notify_ids.insert (s->id);
+					}
+				}
 			}else{
-				tlmp_error ("checkers newgame=%d",uval);
+				tlmp_error ("whiteboard newgame=%d",uval);
 			}
-			whiteboard_update_button (script_var.val, oldpref.selecting,pref.selecting, 5);
-			whiteboard_update_button (script_var.val, oldpref.starmode,pref.starmode, 6);
-			whiteboard_update_button (script_var.val, oldpref.imbedmode,pref.imbedmode, 7);
+			whiteboard_update_button (script_var.val, oldpref.selecting,pref.selecting, BUTTON_SELECT);
+			whiteboard_update_button (script_var.val, oldpref.starmode,pref.starmode, BUTTON_STARMODE);
+			whiteboard_update_button (script_var.val, oldpref.imbedmode,pref.imbedmode, BUTTON_IMBEDMODE);
 			script_var.val += string_f("document.getElementById('text-%s').focus();\n",gameid.c_str());
 		// The other actions are Used to script modification of the document
 		}else if (strcmp(var,"addelm")==0){
