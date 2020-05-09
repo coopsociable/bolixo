@@ -335,4 +335,5 @@ struct MOD_KBD{
 	bool alt = false;
 };
 void wordproc_kbd (const char *val, MOD_KBD &mod, std::string &var, std::string &newval, unsigned &lastline);
+size_t utf8_codepoint_size(uint8_t text);
 #endif
