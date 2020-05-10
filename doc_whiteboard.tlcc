@@ -175,13 +175,12 @@ struct WHITEBOARD_ELM{
 			elements[e].move(elements,movex,movey,ids);
 		}
 	}
-	void gettextpos(unsigned &textx, unsigned &texty){
-		static unsigned fontsize=14;
+	void gettextpos(unsigned &textx, unsigned &texty, unsigned &textlen, unsigned fontsize){
 		textx=0;
 		texty=0;
 		unsigned w_2 = width/2;
 		unsigned h_2 = height/2;
-		unsigned textlen = documentd_displaylen (txt.c_str(),fontsize,1);
+		textlen = documentd_displaylen (txt.c_str(),fontsize,1);
 		unsigned centerx=0;
 		unsigned centery=y+fontsize/2-3;
 		if (textlen >= width){
@@ -215,7 +214,11 @@ struct WHITEBOARD_ELM{
 			break;
 		}
 	}
-	void redraw(VARVAL &var){
+	void gettextpos(unsigned &textx, unsigned &texty, unsigned fontsize){
+		unsigned textlen;
+		gettextpos(textx,texty,textlen,fontsize);
+	}
+	void redraw(VARVAL &var, unsigned fontsize){
 		const char *stroke_color = tbcolor[selmode];
 		unsigned w_2 = width/2;
 		unsigned h_2 = height/2;
@@ -230,7 +233,7 @@ struct WHITEBOARD_ELM{
 		}else{
 		}
 		unsigned textx,texty;
-		gettextpos(textx,texty);
+		gettextpos(textx,texty,fontsize);
 		var.val += string_f("replace_text('t%u',%u,%u,'%s','%s');\n",id,textx,texty,stroke_color,documentd_escape(txt).c_str());
 	}
 	void changetextpos(){
@@ -259,7 +262,7 @@ class WHITEBOARD: public GAME{
 	unsigned alloc_id=0;
 	void update_msg (bool to_all, PARAM_STRING msg, const char *color, std::vector<VARVAL> &res);
 	void resetsel(WHITEBOARD_SELMODE, set<unsigned> &ids);
-	void redraw(const set<unsigned> &ids, VARVAL &var);
+	void redraw(const set<unsigned> &ids, VARVAL &var, unsigned fontsize);
 	void alloc_elm(WHITEBOARD_ELM &elm, WHITEBOARD_ELMTYPE type, unsigned x0, unsigned y0){
 		elm.selmode = SEL_SELECTED;
 		elm.id = alloc_id++;
@@ -316,17 +319,17 @@ class WHITEBOARD: public GAME{
 		baseelms.push_back(ret);
 		return ret;
 	}
-	unsigned add_text (unsigned x0, unsigned y0){
+	unsigned add_text (const vector<WHITEBOARD_ELM*> &imbed_elms, unsigned x0, unsigned y0){
 		WHITEBOARD_ELM elm;
 		alloc_elm(elm,TYPE_TEXT,x0,y0);
 		elm.width = elm.height = 8;
 		elm.textpos = TEXTPOS_RIGHT;
 		unsigned ret = elm.id;
-		elms[ret] = move(elm);
-		baseelms.push_back(ret);
+		vector<WHITEBOARD_ELM*> empty;
+		add_element(empty,imbed_elms,elm);
 		return ret;
 	}
-	WHITEBOARD_ELM *locate (unsigned x, unsigned y);
+	WHITEBOARD_ELM *locate (unsigned x, unsigned y, unsigned fontsize);
 	vector<WHITEBOARD_ELM *> findselected (WHITEBOARD_SELMODE sel);
 	void execstep (const char *var, const char *val, const char *session, const char *username, bool maywrite, const DOC_UI_SPECS_receive &sp,
 		VARVAL &script_var, VARVAL &notify_var, set<unsigned> &notify_ids, std::vector<VARVAL> &res);
@@ -601,14 +604,15 @@ void WHITEBOARD::sortsubelms(set<unsigned> &notify_ids)
 	Redraw all elments which have changed
 */
 <mod>
-void WHITEBOARD::redraw(const set<unsigned> &ids, VARVAL &var)
+void WHITEBOARD::redraw(const set<unsigned> &ids, VARVAL &var, unsigned fontsize)
 {
 	glocal ids;
 	glocal var;
+	glocal fontsize;
 	<call walkboard>(this);
 	<f element>
 		if (glocal.ids.count(elm.id) > 0){
-			elm.redraw(glocal.var);
+			elm.redraw(glocal.var,glocal.fontsize);
 			if (parent != nullptr){
 				LINE_SPEC spec(*parent,elm,quarter,nosubelm,nbsubelm);
 				glocal.var.val += string_f("replace_line('l%u,%u',%u,%u,%lf,%u,'black',%u);\n"
@@ -655,13 +659,15 @@ void WHITEBOARD::testwin(std::vector<VARVAL> &res)
 	Locate an element base on coordinates
 */
 <mod>
-WHITEBOARD_ELM *WHITEBOARD::locate (unsigned x, unsigned y)
+WHITEBOARD_ELM *WHITEBOARD::locate (unsigned x, unsigned y, unsigned fontsize)
 {
 	glocal WHITEBOARD_ELM *ret = nullptr;
 	glocal x;
 	glocal y;
+	glocal fontsize;
 	<call walkboard>(this);
 	<f element>
+		WHITEBOARD_ELM *ret = nullptr;
 		auto x = glocal.x;
 		auto y = glocal.y;
 		auto w_2 = elm.width/2;
@@ -672,7 +678,7 @@ WHITEBOARD_ELM *WHITEBOARD::locate (unsigned x, unsigned y)
 		case TYPE_RECT:
 			// tlmp_warning ("x=%u x0=%d x1=%d y=%u y0=%d y1=%u",x,elm.x-elm.len,elm.x+elm.len,y,elm.y-elm.len,elm.y+elm.len);
 			if ((int)x > elm.x-w_2 && (int)x < elm.x+w_2 && (int)y > elm.y-h_2 && (int)y < elm.y+h_2){
-				glocal.ret = &elm;
+				ret = &elm;
 			}
 			break;
 		case TYPE_LINE:
@@ -702,13 +708,24 @@ WHITEBOARD_ELM *WHITEBOARD::locate (unsigned x, unsigned y)
 				//tlmp_warning ("max_angle_diff=%lf",max_angle_diff);
 				if (len2 <= len && fabs(angle2-angle) < max_angle_diff){
 					//tlmp_warning ("found line");
-					glocal.ret = &elm;
+					ret = &elm;
 				}
 			}
 			break;
 		case TYPE_HANDLINE:
 			break;
 		}
+		// We can click on the text of an element
+		if (ret == nullptr && elm.txt.size() > 0){
+			unsigned textx1,texty2,lentxt;
+			elm.gettextpos(textx1,texty2,lentxt,glocal.fontsize);
+			unsigned textx2 = textx1 + lentxt;
+			unsigned texty1 = texty2 - glocal.fontsize;
+			if (x >= textx1 && x <= textx2 && y >= texty1 && y <= texty2){
+				ret = &elm;
+			}
+		}
+		if (ret != nullptr) glocal.ret = ret;
 		// The following line is removed. We want the function to go deep so it locate objects inside objects.
 		//if (glocal.ret != nullptr) end = true;
 	</f>
@@ -729,6 +746,9 @@ static void addsvgelement(
 	var.val += "newElement.style.fill = 'none';\n";
 	var.val += string_f("newElement.style.strokeWidth = '%u';\n",stroke_width);
 	var.val += string_f("newElement.id='%s';\n",id.ptr);
+	if (strcmp(elmtype,"text")==0){
+		var.val += "newElement.classList.add('whitext');\n";
+	}
 	var.val += "svg.appendChild(newElement);\n";
 }
 /*
@@ -924,7 +944,7 @@ unsigned WHITEBOARD::place_newelm(
 		id = add_handline(x,y,x+width,y+height);
 		svgtype = "path";
 	}else if (type == TYPE_TEXT){
-		id = add_text(x,y);
+		id = add_text(imbed_elms,x,y);
 		svgtype = "circle";
 	}
 	addsvgelement(notify_var,gameid,svgtype,"red",stroke_width,string_f("e%u",id));
@@ -948,7 +968,10 @@ void WHITEBOARD::execstep (
 	set<unsigned> &notify_ids,
 	std::vector<VARVAL> &res)
 {
+	glocal unsigned fontsize = sp.fontsize;
 	auto &pref = prefs[session];
+	unsigned board_dim = sp.content_width;
+	if (sp.content_height < sp.content_width) board_dim = sp.content_height;
 	string error,status;
 	setactivity();
 	if (strcmp(var,"print")==0){
@@ -956,6 +979,9 @@ void WHITEBOARD::execstep (
 			VARVAL v;
 			v.var = VAR_CONTENT;
 			v.val += "<style>\n";
+			v.val += ".whitext{\n";
+			v.val += string_f("\tfont-size:%u;\n",sp.fontsize+5);
+			v.val += "}\n";
 			v.val += "</style>\n";
 			v.val += "<script>\n";
 
@@ -1280,17 +1306,17 @@ void WHITEBOARD::execstep (
 			v.val += "</div>\n";
 			// Board
 			v.val += string_f("<div class=webtable id=%sdoc_whiteboard >\n",val);
-			v.val += string_f("<div id='text-%s'"
+			v.val += string_f("<div id='text-%s' style='width:%u;height:%u;'"
 				" onkeydown='gamepress(event);return false;'"
-				" tabindex=0 >\n",gameid.c_str());
-			v.val += string_f("<svg id='board-%s' width='%upx' height='%upx' viewbox='0 0 %u %u'"
+				" tabindex=0 >\n",gameid.c_str(),board_dim,board_dim);
+			v.val += string_f("<svg id='board-%s' viewbox='0 0 1000 1000'"
 				" style=cursor:default;"
 				" onmousedown='gameselect(event);'"
 				" onmouseup='gamemouseup(event); return false;'"
 				" onwheel='gamewheel(event); return false;'"
 				" onmousemove='gamemove(event); return false;'"
 				" >\n"
-				,gameid.c_str(),sp.content_width,sp.content_height,sp.content_width,sp.content_height);
+				,gameid.c_str());	//,sp.content_width,sp.content_height,sp.content_width,sp.content_height);
 			
 			glocal v;
 			<call walkboard>(this);
@@ -1323,8 +1349,8 @@ void WHITEBOARD::execstep (
 							,elm.id,color,elm.x,elm.y,elm.width/2);
 					}
 					unsigned textx,texty;
-					elm.gettextpos(textx,texty);
-					glocal.v.val += string_f("<text id='t%u' X=%u Y=%u style='stroke:%s;fill:%s;'>%s</text>\n"
+					elm.gettextpos(textx,texty,glocal.fontsize);
+					glocal.v.val += string_f("<text class=whitext id='t%u' X=%u Y=%u style='stroke:%s;fill:%s;'>%s</text>\n"
 						,elm.id,textx,texty,color,color,documentd_escape(elm.txt).c_str());
 				}
 				if (parent != nullptr){
@@ -1397,7 +1423,7 @@ void WHITEBOARD::execstep (
 						error = MSG_U(E_DUPLICATEONE,"Duplication only applies to one element at once");
 					}else{
 						s->selmode = SEL_NONE;
-						place_newelm(s->type,s->x,s->y+s->height+5,s->width,s->height,star_elms,imbed_elms,notify_var,notify_ids);
+						place_newelm(s->type,s->x,s->y+s->height+sp.fontsize,s->width,s->height,star_elms,imbed_elms,notify_var,notify_ids);
 					}
 				}else{
 					s->txt += val;
@@ -1408,8 +1434,8 @@ void WHITEBOARD::execstep (
 			vector<string> tb;
 			int n = str_splitline(val,',',tb);
 			if (n == 5){
-				unsigned x = atoi(tb[0].c_str());
-				unsigned y = atoi(tb[1].c_str());
+				unsigned x = atoi(tb[0].c_str())*1000/board_dim;
+				unsigned y = atoi(tb[1].c_str())*1000/board_dim;
 				unsigned button = atoi(tb[2].c_str());
 				bool shiftkey = tb[3] == "true";
 				bool ctrlkey = tb[4] == "true";
@@ -1425,14 +1451,18 @@ void WHITEBOARD::execstep (
 				if (button == 1 && pref.selecting && !shiftkey && !ctrlkey){
 					resetsel(SEL_SELECTED,notify_ids);
 				}
-				auto e = locate (x,y);
+				auto e = locate (x,y,sp.fontsize);
 				//tlmp_warning ("select: val=%s x=%u y=%u e=%p",val,x,y,e);
 				if (e != nullptr){
 					if (pref.selecting){
 						if (button == 2){
 							if (ctrlkey){
 								// We change the label position
-								e->changetextpos();
+								auto selects = findselected(SEL_SELECTED);
+								for (auto s:selects){
+									s->changetextpos();
+									notify_ids.insert(s->id);
+								}
 							}else{
 								// We are cycling though the various line types connecting elms
 								// shiftkey change the cycling direction
@@ -1596,6 +1626,8 @@ void WHITEBOARD::execstep (
 						elmtype = TYPE_LINE;
 					}else if (type == "handline"){
 						elmtype = TYPE_HANDLINE;
+					}else if (type == "text"){
+						elmtype = TYPE_TEXT;
 					}
 					auto star_elms = findselected(SEL_STAR);
 					auto imbed_elms = findselected(SEL_IMBED);
@@ -1692,7 +1724,7 @@ void WHITEBOARD::manyexec (
 		execstep (v.var,v.val,session,username,maywrite,sp,script_var,notify_var,notify_ids,res);
 	}
 	sortsubelms(notify_ids);
-	redraw(notify_ids,notify_var);
+	redraw(notify_ids,notify_var,sp.fontsize);
 	res.emplace_back(move(notify_var));
 	res.emplace_back(move(script_var));
 }
