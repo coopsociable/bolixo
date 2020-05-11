@@ -253,6 +253,8 @@ struct WHITEBOARD_PREF{
 	bool starmode = false;	// We are attaching more items to another.
 	bool imbedmode = false;	// We are inserting items inside another.
 	MOD_KBD mod;
+	unsigned lastx = 0;	// Last mouse position, converted in SVG viewbox coordinates
+	unsigned lasty = 0;
 };
 
 class WHITEBOARD: public GAME{
@@ -763,62 +765,54 @@ static void addsvgelement(
 <mod>
 void WHITEBOARD::changeline (
 	const vector<WHITEBOARD_ELM*> &parents,
-	const vector<WHITEBOARD_ELM*> &elms,
+	const vector<WHITEBOARD_ELM*> &selects,
 	int direction,
 	ARROW_TYPE arrow,
 	VARVAL &notify_var)
 {
-	glocal parents;
-	glocal elms;
-	glocal direction;
-	glocal arrow;
-	glocal notify_var;
-	glocal baseelms;
-	glocal gameid;
-	glocal set<unsigned> has_parent;	// All elements who are in parent.subelms[]
-	glocal vector<unsigned> lost_parent;	// This element was disconnected from a parent
-						// so it it does not has a parent, it
-						// most be added to baseelms;
-	<call walkboard>(this);
-	<f element>
-		if (find(glocal.parents.begin(),glocal.parents.end(),&elm)!=glocal.parents.end()){
-			for (auto child:glocal.elms){
+	set<unsigned> has_parent;	// All elements who are in parent.subelms[]
+	vector<unsigned> lost_parent;	// This element was disconnected from a parent
+					// so it it does not has a parent, it
+					// most be added to baseelms;
+	for (auto &e:elms){
+		auto &elm = e.second;
+		if (find(parents.begin(),parents.end(),&elm)!=parents.end()){
+			for (auto child:selects){
 				auto sub = find_if(elm.subelms.begin(),elm.subelms.end(),[child](auto &s){return s.id == child->id;});
 				if (sub == elm.subelms.end()){
-					if (glocal.direction != 0 || glocal.arrow != ARROW_NONE){
+					if (direction != 0 || arrow != ARROW_NONE){
 						// This child is not related to the parent, so we add it
-						ARROW_TYPE type = glocal.arrow;
-						if (glocal.direction != 0) type = glocal.direction==1 ? ARROW_END : ARROW_LINE;
+						ARROW_TYPE type = arrow;
+						if (direction != 0) type = direction==1 ? ARROW_END : ARROW_LINE;
 						elm.subelms.emplace_back(child->id,type);
 						// Remove it from baseelms if there
-						auto base = find(glocal.baseelms.begin(),glocal.baseelms.end(),child->id);
-						if (base != glocal.baseelms.end()) glocal.baseelms.erase(base);
-						glocal.has_parent.insert(child->id);
-						addsvgelement(glocal.notify_var,glocal.gameid,"g","black",2,string_f("l%u,%u",elm.id,child->id));
+						auto base = find(baseelms.begin(),baseelms.end(),child->id);
+						if (base != baseelms.end()) baseelms.erase(base);
+						has_parent.insert(child->id);
+						addsvgelement(notify_var,gameid,"g","black",2,string_f("l%u,%u",elm.id,child->id));
 					}
 				}else{
-					if (glocal.direction != 0){
-						sub->arrow = (ARROW_TYPE)((unsigned)sub->arrow+glocal.direction);
+					if (direction != 0){
+						sub->arrow = (ARROW_TYPE)((unsigned)sub->arrow+direction);
 					}else{
-						sub->arrow = glocal.arrow;
+						sub->arrow = arrow;
 					}
 					if (is_any_of(sub->arrow,ARROW_NONE,ARROW_LAST)){
 						// We loop back to ARROW_NONE.
 						// We just remove the entry
 						elm.subelms.erase(sub);
-						glocal.notify_var.val += string_f("removeelm('l%u,%u','g');\n",elm.id,child->id);
+						notify_var.val += string_f("removeelm('l%u,%u','g');\n",elm.id,child->id);
 						// Is it owned by another elements ? If not we have to add it to baseelms.
-						glocal.lost_parent.push_back(child->id);
+						lost_parent.push_back(child->id);
 					}else{
-						glocal.has_parent.insert(child->id);
+						has_parent.insert(child->id);
 					}
 				}
 			}
 		}	
-	</f>
-	</call>
-	for (auto id:glocal.lost_parent){
-		if (glocal.has_parent.count(id)==0){
+	}
+	for (auto id:lost_parent){
+		if (has_parent.count(id)==0){
 			// Add it to baseelms if not there
 			auto base = find (baseelms.begin(),baseelms.end(),id);
 			if (base == baseelms.end()) baseelms.push_back(id);
@@ -970,8 +964,11 @@ void WHITEBOARD::execstep (
 {
 	glocal unsigned fontsize = sp.fontsize;
 	auto &pref = prefs[session];
-	unsigned board_dim = sp.content_width;
-	if (sp.content_height < sp.content_width) board_dim = sp.content_height;
+	unsigned board_width = sp.content_width;
+	if (sp.content_height < sp.content_width) board_width = sp.content_height;
+	unsigned board_height = board_width;
+	const unsigned SVG_BOARD_WIDTH=1000;	// SVG viewbox specs
+	const unsigned SVG_BOARD_HEIGHT=1000;
 	string error,status;
 	setactivity();
 	if (strcmp(var,"print")==0){
@@ -987,15 +984,14 @@ void WHITEBOARD::execstep (
 
 			// Clicking on the board
 			v.val += "var mbuttons=[0,0,0];\n";
-			v.val += "var mod_ctrl=0;\n";
-			v.val += "var mod_shift=0;\n";
-			v.val += "var mod_alt=0;\n";
 			v.val += "function gameselect(event){\n";
 			v.val += "\tmbuttons[event.which-1] = 1;\n";
 			v.val += string_f("\tvar elm = document.getElementById('board-%s');\n",gameid.c_str());
 			v.val += "\tvar rect = elm.getBoundingClientRect();\n";
 			v.val += "\tgameaction(event,'select:'+(event.clientX-rect.left)+','+(event.clientY-rect.top)+ ','+event.which+','+event.shiftKey+','+event.ctrlKey);\n";
 			v.val += "\tevent.stopPropagation();\n";
+			v.val += "\tevent.preventDefault();\n";
+			v.val += string_f("\tdocument.getElementById('text-%s').focus();\n",gameid.c_str());
 			v.val += "}\n";
 			v.val += "function gamemouseup(event){\n";
 			v.val += "\tmbuttons[event.which-1] = 0;\n";
@@ -1010,22 +1006,16 @@ void WHITEBOARD::execstep (
 			v.val += "\t}\n";
 			v.val += "\tevent.stopPropagation();\n";
 			v.val += "}\n";
-			v.val += "var lastx = null;\n";
-			v.val += "var lasty = null;\n";
 
 			// Moving an object
 			v.val += "function gamemove(event){\n";
-			//v.val += "\tconsole.log('mbuttons[]='+mbuttons+' which='+event.which+' button='+event.button+' buttons='+event.buttons+' '+lastx+' '+lasty);\n";
-			v.val += "\tif (mbuttons[0]!=1){\n";
-			v.val += "\t\tlastx = null;\n";
-			v.val += "\t}else{\n";
-			v.val += "\t\tif (lastx){\n";
-                        v.val += "\t\t\tgameaction(event,'mousemove:'+(event.clientX-lastx)+','+(event.clientY-lasty)+','+event.shiftKey+','+event.ctrlKey);\n";
-                        v.val += "\t\t}\n";
-			v.val += "\t\tlastx=event.clientX;\n";
-			v.val += "\t\tlasty=event.clientY;\n";
-                        v.val += "\t}\n";
+			v.val += "\tif(mbuttons[0] == 1){\n";
+			v.val += string_f("\t\tvar elm = document.getElementById('board-%s');\n",gameid.c_str());
+			v.val += "\t\tvar rect = elm.getBoundingClientRect();\n";
+                        v.val += "\t\tgameaction(event,'mousemove:'+(event.clientX-rect.left)+','+(event.clientY-rect.top)+','+event.shiftKey+','+event.ctrlKey);\n";
+			v.val += "\t}\n";
 			v.val += "\tevent.stopPropagation();\n";
+			v.val += "\tevent.preventDefault();\n";
 			v.val += "}\n";
 
 			// Updating an object 
@@ -1223,13 +1213,15 @@ void WHITEBOARD::execstep (
 					,specs.width,specs.width
 					,4,4,specs.width-4,specs.width-4);
 				documentd_bar_button (v.val,BUTTON_LINE,svg_line,specs,false);
-				string svg_handline= string_f(
-					"<svg width=%upx height=%upx>"
-					"<path stroke='black' fill=none stroke-width=3 d='M%u,%u l%u,%u l%u,%u l%u,%u l%u,%u' />"
-					"</svg>"
-					,specs.width,specs.width
-					,4,4, 4,5, 5,4, 4,5, 5,4);
-				documentd_bar_button (v.val,BUTTON_HANDLINE,svg_handline,specs,false);
+				if (documentd_getflag("whiteboard_handline")!=nullptr){
+					string svg_handline= string_f(
+						"<svg width=%upx height=%upx>"
+						"<path stroke='black' fill=none stroke-width=3 d='M%u,%u l%u,%u l%u,%u l%u,%u l%u,%u' />"
+						"</svg>"
+						,specs.width,specs.width
+						,4,4, 4,5, 5,4, 4,5, 5,4);
+					documentd_bar_button (v.val,BUTTON_HANDLINE,svg_handline,specs,false);
+				}
 				documentd_button_space(v.val);
 				string svg_select = string_f(
 					"<svg width=%upx height=%upx>"
@@ -1308,15 +1300,15 @@ void WHITEBOARD::execstep (
 			v.val += string_f("<div class=webtable id=%sdoc_whiteboard >\n",val);
 			v.val += string_f("<div id='text-%s' style='width:%u;height:%u;'"
 				" onkeydown='gamepress(event);return false;'"
-				" tabindex=0 >\n",gameid.c_str(),board_dim,board_dim);
-			v.val += string_f("<svg id='board-%s' viewbox='0 0 1000 1000'"
+				" tabindex=0 >\n",gameid.c_str(),board_width,board_height);
+			v.val += string_f("<svg id='board-%s' viewbox='0 0 %u %u'"
 				" style=cursor:default;"
 				" onmousedown='gameselect(event);'"
 				" onmouseup='gamemouseup(event); return false;'"
 				" onwheel='gamewheel(event); return false;'"
 				" onmousemove='gamemove(event); return false;'"
 				" >\n"
-				,gameid.c_str());	//,sp.content_width,sp.content_height,sp.content_width,sp.content_height);
+				,gameid.c_str(),SVG_BOARD_WIDTH,SVG_BOARD_HEIGHT);
 			
 			glocal v;
 			<call walkboard>(this);
@@ -1434,8 +1426,10 @@ void WHITEBOARD::execstep (
 			vector<string> tb;
 			int n = str_splitline(val,',',tb);
 			if (n == 5){
-				unsigned x = atoi(tb[0].c_str())*1000/board_dim;
-				unsigned y = atoi(tb[1].c_str())*1000/board_dim;
+				unsigned x = atoi(tb[0].c_str())*SVG_BOARD_WIDTH/board_width;
+				unsigned y = atoi(tb[1].c_str())*SVG_BOARD_HEIGHT/board_height;
+				pref.lastx = x;
+				pref.lasty = y;
 				unsigned button = atoi(tb[2].c_str());
 				bool shiftkey = tb[3] == "true";
 				bool ctrlkey = tb[4] == "true";
@@ -1503,8 +1497,12 @@ void WHITEBOARD::execstep (
 				vector<string> tb;
 				int n = str_splitline(val,',',tb);
 				if (n == 4){
-					int movex = atoi(tb[0].c_str());
-					int movey = atoi(tb[1].c_str());
+					int x = atoi(tb[0].c_str())*SVG_BOARD_WIDTH/board_width;
+					int y = atoi(tb[1].c_str())*SVG_BOARD_HEIGHT/board_height;
+					int movex = x-pref.lastx;
+					int movey = y-pref.lasty;
+					pref.lastx = x;
+					pref.lasty = y;
 					bool shiftkey = tb[2] == "true";
 					bool ctrlkey = tb[3] == "true";
 					for (auto elm:selects){

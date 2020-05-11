@@ -324,6 +324,7 @@ void documentd_setchanges (std::vector<VARVAL> &res);
 void documentd_chat(std::string &lines, PARAM_STRING username, const std::vector<CHATLINE> &content, unsigned width, unsigned height);
 void documentd_parsefields (const char *val, std::vector<VARVAL> &fields);
 unsigned documentd_displaylen (const char *line, unsigned fontsize, float size);
+const char *documentd_getflag(const char *flag);
 void fflush (DOC_WRITER *);
 char *fgets(char *s, int size, DOC_READER *r);
 unsigned chess_getmaxskill();
