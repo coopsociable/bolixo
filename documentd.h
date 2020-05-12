@@ -127,7 +127,9 @@ class GAME{
 	time_t last_activity = time(nullptr);
 	std::string modified_by;
 	std::vector<GAMENOTE> notifications;	// Script to send to all active users (users with the game opened and displayed)
-	std::set<int> notification_fds;		// Handles waiting for notifications
+	std::map<int,std::string> notification_fds;	// Handles waiting for notifications (with username)
+	bool has_waiting_users = false;		// Does this game display the list of waiting/connected users
+	std::set<std::string> last_waitings;	// Last set of connected users sent.
 protected:
 	std::vector<CHATLINE> chat;
 	unsigned revision = 0;
@@ -228,6 +230,8 @@ protected:
 	}
 	void appendchat(PARAM_STRING line, std::string &notify);
 	void appendchat(PARAM_STRING line, std::string &notify, std::vector<VARVAL> &res);
+	std::string format_draw_waiting (const std::set<std::string> &waitings);
+	void draw_waiting_users(std::string &lines, unsigned width, unsigned height, const char *style);
 public:
 	unsigned get_nbwait() const {
 		return notification_fds.size();
@@ -236,7 +240,9 @@ public:
 		return sequence;
 	}
 	void add_notification (PARAM_STRING script);
-	void add_notification_fd(int fd);
+	void add_notification_fd(int fd, const char *username);
+	std::set<std::string> get_waiting_users();
+	void update_waiting_users(std::string &lines);
 	int del_notification_fd(int fd);
 	const char *locate_event (unsigned &sequence);
 	void setgameid(PARAM_STRING _gameid){

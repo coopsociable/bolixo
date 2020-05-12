@@ -664,12 +664,13 @@ void WHITEBOARD::testwin(std::vector<VARVAL> &res)
 WHITEBOARD_ELM *WHITEBOARD::locate (unsigned x, unsigned y, unsigned fontsize)
 {
 	glocal WHITEBOARD_ELM *ret = nullptr;
+	glocal unsigned center_distance=(unsigned)-1;
 	glocal x;
 	glocal y;
 	glocal fontsize;
 	<call walkboard>(this);
 	<f element>
-		WHITEBOARD_ELM *ret = nullptr;
+		bool found = false;
 		auto x = glocal.x;
 		auto y = glocal.y;
 		auto w_2 = elm.width/2;
@@ -680,7 +681,7 @@ WHITEBOARD_ELM *WHITEBOARD::locate (unsigned x, unsigned y, unsigned fontsize)
 		case TYPE_RECT:
 			// tlmp_warning ("x=%u x0=%d x1=%d y=%u y0=%d y1=%u",x,elm.x-elm.len,elm.x+elm.len,y,elm.y-elm.len,elm.y+elm.len);
 			if ((int)x > elm.x-w_2 && (int)x < elm.x+w_2 && (int)y > elm.y-h_2 && (int)y < elm.y+h_2){
-				ret = &elm;
+				found = true;
 			}
 			break;
 		case TYPE_LINE:
@@ -710,7 +711,7 @@ WHITEBOARD_ELM *WHITEBOARD::locate (unsigned x, unsigned y, unsigned fontsize)
 				//tlmp_warning ("max_angle_diff=%lf",max_angle_diff);
 				if (len2 <= len && fabs(angle2-angle) < max_angle_diff){
 					//tlmp_warning ("found line");
-					ret = &elm;
+					found = true;
 				}
 			}
 			break;
@@ -718,16 +719,28 @@ WHITEBOARD_ELM *WHITEBOARD::locate (unsigned x, unsigned y, unsigned fontsize)
 			break;
 		}
 		// We can click on the text of an element
-		if (ret == nullptr && elm.txt.size() > 0){
+		if (!found && elm.txt.size() > 0){
 			unsigned textx1,texty2,lentxt;
 			elm.gettextpos(textx1,texty2,lentxt,glocal.fontsize);
 			unsigned textx2 = textx1 + lentxt;
 			unsigned texty1 = texty2 - glocal.fontsize;
 			if (x >= textx1 && x <= textx2 && y >= texty1 && y <= texty2){
-				ret = &elm;
+				found = true;
 			}
 		}
-		if (ret != nullptr) glocal.ret = ret;
+		if (found){
+			// An element may be on top of another and larger, so we won't be able to select it.
+			// We note the distance from the center of the object to the point selected by the user.
+			// If the distance is smaller, we pick this object.
+			// We do not execute the square root, since we do not care about the exact distance.
+			unsigned diffx = glocal.x-elm.x;
+			unsigned diffy = glocal.y-elm.y;
+			unsigned distance = diffx*diffx+diffy*diffy;
+			if (distance < glocal.center_distance){
+				glocal.center_distance = distance;
+				glocal.ret = &elm;
+			}
+		}
 		// The following line is removed. We want the function to go deep so it locate objects inside objects.
 		//if (glocal.ret != nullptr) end = true;
 	</f>
@@ -964,8 +977,9 @@ void WHITEBOARD::execstep (
 {
 	glocal unsigned fontsize = sp.fontsize;
 	auto &pref = prefs[session];
-	unsigned board_width = sp.content_width;
-	if (sp.content_height < sp.content_width) board_width = sp.content_height;
+	unsigned waiting_users_width = sp.mobile ? 62 : 42;
+	unsigned board_width = sp.content_width - waiting_users_width;	// Space for user list
+	if (sp.content_height < board_width) board_width = sp.content_height;
 	unsigned board_height = board_width;
 	const unsigned SVG_BOARD_WIDTH=1000;	// SVG viewbox specs
 	const unsigned SVG_BOARD_HEIGHT=1000;
@@ -1297,8 +1311,8 @@ void WHITEBOARD::execstep (
 			}
 			v.val += "</div>\n";
 			// Board
-			v.val += string_f("<div class=webtable id=%sdoc_whiteboard >\n",val);
-			v.val += string_f("<div id='text-%s' style='width:%u;height:%u;'"
+			v.val += string_f("<div class=webtable id=%sdoc_whiteboard style='display:flex; flex-flow:row;' >\n",val);
+			v.val += string_f("<div id='text-%s' style='flex:0 0 auto;width:%u;height:%u;border:1px solid black;margin-left: auto; margin-right: auto;'"
 				" onkeydown='gamepress(event);return false;'"
 				" tabindex=0 >\n",gameid.c_str(),board_width,board_height);
 			v.val += string_f("<svg id='board-%s' viewbox='0 0 %u %u'"
@@ -1355,6 +1369,7 @@ void WHITEBOARD::execstep (
 			</call>
 			v.val += "</svg>\n";
 			v.val += "</div>\n";
+			draw_waiting_users(v.val,waiting_users_width,board_height,"flex:0 0 auto;");
 			v.val += "</div>\n";
 			// Status line
 			v.val += "<div id=tab_form>\n";

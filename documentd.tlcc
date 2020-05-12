@@ -278,7 +278,7 @@ void documentd_parsefields (const char *val, vector<VARVAL> &fields)
 
 GAME::~GAME()
 {
-	for (auto fd:notification_fds) close (fd);
+	for (auto &n:notification_fds) close (n.first);
 }
 void GAME::appendchat(PARAM_STRING line, string &notify)
 {
@@ -298,9 +298,9 @@ void GAME::add_notification (PARAM_STRING script)
 	if (script.ptr[0] != '\0'){
 		notifications.emplace_back(script,sequence);
 		size_t len_script = strlen(script.ptr);
-		for (auto fd:notification_fds){
+		for (auto &n:notification_fds){
 			total_notify_size += len_script;
-			documentd_client_rep_waitevent(fd,true,"",script,sequence);
+			documentd_client_rep_waitevent(n.first,true,"",script,sequence);
 		}
 		notification_fds.clear();
 		sequence++;
@@ -308,13 +308,66 @@ void GAME::add_notification (PARAM_STRING script)
 		while (notifications.size() > 10) notifications.erase(notifications.begin());
 	}
 }
-void GAME::add_notification_fd(int fd)
+void GAME::add_notification_fd(int fd, const char *username)
 {
-	notification_fds.insert(fd);
+	notification_fds[fd] = username;
 }
 int GAME::del_notification_fd(int fd)
 {
 	return notification_fds.erase(fd) > 0 ? 0 : -1;
+}
+/*
+	Returnt the list of users waiting for event (for that game/document)
+*/
+std::set<string> GAME::get_waiting_users()
+{
+	set<string> ret;
+	for (auto &n:notification_fds){
+		ret.insert (n.second);
+	}
+	return ret;
+}
+std::string GAME::format_draw_waiting (const std::set<std::string> &waitings)
+{
+	string line;
+	line = "draw_waiting([";
+	const char *sep = "";
+	for (auto &w:waitings){
+		line += string_f("%s'%s'",sep,w.c_str());
+		sep = ",";
+	}
+	line += "]);\n";
+	return line;
+}
+
+void GAME::draw_waiting_users(string &lines, unsigned width, unsigned height, const char *style)
+{
+	lines += string_f("<div id=users-%s style='%swidth:%u;height:%u;overflow: hidden;' >\n"
+		,gameid.c_str(),style,width,height);
+	lines += "</div>\n";
+	lines += "<script>\n";
+	lines += "function draw_waiting(users){\n";
+	lines += string_f("\tvar elm = document.getElementById('users-%s');\n",gameid.c_str());
+	lines += "\tvar txt = '';\n";
+	lines += "\tfor (var i=0; i<users.length; i++){\n";
+	lines += string_f("\t\ttxt += '<img style=\"border-radius: 50%%;\" width=%u src=/index.hc?webstep=5&image=/projects/'+users[i] + '/public/mini-photo.jpg><br>\\n';\n"
+		,width-4);
+	lines += "\t}\n";
+	lines += "\telm.innerHTML = txt;\n";
+	lines += "}\n";
+	lines += format_draw_waiting(get_waiting_users());
+	lines += "</script>\n";
+	has_waiting_users = true;
+}
+void GAME::update_waiting_users(string &lines)
+{
+	if (has_waiting_users){
+		auto waitings = get_waiting_users();
+		if (waitings != last_waitings){
+			lines += format_draw_waiting(waitings);
+			last_waitings = waitings;
+		}
+	}
 }
 
 const char *GAME::locate_event (unsigned &sequence)
@@ -380,6 +433,8 @@ static bool documentd_playstep (
 		for (auto r = res.begin(); r != res.end(); ){
 			if (r->var == VAR_NOTIFY){
 				// Notifications are sent using the waitevent system
+				// Check if the connected users list must be updated.
+				game->update_waiting_users(r->val);
 				notify_size += r->val.size();
 				if (r->val.size() > 0) game->add_notification(r->val);
 				r = res.erase(r);
@@ -883,6 +938,13 @@ int main (int argc, char *argv[])
 				}
 			}
 		</f>
+		<f idle>
+			for (auto &g:glocal.games){
+				string line;
+				g.second->update_waiting_users(line);
+				if (line.size() > 0) g.second->add_notification(line);
+			}
+		</f>
 		<f receive>
 			debug_printf (D_PROTO,"receive line: %s\n",line);
 			HANDLE_INFO *c = (HANDLE_INFO*)info.data;
@@ -1255,7 +1317,7 @@ int main (int argc, char *argv[])
 							total_notify_size += strlen(script);
 							rep_waitevent (true,"",script,sequence);
 						}else{
-							game->add_notification_fd(no);
+							game->add_notification_fd(no,username);
 						}
 					}
 				</f>
