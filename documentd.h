@@ -243,6 +243,7 @@ public:
 	void add_notification_fd(int fd, const char *username);
 	std::set<std::string> get_waiting_users();
 	void update_waiting_users(std::string &lines);
+	bool waiting_user(const char *username);
 	int del_notification_fd(int fd);
 	const char *locate_event (unsigned &sequence);
 	void setgameid(PARAM_STRING _gameid){

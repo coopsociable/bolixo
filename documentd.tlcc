@@ -359,11 +359,22 @@ void GAME::draw_waiting_users(string &lines, unsigned width, unsigned height, co
 	lines += "</script>\n";
 	has_waiting_users = true;
 }
+/*
+	Return true if this username is part of the last update_waiting_user() call.
+*/
+bool GAME::waiting_user(const char *username)
+{
+	return last_waitings.count(username) > 0;
+}
+/*
+	Format the update if needed (because the connected users list has changed
+*/
 void GAME::update_waiting_users(string &lines)
 {
 	if (has_waiting_users){
 		auto waitings = get_waiting_users();
 		if (waitings != last_waitings){
+tlmp_warning ("waiting != last_waitings");
 			lines += format_draw_waiting(waitings);
 			last_waitings = waitings;
 		}
@@ -1318,6 +1329,11 @@ int main (int argc, char *argv[])
 							rep_waitevent (true,"",script,sequence);
 						}else{
 							game->add_notification_fd(no,username);
+							if (!game->waiting_user(username)){
+								string line;
+								game->update_waiting_users(line);
+								game->add_notification(line);
+							}
 						}
 					}
 				</f>
