@@ -761,6 +761,11 @@ static void bod_sendphoto (CONNECT_HTTP_INFO &hcon, PARAM_STRING session, const 
 	glocal name;
 	glocal const char *session = session.ptr;
 	string fpath = string_f("/projects/%s/public/%s",user,name);
+	glocal.entry.is_admin = true;
+	#if 0
+		int ok = fs_findentry(fpath,glocal.entry,true,"");
+		tlmp_warning ("fpath=%s %d msg=%s",fpath.c_str(),ok,glocal.entry.msg.c_str());
+	#endif
 	if (fs_findentry(fpath,glocal.entry,true,"") != -1
 		&& bolixo_isfile(glocal.entry.type)){
 		<call sql_query>("select content,title,signature,filetype from files where id=%d and modified='%s'"
@@ -843,7 +848,7 @@ static void bod_publish(
 }
 </mod>
 /*
-	Record the email of a user to the bolixo.org directory to simply login
+	Record the email of a user to the bolixo.org directory to simplify login
 */
 <mod>
 static void bod_record_email(
@@ -856,7 +861,7 @@ static void bod_record_email(
 	CONNECT_HTTP_INFO hcon;
 	if (nonstrict) hcon.setnonstrictmode();
 	if (hcon.init(dirserver)==-1){
-		tlmp_error ("bod_publish: CONNECT_HTTP_INFO::init failed: dirserver=%s\n",dirserver);
+		tlmp_error ("bod_record_email: CONNECT_HTTP_INFO::init failed: dirserver=%s\n",dirserver);
 	}else{
 		hcon.setpageapi("bolixoapi");
 		string session;

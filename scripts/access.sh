@@ -378,42 +378,60 @@ elif [ "$1" = "doc-chess-dump" ] ; then # test: help debug chess game
 elif [ "$1" = "doc-whiteboard" ] ; then # test: various test on the whiteboard document
 	echo boBOWHIT >/tmp/test.white
 	DOCNAME=/projects/jacques-A/public/test.white
-	addelm(){
-		./bofs documents --noscripts --playstep --docname $DOCNAME --step "addelm=$1 $1 $2 $3 $4 $5 $6"
-	}
-	resetsel(){
-		./bofs documents --noscripts --playstep --docname $DOCNAME --step "resetselect=0"
-		./bofs documents --noscripts --playstep --docname $DOCNAME --step "resetselect=1"
-		./bofs documents --noscripts --playstep --docname $DOCNAME --step "resetselect=2"
-	}
-	labelselect(){
-		./bofs documents --noscripts --playstep --docname $DOCNAME --step "labelselect=$1 $2"
-	}
-	selectline(){
-		./bofs documents --noscripts --playstep --docname $DOCNAME --step "selectline=$1"
-	}
-	labeldelete(){
-		./bofs documents --noscripts --playstep --docname $DOCNAME --step "labeldelete=$1"
-	}
-	connect(){
-		resetsel
-		labelselect $1 1
-		labelselect $2 0
-		selectline $3
-	}
+	. scripts/whiteboard-help.sh
 	./bofs cp /tmp/test.white bo:/$DOCNAME
-	./bofs documents --noscripts --playstep --docname $DOCNAME --step resetgame=
+	resetdocument
 	#addelm=label "text" type x y width height
-	# Add 2 circle and connect them with 2 arrows
-	addelm elm1 ellipse 100 100 50 50
-	addelm elm2 ellipse 100 200 50 50
-	addelm elm3 ellipse 100 300 50 50
-	# Connect first circle to second
+	# Add 3 circle and connect them with 2 arrows
+	echo "#### Add 3 circles"
+	addelm elm1 elm1 ellipse 100 100 50 50
+	addelm elm2 elm2 ellipse 100 200 50 50
+	addelm elm3 elm3 ellipse 100 300 50 50
+	docdump
+	echo "#### Connect first circle to second"
 	connect elm1 elm2 1
-	# Connect second circle to third
+	docdump
+	echo "#### Connect second circle to third"
 	connect elm2 elm3 1
-	# Erase the middle circle
+	docdump
+	echo "#### Erase the middle circle"
 	labeldelete elm2
+	docdump
+elif [ "$1" = "infowrite" ] ; then # test: publish info to directory server
+	USER=jacques-A
+	echo Create mini-photo.jpg and photo.jpg for all users
+	for letter in A B C Z
+	do
+		if [ -x /usr/bin/convert ]; then
+			convert -font helvetica -size 40x40 xc:white -pointsize 37 -draw "text 5,32 '$letter'" /tmp/mini-photo.jpg
+			./bofs -u jacques-$letter cp /tmp/mini-photo.jpg bo://projects/jacques-$letter/public/mini-photo.jpg
+			convert -font helvetica -size 100x100 xc:white \
+                                -stroke black -fill blue -draw "roundrectangle 5,5 95,95 10,10" \
+				-pointsize 50 -stroke black -fill red -draw "text 35,65 $letter" /tmp/photo.jpg
+			./bofs -u jacques-$letter cp /tmp/photo.jpg bo://projects/jacques-$letter/public/photo.jpg
+		else
+			echo no convert utility, install ImangeMagick
+		fi
+	done
+	for ((i=0; i<2; i++))
+	do
+		OPTPHOTO=
+		if [ "$i" = 1 ] ; then
+			OPTPHOTO="--publish_photo --publish_mini_photo"
+		fi
+		./bofs -u $USER bolixoapi \
+			--publish \
+			--fullname	"$USER $i fullname" \
+			--city		"$USER $i city" \
+			--state		"$USER $i state" \
+			--country	"$USER $i country" \
+			--publish_bosite \
+			--website	"$USER $i website" \
+			--interest	"$USER $i interest so far" \
+			$OPTPHOTO infowrite
+		echo "select * from users where name='$USER';" | ./test.sh bolixo
+		ls -l /var/lib/bolixod/test1.bolixo.org/$USER-*
+	done
 elif [ "$1" = "remote-member" ] ; then # test: create groups with remote members
 	USER=jacques-A
 	echo "#### Create group remote, add 1 local member and 2 remote members"
