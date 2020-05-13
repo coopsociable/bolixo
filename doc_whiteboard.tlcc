@@ -37,6 +37,7 @@
 #include "bolixo.h"
 #include "proto/bod_client.protodef"
 #include "documentd.h"
+#include "documentd_menu.h"
 #include "bolixo.m"
 
 using namespace std;
@@ -1191,122 +1192,27 @@ void WHITEBOARD::execstep (
 					specs.margin_top = 4;
 					specs.margin_bottom = 4;
 				}
+				WHITEBOARD_MENU menu(specs);
 				documentd_button_start(v.val,gameid);
-				string svg_clear= string_f(
-					"<svg width=%upx height=%upx>"
-					"<rect stroke='black' fill=white stroke-width=1 rx=%u ry=%u x=%u y=%u width=%u height=%u />"
-					"</svg>"
-					,specs.width,specs.width
-					,specs.radius-1,specs.radius-1,2,2,specs.width-4,specs.width-4);
-				documentd_bar_button (v.val,BUTTON_NEWDOC,svg_clear,specs,false);
+				documentd_bar_button (v.val,BUTTON_NEWDOC,menu.svg_clear,specs,false);
 				documentd_button_space(v.val);
-				string svg_text = string_f(
-					"<svg width=%upx height=%upx>"
-					"<circle stroke='black' fill=black stroke-width=1 cx=%u cy=%u r=2 />"
-					"<text X=%u Y=%u style='stroke:black;fill:black'>T</text>"
-					"</svg>"
-					,specs.width,specs.width
-					,specs.width/5,specs.width/2
-					,specs.width/5*2,3*specs.width/5);
-				documentd_bar_button (v.val,BUTTON_TEXT,svg_text,specs,false);
-				string svg_ellipse= string_f(
-					"<svg width=%upx height=%upx>"
-					"<circle stroke='black' fill=none stroke-width=1 cx=%u cy=%u r=%u />"
-					"</svg>"
-					,specs.width,specs.width
-					,specs.width/2,specs.width/2,specs.width/2-4);
-				documentd_bar_button (v.val,BUTTON_ELLIPSE,svg_ellipse,specs,false);
-				string svg_rect= string_f(
-					"<svg width=%upx height=%upx>"
-					"<rect stroke='black' fill=none stroke-width=1 rx=%u ry=%u x=%u y=%u width=%u height=%u />"
-					"</svg>"
-					,specs.width,specs.width
-					,specs.radius-1,specs.radius-1,4,4,specs.width-8,specs.width-8);
-				documentd_bar_button (v.val,BUTTON_RECT,svg_rect,specs,false);
-				string svg_line= string_f(
-					"<svg width=%upx height=%upx>"
-					"<line stroke='black' fill=none stroke-width=1 x1=%u y1=%u x2=%u y2=%u />"
-					"</svg>"
-					,specs.width,specs.width
-					,4,4,specs.width-4,specs.width-4);
-				documentd_bar_button (v.val,BUTTON_LINE,svg_line,specs,false);
+				documentd_bar_button (v.val,BUTTON_TEXT,menu.svg_text,specs,false);
+				documentd_bar_button (v.val,BUTTON_ELLIPSE,menu.svg_ellipse,specs,false);
+				documentd_bar_button (v.val,BUTTON_RECT,menu.svg_rect,specs,false);
+				documentd_bar_button (v.val,BUTTON_LINE,menu.svg_line,specs,false);
 				if (documentd_getflag("whiteboard_handline")!=nullptr){
-					string svg_handline= string_f(
-						"<svg width=%upx height=%upx>"
-						"<path stroke='black' fill=none stroke-width=3 d='M%u,%u l%u,%u l%u,%u l%u,%u l%u,%u' />"
-						"</svg>"
-						,specs.width,specs.width
-						,4,4, 4,5, 5,4, 4,5, 5,4);
-					documentd_bar_button (v.val,BUTTON_HANDLINE,svg_handline,specs,false);
+					documentd_bar_button (v.val,BUTTON_HANDLINE,menu.svg_handline,specs,false);
 				}
 				documentd_button_space(v.val);
-				string svg_select = string_f(
-					"<svg width=%upx height=%upx>"
-					"<g transform=rotate(45,0,0) >"
-					"<path stroke='black' fill=none stroke-width=2 d='M5,0 l%u,0 l-2,-2 l7,2 l-7,2 l2,-2' />"
-					"</g>"
-					"</svg>"
-					,specs.width,specs.width
-					,specs.width-4-5);
-				documentd_bar_button (v.val,BUTTON_SELECT,svg_select,specs,pref.selecting);
-				string svg_star= string_f(
-					"<svg width=%upx height=%upx>"
-					"<circle stroke='black' fill=none stroke-width=1 cx=%u cy=%u r=3 />"
-					"<circle stroke='black' fill=none stroke-width=1 cx=%u cy=%u r=3 />"
-					"<circle stroke='black' fill=none stroke-width=1 cx=%u cy=%u r=3 />"
-					"</svg>"
-					,specs.width,specs.width
-					,specs.width/4,2*specs.width/3
-					,2*specs.width/4,specs.width/3
-					,3*specs.width/4,2*specs.width/3);
-				documentd_bar_button (v.val,BUTTON_STARMODE,svg_star,specs,pref.starmode);
-				string svg_imbed= string_f(
-					"<svg width=%upx height=%upx>"
-					"<rect stroke='black' fill=none stroke-width=1 rx=%u ry=%u x=%u y=%u width=%u height=%u />"
-					"<circle stroke='black' fill=none stroke-width=1 cx=%u cy=%u r=3 />"
-					"<circle stroke='black' fill=none stroke-width=1 cx=%u cy=%u r=3 />"
-					"<circle stroke='black' fill=none stroke-width=1 cx=%u cy=%u r=3 />"
-					"</svg>"
-					,specs.width,specs.width
-					,specs.radius-1,specs.radius-1,2,2,specs.width-4,specs.width-4
-					,specs.width/4,specs.width/2
-					,2*specs.width/4,specs.width/2
-					,3*specs.width/4,specs.width/2);
-				documentd_bar_button (v.val,BUTTON_IMBEDMODE,svg_imbed,specs,pref.imbedmode);
+				documentd_bar_button (v.val,BUTTON_SELECT,menu.svg_select,specs,pref.selecting);
+				documentd_bar_button (v.val,BUTTON_STARMODE,menu.svg_star,specs,pref.starmode);
+				documentd_bar_button (v.val,BUTTON_IMBEDMODE,menu.svg_imbed,specs,pref.imbedmode);
 
 				// Actions on selected elements
 				documentd_button_space(v.val);
-				string svg_dashrect= string_f(
-					"<svg width=%upx height=%upx>"
-					"<rect stroke='black' fill=none stroke-dasharray='5,5' stroke-width=1 rx=%u ry=%u x=%u y=%u width=%u height=%u />"
-					"</svg>"
-					,specs.width,specs.width
-					,specs.radius-1,specs.radius-1,4,4,specs.width-8,specs.width-8);
-				documentd_bar_button (v.val,BUTTON_BOXTYPE,svg_dashrect,specs,false);
-				string svg_linetype= string_f(
-					"<svg width=%upx height=%upx>"
-					"<line stroke='black' fill=none stroke-width=1 x1=%u y1=%u x2=%u y2=%u />"
-					"<line stroke='black' fill=none stroke-dasharray='5,5' stroke-width=1 x1=%u y1=%u x2=%u y2=%u />"
-					"<line stroke='black' fill=none stroke-dasharray='2,5' stroke-width=1 x1=%u y1=%u x2=%u y2=%u />"
-					"</svg>"
-					,specs.width,specs.width
-					,4,specs.width/4,specs.width-4,specs.width/4
-					,4,specs.width/2,specs.width-4,specs.width/2
-					,4,3*specs.width/4,specs.width-4,3*specs.width/4);
-				documentd_bar_button (v.val,BUTTON_LINETYPE,svg_linetype,specs,false);
-				string svg_textpos= string_f(
-					"<svg width=%upx height=%upx>"
-					"<text X=%u Y=%u style='stroke:black;fill:black;font-size:0.7em'>T</text>"
-					"<text X=%u Y=%u style='stroke:black;fill:black;font-size:0.7em'>T</text>"
-					"<text X=%u Y=%u style='stroke:black;fill:black;font-size:0.7em'>T</text>"
-					"<text X=%u Y=%u style='stroke:black;fill:black;font-size:0.7em'>T</text>"
-					"</svg>"
-					,specs.width,specs.width
-					,specs.width/6,specs.width/2+2
-					,specs.width/2-2,specs.width/3+2
-					,specs.width/2-2,5*specs.width/6
-					,4*specs.width/6,specs.width/2+2);
-				documentd_bar_button (v.val,BUTTON_TEXTPOS,svg_textpos,specs,false);
+				documentd_bar_button (v.val,BUTTON_BOXTYPE,menu.svg_dashrect,specs,false);
+				documentd_bar_button (v.val,BUTTON_LINETYPE,menu.svg_linetype,specs,false);
+				documentd_bar_button (v.val,BUTTON_TEXTPOS,menu.svg_textpos,specs,false);
 				documentd_button_end(v.val);
 			}else{
 				v.val += "<div id=tab_form style='margin-top:5; margin-bottom:5; background-color: lightgray;'>\n";
@@ -1487,7 +1393,7 @@ void WHITEBOARD::execstep (
 							}else{
 								e->selmode = SEL_NONE;
 							}
-						}else if (ctrlkey){
+						}else if (ctrlkey && !is_any_of(e->type,TYPE_LINE,TYPE_HANDLINE)){
 							if (e->selmode != SEL_STAR){
 								e->selmode = SEL_STAR;
 							}else{
@@ -1499,7 +1405,7 @@ void WHITEBOARD::execstep (
 					}else if (pref.starmode){
 						e->selmode = e->selmode == SEL_STAR ? SEL_NONE : SEL_STAR;
 					}else if (pref.imbedmode){
-						if (e->selmode == SEL_NONE){
+						if (e->selmode != SEL_IMBED){
 							resetsel(SEL_IMBED,notify_ids);	// Only one SEL_IMBED at once
 							e->selmode = SEL_IMBED;
 						}else{

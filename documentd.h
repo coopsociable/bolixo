@@ -317,15 +317,8 @@ void documentd_button_end (std::string &line);
 void documentd_button_space (std::string &line);
 void documentd_button_label (std::string &line, PARAM_STRING txt);
 void documentd_button (std::string &lines, unsigned command, PARAM_STRING txt, bool highlit);
-struct DOC_BUTTON_SPECS{
-	unsigned width = 25;
-	unsigned radius = 4;
-	unsigned margin_left = 5;
-	unsigned margin_top = 2;
-	unsigned margin_bottom = 2;
-};
-void documentd_button (std::string &lines, unsigned command, PARAM_STRING txt, const DOC_BUTTON_SPECS &specs, bool highlit);
-void documentd_bar_button (std::string &lines, unsigned command, PARAM_STRING txt, const DOC_BUTTON_SPECS &specs, bool highlit);
+void documentd_button (std::string &lines, unsigned command, PARAM_STRING txt, const class DOC_BUTTON_SPECS &specs, bool highlit);
+void documentd_bar_button (std::string &lines, unsigned command, PARAM_STRING txt, const class DOC_BUTTON_SPECS &specs, bool highlit);
 void documentd_forcerefresh (std::vector<VARVAL> &res);
 void documentd_setchanges (std::vector<VARVAL> &res);
 void documentd_chat(std::string &lines, PARAM_STRING username, const std::vector<CHATLINE> &content, unsigned width, unsigned height);

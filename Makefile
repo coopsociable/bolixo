@@ -266,8 +266,8 @@ proto/bolixoapi.protoh: proto/bolixoapi.proto proto/bolixod_client.protoh
 		--protoch proto/bolixoapi.protoch proto/bolixoapi.proto >proto/bolixoapi.protoh
 
 DOCGAMES=doc_tictacto.o doc_sudoku.o doc_wordproc.o doc_checkers.o doc_chess.o doc_whiteboard.o
-documentd: documentd.o _dict.o ${DOCGAMES}
-	cctlcc -Wall $(OPTIONS) documentd.o ${DOCGAMES} _dict.o -o documentd $(LIBS) -lfreetype -lm
+documentd: documentd.o documentd_menu.o _dict.o ${DOCGAMES}
+	cctlcc -Wall $(OPTIONS) documentd.o documentd_menu.o ${DOCGAMES} _dict.o -o documentd $(LIBS) -lfreetype -lm
 
 documentd.o: documentd.tlcc documentd.h proto/documentd_control.protoh proto/documentd_client.protoh 
 	cctlcc -Wall $(OPTIONS) `freetype-config --cflags` -c documentd.tlcc -o documentd.o
@@ -281,8 +281,11 @@ doc_chess.o: doc_chess.tlcc documentd.h proto/documentd_chess.protoh
 doc_wordproc.o: doc_wordproc.tlcc documentd.h proto/documentd_wordproc.protoh
 	cctlcc -Wall $(OPTIONS) -c doc_wordproc.tlcc -o doc_wordproc.o
 
-doc_whiteboard.o: doc_whiteboard.tlcc documentd.h proto/documentd_whiteboard.protoh
+doc_whiteboard.o: doc_whiteboard.tlcc documentd.h documentd_menu.h proto/documentd_whiteboard.protoh
 	cctlcc -Wall $(OPTIONS) -c doc_whiteboard.tlcc -o doc_whiteboard.o
+
+documentd_menu.o: documentd_menu.tlcc documentd_menu.h
+	cctlcc -Wall $(OPTIONS) -c documentd_menu.tlcc -o documentd_menu.o
 
 doc_sudoku.o: doc_sudoku.tlcc documentd.h proto/documentd_sudoku.protoh
 	cctlcc -Wall $(OPTIONS) -c doc_sudoku.tlcc -o doc_sudoku.o
