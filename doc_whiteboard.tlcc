@@ -401,6 +401,9 @@ void WHITEBOARD::save(DOC_WRITER &w, bool)
 	}
 	documentd_whiteboard_elements (&w,elements);
 	documentd_whiteboard_baseelms (&w,baseelms);
+	vector<WHITEBOARD_CHAT> schat;
+	documentd_copychat (schat,chat);
+	documentd_whiteboard_chat(&w,schat);
 }
 <mod>
 void WHITEBOARD::load(DOC_READER &r, std::string &msg)
@@ -410,6 +413,8 @@ void WHITEBOARD::load(DOC_READER &r, std::string &msg)
 	glocal revision;
 	glocal elms;
 	glocal baseelms;
+	glocal chat;
+	chat.clear();
 	<call documentd_whiteboard>(&r);
 	<f header>
 		glocal.revision = revision;
@@ -438,6 +443,9 @@ void WHITEBOARD::load(DOC_READER &r, std::string &msg)
 	</f>
 	<f baseelms>
 		glocal.baseelms = baseelms;
+	</f>
+	<f chat>
+		for (auto l:lines) glocal.chat.emplace_back(l.time,l.line);
 	</f>
 	<f invalid>
 		tlmp_error ("Invalid record while reading whiteboard file: %s",msg);
@@ -1283,9 +1291,12 @@ void WHITEBOARD::execstep (
 			// Status line
 			v.val += "<div id=tab_form>\n";
 			v.val += string_f("<div id=msg-%s style=color:black>&nbsp;</div>\n",gameid.c_str());
+			documentd_chat (v.val,username,chat,sp.width-20,sp.mobile ? 200 : 100);
 			v.val += "</div>\n";
 			res.emplace_back(v);
 		}
+	}else if (strcmp(var,"chat")==0){
+		appendchat(val,notify_var.val,res);
 	}else if (strcmp(var,REQ_GETFIELDS)==0){
 		VARVAL var;
 		var.var = VAR_FIELDS;
