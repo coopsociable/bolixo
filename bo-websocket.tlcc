@@ -539,21 +539,13 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 				const char *pt;
 				auto p = glocal.messages.begin();
 				if (is_start_any_of(*p,pt,"gameid=")){
-					vector<string> tb;
-					if (str_splitlineq(pt,tb)!=7){
+					auto tb = str_splitlineq(pt);
+					if (tb.size()!=7){
 						tlmp_warning ("Invalid gameid spec: %s",p->c_str());
 						bo_websocket_send (&glocal.TCPSERVER,no,1,"callrefresh();");
 						endserver = true;
 					}else{
-						// Remove quotes around the gameid
-						auto &tb0 = tb[0];
-						if (tb0[0] == '"') tb0 = tb0.substr(1);
-						size_t last = tb0.size();
-						if (last > 0){
-							last--;
-							if (tb0[last] == '"') tb0.resize(last);
-						}
-						glocal.gameid = tb0;
+						glocal.gameid = tb[0];
 						glocal.sp.width = atoi(tb[1].c_str());
 						glocal.sp.height = atoi(tb[2].c_str());
 						glocal.sp.content_width = atoi(tb[3].c_str());
