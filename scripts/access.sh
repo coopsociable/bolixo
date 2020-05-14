@@ -413,12 +413,13 @@ elif [ "$1" = "infowrite" ] ; then # test: publish info to directory server
 			echo no convert utility, install ImangeMagick
 		fi
 	done
-	for ((i=0; i<2; i++))
+	for ((i=0; i<3; i++))
 	do
 		OPTPHOTO=
 		if [ "$i" = 1 ] ; then
 			OPTPHOTO="--publish_photo --publish_mini_photo"
 		fi
+		echo "#### test $i OPTPHOTO=$OPTPHOTO"
 		./bofs -u $USER bolixoapi \
 			--publish \
 			--fullname	"$USER $i fullname" \
@@ -430,7 +431,7 @@ elif [ "$1" = "infowrite" ] ; then # test: publish info to directory server
 			--interest	"$USER $i interest so far" \
 			$OPTPHOTO infowrite
 		echo "select * from users where name='$USER';" | ./test.sh bolixo
-		ls -l /var/lib/bolixod/test1.bolixo.org/$USER-*
+		ls /var/lib/bolixod/test1.bolixo.org/$USER-*
 	done
 elif [ "$1" = "remote-member" ] ; then # test: create groups with remote members
 	USER=jacques-A
