@@ -20,6 +20,9 @@
 #include "document.h"
 #include "steps.h"
 #include <string>
+#include "../documentd_menu.h"
+
+static DOC_BUTTON_SPECS specs;
 
 using namespace std;
 
@@ -1007,6 +1010,183 @@ void bolixo_doc_fr (DOCUMENT_POINTER &docpointer, DOC_ID &jump, const char *user
 							Si vous êtes en situation d'échec et que tous les coups possibles exposent votre roi à une attaque directe,
 							vous avez perdu. Cette condition s'appelle <b>échec et mat</b>. Si par contre, vous n'êtes pas en situation d'échec,
 							mais que tous les coups possibles exposent votre roi, c'est alors une partie nulle. Cette condition s'appelle <b>pat</b>.
+						</->
+					</->
+					<- section("Tableau blanc",section_whiteboard);>
+						Un tableau blanc est un outil collaboratif permettant d'exprimer des idées à l'aide d'énumérations et de graphes. Les tableaux blancs
+						sont souvent utilisés durant les réunions lors de séances de remue-méninges.
+						Les dessins sont souvent créés pendant la réunion. Plusieurs personnes contribuent généralement à ces dessins.
+						Le but n'est pas de produire un très beau dessin, mais plutôt de s'assurer que tous comprennent le projet.
+						<p>
+						Le tableau blanc Bolixo a les buts suivants:
+						<p>
+						<ul>
+						<li>Il doit être très efficace. Les gens dessinent et expliquent en même temps.
+						<li>Les dessins doivent être simples et précis.
+						<li>La majorité des opérations doivent être réalisées sans requérir une attention soutenue de l'auteur. On évite par exemple
+						les sélections dans des menus déroulants.
+						</ul>
+						<p>
+						<center>
+						/- document_clickable_img ("/whiteboard-example-fr.jpg","40%",1);
+						</center>
+						<p>
+						<- section("Présentation");>
+							<center>
+							/- document_clickable_img ("/whiteboard.jpg","40%",1);
+							</center>
+							<p>
+							Le tableau blanc a une barre de menu en haut et un espace de dessin carré (le tableau). Le tableau est carré même si l'écran permettrait
+							d'augmenter sa taille. Comme l'application est multi-utilisateur, il faut s'assurer que tous peuvent visualiser le document
+							au complet, quelles que soient la taille et la forme de l'écran (d'ordinateur).
+							<p>
+							À droite, on retrouve les mini photos des utilisateurs présentement connectés au document. Le dessin est composé
+							d'éléments graphiques (cercles, rectangles, ...) formant des graphes. Chaque élément est dans un des états suivants:
+							<p>
+							<ul>
+							<li>Non sélectionné. Il a un contour noir.
+							<li>Sélectionné. Son contour est rouge. Plusieurs éléments peuvent être sélectionnés simultanément. Les opérations réalisées sont dupliquées
+								sur tous les éléments sélectionnés: changement de taille, déplacement, changement de style, association avec un parent
+								et écriture de texte.
+							<li>Sélectionné comme parent. Son contour est jaune. Plusieurs éléments peuvent être sélectionnés comme parents simultanément.
+								Les éléments sélectionnés (rouge) pourront être connectés/déconnectés à ces parents (jaune).
+							<li>Sélectionné comme parent englobant. Le contour est vert. Un seul élément peut être sélectionné de cette façon.
+								Tous les éléments ajoutés lorsqu'un parent englobant est sélectionné seront associés à ce parent. Lorsque le
+								parent est déplacé, les éléments enfants suivent. Les éléments enfants peuvent être déplacés séparément et peuvent être
+								positionnés à l'extérieur du parent englobant.
+							</ul>
+						</->
+						<- section("Barre de menu");>
+							/- WHITEBOARD_MENU menu(specs);
+							<center>
+							/- document_clickable_img ("/whiteboard-menu.jpg","40%",1);
+							</center>
+							<p>
+							<dl>
+							<dt>
+								/- button (menu.svg_clear,"Efface le tableau");
+								<dd>Efface le dessin. Une confirmation est requise.</dd>
+							<dt>
+								/- button (menu.svg_text,"Ajout d'un élément texte");
+								<dd>Un petit cercle noir apparaît sur le tableau. Vous pouvez inscrire un texte immédiatement.
+									Il apparaîtra à la droite du cercle. Vous pouvez déplacer l'élément en cliquant sur le cercle
+									ou sur le texte.</dd>
+							<dt>
+								/- buttons ({&menu.svg_ellipse,&menu.svg_rect},"Ajout d'un élément circulaire/rectangulaire");
+								<dd>Un cercle ou un carré apparaîtra sur le tableau, sélectionné en rouge. Vous pouvez immédiatement le déplacer, le dimensionner
+									ou inscrire un texte..
+									Notez que les éléments circulaires sont en fait des ellipses. En utilisant la molette de la souris,
+									combiné avec la touche <em>control</em> ou <em>shift</em>, vous pouvez redimensionné horizontalement ou verticalement.
+									Si un parent est sélectionné (jaune), l'élément y est immédiatement attaché. En cliquant avec le bouton central de la souris
+									(la molette), vous pouvez changer la ligne reliant le nouvel élément et le parent.
+								</dd>
+							<dt>
+								/- button (menu.svg_line,"Ajout d'une ligne");
+								<dd>Une ligne courte apparaîtra sur le tableau, présélectionnée. Vous pouvez la déplacer, la dimensionner et inscrire un texte.
+									Les lignes sont dimensionnées en utilisant le bouton gauche de la souris combiné aux touches <em>control</em> et <em>shift</em>.
+									La touche <em>control</em> vous permet de positionner le début de la ligne, tandis que la touche <em>shift</em> permet
+									de positionner la fin de la ligne. Sans l'usage de ces deux touches, la ligne est simplement déplacée.
+								</dd> 
+							<dt>
+								/- button (menu.svg_select,"Mode de sélection général");
+								<dd>Ce mode est couvert dans la section
+								/- tlmpdoc_link(section_whiteboard_operations,"opérations");
+								de ce document.</dd>
+							<dt>
+								/- button (menu.svg_star,"Mode de sélection parent");
+								<dd>Vous pouvez sélectionner un ou plusieurs éléments parents. Les éléments sélectionnés apparaissent avec un contour
+									jaune.
+									Vous pouvez annuler la sélection d'un élément en le resélectionnant. Notez que vous pouvez réaliser la même
+									opération dans le mode général de sélection en cliquant sur un élément tout en appuyant sur la touche
+									<em>control</em>.
+								</dd>
+							<dt>
+								/- button (menu.svg_imbed,"");
+								<dd>Vous pouvez sélectionner un seul élément englobant. Son contour devient vert. Lorsque vous ajoutez de nouveaux éléments,
+									ils sont associés à cet élément englobant.
+									Lorsque vous déplacez un élément englobant, les sous-éléments suivent. Les sous-éléments peuvent être déplacés
+									indépendamment et peuvent même être positionnés a l'extérieur de l'élément englobant.
+									Notez que vous pouvez réaliser la même opération dans le mode général de sélection en cliquant sur un élément tout en
+									appuyant sur les touches <em>control</em> et <em>shift</em>.
+								</dd>
+							</dl>
+						</->
+						<- section("Barre de Menu, styles");>
+							/- WHITEBOARD_MENU menu(specs);
+							<center>
+							/- document_clickable_img ("/whiteboard-menu.jpg","40%",1);
+							</center>
+							<p>
+							<dl>
+							<dt>
+								/- button (menu.svg_dashrect,"Sélectionner l'apparence d'un élément");
+								<dd>Cliquez sur ce bouton pour changer le contour des éléments sélectionnés (rouges).</dd>
+							<dt>
+								/- button (menu.svg_linetype,"Choisir le type de ligne");
+								<dd>Cliquez sur ce bouton pour changer le type de ligne connectant des éléments à leur(s) parent(s). Plusieurs éléments peuvent
+									être sélectionnés (rouges) et plusieurs parents peuvent être sélectionnés (jaunes)
+									Vous pouvez réaliser la même opération en cliquant sur le bouton central de la souris (molette).
+								</dd>
+							<dt>
+								/- button (menu.svg_textpos,"Sélectionner la position des textes");
+								<dd>Vous pouvez déplacer le texte d'un élément à cinq positions: à l'intérieur, en haut, à gauche, en bas ou à droite.
+									Vous pouvez réaliser la même opération en utilisant le bouton central de la souris (molette) tout en tenant
+									la touche <em>control</em>.
+								</dd>
+							</dl>
+						</->
+						<- section("Opérations",section_whiteboard_operations);>
+							<center>
+							/- document_clickable_img ("/whiteboard.jpg","40%",1);
+							</center>
+							<p>
+							Un dessin est composé des éléments suivants:
+							<ul>
+							<li>Éléments graphiques tels des cercles, ellipses, rectangles et lignes.
+							<li>Textes (énumérations).
+							<li>Lignes connectant des éléments parents à des sous-éléments. 
+							</ul>
+							<p>
+							On débute en ajoutant des éléments graphiques via la barre de menu. Dès qu'un élément apparaît sur le tableau,
+							son contour est rouge. Cela indique que l'élément est sélectionné et que vous pouvez le manipuler.
+							<p>
+							<dl>
+							<dt>Dimensionner.
+								<dd>En utilisant la molette de la souris, vous pouvez changer la taille de l'élément. Utilisez la molette tout en appuyant
+								sur la touche <em>shift</em> pour contrôler la hauteur de l'élément. Faites la même chose, mais en appuyant sur la touche
+								<em>control</em> pour changer la largeur de l'élément.
+								</dd>
+							<dt>Ajouter un texte à l'élément.
+								<dd>Vous pouvez inscrire un texte sur l'élément à partir du clavier. Le texte apparaîtra à l'intérieur de l'élément.
+									L'édition est limitée. Vous pouvez utiliser la touche <em>backspace</em> pour retirer le dernier caractère.
+								</dd>
+							<dt>Déplacer l'élément.
+								<dd>Cliquez sur l'élément en utilisant le bouton gauche de la souris et déplacez l'élément sur le tableau.</dd>
+							<dt>Connectez l'élément à un autre élément pour former un graphe.
+								<dd>Si un ou plusieurs éléments parents (jaunes) sont sélectionnés, cliquez sur le bouton central de la souris (molette)
+									pour connecter les éléments sélectionnés (rouges) aux parents. Vous pouvez cliquer à nouveau pour changer le type
+									de ligne. Après avoir affiché tous les types de lignes, les lignes sont simplement effacées. Cliquez à nouveau
+									et le premier type de ligne sera affiché. Ceci vous permet de connecter, sélectionner le type de ligne et déconnecter
+									les éléments sélectionnés.
+								</dd>
+							<dt>Déplacer le texte.
+								<dd>Vous pouvez placer un texte associé à un élément graphique à l'intérieur ou autour de l'élément. En cliquant sur le
+									bouton central de la souris (molette) tout en appuyant sur la touche <em>control</em>, vous déplacer
+									le texte à l'intérieur ou autour de l'élément.
+								</dd>
+							<dt>Effacer un ou plusieurs éléments.
+								<dd>Utilisez la combinaison de touches <em>shift delete</em> du clavier pour effacer les éléments sélectionnés.</dd>
+							<dt>Dupliquer un élément.
+								<dd>Appuyez sur la touche <em>Enter</em> et une copie apparaîtra sous l'élément sélectionné. L'élément sera
+									désélectionné et la copie sera sélectionnée.
+									Vous pourrez commencer à éditer le nouvel élément immédiatement.
+									Si vous utilisez la combinaison <em>shift-enter</em>, le nouvel élément apparaîtra
+									à la droite plutôt que sous l'élément sélectionné.
+								</dd>
+							</ul>
+							<p>
+							Lorsque vous ajoutez un élément, soit par duplication ou via la barre de menu, si un ou plusieurs parents sont sélectionnés
+							une ligne sera créée entre les parents et le nouvel élément.
 						</->
 					</->
 				</->

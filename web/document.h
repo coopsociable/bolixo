@@ -18,6 +18,7 @@ EXTERN DOC_ID section_checker;
 EXTERN DOC_ID section_chess;
 EXTERN DOC_ID section_wordproc;
 EXTERN DOC_ID section_whiteboard;
+EXTERN DOC_ID section_whiteboard_operations;
 EXTERN DOC_ID section_contacts;
 EXTERN DOC_ID section_contact_req;
 EXTERN DOC_ID section_mails;
@@ -58,3 +59,6 @@ void document_clickable_img (PARAM_STRING url, const char *image_width, unsigned
 void document_clickable_link (PARAM_STRING url, PARAM_STRING txt);
 extern bool document_button_display_only;
 void document_draw_menu();
+void button(const std::string &svg, const char *txt);
+void buttons(const std::vector<const string*> &svgs, const char *txt);
+

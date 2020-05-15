@@ -22,6 +22,8 @@ index.hc: index.os /usr/lib64/trlitool/trlitool.pic.a util.os webtabs.os documen
 		$@ $< ../_dict.os /usr/lib64/trlitool/trlitool.pic.a util.os techdoc.os document.os document_fr.os \
 		/usr/lib/tlmp/lib/tlmpdoc.so /usr/lib/tlmp/lib/tlmpwebsql.so -lcrypto
 
+document.os: document.hcc ../documentd_menu.h
+
 %.os: %.hcc /usr/include/tlmp/tlmpweb.h /usr/include/tlmp/tlmpweb.p \
 	 /usr/include/tlmp/tlmpdoc.h /usr/include/tlmp/tlmpdoc.p
 	@echo tlmpwebcc $< $@

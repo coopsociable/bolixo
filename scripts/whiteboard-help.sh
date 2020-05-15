@@ -1,29 +1,45 @@
 #!/usr/bin/sh
 # Simple functions to help create white board from bash
+
+if [ "$DOCNAME" = "" ] ; then
+	echo Variable DOCNAME is not defined
+	echo DOCNAME is the path of the document: /project/user/project-name/documentname
+	exit 1
+fi
+BOFS=/usr/bin/bofs
+if [ -x ./bofs ] ; then
+	BOFS=./bofs
+fi
+# Create a white board
+createdocument(){
+	echo boBOWHIT >/tmp/test.white
+	$BOFS cp /tmp/test.white bo:/$DOCNAME
+}
+# Erase all elements from the document
 resetdocument(){
-	./bofs documents --noscripts --playstep --docname $DOCNAME --step resetgame=
+	$BOFS documents --noscripts --playstep --docname $DOCNAME --step resetgame=
 }
 # addelm label text type x y width height
 addelm(){
-	./bofs documents --noscripts --playstep --docname $DOCNAME --step "addelm=$1 '$2' $3 $4 $5 $6 $7"
+	$BOFS documents --noscripts --playstep --docname $DOCNAME --step "addelm=$1 '$2' $3 $4 $5 $6 $7"
 }
 # Reset all selections
 resetsel(){
-	./bofs documents --noscripts --playstep --docname $DOCNAME --step "resetselect=0"
-	./bofs documents --noscripts --playstep --docname $DOCNAME --step "resetselect=1"
-	./bofs documents --noscripts --playstep --docname $DOCNAME --step "resetselect=2"
+	$BOFS documents --noscripts --playstep --docname $DOCNAME --step "resetselect=0"
+	$BOFS documents --noscripts --playstep --docname $DOCNAME --step "resetselect=1"
+	$BOFS documents --noscripts --playstep --docname $DOCNAME --step "resetselect=2"
 }
 labelselect(){
-	./bofs documents --noscripts --playstep --docname $DOCNAME --step "labelselect=$1 $2"
+	$BOFS documents --noscripts --playstep --docname $DOCNAME --step "labelselect=$1 $2"
 }
 selectline(){
-	./bofs documents --noscripts --playstep --docname $DOCNAME --step "selectline=$1"
+	$BOFS documents --noscripts --playstep --docname $DOCNAME --step "selectline=$1"
 }
 labeldelete(){
-	./bofs documents --noscripts --playstep --docname $DOCNAME --step "labeldelete=$1"
+	$BOFS documents --noscripts --playstep --docname $DOCNAME --step "labeldelete=$1"
 }
 docdump(){
-	./bofs documents --noscripts --playstep --docname $DOCNAME --step "dump="
+	$BOFS documents --noscripts --playstep --docname $DOCNAME --step "dump="
 }
 connect(){
 	resetsel

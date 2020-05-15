@@ -166,6 +166,11 @@ make install
 /var/www/html/add-interests-fr.jpg
 /var/www/html/contact-request.jpg
 /var/www/html/contact-request-fr.jpg
+/var/www/html/whiteboard-menu.jpg
+/var/www/html/whiteboard.jpg
+/var/www/html/whiteboard-fr.jpg
+/var/www/html/whiteboard-example.jpg
+/var/www/html/whiteboard-example-fr.jpg
 /usr/lib/bolixo-test.sh
 /usr/sbin/bolixo-production
 /usr/sbin/bo

@@ -1014,6 +1014,7 @@ elif [ "$1" = "test-sequence" ] ; then # S: Reloads database (big,medium,real,no
 	$0 dropbolixodb
 	$0 createbolixodb
 	rm -f /var/lib/bolixo/*
+	rm -fr /var/lib/bolixod/*
 	$0 resetdb 
 	$0 documentd-control endgames
 	$0 generate-system-pubkey
@@ -1046,10 +1047,10 @@ elif [ "$1" = "test-sendmail" ] ;then # prod: ask writed to send one email
 	./bo-writed-control -p /var/lib/lxc/writed/rootfs/tmp/bo-writed-0.sock sendmail jack@dns.solucorp.qc.ca test body1
 elif [ "$1" = "cmp-sequence" ] ; then # S: Execute QA tests
 	cmpsequence "$2" cleartest1 directory createsubdir projects msgs ivldsession public remote-contact remote-interest contact-utf8 notifications \
-		remote-sendlarge cp-admin badnames setaccess remote-member delete-group remote-group remote-contact-fail doc-chess
+		remote-sendlarge cp-admin badnames setaccess remote-member delete-group remote-group remote-contact-fail infowrite doc-chess doc-whiteboard
 elif [ "$1" = "cmpsane-sequence" ] ; then # S: Execute QA tests
 	cmpsequence "$2" cleartest1 directory createsubdir projects msgs  public remote-contact remote-interest contact-utf8 notifications \
-		remote-sendlarge cp-admin setaccess remote-member remote-group
+		remote-sendlarge cp-admin setaccess remote-member remote-group infowrite
 elif [ "$1" = "eraseanon-lxc" ] ; then # prod: [  time [ anonymous normal admin ] ]
 	export LXCSOCK=on
 	OLD=0d
@@ -1657,6 +1658,11 @@ elif [ "$1" = "lxc0-webssl" ]; then # prod:
 			-e /var/www/html/add-interests-fr.jpg \
 			-e /var/www/html/contact-request.jpg \
 			-e /var/www/html/contact-request-fr.jpg \
+			-e /var/www/html/whiteboard-menu.jpg \
+			-e /var/www/html/whiteboard.jpg \
+			-e /var/www/html/whiteboard-fr.jpg \
+			-e /var/www/html/whiteboard-example.jpg \
+			-e /var/www/html/whiteboard-example-fr.jpg \
 			-i /usr/sbin/trli-init \
 			-l $LOG \
 			-n $w -p /usr/sbin/httpd >/var/lib/lxc/$w/$w-lxc0.sh

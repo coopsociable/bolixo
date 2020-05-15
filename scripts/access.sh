@@ -376,10 +376,9 @@ elif [ "$1" = "doc-chess-dump" ] ; then # test: help debug chess game
 	DOCNAME=/projects/jacques-A/public/test.chess
 	./bofs documents --noscripts --playstep --docname $DOCNAME --step dump=0
 elif [ "$1" = "doc-whiteboard" ] ; then # test: various test on the whiteboard document
-	echo boBOWHIT >/tmp/test.white
 	DOCNAME=/projects/jacques-A/public/test.white
 	. scripts/whiteboard-help.sh
-	./bofs cp /tmp/test.white bo:/$DOCNAME
+	createdocument
 	resetdocument
 	#addelm=label "text" type x y width height
 	# Add 3 circle and connect them with 2 arrows
