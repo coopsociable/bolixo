@@ -1,0 +1,332 @@
+/*
+	This file is part of Bolixo.
+
+	Bolixo is free software: you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation, either version 3 of the License, or
+	(at your option) any later version.
+
+	Bolixo is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+	GNU General Public License for more details.
+
+	You should have received a copy of the GNU General Public License
+	along with Bolixo.  If not, see <https://www.gnu.org/licenses/>.
+*/
+/*
+	This program scans the bolixo source and create a graph showing the relation
+	between the various bolixo components (lxc0).
+
+	It scans source, looking for <call component_method>.
+	It scans the file *.proto to flag the methods which are returning some information
+	(most methods return success and msg. These a filter out).
+*/
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <tlmplib.h>
+#include <string>
+#include <map>
+#include <set>
+#include <vector>
+#include <algorithm>
+#include "../helper.h"
+
+using namespace std;
+
+<mod>
+int main (int argc, char *argv[])
+{
+	glocal int ret = -1;
+	glocal bool showcalls = false;
+	glocal bool showfiles = false;
+	glocal bool printrelations = false;
+	glocal bool genscript = false;
+	glocal vector<string> excludes;
+	glocal map<string,string> fname2comp;	// Associate a file name to a bolixo component
+	glocal.excludes.emplace_back("./bo-webtest.tlcc");
+	glocal.excludes.emplace_back("./waitevent.tlcc");
+	glocal.excludes.emplace_back("./bofs.tlcc");
+	glocal.excludes.emplace_back("./bod-client.tlcc");
+	glocal.excludes.emplace_back("./testwebsock.tlcc");
+	glocal.excludes.emplace_back("./websocket-client.tlcc");
+	static const char *tb[][2]={
+		{"./bo-mon.tlcc","bo-mon"},
+		{"./bo-websocket.tlcc","websocket"},
+		{"./bo-writed.tlcc","writed"},
+		{"./bod.tlcc","bods"},
+		{"./bolixod.tlcc","bolixod"},
+		{"./publishd.tlcc","publishd"},
+		{"./rssd.tlcc","rssd"},
+		{"./web/bolixo.hcc","bolixo"},
+		{"./web/bolixoapi.hcc","bolixoapi"},
+		{"./web/config.hcc","index"},
+		{"./web/index.hcc","index"},
+		{"./web/mail.hcc","index"},
+		{"./web/projects.hcc","index"},
+		{"./web/public.hcc","public"},
+		{"./web/util.hcc","index"},
+		{"./web/webapi.hcc","webapi"}
+	};
+	for (auto &m:tb){
+		glocal.fname2comp[m[0]] = m[1];
+	}
+
+	glocal.ret = <call tlmpprogram>(argc,argv);
+	<f init>
+		setproginfo ("bolixo-arch",VERSION
+			,"Scan the bolixo source code to extract component relations\n");
+		setarg (' ',"showcalls","Show all component call per component",glocal.showcalls,false);
+		setarg (' ',"showfiles","Show all source files parsed",glocal.showfiles,false);
+		setarg (' ',"exclude","Exclude some files",glocal.excludes,false);
+		setarg (' ',"printrelations","Prints relation between components",glocal.printrelations,false);
+		setarg (' ',"genscript","Generate whiteboard script",glocal.genscript,false);
+	</f>
+	<f main_noarg>
+		int ret = 0;
+		struct REMCALL{
+			string component;
+			string subsys;
+			string method;
+			bool return_something = false;
+			REMCALL (PARAM_STRING _component, PARAM_STRING _subsys, PARAM_STRING _method, bool _return_something)
+				:component(_component.ptr), subsys(_subsys.ptr), method(_method.ptr), return_something(_return_something){
+			}
+			REMCALL(){};
+		};
+		glocal map<string,REMCALL> remcalls;
+		glocal map<string,set<string>> compcalls;	// All remote calls made by one source file
+		// Scans all the protocol definition files
+		// remcalls contains all the remote call -> REMCALL
+		<call walkfs>("proto");
+		<f onefile>
+			const char *ptext = strrchr(path,'.');
+			if (strcmp(ptext,".proto")==0){
+				glocal string component;
+				glocal string symname;
+				glocal string subsys;
+				const char *slash = strrchr(path,'/');
+				if (slash != nullptr){
+					slash++;
+					const char *under = strchr(slash,'_');
+					if (under != nullptr){
+						glocal.component = string(slash,under-slash);
+						under++;
+						glocal.subsys = string(under,ptext-under);
+					}else{
+						glocal.component = string(slash,ptext-slash);
+					}
+				}
+				for (auto &c:glocal.component) if (c == '-') c = '_';
+				if (glocal.component.substr(0,3)=="bo_"){
+					glocal.symname = glocal.component.substr(3);
+				}else{
+					glocal.symname = glocal.component;
+				}
+				if (glocal.symname == "bod") glocal.symname = "bods";
+				<call loadfile>(path,true);
+				<f oneline>
+					if (!is_any_of(line[0],'\0','#','&')){
+						auto tb = str_splitline(line);
+						if (tb.size() > 0){
+							bool retvals = false;
+							bool return_some = false;
+							for (unsigned i=0; i<tb.size(); i++){
+								if (tb[i] == "="){
+									retvals = true;
+								}else if (retvals && !is_any_of(tb[i],"success:b","msg")){
+									return_some = true;
+									break;
+								}
+							}
+							//printf ("%s: %s %d\n",info.filename,tb[0].c_str(),return_some);
+							string call;
+							if (glocal.subsys.size() > 0){
+								call = string_f("%s_%s_%s",glocal.component.c_str(),glocal.subsys.c_str(),tb[0].c_str());
+							}else{
+								call = string_f("%s_%s",glocal.component.c_str(),tb[0].c_str());
+							}
+							glocal.remcalls[call] = REMCALL(glocal.symname,glocal.subsys,tb[0],return_some);
+						}
+					}
+					return 0;
+				</f>
+				</call>
+			}
+		</f>
+		</call>
+		if (debug_ison()){	
+			for (auto &r:glocal.remcalls){
+				printf ("retcalls[%s]=%s,%s,%s,%d\n",r.first.c_str(),r.second.component.c_str()
+					,r.second.subsys.c_str(),r.second.method.c_str(),r.second.return_something);
+			}
+		}
+		// Scan all the tlmp C++ files
+		<call walkfs>(".");
+		<f onefile>
+			const char *ptext = strrchr(path,'.');
+			if (find(glocal.excludes.begin(),glocal.excludes.end(),path)==glocal.excludes.end()
+				&& is_any_of(ptext,".tlcc",".hcc")){
+				if (strstr(path,"-control.tlcc")==nullptr){
+					<call loadfile>(path,true);
+					<f oneline>
+						const char *pt = strstr(line,"<call ");
+						if (pt != nullptr){
+							pt += 6;
+							pt = str_skip(pt);
+							const char *end = strchr(pt,'>');
+							if (end != nullptr){
+								string method = string(pt,end-pt);
+								// Check if this a remote call, not just a tlmp call.
+								if (glocal.remcalls.find(method) != glocal.remcalls.end()){
+									glocal.compcalls[info.filename].insert(method);
+								}
+							}
+						}
+						return 0;
+					</f>
+					</call>
+				}
+			}
+		</f>
+		</call>
+		if (glocal.showfiles){
+			for (auto &c:glocal.compcalls){
+				printf ("%s\n",c.first.c_str());
+			}
+		}
+		if (glocal.showcalls){
+			for (auto &c:glocal.compcalls){
+				printf ("%-20s:",c.first.c_str());
+				unsigned width = 1;
+				for (auto &s:c.second){
+					printf ("%*s%s\n",width,"",s.c_str());
+					width = 22;
+				}
+			}
+		}
+		struct COMPRELATION{
+			string component;
+			bool return_something=false;
+		};
+		map<string,map<string,bool>> relations;	// Record the relation one component
+		for (auto &c:glocal.compcalls){
+			auto &component = glocal.fname2comp[c.first];
+			auto &relation = relations[component];
+			for (auto &call:c.second){
+				auto &retcall = glocal.remcalls[call];
+				auto &rel = relation[retcall.component];
+				if (retcall.method != "test" && retcall.return_something) rel = true;
+			}
+		}
+		if (glocal.printrelations){
+			for (auto &relation:relations){
+				printf ("%-20s:",relation.first.c_str());
+				unsigned width = 1;
+				for (auto &rel:relation.second){
+					printf ("%*s%s %d\n",width,"",rel.first.c_str(),rel.second);
+					width = 22;
+				}
+			}
+		}
+		if (glocal.genscript){
+			static const char *script=
+				"#!/usr/bin/sh\n"
+				"DOCNAME=/projects/jacques-A/public/bolixo-arch.whi\n"
+				". scripts/whiteboard-help.sh\n"
+				"createdocument\n"
+				"resetdocument\n"
+				"#addelm=label 'text' type x y width height\n"
+				"addelm webssl  webssl  rect 350 40 100 50\n"
+
+				"addelm web 'web  '  rect 350 200 400 100\n"
+				"textpos web 3\n"
+				"labelselect web 2\n"
+				"addelm public public         ellipse 50  50 80 50\n"
+				"addelm webapi webapi         ellipse 150 50 80 50\n"
+				"addelm websocket  websocket  ellipse 250 50 80 50\n"
+				"addelm index  index          ellipse 350 50 80 50\n"
+				"resetsel\n"
+
+				"addelm bods  'bods  '  rect 300 500 300 100\n"
+				"textpos bods 3\n"
+				"labelselect bods 2\n"
+				"addelm bod-1  bod-1  ellipse 40 50 70 50\n"
+				"addelm bod-2  bod-2  ellipse 110 50 70 50\n"
+				"addelm bod-11 bod-11 ellipse 260 50 70 50\n"
+				"resetsel\n"
+
+				"addelm sessiond  'sessiond '  rect 600 600 90 50\n"
+				"addelm writed  'writed '  rect 450 700 90 50\n"
+				"addelm publishd 'publishd  '  rect 700 700 90 50\n"
+				"addelm keysd  keysd  rect 650 850 90 50\n"
+
+				"addelm s-documentd  documentd  rect 150 830 250 300\n"
+				"textpos s-documentd 1\n"
+				"labelselect s-documentd 2\n"
+				"addelm documentd  documentd  ellipse 125 60 100 50\n"
+				"addelm qqwing  qqwing        ellipse 60 230 100 50\n"
+				"addelm stockfish  stockfish  ellipse 190 230 100 50\n"
+				"resetsel\n"
+
+				"addelm bolixo.org bolixo.org rect 900 120 150 200\n"
+				"textpos bolixo.org 1\n"
+				"boxtype bolixo.org 2\n"
+				"labelselect bolixo.org 2\n"
+				//"addelm bolixo    bolixo    ellipse 60  40 100 50\n" 
+				"addelm bolixoapi bolixoapi ellipse 75 40 100 50\n" 
+				//"addelm bolixod   bolixod   ellipse 125 160 100 50\n" 
+				"resetsel\n"
+
+				"addelm internet Internet rect 730 120 150 200\n"
+				"textpos internet 1\n"
+				"boxtype internet 2\n"
+				"labelselect internet 2\n"
+				"addelm i-webapi webapi ellipse 75 40 100 50\n" 
+				"resetsel\n"
+
+				"addelm bddata bd-data rect     350 930 50 75\n"
+				"textpos bddata 2\n"
+				"addelm bdusers bd-users rect   500 930 50 75\n"
+				"textpos bdusers 2\n"
+				//"addelm bdbolixo bd-bolixo rect 950 950 50 75\n"
+
+				"connect internet webssl 1\n"
+				"connect bod-2 bod-11 7\n"
+				"connect bods bddata 1\n"
+				"connect writed bddata 1\n"
+				"connect writed bdusers 1\n"
+				"connect keysd bdusers 1\n"
+				//"connect bolixod bdbolixo 1\n"
+				"connect documentd qqwing 1\n"
+				"connect documentd stockfish 1\n"
+				"connect webssl public 1\n"
+				"connect webssl webapi 1\n"
+				"connect webssl index 1\n"
+				"connect webssl websocket 1\n"
+				;
+			printf ("%s",script);
+			for (auto &relation:relations){
+				for (auto &rel:relation.second){
+					const char *from = relation.first.c_str();
+					const char *to = rel.first.c_str();
+					if (!is_any_of(from,"bo-mon","bolixo","bolixoapi","bolixod","rssd")){
+						if (strcmp(to,"webapi")==0){
+							if (strcmp(from,"bods")==0 || strcmp(from,"publishd")==0) to = "i-webapi";
+						}
+						if (strcmp(from,to)!=0){
+							printf ("connect %s %s %d\n",from,to,rel.second ? 1 : 1);
+						}
+					}
+				}
+			}
+		}
+		return ret;
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+

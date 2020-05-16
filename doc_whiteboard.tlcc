@@ -516,9 +516,11 @@ void walkboard(_F_walkboard &c, WHITEBOARD *board)
 			c.element(elm,elms.parent,subelm.arrow,firstseen,quarter,quarter_pos,quarter_num,end);
 			quarter_pos++;
 			if (end) break;
-			if (elm.insides.size() > 0) todo.emplace_back(nullptr,nullptr,&elm.insides);
-			if (elm.subelms.size() > 0){
-				todo.emplace_back(&elm,&elm.subelms,nullptr);
+			if (firstseen){
+				if (elm.insides.size() > 0) todo.emplace_back(nullptr,nullptr,&elm.insides);
+				if (elm.subelms.size() > 0){
+					todo.emplace_back(&elm,&elm.subelms,nullptr);
+				}
 			}
 		}
 	}
@@ -993,7 +995,7 @@ void WHITEBOARD::execstep (
 	unsigned board_height = board_width;
 	const unsigned SVG_BOARD_WIDTH=1000;	// SVG viewbox specs
 	const unsigned SVG_BOARD_HEIGHT=1000;
-	string error,status;
+	string error,status,api_error;
 	setactivity();
 	if (strcmp(var,"print")==0){
 		if (is_any_of(val,"","full")){
@@ -1572,7 +1574,11 @@ void WHITEBOARD::execstep (
 					}
 					auto star_elms = findselected(SEL_STAR);
 					auto imbed_elms = findselected(SEL_IMBED);
-					
+					if (imbed_elms.size() == 1){
+						auto imb = imbed_elms[0];
+						x += (imb->x - imb->width/2);
+						y += (imb->y - imb->height/2);
+					}	
 					unsigned id = place_newelm(elmtype,x,y,width,height,star_elms,imbed_elms,notify_var,notify_ids);
 					setmodified(username);
 					auto &elm = elms[id];
@@ -1580,28 +1586,14 @@ void WHITEBOARD::execstep (
 					elm.txt = text;
 				}
 			}
-			
 		}else if (strcmp(var,"resetselect")==0){
 			// val format: 0|1|2
 			unsigned sel = atoi(val);
 			static WHITEBOARD_SELMODE tbmode[]={SEL_SELECTED,SEL_STAR, SEL_IMBED};
-			resetsel (tbmode[sel],notify_ids);
-		}else if (strcmp(var,"labelselect")==0){
-			// val format: label 0|1|2
-			auto tb = str_splitline(val);
-			if (tb.size() == 2){
-				const char *label = tb[0].c_str();
-				unsigned sel = atoi(tb[1].c_str());
-				if (is_any_of((int)sel,0,1,2)){
-					for (auto &e:elms){
-						if (e.second.label==label){
-							static WHITEBOARD_SELMODE tbmode[]={SEL_SELECTED,SEL_STAR, SEL_IMBED};
-							e.second.selmode = tbmode[sel];
-							notify_ids.insert(e.first);
-							break;
-						}
-					}
-				}	
+			if (sel < 3){
+				resetsel (tbmode[sel],notify_ids);
+			}else if (sel == 3){
+				for (auto s:tbmode) resetsel (s,notify_ids);
 			}
 		}else if (strcmp(var,"selectline")==0){
 			// val format: 0|1|... ARROW_TYPE 
@@ -1611,9 +1603,9 @@ void WHITEBOARD::execstep (
 				auto parents = findselected(SEL_STAR);
 				auto selects = findselected(SEL_SELECTED);
 				if (parents.size() == 0){
-					error = MSG_R(E_NOPARENT);
+					api_error = MSG_R(E_NOPARENT);
 				}else if (selects.size() == 0){
-					error = MSG_R(E_NONODE);
+					api_error = MSG_R(E_NONODE);
 				}else{
 					changeline (parents,selects,0,type,notify_var);
 					for (auto s:selects) notify_ids.insert(s->id);
@@ -1621,11 +1613,44 @@ void WHITEBOARD::execstep (
 			}
 		}else if (strcmp(var,"labeldelete")==0){
 			// val format: label
+			bool found = false;
 			for (auto &e:elms){
 				if (e.second.label==val){
 					delete_elm (e.first,notify_var);
+					found = true;
 					break;
 				}
+			}
+			if (!found) api_error ="can't delete: not found";
+		}else if (is_any_of(var,"labelselect","boxtype","textpos")){
+			// val format: label 0|1|2
+			auto tb = str_splitline(val);
+			if (tb.size() == 2){
+				const char *label = tb[0].c_str();
+				unsigned sel = atoi(tb[1].c_str());
+				bool found = false;
+				for (auto &e:elms){
+					if (e.second.label==label){
+						if (strcmp(var,"labelselect")==0){
+							if (sel < 3){
+								static WHITEBOARD_SELMODE tbmode[]={SEL_SELECTED,SEL_STAR, SEL_IMBED};
+								e.second.selmode = tbmode[sel];
+							}
+						}else if (strcmp(var,"boxtype")==0){
+							if (sel < 3){
+								e.second.box_type = (BOX_TYPE)sel;
+							}
+						}else if (strcmp(var,"textpos")==0){
+							if (sel < 5){
+								e.second.textpos = (WHITEBOARD_TEXTPOS)sel;
+							}
+						}
+						notify_ids.insert(e.first);
+						found = true;
+						break;
+					}
+				}	
+				if (!found) api_error = string_f("%s: label %s not found",var,label);
 			}
 		}else if (strcmp(var,"resetgame")==0){
 			resetgame();
@@ -1637,6 +1662,12 @@ void WHITEBOARD::execstep (
 		}
 	}else{
 		error = MSG_R(E_READONLY);
+	}
+	if (api_error.size() > 0){
+		VARVAL var;
+		var.var = VAR_ERROR;
+		var.val = move(api_error);
+		res.emplace_back(move(var));
 	}
 	if (error.size() > 0){
 		update_msg(false,error,"red",res);

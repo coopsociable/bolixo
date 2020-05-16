@@ -10,7 +10,7 @@ PROGS=_dict.o bod bod-client bod-control bo-writed bo-writed-control bo-sessiond
       bo-mon bo-mon-control utils/eximexec utils/helpspell publishd publishd-control bo-webtest \
       documentd documentd-control rssd rssd-control deleteitems utils/cacheurl utils/email-log \
       utils/show-notifies utils/business-card waitevent utils/bo-remote-manage utils/bolixo-update \
-      utils/dnsrequest bo-websocket bo-websocket-control utils/logssl
+      utils/dnsrequest bo-websocket bo-websocket-control utils/logssl utils/bolixo-arch
 #bo-log bo-log-control \
 DOCS=
 OPTIONS=$(DINSTRUMENT) -funsigned-char -O2 -Wall -g -DVERSION=\"$(PACKAGE_REV)\" -I/usr/include/tlmp -I/usr/include/trlitool
@@ -121,6 +121,13 @@ bo-websocket-control: bo-websocket-control.tlcc proto/bo-websocket_control.proto
 
 perfsql: perfsql.tlcc
 	cctlcc -Wall $(OPTIONS) perfsql.tlcc -o perfsql $(LIBS) -ltlmpsql -L/usr/lib64/mysql -lmysqlclient
+
+utils/bolixo-arch: utils/bolixo-arch.tlcc
+	cctlcc $(OPTIONS) utils/bolixo-arch.tlcc -o utils/bolixo-arch -lstdc++
+
+# Generate the graph showing relation between various containers in Bolixo.
+gen-bolixo-arch: utils/bolixo-arch
+	utils/bolixo-arch --genscript >/tmp/script.sh && sh /tmp/script.sh
 
 utils/business-card: utils/business-card.tlcc
 	cctlcc -Wall utils/business-card.tlcc -o utils/business-card -lstdc++

@@ -25,26 +25,37 @@ addelm(){
 }
 # Reset all selections
 resetsel(){
-	$BOFS documents --noscripts --playstep --docname $DOCNAME --step "resetselect=0"
-	$BOFS documents --noscripts --playstep --docname $DOCNAME --step "resetselect=1"
-	$BOFS documents --noscripts --playstep --docname $DOCNAME --step "resetselect=2"
+	$BOFS documents --noscripts --playstep --docname $DOCNAME --step "resetselect=3"
 }
 labelselect(){
 	$BOFS documents --noscripts --playstep --docname $DOCNAME --step "labelselect=$1 $2"
 }
+# Select the line type between selected elements and parents.
 selectline(){
 	$BOFS documents --noscripts --playstep --docname $DOCNAME --step "selectline=$1"
 }
+# Select the box type for one element
+boxtype(){
+	$BOFS documents --noscripts --playstep --docname $DOCNAME --step "boxtype=$1 $2"
+}
+# Position the text for an element (0=inside,1=top,2=bottom,3=left,4=right)
+textpos(){
+	$BOFS documents --noscripts --playstep --docname $DOCNAME --step "textpos=$1 $2"
+}
+# Delete one element using its label
 labeldelete(){
 	$BOFS documents --noscripts --playstep --docname $DOCNAME --step "labeldelete=$1"
 }
 docdump(){
 	$BOFS documents --noscripts --playstep --docname $DOCNAME --step "dump="
 }
+# connect parent child linetype
 connect(){
-	resetsel
-	labelselect $1 1
-	labelselect $2 0
-	selectline $3
+	$BOFS documents --noscripts --playstep --docname $DOCNAME \
+		--step "resetselect=3" \
+		--step "labelselect=$1 1" \
+		--step "labelselect=$2 0" \
+		--step "selectline=$3" \
+		--step "resetselect=3"
 }
 
