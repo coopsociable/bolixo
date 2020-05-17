@@ -221,3 +221,4 @@ id bolixo >/dev/null 2>/dev/null || useradd -r bolixo
 
 %files utils
 /usr/bin/bofs
+/usr/share/bolixo/whiteboard-help.sh
