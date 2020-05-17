@@ -95,7 +95,7 @@ struct SUBELM{
 	unsigned id = 0;
 	ARROW_TYPE arrow;
 	int angle=0;		// Angle between parent and child
-				// The angle is in 1/10 degre, but start at -45 degre
+				// The angle is in 1/10 degre, but start at -angle_side degres
 				// See WHITEBOARD::sortsubelms()
 	SUBELM(unsigned _id, ARROW_TYPE _arrow)
 		:id(_id), arrow(_arrow){
@@ -336,7 +336,7 @@ class WHITEBOARD: public GAME{
 	vector<WHITEBOARD_ELM *> findselected (WHITEBOARD_SELMODE sel);
 	void execstep (const char *var, const char *val, const char *session, const char *username, bool maywrite, const DOC_UI_SPECS_receive &sp,
 		VARVAL &script_var, VARVAL &notify_var, set<unsigned> &notify_ids, std::vector<VARVAL> &res);
-	void changeline (const vector<WHITEBOARD_ELM*> &parents, const vector<WHITEBOARD_ELM*> &elms, int direction, ARROW_TYPE arrow, VARVAL &notify_var);
+	void changeline (const vector<WHITEBOARD_ELM*> &parents, const vector<WHITEBOARD_ELM*> &elms, int direction, ARROW_TYPE arrow, VARVAL &notify_var, string &error);
 	void changeline(int direction, string &error, VARVAL &notify_var, set<unsigned> &notify_ids);
 	void delete_elm(unsigned id, VARVAL &notify_var);
 	unsigned place_newelm(WHITEBOARD_ELMTYPE type, unsigned x, unsigned y, unsigned width, unsigned height,
@@ -495,6 +495,24 @@ void walkboard(_F_walkboard &c, WHITEBOARD *board)
 	while (todo.size() > 0 && !end){
 		auto elms = todo.front();
 		todo.pop_front();
+		/*
+			This is done to help redraw. while walkboard is used to other purpose, it is easier to make this here.
+			sortsubelms() has computed the angle of lines from parent to child elements. Now, when printing
+			we must distribute lines on the side of the parent. The parent has four sides (quarters).
+			So for each quarter, we identify how many lines there are. When we call the element() tag, we
+			pass the number of the line and the number of lines on that side.
+
+			Now, the parent has a with and a height. If the element has width==height, then we distribute lines
+			evenly, at every 90 degres (900 since sortsubelms compute the angle in 1/10 of degre).
+
+			If width != height, then we compute the angle for each side.
+		*/
+		unsigned angle = 900;
+		if (elms.parent != nullptr){
+			angle = atan2(elms.parent->height,elms.parent->width)/M_PI*1800*2;
+		}
+		unsigned angle_top = (3600-2*angle)/2;
+		unsigned angles[4]={angle,angle_top,angle,angle_top};		
 		int limit_angle=0;
 		unsigned quarter_pos = 0;
 		unsigned quarter_num = 0;
@@ -504,12 +522,12 @@ void walkboard(_F_walkboard &c, WHITEBOARD *board)
 			while (subelm.angle >= limit_angle){
 				quarter_pos=0;
 				quarter_num=0;
-				limit_angle += 900;
+				quarter = (WHITEBOARD_QUARTER)((unsigned)quarter+1);
+				limit_angle += angles[quarter];
 				for (unsigned j=i; j<elms.size(); j++){
 					if (elms[j].angle >= limit_angle) break;
 					quarter_num++;
 				}
-				quarter = (WHITEBOARD_QUARTER)((unsigned)quarter+1);
 			}
 			auto &elm = board->elms[subelm.id];
 			bool firstseen = seen.insert(subelm.id).second;
@@ -588,7 +606,7 @@ struct LINE_SPEC{
 /*
 	Sort the sub-elements by angle.
 	The goal is to organized in walkboard object into four quadrants (right,top,left,bottom).
-	The angle computed here starts at -45 degre. So values from 0 to 90 actually represent sub-elements to the right.
+	The angle computed here starts at -angle_side degres. So values from 0 to 90 actually represent sub-elements to the right.
 */
 void WHITEBOARD::sortsubelms(set<unsigned> &notify_ids)
 {
@@ -596,12 +614,13 @@ void WHITEBOARD::sortsubelms(set<unsigned> &notify_ids)
 		auto &parent = e.second;
 		auto &subelms = parent.subelms;
 		vector<unsigned> before;
+		unsigned angle_side = atan2(parent.height,parent.width)/M_PI*1800;
 		for (auto &s:subelms){
 			before.push_back(s.id);
 			auto &child = elms[s.id];
 			int diffy = child.y - parent.y;
 			int diffx = child.x - parent.x;
-			s.angle = atan2(-diffy,diffx)/M_PI*1800+3600+450;
+			s.angle = atan2(-diffy,diffx)/M_PI*1800+3600+angle_side;
 			s.angle %= 3600;
 		}
 		sort (subelms.begin(),subelms.end(),[](auto &s1, auto &s2){ return s1.angle < s2.angle;});
@@ -793,7 +812,8 @@ void WHITEBOARD::changeline (
 	const vector<WHITEBOARD_ELM*> &selects,
 	int direction,
 	ARROW_TYPE arrow,
-	VARVAL &notify_var)
+	VARVAL &notify_var,
+	string &error)
 {
 	set<unsigned> has_parent;	// All elements who are in parent.subelms[]
 	vector<unsigned> lost_parent;	// This element was disconnected from a parent
@@ -807,14 +827,20 @@ void WHITEBOARD::changeline (
 				if (sub == elm.subelms.end()){
 					if (direction != 0 || arrow != ARROW_NONE){
 						// This child is not related to the parent, so we add it
-						ARROW_TYPE type = arrow;
-						if (direction != 0) type = direction==1 ? ARROW_END : ARROW_LINE;
-						elm.subelms.emplace_back(child->id,type);
-						// Remove it from baseelms if there
-						auto base = find(baseelms.begin(),baseelms.end(),child->id);
-						if (base != baseelms.end()) baseelms.erase(base);
-						has_parent.insert(child->id);
-						addsvgelement(notify_var,gameid,"g","black",2,string_f("l%u,%u",elm.id,child->id));
+						// Before we check the parent is not already connected as a child of this child
+						auto badsub = find_if(child->subelms.begin(),child->subelms.end(),[&elm](auto &s){return s.id == elm.id;});
+						if (badsub != child->subelms.end()){
+							error = MSG_U(E_INVALIDCONNECT,"Can't connect these elements because they are already connected: child is parent");
+						}else{
+							ARROW_TYPE type = arrow;
+							if (direction != 0) type = direction==1 ? ARROW_END : ARROW_LINE;
+							elm.subelms.emplace_back(child->id,type);
+							// Remove it from baseelms if there
+							auto base = find(baseelms.begin(),baseelms.end(),child->id);
+							if (base != baseelms.end()) baseelms.erase(base);
+							has_parent.insert(child->id);
+							addsvgelement(notify_var,gameid,"g","black",2,string_f("l%u,%u",elm.id,child->id));
+						}
 					}
 				}else{
 					if (direction != 0){
@@ -854,7 +880,7 @@ void WHITEBOARD::changeline(int direction, string &error, VARVAL &notify_var, se
 	}else if (selects.size() == 0){
 		error = MSG_U(E_NONODE,"No node selected");
 	}else{
-		changeline (parents,selects,direction,ARROW_NONE,notify_var);
+		changeline (parents,selects,direction,ARROW_NONE,notify_var,error);
 		for (auto s:selects) notify_ids.insert(s->id);
 	}
 }
@@ -1500,7 +1526,7 @@ void WHITEBOARD::execstep (
 				auto imbed_elms = findselected(SEL_IMBED);
 				tlmp_warning ("star_elm=%lu imbed_elm=%lu",star_elms.size(),imbed_elms.size());
 				static WHITEBOARD_ELMTYPE tbtype[]={TYPE_TEXT,TYPE_ELLIPSE,TYPE_RECT,TYPE_LINE,TYPE_HANDLINE};
-				const unsigned default_size=20;
+				const unsigned default_size=50;
 				const unsigned x=50;
 				const unsigned y=50;
 				place_newelm(tbtype[uval-BUTTON_TEXT],x,y,default_size,default_size,star_elms,imbed_elms,notify_var,notify_ids);
@@ -1561,6 +1587,9 @@ void WHITEBOARD::execstep (
 				unsigned width = atoi(tb[5].c_str());
 				unsigned height = atoi(tb[6].c_str());
 				if (!is_any_of(type,"ellipse","rect","line","handline")){
+					api_error = MSG_U(E_ADDELMTYPE,"addelm: Invalid element type");
+				}else if (width == 0 || height == 0){
+					api_error = MSG_U(E_ADDELMSIZE,"addelm: Invalid dimension");
 				}else{
 					WHITEBOARD_ELMTYPE elmtype = TYPE_ELLIPSE;
 					if (type == "rect"){
@@ -1607,7 +1636,7 @@ void WHITEBOARD::execstep (
 				}else if (selects.size() == 0){
 					api_error = MSG_R(E_NONODE);
 				}else{
-					changeline (parents,selects,0,type,notify_var);
+					changeline (parents,selects,0,type,notify_var,api_error);
 					for (auto s:selects) notify_ids.insert(s->id);
 				}
 			}
@@ -1621,7 +1650,7 @@ void WHITEBOARD::execstep (
 					break;
 				}
 			}
-			if (!found) api_error ="can't delete: not found";
+			if (!found) api_error = string_f(MSG_U(E_LABELDELETE,"labeldelete: element %s not found"),val);
 		}else if (is_any_of(var,"labelselect","boxtype","textpos")){
 			// val format: label 0|1|2
 			auto tb = str_splitline(val);
@@ -1650,7 +1679,7 @@ void WHITEBOARD::execstep (
 						break;
 					}
 				}	
-				if (!found) api_error = string_f("%s: label %s not found",var,label);
+				if (!found) api_error = string_f(MSG_U(E_LABELOPER,"%s: label %s not found"),var,label);
 			}
 		}else if (strcmp(var,"resetgame")==0){
 			resetgame();
