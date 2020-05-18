@@ -163,7 +163,6 @@ struct DIRENTRY{
 
 
 #include "proto/bo-writed_client.protoch"
-#define documentd_client_endgame_NOTNEED
 #define documentd_client_startgame_NOTNEED
 #define documentd_client_loadmore_NOTNEED	// For now, incomplete
 #define documentd_client_savemore_NOTNEED	// For now, incomplete
@@ -1456,6 +1455,35 @@ static bool bod_document_save (
 }
 </mod>
 /*
+	Remove a game/document from documentd.
+*/
+<mod>
+static bool bod_document_delfile (
+	CONNECT_INFO &con_doc,
+	const char *path)
+{
+	glocal bool ret = false;
+	glocal con_doc;
+	glocal path;
+	<call documentd_client_is_modified>(con_doc,path);
+	<f ok>
+		if (success){
+			<call documentd_client_endgame>(glocal.con_doc,glocal.path,revision,current_lang);
+			<f ok>
+				if (success){
+					glocal.ret = true;
+				}
+			</f>
+			</call>
+		}else{
+			glocal.ret = true;
+		}
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+/*
 	Perform a sendtalk to one remote user
 */
 <mod>
@@ -2368,9 +2396,15 @@ static int bod_main (
 				glocal string msg;
 				<call bod_localremote>(glocal.con,glocal.con_sess,sessionid,name,glocal.nodename,glocal.msg);
 				<f local>
+					glocal fname;
+					bod_document_save(glocal.con,glocal.con_doc,session,fname);
 					<call bo_writed_client_delfile>(con,session,fname);
 					<f ok>
-						if (!success) glocal.msg = msg;
+						if (success){
+							bod_document_delfile (glocal.con_doc,glocal.fname);
+						}else{
+							glocal.msg = msg;
+						}
 					</f>
 					</call>
 				</f>

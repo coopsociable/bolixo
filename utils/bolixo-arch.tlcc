@@ -207,10 +207,6 @@ int main (int argc, char *argv[])
 				}
 			}
 		}
-		struct COMPRELATION{
-			string component;
-			bool return_something=false;
-		};
 		map<string,map<string,bool>> relations;	// Record the relation one component
 		for (auto &c:glocal.compcalls){
 			auto &component = glocal.fname2comp[c.first];
@@ -261,7 +257,7 @@ int main (int argc, char *argv[])
 				"addelm sessiond  'sessiond '  rect 600 600 90 50\n"
 				"addelm writed  'writed '  rect 450 700 90 50\n"
 				"addelm publishd 'publishd  '  rect 700 700 90 50\n"
-				"addelm keysd  keysd  rect 650 850 90 50\n"
+				"addelm keysd  keysd           rect 700 800 90 50\n"
 
 				"addelm s-documentd  documentd  rect 150 830 250 300\n"
 				"textpos s-documentd 1\n"
@@ -289,7 +285,9 @@ int main (int argc, char *argv[])
 
 				"addelm bddata bd-data rect     350 930 50 75\n"
 				"textpos bddata 2\n"
-				"addelm bdusers bd-users rect   500 930 50 75\n"
+				"addelm files files rect        450 930 50 75\n"
+				"textpos files 2\n"
+				"addelm bdusers bd-users rect   700 930 50 75\n"
 				"textpos bdusers 2\n"
 				//"addelm bdbolixo bd-bolixo rect 950 950 50 75\n"
 
@@ -308,6 +306,15 @@ int main (int argc, char *argv[])
 				"connect webssl websocket 1\n"
 				;
 			printf ("%s",script);
+			// Find out which component have access to /var/lib/bolixo
+			for (auto &relation:relations){
+				const char *dirname = relation.first.c_str();
+				if (strcmp(dirname,"bods")==0) dirname = "bod";
+				string bolixo_dir = string_f("/var/lib/lxc/%s/rootfs/var/lib/bolixo",dirname);
+				if (file_type(bolixo_dir.c_str())==1){
+					printf ("connect %s   files 1\n",relation.first.c_str());
+				}
+			}
 			for (auto &relation:relations){
 				for (auto &rel:relation.second){
 					const char *from = relation.first.c_str();
