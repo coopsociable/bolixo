@@ -530,10 +530,62 @@ static bool documentd_startgame(
 	}
 	return ret;
 }
+
+/*
+	Create a popup window displaying a message in the middle of a document using javascript
+*/
+static void documentd_create_popup(PARAM_STRING msg, const GAME_P doc)
+{
+	static const char *tb[][2]={
+		{"CHEC","doc_checkers"},
+		{"CHES","doc_chess"},
+		{"SUDO","doc_sudoku"},
+		{"WORD","doc_wordproc"},
+		{"WHIT","doc_whiteboard"},
+		{"TICT","doc_tictacto"},
+	};
+	const char *type = doc->getclass();
+	const char *docid=nullptr;
+	for (auto &t:tb){
+		if (strcmp(t[0],type)==0){
+			docid=t[1];
+			break;
+		}
+	}
+	if (docid == nullptr){
+		tlmp_error ("documentd_create_popup: no docid for class=%s",type);
+	}else{
+		string script;
+		script = 
+			"let div = document.createElement(\"div\");\n"
+			"console.log ('div='+div);\n"
+			"div.setAttribute(\"class\", \"popup\");\n"
+			"div.innerHTML=\""
+			"<div class='popup-content' id='popup' style='padding:10px 10px 10px 10px;'>";
+		script += msg.ptr;
+		script +=
+			"</div>"
+			"\";\n"
+			"document.body.appendChild(div);\n"
+			"var pop=document.getElementById('popup');\n"
+			"pop.classList.toggle('show');\n";
+		script += string_f("var doc=document.getElementById('%s');\n",docid);
+		script += "if (doc == null){\n";
+		script += string_f("\tdoc=document.getElementById('full%s');\n",docid);
+		script += "}\n";
+		script += "var rectpop = pop.getBoundingClientRect();\n";
+		script += "var rectdoc = doc.getBoundingClientRect();\n";
+		script += "pop.style.left=rectdoc.left+(rectdoc.right-rectdoc.left)/2-(rectpop.right-rectpop.left)/2;\n"
+			"pop.style.top=rectdoc.top+(rectdoc.bottom-rectdoc.top)/2;\n";
+		doc->add_notification (script);
+	}
+}
 static bool documentd_endgame (
 	map<string,GAME_P> &games,
 	const char *gameid,
+	const char *username,
 	unsigned revision,
+	bool force,
 	string &msg)
 {
 	bool ret = false;
@@ -541,10 +593,15 @@ static bool documentd_endgame (
 	if (g != games.end()){
 		if (g->second->get_revision() != revision){
 			msg = "Revision mismatch";
-		}else if (g->second->get_nbwait() > 0){
+		}else if (!force && g->second->get_nbwait() > 0){
 			msg = "User waitings";
 		}else{
 			ret = true;
+			string msg = string_f(MSG_U(I_DELETED,"<center>Attention</center><p>"
+				"The document has been deleted by %s<br>"
+				"<p>"
+				"The document may be undeleted if needed"),username);
+			documentd_create_popup (msg,g->second);
 			games.erase (g);
 		}
 	}else{
@@ -1051,7 +1108,7 @@ int main (int argc, char *argv[])
 				</f>
 				<f endgame>	// gameid = success:b msg
 					string msg;
-					bool success = documentd_endgame(glocal.games,gameid,revision,msg);
+					bool success = documentd_endgame(glocal.games,gameid,"admin",revision,false,msg);
 					rep_endgame (success,msg);
 				</f>
 				<f endgames>
@@ -1146,10 +1203,10 @@ int main (int argc, char *argv[])
 					bool success = documentd_startgame(glocal.games,gamename,gameid,msg);
 					rep_startgame(success,msg);
 				</f>
-				<f endgame>	// gameid = success:b msg
+				<f endgame>	// gameid revision:u username force:b lang = success:b msg
 					string msg;
 					translat_selectlang(lang);
-					bool success = documentd_endgame(glocal.games,gameid,revision,msg);
+					bool success = documentd_endgame(glocal.games,gameid,username,revision,force,msg);
 					rep_endgame (success,msg);
 				</f>
 				<f playstep>
@@ -1191,55 +1248,17 @@ int main (int argc, char *argv[])
 							break;
 						}else{
 							auto doc = oldg->second;
-							static const char *tb[][2]={
-								{"CHEC","doc_checkers"},
-								{"CHES","doc_chess"},
-								{"SUDO","doc_sudoku"},
-								{"WORD","doc_wordproc"},
-								{"WHIT","doc_whiteboard"},
-								{"TICT","doc_tictacto"},
-							};
-							const char *type = doc->getclass();
-							const char *docid=nullptr;
-							for (auto &t:tb){
-								if (strcmp(t[0],type)==0){
-									docid=t[1];
-									break;
-								}
-							}
-							tlmp_warning ("class=%s docid=%s",type,docid);
 							const char *relname = r.second.c_str();
 							const char *pt;
 							if (is_start_any_of(r.second,pt,"/projects/")) relname = pt;
 							
-							string script;
-							script = 
-								"let div = document.createElement(\"div\");\n"
-								"console.log ('div='+div);\n"
-								"div.setAttribute(\"class\", \"popup\");\n"
-								"div.innerHTML=\""
-								"<div class='popup-content' id='popup' style='padding:10px 10px 10px 10px;'>";
-							script += string_f(MSG_U(I_RENAMED,"<center>Attention</center><p>"
+							string msg = string_f(MSG_U(I_RENAMED,"<center>Attention</center><p>"
 								"The document has been renamed by %s<br>"
 								"Its new name is<br>"
 								"<center>%s</center><p>"
 								"Close the document and reopen it using the new name<br>"
 								"All your modifications are preserved"),username,relname);
-							script +=
-								"</div>"
-								"\";\n"
-								"document.body.appendChild(div);\n"
-								"var pop=document.getElementById('popup');\n"
-								"pop.classList.toggle('show');\n";
-							script += string_f("var doc=document.getElementById('%s');\n",docid);
-							script += "if (doc == null){\n";
-							script += string_f("\tdoc=document.getElementById('full%s');\n",docid);
-							script += "}\n";
-							script += "var rectpop = pop.getBoundingClientRect();\n";
-							script += "var rectdoc = doc.getBoundingClientRect();\n";
-							script += "pop.style.left=rectdoc.left+(rectdoc.right-rectdoc.left)/2-(rectpop.right-rectpop.left)/2;\n"
-								"pop.style.top=rectdoc.top+(rectdoc.bottom-rectdoc.top)/2;\n";
-							doc->add_notification (script);
+							documentd_create_popup(msg,doc);
 							doc->setgameid(r.second);
 							glocal.games.erase(r.first);
 							glocal.games[r.second] = doc;

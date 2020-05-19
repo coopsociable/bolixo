@@ -1460,18 +1460,22 @@ static bool bod_document_save (
 <mod>
 static bool bod_document_delfile (
 	CONNECT_INFO &con_doc,
+	const char *username,
 	const char *path)
 {
 	glocal bool ret = false;
 	glocal con_doc;
 	glocal path;
+	glocal username;
 	<call documentd_client_is_modified>(con_doc,path);
 	<f ok>
 		if (success){
-			<call documentd_client_endgame>(glocal.con_doc,glocal.path,revision,current_lang);
+			<call documentd_client_endgame>(glocal.con_doc,glocal.path,revision,glocal.username,true,current_lang);
 			<f ok>
 				if (success){
 					glocal.ret = true;
+				}else{
+					tlmp_error ("bod_document_delfile: username=%s path=%s msg=%s",glocal.username,glocal.path,msg);
 				}
 			</f>
 			</call>
@@ -2397,11 +2401,12 @@ static int bod_main (
 				<call bod_localremote>(glocal.con,glocal.con_sess,sessionid,name,glocal.nodename,glocal.msg);
 				<f local>
 					glocal fname;
+					glocal username;
 					bod_document_save(glocal.con,glocal.con_doc,session,fname);
 					<call bo_writed_client_delfile>(con,session,fname);
 					<f ok>
 						if (success){
-							bod_document_delfile (glocal.con_doc,glocal.fname);
+							bod_document_delfile (glocal.con_doc,glocal.username,glocal.fname);
 						}else{
 							glocal.msg = msg;
 						}
