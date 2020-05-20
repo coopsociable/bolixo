@@ -39,7 +39,10 @@ bolixoapi.os: bolixoapi.hcc ../proto/bolixoapi.protoh ../proto/bolixod_client.pr
 bolixo.os: bolixo.hcc ../proto/bolixod_client.protoh
 
 install: all
-	@cp images-doc/*.jpg *.jpg *.png *.svg *.hc *.html robots.txt favicon.ico $(RPM_BUILD_ROOT)/var/www/html/.
+	@mkdir -p $(RPM_BUILD_ROOT)/var/www/html/images-doc
+	@rm -f $(RPM_BUILD_ROOT)/var/www/html/images-doc/*
+	@cp images-doc/*.jpg $(RPM_BUILD_ROOT)/var/www/html/images-doc/.
+	@cp *.jpg *.png *.svg *.hc *.html robots.txt favicon.ico $(RPM_BUILD_ROOT)/var/www/html/.
 	@cp tlmplibs $(RPM_BUILD_ROOT)/var/www/html/.tlmplibs
 	@cp conditions-d-utilisation.html  terms-of-use.html $(RPM_BUILD_ROOT)/var/www/html/.
 
