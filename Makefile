@@ -446,7 +446,8 @@ install: msg.eng msg.fr
 	install -m644 update-script $(RPM_BUILD_ROOT)/usr/share/bolixo/update-script
 	install -m755 utils/bolixo-update $(RPM_BUILD_ROOT)/usr/lib/bolixo-update
 	install -m755 utils/dnsrequest $(RPM_BUILD_ROOT)/usr/lib/dnsrequest
-	for file in web/images-doc/*.jpg; do install -m644 $$file $(RPM_BUILD_ROOT)/var/www/html/.; done
+	mkdir -p $(RPM_BUILD_ROOT)/var/www/html/images-doc
+	for file in web/images-doc/*.jpg; do install -m644 $$file $(RPM_BUILD_ROOT)/var/www/html/images-doc/.; done
 
 #	install -m755 web/admin.hc $(RPM_BUILD_ROOT)/var/www/html/admin.hc
 #	install -m755 bo-log $(RPM_BUILD_ROOT)/usr/sbin/bo-log
