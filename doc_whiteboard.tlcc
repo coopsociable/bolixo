@@ -91,14 +91,27 @@ enum WHITEBOARD_ELMTYPE {	// Type of element
 static const char *tbcolor[]={"black","red","yellow","green"};
 
 
+// This describe an arrow from a parent to a child
 struct SUBELM{
 	unsigned id = 0;
 	ARROW_TYPE arrow;
-	int angle=0;		// Angle between parent and child
-				// The angle is in 1/10 degre, but start at -angle_side degres
-				// See WHITEBOARD::sortsubelms()
 	SUBELM(unsigned _id, ARROW_TYPE _arrow)
 		:id(_id), arrow(_arrow){
+	}
+};
+// This is used to sort the various arrows going to and from an element.
+// All this is computed
+struct ARROW_ANGLE{
+	unsigned id = 0;
+	ARROW_TYPE arrow;
+	int angle=0;		// Angle between parent and child
+				// The angle is in 1/10 degre
+				// See WHITEBOARD::sortsubelms()
+	ARROW_ANGLE(unsigned _id, ARROW_TYPE _arrow, int _angle)
+		:id(_id), arrow(_arrow), angle(_angle){
+	}
+	bool operator == (const ARROW_ANGLE &n) const {
+		return id == n.id && arrow == n.arrow && angle == n.angle;
 	}
 };
 /*
@@ -118,7 +131,6 @@ static void eraselast (string &txt)
 				break;
 			}
 		}
-		txt.resize(pos);
 	}
 }
 /*
@@ -147,6 +159,7 @@ struct WHITEBOARD_ELM{
 	WHITEBOARD_TEXTPOS textpos = TEXTPOS_INSIDE;
 	vector<unsigned> insides;		// insides are drawn inside the element.
 	vector<SUBELM> subelms;		// subelms are related elements.
+	vector<ARROW_ANGLE> arrows[4];	// All lines going to and from this element with angle, for the four sides
 	void resize(int val, bool horizontal_only, bool vertical_only){
 		if (horizontal_only){
 			check_limit(width,val);
@@ -508,80 +521,27 @@ struct _F_walkboard{
 void walkboard(_F_walkboard &c, WHITEBOARD *board)
 {
 	set<unsigned> seen;
-	struct ELEMENTS{
-		WHITEBOARD_ELM *parent;
-		vector<SUBELM> *subelms;
-		vector<unsigned> *insides;
-		ELEMENTS(WHITEBOARD_ELM *_parent, vector<SUBELM> *_subelms, vector<unsigned> *_insides)
-			: parent(_parent), subelms(_subelms), insides(_insides){
-		}
-		size_t size() const {
-			if (subelms != nullptr) return subelms->size();
-			return insides->size();
-		}
-		SUBELM operator [] (unsigned item) const{
-			if (subelms != nullptr){
-				return (*subelms)[item];
-			}else{
-				return SUBELM ((*insides)[item],ARROW_NONE);
-			}
-		}
-	}; 
-	deque<ELEMENTS> todo;
-	todo.emplace_back(nullptr,nullptr,&board->baseelms);
 	bool end = false;
-	while (todo.size() > 0 && !end){
-		auto elms = todo.front();
-		todo.pop_front();
-		/*
-			This is done to help redraw. while walkboard is used to other purpose, it is easier to make this here.
-			sortsubelms() has computed the angle of lines from parent to child elements. Now, when printing
-			we must distribute lines on the side of the parent. The parent has four sides (quarters).
-			So for each quarter, we identify how many lines there are. When we call the element() tag, we
-			pass the number of the line and the number of lines on that side.
-
-			Now, the parent has a with and a height. If the element has width==height, then we distribute lines
-			evenly, at every 90 degres (900 since sortsubelms compute the angle in 1/10 of degre).
-
-			If width != height, then we compute the angle for each side.
-		*/
-		unsigned angle = 900;
-		if (elms.parent != nullptr){
-			angle = atan2(elms.parent->height,elms.parent->width)/M_PI*1800*2;
+	for (auto &e:board->elms){
+		auto &elm = e.second;
+		{
+			bool firstseen = seen.insert(elm.id).second;
+			c.element(elm,nullptr,ARROW_NONE,firstseen,QUARTER_RIGHT,0,0,end);
 		}
-		unsigned angle_top = (3600-2*angle)/2;
-		unsigned angles[4]={angle,angle_top,angle,angle_top};		
-		int limit_angle=0;
-		unsigned quarter_pos = 0;
-		unsigned quarter_num = 0;
-		WHITEBOARD_QUARTER quarter=(WHITEBOARD_QUARTER)-1;
-		for (unsigned i=0; i<elms.size(); i++){
-			auto subelm = elms[i];
-			while (subelm.angle >= limit_angle){
-				quarter_pos=0;
-				quarter_num=0;
-				quarter = (WHITEBOARD_QUARTER)((unsigned)quarter+1);
-				limit_angle += angles[quarter];
-				for (unsigned j=i; j<elms.size(); j++){
-					if (elms[j].angle >= limit_angle) break;
-					quarter_num++;
+		WHITEBOARD_QUARTER quarter = QUARTER_RIGHT;
+		for (auto &arrows:elm.arrows){
+			for (unsigned pos = 0; pos < arrows.size(); pos++){
+				auto &subelm = arrows[pos];
+				if (subelm.arrow != ARROW_NONE){
+					// arrows contain entries for elm -> child and for parent -> elm
+					bool firstseen = seen.insert(subelm.id).second;
+					c.element(board->elms[subelm.id],&elm,subelm.arrow,firstseen,quarter,pos,arrows.size(),end);
 				}
 			}
-			auto &elm = board->elms[subelm.id];
-			bool firstseen = seen.insert(subelm.id).second;
-			c.element(elm,elms.parent,subelm.arrow,firstseen,quarter,quarter_pos,quarter_num,end);
-			quarter_pos++;
-			if (end) break;
-			if (firstseen){
-				if (elm.insides.size() > 0) todo.emplace_back(nullptr,nullptr,&elm.insides);
-				if (elm.subelms.size() > 0){
-					todo.emplace_back(&elm,&elm.subelms,nullptr);
-				}
-			}
+			quarter = (WHITEBOARD_QUARTER)(quarter+1);
 		}
 	}
 }
-
 /*
 	Unselect the selected elements.
 	ids will contain the id of selected elements.
@@ -602,6 +562,27 @@ void WHITEBOARD::resetsel(WHITEBOARD_SELMODE selmode, set<unsigned> &ids)
 }
 </mod>
 
+struct ARROW_NUM{
+	unsigned pos;	// Position number of the arrow
+	unsigned num;	// Number of arrows
+};
+static ARROW_NUM arrow_pos (WHITEBOARD_ELM &elm, WHITEBOARD_QUARTER quarter, unsigned id)
+{
+	ARROW_NUM ret;
+	auto &arrows = elm.arrows[quarter];
+	ret.num = arrows.size()+1;
+	for (ret.pos = 0; ret.pos < ret.num; ret.pos++){
+		if (arrows[ret.pos].id == id){
+			ret.pos++;
+			return ret;
+		}
+	}
+	tlmp_warning ("arrow_pos not found elm.id=%u",elm.id);
+	ret.pos++;
+	return ret;
+}
+	
+
 
 struct LINE_SPEC{
 	unsigned x;
@@ -616,23 +597,27 @@ struct LINE_SPEC{
 		if (quarter == QUARTER_RIGHT){
 			x = parent.x + parent.width/2;
 			y = parent.y + parent.height/2 - parent.height/(nbsubelm+1)*(nosubelm+1);
+			auto pos = arrow_pos(elm,QUARTER_LEFT,parent.id);
 			elm_x = elm.x - elm.width/2;
-			elm_y = elm.y;
+			elm_y = elm.y - elm.height/2 + pos.pos*elm.height/pos.num;
 		}else if (quarter == QUARTER_TOP){
 			x = parent.x + parent.width/2 - parent.width/(nbsubelm+1)*(nosubelm+1);
 			y = parent.y - parent.height/2;
-			elm_x = elm.x;
+			auto pos = arrow_pos(elm,QUARTER_BOTTOM,parent.id);
+			elm_x = elm.x - elm.width/2 + pos.pos*elm.width/pos.num;
 			elm_y = elm.y + elm.height/2;
 		}else if (quarter == QUARTER_BOTTOM){
 			x = parent.x - parent.width/2 + parent.width/(nbsubelm+1)*(nosubelm+1);
 			y = parent.y + parent.height/2;
-			elm_x = elm.x;
+			auto pos = arrow_pos(elm,QUARTER_TOP,parent.id);
+			elm_x = elm.x + elm.width/2 - pos.pos*elm.width/pos.num;
 			elm_y = elm.y - elm.height/2;
 		}else if (quarter == QUARTER_LEFT){
 			x = parent.x - parent.width/2;
 			y = parent.y - parent.height/2 + parent.height/(nbsubelm+1)*(nosubelm+1);
+			auto pos = arrow_pos(elm,QUARTER_RIGHT,parent.id);
 			elm_x = elm.x + elm.width/2;
-			elm_y = elm.y;
+			elm_y = elm.y + elm.height/2 - pos.pos*elm.height/pos.num;
 		}
 		int diff_y = elm_y - y;
 		int diff_x = elm_x - x;
@@ -648,25 +633,59 @@ struct LINE_SPEC{
 */
 void WHITEBOARD::sortsubelms(set<unsigned> &notify_ids)
 {
+	struct ARROWS{
+		vector<ARROW_ANGLE> arrows[4];
+	};
+	map<unsigned,ARROWS> olds;
+	for (auto &e:elms){
+		auto &old = olds[e.first];
+		for (unsigned i=0; i<4; i++) old.arrows[i] = e.second.arrows[i];
+		for (auto &a:e.second.arrows) a.clear();
+	}
 	for (auto &e:elms){
 		auto &parent = e.second;
 		auto &subelms = parent.subelms;
-		vector<unsigned> before;
-		unsigned angle_side = atan2(parent.height,parent.width)/M_PI*1800;
-		for (auto &s:subelms){
-			before.push_back(s.id);
-			auto &child = elms[s.id];
-			int diffy = child.y - parent.y;
-			int diffx = child.x - parent.x;
-			s.angle = atan2(-diffy,diffx)/M_PI*1800+3600+angle_side;
-			s.angle %= 3600;
+		if (subelms.size() > 0){
+			int angle_ratio = atan2(parent.height,parent.width)/M_PI*1800;
+			int angle_side = angle_ratio*2;
+			int angle_top = (3600-2*angle_side)/2;
+			int angle_left = angle_side + angle_top;
+			int angle_bottom = angle_left + angle_side;
+			// tlmp_warning ("angle_side=%d top=%d left=%d bottom=%d",angle_side,angle_top,angle_left,angle_bottom);
+			for (auto &s:subelms){
+				auto &child = elms[s.id];
+				int diffy = child.y - parent.y;
+				int diffx = child.x - parent.x;
+				int angle = atan2(-diffy,diffx)/M_PI*1800+3600+angle_ratio;
+				angle %= 3600;
+				WHITEBOARD_QUARTER quarter = QUARTER_RIGHT;
+				WHITEBOARD_QUARTER child_quarter = QUARTER_LEFT;
+				if (angle >= angle_bottom){
+					quarter = QUARTER_BOTTOM;
+					child_quarter = QUARTER_TOP;
+				}else if (angle >= angle_left){
+					quarter = QUARTER_LEFT;
+					child_quarter = QUARTER_RIGHT;
+				}else if (angle >= angle_side){
+					quarter = QUARTER_TOP;
+					child_quarter = QUARTER_BOTTOM;
+				}
+				parent.arrows[quarter].emplace_back(child.id,s.arrow,angle);
+				child.arrows[child_quarter].emplace_back(parent.id,ARROW_NONE,(angle+1800)%3600);
+			}
 		}
-		sort (subelms.begin(),subelms.end(),[](auto &s1, auto &s2){ return s1.angle < s2.angle;});
-		// before[] contain the original order. subelms is now sorted.
-		// we compare both. If the order changed, we enter it in notify_ids.
-		for (unsigned i=0; i<before.size(); i++){
-			unsigned id = before[i];
-			if (subelms[i].id != id) notify_ids.insert(id);
+	}
+	for (auto &e:elms){
+		for (auto &a:e.second.arrows) sort (a.begin(),a.end(),[](auto &s1, auto &s2){ return s1.angle < s2.angle;});
+	}
+	// Check if there are any changes
+	for (auto &e:elms){
+		auto &old = olds[e.first];
+		for (unsigned i=0; i<4; i++){
+			if (old.arrows[i] != e.second.arrows[i]){
+				notify_ids.insert(e.first);
+				break;
+			}
 		}
 	}
 }
@@ -1430,11 +1449,15 @@ void WHITEBOARD::execstep (
 				,s.second.x,s.second.y,s.second.x1,s.second.y1,s.second.width,s.second.height);
 			if (s.second.subelms.size() > 0){
 				var.val += "\n\tsubelms[]=";
-				for (auto &sub:s.second.subelms) var.val += string_f(" id=%d,arrow=%u,angle=%d",sub.id,sub.arrow,sub.angle);
+				for (auto &sub:s.second.subelms) var.val += string_f(" id=%d,arrow=%u",sub.id,sub.arrow);
 			}
 			if (s.second.insides.size() > 0){
 				var.val += "\n\tinsides[]=";
 				for (auto id:s.second.insides) var.val += string_f(" id=%d",id);
+			}
+			for (auto &arrows:s.second.arrows){
+				var.val += "\narrows[]=";
+				for (auto &a:arrows) var.val += string_f(" id=%d,arrow=%u,angle=%d",a.id,a.arrow,a.angle); 
 			}
 		}
 		var.val += "\nbaseelms[]=";

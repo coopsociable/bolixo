@@ -375,7 +375,7 @@ elif [ "$1" = "doc-chess" ] ; then # test: various test on the chess game
 elif [ "$1" = "doc-chess-dump" ] ; then # test: help debug chess game
 	DOCNAME=/projects/jacques-A/public/test.chess
 	./bofs documents --noscripts --playstep --docname $DOCNAME --step dump=0
-elif [ "$1" = "doc-whiteboard" ] ; then # test: various test on the whiteboard document
+elif [ "$1" = "doc-whiteboard-3elms" ] ; then # test: test with 3 elements on the whiteboard document
 	DOCNAME=/projects/jacques-A/public/test.white
 	. scripts/whiteboard-help.sh
 	createdocument
@@ -396,6 +396,49 @@ elif [ "$1" = "doc-whiteboard" ] ; then # test: various test on the whiteboard d
 	echo "#### Erase the middle circle"
 	labeldelete elm2
 	docdump
+elif [ "$1" = "doc-whiteboard-2many" ] ; then # test: tests many 2 many  on the whiteboard document
+	DOCNAME=/projects/jacques-A/public/test.white
+	. scripts/whiteboard-help.sh
+	createdocument
+	resetdocument
+	connect2_2(){
+		connect $1 $3 1
+		connect $2 $3 1
+		connect $1 $4 1
+		connect $2 $4 1
+	}
+	addellipse (){
+		addelm $1 $1 ellipse $2 $3 50 50
+	}
+	# In all four cases, the 2 parents points to the 2 children
+	# Create 4 ellipses: 2 parents on same line and 2 children on same line.
+	addellipse para1 100 100
+	addellipse para2 200 100
+	addellipse elma1 100 300
+	addellipse elma2 200 300
+	connect2_2 para1 para2 elma1 elma2
+	# Create 4 ellipses: 2 parents on same column and 2 children on same column.
+	addellipse parb1 300 100
+	addellipse parb2 300 200
+	addellipse elmb1 500 100
+	addellipse elmb2 500 200
+	connect2_2 parb1 parb2 elmb1 elmb2
+	# Create 4 ellipses: 2 parents on same line and 2 children on same line, parents are below.
+	addellipse parc1 100 600
+	addellipse parc2 200 600
+	addellipse elmc1 100 400
+	addellipse elmc2 200 400
+	connect2_2 parc1 parc2 elmc1 elmc2
+	# Create 4 ellipses: 2 parents on same column and 2 children on same column. Parents are after.
+	addellipse pard1 500 400
+	addellipse pard2 500 600
+	addellipse elmd1 300 400
+	addellipse elmd2 300 600
+	connect2_2 pard1 pard2 elmd1 elmd2
+	docdump
+elif [ "$1" = "doc-whiteboard" ] ; then # test: many tests on the whiteboard document
+	$0 doc-whiteboard-3elms
+	$0 doc-whiteboard-2many
 elif [ "$1" = "infowrite" ] ; then # test: publish info to directory server
 	USER=jacques-A
 	echo Create mini-photo.jpg and photo.jpg for all users
