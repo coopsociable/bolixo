@@ -21,6 +21,9 @@
 #include "techdoc.h"
 #include "steps.h"
 
+static DOC_ID section_remote_accounts;
+static DOC_ID section_bosqlduser;
+static DOC_ID section_bosqlddata;
 <mod>
 void bolixo_techdoc (DOCUMENT_POINTER &docpointer, DOC_ID &jump, const char *username, bool display_full, bool index)
 {
@@ -46,23 +49,145 @@ void bolixo_techdoc (DOCUMENT_POINTER &docpointer, DOC_ID &jump, const char *use
 			</->
 			<- section("Digital signature");>
 			</->
-			<- section("Remote accounts");>
+			<- section("Remote accounts",section_remote_accounts);>
 			</->
 			<- section("Messages");>
 				<- section("Messages folders");>
 				</->
 				<- section("Messages propagation");>
+					<- section("Public messages");>
+					</->
+					<- section("Private messages");>
+					</->
+					<- section("Group messages");>
+					</->
 				</->
+			</->
+			<- section("Projects");>
 			</->
 		</->
 		<- section("Architecture");>
+			Bolixo is made of components running in LXC containers. The containers are called LXC0s. Here is a diagram presenting the relation
+			between Bolixo components:
+			<p>
+			<center>
+			/- document_clickable_img ("/bolixo-arch.jpg","40%",1);
+			</center>
+
+			<- section("LXC0: Micro-containers");>
+				LXC0 are standard LXC containers (Bolixo is running a standard Linux kernel). The 0 stands for its minimalist approach. A LXC0 contains only
+				the necessary files used to provide the service. It usually runs a single program plus a tiny init. It contains the programs, the libraries needed
+				and few resource files.
+				It does not contain any packages, logging utilities, sshd. It does not contain a shell.
+				Here is what the <em>ps axu</em> command presents about the <em>writed</em> component.
+				<p>
+				<- pre();>
+					USER         PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND
+					root     3121992  0.0  0.0   5608  1644 ?        Ss   21:00   0:00 /sbin/init
+					bolixo   3121997  0.0  0.0  21908  7012 ?        S    21:00   0:01 /usr/sbin/bo-writed
+				</->
+				<p>
+				The <em>writed</em> container contains 44 files. A LXC0 container is assembled on the fly at startup. The recipy to assemble a LXC0 container is created
+				using the <em>strace</em> utility. You run the target program outside a container under strace control. A utility analyses the log produced by strace
+				and extract the precise list of files needed to run the program.
+				<p>
+				This was done to create the most precise container possible. If there is a breach in one container, the attacker will end up in
+				an unfriendly place. It push the concept of server hardening to a new limit.
+				<p>
+				All containers in Bolixo are lXC0s. This includes containers running Apache, Mariadb and exim.
+			</->
 			<- section("Components");>
+				Components are presented in alphabetic order.
+				<p>
 				<- section("Communication between components");>
+					By default, Bolixo components (containers) can't use IP. They can't talk to each other directly. Although each
+					LXC0 is assigned an IP number (192.168.122.X), iptables rules prevent connection between members of the 192.168.122 network.
+					They usually lack an IP gateway. They can't reach the Internet and the Internet can't connect to them.
+					<p>
+					Bolixo components usually use unix socket to communicate. The <em>blackhole</em> installs some unix sockets
+					in a component at startup time. For example, in every component, blackhole installs the unix socket /dev/log, allowing
+					the component to log messages. Bolixo has its own logging system, running outside components.
+					The blackhole have connection rules for each component and will establish the proper
+					connection based on the source component and the unix socket used.
+				</->
+				<- section("bod: the reader");>
+					<em>Bod</em> is used to get information, read messages, read files etc... Bod has read access to the bosqldata database. It has also
+					read only access to the directory /var/lib/bolixo.
+					<p>
+					Bod is also the gateway to writed. No other component can reach writed.
+					<p>
+					Bod may use IP to reach the Internet and other Bolixo servers, using the webapi protocol. It manages messages and configuration synchronisation
+					with other Bolixo servers.
+				</->
+				<- section("documentd: games and documents");>
+					Documentd handles games and documents. It receives documents and games to edit from the <em>bod</em> component. It receives command to apply
+					to documents and return the new state of the document. Documentd has only access to temporary storage. This is used when restarting the service
+					to save current documents and games.
+				</->
+				<- section("exim: mail server");>
+					Exim is used to send various notifications to end users.
+				</->
+				<- section("keysd: private and public key management");>
+					Each Bolixo user has a 2048 private key. This key is used to sign messages created by the user. It is also used for
+					/- tlmpdoc_link (section_remote_accounts,"remote login.");
+					Also, every Bolixo server has a 2048 private key used for communication/authentification between Bolixo servers.
+					<p>
+					The private keys are locate in the
+					/- tlmpdoc_link(section_bosqlduser,"user database.");
+					The <em>keysd</em> component generates the keys and make use of them. The private keys are pass phrase protected. Only keysd knows
+					the passphrase. The private key never moves out of keysd.
+				</->
+				<- section("protocheck: web protocol checker");>
+					Protocheck is a web protocol checker, part of the blackhole system. It does a minimal validation and can terminate the communication
+					if it detects an anomaly.
+				</->
+				<- section("publishd: push information to other Bolixo servers");>
+					Publishd receives messages from <em>writed</em> and copy those messages to relevant Bolixo servers. It is used for public messages and for group messages.
+					When one Bolixo user express interest in the public message of another Bolixo user, located on a different server, a remote interest interest request is made.
+					When user A on server1 expresses interest in user B on server2, a request is made. When user C on server1 does the same, no request is done. Said differently
+					publishd on server2 will copy a message once for all users on server1.
+				</->
+				<- section("sessiond: session manager");>
+					The session manager records information about the active sessions of users. It records mostly UI information such as the tab states, states of dialogs,
+					notifications.
+				</->
+				<- section("web and web-fail: web content");>
+					The web component runs four services:
+					<p>
+					<ul>
+					<li>index: This is driving the Bolixo user interface.
+					<li>public: This is presenting public page.
+					<li>webapi: This is converting the Bolixo web protocol into Bolixo internal protocol.
+					<li>bo-websocket: This is handling websocket connections.
+					</ul>
+					<p>
+					The web and web-fail pair are used for failover when services are restarted. By default, all traffic goes to the web component. When we wish to restart
+					the web components (including webssl), the following steps are executed.
+					<p>
+					<ul>
+					<li>The <em>fail</em> components are restarted (web-fail and webssl-fail).
+					<li>Preference is switched from web,webssl to web-fail,webssl-fail.
+					<li>We wait until all connections have ended on web,webssl.
+					<li>We restart web and webssl.
+					<li>We switch back preference to web and webssl.
+					</ul>
+				</->
+				<- section("webssl and webssl-fail: ssl processing and static content");>
+					Webssl handles SSL certificates and static content (mostly images for documentation and UI).
+				</->
+				<- section("writed: the writer");>
+					Writed is the component updating databases. It updates the user database and the content database.
 				</->
 			</->
-			<- section("Databases");>
+			<- section("Blackhole");>
 			</->
-			<- section("LXC0: Micro-containers");>
+			<- section("Databases");>
+				There are two database servers in Bolixo, each running in its own LXC0 container. MariaDB is used in both cases.
+				<p>
+				<- section("bosqlduser: user information database",section_bosqlduser);>
+				</->
+				<- section("bosqlddata: content database",section_bosqlddata);>
+				</->
 			</->
 			<- section("Programming language");>
 			</->
