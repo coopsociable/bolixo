@@ -256,6 +256,7 @@ int main (int argc, char *argv[])
 
 				"addelm sessiond  'sessiond '  rect 600 500 90 50\n"
 				"addelm writed  'writed '  rect 450 700 90 50\n"
+				"addelm exim    'exim'     rect 850 600 90 50\n"
 				"addelm publishd 'publishd  '  rect 700 700 90 50\n"
 				"addelm keysd  keysd           rect 700 800 90 50\n"
 
@@ -291,6 +292,7 @@ int main (int argc, char *argv[])
 				"textpos bdusers 2\n"
 				//"addelm bdbolixo bd-bolixo rect 950 950 50 75\n"
 
+				"connect exim internet 1\n"
 				"connect internet webssl 1\n"
 				"connect bod-2 bod-11 7\n"
 				"connect bods bddata 1\n"
@@ -307,12 +309,17 @@ int main (int argc, char *argv[])
 				;
 			printf ("%s",script);
 			// Find out which component have access to /var/lib/bolixo
+			// Find out which component have access to /dev/smtp.sock
 			for (auto &relation:relations){
 				const char *dirname = relation.first.c_str();
 				if (strcmp(dirname,"bods")==0) dirname = "bod";
 				string bolixo_dir = string_f("/var/lib/lxc/%s/rootfs/var/lib/bolixo",dirname);
 				if (file_type(bolixo_dir.c_str())==1){
 					printf ("connect %s   files 1\n",relation.first.c_str());
+				}
+				string smtp_sock = string_f("/var/lib/lxc/%s/rootfs/dev/smtp.sock",dirname);
+				if (file_type(smtp_sock.c_str())==5){
+					printf ("connect %s   exim 1\n",relation.first.c_str());
 				}
 			}
 			for (auto &relation:relations){
