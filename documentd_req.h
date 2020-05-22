@@ -21,5 +21,6 @@
 #define DIALOG_CHESS_CONFIG	"config"
 #define DIALOG_CHESS_NEWGAME	"newgame"
 #define DIALOG_WHITEBOARD_NEW	"newdoc"
+#define DIALOG_IMBED		"imbed"
 #define CHESS_ROBOT		"--robot--"
 #endif

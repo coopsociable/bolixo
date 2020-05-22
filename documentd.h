@@ -121,6 +121,14 @@ template<typename T> void documentd_copychat(std::vector<T> &dst, const std::vec
 		dst.emplace_back(std::move(t));
 	}
 }
+
+
+struct DOC_CONTEXT{
+	const char *session = nullptr;
+	const char *username = nullptr;
+	bool maywrite = false;
+	unsigned docnum = 0;
+};
 class GAME{
 	unsigned sequence=1;	// For notifications
 	time_t modified = (time_t)0;
@@ -291,8 +299,8 @@ public:
 	virtual void load(DOC_READER &reader, std::string &msg)=0;
 	virtual void resetgame() = 0;
 	virtual void testwin(std::vector<VARVAL> &res) = 0;
-	virtual void exec (const char *var, const char *val, const char *session, const char *username, bool maywrite, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res) = 0;
-	virtual void manyexec (const std::vector<VARVAL_receive> &steps, const char *session, const char *username, bool maywrite, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
+	virtual void exec (const char *var, const char *val, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res) = 0;
+	virtual void manyexec (const std::vector<VARVAL_receive> &steps, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
 	virtual void engine_reply (const char *line, std::string &notify, bool &done);
 	virtual ~GAME();
 };
@@ -325,6 +333,8 @@ void documentd_chat(std::string &lines, PARAM_STRING username, const std::vector
 void documentd_parsefields (const char *val, std::vector<VARVAL> &fields);
 unsigned documentd_displaylen (const char *line, unsigned fontsize, float size);
 const char *documentd_getflag(const char *flag);
+std::string documentd_imbed (PARAM_STRING gameid, PARAM_STRING document, PARAM_STRING region, unsigned docnum, DOC_UI_SPECS_receive &sp);
+
 void fflush (DOC_WRITER *);
 char *fgets(char *s, int size, DOC_READER *r);
 unsigned chess_getmaxskill();

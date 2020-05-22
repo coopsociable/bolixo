@@ -349,7 +349,7 @@ class WHITEBOARD: public GAME{
 	}
 	WHITEBOARD_ELM *locate (unsigned x, unsigned y, unsigned fontsize);
 	vector<WHITEBOARD_ELM *> findselected (WHITEBOARD_SELMODE sel);
-	void execstep (const char *var, const char *val, const char *session, const char *username, bool maywrite, const DOC_UI_SPECS_receive &sp,
+	void execstep (const char *var, const char *val, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp,
 		VARVAL &script_var, VARVAL &notify_var, set<unsigned> &notify_ids, std::vector<VARVAL> &res);
 	void changeline (const vector<WHITEBOARD_ELM*> &parents, const vector<WHITEBOARD_ELM*> &elms, int direction, ARROW_TYPE arrow, VARVAL &notify_var, string &error);
 	void changeline(int direction, string &error, VARVAL &notify_var, set<unsigned> &notify_ids);
@@ -359,6 +359,7 @@ class WHITEBOARD: public GAME{
 		VARVAL &notify_var, set<unsigned> &notify_ids);
 	void sortsubelms(set<unsigned> &notify_ids);
 	void setfocus(VARVAL &var);
+	std::string draw_board (unsigned vx, unsigned vy, unsigned width, unsigned height, unsigned fontsize);
 public:
 	friend void walkboard(class _F_walkboard &c, WHITEBOARD *board);
 	void save(DOC_WRITER &w, bool);
@@ -367,8 +368,8 @@ public:
 	WHITEBOARD();
 	const char *getclass() const;
 	void testwin(std::vector<VARVAL> &res);
-	void exec (const char *var, const char *val, const char *session, const char *username, bool maywrite, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
-	void manyexec (const vector<VARVAL_receive> &steps, const char *session, const char *username, bool maywrite, const DOC_UI_SPECS_receive &sp, vector<VARVAL> &res);
+	void exec (const char *var, const char *val, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
+	void manyexec (const vector<VARVAL_receive> &steps, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, vector<VARVAL> &res);
 };
 
 GAME_P make_WHITEBOARD()
@@ -1004,9 +1005,7 @@ static void whiteboard_update_button (string &script, bool oldstate, bool newsta
 void WHITEBOARD::exec (
 	const char *var,
 	const char *val,
-	const char *session,
-	const char *username,
-	bool maywrite,
+	const DOC_CONTEXT &ctx,
 	const DOC_UI_SPECS_receive &sp,
 	std::vector<VARVAL> &res)
 {
@@ -1080,20 +1079,77 @@ void WHITEBOARD::setfocus(VARVAL &var)
 	var.val += string_f("document.getElementById('text-%s').focus();\n",gameid.c_str());
 }
 <mod>
+string WHITEBOARD::draw_board (unsigned vx, unsigned vy, unsigned width, unsigned height, unsigned fontsize)
+{
+	glocal fontsize;
+	glocal string val;
+	glocal.val = string_f("<svg id='board-%s' viewbox='%u %u %u %u'"
+		" style='cursor:default;'"
+		" onmousedown='gameselect(event);'"
+		" onmouseup='gamemouseup(event); return false;'"
+		" onwheel='gamewheel(event); return false;'"
+		" onmousemove='gamemove(event); return false;'"
+		" width=100%% height=100%%"
+		" >\n"
+		,gameid.c_str(),vx,vy,width,height);
+	<call walkboard>(this);
+	<f element>
+		if (firstseen){
+			const char *color = tbcolor[elm.selmode];
+			static const char *tbdash[]={
+				""," stroke-dasharray='5,5'"," stroke-dasharray='2,5'"
+			};
+			const char *dasharray = tbdash[elm.box_type];
+			switch(elm.type){
+			case TYPE_ELLIPSE:
+				glocal.val += string_f("<ellipse id='e%u' cx=%u cy=%u rx=%u ry=%u stroke='%s' stroke-width=2 fill='none'%s />\n"
+					,elm.id,elm.x,elm.y,elm.width/2,elm.height/2,color,dasharray);
+				break;
+			case TYPE_RECT:
+				glocal.val += string_f("<rect id='e%u' x=%d y=%d rx=5 ry=5 width=%u height=%u stroke='%s' stroke-width='2' fill='none'%s />\n"
+					,elm.id,(int)elm.x-elm.width/2,(int)elm.y-elm.height/2,elm.width,elm.height,color,dasharray);
+				break;
+			case TYPE_LINE:
+				glocal.val += string_f("<line id='e%u' x1=%u y1=%u x2=%u y2=%u stroke='%s' stroke-width='2' fill='none'%s />\n"
+					,elm.id,elm.x,elm.y,elm.x1,elm.y1,color,dasharray);
+				break;
+			case TYPE_HANDLINE:
+				glocal.val += string_f("<path id='e%u' stroke='%s' stroke-width='4' fill='none' d='M%u %u L %u %u'/>\n"
+					,elm.id,color,elm.x,elm.y,elm.x1,elm.y1);
+				break;
+			case TYPE_TEXT:
+				glocal.val += string_f("<circle id='e%u' stroke='%s' fill='black' cx=%u cy=%u r=%u />\n"
+					,elm.id,color,elm.x,elm.y,elm.width/2);
+			}
+			unsigned textx,texty;
+			elm.gettextpos(textx,texty,glocal.fontsize);
+			glocal.val += string_f("<text class=whitext id='t%u' X=%u Y=%u style='stroke:%s;fill:%s;'>%s</text>\n"
+				,elm.id,textx,texty,color,color,documentd_escape(elm.txt).c_str());
+		}
+		if (parent != nullptr){
+			LINE_SPEC spec(*parent,elm,quarter,nosubelm,nbsubelm);
+			glocal.val += string_f("<g id='l%u,%u'/>\n"
+				"<script>replace_line('l%u,%u',%u,%u,%lf,%u,'black',%u);</script>\n"
+				,parent->id,elm.id,parent->id,elm.id,spec.x,spec.y,spec.angle,spec.len,arrow);
+		}
+	</f>
+	</call>
+	glocal.val += "</svg>\n";
+	return glocal.val;
+}
+</mod>
+<mod>
 void WHITEBOARD::execstep (
 	const char *var,
 	const char *val,
-	const char *session,
-	const char *username,
-	bool maywrite,
+	const DOC_CONTEXT &ctx,
 	const DOC_UI_SPECS_receive &sp,
 	VARVAL &script_var,
 	VARVAL &notify_var,
 	set<unsigned> &notify_ids,
 	std::vector<VARVAL> &res)
 {
-	glocal unsigned fontsize = sp.fontsize;
-	auto &pref = prefs[session];
+	auto &pref = prefs[ctx.session];
 	unsigned waiting_users_width = sp.mobile ? 62 : 42;
 	unsigned board_width = sp.content_width - waiting_users_width;	// Space for user list
 	const unsigned scroll_thick = sp.mobile ? 12 : 6;
@@ -1303,7 +1359,7 @@ void WHITEBOARD::execstep (
 			
 			v.val += "</script>\n";
 			// Buttons line
-			if (maywrite){
+			if (ctx.maywrite){
 				#define BUTTON_NEWDOC	0
 				#define BUTTON_TEXT	1
 				#define BUTTON_ELLIPSE	2
@@ -1358,60 +1414,7 @@ void WHITEBOARD::execstep (
 				" margin-left: auto;'"
 				" onkeydown='gamepress(event);return false;'"
 				" tabindex=0 >\n",gameid.c_str(),board_width,board_height);
-			v.val += string_f("<svg id='board-%s' viewbox='%u %u %u %u'"
-				" style='cursor:default;'"
-				" onmousedown='gameselect(event);'"
-				" onmouseup='gamemouseup(event); return false;'"
-				" onwheel='gamewheel(event); return false;'"
-				" onmousemove='gamemove(event); return false;'"
-				" width=100%% height=100%%"
-				" >\n"
-				,gameid.c_str(),pref.viewbox_x,pref.viewbox_y,SVG_BOARD_WIDTH,SVG_BOARD_HEIGHT);
-			
-			glocal v;
-			<call walkboard>(this);
-			<f element>
-				if (firstseen){
-					const char *color = tbcolor[elm.selmode];
-					static const char *tbdash[]={
-						""," stroke-dasharray='5,5'"," stroke-dasharray='2,5'"
-					};
-					const char *dasharray = tbdash[elm.box_type];
-					switch(elm.type){
-					case TYPE_ELLIPSE:
-						glocal.v.val += string_f("<ellipse id='e%u' cx=%u cy=%u rx=%u ry=%u stroke='%s' stroke-width=2 fill='none'%s />\n"
-							,elm.id,elm.x,elm.y,elm.width/2,elm.height/2,color,dasharray);
-						break;
-					case TYPE_RECT:
-						glocal.v.val += string_f("<rect id='e%u' x=%d y=%d rx=5 ry=5 width=%u height=%u stroke='%s' stroke-width='2' fill='none'%s />\n"
-							,elm.id,(int)elm.x-elm.width/2,(int)elm.y-elm.height/2,elm.width,elm.height,color,dasharray);
-						break;
-					case TYPE_LINE:
-						glocal.v.val += string_f("<line id='e%u' x1=%u y1=%u x2=%u y2=%u stroke='%s' stroke-width='2' fill='none'%s />\n"
-							,elm.id,elm.x,elm.y,elm.x1,elm.y1,color,dasharray);
-						break;
-					case TYPE_HANDLINE:
-						glocal.v.val += string_f("<path id='e%u' stroke='%s' stroke-width='4' fill='none' d='M%u %u L %u %u'/>\n"
-							,elm.id,color,elm.x,elm.y,elm.x1,elm.y1);
-						break;
-					case TYPE_TEXT:
-						glocal.v.val += string_f("<circle id='e%u' stroke='%s' fill='black' cx=%u cy=%u r=%u />\n"
-							,elm.id,color,elm.x,elm.y,elm.width/2);
-					}
-					unsigned textx,texty;
-					elm.gettextpos(textx,texty,glocal.fontsize);
-					glocal.v.val += string_f("<text class=whitext id='t%u' X=%u Y=%u style='stroke:%s;fill:%s;'>%s</text>\n"
-						,elm.id,textx,texty,color,color,documentd_escape(elm.txt).c_str());
-				}
-				if (parent != nullptr){
-					LINE_SPEC spec(*parent,elm,quarter,nosubelm,nbsubelm);
-					glocal.v.val += string_f("<g id='l%u,%u'/>\n"
-						"<script>replace_line('l%u,%u',%u,%u,%lf,%u,'black',%u);</script>\n"
-						,parent->id,elm.id,parent->id,elm.id,spec.x,spec.y,spec.angle,spec.len,arrow);
-				}
-			</f>
-			</call>
-			v.val += "</svg>\n";
+			v.val += draw_board(pref.viewbox_x,pref.viewbox_y,SVG_BOARD_WIDTH,SVG_BOARD_HEIGHT,sp.fontsize);
 			v.val += "<div style='background-color:ghostwhite;'>\n";
 			v.val += string_f("<svg width=%u height=%u>\n",board_width,scroll_thick);
 			v.val += string_f("<rect id='hscroll-%s' x=%u y=0 rx=3 ry=3 width=%u height=%u fill=lightgray />\n"
@@ -1430,10 +1433,16 @@ void WHITEBOARD::execstep (
 			// Status line
 			v.val += "<div id=tab_form>\n";
 			v.val += string_f("<div id=msg-%s style=color:black>&nbsp;</div>\n",gameid.c_str());
-			documentd_chat (v.val,username,chat,sp.width-20,sp.mobile ? 200 : 100);
+			documentd_chat (v.val,ctx.username,chat,sp.width-20,sp.mobile ? 200 : 100);
 			v.val += "</div>\n";
-			res.emplace_back(v);
+			res.emplace_back(move(v));
 		}
+	}else if (strcmp(var,"region")==0){
+		// For imbedding
+		VARVAL var;
+		var.var = VAR_CONTENT;
+		var.val = draw_board (0,0,SVG_BOARD_WIDTH,SVG_BOARD_HEIGHT,sp.fontsize);
+		res.emplace_back(move(var));
 	}else if (strcmp(var,"chat")==0){
 		appendchat(val,notify_var.val,res);
 	}else if (strcmp(var,REQ_GETFIELDS)==0){
@@ -1495,7 +1504,7 @@ void WHITEBOARD::execstep (
 			pref.viewbox_y = box_y;
 			script_var.val += string_f("setviewbox(%u,%u);\n",box_x,box_y);
 		}
-	}else if (maywrite){
+	}else if (ctx.maywrite){
 		if (strcmp(var,"deletechar")==0){
 			if (pref.mod.shift){
 				auto selects = findselected(SEL_SELECTED);
@@ -1631,7 +1640,7 @@ void WHITEBOARD::execstep (
 							elm->move(elms,movex,movey,notify_ids);
 						}
 					}
-					setmodified(username);
+					setmodified(ctx.username);
 				}
 			}
 		}else if (strcmp(var,"wheel")==0){
@@ -1646,7 +1655,7 @@ void WHITEBOARD::execstep (
 						elm->resize(grow,ctrlkey,shiftkey);
 						notify_ids.insert(elm->id);
 					}
-					setmodified(username);
+					setmodified(ctx.username);
 				}
 			}
 		}else if (strcmp(var,"newgame")==0){
@@ -1667,7 +1676,7 @@ void WHITEBOARD::execstep (
 				const unsigned x=50 + pref.viewbox_x;
 				const unsigned y=50 + pref.viewbox_y;
 				place_newelm(tbtype[uval-BUTTON_TEXT],x,y,default_size,default_size,star_elms,imbed_elms,notify_var,notify_ids);
-				setmodified(username);
+				setmodified(ctx.username);
 				pref.selecting = true;
 				pref.starmode = pref.imbedmode = false;
 			}else if (is_any_of(uval,BUTTON_SELECT,BUTTON_STARMODE,BUTTON_IMBEDMODE)){
@@ -1746,7 +1755,7 @@ void WHITEBOARD::execstep (
 						y += (imb->y - imb->height/2);
 					}	
 					unsigned id = place_newelm(elmtype,x,y,width,height,star_elms,imbed_elms,notify_var,notify_ids);
-					setmodified(username);
+					setmodified(ctx.username);
 					auto &elm = elms[id];
 					elm.label = label;
 					elm.txt = text;
@@ -1842,7 +1851,7 @@ void WHITEBOARD::execstep (
 					e = nexte;
 				}
 			}
-			setmodified(username);
+			setmodified(ctx.username);
 		}
 	}else{
 		error = MSG_R(E_READONLY);
@@ -1864,9 +1873,7 @@ void WHITEBOARD::execstep (
 </mod>
 void WHITEBOARD::manyexec (
 	const vector<VARVAL_receive> &steps,
-	const char *session,
-	const char *username,
-	bool maywrite,
+	const DOC_CONTEXT &ctx,
 	const DOC_UI_SPECS_receive &sp,
 	vector<VARVAL> &res)
 {
@@ -1876,7 +1883,7 @@ void WHITEBOARD::manyexec (
 	notify_var.var = VAR_NOTIFY;
 	set<unsigned> notify_ids;	// Lines to update using SCRIPT
 	for (auto &v:steps){
-		execstep (v.var,v.val,session,username,maywrite,sp,script_var,notify_var,notify_ids,res);
+		execstep (v.var,v.val,ctx,sp,script_var,notify_var,notify_ids,res);
 	}
 	sortsubelms(notify_ids);
 	redraw(notify_ids,notify_var,sp.fontsize);

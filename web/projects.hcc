@@ -233,15 +233,16 @@ static void projects_popup_bottom()
 	tlmpweb_position_popup();
 }
 /*
-	Dialogs for the chess game
+	Dialogs for documents and games
 */
 <mod>
-static void projects_dialog_chess (
+static void projects_dialogs (
 	CONNECT_INFO &con,
 	const char *dialog_name,
 	const vector<DIALOG_FIELD> &fields,
 	const char *session,
 	PARAM_STRING path,
+	unsigned docnum,
 	const DOC_UI_SPECS &sp)
 {
 	glocal fields;
@@ -288,6 +289,14 @@ static void projects_dialog_chess (
 					w_field3 = f.value;
 				}else if (f.name == "skill"){
 					w_field6 = f.value;
+				}
+			}
+		}else if (strcmp(glocal.dialog_name,DIALOG_IMBED)==0){
+			for (auto &f:glocal.fields){
+				if (f.name == "docid"){
+					w_field1 = f.value;
+				}else if (f.name == "region"){
+					w_field2 = f.value;
 				}
 			}
 		}
@@ -396,6 +405,19 @@ static void projects_dialog_chess (
 			button_submit(MSG_R(B_YES));	
 			/- </center>
 			/- <br>
+		}else if (strcmp(glocal.dialog_name,DIALOG_IMBED)==0){
+			/- <table border=0>
+			/- <tr><td>
+			/- document/game
+			/- <td>
+			field_string (w_field1,"");
+			/- <tr><td>
+			/- Region
+			/- <td>
+			field_string (w_field2,"");
+			/- <tr><td>
+			button_submit();
+			/- </table>
 		}
 	</f>
 	<f validate>
@@ -433,26 +455,30 @@ static void projects_dialog_chess (
 			var.val += string_f("name:%s\n",w_field4.c_str());
 			var.val += string_f("timer:%s\n",w_field3.c_str());
 			var.val += string_f("skill:%s\n",w_field6.c_str());
+			if (w_check1
+				&& projects_sendinvite(glocal.con,glocal.session,glocal.path,MSG_U(I_PLAYCHESSGAME,"to play a chess game")
+					,w_field1.c_str(),w_field2.c_str(),w_field5.c_str(),glocal.error)==-1){
+				fail = true;
+			}else if (w_check2
+				&& projects_sendinvite(glocal.con,glocal.session,glocal.path,MSG_R(I_PLAYCHESSGAME)
+					,w_field2.c_str(),w_field1.c_str(),w_field5.c_str(),glocal.error)==-1){
+				fail = true;
+			}
 		}else if (strcmp(glocal.dialog_name,DIALOG_CHESS_NEWGAME)==0){
 			var.var = "resetgame";
 		}else if (strcmp(glocal.dialog_name,DIALOG_WHITEBOARD_NEW)==0){
 			var.var = "resetgame";
 			var.val = strcmp(w_field1.c_str(),"all")==0 ? "0" : "1";
+		}else if (strcmp(glocal.dialog_name,DIALOG_IMBED)==0){
+			var.var = "imbed";
+			var.val += string_f("docid:%s\n",w_field1.c_str());
+			var.val += string_f("region:%s\n",w_field2.c_str());
 		}
 		glocal.steps.emplace_back(var);
-		if (w_check1
-			&& projects_sendinvite(glocal.con,glocal.session,glocal.path,MSG_U(I_PLAYCHESSGAME,"to play a chess game")
-				,w_field1.c_str(),w_field2.c_str(),w_field5.c_str(),glocal.error)==-1){
-			fail = true;
-		}else if (w_check2
-			&& projects_sendinvite(glocal.con,glocal.session,glocal.path,MSG_R(I_PLAYCHESSGAME)
-				,w_field2.c_str(),w_field1.c_str(),w_field5.c_str(),glocal.error)==-1){
-			fail = true;
-		}
 	</f>
 	</call>
 	if (glocal.steps.size() > 0){
-		<call bod_client_playstep>(glocal.con,session,"",path,glocal.steps,sp);
+		<call bod_client_playstep>(glocal.con,session,"",path,docnum,glocal.steps,sp);
 		<f ok>
 			for (auto &r:res){
 				if (strcmp(r.var,VAR_CONTENT)==0){
@@ -1229,6 +1255,7 @@ static void projects_documents(
 	}else if (file_is_doc(info.file_type)){
 		glocal vector<DIALOG_FIELD> fields;	// Field definition and value for document dialogs
 		const char *base_content_id = "doc";
+		unsigned docnum = 0;
 		if (info.file_type == FILE_DOC_TICTACTO){
 			sethelp2 (webtabs,"help_tictacto",MSG_U(T_TICTACTO,"Tictacto"));
 			base_content_id = "doc_tictacto";
@@ -1303,7 +1330,7 @@ static void projects_documents(
 			sp.content_width = sp.width;
 			sp.content_height = sp.height;
 		}
-		<call bod_client_playstep>(glocal.con,w_session.c_str(),"",glocal.path,steps,sp);
+		<call bod_client_playstep>(glocal.con,w_session.c_str(),"",glocal.path,docnum,steps,sp);
 		<f ok>
 			if (!success){
 				htmlprintf ("<p>%s\n",msg);
@@ -1341,8 +1368,8 @@ static void projects_documents(
 		</call>
 		if (w_dialog.isset()){
 			//for (auto &f:glocal.fields) tlmp_warning ("fields :%s: :%s:",f.name.c_str(),f.value.c_str());
-			if (is_any_of(info.file_type,FILE_DOC_CHESS,FILE_DOC_WHITEBOARD)){
-				projects_dialog_chess (glocal.con,w_dialog.c_str(),glocal.fields,w_session.c_str(),glocal.path,sp);	
+			if (is_any_of(info.file_type,FILE_DOC_CHESS,FILE_DOC_WHITEBOARD,FILE_DOC_WORDPROC)){
+				projects_dialogs (glocal.con,w_dialog.c_str(),glocal.fields,w_session.c_str(),glocal.path,docnum,sp);	
 			}
 		}
 	}else if (info.type != ENTRY_NONE){

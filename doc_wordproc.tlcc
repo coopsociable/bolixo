@@ -60,10 +60,16 @@ struct WORD_USERPREF{
 
 enum WORDPROC_LISTTYPE { LIST_NONE, LIST_BULLET,LIST_NUM,LIST_CENTER};
 
+struct WORDPROC_IMBED{
+	std::string document;
+	std::string region;
+	unsigned short docnum=0;
+};
 class WORDPROC_LINE{	// Well, a line is a paragraph...
 	unsigned char title_level=0;
-	unsigned char line_spec=0;	// Used for tables and images
+	unsigned char line_spec=0;	// Used for imbeds and images
 public:
+	WORDPROC_IMBED imbed;
 	unsigned char tab_level=0;
 	WORDPROC_LISTTYPE listtype=LIST_NONE;
 	std::string line;
@@ -71,6 +77,9 @@ public:
 	WORDPROC_LINE(){}
 	WORDPROC_LINE(const std::string &l):line(l){}
 	WORDPROC_LINE(const char *l):line(l){}
+	bool is_imbed() const {
+		return imbed.document.size() > 0;
+	}
 	bool is_image() const {
 		return title_level == 10;
 	}
@@ -103,13 +112,22 @@ public:
 		}
 	}
 	void increase_image_width(){
-		if (is_image() && line_spec < 100) line_spec++;
+		if ((is_image() || is_imbed()) && line_spec < 100) line_spec++;
 	}
 	void decrease_image_width(){
-		if (is_image() && line_spec > 0) line_spec--;
+		if ((is_image() || is_imbed()) && line_spec > 0) line_spec--;
 	}
 	unsigned get_image_width() const {
 		return is_image() ? line_spec : 0;
+	}
+	const char *get_document() const{
+		return imbed.document.c_str();
+	}
+	const char *get_region() const {
+		return imbed.region.c_str();
+	}
+	unsigned get_docnum() const {
+		return imbed.docnum;
 	}
 	void set_table(bool on){
 		if (on){
@@ -119,6 +137,9 @@ public:
 		}else if (title_level == 11){
 			title_level = 0;
 		}
+	}
+	void set_imbed (WORDPROC_IMBED &&_imbed){
+		imbed = _imbed;
 	}
 	bool is_table() const {
 		return title_level == 11;
@@ -144,7 +165,7 @@ class WORDPROC: public GAME{
 		std::set<unsigned> &script_lines, std::set<unsigned> &notify_lines);
 	void update_lines (std::string &line, std::set<unsigned> &updlines);
 	std::string formatline (unsigned noline);
-	void execstep (const char *var,	const char *val, const char *session, const char *username, bool maywrite, const DOC_UI_SPECS_receive &sp,
+	void execstep (const char *var,	const char *val, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp,
 		VARVAL &script_var, std::set<unsigned> &script_lines, VARVAL &notify_var, std::set<unsigned> &notify_lines,
 		std::vector<VARVAL> &res);
 	void set_para_spec(class PARAGRAPH &para, unsigned noline, unsigned column, const DOC_UI_SPECS_receive &sp, unsigned &para_noline);
@@ -157,8 +178,8 @@ public:
 	void load(DOC_READER &r, std::string &msg);
 	void resetgame();
 	void testwin(std::vector<VARVAL> &res);
-	void exec (const char *var, const char *val, const char *session, const char *username, bool maywrite, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
-	void manyexec (const std::vector<VARVAL_receive> &steps, const char *session, const char *username, bool maywrite, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
+	void exec (const char *var, const char *val, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
+	void manyexec (const std::vector<VARVAL_receive> &steps, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
 };
 
 GAME_P make_WORDPROC()
@@ -167,6 +188,7 @@ GAME_P make_WORDPROC()
 }
 
 #define documentd_wordproc_lines_NOTNEED
+#define documentd_wordproc_lines_v2_NOTNEED
 #include "proto/documentd_wordproc.protoch"
 #include "proto/documentd_wordproc.protoh"
 
@@ -640,17 +662,19 @@ void WORDPROC::save(DOC_WRITER &w, bool save_session_info)
 		users.emplace_back(user);
 	}
 	documentd_wordproc_users (&w,users);
-	vector<WORDPROC_PARA_V2> paras;
+	vector<WORDPROC_PARA_V3> paras;
 	for (auto &l:lines){
-		WORDPROC_PARA_V2 para;
+		WORDPROC_PARA_V3 para;
 		para.listtype = l.listtype;
 		para.title_level = l.get_paragraph_type();
 		para.line_spec = l.get_paragraph_spec();
 		para.tab_level = l.tab_level;
 		para.line = l.line;
+		para.i_document = l.imbed.document;
+		para.i_region = l.imbed.region;
 		paras.emplace_back(para);
 	}
-	documentd_wordproc_lines_v2 (&w,paras);
+	documentd_wordproc_lines_v3 (&w,paras);
 }
 <mod>
 void WORDPROC::load(DOC_READER &r, string &msg)
@@ -693,6 +717,19 @@ void WORDPROC::load(DOC_READER &r, string &msg)
 			line.set_paragraph_spec(l.line_spec);
 			line.tab_level = l.tab_level;
 			line.line = l.line;
+			glocal.lines.push_back(line);
+		}
+	</f>
+	<f lines_v3>
+		for (auto &l:lines){
+			WORDPROC_LINE line;
+			line.listtype = l.listtype;
+			line.set_paragraph_type(l.title_level);
+			line.set_paragraph_spec(l.line_spec);
+			line.tab_level = l.tab_level;
+			line.line = l.line;
+			line.imbed.document = l.i_document;
+			line.imbed.region = l.i_region;
 			glocal.lines.push_back(line);
 		}
 	</f>
@@ -933,6 +970,7 @@ string WORDPROC::formatline(unsigned noline)
 		}
 		closetab = "</div>";
 		bool format = true;
+tlmp_warning ("formatline %u %d %d %d",noline,para.is_title(),para.is_image(),para.is_imbed());
 		if (para.is_title()){
 			ret += string_f("<span style=font-size:%1.2fem;>",tb[para.get_title_level()]);
 			closetitle = "</span>";
@@ -966,6 +1004,14 @@ string WORDPROC::formatline(unsigned noline)
 				}
 				if (cursors.size() > 0) ret += "</div>";
 			}
+		}else if (para.is_imbed()){
+			DOC_UI_SPECS_receive sp;
+			sp.clear();
+			sp.content_width = 100;
+			sp.content_height = 100;
+			sp.fontsize = 14;
+			ret += documentd_imbed (gameid,para.get_document(),para.get_region(),para.get_docnum(),sp);
+			format = false;
 		}
 				
 		if (format){
@@ -1122,6 +1168,7 @@ static void wordproc_update_button (string &script, bool &curstate, bool newstat
 #define BUTTON_SUB		11
 #define BUTTON_CENTER		12
 #define BUTTON_IMAGE		13
+#define BUTTON_IMBED		14
 
 static void wordproc_update_buttons (string &script, WORD_USERPREF &pref, const WORD_EFFECTS_STATE &newstates)
 {
@@ -1403,9 +1450,7 @@ void WORDPROC::update_lines (string &script, set<unsigned> &updlines)
 void WORDPROC::exec (
 	const char *var,
 	const char *val,
-	const char *session,
-	const char *username,
-	bool maywrite,
+	const DOC_CONTEXT &ctx,
 	const DOC_UI_SPECS_receive &sp,
 	vector<VARVAL> &res)
 {
@@ -1526,9 +1571,7 @@ void wordproc_kbd (const char *val, MOD_KBD &mod, std::string &var, std::string 
 void WORDPROC::execstep (
 	const char *var,
 	const char *val,
-	const char *session,
-	const char *username,
-	bool maywrite,
+	const DOC_CONTEXT &ctx,
 	const DOC_UI_SPECS_receive &sp,
 	VARVAL &script_var,
 	set<unsigned> &script_lines,
@@ -1536,8 +1579,8 @@ void WORDPROC::execstep (
 	set<unsigned> &notify_lines,
 	vector<VARVAL> &res)
 {
-	auto &pref = prefs[username];
-	pref.maywrite = maywrite;
+	auto &pref = prefs[ctx.username];
+	pref.maywrite = ctx.maywrite;
 	unsigned visible_lines = 60;
 	if (sp.content_height != 0 && sp.fontsize != 0) visible_lines = sp.content_height/sp.fontsize + 10;
 	//tlmp_warning ("visible_lines=%u content_height=%u fontsize=%u",visible_lines,sp.content_height,sp.fontsize);
@@ -1699,7 +1742,7 @@ void WORDPROC::execstep (
 			v.val += "}\n";
 			v.val += "</script>\n";
 			// Buttons line
-			if (maywrite){
+			if (ctx.maywrite){
 				v.val += "<div id=tab_form style='margin-top:5; margin-bottom:5; background-color: lightgray;'>\n";
 				DOC_BUTTON_SPECS specs;
 				if (sp.mobile){
@@ -1709,6 +1752,7 @@ void WORDPROC::execstep (
 					specs.margin_top = 4;
 					specs.margin_bottom = 4;
 				}
+				WORDPROC_MENU menu(specs);
 				documentd_button_start(v.val,gameid);
 				documentd_bar_button (v.val,BUTTON_TITLE_PLUS,"T",specs,false);
 				documentd_bar_button (v.val,BUTTON_TITLE_LESS,"t",specs,false);
@@ -1722,16 +1766,8 @@ void WORDPROC::execstep (
 				documentd_bar_button (v.val,BUTTON_CENTER,"<>",specs,false);
 				documentd_bar_button (v.val,BUTTON_BULLET,"&bull;",specs,false);
 				documentd_bar_button (v.val,BUTTON_NUMLIST,"N.",specs,false);
-				int w4 = specs.width/4;
-				int h1 = specs.width/3;
-				int h2 = 2*h1;
-				string svg_image= string_f(
-					"<svg width=%upx height=%upx>"
-					"<path stroke='black' stroke-width=1 d='M%u,%u l%d,%d l%d,%d l%d,%d l%d,%d' fill='black'/>"
-					"</svg>"
-					,specs.width,specs.width
-					,0,specs.width, w4,-h1, w4,h1, w4,-h2, w4,h2);
-				documentd_bar_button (v.val,BUTTON_IMAGE,svg_image,specs,false);
+				documentd_bar_button (v.val,BUTTON_IMAGE,menu.svg_image,specs,false);
+				documentd_bar_button (v.val,BUTTON_IMBED,menu.svg_imbed,specs,false);
 				documentd_button_end(v.val);
 			}else{
 				v.val += "<div id=tab_form style='margin-top:5; margin-bottom:5; background-color: lightgray;'>\n";
@@ -1789,7 +1825,7 @@ void WORDPROC::execstep (
 			var = tmpvar.c_str();
 			val = tmpval.c_str();		
 		}
-		if (maywrite){
+		if (ctx.maywrite){
 			if (strcmp(var,"vmove")==0){
 				// Move cursor
 				int move = atoi(val);
@@ -1886,11 +1922,30 @@ void WORDPROC::execstep (
 						wl.set_image(true);
 						update_num_lines = true;
 					}
+				}else if (uval == BUTTON_IMBED){
+					VARVAL var;
+					var.var = VAR_DIALOG;
+					var.val = DIALOG_IMBED;
+					res.emplace_back(var);
 				}
 				if (update_num_lines) wordproc_update_num_lines (pref.cursor.line,lines,notify_lines);
-				setmodified(username);
+				setmodified(ctx.username);
 				notify_lines.insert(pref.cursor.line);
 				script_var.val += string_f("document.getElementById('text-%s').focus();\n",gameid.c_str());
+			}else if (strcmp(var,"imbed")==0){
+				vector<VARVAL> fields;
+				documentd_parsefields(val,fields);
+				WORDPROC_IMBED imbed;
+				for (auto &f:fields){
+					if (f.var == "docid"){
+						imbed.document = f.val;
+					}else if (f.var == "region"){
+						imbed.region = f.val;
+					}
+				}
+				while (lines.size() <= pref.cursor.line) lines.push_back("");
+				lines[pref.cursor.line].set_imbed(move(imbed));
+				notify_lines.insert(pref.cursor.line);
 			// This is a catch all for images
 			// It means that all other case (other else) are not reached if the current line is an image.
 			}else if (pref.cursor.line < lines.size() && lines[pref.cursor.line].is_image()){
@@ -1903,7 +1958,7 @@ void WORDPROC::execstep (
 					lines.insert(lines.begin()+pref.cursor.line,WORDPROC_LINE());
 					for (unsigned l=cur_line; l<lines.size(); l++) notify_lines.insert(l);
 					pref.cursor.column=0;
-					setmodified(username);
+					setmodified(ctx.username);
 				}else if (strcmp(var,"hmove")==0){
 					int move = atoi(val);
 					auto &para = lines[pref.cursor.line];
@@ -1975,7 +2030,7 @@ void WORDPROC::execstep (
 				}
 				if (update_num_lines) wordproc_update_num_lines (pref.cursor.line,lines,notify_lines);
 				notify_lines.insert(pref.cursor.line);
-				setmodified(username);
+				setmodified(ctx.username);
 			}else if (strcmp(var,"break")==0){
 				while (lines.size() <= pref.cursor.line) lines.emplace_back(WORDPROC_LINE());
 				auto &para = lines[pref.cursor.line];
@@ -2013,7 +2068,7 @@ void WORDPROC::execstep (
 					pref.cursor.line++;
 					pref.cursor.column=0;
 				}
-				setmodified(username);
+				setmodified(ctx.username);
 			}else if (strcmp(var,"backspace")==0){
 				notify_lines.insert(pref.cursor.line);
 				// We start by moving the cursor back one character if possible.
@@ -2056,7 +2111,7 @@ void WORDPROC::execstep (
 						deletechar(notify_lines,pref);
 					}
 				}
-				setmodified(username);
+				setmodified(ctx.username);
 			}else if (strcmp(var,"deletechar")==0){
 				if (mod.shift){
 					// Delete from cursor to the end of the line
@@ -2081,7 +2136,7 @@ void WORDPROC::execstep (
 				}else{
 					deletechar(notify_lines,pref);
 				}
-				setmodified(username);
+				setmodified(ctx.username);
 			}else if (strcmp(var,"voffset")==0){
 				// Change page up or down
 				int move = atoi(val);
@@ -2233,9 +2288,7 @@ void WORDPROC::execstep (
 }
 void WORDPROC::manyexec (
 	const vector<VARVAL_receive> &steps,
-	const char *session,
-	const char *username,
-	bool maywrite,
+	const DOC_CONTEXT &ctx,
 	const DOC_UI_SPECS_receive &sp,
 	vector<VARVAL> &res)
 {
@@ -2247,7 +2300,7 @@ void WORDPROC::manyexec (
 	notify_var.var = VAR_NOTIFY;
 	set<unsigned> notify_lines;	// Lines to update using SCRIPT
 	for (auto &v:steps){
-		execstep (v.var,v.val,session,username,maywrite,sp,script_var,script_lines,notify_var,notify_lines,res);
+		execstep (v.var,v.val,ctx,sp,script_var,script_lines,notify_var,notify_lines,res);
 	}
 	#if 0
 	size_t script_size = script_var.val.size();

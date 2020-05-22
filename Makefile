@@ -285,7 +285,7 @@ doc_checkers.o: doc_checkers.tlcc documentd.h proto/documentd_checkers.protoh
 doc_chess.o: doc_chess.tlcc documentd.h proto/documentd_chess.protoh
 	cctlcc -Wall $(OPTIONS) -c doc_chess.tlcc -o doc_chess.o
 
-doc_wordproc.o: doc_wordproc.tlcc documentd.h proto/documentd_wordproc.protoh
+doc_wordproc.o: doc_wordproc.tlcc documentd.h documentd_menu.h proto/documentd_wordproc.protoh
 	cctlcc -Wall $(OPTIONS) -c doc_wordproc.tlcc -o doc_wordproc.o
 
 doc_whiteboard.o: doc_whiteboard.tlcc documentd.h documentd_menu.h proto/documentd_whiteboard.protoh

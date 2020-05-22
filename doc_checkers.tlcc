@@ -64,7 +64,7 @@ public:
 	void load(DOC_READER &r, std::string &msg);
 	void resetgame();
 	void testwin(std::vector<VARVAL> &res);
-	void exec (const char *var, const char *val, const char *session, const char *username, bool maywrite, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
+	void exec (const char *var, const char *val, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
 };
 
 GAME_P make_CHECKERS()
@@ -239,9 +239,7 @@ static void print_player(string &lines, PARAM_STRING gameid, PARAM_STRING name, 
 void CHECKERS::exec (
 	const char *var,
 	const char *val,
-	const char *session,
-	const char *username,
-	bool maywrite,
+	const DOC_CONTEXT &ctx,
 	const DOC_UI_SPECS_receive &sp,
 	vector<VARVAL> &res)
 {
@@ -249,16 +247,16 @@ void CHECKERS::exec (
 	setactivity();
 	VARVAL notify_var;
 	notify_var.var = VAR_NOTIFY;
-	if (maywrite){
+	if (ctx.maywrite){
 		if (player1.name.size() == 0){
-			player1.name = username;
-			js_find_set(notify_var.val,"player0","innerHTML",username);
+			player1.name = ctx.username;
+			js_find_set(notify_var.val,"player0","innerHTML",ctx.username);
 		}else if (player2.name.size() == 0){
-			player2.name = username;
-			js_find_set(notify_var.val,"player1","innerHTML",username);
+			player2.name = ctx.username;
+			js_find_set(notify_var.val,"player1","innerHTML",ctx.username);
 		}	
 	}
-	bool reverse = sessions[session];
+	bool reverse = sessions[ctx.session];
 	if (strcmp(var,"print")==0){
 		string lines;
 		if (strcmp(val,"console")==0){
@@ -439,7 +437,7 @@ void CHECKERS::exec (
 			lines += "</div>\n";
 			lines += "<div id=tab_form>\n";
 			lines += string_f("<div id=msg-%s style=color:white;>&nbsp;</div>\n",gameid.c_str());
-			documentd_chat (lines,username,chat,sp.width-20,sp.mobile ? 200 : 100);
+			documentd_chat (lines,ctx.username,chat,sp.width-20,sp.mobile ? 200 : 100);
 			lines += "</div>\n";
 		}
 		VARVAL v;
@@ -447,11 +445,11 @@ void CHECKERS::exec (
 		v.val = lines;
 		res.push_back(v);
 	}else if (strcmp(var,"reverse")==0){
-		sessions[session] = !reverse;
+		sessions[ctx.session] = !reverse;
 		documentd_forcerefresh(res);
 	}else if (strcmp(var,"chat")==0){
 		appendchat(val,notify_var.val,res);
-	}else if (maywrite){
+	}else if (ctx.maywrite){
 		if (strcmp(var,"place")==0){
 			unsigned lo,co;
 			int button;
@@ -563,7 +561,7 @@ void CHECKERS::exec (
 								string id = string_f("ck%u,%u",lo,co);
 								js_find_loop_set (notify_var.val,"grid","circle",id,"style.fill","gold","style.stroke","gold");
 							}
-							setmodified (username);
+							setmodified (ctx.username);
 							documentd_setchanges(res);
 							if (keep_playing){
 								player->line = lo;
@@ -639,7 +637,7 @@ void CHECKERS::exec (
 			if (strcmp(val,"1")==0){
 				player = &player2;
 			}
-			player->name = username;
+			player->name = ctx.username;
 			js_find_set(notify_var.val,"player0","innerHTML",player1.name.c_str());
 			js_find_set(notify_var.val,"player1","innerHTML",player2.name.c_str());
 		}

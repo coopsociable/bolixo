@@ -42,7 +42,7 @@ public:
 	void testwin(std::vector<VARVAL> &res);
 	void draw_x(unsigned cellx, unsigned celly, std::string &lines, unsigned x, unsigned y, unsigned len, bool visible);
 	void draw_o(unsigned cellx, unsigned celly, std::string &lines, unsigned x, unsigned y, unsigned len, bool visible);
-	void exec (const char *var, const char *val, const char *session, const char *username, bool maywrite, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
+	void exec (const char *var, const char *val, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
 };
 
 GAME_P make_TICTACTO()
@@ -190,9 +190,7 @@ void TICTACTO::update_msg(
 void TICTACTO::exec (
 	const char *var,
 	const char *val,
-	const char *session,
-	const char *username,
-	bool maywrite,
+	const DOC_CONTEXT &ctx,
 	const DOC_UI_SPECS_receive &sp,
 	vector<VARVAL> &res)
 {
@@ -262,7 +260,7 @@ void TICTACTO::exec (
 		v.val = lines;
 		res.push_back(v);
 				
-	}else if (maywrite){
+	}else if (ctx.maywrite){
 		if (strcmp(var,"place")==0){
 			bool ok = false;
 			unsigned x=atoi(val);
@@ -298,7 +296,7 @@ void TICTACTO::exec (
 							js_find_loop_set(notify_var.val,"player","path","s0","style.stroke",x_is_player ? "black" : "none");
 							js_find_loop_set(notify_var.val,"player","path","s1","style.stroke",x_is_player ? "none" : "black");
 							ok = true;
-							setmodified(username);
+							setmodified(ctx.username);
 							documentd_setchanges(res);
 						}else{
 							msg = "Location already played";
@@ -309,9 +307,9 @@ void TICTACTO::exec (
 			if (!ok){
 				documentd_error (res,string_f("Invalid command %s=%s: %s",var,val,msg));
 			}
-		}else if (strcmp(var,"newgame")==0 && maywrite){
+		}else if (strcmp(var,"newgame")==0 && ctx.maywrite){
 			resetgame();
-			setmodified(username);
+			setmodified(ctx.username);
 			js_find_loop_start_class(notify_var.val,"gamegrid","x_o");
 			notify_var.val += "\t\tfor (var i=0; i<elms.length; i++){\n";
 			notify_var.val += "\t\t\tvar e=elms[i];\n";

@@ -133,7 +133,7 @@ public:
 	void load(DOC_READER &r, std::string &msg);
 	void resetgame();
 	void testwin(std::vector<VARVAL> &res);
-	void exec (const char *var, const char *val, const char *session, const char *username, bool maywrite, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
+	void exec (const char *var, const char *val, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
 	void engine_reply(const char *line, std::string &notify, bool &done);
 };
 
@@ -1037,9 +1037,7 @@ void CHESS::update_players(string &notify)
 void CHESS::exec (
 	const char *var,
 	const char *val,
-	const char *session,
-	const char *username,
-	bool maywrite,
+	const DOC_CONTEXT &ctx,
 	const DOC_UI_SPECS_receive &sp,
 	vector<VARVAL> &res)
 {
@@ -1047,19 +1045,19 @@ void CHESS::exec (
 	setactivity();
 	VARVAL notify_var;
 	notify_var.var = VAR_NOTIFY;
-	if (maywrite){
-		bool robot = strcmp(username,CHESS_ROBOT)==0;
-		if (player1.name.size() == 0 && player2.name != username){
-			player1.name = username;
+	if (ctx.maywrite){
+		bool robot = strcmp(ctx.username,CHESS_ROBOT)==0;
+		if (player1.name.size() == 0 && player2.name != ctx.username){
+			player1.name = ctx.username;
 			player1.robot = robot;
-			js_find_set(notify_var.val,"player0","innerHTML",username);
-		}else if (player2.name.size() == 0 && player1.name != username){
-			player2.name = username;
+			js_find_set(notify_var.val,"player0","innerHTML",ctx.username);
+		}else if (player2.name.size() == 0 && player1.name != ctx.username){
+			player2.name = ctx.username;
 			player2.robot = robot;
-			js_find_set(notify_var.val,"player1","innerHTML",username);
+			js_find_set(notify_var.val,"player1","innerHTML",ctx.username);
 		}	
 	}
-	bool reverse = sessions[username];
+	bool reverse = sessions[ctx.username];
 	if (strcmp(var,"print")==0){
 		string lines;
 		if (strcmp(val,"console")==0){
@@ -1360,7 +1358,7 @@ void CHESS::exec (
 			lines += "</div>\n";
 			lines += "<div id=tab_form>\n";
 			lines += string_f("<div id=msg-%s style=color:black>&nbsp;</div>\n",gameid.c_str());
-			documentd_chat (lines,username,chat,sp.width-20,sp.mobile ? 200 : 100);
+			documentd_chat (lines,ctx.username,chat,sp.width-20,sp.mobile ? 200 : 100);
 			lines += "</div>\n";
 		}
 		VARVAL v;
@@ -1368,9 +1366,9 @@ void CHESS::exec (
 		v.val = lines;
 		res.push_back(v);
 	}else if (strcmp(var,"reverse")==0){
-		sessions[username] = !reverse;
+		sessions[ctx.username] = !reverse;
 		documentd_forcerefresh(res);
-		if (maywrite) setmodified(username);
+		if (ctx.maywrite) setmodified(ctx.username);
 	}else if (strcmp(var,"chat")==0){
 		appendchat(val,notify_var.val,res);
 	}else if (strcmp(var,REQ_GETFIELDS)==0){
@@ -1385,7 +1383,7 @@ void CHESS::exec (
 			var.val += string_f("maxskill:%u\n",maxskill);
 		}
 		res.emplace_back(var);
-	}else if (maywrite){
+	}else if (ctx.maywrite){
 		if (strcmp(var,"place")==0){
 			unsigned lo,co;
 			int button;
@@ -1407,7 +1405,7 @@ void CHESS::exec (
 						// The player is unselecting the cell
 						update_circle (notify_var,new_id,"none","none");
 						player->reset_sel();
-						setmodified(username);
+						setmodified(ctx.username);
 					}else{
 						// The player is doing a move
 						CHESSMOVE_EFFECTS effects;
@@ -1479,7 +1477,7 @@ void CHESS::exec (
 							char old_cell = new_cell;		// Keep a copy of the target cell
 							execmove (player,other_player,lo,co,effects);
 							if (!player->is_robot()){
-								setmodified(username);
+								setmodified(ctx.username);
 								documentd_setchanges(res);
 							}
 							string new_text_id = string_f("c%u,%u",lo,co);
@@ -1520,7 +1518,7 @@ void CHESS::exec (
 								unsigned rlo=8-lo;
 								unsigned rplayer_line=8-player_line;
 								string chessmove = string_f("%c%u%c%u",'a'+player_col,rplayer_line,'a'+co,rlo);
-								appendmove2chat (username,true,old_cell,new_cell,chessmove,notify_var.val);
+								appendmove2chat (ctx.username,true,old_cell,new_cell,chessmove,notify_var.val);
 							}
 						}
 					}
@@ -1556,7 +1554,7 @@ void CHESS::exec (
 						error = MSG_R(I_KINGCHECK);
 						show_marked_pieces (notify_var,"red");
 					}
-					setmodified(username);
+					setmodified(ctx.username);
 				}else{
 					error = MSG_U(E_NOUNDO,"No step to undo");
 				}
@@ -1590,7 +1588,7 @@ void CHESS::exec (
 			update_player_bg (notify_var,0,"lightblue");
 			update_player_bg (notify_var,1,"white");
 			// tlmp_warning ("val.size=%lu",notify_var.val.size());
-			setmodified(username);
+			setmodified(ctx.username);
 			robot_request(res);
 			documentd_setchanges(res);
 			VARVAL var;
@@ -1614,7 +1612,7 @@ void CHESS::exec (
 			}
 			player1.robot = player1.name == CHESS_ROBOT;
 			player2.robot = player2.name == CHESS_ROBOT;
-			setmodified(username);
+			setmodified(ctx.username);
 			update_players(notify_var.val);
 			js_find_set(notify_var.val,"gamename","innerHTML",gamename.c_str());
 			js_find_set(notify_var.val,"timer","innerHTML",timer.c_str());
@@ -1647,14 +1645,14 @@ void CHESS::exec (
 						player->name = CHESS_ROBOT;
 						player->robot = true;
 					}
-				}else if (other_player->name == username){
+				}else if (other_player->name == ctx.username){
 					swap(other_player->name,player->name);
 					swap(other_player->robot,player->robot);
 				}else{
-					player->name = username;
+					player->name = ctx.username;
 					player->robot = false;
 				}
-				setmodified(username);
+				setmodified(ctx.username);
 				update_players(notify_var.val);
 				robot_request(res);
 			}
@@ -1829,7 +1827,11 @@ void CHESS::engine_reply (const char *line, string &notify, bool &done)
 			steps.emplace_back(st);
 			st.val = cmd2.c_str();
 			steps.emplace_back(st);
-			manyexec (steps,"session",CHESS_ROBOT,true,sp,res);
+			DOC_CONTEXT ctx;
+			ctx.session = "session";
+			ctx.username = CHESS_ROBOT;
+			ctx.maywrite = true;
+			manyexec (steps,ctx,sp,res);
 			for (auto &r:res){
 				if (r.var == VAR_NOTIFY){
 					notify += r.val;

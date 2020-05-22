@@ -78,7 +78,7 @@ public:
 	void load(DOC_READER &r, std::string &msg);
 	void resetgame();
 	void testwin(std::vector<VARVAL> &res);
-	void exec (const char *var, const char *val, const char *session, const char *username, bool maywrite, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
+	void exec (const char *var, const char *val, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
 };
 
 GAME_P make_SUDOKU()
@@ -360,9 +360,7 @@ void SUDOKU::redraw_notify(vector<VARVAL> &res)
 void SUDOKU::exec (
 	const char *var,
 	const char *val,
-	const char *session,
-	const char *username,
-	bool maywrite,
+	const DOC_CONTEXT &ctx,
 	const DOC_UI_SPECS_receive &sp,
 	vector<VARVAL> &res)
 {
@@ -373,13 +371,13 @@ void SUDOKU::exec (
 		We check if the user has selected a color. If not, we assign the first available
 	*/
 	{
-		auto a = prefs.find(username);
+		auto a = prefs.find(ctx.username);
 		if (a == prefs.end()){
 			bool takens[nbcolor] = {false,false,false,false,false,false};
 			for (auto &a:prefs) takens[a.second.color] = true;
 			for (unsigned i=0; i<nbcolor; i++){
 				if (!takens[i]){
-					prefs[username].color = i;
+					prefs[ctx.username].color = i;
 					break;
 				}
 			}
@@ -516,7 +514,7 @@ void SUDOKU::exec (
 			unsigned font_base_guess = h9*9/10;
 			unsigned font_size = h9*6/10;
 			unsigned w9_3 = w9/3;
-			unsigned seldig = seldigs[session];
+			unsigned seldig = seldigs[ctx.session];
 			for (unsigned i=0; i<9; i++){
 				unsigned offy = g_offy + i*h9;
 				lines += string_f("<path stroke='black' stroke-width='2' fill='%s' d='M1,%u H%u v%u H1 Z'/>\n",i==seldig ? "pink" : "white"
@@ -619,7 +617,7 @@ void SUDOKU::exec (
 			}
 			lines += "</svg>\n";
 			lines += string_f("<div id=msg-%s style=color:white>This is a messageCeci est un message</div>\n",gameid.c_str());
-			documentd_chat (lines,username,chat,sp.width-20,sp.mobile ? 200 : 100);
+			documentd_chat (lines,ctx.username,chat,sp.width-20,sp.mobile ? 200 : 100);
 			lines += "</div>\n";
 		}
 		VARVAL v;
@@ -631,7 +629,7 @@ void SUDOKU::exec (
 		notify_var.var = VAR_NOTIFY;
 		appendchat(val,notify_var.val,res);
 		res.emplace_back(move(notify_var));
-	}else if (maywrite){
+	}else if (ctx.maywrite){
 		if (strcmp(var,"place")==0){
 			unsigned lo,co,guess;
 			int n = sscanf(val,"%u,%u,%u",&lo,&co,&guess);
@@ -642,7 +640,7 @@ void SUDOKU::exec (
 				}else{
 					// We can set a value. If it is wrong, it will show in red.
 					// If you click over again, it will erase itself.
-					unsigned newval = seldigs[session]+1;
+					unsigned newval = seldigs[ctx.session]+1;
 					const char *color = "black";
 					const char *gcolor = "none";
 					unsigned gnewval = 0;
@@ -651,7 +649,7 @@ void SUDOKU::exec (
 					var.val = string_f ("var doc = document.getElementById('grid-%s');\n",gameid.c_str());
 					var.val += "if (doc != null){\n";
 					if (gg.user_value == 0){
-						auto a = prefs.find(username);
+						auto a = prefs.find(ctx.username);
 						if (guess == 2){
 							if (a != prefs.end()){
 								if (gg.user_guess == newval && gg.guess_color == a->second.color){
@@ -670,13 +668,13 @@ void SUDOKU::exec (
 							}
 						}else{
 							gg.user_value = newval;
-							gg.username = username;
+							gg.username = ctx.username;
 							gg.user_guess = 0;
 							gg.guess_color = 0;
 							if (gg.user_value != gg.value){
 								color = "red";
 							}else{
-								auto a = prefs.find(username);
+								auto a = prefs.find(ctx.username);
 								if (a != prefs.end()){
 									color = colors[a->second.color];
 									var.val += "\tvar circles = doc.getElementsByTagName('circle');\n";
@@ -703,7 +701,7 @@ void SUDOKU::exec (
 						gg.user_value = 0;
 						color = "white";
 					}
-					setmodified(username);
+					setmodified(ctx.username);
 					var.val += "\tvar txts = doc.getElementsByTagName('text');\n";
 					var.val += "\tfor(var i = 0; i< txts.length;i++){\n";
 					var.val += "\t\tvar e = txts[i];\n";
@@ -744,8 +742,8 @@ void SUDOKU::exec (
 				if (grid_full[sel]){
 					error = MSG_U(E_ALLDIGITFOUND,"The nine positions are known for this digit");
 				}else{
-					seldigs[session] = sel;
-					setmodified(username);
+					seldigs[ctx.session] = sel;
+					setmodified(ctx.username);
 					VARVAL var;
 					var.var = VAR_SCRIPT;
 					var.val = string_f ("var doc = document.getElementById('sudosel-%s');\n",gameid.c_str());
@@ -764,14 +762,14 @@ void SUDOKU::exec (
 				// User is not allowed to pick an avatar used by another user
 				bool fail = false;
 				for (auto &a:prefs){
-					if (a.second.color == avatar && a.first != username){
+					if (a.second.color == avatar && a.first != ctx.username){
 						error = MSG_U(E_USEDAVATAR,"This color is already used!");
 						fail = true;
 						break;
 					}
 				}
 				if (!fail){
-					auto &u = prefs[username];
+					auto &u = prefs[ctx.username];
 					unsigned old_avatar = u.color;
 					u.color = avatar;
 					// Change all the guess color
@@ -823,7 +821,7 @@ void SUDOKU::exec (
 					return 0;
 				</f>
 				</call>
-				setmodified(username);
+				setmodified(ctx.username);
 				compute_grid_full();
 				redraw_notify(res);
 				// Make all nine digits available

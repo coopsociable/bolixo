@@ -396,14 +396,12 @@ const char *GAME::locate_event (unsigned &sequence)
 
 void GAME::manyexec (
 	const std::vector<VARVAL_receive> &steps,
-	const char *session,
-	const char *username,
-	bool maywrite,
+	const DOC_CONTEXT &ctx,
 	const DOC_UI_SPECS_receive &sp,
 	std::vector<VARVAL> &res)
 {
 	for (auto &v:steps){
-		exec(v.var,v.val,session,username,maywrite,sp,res);
+		exec(v.var,v.val,ctx,sp,res);
 	}
 }
 
@@ -416,15 +414,14 @@ static size_t total_content_size = 0;
 static size_t total_script_size = 0;
 static size_t total_unotify_size = 0;
 static unsigned total_requests=0;
+static map<string,GAME_P> *pt_games = nullptr;
 
 static bool documentd_playstep (
 	vector<SUBPROGRAM> &programs,
 	map<string,GAME_P> &games,
 	const char *gameid,
 	const vector<VARVAL_receive> &steps,
-	const char *session,
-	const char *username,
-	bool maywrite,
+	const DOC_CONTEXT &ctx,
 	const DOC_UI_SPECS_receive &sp,
 	vector<VARVAL> &res,
 	string &msg,
@@ -432,11 +429,12 @@ static bool documentd_playstep (
 {
 	bool success = false;
 	unknown = false;
+	pt_games = &games;
 	auto g = games.find(gameid);
 	if (g != games.end()){
 		success = true;
 		GAME_P game = g->second;
-		game->manyexec(steps,session,username,maywrite,sp,res);
+		game->manyexec(steps,ctx,sp,res);
 		game->testwin(res);
 		size_t content_size = 0;
 		size_t notify_size = 0;
@@ -485,6 +483,7 @@ static bool documentd_playstep (
 		msg = "Unknown game id";
 		unknown = true;
 	}
+	pt_games = nullptr;
 	return success;
 }
 
@@ -624,6 +623,46 @@ static void dup_close (int fd, int target_fd)
 {
 	dup2 (fd,target_fd);
 	close (fd);
+}
+
+/*
+	Return the content of a sub-document (imbed)
+
+	The document is a relative path, in the same project as the owner (gameid).
+*/
+std::string documentd_imbed (PARAM_STRING gameid, PARAM_STRING document, PARAM_STRING region, unsigned docnum, DOC_UI_SPECS_receive &sp)
+{
+	string ret;
+	auto tb = str_splitline (gameid.ptr,'/');
+tlmp_warning ("gameid=%s size=%lu",gameid.ptr,tb.size());
+	if (tb.size() >= 4){
+		string docpath = string_f("/%s/%s/%s/%s",tb[1].c_str(),tb[2].c_str(),tb[3].c_str(),document.ptr);
+		auto g = pt_games->find(docpath);
+tlmp_warning ("docpath=%s",docpath.c_str());
+		if (g != pt_games->end()){
+			auto game = g->second;
+			vector<VARVAL_receive> steps;
+			VARVAL_receive var;
+			var.var = "region";
+			var.val = region.ptr;
+			steps.push_back(var);
+			vector<VARVAL> res;
+			DOC_CONTEXT ctx;
+			ctx.session = "";
+			ctx.username = "";
+			ctx.maywrite = true;
+			ctx.docnum = docnum; 
+			game->manyexec(steps,ctx,sp,res);
+			for (auto &r:res){
+				if (r.var == VAR_CONTENT){
+					ret = move(r.val);
+					break;
+				}
+			}
+tlmp_warning ("ret.size=%lu",ret.size());
+		}
+	}
+	return ret;
 }
 SUBPROGRAM::SUBPROGRAM(PARAM_STRING _gameclass, PARAM_STRING _command)
 	:command(_command.ptr), gameclass(_gameclass.ptr)
@@ -766,7 +805,11 @@ static void documentd_chess_move(vector<SUBPROGRAM> &programs, map<string,GAME_P
 		steps.emplace_back(st);
 		string msg;
 		bool unknown;
-		documentd_playstep (programs,games,gameid,steps,"session","user",true,sp,res,msg,unknown);
+		DOC_CONTEXT ctx;
+		ctx.session = "session";
+		ctx.username = "user";
+		ctx.maywrite = true;
+		documentd_playstep (programs,games,gameid,steps,ctx,sp,res,msg,unknown);
 	}
 }
 static void documentd_chess_print (const char *user, map<string,GAME_P> &games, const char *gameid)
@@ -784,7 +827,11 @@ static void documentd_chess_print (const char *user, map<string,GAME_P> &games, 
 	st.val = "console";
 	steps.emplace_back(st);
 	vector<SUBPROGRAM> programs;
-	documentd_playstep (programs,games,gameid,steps,"session",user,true,sp,res,msg,unknown);
+	DOC_CONTEXT ctx;
+	ctx.session = "session";
+	ctx.username = "user";
+	ctx.maywrite = true;
+	documentd_playstep (programs,games,gameid,steps,ctx,sp,res,msg,unknown);
 	for (auto &r:res){
 		if (r.var == VAR_CONTENT){
 			printf("\n%s\n",r.val.c_str());
@@ -1135,7 +1182,11 @@ int main (int argc, char *argv[])
 					sp.content_width = sp.content_height = 1000;
 					sp.mobile = false;
 					sp.fontsize = 14;
-					bool success = documentd_playstep (glocal.programs,glocal.games,gameid,steps,"sessadmin","admin",true,sp,res,msg,unknown);
+					DOC_CONTEXT ctx;
+					ctx.session = "sessadmin";
+					ctx.username = "admin";
+					ctx.maywrite = true;
+					bool success = documentd_playstep (glocal.programs,glocal.games,gameid,steps,ctx,sp,res,msg,unknown);
 					rep_playstep(success,unknown,msg,res);
 				</f>
 				<f save> // gameid = success:b msg
@@ -1214,7 +1265,12 @@ int main (int argc, char *argv[])
 					string msg;
 					translat_selectlang(lang);
 					bool unknown;
-					bool success = documentd_playstep (glocal.programs,glocal.games,gameid,steps,session,username,maywrite,sp,res,msg,unknown);
+					DOC_CONTEXT ctx;
+					ctx.session = session;
+					ctx.username = username;
+					ctx.maywrite = maywrite;
+					ctx.docnum = docnum;
+					bool success = documentd_playstep (glocal.programs,glocal.games,gameid,steps,ctx,sp,res,msg,unknown);
 					rep_playstep(success,unknown,msg,res);
 				</f>
 				<f rename>
