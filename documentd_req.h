@@ -16,6 +16,8 @@
 #define VAR_ENGINE	"engine"	// A message must be sent to an engine (gnuchess for now) for this game
 #define VAR_DIALOG	"dialog"	// A dialog must be presented by the UI
 #define VAR_FIELDS	"fields"	// Content for a dialog
+#define VAR_STYLES	"styles"	// Used to retrieve the styles for a document (uses for embedding)
+#define VAR_DEFSCRIPT	"defscript"	// Used to retrieve all js functions for support a document (used for embedding)
 
 // Various per document dialog
 #define DIALOG_CHESS_CONFIG	"config"

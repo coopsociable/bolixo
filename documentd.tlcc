@@ -409,6 +409,14 @@ void GAME::engine_reply(const char *line, string &notify, bool &done)
 {
 	done = true;
 }
+/*
+	Get the list of documents/games embedded in this document
+*/
+set<string> GAME::get_embed_list() const
+{
+	set<string> ret;
+	return ret;
+}
 static bool protocol_stats=false;	// produce a tlmp_warning showing how much is sent back
 static size_t total_content_size = 0;
 static size_t total_script_size = 0;
@@ -439,13 +447,24 @@ static bool documentd_playstep (
 		size_t content_size = 0;
 		size_t notify_size = 0;
 		size_t script_size = 0;
+		// Find games embeding this part of this game
+		vector<GAME_P> embeds;
+		for (auto &gg:games){
+			auto tb = gg.second->get_embed_list();
+			if (tb.count(g->first) > 0){
+				embeds.push_back(gg.second);
+			}
+		}
 		for (auto r = res.begin(); r != res.end(); ){
 			if (r->var == VAR_NOTIFY){
 				// Notifications are sent using the waitevent system
 				// Check if the connected users list must be updated.
 				game->update_waiting_users(r->val);
 				notify_size += r->val.size();
-				if (r->val.size() > 0) game->add_notification(r->val);
+				if (r->val.size() > 0){
+					game->add_notification(r->val);
+					for (auto e:embeds) e->add_notification(r->val);
+				}
 				r = res.erase(r);
 			}else if (r->var == VAR_SCRIPT){
 				script_size += r->val.size();
@@ -626,25 +645,43 @@ static void dup_close (int fd, int target_fd)
 }
 
 /*
+	Convert a relative path (relative to the project) to absolute path.
+	The project is extracted from the gameid.
+*/
+static string documentd_rel2abs (PARAM_STRING gameid, PARAM_STRING relpath)
+{
+	string ret;
+	auto tb = str_splitline (gameid.ptr,'/');
+	if (tb.size() >= 4){
+		ret = string_f("/%s/%s/%s/%s",tb[1].c_str(),tb[2].c_str(),tb[3].c_str(),relpath.ptr);
+	}
+	return ret;
+}
+
+/*
 	Return the content of a sub-document (imbed)
 
 	The document is a relative path, in the same project as the owner (gameid).
 */
-std::string documentd_imbed (PARAM_STRING gameid, PARAM_STRING document, PARAM_STRING region, unsigned docnum, DOC_UI_SPECS_receive &sp)
+std::string documentd_imbed (
+	PARAM_STRING gameid,
+	PARAM_STRING document,
+	PARAM_STRING command,	// region, functions, styles
+	PARAM_STRING option,	// for region command, the name of the document region
+	unsigned docnum,
+	const DOC_UI_SPECS_receive &sp,
+	string &script)		// Will contain the script (JS) part of the result
 {
 	string ret;
-	auto tb = str_splitline (gameid.ptr,'/');
-tlmp_warning ("gameid=%s size=%lu",gameid.ptr,tb.size());
-	if (tb.size() >= 4){
-		string docpath = string_f("/%s/%s/%s/%s",tb[1].c_str(),tb[2].c_str(),tb[3].c_str(),document.ptr);
+	string docpath = documentd_rel2abs(gameid,document);
+	if (docpath.size() > 0){
 		auto g = pt_games->find(docpath);
-tlmp_warning ("docpath=%s",docpath.c_str());
 		if (g != pt_games->end()){
 			auto game = g->second;
 			vector<VARVAL_receive> steps;
 			VARVAL_receive var;
-			var.var = "region";
-			var.val = region.ptr;
+			var.var = command.ptr;
+			var.val = option.ptr;
 			steps.push_back(var);
 			vector<VARVAL> res;
 			DOC_CONTEXT ctx;
@@ -654,15 +691,51 @@ tlmp_warning ("docpath=%s",docpath.c_str());
 			ctx.docnum = docnum; 
 			game->manyexec(steps,ctx,sp,res);
 			for (auto &r:res){
-				if (r.var == VAR_CONTENT){
+				if (is_any_of(r.var,VAR_CONTENT)){
 					ret = move(r.val);
-					break;
+				}else if (is_any_of(r.var,VAR_DEFSCRIPT)){
+					script = move(r.val);
 				}
 			}
-tlmp_warning ("ret.size=%lu",ret.size());
 		}
 	}
 	return ret;
+}
+/*
+	Get all the scripts and styles to support document embedding in this document
+*/
+void documentd_imbeds (
+	GAME *game,
+	string &scripts,
+	string &styles,
+	const DOC_UI_SPECS_receive &sp)
+{
+	set<string> type_seens;		// Document types already processed
+	auto tb = game->get_embed_list();
+	for (auto &t:tb){
+		auto p = pt_games->find(t);
+		if (p != pt_games->end()){
+			GAME_P sub = p->second;
+			if (type_seens.insert(sub->getclass()).second){
+				vector<VARVAL_receive> steps;
+				VARVAL_receive var;
+				var.var = "functions";
+				steps.push_back(var);
+				var.var = "styles";
+				steps.push_back(var);
+				vector<VARVAL> res;
+				DOC_CONTEXT ctx;
+				sub->manyexec(steps,ctx,sp,res);
+				for (auto &r:res){
+					if (r.var == VAR_STYLES){
+						styles = move(r.val);
+					}else if (r.var == VAR_DEFSCRIPT){
+						scripts = move(r.val);
+					}
+				}
+			}
+		}
+	}	
 }
 SUBPROGRAM::SUBPROGRAM(PARAM_STRING _gameclass, PARAM_STRING _command)
 	:command(_command.ptr), gameclass(_gameclass.ptr)

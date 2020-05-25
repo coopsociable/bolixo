@@ -118,7 +118,7 @@ public:
 		if ((is_image() || is_imbed()) && line_spec > 0) line_spec--;
 	}
 	unsigned get_image_width() const {
-		return is_image() ? line_spec : 0;
+		return is_image() || is_imbed() ? line_spec : 0;
 	}
 	const char *get_document() const{
 		return imbed.document.c_str();
@@ -140,6 +140,7 @@ public:
 	}
 	void set_imbed (WORDPROC_IMBED &&_imbed){
 		imbed = _imbed;
+		line_spec = 30;
 	}
 	bool is_table() const {
 		return title_level == 11;
@@ -163,8 +164,8 @@ class WORDPROC: public GAME{
 	void vmove (int move, unsigned visible_lines, unsigned lastline, WORD_USERPREF &pref, const DOC_UI_SPECS_receive &sp, VARVAL &script_var, std::set<unsigned> &updlines);
 	void page_up_down(int new_offset, unsigned visible_lines, unsigned lastline, WORD_USERPREF &pref, VARVAL &script_var,
 		std::set<unsigned> &script_lines, std::set<unsigned> &notify_lines);
-	void update_lines (std::string &line, std::set<unsigned> &updlines);
-	std::string formatline (unsigned noline);
+	void update_lines (std::string &line, std::set<unsigned> &updlines, const DOC_UI_SPECS_receive &sp);
+	std::string formatline (unsigned noline, const DOC_UI_SPECS_receive &sp, std::string &script);
 	void execstep (const char *var,	const char *val, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp,
 		VARVAL &script_var, std::set<unsigned> &script_lines, VARVAL &notify_var, std::set<unsigned> &notify_lines,
 		std::vector<VARVAL> &res);
@@ -180,6 +181,7 @@ public:
 	void testwin(std::vector<VARVAL> &res);
 	void exec (const char *var, const char *val, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
 	void manyexec (const std::vector<VARVAL_receive> &steps, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
+	set<string> get_embed_list() const;
 };
 
 GAME_P make_WORDPROC()
@@ -926,7 +928,11 @@ static unsigned wordproc_jump2col (const string &line, unsigned pos)
 	return wordproc_jump2col (line,pos,sizecar);
 }
 	
-string WORDPROC::formatline(unsigned noline)
+/*
+	Return the content for a line.
+	If some JS script is needed to update the line, it will be written in the script parameter.
+*/
+string WORDPROC::formatline(unsigned noline, const DOC_UI_SPECS_receive &sp, string &script)
 {
 	WORDPROC_LINE empty;
 	const WORDPROC_LINE &para = noline < lines.size() ? lines[noline] : empty;
@@ -970,7 +976,6 @@ string WORDPROC::formatline(unsigned noline)
 		}
 		closetab = "</div>";
 		bool format = true;
-tlmp_warning ("formatline %u %d %d %d",noline,para.is_title(),para.is_image(),para.is_imbed());
 		if (para.is_title()){
 			ret += string_f("<span style=font-size:%1.2fem;>",tb[para.get_title_level()]);
 			closetitle = "</span>";
@@ -1005,12 +1010,15 @@ tlmp_warning ("formatline %u %d %d %d",noline,para.is_title(),para.is_image(),pa
 				if (cursors.size() > 0) ret += "</div>";
 			}
 		}else if (para.is_imbed()){
-			DOC_UI_SPECS_receive sp;
-			sp.clear();
-			sp.content_width = 100;
-			sp.content_height = 100;
-			sp.fontsize = 14;
-			ret += documentd_imbed (gameid,para.get_document(),para.get_region(),para.get_docnum(),sp);
+			DOC_UI_SPECS_receive isp;
+			isp.clear();
+			isp.content_width = para.get_image_width()*sp.content_width/100;
+			isp.content_height = isp.content_width;
+			isp.fontsize = sp.fontsize;
+			ret += string_f("<div class=%s style='width:%u;height:%u;'>\n",cursors.size() > 0 ? "imgcursor" : "imgembed"
+				,isp.content_width,isp.content_height);
+			ret += documentd_imbed (gameid,para.get_document(),"region",para.get_region(),para.get_docnum(),isp,script);
+			ret += "</div>\n";
 			format = false;
 		}
 				
@@ -1425,7 +1433,7 @@ void WORDPROC::page_up_down(
 		pref.offset = new_offset;
 	}
 }
-void WORDPROC::update_lines (string &script, set<unsigned> &updlines)
+void WORDPROC::update_lines (string &script, set<unsigned> &updlines, const DOC_UI_SPECS_receive &sp)
 {
 	if (updlines.size() > 0){
 		js_find_loop_start_class(script,"text","oneline");
@@ -1436,7 +1444,9 @@ void WORDPROC::update_lines (string &script, set<unsigned> &updlines)
 			const char *elseverb = nol==0 ? "" : "}else ";
 			string id=string_f("l%u",l);
 			script += string_f("\t\t\t%sif(e.id=='l%u'){\n",elseverb,l);
-			script += string_f("\t\t\t\te.innerHTML = '%s';\n",formatline(l).c_str());
+			string extrascript;
+			script += string_f("\t\t\t\te.innerHTML = `%s`;\n",formatline(l,sp,extrascript).c_str());
+			script += extrascript;
 			if (nol == updlines.size()-1){
 				script += "\t\t\t\tbreak;\n";
 				script += "\t\t\t}\n";
@@ -1459,9 +1469,9 @@ void WORDPROC::exec (
 /*
 	Create the gamepress javascript function
 */
-void wordproc_set_gamepress(string &lines)
+void wordproc_set_gamepress(string &lines, const char *funcname)
 {
-	lines += "function gamepress(event){\n";
+	lines += string_f("function %s(event){\n",funcname);
 	lines += "\tconsole.log ('press key='+event.key+' '+' code='+event.code+' '+event.altKey+' '+event.ctrlKey+' '+event.shiftKey);\n";
 	lines += "\tgamekey=event.key;\n";
 	lines += "\tgamecode=event.code;\n";
@@ -1567,6 +1577,22 @@ void wordproc_kbd (const char *val, MOD_KBD &mod, std::string &var, std::string 
 	newval = val;
 	// tlmp_warning ("kbd: var=%s val=%s lastline=%u",var,val,lastline);
 }
+set<string> WORDPROC::get_embed_list() const
+{
+	set<string> ret;
+	auto tb = str_splitline (gameid,'/');
+	if (tb.size() >= 4){
+		string docprj = string_f("/%s/%s/%s/",tb[1].c_str(),tb[2].c_str(),tb[3].c_str());
+		for (auto &l:lines){
+			const char *doc = l.get_document();
+			if (doc[0] != '\0'){
+				//tlmp_warning ("wordproc document=%s%s",docprj.c_str(),doc);
+				ret.insert(docprj+doc);
+			}
+		}
+	}
+	return ret;
+}
 
 void WORDPROC::execstep (
 	const char *var,
@@ -1614,6 +1640,8 @@ void WORDPROC::execstep (
 			VARVAL v;
 			v.var = VAR_CONTENT;
 
+			string imbed_scripts,imbed_styles;
+			documentd_imbeds (this,imbed_scripts,imbed_styles,sp);
 
 			{
 				unsigned sp_width = width-30;	// Space for line numbers, during development
@@ -1630,6 +1658,10 @@ void WORDPROC::execstep (
 				// Border around image, when focus
 				v.val += ".imgcursor{\n";
 				v.val += "\tborder:2px solid lightgray;\n";
+				v.val += "}\n";
+				// Border around embed document, no focus
+				v.val += ".imgembed{\n";
+				v.val += "\tborder:1px solid black;\n";
 				v.val += "}\n";
 
 				v.val += ".oneline{\n";
@@ -1677,10 +1709,12 @@ void WORDPROC::execstep (
 					v.val += "}\n";
 				}
 			}
+			v.val += imbed_styles;
 			v.val += "</style>\n";
 
 			// event.location==1 tells if this is the left shift/alt key or right. We are not using it now
 			v.val += "<script>\n";
+			v.val += imbed_scripts;
 			// Function find the last visible line on screen
 			v.val += "function getlastline(){\n";
 			v.val += string_f("\tvar elm = document.getElementById('text-%s');\n",gameid.c_str());
@@ -1718,7 +1752,7 @@ void WORDPROC::execstep (
 			v.val += "var ctrlKey=null;\n";
 			v.val += "var shiftKey=null;\n";
 
-			wordproc_set_gamepress(v.val);
+			wordproc_set_gamepress(v.val,"gamepress");
 			v.val += "function funcinput(event){\n";
 			v.val += "\tif (event.data == null) gamekey=event.data;\n";
 			v.val += "\tgameaction(event,'kbd:'+gamecode + ' ' + gamekey+' '+altKey+' '+ctrlKey+' '+shiftKey+' '+getlastline());\n";
@@ -1783,22 +1817,32 @@ void WORDPROC::execstep (
 				" tabindex=0 style='flex:0 0 auto; overflow: hidden; width:%u'"
 				" >\n",gameid.c_str(),width);
 			unsigned line = 0;
+			string scripts;
 			if (pref.offset < lines.size()){
 				for (auto p=lines.begin()+pref.offset; p != lines.end() && line < visible_lines; p++){
 					unsigned doc_line = line+pref.offset;
+					string script;
 					v.val += string_f("<div class=oneline id=l%u>%s</div>\n",doc_line
-						,formatline(doc_line).c_str());
+						,formatline(doc_line,sp,script).c_str());
+					scripts += script;
 					line++;
 				}
 			}
 			for (; line<visible_lines; line++){
 				static string empty;
 				unsigned doc_line = line+pref.offset;
+				string script;
 				v.val += string_f("<div class=oneline id=l%u>%s</div>\n",doc_line
-					,formatline(doc_line).c_str());
+					,formatline(doc_line,sp,script).c_str());
+				scripts += script;
 			}
 			v.val += "</div>\n";
 			v.val += "</div>\n";
+			if (scripts.size() > 0){
+				v.val += "<script>\n";
+				v.val += scripts;
+				v.val += "</script>\n";
+			}
 			#if 0
 			v.val += "<script>\n";
 			v.val += string_f("document.getElementById('text-%s').addEventListener('compositionstart', gamefalse);\n",gameid.c_str());
@@ -1943,12 +1987,24 @@ void WORDPROC::execstep (
 						imbed.region = f.val;
 					}
 				}
+				// Allocate a document number
+				unsigned docnum = 0;
+				for (auto &l:lines){
+					if (l.is_imbed()){
+						unsigned num = l.get_docnum();
+						if (num > docnum) docnum = num;
+					}
+				}
+				imbed.docnum = docnum+1;
 				while (lines.size() <= pref.cursor.line) lines.push_back("");
 				lines[pref.cursor.line].set_imbed(move(imbed));
 				notify_lines.insert(pref.cursor.line);
+				string script;
+				notify_var.val += documentd_imbed (gameid,imbed.document,"functions","",imbed.docnum,sp,script);
 			// This is a catch all for images
 			// It means that all other case (other else) are not reached if the current line is an image.
-			}else if (pref.cursor.line < lines.size() && lines[pref.cursor.line].is_image()){
+			}else if (pref.cursor.line < lines.size()
+				&& (lines[pref.cursor.line].is_image() || lines[pref.cursor.line].is_imbed())){
 				if (strcmp(var,"break")==0){
 					unsigned cur_line = pref.cursor.line;
 					if (mod.shift){
@@ -2306,8 +2362,8 @@ void WORDPROC::manyexec (
 	size_t script_size = script_var.val.size();
 	size_t notify_size = notify_var.val.size();
 	#endif
-	update_lines (script_var.val,script_lines);
-	update_lines (notify_var.val,notify_lines);
+	update_lines (script_var.val,script_lines,sp);
+	update_lines (notify_var.val,notify_lines,sp);
 	#if 0
 	tlmp_warning ("manyexec steps=%lu stats script_size=%lu -> %lu notify_size=%lu -> %lu script_lines=%lu notify_lines=%lu"
 		,steps.size(),script_size,script_var.val.size(),notify_size,notify_var.val.size(),script_lines.size(),notify_lines.size());

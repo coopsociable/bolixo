@@ -131,6 +131,7 @@ static void eraselast (string &txt)
 				break;
 			}
 		}
+		txt.resize(pos);
 	}
 }
 /*
@@ -359,7 +360,10 @@ class WHITEBOARD: public GAME{
 		VARVAL &notify_var, set<unsigned> &notify_ids);
 	void sortsubelms(set<unsigned> &notify_ids);
 	void setfocus(VARVAL &var);
-	std::string draw_board (unsigned vx, unsigned vy, unsigned width, unsigned height, unsigned fontsize);
+	std::string draw_board (unsigned vx, unsigned vy, unsigned width, unsigned height,
+		unsigned board_width, unsigned board_height, unsigned fontsize, unsigned docnum, bool editmode, string &script);
+	std::string define_functions(const DOC_CONTEXT &ctx, const WHITEBOARD_PREF &pref, unsigned board_width, unsigned board_height);
+	std::string define_styles(const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp);
 public:
 	friend void walkboard(class _F_walkboard &c, WHITEBOARD *board);
 	void save(DOC_WRITER &w, bool);
@@ -370,6 +374,7 @@ public:
 	void testwin(std::vector<VARVAL> &res);
 	void exec (const char *var, const char *val, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
 	void manyexec (const vector<VARVAL_receive> &steps, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, vector<VARVAL> &res);
+	set<string> get_embed_list() const;
 };
 
 GAME_P make_WHITEBOARD()
@@ -384,7 +389,7 @@ void WHITEBOARD::update_msg (bool to_all, PARAM_STRING msg, const char *color, s
 {
 	VARVAL mvar;
 	mvar.var = to_all ? VAR_NOTIFY : VAR_SCRIPT;
-	mvar.val += string_f("updmsg('%s','%s');\n",color,documentd_escape(msg).c_str());
+	mvar.val += string_f("whi_updmsg('%s','%s');\n",color,documentd_escape(msg).c_str());
 	res.emplace_back(mvar);
 }
 void WHITEBOARD::save(DOC_WRITER &w, bool)
@@ -699,23 +704,25 @@ void WHITEBOARD::redraw(const set<unsigned> &ids, VARVAL &var, unsigned fontsize
 	glocal ids;
 	glocal var;
 	glocal fontsize;
-	<call walkboard>(this);
-	<f element>
-		if (glocal.ids.count(elm.id) > 0){
-			elm.redraw(glocal.var,glocal.fontsize);
-			if (parent != nullptr){
+	if (ids.size() > 0){
+		<call walkboard>(this);
+		<f element>
+			if (glocal.ids.count(elm.id) > 0){
+				elm.redraw(glocal.var,glocal.fontsize);
+				if (parent != nullptr){
+					LINE_SPEC spec(*parent,elm,quarter,nosubelm,nbsubelm);
+					glocal.var.val += string_f("replace_line('l%u,%u',%u,%u,%lf,%u,'black',%u);\n"
+						,parent->id,elm.id,spec.x,spec.y,spec.angle,spec.len,arrow);
+				}
+			}else if (parent != nullptr && glocal.ids.count(parent->id)>0){
+				// The parent was moved, so we must redraw the line to each child.
 				LINE_SPEC spec(*parent,elm,quarter,nosubelm,nbsubelm);
 				glocal.var.val += string_f("replace_line('l%u,%u',%u,%u,%lf,%u,'black',%u);\n"
 					,parent->id,elm.id,spec.x,spec.y,spec.angle,spec.len,arrow);
 			}
-		}else if (parent != nullptr && glocal.ids.count(parent->id)>0){
-			// The parent was moved, so we must redraw the line to each child.
-			LINE_SPEC spec(*parent,elm,quarter,nosubelm,nbsubelm);
-			glocal.var.val += string_f("replace_line('l%u,%u',%u,%u,%lf,%u,'black',%u);\n"
-				,parent->id,elm.id,spec.x,spec.y,spec.angle,spec.len,arrow);
-		}
-	</f>
-	</call>
+		</f>
+		</call>
+	}
 }
 </mod>
 /*
@@ -843,17 +850,18 @@ static void addsvgelement(
 	unsigned stroke_width,
 	PARAM_STRING id)
 {
-	var.val += string_f("var svg = document.getElementById('board-%s');\n",gameid.c_str());
-	var.val += string_f("var newElement = document.createElementNS('http://www.w3.org/2000/svg', '%s');\n",elmtype);
-	var.val += string_f("newElement.id='%s';\n",id.ptr);
-	var.val += string_f("newElement.style.stroke = '%s';\n",color);
+	var.val += "whi_loop_board(function(svg){\n";
+	var.val += string_f("\tvar newElement = document.createElementNS('http://www.w3.org/2000/svg', '%s');\n",elmtype);
+	var.val += string_f("\tnewElement.id='%s';\n",id.ptr);
+	var.val += string_f("\tnewElement.style.stroke = '%s';\n",color);
 	if (strcmp(elmtype,"text")==0){
-		var.val += "newElement.classList.add('whitext');\n";
+		var.val += "\tnewElement.classList.add('whitext');\n";
 	}else{
-		var.val += "newElement.style.fill = 'none';\n";
-		var.val += string_f("newElement.style.strokeWidth = '%u';\n",stroke_width);
+		var.val += "\tnewElement.style.fill = 'none';\n";
+		var.val += string_f("\tnewElement.style.strokeWidth = '%u';\n",stroke_width);
 	}
-	var.val += "svg.appendChild(newElement);\n";
+	var.val += "\tsvg.appendChild(newElement);\n";
+	var.val += "\t});\n";
 }
 /*
 	Change the arrow type between parents and child (elms).
@@ -1079,19 +1087,66 @@ void WHITEBOARD::setfocus(VARVAL &var)
 	var.val += string_f("document.getElementById('text-%s').focus();\n",gameid.c_str());
 }
 <mod>
-string WHITEBOARD::draw_board (unsigned vx, unsigned vy, unsigned width, unsigned height, unsigned fontsize)
+string WHITEBOARD::draw_board (
+	unsigned vx,		// Viewbox specs
+	unsigned vy,
+	unsigned width,
+	unsigned height,
+	unsigned board_width,
+	unsigned board_height,
+	unsigned fontsize,
+	unsigned docnum,
+	bool editmode,		// Enable onXXXX function
+	string &script)
 {
 	glocal fontsize;
 	glocal string val;
-	glocal.val = string_f("<svg id='board-%s' viewbox='%u %u %u %u'"
+	glocal script;
+		
+	script += string_f("whi_cur_gameid='%s';\n",gameid.c_str());
+	// Generate JS objects
+	glocal.val += "<script>\n";
+	glocal.val += string_f(
+		"var whi_%u={\n"
+		"\tgameid:'%s',docnum:%u,vboxx:%u,vboxy:%u\n"
+		"};\n"
+		"whi_%u.gameselect=function(event){\n"
+		"\twhi_gameselect(this.gameid,this.docnum,this.vboxx,this.vboxy,%u,%u,event);\n"
+		"};\n"
+		"whi_%u.gamemove=function(event){\n"
+		"\twhi_gamemove(this.gameid,this.docnum,this.vboxx,this.vboxy,%u,%u,event);\n"
+		"};\n"
+		"whi_%u.setviewbox=function(vx,vy){\n"
+		"\tthis.vboxx=vx;\n"
+		"\tthis.vboxy=vy;\n"
+		"\twhi_setviewbox(vx,vy);\n"
+		"};\n"
+		,docnum
+		,gameid.c_str(),docnum,vx,vy
+		,docnum
+		,board_width,board_height
+		,docnum
+		,board_width,board_height
+		,docnum);
+	glocal.val += "if (typeof whi_lst == 'undefined') var whi_lst=[];\n";
+	glocal.val += string_f("whi_lst.push(whi_%u);\n",docnum);
+	glocal.val += "</script>\n";
+	string onfuncs;
+	if (editmode){
+		onfuncs = string_f(" onmousedown='whi_%u.gameselect(event);'"
+			" onmouseup='whi_gamemouseup(event); return false;'"
+			" onwheel='whi_gamewheel(event); return false;'"
+			" onmousemove='whi_%u.gamemove(event); return false;'"
+			,docnum,docnum);
+	}
+
+	glocal.val += string_f("<svg id='board-%s,%u' viewbox='%u %u %u %u'"
 		" style='cursor:default;'"
-		" onmousedown='gameselect(event);'"
-		" onmouseup='gamemouseup(event); return false;'"
-		" onwheel='gamewheel(event); return false;'"
-		" onmousemove='gamemove(event); return false;'"
 		" width=100%% height=100%%"
+		" %s"
 		" >\n"
-		,gameid.c_str(),vx,vy,width,height);
+		,gameid.c_str(),docnum,vx,vy,width,height
+		,onfuncs.c_str());
 	<call walkboard>(this);
 	<f element>
 		if (firstseen){
@@ -1128,9 +1183,9 @@ string WHITEBOARD::draw_board (unsigned vx, unsigned vy, unsigned width, unsigne
 		}
 		if (parent != nullptr){
 			LINE_SPEC spec(*parent,elm,quarter,nosubelm,nbsubelm);
-			glocal.val += string_f("<g id='l%u,%u'/>\n"
-				"<script>replace_line('l%u,%u',%u,%u,%lf,%u,'black',%u);</script>\n"
-				,parent->id,elm.id,parent->id,elm.id,spec.x,spec.y,spec.angle,spec.len,arrow);
+			glocal.val += string_f("<g id='l%u,%u'/>\n",parent->id,elm.id);
+			glocal.script += string_f("replace_line('l%u,%u',%u,%u,%lf,%u,'black',%u);\n"
+				,parent->id,elm.id,spec.x,spec.y,spec.angle,spec.len,arrow);
 		}
 	</f>
 	</call>
@@ -1138,6 +1193,261 @@ string WHITEBOARD::draw_board (unsigned vx, unsigned vy, unsigned width, unsigne
 	return glocal.val;
 }
 </mod>
+const unsigned SVG_BOARD_WIDTH=1000;	// SVG viewbox specs
+const unsigned SVG_BOARD_HEIGHT=1000;
+/*
+	Create the javascript functions
+*/
+string WHITEBOARD::define_functions(
+	const DOC_CONTEXT &ctx,
+	const WHITEBOARD_PREF &pref,
+	unsigned board_width,
+	unsigned board_height)
+{
+	string val;
+
+	// Clicking on the board
+	val += "var mbuttons=[0,0,0];\n";
+	val += "function whi_gameselect(gameid,docnum,vboxx,vboxy,width,height,event){\n";
+	val += "\tmbuttons[event.which-1] = 1;\n";
+	val += "\tvar elm = document.getElementById('board-'+gameid+','+docnum);\n";
+	val += "\tvar rect = elm.getBoundingClientRect();\n";
+	val += string_f("\tvar x = (event.clientX-rect.left)*%u/width + vboxx;\n",SVG_BOARD_WIDTH);
+	val += string_f("\tvar y = (event.clientY-rect.top)*%u/height + vboxy;\n",SVG_BOARD_HEIGHT);
+	val += "\tgameaction(event,'select:'+x+','+y+ ','+event.which+','+event.shiftKey+','+event.ctrlKey);\n";
+	val += "\tevent.stopPropagation();\n";
+	val += "\tevent.preventDefault();\n";
+	val += string_f("\tdocument.getElementById('text-%s').focus();\n",gameid.c_str());
+	val += "}\n";
+	val += "function whi_gamemouseup(event){\n";
+	val += "\tmbuttons[event.which-1] = 0;\n";
+	val += "}\n";
+
+	// Mouse wheel
+	val += "function whi_gamewheel(event){\n";
+	val += "\tif (event.deltaY < 0){\n";
+	val += "\t\tgameaction(event,'wheel:1,'+event.shiftKey+','+event.ctrlKey);\n";
+	val += "\t}else{\n";
+	val += "\t\tgameaction(event,'wheel:-1,'+event.shiftKey+','+event.ctrlKey);\n";
+	val += "\t}\n";
+	val += "\tevent.stopPropagation();\n";
+	val += "}\n";
+
+	// Moving an object
+	val += "function whi_gamemove(gameid,docnum,vboxx,vboxy,width,height,event){\n";
+	val += "\tif(mbuttons[0] == 1){\n";
+	val += "\t\tvar elm = document.getElementById('board-'+gameid+','+docnum);\n";
+	val += "\t\tvar rect = elm.getBoundingClientRect();\n";
+	val += string_f("\tvar x = (event.clientX-rect.left)*%u/width + vboxx;\n",SVG_BOARD_WIDTH);
+	val += string_f("\tvar y = (event.clientY-rect.top)*%u/height + vboxy;\n",SVG_BOARD_HEIGHT);
+	val += "\t\tgameaction(event,'mousemove:'+x+','+y+','+event.shiftKey+','+event.ctrlKey);\n";
+	val += "\t}\n";
+	val += "\tevent.stopPropagation();\n";
+	val += "\tevent.preventDefault();\n";
+	val += "}\n";
+
+	// General function to loop over all instance of a document
+	val += string_f("var whi_cur_gameid='%s';\n",gameid.c_str());
+	val += "function whi_loop_board(fct){\n";
+	//val += "\tconsole.log('whi_lst.length='+whi_lst.length);\n";
+	val += "\tfor(var i=0; i<whi_lst.length; i++){\n";
+	val += "\t\tvar whi = whi_lst[i];\n";
+	val += "\t\tif (whi.gameid==whi_cur_gameid){\n";
+	val += "\t\t\tvar svg=document.getElementById('board-'+whi.gameid+','+whi.docnum);\n";
+	val += "\t\t\tfct(svg);\n";
+	val += "\t\t}\n";
+	val += "\t};\n";
+	val += "};\n";
+
+	val += "function whi_loop(tag,id,fct){\n";
+	//val += "\tconsole.log('whi_lst.length='+whi_lst.length+' tag='+tag+' id='+id);\n";
+	val += "\tfor(var i=0; i<whi_lst.length; i++){\n";
+	val += "\t\tvar whi = whi_lst[i];\n";
+	val += "\t\tif (whi.gameid==whi_cur_gameid){\n";
+	val += "\t\t\tvar svg=document.getElementById('board-'+whi.gameid+','+whi.docnum);\n";
+	//val += "\tconsole.log('whi.gameid='+whi.gameid+' whi.docnum='+whi.docnum+' svg='+svg);\n";
+	val += "\t\t\tvar elms=svg.getElementsByTagName(tag);\n";
+	//val += "\t\t\tconsole.log ('elms.length='+elms.length);\n";
+	val += "\t\t\tfor (var j=0; j<elms.length; j++){\n";
+	val += "\t\t\t\tvar e=elms[j];\n";
+	val += "\t\t\t\tif (e.id == id){\n";
+	val += "\t\t\t\t\tfct(e);\n";
+	val += "\t\t\t\t}\n";
+	val += "\t\t\t}\n";
+	val += "\t\t}\n";
+	val += "\t}\n";
+	val += "}\n";
+
+	// Updating an object 
+	val += "function setboxtype(e,boxtype){\n";
+	val += "\tif(boxtype==0){\n";
+	val += "\t\te.removeAttribute('stroke-dasharray');\n";
+	val += "\t}else if(boxtype==1){\n";
+	val += "\t\te.setAttribute('stroke-dasharray','5,5');\n";
+	val += "\t}else if(boxtype==2){\n";
+	val += "\t\te.setAttribute('stroke-dasharray','2,5');\n";
+	val += "\t}\n";
+	val += "}\n";
+
+	val += "function whi_setviewbox(x, y){\n";
+	val += string_f("\tvar e=document.getElementById('board-%s,%u');\n",gameid.c_str(),ctx.docnum);
+	val += string_f("\te.setAttribute('viewBox',' ' + x + ' ' + y + ' %u %u');\n",SVG_BOARD_WIDTH,SVG_BOARD_HEIGHT);
+	val += string_f("\tvar e=document.getElementById('vscroll-%s');\n",gameid.c_str());
+	val += string_f("\te.setAttribute('y',y*%u/%u);\n",board_height,4*SVG_BOARD_HEIGHT);
+	val += string_f("\tvar e=document.getElementById('hscroll-%s');\n",gameid.c_str());
+	val += string_f("\te.setAttribute('x',x*%u/%u);\n",board_width,4*SVG_BOARD_WIDTH);
+	val += "}\n";
+
+	val += "function replace_ellipse(id, x, y, rx,ry,color,boxtype){\n";
+	val += "\twhi_loop('ellipse',id,function(e){\n";
+	//val += "\t\tconsole.log ('fct ellipse id='+id);\n";
+	val += "\t\te.setAttribute('cx',x);\n"; 
+	val += "\t\te.setAttribute('cy',y);\n"; 
+	val += "\t\te.setAttribute('rx',rx);\n"; 
+	val += "\t\te.setAttribute('ry',ry);\n"; 
+	val += "\t\te.style.stroke=color;\n"; 
+	val += "\t\tsetboxtype(e,boxtype);\n";
+	val += "\t});\n";
+	val += "}\n";
+
+	val += "function replace_rect(id, x, y, w,h, color,boxtype){\n";
+	val += "\twhi_loop('rect',id,function(e){\n";
+	//val += "\t\tconsole.log ('fct rect id='+id);\n";
+	val += "\t\te.setAttribute('x',x);\n"; 
+	val += "\t\te.setAttribute('y',y);\n"; 
+	val += "\t\te.setAttribute('rx',5);\n"; 
+	val += "\t\te.setAttribute('ry',5);\n"; 
+	val += "\t\te.setAttribute('width',w);\n"; 
+	val += "\t\te.setAttribute('height',h);\n"; 
+	val += "\t\te.style.stroke=color;\n";
+	val += "\t\tsetboxtype(e,boxtype);\n";
+	val += "\t});\n";
+	val += "}\n";
+
+	val += "function replace_typeline(id, x1, y1, x2, y2, color,boxtype){\n";
+	val += "\twhi_loop('line',id,function(e){\n";
+	val += "\t\te.setAttribute('x1',x1);\n"; 
+	val += "\t\te.setAttribute('y1',y1);\n"; 
+	val += "\t\te.setAttribute('x2',x2);\n"; 
+	val += "\t\te.setAttribute('y2',y2);\n"; 
+	val += "\t\te.style.stroke=color;\n"; 
+	val += "\t\tsetboxtype(e,boxtype);\n";
+	val += "\t});\n";
+	val += "}\n";
+
+	val += "function replace_typetext(id, x, y, color){\n";
+	val += "\twhi_loop('circle',id,function(e){\n";
+	val += "\t\te.setAttribute('cx',x);\n"; 
+	val += "\t\te.setAttribute('cy',y);\n"; 
+	val += "\t\te.setAttribute('r',4);\n"; 
+	val += "\t\te.style.stroke=color;\n"; 
+	val += "\t\te.style.fill='black';\n"; 
+	val += "\t});\n";
+	val += "}\n";
+
+	val += "function replace_text(id, x, y, color, txt){\n";
+	val += "\twhi_loop('text',id,function(e){\n";
+	val += "\t\te.setAttribute('x',x);\n"; 
+	val += "\t\te.setAttribute('y',y);\n"; 
+	val += "\t\te.style.stroke=color;\n"; 
+	val += "\t\te.style.fill=color;\n"; 
+	val += "\t\te.innerHTML=txt;\n"; 
+	val += "\t});\n";
+	val += "}\n";
+
+	// line between a parent and sub-element
+	val += "function replace_line(id, x, y, angle, len, color,arrow){\n";
+	val += "\twhi_loop('g',id,function(e){\n";
+	val += "\t\twhile (e.firstChild) {\n";
+	val += "\t\t\te.removeChild(e.lastChild);\n";
+	val += "\t\t}\n";
+	val += "\t\te.style.stroke = color;\n";
+	val += "\t\te.style.fill = color;\n";
+	val += "\t\te.style.strokeWidth = '1';\n";
+	val += "\t\tvar newElement = document.createElementNS('http://www.w3.org/2000/svg', 'path');\n";
+	val += "\t\te.appendChild(newElement);\n";
+	val += "\t\tlen-=10;\n";
+	val += "\t\tif(arrow==1){\n";
+	// ARROW_END
+	val += "\t\t\tnewElement.setAttribute('d','M0,0 l'+(len-10)+',0 l-2,-5 l10,5 l-10,5 l2,-5');\n"; 
+	val += "\t\t}else if(arrow==2){\n";
+	// ARROW_START
+	val += "\t\t\tnewElement.setAttribute('d','M0,0 l10,-5 l-2,5 l2,5 l-10,-5 l'+len+',0');\n"; 
+	val += "\t\t}else if(arrow==3){\n";
+	// ARROW_BOTH
+	val += "\t\t\tnewElement.setAttribute('d','M0,0 l10,-5 l-2,5 l2,5 l-10,-5 l'+(len-10)+',0 l-2,-5 l10,5 l-10,5 l2,-5');\n"; 
+	val += "\t\t}else if(arrow==4){\n";
+	// ARROW_RETURN
+	val += "\t\t\tnewElement.setAttribute('d','M0,0 l'+(len-10)+',0 l-2,-5 l10,5 l-10,5 l2,-5');\n"; 
+	val += "\t\t\tvar path2 = document.createElementNS('http://www.w3.org/2000/svg', 'path');\n";
+	val += "\t\t\te.appendChild(path2);\n";
+	val += "\t\t\tpath2.style.fill = 'none';\n";
+	val += "\t\t\tvar lenq=len-10;\n";
+	val += "\t\t\tpath2.setAttribute('d','M'+lenq+',-7 q-'+(lenq/2)+',-20,-'+(lenq-10)+',0');\n"; 
+	val += "\t\t\tvar subg = document.createElementNS('http://www.w3.org/2000/svg', 'g');\n";
+	val += "\t\t\te.appendChild(subg);\n";
+	val += "\t\t\tsubg.setAttribute('transform','rotate(-15,0,0)');\n";
+	val += "\t\t\tvar path3 = document.createElementNS('http://www.w3.org/2000/svg', 'path');\n";
+	val += "\t\t\tpath3.setAttribute('d','M10,-5 l2,-5 l-10,5 l10,5 l-2,-5');\n";
+	val += "\t\t\tsubg.appendChild(path3);\n";
+	val += "\t\t}else if(arrow==5){\n";
+	// ARROW_LINE
+	val += "\t\t\tnewElement.setAttribute('d','M0,0 l'+len+',0');\n"; 
+	val += "\t\t}else if(arrow==6){\n";
+	// ARROW_DASHLINE
+	val += "\t\t\tnewElement.setAttribute('d','M0,0 l'+len+',0');\n"; 
+	val += "\t\t\tnewElement.setAttribute('stroke-dasharray','5,5');\n"; 
+	val += "\t\t}else if(arrow==7){\n";
+	// ARROW_DOTLINE
+	val += "\t\t\tnewElement.setAttribute('d','M0,0 l'+len+',0');\n"; 
+	val += "\t\t\tnewElement.setAttribute('stroke-dasharray','2,4');\n"; 
+
+	val += "\t\t}\n";
+	val += "\t\te.setAttribute('transform','translate('+x+','+y+') rotate('+angle+',0,0) translate(5,0)');\n"; 
+	val += "\t});\n";
+	val += "}\n";
+
+	wordproc_set_gamepress(val,"whi_gamepress");
+
+	// Dummy needed by gamepress, shared with doc_wordproc
+	val += "function getlastline(){\n";
+	val += "\treturn 0;\n";
+	val += "}\n";
+
+	// Remove an element
+	val += "function removeelm(id,tag){\n";
+	val += "\twhi_loop(tag,id,function(e){\n";
+	val += "\t\te.parentNode.removeChild(e);\n";
+	val += "\t});\n";
+	val += "}\n";
+
+	// Update the message field
+	val += "function whi_updmsg(color,msg){\n";
+	val += string_f("\tvar elm = document.getElementById('msg-%s');\n",gameid.c_str());
+	val += "\tif (elm != null){\n";
+	val += "\t\telm.style.color=color;\n";
+	val += "\t\telm.innerHTML=msg;\n";
+	val += "\t}\n";
+	val += "}\n";
+	
+	return val;
+}
+set<string> WHITEBOARD::get_embed_list() const
+{
+	set<string> ret;
+	return ret;
+}
+string WHITEBOARD::define_styles(const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp)
+{
+	string val;
+	val += ".whitext{\n";
+	val += "\tfont-family: serif;\n";
+	val += "\tstroke-width: 0.5;\n";
+	val += string_f("\tfont-size:%u;\n",sp.mobile ? sp.fontsize - 15 : sp.fontsize + 3);
+	val += "}\n";
+	return val;
+}
+
 <mod>
 void WHITEBOARD::execstep (
 	const char *var,
@@ -1156,8 +1466,6 @@ void WHITEBOARD::execstep (
 	if (sp.content_height < board_width) board_width = sp.content_height;
 	board_width -= scroll_thick;
 	unsigned board_height = board_width;
-	const unsigned SVG_BOARD_WIDTH=1000;	// SVG viewbox specs
-	const unsigned SVG_BOARD_HEIGHT=1000;
 	string error,status,api_error;
 	setactivity();
 	string tmpvar,tmpval;
@@ -1172,191 +1480,10 @@ void WHITEBOARD::execstep (
 			VARVAL v;
 			v.var = VAR_CONTENT;
 			v.val += "<style>\n";
-			v.val += ".whitext{\n";
-			v.val += "\tfont-family: serif;\n";
-			v.val += "\tstroke-width: 0.5;\n";
-			v.val += string_f("\tfont-size:%u;\n",sp.mobile ? sp.fontsize - 15 : sp.fontsize + 3);
-			v.val += "}\n";
+			v.val += define_styles(ctx,sp);
 			v.val += "</style>\n";
 			v.val += "<script>\n";
-
-			// Clicking on the board
-			v.val += "var mbuttons=[0,0,0];\n";
-			v.val += "function gameselect(event){\n";
-			v.val += "\tmbuttons[event.which-1] = 1;\n";
-			v.val += string_f("\tvar elm = document.getElementById('board-%s');\n",gameid.c_str());
-			v.val += "\tvar rect = elm.getBoundingClientRect();\n";
-			v.val += "\tgameaction(event,'select:'+(event.clientX-rect.left)+','+(event.clientY-rect.top)+ ','+event.which+','+event.shiftKey+','+event.ctrlKey);\n";
-			v.val += "\tevent.stopPropagation();\n";
-			v.val += "\tevent.preventDefault();\n";
-			v.val += string_f("\tdocument.getElementById('text-%s').focus();\n",gameid.c_str());
-			v.val += "}\n";
-			v.val += "function gamemouseup(event){\n";
-			v.val += "\tmbuttons[event.which-1] = 0;\n";
-			v.val += "}\n";
-
-			// Mouse wheel
-			v.val += "function gamewheel(event){\n";
-			v.val += "\tif (event.deltaY < 0){\n";
-			v.val += "\t\tgameaction(event,'wheel:1,'+event.shiftKey+','+event.ctrlKey);\n";
-			v.val += "\t}else{\n";
-			v.val += "\t\tgameaction(event,'wheel:-1,'+event.shiftKey+','+event.ctrlKey);\n";
-			v.val += "\t}\n";
-			v.val += "\tevent.stopPropagation();\n";
-			v.val += "}\n";
-
-			// Moving an object
-			v.val += "function gamemove(event){\n";
-			v.val += "\tif(mbuttons[0] == 1){\n";
-			v.val += string_f("\t\tvar elm = document.getElementById('board-%s');\n",gameid.c_str());
-			v.val += "\t\tvar rect = elm.getBoundingClientRect();\n";
-                        v.val += "\t\tgameaction(event,'mousemove:'+(event.clientX-rect.left)+','+(event.clientY-rect.top)+','+event.shiftKey+','+event.ctrlKey);\n";
-			v.val += "\t}\n";
-			v.val += "\tevent.stopPropagation();\n";
-			v.val += "\tevent.preventDefault();\n";
-			v.val += "}\n";
-
-			// Updating an object 
-			v.val += "function setboxtype(e,boxtype){\n";
-			v.val += "\tif(boxtype==0){\n";
-			v.val += "\t\te.removeAttribute('stroke-dasharray');\n";
-			v.val += "\t}else if(boxtype==1){\n";
-			v.val += "\t\te.setAttribute('stroke-dasharray','5,5');\n";
-			v.val += "\t}else if(boxtype==2){\n";
-			v.val += "\t\te.setAttribute('stroke-dasharray','2,5');\n";
-			v.val += "\t}\n";
-			v.val += "}\n";
-
-			v.val += "function setviewbox(x, y){\n";
-			v.val += string_f("\tvar e=document.getElementById('board-%s');\n",gameid.c_str());
-			v.val += string_f("\te.setAttribute('viewBox',' ' + x + ' ' + y + ' %u %u');\n",SVG_BOARD_WIDTH,SVG_BOARD_HEIGHT);
-			v.val += string_f("\tvar e=document.getElementById('vscroll-%s');\n",gameid.c_str());
-			v.val += string_f("\te.setAttribute('y',y*%u/%u);\n",board_height,4*SVG_BOARD_HEIGHT);
-			v.val += string_f("\tvar e=document.getElementById('hscroll-%s');\n",gameid.c_str());
-			v.val += string_f("\te.setAttribute('x',x*%u/%u);\n",board_width,4*SVG_BOARD_WIDTH);
-			v.val += "}\n";
-
-			v.val += "function replace_ellipse(id, x, y, rx,ry,color,boxtype){\n";
-			js_find_loop_set_META(v.val,"board","ellipse");
-			v.val += "\t\t\t\te.setAttribute('cx',x);\n"; 
-			v.val += "\t\t\t\te.setAttribute('cy',y);\n"; 
-			v.val += "\t\t\t\te.setAttribute('rx',rx);\n"; 
-			v.val += "\t\t\t\te.setAttribute('ry',ry);\n"; 
-			v.val += "\t\t\t\te.style.stroke=color;\n"; 
-			v.val += "\t\t\t\tsetboxtype(e,boxtype);\n";
-			js_find_loop_set_end_META(v.val);
-
-			v.val += "function replace_rect(id, x, y, w,h, color,boxtype){\n";
-			js_find_loop_set_META(v.val,"board","rect");
-			v.val += "\t\t\t\te.setAttribute('x',x);\n"; 
-			v.val += "\t\t\t\te.setAttribute('y',y);\n"; 
-			v.val += "\t\t\t\te.setAttribute('rx',5);\n"; 
-			v.val += "\t\t\t\te.setAttribute('ry',5);\n"; 
-			v.val += "\t\t\t\te.setAttribute('width',w);\n"; 
-			v.val += "\t\t\t\te.setAttribute('height',h);\n"; 
-			v.val += "\t\t\t\te.style.stroke=color;\n";
-			v.val += "\t\t\t\tsetboxtype(e,boxtype);\n";
-			js_find_loop_set_end_META(v.val);
-
-			v.val += "function replace_typeline(id, x1, y1, x2, y2, color,boxtype){\n";
-			js_find_loop_set_META(v.val,"board","line");
-			v.val += "\t\t\t\te.setAttribute('x1',x1);\n"; 
-			v.val += "\t\t\t\te.setAttribute('y1',y1);\n"; 
-			v.val += "\t\t\t\te.setAttribute('x2',x2);\n"; 
-			v.val += "\t\t\t\te.setAttribute('y2',y2);\n"; 
-			v.val += "\t\t\t\te.style.stroke=color;\n"; 
-			v.val += "\t\t\t\tsetboxtype(e,boxtype);\n";
-			js_find_loop_set_end_META(v.val);
-
-			v.val += "function replace_typetext(id, x, y, color){\n";
-			js_find_loop_set_META(v.val,"board","circle");
-			v.val += "\t\t\t\te.setAttribute('cx',x);\n"; 
-			v.val += "\t\t\t\te.setAttribute('cy',y);\n"; 
-			v.val += "\t\t\t\te.setAttribute('r',4);\n"; 
-			v.val += "\t\t\t\te.style.stroke=color;\n"; 
-			v.val += "\t\t\t\te.style.fill='black';\n"; 
-			js_find_loop_set_end_META(v.val);
-
-			v.val += "function replace_text(id, x, y, color, txt){\n";
-			js_find_loop_set_META(v.val,"board","text");
-			v.val += "\t\t\t\te.setAttribute('x',x);\n"; 
-			v.val += "\t\t\t\te.setAttribute('y',y);\n"; 
-			v.val += "\t\t\t\te.style.stroke=color;\n"; 
-			v.val += "\t\t\t\te.style.fill=color;\n"; 
-			v.val += "\t\t\t\te.innerHTML=txt;\n"; 
-			js_find_loop_set_end_META(v.val);
-
-			// line between a parent and sub-element
-			v.val += "function replace_line(id, x, y, angle, len, color,arrow){\n";
-			js_find_loop_set_META(v.val,"board","g");
-			v.val += "\t\t\t\twhile (e.firstChild) {\n";
-			v.val += "\t\t\t\t\te.removeChild(e.lastChild);\n";
-			v.val += "\t\t\t\t}\n";
-			v.val += "\t\t\t\te.style.stroke = color;\n";
-			v.val += "\t\t\t\te.style.fill = color;\n";
-			v.val += "\t\t\t\te.style.strokeWidth = '1';\n";
-			v.val += "\t\t\t\tvar newElement = document.createElementNS('http://www.w3.org/2000/svg', 'path');\n";
-			v.val += "\t\t\t\te.appendChild(newElement);\n";
-			v.val += "\t\t\t\tlen-=10;\n";
-			v.val += "\t\t\t\tif(arrow==1){\n";
-			// ARROW_END
-			v.val += "\t\t\t\t\tnewElement.setAttribute('d','M0,0 l'+(len-10)+',0 l-2,-5 l10,5 l-10,5 l2,-5');\n"; 
-			v.val += "\t\t\t\t}else if(arrow==2){\n";
-			// ARROW_START
-			v.val += "\t\t\t\t\tnewElement.setAttribute('d','M0,0 l10,-5 l-2,5 l2,5 l-10,-5 l'+len+',0');\n"; 
-			v.val += "\t\t\t\t}else if(arrow==3){\n";
-			// ARROW_BOTH
-			v.val += "\t\t\t\t\tnewElement.setAttribute('d','M0,0 l10,-5 l-2,5 l2,5 l-10,-5 l'+(len-10)+',0 l-2,-5 l10,5 l-10,5 l2,-5');\n"; 
-			v.val += "\t\t\t\t}else if(arrow==4){\n";
-			// ARROW_RETURN
-			v.val += "\t\t\t\t\tnewElement.setAttribute('d','M0,0 l'+(len-10)+',0 l-2,-5 l10,5 l-10,5 l2,-5');\n"; 
-			v.val += "\t\t\t\t\tvar path2 = document.createElementNS('http://www.w3.org/2000/svg', 'path');\n";
-			v.val += "\t\t\t\t\te.appendChild(path2);\n";
-			v.val += "\t\t\t\t\tpath2.style.fill = 'none';\n";
-			v.val += "\t\t\t\t\tvar lenq=len-10;\n";
-			v.val += "\t\t\t\t\tpath2.setAttribute('d','M'+lenq+',-7 q-'+(lenq/2)+',-20,-'+(lenq-10)+',0');\n"; 
-			v.val += "\t\t\t\t\tvar subg = document.createElementNS('http://www.w3.org/2000/svg', 'g');\n";
-			v.val += "\t\t\t\t\te.appendChild(subg);\n";
-			v.val += "\t\t\t\t\tsubg.setAttribute('transform','rotate(-15,0,0)');\n";
-			v.val += "\t\t\t\t\tvar path3 = document.createElementNS('http://www.w3.org/2000/svg', 'path');\n";
-			v.val += "\t\t\t\t\tpath3.setAttribute('d','M10,-5 l2,-5 l-10,5 l10,5 l-2,-5');\n";
-			v.val += "\t\t\t\t\tsubg.appendChild(path3);\n";
-			v.val += "\t\t\t\t}else if(arrow==5){\n";
-			// ARROW_LINE
-			v.val += "\t\t\t\t\tnewElement.setAttribute('d','M0,0 l'+len+',0');\n"; 
-			v.val += "\t\t\t\t}else if(arrow==6){\n";
-			// ARROW_DASHLINE
-			v.val += "\t\t\t\t\tnewElement.setAttribute('d','M0,0 l'+len+',0');\n"; 
-			v.val += "\t\t\t\t\tnewElement.setAttribute('stroke-dasharray','5,5');\n"; 
-			v.val += "\t\t\t\t}else if(arrow==7){\n";
-			// ARROW_DOTLINE
-			v.val += "\t\t\t\t\tnewElement.setAttribute('d','M0,0 l'+len+',0');\n"; 
-			v.val += "\t\t\t\t\tnewElement.setAttribute('stroke-dasharray','2,4');\n"; 
-
-			v.val += "\t\t\t\t}\n";
-			v.val += "\t\t\t\te.setAttribute('transform','translate('+x+','+y+') rotate('+angle+',0,0) translate(5,0)');\n"; 
-			js_find_loop_set_end_META(v.val);
-
-			wordproc_set_gamepress(v.val);
-
-			// Dummy needed by gamepress, shared with doc_wordproc
-			v.val += "function getlastline(){\n";
-			v.val += "\treturn 0;\n";
-			v.val += "}\n";
-			// Remove an element
-			v.val += "function removeelm(id,tag){\n";
-			js_find_loop_set_META(v.val,"board","tag");
-			v.val += "\t\t\t\te.parentNode.removeChild(e);\n";
-			js_find_loop_set_end_META(v.val);
-			// Update the message field
-			v.val += "function updmsg(color,msg){\n";
-			v.val += string_f("\tvar elm = document.getElementById('msg-%s');\n",gameid.c_str());
-			v.val += "\tif (elm != null){\n";
-			v.val += "\t\telm.style.color=color;\n";
-			v.val += "\t\telm.innerHTML=msg;\n";
-			v.val += "\t}\n";
-			v.val += "}\n";
-			
+			v.val += define_functions(ctx,pref,board_width,board_height);
 			v.val += "</script>\n";
 			// Buttons line
 			if (ctx.maywrite){
@@ -1412,9 +1539,15 @@ void WHITEBOARD::execstep (
 			v.val += string_f("<div class=webtable id=%sdoc_whiteboard style='display:flex; flex-flow:row;' >\n",val);
 			v.val += string_f("<div id='text-%s' style='flex:0 0 auto;width:%u;height:%u;border:1px solid black;"
 				" margin-left: auto;'"
-				" onkeydown='gamepress(event);return false;'"
+				" onkeydown='whi_gamepress(event);return false;'"
 				" tabindex=0 >\n",gameid.c_str(),board_width,board_height);
-			v.val += draw_board(pref.viewbox_x,pref.viewbox_y,SVG_BOARD_WIDTH,SVG_BOARD_HEIGHT,sp.fontsize);
+			string script;
+			v.val += draw_board(pref.viewbox_x,pref.viewbox_y,SVG_BOARD_WIDTH,SVG_BOARD_HEIGHT,board_width,board_height,sp.fontsize,ctx.docnum,true,script);
+			if (script.size() > 0){
+				v.val += "<script>\n";
+				v.val += script;
+				v.val += "</script>\n";
+			}
 			v.val += "<div style='background-color:ghostwhite;'>\n";
 			v.val += string_f("<svg width=%u height=%u>\n",board_width,scroll_thick);
 			v.val += string_f("<rect id='hscroll-%s' x=%u y=0 rx=3 ry=3 width=%u height=%u fill=lightgray />\n"
@@ -1437,12 +1570,24 @@ void WHITEBOARD::execstep (
 			v.val += "</div>\n";
 			res.emplace_back(move(v));
 		}
-	}else if (strcmp(var,"region")==0){
-		// For imbedding
+	}else if (strcmp(var,"functions")==0){
 		VARVAL var;
-		var.var = VAR_CONTENT;
-		var.val = draw_board (0,0,SVG_BOARD_WIDTH,SVG_BOARD_HEIGHT,sp.fontsize);
+		var.var = VAR_DEFSCRIPT;
+		var.val = define_functions (ctx,pref,board_width,board_height);
 		res.emplace_back(move(var));
+	}else if (strcmp(var,"styles")==0){
+		VARVAL var;
+		var.var = VAR_STYLES;
+		var.val += define_styles(ctx,sp);
+		res.emplace_back(move(var));
+	}else if (strcmp(var,"region")==0){
+		// For embedding
+		VARVAL var,var_script;
+		var.var = VAR_CONTENT;
+		var_script.var = VAR_DEFSCRIPT;
+		var.val = draw_board (0,0,SVG_BOARD_WIDTH,SVG_BOARD_HEIGHT,sp.content_width,sp.content_height,sp.fontsize,ctx.docnum,false,var_script.val);
+		res.emplace_back(move(var));
+		res.emplace_back(move(var_script));
 	}else if (strcmp(var,"chat")==0){
 		appendchat(val,notify_var.val,res);
 	}else if (strcmp(var,REQ_GETFIELDS)==0){
@@ -1502,7 +1647,7 @@ void WHITEBOARD::execstep (
 		if (box_x != pref.viewbox_x || box_y != pref.viewbox_y){
 			pref.viewbox_x = box_x;
 			pref.viewbox_y = box_y;
-			script_var.val += string_f("setviewbox(%u,%u);\n",box_x,box_y);
+			script_var.val += string_f("whi_%u.setviewbox(%u,%u);\n",ctx.docnum,box_x,box_y);
 		}
 	}else if (ctx.maywrite){
 		if (strcmp(var,"deletechar")==0){
@@ -1546,8 +1691,8 @@ void WHITEBOARD::execstep (
 		}else if (strcmp(var,"select")==0){
 			auto tb = str_splitline(val,',');
 			if (tb.size() == 5){
-				unsigned x = atoi(tb[0].c_str())*SVG_BOARD_WIDTH/board_width + pref.viewbox_x;
-				unsigned y = atoi(tb[1].c_str())*SVG_BOARD_HEIGHT/board_height + pref.viewbox_y;
+				unsigned x = atoi(tb[0].c_str());
+				unsigned y = atoi(tb[1].c_str());
 				pref.lastx = x;
 				pref.lasty = y;
 				unsigned button = atoi(tb[2].c_str());
@@ -1616,8 +1761,10 @@ void WHITEBOARD::execstep (
 			if (selects.size() > 0){
 				auto tb = str_splitline(val,',');
 				if (tb.size() == 4){
-					int x = atoi(tb[0].c_str())*SVG_BOARD_WIDTH/board_width + pref.viewbox_x;
-					int y = atoi(tb[1].c_str())*SVG_BOARD_HEIGHT/board_height + pref.viewbox_y;
+					//int x = atoi(tb[0].c_str())*SVG_BOARD_WIDTH/board_width + pref.viewbox_x;
+					//int y = atoi(tb[1].c_str())*SVG_BOARD_HEIGHT/board_height + pref.viewbox_y;
+					int x = atoi(tb[0].c_str());
+					int y = atoi(tb[1].c_str());
 					int movex = x-pref.lastx;
 					int movey = y-pref.lasty;
 					pref.lastx = x;
@@ -1831,10 +1978,11 @@ void WHITEBOARD::execstep (
 			// val == 0: reset everything
 			if (is_any_of(val,"","0")){
 				resetgame();
-				notify_var.val += string_f("var svg = document.getElementById('board-%s');\n",gameid.c_str());
-				notify_var.val += "while (svg.firstChild) {\n";
-				notify_var.val += "\tsvg.removeChild(svg.lastChild);\n";
-				notify_var.val += "}\n";
+				notify_var.val += "whi_loop_board(function(svg){\n";
+				notify_var.val += "\twhile (svg.firstChild) {\n";
+				notify_var.val += "\t\tsvg.removeChild(svg.lastChild);\n";
+				notify_var.val += "\t}\n";
+				notify_var.val += "});\n";
 			}else{
 				unsigned endx = pref.viewbox_x + SVG_BOARD_WIDTH;
 				unsigned endy = pref.viewbox_y + SVG_BOARD_HEIGHT;
@@ -1877,16 +2025,19 @@ void WHITEBOARD::manyexec (
 	const DOC_UI_SPECS_receive &sp,
 	vector<VARVAL> &res)
 {
+	string cur_whi = string_f("whi_cur_gameid='%s';\n",gameid.c_str());
 	VARVAL script_var;
 	script_var.var = VAR_SCRIPT;
+	script_var.val = cur_whi;
 	VARVAL notify_var;
 	notify_var.var = VAR_NOTIFY;
+	notify_var.val = cur_whi;
 	set<unsigned> notify_ids;	// Lines to update using SCRIPT
 	for (auto &v:steps){
 		execstep (v.var,v.val,ctx,sp,script_var,notify_var,notify_ids,res);
 	}
 	sortsubelms(notify_ids);
 	redraw(notify_ids,notify_var,sp.fontsize);
-	res.emplace_back(move(notify_var));
-	res.emplace_back(move(script_var));
+	if (notify_var.val != cur_whi) res.emplace_back(move(notify_var));
+	if (script_var.val != cur_whi) res.emplace_back(move(script_var));
 }
