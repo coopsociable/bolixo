@@ -124,6 +124,9 @@ class CHESS: public GAME{
 	void robot_request (std::vector<VARVAL> &res);
 	void update_players(std::string &notify);
 	void appendmove2chat(const char *username,bool is_human,char oldcell, char newcell, PARAM_STRING chessmove, std::string &notify);
+	std::string define_styles(unsigned grid_height, bool mobile);
+	std::string define_functions(bool reverse, unsigned width, bool mobile, unsigned font_base);
+	std::string draw_board (bool reverse, unsigned grid_width, unsigned grid_height, unsigned font_base, bool mobile);
 public:
 	CHESS();
 	const char *getclass() const{
@@ -1034,6 +1037,225 @@ void CHESS::update_players(string &notify)
 	player = player2.name == CHESS_ROBOT ? svg_robot : player2.name.c_str();
 	js_find_set(notify,"player1","innerHTML",player);
 }
+string CHESS::define_styles(unsigned grid_height, bool mobile)
+{
+	unsigned h8 = grid_height/8;
+	unsigned font_size = h8*9/10;
+	if (mobile) font_size -= 15;
+	string lines;
+	lines += ".piece{\n";
+	lines += "\ttext-anchor:middle;\n";
+	lines += string_f("\tfont-size:%u;\n",font_size);
+	lines += "\tfont-family: Times New Roman;\n";
+	lines += "}\n";
+	return lines;
+}
+string CHESS::define_functions(bool reverse, unsigned width, bool mobile, unsigned font_base)
+{
+	unsigned w8 = width/8;
+	unsigned h8 = w8; 
+	unsigned w8_2 = w8/2;
+
+	string lines;
+	lines += "function gameplace(event){\n";
+	lines += string_f("\tvar elm = document.getElementById('grid-%s');\n",gameid.c_str());
+	lines += "\tvar rect = elm.getBoundingClientRect();\n";
+	lines += string_f("\tgameaction(event,'place:'+Math.floor((event.clientY-rect.top)/%u)+','+Math.floor((event.clientX-rect.left)/%u)+ ','+event.which);\n",h8,w8);
+	lines += "\tevent.stopPropagation();\n";
+	lines += "}\n";
+	lines += "function playersel(event,num,ctx){\n";
+	lines += "\tvar which = event.which;\n";
+	lines += "\tif (ctx==1) which = 2;\n";	// Trick with oncontextmenu
+	lines += "\tgameaction(event,'playersel:'+num+','+which);\n";
+	lines += "\tevent.stopPropagation();\n";
+	lines += "\treturn false;\n";
+	lines += "}\n";
+	lines += "function gamereverse(event){\n";
+	lines += "\tgameaction(event,'reverse:');\n";
+	lines += "\tevent.stopPropagation();\n";
+	lines += "}\n";
+	// Convert chess piece into HTML
+	lines += "var tbhtml=[];\n";
+	lines += "tbhtml['K'] = '&#9812;';\n";
+	lines += "tbhtml['Q'] = '&#9813;';\n";
+	lines += "tbhtml['R'] = '&#9814;';\n";
+	lines += "tbhtml['B'] = '&#9815;';\n";
+	lines += "tbhtml['N'] = '&#9816;';\n";
+	lines += "tbhtml['P'] = '&#9817;';\n";
+	lines += "tbhtml['k'] = '&#9818;';\n";
+	lines += "tbhtml['q'] = '&#9819;';\n";
+	lines += "tbhtml['r'] = '&#9820;';\n";
+	lines += "tbhtml['b'] = '&#9821;';\n";
+	lines += "tbhtml['n'] = '&#9822;';\n";
+	lines += "tbhtml['p'] = '&#9823;';\n";
+	lines += "tbhtml[' '] = ' ';\n";
+
+	lines += "function showpiece(elm,piece){\n";
+	lines += "\tvar fill_color='none';\n";
+	lines += "\tvar stroke_color='none';\n";
+	lines += "\tif (piece===piece.toUpperCase()){\n";
+	lines += "\t\tfill_color = 'white';\n";
+	lines += "\t\tstroke_color = 'black';\n";
+	lines += "\t}else if (piece===piece.toLowerCase()){\n";
+	lines += "\t\tfill_color = 'black';\n";
+	lines += "\t\tstroke_color = 'white';\n";
+	lines += "\t}\n";
+	if (mobile){
+		// See comment in cnv_
+		lines += "\telm.innerHTML=tbhtml[piece];\n";
+	}else{
+		lines += "\telm.innerHTML=tbhtml[piece.toLowerCase()];\n";
+	}
+	lines += "\telm.style.stroke=stroke_color;\n";
+	lines += "\telm.style.fill=fill_color;\n";
+	lines += "}\n";
+	lines += "function findupdpiece(id,piece){\n";
+	js_find_loop_set_META(lines,"grid","text");
+	lines += "\t\t\t\tshowpiece(e,piece);\n";
+	js_find_loop_set_end_META(lines);
+	lines += "function findupdcircle(id,fill,stroke){\n";
+	js_find_loop_set_META(lines,"grid","circle");
+	lines += "\t\t\t\te.style.fill=fill;\n";
+	lines += "\t\t\t\te.style.stroke=stroke;\n";
+	js_find_loop_set_end_META(lines);
+	lines += "function updplayerbg(player,color){\n";
+	lines += string_f("\tvar elm = document.getElementById('player'+player+'-%s');\n",gameid.c_str());
+	lines += "\tif (elm != null){\n";
+	lines += "\t\telm.style.backgroundColor=color;\n";
+	lines += "\t}\n";
+	lines += "}\n";
+	lines += "function updmsg(color,msg){\n";
+	lines += string_f("\tvar elm = document.getElementById('msg-%s');\n",gameid.c_str());
+	lines += "\tif (elm != null){\n";
+	lines += "\t\telm.style.color=color;\n";
+	lines += "\t\telm.innerHTML=msg;\n";
+	lines += "\t}\n";
+	lines += "}\n";
+
+	// fctanimate receive a starting cell position and perform an animation on the grid
+	// tbanim[] records animation to execute. At the end of fctanimate, the next animation
+	// is started.
+	lines += "var tbanim=[];\n";
+	lines += "function fctanimate(x0,y0,x1,y1,nostep,steps,duration,piece,fctend){\n";
+	if (reverse){
+		lines += "\tvar ly0=7-y0;\n";
+		lines += "\tvar ly1=7-y1;\n";
+	}else{
+		lines += "\tvar ly0=y0;\n";
+		lines += "\tvar ly1=y1;\n";
+	}
+	lines += "\tvar txt = document.getElementById('txtanim');\n";
+	lines += "\tshowpiece(txt,piece);\n";
+	//lines += "\tconsole.log ('txt='+' nostep='+nostep+' steps='+steps+' x0='+x0+' y0='+y0+' x1='+x1+' y1='+y1+' utf8='+utf8);\n";
+	lines += string_f ("\tvar stepx = (x1-x0)*%u/steps;\n",w8);
+	lines += string_f ("\tvar stepy = (ly1-ly0)*%u/steps;\n",w8);
+	//lines += "\tconsole.log ('stepx='+stepx+' stepy='+stepy);\n";
+	lines += string_f("\ttxt.setAttribute('x',x0*%u+stepx*nostep+%u);\n",w8,w8_2);
+	lines += string_f("\ttxt.setAttribute('y',ly0*%u+stepy*nostep+%u);\n",w8,font_base);
+	lines += "\tnostep++;\n";
+	lines += "\tif (nostep < steps){\n";
+	//lines += "\t\tconsole.log ('timer='+duration/steps);\n";
+	lines += "\t\twindow.setTimeout(function(){\n";
+	lines += "\t\t\tfctanimate(x0,y0,x1,y1,nostep,steps,duration,piece,fctend);\n";
+	lines += "\t\t\t},duration/steps);\n";
+	lines += "\t}else{\n";
+	lines += "\t\ttxt.style.fill='none';\n";
+	lines += "\t\ttxt.style.stroke='none';\n";
+	lines += "\t\tfctend();\n";
+	lines += "\t\ttbanim.shift();\n";
+	lines += "\t\tif (tbanim.length > 0) tbanim[0]();\n";
+	lines += "\t}\n";
+	lines += "}\n";
+	return lines;
+}
+string CHESS::draw_board(bool reverse, unsigned grid_width, unsigned grid_height, unsigned font_base, bool mobile)
+{
+	string lines;
+	lines += string_f("<svg id='grid-%s' width='%upx' height='%upx' viewbox='0 0 %u %u'"
+		" style=cursor:default;"
+		" onmousedown='gameplace(event); return false;'>\n"
+		,gameid.c_str(),grid_width,grid_height,grid_width,grid_height);
+	unsigned w8 = grid_width/8;
+	unsigned h8 = grid_height/8;
+	unsigned w8_2 = w8/2;
+	unsigned h8_2 = h8/2;
+	unsigned circle_x = w8/4;
+	unsigned circle_y = h8*5/6;
+	unsigned circle_radius = w8/12;
+	unsigned last_radius = w8_2-3;
+	unsigned marked_radius = w8/12;
+	for (unsigned vline=0; vline<8; vline++){
+		lines += string_f("<path stroke=%s stroke-width=1 d='M%u,%u H %u'/>\n","lightgray"
+			,0,h8*vline,grid_width);
+		unsigned line = reverse ? (8-1-vline) : vline;
+		unsigned l1 = line & 1;
+		for (unsigned col=0; col<8; col++){
+			unsigned w8_col = w8*col;
+			unsigned h8_line = h8*vline;
+			lines += string_f("<path stroke=%s stroke-width=1 d='M%u,%u V %u'/>\n","lightgray"
+				,w8*col,0,grid_height);
+			const char *cellcolor = (l1+col)&1 ? "#b58763" : "#f0dab5";
+			lines += string_f("<path stroke='black' stroke-width=1 d='M%u,%u h %u v %u h -%u Z' fill='%s'/>\n"
+				,w8*col,h8*vline,w8,h8,w8,cellcolor);
+			char cell = grid[line][col];
+			const char *select_color = "none";
+			if (isalpha(cell)){
+				if (player1.col == col && player1.line == line){
+					select_color = "blue";
+				}else if (player2.col == col && player2.line == line){
+					select_color = "blue";
+				}
+			}
+			// Circle for last move
+			const char *last_color = "none";
+			if (player1.lastmove.line == line && player1.lastmove.col == col){
+				last_color = "black";
+			}else if (player2.lastmove.line == line && player2.lastmove.col == col){
+				last_color = "black";
+			}
+			lines += string_f("<circle id='cl%u,%u' cx=%u cy=%u r=%u stroke='%s' stroke-width=2 fill='none'/>\n"
+				,line,col,w8_col+w8_2,h8_line+h8_2,last_radius,last_color);
+			// Piece
+			CELL_SPEC spec;
+			cnv_cell_html (cell,spec,mobile);
+			lines += string_f("<text class=piece id='c%u,%u' X=%u Y=%u style='stroke:%s;fill:%s;'>%s</text>\n"
+				,line,col,w8_col+w8_2,h8_line+font_base,spec.stroke_color,spec.fill_color,spec.utf8);
+			// Circle to the left to show a selected piece
+			lines += string_f("<circle id='cs%u,%u' cx=%u cy=%u r=%u stroke='%s' stroke-width=2 fill='%s'/>\n"
+				,line,col,w8_col+circle_x,h8_line+circle_y,circle_radius,select_color,select_color);
+			// small circle to the right to show marked pieces
+			const char *marked_color = "none";
+			for (auto &m:marked_pieces){
+				if (m.line == line && m.col == col){
+					marked_color = "red";
+					break;
+				}
+			}
+			lines += string_f("<circle id='cm%u,%u' cx=%u cy=%u r=%u stroke='%s' stroke-width=2 fill='%s'/>\n"
+				,line,col,w8_col+w8-circle_x,h8_line+circle_y,marked_radius,marked_color,marked_color);
+		}
+	}
+	// Draw the lines over the grid
+	lines += string_f("<path stroke='black' stroke-width='2' fill='none' d='M%u %u H %u V %u H %u Z'/>\n"
+		,1,1,grid_width-1,grid_height-1,1);
+	for (unsigned vline=0; vline<8; vline++){
+		static const char *linecolor="darkgray";
+		lines += string_f("<path stroke=%s stroke-width=1 d='M%u,%u H %u'/>\n",linecolor
+			,0,h8*vline,grid_width);
+		for (unsigned col=0; col<8; col++){
+			lines += string_f("<path stroke=%s stroke-width=1 d='M%u,%u V %u'/>\n",linecolor
+				,w8*col,0,grid_height);
+		}
+	}
+	lines += "<text class=piece id='txtanim' X=0 Y=0 style='stroke:none;fill:none;'>XX</text>\n";
+	lines += "</svg>\n";
+	return lines;
+}
+static unsigned chess_font_base(const DOC_UI_SPECS_receive &sp, unsigned grid_height)
+{
+	return sp.mobile ? sp.fontsize : 4*(grid_height/8)/5;	// Vertical position for the font. Not perfect.
+}
+
 void CHESS::exec (
 	const char *var,
 	const char *val,
@@ -1088,132 +1310,15 @@ void CHESS::exec (
 			unsigned dim = limited_width < sp.content_height ? limited_width : sp.content_height;
 			unsigned width = dim - dim % 8;
 			unsigned w8 = width/8;
-			unsigned h8 = w8; 
 			unsigned grid_width = w8*8;
 			unsigned grid_height = w8*8;
-			unsigned font_size = h8*9/10;
-			if (sp.mobile) font_size -= 15;
-			unsigned w8_2 = w8/2;
-			unsigned font_base = sp.mobile ? font_size : 4*h8/5;	// Vertical position for the font. Not perfect.
-	
-			// tlmp_warning ("font_size=%u h8=%u h8_3_4=%u",font_size,h8,font_base);
+			unsigned font_base = chess_font_base (sp,grid_height);	// Vertical position for the font. Not perfect.
+
 			lines += "<style>\n";
-			lines += ".piece{\n";
-			lines += "\ttext-anchor:middle;\n";
-			lines += string_f("\tfont-size:%u;\n",font_size);
-			lines += "\tfont-family: Times New Roman;\n";
-			lines += "}\n";
+			lines += define_styles(grid_height,sp.mobile);
 			lines += "</style>\n";
 			lines += "<script>\n";
-			lines += "function gameplace(event){\n";
-			lines += string_f("\tvar elm = document.getElementById('grid-%s');\n",gameid.c_str());
-			lines += "\tvar rect = elm.getBoundingClientRect();\n";
-			lines += string_f("\tgameaction(event,'place:'+Math.floor((event.clientY-rect.top)/%u)+','+Math.floor((event.clientX-rect.left)/%u)+ ','+event.which);\n",h8,w8);
-			lines += "\tevent.stopPropagation();\n";
-			lines += "}\n";
-			lines += "function playersel(event,num,ctx){\n";
-			lines += "\tvar which = event.which;\n";
-			lines += "\tif (ctx==1) which = 2;\n";	// Trick with oncontextmenu
-			lines += "\tgameaction(event,'playersel:'+num+','+which);\n";
-			lines += "\tevent.stopPropagation();\n";
-			lines += "\treturn false;\n";
-			lines += "}\n";
-			lines += "function gamereverse(event){\n";
-			lines += "\tgameaction(event,'reverse:');\n";
-			lines += "\tevent.stopPropagation();\n";
-			lines += "}\n";
-			// Convert chess piece into HTML
-			lines += "var tbhtml=[];\n";
-			lines += "tbhtml['K'] = '&#9812;';\n";
-			lines += "tbhtml['Q'] = '&#9813;';\n";
-			lines += "tbhtml['R'] = '&#9814;';\n";
-			lines += "tbhtml['B'] = '&#9815;';\n";
-			lines += "tbhtml['N'] = '&#9816;';\n";
-			lines += "tbhtml['P'] = '&#9817;';\n";
-			lines += "tbhtml['k'] = '&#9818;';\n";
-			lines += "tbhtml['q'] = '&#9819;';\n";
-			lines += "tbhtml['r'] = '&#9820;';\n";
-			lines += "tbhtml['b'] = '&#9821;';\n";
-			lines += "tbhtml['n'] = '&#9822;';\n";
-			lines += "tbhtml['p'] = '&#9823;';\n";
-			lines += "tbhtml[' '] = ' ';\n";
-
-			lines += "function showpiece(elm,piece){\n";
-			lines += "\tvar fill_color='none';\n";
-			lines += "\tvar stroke_color='none';\n";
-			lines += "\tif (piece===piece.toUpperCase()){\n";
-			lines += "\t\tfill_color = 'white';\n";
-			lines += "\t\tstroke_color = 'black';\n";
-			lines += "\t}else if (piece===piece.toLowerCase()){\n";
-			lines += "\t\tfill_color = 'black';\n";
-			lines += "\t\tstroke_color = 'white';\n";
-			lines += "\t}\n";
-			if (sp.mobile){
-				// See comment in cnv_
-				lines += "\telm.innerHTML=tbhtml[piece];\n";
-			}else{
-				lines += "\telm.innerHTML=tbhtml[piece.toLowerCase()];\n";
-			}
-			lines += "\telm.style.stroke=stroke_color;\n";
-			lines += "\telm.style.fill=fill_color;\n";
-			lines += "}\n";
-			lines += "function findupdpiece(id,piece){\n";
-			js_find_loop_set_META(lines,"grid","text");
-			lines += "\t\t\t\tshowpiece(e,piece);\n";
-			js_find_loop_set_end_META(lines);
-			lines += "function findupdcircle(id,fill,stroke){\n";
-			js_find_loop_set_META(lines,"grid","circle");
-			lines += "\t\t\t\te.style.fill=fill;\n";
-			lines += "\t\t\t\te.style.stroke=stroke;\n";
-			js_find_loop_set_end_META(lines);
-			lines += "function updplayerbg(player,color){\n";
-			lines += string_f("\tvar elm = document.getElementById('player'+player+'-%s');\n",gameid.c_str());
-			lines += "\tif (elm != null){\n";
-			lines += "\t\telm.style.backgroundColor=color;\n";
-			lines += "\t}\n";
-			lines += "}\n";
-			lines += "function updmsg(color,msg){\n";
-			lines += string_f("\tvar elm = document.getElementById('msg-%s');\n",gameid.c_str());
-			lines += "\tif (elm != null){\n";
-			lines += "\t\telm.style.color=color;\n";
-			lines += "\t\telm.innerHTML=msg;\n";
-			lines += "\t}\n";
-			lines += "}\n";
-
-			// fctanimate receive a starting cell position and perform an animation on the grid
-			// tbanim[] records animation to execute. At the end of fctanimate, the next animation
-			// is started.
-			lines += "var tbanim=[];\n";
-			lines += "function fctanimate(x0,y0,x1,y1,nostep,steps,duration,piece,fctend){\n";
-			if (reverse){
-				lines += "\tvar ly0=7-y0;\n";
-				lines += "\tvar ly1=7-y1;\n";
-			}else{
-				lines += "\tvar ly0=y0;\n";
-				lines += "\tvar ly1=y1;\n";
-			}
-			lines += "\tvar txt = document.getElementById('txtanim');\n";
-			lines += "\tshowpiece(txt,piece);\n";
-			//lines += "\tconsole.log ('txt='+' nostep='+nostep+' steps='+steps+' x0='+x0+' y0='+y0+' x1='+x1+' y1='+y1+' utf8='+utf8);\n";
-			lines += string_f ("\tvar stepx = (x1-x0)*%u/steps;\n",w8);
-			lines += string_f ("\tvar stepy = (ly1-ly0)*%u/steps;\n",w8);
-			//lines += "\tconsole.log ('stepx='+stepx+' stepy='+stepy);\n";
-			lines += string_f("\ttxt.setAttribute('x',x0*%u+stepx*nostep+%u);\n",w8,w8_2);
-			lines += string_f("\ttxt.setAttribute('y',ly0*%u+stepy*nostep+%u);\n",w8,font_base);
-			lines += "\tnostep++;\n";
-			lines += "\tif (nostep < steps){\n";
-			//lines += "\t\tconsole.log ('timer='+duration/steps);\n";
-			lines += "\t\twindow.setTimeout(function(){\n";
-			lines += "\t\t\tfctanimate(x0,y0,x1,y1,nostep,steps,duration,piece,fctend);\n";
-			lines += "\t\t\t},duration/steps);\n";
-			lines += "\t}else{\n";
-			lines += "\t\ttxt.style.fill='none';\n";
-			lines += "\t\ttxt.style.stroke='none';\n";
-			lines += "\t\tfctend();\n";
-			lines += "\t\ttbanim.shift();\n";
-			lines += "\t\tif (tbanim.length > 0) tbanim[0]();\n";
-			lines += "\t}\n";
-			lines += "}\n";
+			lines += define_functions(reverse,width,sp.mobile,font_base);
 			lines += "</script>\n";
 			
 			// We center the players, knowing the content_width;
@@ -1278,81 +1383,7 @@ void CHESS::exec (
 			lines += "</div>\n";
 
 			lines += "<div style='flex:1 1 auto; overflow: hidden; text-align:center;'>\n";
-			lines += string_f("<svg id='grid-%s' width='%upx' height='%upx' viewbox='0 0 %u %u'"
-				" style=cursor:default;"
-				" onmousedown='gameplace(event); return false;'>\n"
-				,gameid.c_str(),grid_width,grid_height,grid_width,grid_height);
-			unsigned h8_2 = h8/2;
-			unsigned circle_x = w8/4;
-			unsigned circle_y = h8*5/6;
-			unsigned circle_radius = w8/12;
-			unsigned last_radius = w8_2-3;
-			unsigned marked_radius = w8/12;
-			for (unsigned vline=0; vline<8; vline++){
-				lines += string_f("<path stroke=%s stroke-width=1 d='M%u,%u H %u'/>\n","lightgray"
-					,0,h8*vline,grid_width);
-				unsigned line = reverse ? (8-1-vline) : vline;
-				unsigned l1 = line & 1;
-				for (unsigned col=0; col<8; col++){
-					unsigned w8_col = w8*col;
-					unsigned h8_line = h8*vline;
-					lines += string_f("<path stroke=%s stroke-width=1 d='M%u,%u V %u'/>\n","lightgray"
-						,w8*col,0,grid_height);
-					const char *cellcolor = (l1+col)&1 ? "#b58763" : "#f0dab5";
-					lines += string_f("<path stroke='black' stroke-width=1 d='M%u,%u h %u v %u h -%u Z' fill='%s'/>\n"
-						,w8*col,h8*vline,w8,h8,w8,cellcolor);
-					char cell = grid[line][col];
-					const char *select_color = "none";
-					if (isalpha(cell)){
-						if (player1.col == col && player1.line == line){
-							select_color = "blue";
-						}else if (player2.col == col && player2.line == line){
-							select_color = "blue";
-						}
-					}
-					// Circle for last move
-					const char *last_color = "none";
-					if (player1.lastmove.line == line && player1.lastmove.col == col){
-						last_color = "black";
-					}else if (player2.lastmove.line == line && player2.lastmove.col == col){
-						last_color = "black";
-					}
-					lines += string_f("<circle id='cl%u,%u' cx=%u cy=%u r=%u stroke='%s' stroke-width=2 fill='none'/>\n"
-						,line,col,w8_col+w8_2,h8_line+h8_2,last_radius,last_color);
-					// Piece
-					CELL_SPEC spec;
-					cnv_cell_html (cell,spec,sp.mobile);
-					lines += string_f("<text class=piece id='c%u,%u' X=%u Y=%u style='stroke:%s;fill:%s;'>%s</text>\n"
-						,line,col,w8_col+w8_2,h8_line+font_base,spec.stroke_color,spec.fill_color,spec.utf8);
-					// Circle to the left to show a selected piece
-					lines += string_f("<circle id='cs%u,%u' cx=%u cy=%u r=%u stroke='%s' stroke-width=2 fill='%s'/>\n"
-						,line,col,w8_col+circle_x,h8_line+circle_y,circle_radius,select_color,select_color);
-					// small circle to the right to show marked pieces
-					const char *marked_color = "none";
-					for (auto &m:marked_pieces){
-						if (m.line == line && m.col == col){
-							marked_color = "red";
-							break;
-						}
-					}
-					lines += string_f("<circle id='cm%u,%u' cx=%u cy=%u r=%u stroke='%s' stroke-width=2 fill='%s'/>\n"
-						,line,col,w8_col+w8-circle_x,h8_line+circle_y,marked_radius,marked_color,marked_color);
-				}
-			}
-			// Draw the lines over the grid
-			lines += string_f("<path stroke='black' stroke-width='2' fill='none' d='M%u %u H %u V %u H %u Z'/>\n"
-				,1,1,grid_width-1,grid_height-1,1);
-			for (unsigned vline=0; vline<8; vline++){
-				static const char *linecolor="darkgray";
-				lines += string_f("<path stroke=%s stroke-width=1 d='M%u,%u H %u'/>\n",linecolor
-					,0,h8*vline,grid_width);
-				for (unsigned col=0; col<8; col++){
-					lines += string_f("<path stroke=%s stroke-width=1 d='M%u,%u V %u'/>\n",linecolor
-						,w8*col,0,grid_height);
-				}
-			}
-			lines += "<text class=piece id='txtanim' X=0 Y=0 style='stroke:none;fill:none;'>XX</text>\n";
-			lines += "</svg>\n";
+			lines += draw_board(reverse,grid_width,grid_height,font_base,sp.mobile);
 			lines += "</div>\n";
 			draw_waiting_users(lines,waiting_users_width,grid_height,"flex:0 0 auto;");
 			lines += "</div>\n";
@@ -1363,8 +1394,26 @@ void CHESS::exec (
 		}
 		VARVAL v;
 		v.var = VAR_CONTENT;
-		v.val = lines;
-		res.push_back(v);
+		v.val = move(lines);
+		res.emplace_back(move(v));
+	}else if (strcmp(var,"functions")==0){
+		VARVAL var;
+		var.var = VAR_DEFSCRIPT;
+		unsigned font_base = chess_font_base(sp,sp.content_height);
+		var.val = define_functions (false,sp.content_width,sp.mobile,font_base);
+		res.emplace_back(move(var));
+	}else if (strcmp(var,"styles")==0){
+		VARVAL var;
+		var.var = VAR_STYLES;
+		var.val += define_styles(sp.content_height,sp.mobile);
+		res.emplace_back(move(var));
+	}else if (strcmp(var,"region")==0){
+		// For embedding
+		VARVAL var;
+		var.var = VAR_CONTENT;
+		unsigned font_base = chess_font_base(sp,sp.content_height);
+		var.val = draw_board(false,sp.content_width,sp.content_height,font_base,sp.mobile);
+		res.emplace_back(move(var));
 	}else if (strcmp(var,"reverse")==0){
 		sessions[ctx.username] = !reverse;
 		documentd_forcerefresh(res);

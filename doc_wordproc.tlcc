@@ -1028,11 +1028,12 @@ string WORDPROC::formatline(unsigned noline, const DOC_UI_SPECS_receive &sp, str
 		}else if (para.is_imbed()){
 			DOC_UI_SPECS_receive isp;
 			isp.clear();
-			isp.content_width = para.get_image_width()*sp.content_width/100;
+			unsigned para_width = para.get_image_width();
+			isp.content_width = para_width*sp.content_width/100;
 			isp.content_height = isp.content_width;
 			isp.fontsize = sp.fontsize;
-			ret += string_f("<div class=%s style='width:%u;height:%u;'>\n",cursors.size() > 0 ? "imgcursor" : "imgembed"
-				,isp.content_width,isp.content_height);
+			ret += string_f("<div class=%s style='width:%u%%;display: inline-block;'>\n",cursors.size() > 0 ? "imgcursor" : "imgembed"
+				,para_width);
 			ret += documentd_imbed (gameid,para.get_document(),"region",para.get_region(),para.get_docnum(),isp,script);
 			ret += "</div>\n";
 			format = false;
@@ -1887,6 +1888,17 @@ void WORDPROC::execstep (
 			}
 		}
 		res.emplace_back(move(var));
+	}else if (strcmp(var,REQ_GETFIELDS)==0){
+		VARVAL var;
+		var.var = VAR_FIELDS;
+		if (strcmp(val,DIALOG_IMBED)==0){
+			if (pref.cursor.line < lines.size()){
+				auto &l = lines[pref.cursor.line];
+				var.val = string_f("docid:%s\n",l.get_document());
+				var.val += string_f("region:%s\n",l.get_region());
+			}
+		}
+		res.emplace_back(var);
 	}else{
 		MOD_KBD mod;
 		unsigned lastline = 1000;
