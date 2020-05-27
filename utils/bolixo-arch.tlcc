@@ -310,17 +310,35 @@ int main (int argc, char *argv[])
 			printf ("%s",script);
 			// Find out which component have access to /var/lib/bolixo
 			// Find out which component have access to /dev/smtp.sock
+			// Find out which component has a IP gateway, so may reach the internet
 			for (auto &relation:relations){
-				const char *dirname = relation.first.c_str();
+				glocal const char *component = relation.first.c_str();
+				const char *dirname = glocal.component;
 				if (strcmp(dirname,"bods")==0) dirname = "bod";
 				string bolixo_dir = string_f("/var/lib/lxc/%s/rootfs/var/lib/bolixo",dirname);
 				if (file_type(bolixo_dir.c_str())==1){
-					printf ("connect %s   files 1\n",relation.first.c_str());
+					printf ("connect %s   files 1\n",glocal.component);
 				}
 				string smtp_sock = string_f("/var/lib/lxc/%s/rootfs/dev/smtp.sock",dirname);
 				if (file_type(smtp_sock.c_str())==5){
-					printf ("connect %s   exim 1\n",relation.first.c_str());
+					printf ("connect %s   exim 1\n",glocal.component);
 				}
+				if (!is_any_of(relation.first,"bolixod","bods","publishd")){
+					// Some components have internet access to reach webapi, so the are presented
+					// later.
+					<call loadfile>(string_f("/var/lib/lxc/%s/config",dirname),true);
+					<f oneline>
+						if (is_start_any_of(line,NONEED,"lxc.net.0.ipv4.gateway=")){
+							printf ("connect %s internet 1\n",glocal.component);
+						}
+						return 0;
+					</f>
+					<f missing>
+						// Not all components have a config file
+					</f>
+					</call>
+				}
+
 			}
 			for (auto &relation:relations){
 				for (auto &rel:relation.second){
@@ -328,7 +346,7 @@ int main (int argc, char *argv[])
 					const char *to = rel.first.c_str();
 					if (!is_any_of(from,"bo-mon","bolixo","bolixoapi","bolixod","rssd")){
 						if (strcmp(to,"webapi")==0){
-							if (strcmp(from,"bods")==0 || strcmp(from,"publishd")==0) to = "i-webapi";
+							if (is_any_of(from,"bods","publishd")) to = "i-webapi";
 						}
 						if (strcmp(from,to)!=0){
 							printf ("connect %s %s %d\n",from,to,rel.second ? 1 : 1);

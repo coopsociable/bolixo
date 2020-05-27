@@ -32,7 +32,9 @@
 #include <vector>
 #include <memory>
 #include <set>
+#include <deque>
 #include <algorithm>
+#include <functional>
 #include <trlitool.h>
 #include <tlmpsql.h>
 #include "filesystem.h"
@@ -1364,57 +1366,88 @@ using REMOTE_HANDLE_P = unique_ptr<REMOTE_HANDLE>;
 static map<string,REMOTE_HANDLE_P> rem_handles;
 
 /*
-	Send the content of a game or document to documentd
+	Send the content of a game or document to documentd.
+	Some documents may reference other documents or games (document embedding).
+	documentd checks if other documents are needed and report it as a result of documentd_client_load (and loadmore, not implemented yet).
+	This means this function may load many documents. All documents are in the same project, so there is no security issue.
 */
 <mod>
 static void bod_document_load (
 	CONNECT_INFO &con_doc,
-	ENTRY &entry,
+	unsigned userid,
 	const char *path)
 {
-	glocal path;
-	glocal entry;
 	glocal con_doc;
 	// tlmp_warning ("document_load %s\n",path);
-	<call sql_query>("select content,title,signature,filetype,modifiedby from files where id=%d and modified='%s'"
-		,glocal.entry.entryid,glocal.entry.modified.c_str());
-	<f onerow>
-		// tlmp_warning ("document_load row[0] %d\n",row[0]!=nullptr);
-		if (row[0] != nullptr){
-			unsigned len = strlen(row[0]);
-			BOB_TYPE bob (row[0],len,false);
-			<call documentd_client_load>(glocal.con_doc,glocal.path,bob,false);
-			<f ok>
-			</f>
-			</call>
-		}else{
-			FILE *fin = fs_open_file (glocal.entry.entryid,glocal.entry.modified,"r");
-			if (fin == NULL){
-				glocal.entry.msg == "Internal error, reading content file";
+	glocal deque<string> todo;
+	glocal set<string> done;
+	glocal.todo.push_back(path);
+	while (glocal.todo.size() > 0){
+		glocal ENTRY entry;
+		glocal string name = glocal.todo.front();
+		glocal function<void(bool success, const char *msg, const vector<const char *> &imbeds)> add_todo;
+		glocal.add_todo = [&](bool success, const char *msg, const vector<const char *> &imbeds){
+			if (!success){
+				tlmp_error ("bod_document_load: documentd %s failed: %s",glocal.name.c_str(),msg);
 			}else{
-				struct stat64 st;
-				if (fstat64(fileno(fin),&st)==-1){
-					glocal.entry.msg = "Internal error, getting file size";
-				}else{
-					char buf[REQ_CONTENT_CHUNK];
-					int len = fread (buf,1,sizeof(buf),fin);
-					BOB_TYPE bob (buf,len,false);
-					bool more = len==REQ_CONTENT_CHUNK;
-					<call documentd_client_load>(glocal.con_doc,glocal.path,bob,more);
-					<f ok>
-					</f>
-					</call>
-					if (!more){
+				for (auto im:imbeds){
+					if (glocal.done.count(im) == 0){
+						glocal.todo.push_back(im);
 					}
 				}
-				fclose (fin);
 			}
+		};
+		glocal.todo.pop_front();
+		glocal.entry.userid = userid;
+		if (fs_findentry(glocal.name,glocal.entry,true,"")==-1){
+			tlmp_error ("bod_document_load: missing document %s",glocal.name.c_str());
+			break;
+		}else{
+			//tlmp_warning ("Load %s todo.size()=%lu",glocal.name.c_str(),glocal.todo.size());
+			glocal.done.insert(glocal.name);
+			<call sql_query>("select content,title,signature,filetype,modifiedby from files where id=%d and modified='%s'"
+				,glocal.entry.entryid,glocal.entry.modified.c_str());
+			<f onerow>
+				// tlmp_warning ("document_load row[0] %d\n",row[0]!=nullptr);
+				if (row[0] != nullptr){
+					unsigned len = strlen(row[0]);
+					BOB_TYPE bob (row[0],len,false);
+					<call documentd_client_load>(glocal.con_doc,glocal.name,bob,false);
+					<f ok>
+						glocal.add_todo(success,msg,imbeds);
+					</f>
+					</call>
+				}else{
+					FILE *fin = fs_open_file (glocal.entry.entryid,glocal.entry.modified,"r");
+					if (fin == NULL){
+						glocal.entry.msg == "Internal error, reading content file";
+					}else{
+						struct stat64 st;
+						if (fstat64(fileno(fin),&st)==-1){
+							glocal.entry.msg = "Internal error, getting file size";
+						}else{
+							char buf[REQ_CONTENT_CHUNK];
+							int len = fread (buf,1,sizeof(buf),fin);
+							BOB_TYPE bob (buf,len,false);
+							bool more = len==REQ_CONTENT_CHUNK;
+							<call documentd_client_load>(glocal.con_doc,glocal.name,bob,more);
+							<f ok>
+								glocal.add_todo(success,msg,imbeds);
+							</f>
+							</call>
+							if (!more){
+							}
+						}
+						fclose (fin);
+					}
+				}
+			</f>
+			<f empty>
+				glocal.entry.msg = "Internal error, reading table files";
+			</f>
+			</call>
 		}
-	</f>
-	<f empty>
-		glocal.entry.msg = "Internal error, reading table files";
-	</f>
-	</call>
+	}
 }
 </mod>
 /*
@@ -4576,7 +4609,7 @@ static int bod_main (
 									if (!success){
 										if (unknown){
 											// We must load the document first
-											bod_document_load (glocal.con_doc,glocal.entry,glocal.fname);
+											bod_document_load (glocal.con_doc,glocal.entry.userid,glocal.fname);
 										}
 									}else{
 										glocal.pass = 2;

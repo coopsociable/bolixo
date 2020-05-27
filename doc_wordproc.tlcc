@@ -191,6 +191,7 @@ GAME_P make_WORDPROC()
 
 #define documentd_wordproc_lines_NOTNEED
 #define documentd_wordproc_lines_v2_NOTNEED
+#define documentd_wordproc_lines_v3_NOTNEED
 #include "proto/documentd_wordproc.protoch"
 #include "proto/documentd_wordproc.protoh"
 
@@ -664,9 +665,9 @@ void WORDPROC::save(DOC_WRITER &w, bool save_session_info)
 		users.emplace_back(user);
 	}
 	documentd_wordproc_users (&w,users);
-	vector<WORDPROC_PARA_V3> paras;
+	vector<WORDPROC_PARA_V4> paras;
 	for (auto &l:lines){
-		WORDPROC_PARA_V3 para;
+		WORDPROC_PARA_V4 para;
 		para.listtype = l.listtype;
 		para.title_level = l.get_paragraph_type();
 		para.line_spec = l.get_paragraph_spec();
@@ -674,9 +675,10 @@ void WORDPROC::save(DOC_WRITER &w, bool save_session_info)
 		para.line = l.line;
 		para.i_document = l.imbed.document;
 		para.i_region = l.imbed.region;
+		para.i_docnum = l.imbed.docnum;
 		paras.emplace_back(para);
 	}
-	documentd_wordproc_lines_v3 (&w,paras);
+	documentd_wordproc_lines_v4 (&w,paras);
 }
 <mod>
 void WORDPROC::load(DOC_READER &r, string &msg)
@@ -732,6 +734,20 @@ void WORDPROC::load(DOC_READER &r, string &msg)
 			line.line = l.line;
 			line.imbed.document = l.i_document;
 			line.imbed.region = l.i_region;
+			glocal.lines.push_back(line);
+		}
+	</f>
+	<f lines_v4>
+		for (auto &l:lines){
+			WORDPROC_LINE line;
+			line.listtype = l.listtype;
+			line.set_paragraph_type(l.title_level);
+			line.set_paragraph_spec(l.line_spec);
+			line.tab_level = l.tab_level;
+			line.line = l.line;
+			line.imbed.document = l.i_document;
+			line.imbed.region = l.i_region;
+			line.imbed.docnum = l.i_docnum;
 			glocal.lines.push_back(line);
 		}
 	</f>
@@ -1860,6 +1876,17 @@ void WORDPROC::execstep (
 			v.val += "</div>\n";
 			res.emplace_back(v);
 		}
+	}else if (strcmp(var,"dump")==0){
+		VARVAL var;
+		var.var = "lines";
+		for (auto &l:lines){
+			var.val += string_f("\ntype=%u spec=%u listtype=%u tab_level=%u is_image=%d is_imbed=%d"
+				,l.get_paragraph_type(),l.get_paragraph_spec(),l.listtype,l.tab_level,l.is_image(),l.is_imbed());
+			if (l.is_imbed()){
+				var.val += string_f("\n\timbed: document=%s region=%s docnum=%u",l.get_document(),l.get_region(),l.get_docnum());
+			}
+		}
+		res.emplace_back(move(var));
 	}else{
 		MOD_KBD mod;
 		unsigned lastline = 1000;
@@ -2000,7 +2027,8 @@ void WORDPROC::execstep (
 				lines[pref.cursor.line].set_imbed(move(imbed));
 				notify_lines.insert(pref.cursor.line);
 				string script;
-				notify_var.val += documentd_imbed (gameid,imbed.document,"functions","",imbed.docnum,sp,script);
+				documentd_imbed (gameid,imbed.document,"functions","",imbed.docnum,sp,script);
+				notify_var.val += script;
 			// This is a catch all for images
 			// It means that all other case (other else) are not reached if the current line is an image.
 			}else if (pref.cursor.line < lines.size()

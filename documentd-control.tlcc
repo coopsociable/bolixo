@@ -55,6 +55,7 @@ int main (int argc, char *argv[])
 	glocal const char *control = "/var/lib/lxc/documentd/rootfs/var/run/blackhole/documentd.sock";
 	glocal const char *bod_control = "/var/lib/lxc/bod/rootfs/var/run/blackhole/bod-2.sock";
 	glocal unsigned idle_time = 60*60;	// One hour
+	glocal bool force = false;
 	glocal.ret = <call tlmpprogram>(argc,argv,"bolixo");
 	<f init>
 		setproginfo ("documentd-control",VERSION
@@ -80,6 +81,7 @@ int main (int argc, char *argv[])
 		setarg ('p',"control","Unix socket to reach documentd",glocal.control,false);
 		setarg (' ',"bod-control","Unix socket to reach bod",glocal.bod_control,false);
 		setarg (' ',"idle-time","Idle time for a game (deleted after that)",glocal.idle_time,false);
+		setarg (' ',"force","Force endgame (for endgame and deleteoldgames)",glocal.force,false);
 	</f>
 	<f main>
 		glocal int ret = -1;
@@ -105,27 +107,27 @@ int main (int argc, char *argv[])
 			</f>
 			</call>
 		}else if (strcmp(argv[0],"deleteoldgames")==0 && argc==1){
-			<call documentd_control_listgames>(glocal.con);
-			<f ok>
-				if (!internal_error) glocal.ret = 0;
-				time_t old_now = time(nullptr) - glocal.idle_time;
-				for (auto x:stats){
-					glocal bool delete_ok = true;
-					glocal const char *gameid = x.gameid;
-					if (x.modified != 0 && x.modified < old_now){
-						// It was modified some time ago, must be saved using bod
-						<call bod_control_savegame>(glocal.con_bod,x.gameid);
-						<f ok>
-							if (!success){
-								tlmp_error (MSG_U(E_FAILSAVEGAME,"Can't save document/game %s: %s\n")
-									,glocal.gameid,msg);
-								glocal.delete_ok = false;
-							}
-						</f>
-						</call>
-					}
-					if (glocal.delete_ok){
-						if (x.last_activity < old_now){
+			for (unsigned i=0; i<2; i++){
+				<call documentd_control_listgames>(glocal.con);
+				<f ok>
+					if (!internal_error) glocal.ret = 0;
+					time_t old_now = time(nullptr) - glocal.idle_time;
+					for (auto x:stats){
+						glocal bool delete_ok = true;
+						glocal const char *gameid = x.gameid;
+						if (x.modified != 0 && x.modified < old_now){
+							// It was modified some time ago, must be saved using bod
+							<call bod_control_savegame>(glocal.con_bod,x.gameid);
+							<f ok>
+								if (!success){
+									tlmp_error (MSG_U(E_FAILSAVEGAME,"Can't save document/game %s: %s\n")
+										,glocal.gameid,msg);
+									glocal.delete_ok = false;
+								}
+							</f>
+							</call>
+						}
+						if (glocal.force || (glocal.delete_ok && x.last_activity < old_now)){
 							// This game/document has not been accessed for some time
 							// We delete the game. The revision obtained by listgame
 							// must match when the deletion is executed in documentd.
@@ -133,16 +135,17 @@ int main (int argc, char *argv[])
 							// while we were saving. So endgame fails.
 							// But failure is not a problem. The game continue to
 							// exist in documentd.
-							<call documentd_control_endgame>(glocal.con,x.gameid,x.revision);
+							glocal const char *gameid = x.gameid;
+							<call documentd_control_endgame>(glocal.con,x.gameid,x.revision,glocal.force);
 							<f ok>
+								if (!success) tlmp_error ("deleteoldgames: can't delete %s: %s\n",glocal.gameid,msg);
 							</f>
 							</call>
-						}
-					}				
-					
-				}
-			</f>
-			</call>
+						}				
+					}
+				</f>
+				</call>
+			}
 		}else if (strcmp(argv[0],"quit")==0 && argc==1){
 			<call documentd_control_quit>(glocal.con);
 			<f ok>
@@ -178,7 +181,7 @@ int main (int argc, char *argv[])
 			</f>
 			</call>
 		}else if (strcmp(argv[0],"endgame")==0 && argc == 3){
-			<call documentd_control_endgame>(glocal.con,argv[1],atoi(argv[2]));
+			<call documentd_control_endgame>(glocal.con,argv[1],atoi(argv[2]),glocal.force);
 			<f ok>
 				printf ("success=%d msg=%s\n",success,msg);
 			</f>

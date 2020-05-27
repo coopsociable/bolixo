@@ -598,6 +598,12 @@ static void documentd_create_popup(PARAM_STRING msg, const GAME_P doc)
 		doc->add_notification (script);
 	}
 }
+/*
+	Remove a game if possible (force overrides everything).
+	The revision must match. It is generally obtained using the method is_modified or listgames.
+	No user must be waiting for the game.
+	The game must not be embedded in another game/document.
+*/
 static bool documentd_endgame (
 	map<string,GAME_P> &games,
 	const char *gameid,
@@ -615,12 +621,26 @@ static bool documentd_endgame (
 			msg = "User waitings";
 		}else{
 			ret = true;
-			string msg = string_f(MSG_U(I_DELETED,"<center>Attention</center><p>"
-				"The document has been deleted by %s<br>"
-				"<p>"
-				"The document may be undeleted if needed"),username);
-			documentd_create_popup (msg,g->second);
-			games.erase (g);
+			if (!force){
+				for (auto &gg:games){
+					if (gg.second != g->second){
+						auto tb = gg.second->get_embed_list();
+						if (tb.count(gameid)>0){
+							ret = false;
+							msg = string_f("game is embedded in document %s",gg.first.c_str());
+							break;
+						}
+					}
+				}
+			}
+			if (ret){
+				string msg = string_f(MSG_U(I_DELETED,"<center>Attention</center><p>"
+					"The document has been deleted by %s<br>"
+					"<p>"
+					"The document may be undeleted if needed"),username);
+				documentd_create_popup (msg,g->second);
+				games.erase (g);
+			}
 		}
 	}else{
 		msg = "Unknown game id";
@@ -1228,7 +1248,7 @@ int main (int argc, char *argv[])
 				</f>
 				<f endgame>	// gameid = success:b msg
 					string msg;
-					bool success = documentd_endgame(glocal.games,gameid,"admin",revision,false,msg);
+					bool success = documentd_endgame(glocal.games,gameid,"admin",revision,force,msg);
 					rep_endgame (success,msg);
 				</f>
 				<f endgames>
@@ -1306,7 +1326,7 @@ int main (int argc, char *argv[])
 						}
 						fclose (fin);
 					}
-					rep_save(success,msg);
+					rep_load(success,msg);
 				</f>
 				<f setflag>
 					flags[flag] = value;
@@ -1439,10 +1459,15 @@ int main (int argc, char *argv[])
 						DOC_READER doc(type+9);
 						game->load(doc,msg);
 					}
-					if (msg.size() > 0){
-						rep_load (false,msg);
+					vector<string> imbeds;
+					if (game != nullptr && msg.size() > 0){
+						rep_load (false,msg,imbeds);
 					}else{
-						rep_load (true,"");
+						auto sub = game->get_embed_list();
+						for (auto &s:sub){
+							if (glocal.games.find(s)==glocal.games.end()) imbeds.push_back(s);
+						}
+						rep_load (true,"",imbeds);
 					}
 				</f>
 				<f loadmore>

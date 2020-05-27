@@ -1105,8 +1105,8 @@ string WHITEBOARD::draw_board (
 		
 	script += string_f("whi_cur_gameid='%s';\n",gameid.c_str());
 	// Generate JS objects
-	glocal.val += "<script>\n";
-	glocal.val += string_f(
+	//glocal.val += "<script>\n";
+	script += string_f(
 		"var whi_%u={\n"
 		"\tgameid:'%s',docnum:%u,vboxx:%u,vboxy:%u\n"
 		"};\n"
@@ -1128,9 +1128,9 @@ string WHITEBOARD::draw_board (
 		,docnum
 		,board_width,board_height
 		,docnum);
-	glocal.val += "if (typeof whi_lst == 'undefined') var whi_lst=[];\n";
-	glocal.val += string_f("whi_lst.push(whi_%u);\n",docnum);
-	glocal.val += "</script>\n";
+	script += "if (typeof whi_lst == 'undefined') var whi_lst=[];\n";
+	script += string_f("whi_lst.push(whi_%u);\n",docnum);
+	//glocal.val += "</script>\n";
 	string onfuncs;
 	if (editmode){
 		onfuncs = string_f(" onmousedown='whi_%u.gameselect(event);'"
@@ -1246,6 +1246,7 @@ string WHITEBOARD::define_functions(
 	val += "\tevent.preventDefault();\n";
 	val += "}\n";
 
+	val += "if (typeof whi_lst == 'undefined') var whi_lst=[];\n";
 	// General function to loop over all instance of a document
 	val += string_f("var whi_cur_gameid='%s';\n",gameid.c_str());
 	val += "function whi_loop_board(fct){\n";
@@ -1582,12 +1583,19 @@ void WHITEBOARD::execstep (
 		res.emplace_back(move(var));
 	}else if (strcmp(var,"region")==0){
 		// For embedding
-		VARVAL var,var_script;
-		var.var = VAR_CONTENT;
-		var_script.var = VAR_DEFSCRIPT;
-		var.val = draw_board (0,0,SVG_BOARD_WIDTH,SVG_BOARD_HEIGHT,sp.content_width,sp.content_height,sp.fontsize,ctx.docnum,false,var_script.val);
-		res.emplace_back(move(var));
-		res.emplace_back(move(var_script));
+		if (strlen(val)==2 && isalpha(val[0]) && isdigit(val[1])){
+			unsigned col = toupper(val[0])-'A';
+			unsigned row = val[1] - '1';
+			if (col < 4 && row < 4){
+				VARVAL var,var_script;
+				var.var = VAR_CONTENT;
+				var_script.var = VAR_DEFSCRIPT;
+				var.val = draw_board (col*SVG_BOARD_WIDTH,row*SVG_BOARD_HEIGHT,SVG_BOARD_WIDTH,SVG_BOARD_HEIGHT
+					,sp.content_width,sp.content_height,sp.fontsize,ctx.docnum,false,var_script.val);
+				res.emplace_back(move(var));
+				res.emplace_back(move(var_script));
+			}
+		}
 	}else if (strcmp(var,"chat")==0){
 		appendchat(val,notify_var.val,res);
 	}else if (strcmp(var,REQ_GETFIELDS)==0){
