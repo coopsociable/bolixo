@@ -1032,10 +1032,16 @@ string WORDPROC::formatline(unsigned noline, const DOC_UI_SPECS_receive &sp, str
 			isp.content_width = para_width*sp.content_width/100;
 			isp.content_height = isp.content_width;
 			isp.fontsize = sp.fontsize;
-			ret += string_f("<div class=%s style='width:%u%%;display: inline-block;'>\n",cursors.size() > 0 ? "imgcursor" : "imgembed"
+			// This is typical HTML css hack. The goal is to control the aspect ratio (a 1:1 for now) while controlling the width using % value
+			// So we set the with in the outer div and the set the padding-top to 100% in a inner empty div. Then we force another div
+			// with absolute positionning to 0 0 0 0
+			// And this works in browers...
+			ret += string_f("<div class=%s style='width:%u%%;display: inline-block; position:relative;'>\n",cursors.size() > 0 ? "imgcursor" : "imgembed"
 				,para_width);
+			ret += "<div style='padding-top:100%;'/>\n";
+			ret += "<div style='position: absolute;top:0;bottom:0;left:0;right:0;' >\n";
 			ret += documentd_imbed (gameid,para.get_document(),"region",para.get_region(),para.get_docnum(),isp,script);
-			ret += "</div>\n";
+			ret += "</div></div>\n";
 			format = false;
 		}
 				
