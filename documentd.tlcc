@@ -757,6 +757,47 @@ void documentd_imbeds (
 		}
 	}	
 }
+/*
+	Generate the function to loop inside all javascript object, then search for an id and apply a function
+*/
+string documentd_js_loop_function(const char *board_prefix, const char *prefix)
+{
+	string lines;
+	lines += string_f("if (typeof %s_lst == 'undefined') var %s_lst=[];\n",prefix,prefix);
+	lines += string_f("var %s_cur_gameid='';\n",prefix);
+
+	lines += string_f("function %s_loop_board(fct){\n",prefix);
+	//val += "\tconsole.log('whi_lst.length='+whi_lst.length);\n";
+	lines += string_f("\tfor(var i=0; i<%s_lst.length; i++){\n",prefix);
+	lines += string_f("\t\tvar whi = %s_lst[i];\n",prefix);
+	lines += string_f("\t\tif (whi.gameid==%s_cur_gameid){\n",prefix);
+	lines += string_f("\t\t\tvar svg=document.getElementById('%s-'+whi.gameid+','+whi.docnum);\n",board_prefix);
+	lines += "\t\t\tfct(svg);\n";
+	lines += "\t\t}\n";
+	lines += "\t}\n";
+	lines += "};\n";
+
+	lines += string_f("function %s_loop(tag,id,fct){\n",prefix);
+	//lines += "\tconsole.log('whi_lst.length='+whi_lst.length+' tag='+tag+' id='+id);\n";
+	lines += string_f("\tfor(var i=0; i<%s_lst.length; i++){\n",prefix);
+	lines += string_f("\t\tvar chs = %s_lst[i];\n",prefix);
+	lines += string_f("\t\tif (chs.gameid==%s_cur_gameid){\n",prefix);
+	lines += string_f("\t\t\tvar svg=document.getElementById('%s-'+chs.gameid+','+chs.docnum);\n",board_prefix);
+	//lines += "\tconsole.log('chs.gameid='+chs.gameid+' chs.docnum='+chs.docnum+' svg='+svg);\n";
+	lines += "\t\t\tvar elms=svg.getElementsByTagName(tag);\n";
+	//lines += "\t\t\tconsole.log ('elms.length='+elms.length);\n";
+	lines += "\t\t\tfor (var j=0; j<elms.length; j++){\n";
+	lines += "\t\t\t\tvar e=elms[j];\n";
+	lines += "\t\t\t\tif (e.id == id){\n";
+	lines += "\t\t\t\t\tfct(e);\n";
+	lines += "\t\t\t\t}\n";
+	lines += "\t\t\t}\n";
+	lines += "\t\t}\n";
+	lines += "\t}\n";
+	lines += "}\n";
+	return lines;
+}
+
 SUBPROGRAM::SUBPROGRAM(PARAM_STRING _gameclass, PARAM_STRING _command)
 	:command(_command.ptr), gameclass(_gameclass.ptr)
 {

@@ -124,9 +124,9 @@ class CHESS: public GAME{
 	void robot_request (std::vector<VARVAL> &res);
 	void update_players(std::string &notify);
 	void appendmove2chat(const char *username,bool is_human,char oldcell, char newcell, PARAM_STRING chessmove, std::string &notify);
-	std::string define_styles(unsigned grid_height, bool mobile);
-	std::string define_functions(bool reverse, unsigned width, bool mobile, unsigned font_base);
-	std::string draw_board (bool reverse, unsigned grid_width, unsigned grid_height, unsigned font_base, bool mobile);
+	std::string define_styles(bool mobile);
+	std::string define_functions(bool reverse, bool mobile);
+	std::string draw_board (bool reverse, bool mobile, unsigned docnum, bool editmode, std::string &script);
 public:
 	CHESS();
 	const char *getclass() const{
@@ -1037,9 +1037,15 @@ void CHESS::update_players(string &notify)
 	player = player2.name == CHESS_ROBOT ? svg_robot : player2.name.c_str();
 	js_find_set(notify,"player1","innerHTML",player);
 }
-string CHESS::define_styles(unsigned grid_height, bool mobile)
+const unsigned SVG_CHESS_GRID_HEIGHT=1000;
+const unsigned SVG_CHESS_GRID_WIDTH=1000;
+static unsigned chess_font_base()
 {
-	unsigned h8 = grid_height/8;
+	return 4*(SVG_CHESS_GRID_HEIGHT/8)/5;	// Vertical position for the font. Not perfect.
+}
+string CHESS::define_styles(bool mobile)
+{
+	const unsigned h8 = SVG_CHESS_GRID_HEIGHT/8;
 	unsigned font_size = h8*9/10;
 	if (mobile) font_size -= 15;
 	string lines;
@@ -1050,17 +1056,21 @@ string CHESS::define_styles(unsigned grid_height, bool mobile)
 	lines += "}\n";
 	return lines;
 }
-string CHESS::define_functions(bool reverse, unsigned width, bool mobile, unsigned font_base)
+string CHESS::define_functions(bool reverse, bool mobile)
 {
-	unsigned w8 = width/8;
-	unsigned h8 = w8; 
-	unsigned w8_2 = w8/2;
+	const unsigned w8 = SVG_CHESS_GRID_WIDTH/8;
+	const unsigned w8_2 = w8/2;
+	unsigned font_base = chess_font_base();
 
 	string lines;
-	lines += "function gameplace(event){\n";
-	lines += string_f("\tvar elm = document.getElementById('grid-%s');\n",gameid.c_str());
+	lines = documentd_js_loop_function("grid","chs");
+
+	lines += "function chs_gameplace(gameid,docnum,event){\n";
+	lines += "\tvar elm = document.getElementById('grid-'+gameid+','+docnum);\n";
 	lines += "\tvar rect = elm.getBoundingClientRect();\n";
-	lines += string_f("\tgameaction(event,'place:'+Math.floor((event.clientY-rect.top)/%u)+','+Math.floor((event.clientX-rect.left)/%u)+ ','+event.which);\n",h8,w8);
+	lines += "\tvar h8=(rect.bottom-rect.top)/8;\n";
+	lines += "\tconsole.log('h8='+h8);\n";
+	lines += "\tgameaction(event,'place:'+Math.floor((event.clientY-rect.top)/h8)+','+Math.floor((event.clientX-rect.left)/h8)+ ','+event.which);\n";
 	lines += "\tevent.stopPropagation();\n";
 	lines += "}\n";
 	lines += "function playersel(event,num,ctx){\n";
@@ -1109,15 +1119,20 @@ string CHESS::define_functions(bool reverse, unsigned width, bool mobile, unsign
 	lines += "\telm.style.stroke=stroke_color;\n";
 	lines += "\telm.style.fill=fill_color;\n";
 	lines += "}\n";
+
 	lines += "function findupdpiece(id,piece){\n";
-	js_find_loop_set_META(lines,"grid","text");
-	lines += "\t\t\t\tshowpiece(e,piece);\n";
-	js_find_loop_set_end_META(lines);
+	lines += "\tchs_loop('text',id,function(e){\n";
+	lines += "\t\tshowpiece(e,piece);\n";
+	lines += "\t});\n";
+	lines += "}\n";
+
 	lines += "function findupdcircle(id,fill,stroke){\n";
-	js_find_loop_set_META(lines,"grid","circle");
-	lines += "\t\t\t\te.style.fill=fill;\n";
-	lines += "\t\t\t\te.style.stroke=stroke;\n";
-	js_find_loop_set_end_META(lines);
+	lines += "\tchs_loop('circle',id,function(e){\n";
+	lines += "\t\te.style.fill=fill;\n";
+	lines += "\t\te.style.stroke=stroke;\n";
+	lines += "\t});\n";
+	lines += "}\n";
+
 	lines += "function updplayerbg(player,color){\n";
 	lines += string_f("\tvar elm = document.getElementById('player'+player+'-%s');\n",gameid.c_str());
 	lines += "\tif (elm != null){\n";
@@ -1168,13 +1183,35 @@ string CHESS::define_functions(bool reverse, unsigned width, bool mobile, unsign
 	lines += "}\n";
 	return lines;
 }
-string CHESS::draw_board(bool reverse, unsigned grid_width, unsigned grid_height, unsigned font_base, bool mobile)
+string CHESS::draw_board(
+	bool reverse,
+	bool mobile,
+	unsigned docnum,
+	bool editmode,		// Enable onXXXX function
+	string &script)
 {
 	string lines;
-	lines += string_f("<svg id='grid-%s' width='%upx' height='%upx' viewbox='0 0 %u %u'"
+	const unsigned grid_width = SVG_CHESS_GRID_HEIGHT;
+	const unsigned grid_height = SVG_CHESS_GRID_HEIGHT;
+	unsigned font_base = chess_font_base ();
+	script = string_f(
+		"var chs_%u={\n"
+		"\tgameid:'%s',docnum:%u\n"
+		"};\n"
+		"chs_%u.gameplace=function(event){\n"
+		"\tchs_gameplace(this.gameid,this.docnum,event);\n"
+		"};\n"
+		,docnum
+		,gameid.c_str(),docnum
+		,docnum);
+	script += "if (typeof chs_lst == 'undefined') var chs_lst=[];\n";
+	script += string_f("chs_lst.push(chs_%u);\n",docnum);
+	string onmouse;
+	if (editmode) onmouse = string_f("onmousedown='chs_%u.gameplace(event); return false;'",docnum);
+	lines += string_f("<svg id='grid-%s,%u' width=100%% height=100%% viewbox='0 0 %u %u'"
 		" style=cursor:default;"
-		" onmousedown='gameplace(event); return false;'>\n"
-		,gameid.c_str(),grid_width,grid_height,grid_width,grid_height);
+		" %s>\n"
+		,gameid.c_str(),docnum,grid_width,grid_height,onmouse.c_str());
 	unsigned w8 = grid_width/8;
 	unsigned h8 = grid_height/8;
 	unsigned w8_2 = w8/2;
@@ -1251,10 +1288,6 @@ string CHESS::draw_board(bool reverse, unsigned grid_width, unsigned grid_height
 	lines += "</svg>\n";
 	return lines;
 }
-static unsigned chess_font_base(const DOC_UI_SPECS_receive &sp, unsigned grid_height)
-{
-	return sp.mobile ? sp.fontsize : 4*(grid_height/8)/5;	// Vertical position for the font. Not perfect.
-}
 
 void CHESS::exec (
 	const char *var,
@@ -1267,6 +1300,7 @@ void CHESS::exec (
 	setactivity();
 	VARVAL notify_var;
 	notify_var.var = VAR_NOTIFY;
+	notify_var.val = string_f("chs_cur_gameid='%s';\n",gameid.c_str());
 	if (ctx.maywrite){
 		bool robot = strcmp(ctx.username,CHESS_ROBOT)==0;
 		if (player1.name.size() == 0 && player2.name != ctx.username){
@@ -1310,15 +1344,13 @@ void CHESS::exec (
 			unsigned dim = limited_width < sp.content_height ? limited_width : sp.content_height;
 			unsigned width = dim - dim % 8;
 			unsigned w8 = width/8;
-			unsigned grid_width = w8*8;
 			unsigned grid_height = w8*8;
-			unsigned font_base = chess_font_base (sp,grid_height);	// Vertical position for the font. Not perfect.
 
 			lines += "<style>\n";
-			lines += define_styles(grid_height,sp.mobile);
+			lines += define_styles(sp.mobile);
 			lines += "</style>\n";
 			lines += "<script>\n";
-			lines += define_functions(reverse,width,sp.mobile,font_base);
+			lines += define_functions(reverse,sp.mobile);
 			lines += "</script>\n";
 			
 			// We center the players, knowing the content_width;
@@ -1382,9 +1414,17 @@ void CHESS::exec (
 			lines += "</svg>\n";
 			lines += "</div>\n";
 
-			lines += "<div style='flex:1 1 auto; overflow: hidden; text-align:center;'>\n";
-			lines += draw_board(reverse,grid_width,grid_height,font_base,sp.mobile);
+			lines += string_f("<div style='flex:0 0 auto;"
+				"width:%u;height:%u;"
+				"margin-left:auto;margin-right:auto;' >\n",width,grid_height);
+			string script;
+			lines += draw_board(reverse,sp.mobile,ctx.docnum,true,script);
 			lines += "</div>\n";
+			if (script.size() > 0){
+				lines += "<script>\n";
+				lines += script;
+				lines += "</script>\n";
+			}
 			draw_waiting_users(lines,waiting_users_width,grid_height,"flex:0 0 auto;");
 			lines += "</div>\n";
 			lines += "<div id=tab_form>\n";
@@ -1399,21 +1439,21 @@ void CHESS::exec (
 	}else if (strcmp(var,"functions")==0){
 		VARVAL var;
 		var.var = VAR_DEFSCRIPT;
-		unsigned font_base = chess_font_base(sp,sp.content_height);
-		var.val = define_functions (false,sp.content_width,sp.mobile,font_base);
+		var.val = define_functions (false,sp.mobile);
 		res.emplace_back(move(var));
 	}else if (strcmp(var,"styles")==0){
 		VARVAL var;
 		var.var = VAR_STYLES;
-		var.val += define_styles(sp.content_height,sp.mobile);
+		var.val += define_styles(sp.mobile);
 		res.emplace_back(move(var));
 	}else if (strcmp(var,"region")==0){
 		// For embedding
-		VARVAL var;
+		VARVAL var,var_script;
 		var.var = VAR_CONTENT;
-		unsigned font_base = chess_font_base(sp,sp.content_height);
-		var.val = draw_board(false,sp.content_width,sp.content_height,font_base,sp.mobile);
+		var_script.var = VAR_DEFSCRIPT;
+		var.val = draw_board(false,sp.mobile,ctx.docnum,false,var_script.val);
 		res.emplace_back(move(var));
+		res.emplace_back(move(var_script));
 	}else if (strcmp(var,"reverse")==0){
 		sessions[ctx.username] = !reverse;
 		documentd_forcerefresh(res);
@@ -1437,6 +1477,7 @@ void CHESS::exec (
 			unsigned lo,co;
 			int button;
 			int n = sscanf(val,"%u,%u,%d",&lo,&co,&button);
+tlmp_warning ("val='%s' lo=%u co=%u button=%u",val,lo,co,button);
 			if (n == 3 && lo < 8 && co < 8 && is_any_of(button,1,2)){
 				if (reverse) lo = 8 -1 - lo;
 				CHESS_PLAYER *player = &player2;
@@ -1617,23 +1658,24 @@ void CHESS::exec (
 			}
 		}else if (strcmp(var,"resetgame")==0){
 			resetgame();
-			js_find_loop_start (notify_var.val,"grid","text");
+			notify_var.val += "chs_loop_board(function(svg){\n";
+			notify_var.val += "\tvar elms = svg.getElementsByTagName('text');\n";
 			unsigned item = 0;
 			for (unsigned i=0; i<8; i++){
 				for (unsigned j=0; j<8; j++){
 					char cell = grid[i][j];
-					notify_var.val += string_f("\t\tshowpiece(elms[%u],\"%c\");\n",item,cell);
+					notify_var.val += string_f("\tshowpiece(elms[%u],\"%c\");\n",item,cell);
 					item++;
 				}
 			}
-			js_find_loop_end (notify_var.val);
 			// Clear all circle/markers
-			js_find_loop_start (notify_var.val,"grid","circle");
+			notify_var.val += "\tvar elms = svg.getElementsByTagName('circle');\n";
 			notify_var.val += "\tfor (var i=0; i<elms.length; i++){\n";
 			notify_var.val += "\t\telms[i].style.fill='none';\n";
 			notify_var.val += "\t\telms[i].style.stroke='none';\n";
 			notify_var.val += "\t}\n";
-			js_find_loop_end (notify_var.val);
+			notify_var.val += "\t});\n";
+
 			update_player_bg (notify_var,0,"lightblue");
 			update_player_bg (notify_var,1,"white");
 			// tlmp_warning ("val.size=%lu",notify_var.val.size());
