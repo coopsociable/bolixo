@@ -663,25 +663,50 @@ static void webmain_real()
 		</f>
 		</call>
 	</f>
-	<f playstep>	// sessionid owner path docnum:u steps:U{VARVAL}v uispecs:U{DOC_UI_SPECS} = success:b msg res:U{VARVAL}v
+	<f playstep>	// sessionid owner path docnum:u steps:U{VARVAL}v uispecs:U{DOC_UI_SPECS} = success:b msg res:U{VARVAL}v more:b handle
 		glocal vector<VARVAL> res;
 		glocal string msg;
 		vector<VARVAL> lsteps;
+		glocal bool more = false;
+		glocal string handle;
 		for (auto &s:steps) lsteps.push_back(s);
 		<call bod_client_playstep>(glocal.con,sessionid,owner,path,docnum,lsteps,uispecs);
 		<f ok>
 			if (!success){
 				glocal.msg = msg;
 			}else{
+				glocal.more = more;
+				glocal.handle = handle;
 				for (auto &r:res) glocal.res.push_back(r);
 			}
 		</f>
 		</call>
 		if (glocal.msg.size() > 0){
 			glocal.res.clear();
-			rep_playstep (false,glocal.msg,glocal.res);
+			rep_playstep (false,glocal.msg,glocal.res,false,"");
 		}else{
-			rep_playstep (true,"",glocal.res);
+			rep_playstep (true,"",glocal.res,glocal.more,glocal.handle);
+		}
+	</f>
+	<f playstep_more>	// sessionid owner path handle = success:b msg res:U{VARVAL}v more:b
+		glocal vector<VARVAL> res;
+		glocal string msg;
+		glocal bool more = false;
+		<call bod_client_playstep_more>(glocal.con,sessionid,owner,path,handle);
+		<f ok>
+			if (!success){
+				glocal.msg = msg;
+			}else{
+				glocal.more = more;
+				for (auto &r:res) glocal.res.push_back(r);
+			}
+		</f>
+		</call>
+		if (glocal.msg.size() > 0){
+			glocal.res.clear();
+			rep_playstep_more (false,glocal.msg,glocal.res,false);
+		}else{
+			rep_playstep_more (true,"",glocal.res,glocal.more);
 		}
 	</f>
 	<f invalid>

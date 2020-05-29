@@ -1007,6 +1007,33 @@ const char *documentd_getflag(const char *flag)
 	}
 	return ret;
 }
+/*
+	Copy some results from full to part without exceding REQ_CONTENT_CHUNK
+*/
+static void documentd_copy_chunk_res(vector<VARVAL> &part, vector<VARVAL> &full)
+{
+	size_t size = 0;
+	// No ++p in this loop as we remove the first entries until we break out the of loop
+	// The erase method return the next p
+	for (auto p=full.begin(); p != full.end(); ){
+		auto next_size = p->val.size() + size;
+		if (next_size <= REQ_CONTENT_CHUNK){
+			part.emplace_back(move(*p));
+			p = full.erase(p);
+			size = next_size;
+		}else{
+			auto diff = next_size - REQ_CONTENT_CHUNK;
+			if (diff > 0){
+				VARVAL tmp;
+				tmp.var = p->var;
+				tmp.val = p->val.substr(0,diff);
+				p->val = p->val.substr(diff);
+				part.emplace_back(move(tmp));
+			}
+			break;
+		}
+	}
+}
 <mod>
 int main (int argc, char *argv[])
 {
@@ -1152,7 +1179,7 @@ int main (int argc, char *argv[])
 		glocal string controlport = string_f("unix:%s",glocal.control);
 		glocal string clientport = string_f("unix:%s",glocal.clientsock);
 		glocal map<string,string> client_secrets;
-		glocal pid_t pid = (pid_t)-1;
+		glocal map<string,vector<VARVAL>> handles;	// Handles used for playstep_more
 		fdpass_readsecrets (glocal.client_secretfile,glocal.client_secrets);
 		signal (SIGCHLD,SIG_IGN);
 		documentd_start_engines(glocal.programs);
@@ -1221,6 +1248,7 @@ int main (int argc, char *argv[])
 					tb.push_back(string_f("bytes sent: requests=%u content=%lu script=%lu unotify=%lu notify=%lu"
 						,total_requests,total_content_size,total_script_size,total_unotify_size,total_notify_size));
 					tb.push_back(string_f("nbwaiting: %u",nbwait));
+					tb.push_back(string_f("handles: %lu",glocal.handles.size()));
 					tb.push_back(string_f("subprograms: %lu",glocal.programs.size()));
 					for (auto &p:glocal.programs){
 						tb.push_back(string_f("subprogram %s: nbsend=%u nbrec=%u gameid=%s command=%s"
@@ -1405,7 +1433,37 @@ int main (int argc, char *argv[])
 					ctx.maywrite = maywrite;
 					ctx.docnum = docnum;
 					bool success = documentd_playstep (glocal.programs,glocal.games,gameid,steps,ctx,sp,res,msg,unknown);
-					rep_playstep(success,unknown,msg,res);
+					size_t size = 0;
+					for (auto &r:res) size += r.val.size();
+					if (size <= REQ_CONTENT_CHUNK){
+						rep_playstep(success,unknown,msg,res,false,"");
+					}else{
+						// playstep_more will be needed.
+						vector<VARVAL> part;
+						documentd_copy_chunk_res(part,res);
+						string handle = fs_makeid();
+						glocal.handles[handle] = move(res);
+						rep_playstep(success,unknown,msg,part,true,handle);
+					}
+				</f>
+				<f playstep_more>
+					auto h = glocal.handles.find(handle);
+					if (h == glocal.handles.end()){
+						vector<VARVAL> res;
+						rep_playstep_more(false,"invalid handle",res,false);
+					}else{
+						auto &hres = h->second;
+						size_t size = 0;
+						for (auto &r:hres) size += r.val.size();
+						if (size < REQ_CONTENT_CHUNK){
+							rep_playstep_more (true,"",hres,false);
+							glocal.handles.erase(handle);
+						}else{
+							vector<VARVAL> res;
+							documentd_copy_chunk_res(res,hres);
+							rep_playstep_more (true,"",res,true);
+						}
+					}
 				</f>
 				<f rename>
 					// Rename a document. It is possible that old_gameid is not a document, but a folder, so we must

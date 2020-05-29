@@ -23,6 +23,7 @@
 #include <string>
 #include <algorithm>
 #include <set>
+#include <functional>
 #define DEFINE_USERINFO
 #include "util.h"
 #include "../bolixo.h"
@@ -1336,26 +1337,44 @@ static void projects_documents(
 				htmlprintf ("<p>%s\n",msg);
 			}else{
 				string error,result;
-				for (auto &r:res){
-					if (strcmp(r.var,VAR_CONTENT)==0){
-						htmlout (r.val);
-					}else if (strcmp(r.var,VAR_ERROR)==0){
-						error = r.val;
-					}else if (strcmp(r.var,VAR_RESULT)==0){
-						result = r.val;
-					}else if (strcmp(r.var,VAR_FIELDS)==0){
-						// r.val is a list of fields. Each field has a name and a value on a single text line.
-						// name:value\nname:value\n
-						vector<string>tb;
-						str_splitline (r.val,'\n',tb);
-						for (auto &l:tb){
-							const char *start = l.c_str();
-							const char *pt = strchr(start,':');
-							if (pt != nullptr){
-								glocal.fields.emplace_back(string(start,pt-start),pt+1);
+				glocal bool more = more;
+				glocal function<void(const vector<VARVAL_receive>&res)> fres;
+				glocal.fres = [&](const vector<VARVAL_receive> &res){
+					for (auto &r:res){
+						if (strcmp(r.var,VAR_CONTENT)==0){
+							htmlout (r.val);
+						}else if (strcmp(r.var,VAR_ERROR)==0){
+							error = r.val;
+						}else if (strcmp(r.var,VAR_RESULT)==0){
+							result = r.val;
+						}else if (strcmp(r.var,VAR_FIELDS)==0){
+							// r.val is a list of fields. Each field has a name and a value on a single text line.
+							// name:value\nname:value\n
+							vector<string>tb;
+							str_splitline (r.val,'\n',tb);
+							for (auto &l:tb){
+								const char *start = l.c_str();
+								const char *pt = strchr(start,':');
+								if (pt != nullptr){
+									glocal.fields.emplace_back(string(start,pt-start),pt+1);
+								}
 							}
 						}
 					}
+				};
+				glocal.fres(res);
+				while (glocal.more){
+					glocal.more = false;
+					<call bod_client_playstep_more>(glocal.con,w_session.c_str(),"",glocal.path,handle);
+					<f ok>
+						if (!success){
+							tlmp_error ("playstep_more msg=%s",msg);
+						}else{
+							glocal.more = more;
+							glocal.fres(res);
+						}
+					</f>
+					</call>
 				}
 				if (error.size() > 0){
 					htmlprintf ("<font color=red>%s</font>\n",error.c_str());

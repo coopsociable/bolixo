@@ -1032,16 +1032,16 @@ string WORDPROC::formatline(unsigned noline, const DOC_UI_SPECS_receive &sp, str
 			isp.content_width = para_width*sp.content_width/100;
 			isp.content_height = isp.content_width;
 			isp.fontsize = sp.fontsize;
-			// This is typical HTML css hack. The goal is to control the aspect ratio (a 1:1 for now) while controlling the width using % value
-			// So we set the with in the outer div and the set the padding-top to 100% in a inner empty div. Then we force another div
-			// with absolute positionning to 0 0 0 0
-			// And this works in browers...
-			ret += string_f("<div class=%s style='width:%u%%;display: inline-block; position:relative;'>\n",cursors.size() > 0 ? "imgcursor" : "imgembed"
-				,para_width);
-			ret += "<div style='padding-top:100%;'/>\n";
-			ret += "<div style='position: absolute;top:0;bottom:0;left:0;right:0;' >\n";
+			// We have to express the width and height relative to the display, using percent.
+			// But it is not possible to express using CSS that you want the height equals to the width.
+			// There is a trick using padding-top:100% allowing you to control the aspect ratio ... but it does not work in all cases.
+			// Instead in the style defintion, we populate the variable --width and use it in the computation of the div below.
+			// So the width and height are properly set and will show the same on all display (same proportion of the display).
+			ret += string_f("<div class=%s style='width:calc(0.%u * var(--width)); height:calc(0.%u * var(--width));display: inline-block; position:relative;'>\n"
+				,cursors.size() > 0 ? "imgcursor" : "imgembed"
+				,para_width,para_width);
 			ret += documentd_imbed (gameid,para.get_document(),"region",para.get_region(),para.get_docnum(),isp,script);
-			ret += "</div></div>\n";
+			ret += "</div>\n";
 			format = false;
 		}
 				
@@ -1635,6 +1635,7 @@ void WORDPROC::execstep (
 	//tlmp_warning ("visible_lines=%u content_height=%u fontsize=%u",visible_lines,sp.content_height,sp.fontsize);
 	// Force visible_lines to 60 because the specs are not always available, for now
 	//visible_lines = 60;
+	const unsigned MAX_TAB_LEVEL=8;
 	if (strcmp(var,"print")==0){
 		if (strcmp(val,"console")==0){
 			VARVAL v;
@@ -1706,27 +1707,30 @@ void WORDPROC::execstep (
 				v.val += "\toverflow-wrap: break-word;\n";
 				v.val += "\tflex:0 1 auto;\n";
 				v.val += string_f("\twidth:%u;\n",sp_width);
+				v.val += string_f("\t--width:%upx;\n",sp_width);
 				v.val += "}\n";
 
-				//unsigned offsets[]={5,tab_width-15,2*tab_width-15,3*tab_width-15};
-				for (unsigned i=0; i<4; i++){
+				for (unsigned i=0; i<=MAX_TAB_LEVEL; i++){
 					v.val += string_f(".bullet%u{\n",i);
 					v.val += "\tflex:0 1 auto;\n";
 					v.val += "\twidth:10;\n";
-					v.val += string_f("\tmargin-left:%u;\n",i*tab_width+5);
+					unsigned i_tab_width = i*tab_width;
+					v.val += string_f("\tmargin-left:%u;\n",i_tab_width+5);
 					v.val += "\tmargin-right:5;\n";
 					v.val += "}\n";
 					v.val += string_f(".tab%u{\n",i);
 					v.val += "\toverflow-wrap: break-word;\n";
 					v.val += "\tflex:0 1 auto;\n";
-					v.val += string_f("\twidth:%u;\n",sp_width-i*tab_width);
-					v.val += string_f("\tmargin-left:%u;\n",i*tab_width);
+					v.val += string_f("\twidth:%u;\n",sp_width-i_tab_width);
+					v.val += string_f("\t--width:%upx;\n",sp_width-i_tab_width);
+					v.val += string_f("\tmargin-left:%u;\n",i_tab_width);
 					v.val += "\tfont-family:'serif';\n";
 					v.val += "}\n";
 					v.val += string_f(".tab%u-bullet{\n",i);
 					v.val += "\toverflow-wrap: break-word;\n";
 					v.val += "\tflex:0 1 auto;\n";
-					v.val += string_f("\twidth:%u;\n",sp_width-i*tab_width-bullet_width);
+					v.val += string_f("\twidth:%u;\n",sp_width-i_tab_width-bullet_width);
+					v.val += string_f("\t--width:%upx;\n",sp_width-i_tab_width-bullet_width);
 					v.val += "\tmargin-left:0;\n";
 					v.val += "\tfont-family:'serif';\n";
 					v.val += "}\n";
@@ -1961,7 +1965,7 @@ void WORDPROC::execstep (
 				auto &l = wl.line;
 				unsigned pos = wordproc_jump2col(l,pref.cursor.column);
 				if (uval == BUTTON_TAB_PLUS){
-					if (wl.tab_level < 4) wl.tab_level++;
+					if (wl.tab_level < MAX_TAB_LEVEL) wl.tab_level++;
 					update_num_lines = true;
 				}else if (uval == BUTTON_TAB_LESS){
 					if (wl.tab_level > 0) wl.tab_level--;

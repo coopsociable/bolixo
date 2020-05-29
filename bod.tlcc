@@ -1981,6 +1981,38 @@ static void bod_get_remote_user(
 }
 </mod>
 #define REPLYMSG(f,msg) if (msg.size()>0){ f(false,msg.c_str()); }else{ f(true,""); }
+
+/*
+	Validate that an entry describe a document or game
+*/
+<mod>
+static bool bod_is_document (ENTRY &entry, string &msg)
+{
+	glocal msg;
+	bool ret = false;
+	if (!bolixo_isfile(entry.type)){
+		msg = MSG_R(E_NOTAFILE);
+	}else{
+		glocal FILE_TYPE file_type = FILE_UNKNOWN;
+		<call sql_query>("select filetype from files where id=%d and modified='%s'"
+			,entry.entryid,entry.modified.c_str());
+		<f onerow>
+			glocal.file_type = (FILE_TYPE)atoi(row[0]);
+		</f>
+		<f empty>
+			glocal.msg = "Internal error, reading table files";
+		</f>
+		</call>
+		if (!file_is_doc(glocal.file_type)){
+			msg = MSG_U(E_NOTADOC,"File is not a game or document");
+		}else{
+			ret = true;
+		}
+	}
+	return ret;
+}
+</mod>
+
 <mod>
 static int bod_main (
 	const char *bind,
@@ -4566,7 +4598,7 @@ static int bod_main (
 					bod_publish (glocal.con,username,info,glocal.dirserver,glocal.nodename);
 				}
 			</f>
-			<f playstep> // sessionid owner path steps:U{VARVAL}v width:u height:u mobile:b = success:b msg res:U{VARVAL}v
+			<f playstep> // sessionid owner path steps:U{VARVAL}v width:u height:u mobile:b = success:b msg res:U{VARVAL}v more:b handle
 				/*
 					In a single operation, we request the presentation of a document, and apply a command to it.
 				*/
@@ -4576,79 +4608,67 @@ static int bod_main (
 				glocal string msg;
 				glocal owner;
 				glocal docnum;
+				glocal bool more = false;
+				glocal string handle;
 				if (glocal.slowplaystep != 0) usleep(glocal.slowplaystep*1000);
 				<call bod_localremote>(glocal.con,glocal.con_sess,sessionid,path,true,"",glocal.nodename,glocal.msg);
 				<f local>
 					glocal entry;
 					glocal fname;
-					if (!bolixo_isfile(entry.type)){
-						glocal.msg = MSG_R(E_NOTAFILE);
-					}else{
-						glocal FILE_TYPE file_type = FILE_UNKNOWN;
-						<call sql_query>("select filetype from files where id=%d and modified='%s'"
-							,entry.entryid,entry.modified.c_str());
-						<f onerow>
-							glocal.file_type = (FILE_TYPE)atoi(row[0]);
-						</f>
-						<f empty>
-							glocal.msg = "Internal error, reading table files";
-						</f>
-						</call>
-						if (!file_is_doc(glocal.file_type)){
-							glocal.msg = MSG_U(E_NOTADOC,"File is not a game or document");
-						}else{
-							vector<VARVAL> vsteps;
-							for (auto &s:glocal.steps) vsteps.push_back(s);
-							// We may have to call playstep twice because the document is unknown to documentd
-							glocal unsigned pass = 0;
-							do{
-								glocal.pass++;
-								<call documentd_client_playstep>(glocal.con_doc,glocal.fname,glocal.docnum,vsteps,current_lang
-									,entry.may_modify,session,username,glocal.uispecs);
-								<f ok>
-									if (!success){
-										if (unknown){
-											// We must load the document first
-											bod_document_load (glocal.con_doc,glocal.entry.userid,glocal.fname);
-										}
-									}else{
-										glocal.pass = 2;
-										glocal.msg = msg;
-										for (auto &r:res){
-											if (is_any_of(r.var,VAR_NOTIFY,VAR_CHANGES)){
-												glocal vector<unsigned> userids;
-												<call sql_query>(
-													"select distinct group_members.userid from group_lists"
-													" join group_list_members on group_lists.id = group_list_members.group_list_id"
-													" join groups on groups.id = group_list_members.groupid"
-													" join group_members on group_members.groupid = groups.id"
-													" where group_lists.id = %u"
-													,glocal.entry.group_list_id);
-												<f onerow>
-													glocal.userids.push_back(atoi(row[0]));
-												</f>
-												</call>
-												string change;
-												const char *key = glocal.fname;
-												if (strcmp(r.var,VAR_CHANGES)==0){
-													// We remove the current user from the notifications as he created the changes
-													glocal.userids.erase(find(glocal.userids.begin(),glocal.userids.end(),glocal.entry.userid));
-													change = string_f("Projects:%s",key+10);
-													key = change.c_str();
-												}
-												<call bo_sessiond_client_setnotify>(glocal.con_sess,glocal.userids,key,r.val);
-												<f ok>
-													if (internal_error) tlmp_error ("bo_sessiond_client_setnotify internal error");
-												</f>
-												</call>
-											}
-											glocal.res.push_back(r);
-										}
+					if (bod_is_document(entry,glocal.msg)){
+						vector<VARVAL> vsteps;
+						for (auto &s:glocal.steps) vsteps.push_back(s);
+						// We may have to call playstep twice because the document might be unknown to documentd
+						glocal unsigned pass = 0;
+						do{
+							glocal.pass++;
+							<call documentd_client_playstep>(glocal.con_doc,glocal.fname,glocal.docnum,vsteps,current_lang
+								,entry.may_modify,session,username,glocal.uispecs);
+							<f ok>
+								if (!success){
+									if (unknown){
+										// We must load the document first
+										bod_document_load (glocal.con_doc,glocal.entry.userid,glocal.fname);
 									}
-								</f>
-								</call>
-							} while (glocal.pass < 2);
-						}
+								}else{
+									glocal.more = more;
+									glocal.handle = handle;
+									glocal.pass = 2;
+									glocal.msg = msg;
+									for (auto &r:res){
+										if (is_any_of(r.var,VAR_NOTIFY,VAR_CHANGES)){
+											glocal vector<unsigned> userids;
+											<call sql_query>(
+												"select distinct group_members.userid from group_lists"
+												" join group_list_members on group_lists.id = group_list_members.group_list_id"
+												" join groups on groups.id = group_list_members.groupid"
+												" join group_members on group_members.groupid = groups.id"
+												" where group_lists.id = %u"
+												,glocal.entry.group_list_id);
+											<f onerow>
+												glocal.userids.push_back(atoi(row[0]));
+											</f>
+											</call>
+											string change;
+											const char *key = glocal.fname;
+											if (strcmp(r.var,VAR_CHANGES)==0){
+												// We remove the current user from the notifications as he created the changes
+												glocal.userids.erase(find(glocal.userids.begin(),glocal.userids.end(),glocal.entry.userid));
+												change = string_f("Projects:%s",key+10);
+												key = change.c_str();
+											}
+											<call bo_sessiond_client_setnotify>(glocal.con_sess,glocal.userids,key,r.val);
+											<f ok>
+												if (internal_error) tlmp_error ("bo_sessiond_client_setnotify internal error");
+											</f>
+											</call>
+										}
+										glocal.res.push_back(r);
+									}
+								}
+							</f>
+							</call>
+						} while (glocal.pass < 2);
 					}
 				</f>
 				<f remote>
@@ -4659,6 +4679,8 @@ static int bod_main (
 						if (!success){
 							glocal.msg = msg;
 						}else{
+							glocal.more = more;
+							glocal.handle = handle;
 							for (auto &r:res) glocal.res.push_back(r);
 						}
 					</f>
@@ -4667,9 +4689,50 @@ static int bod_main (
 				</call>
 				if (glocal.msg.size() != 0){
 					glocal.res.clear();
-					rep_playstep(false,glocal.msg,glocal.res);
+					rep_playstep(false,glocal.msg,glocal.res,false,"");
 				}else{
-					rep_playstep(true,"",glocal.res);
+					rep_playstep(true,"",glocal.res,glocal.more,glocal.handle);
+				}
+			</f>
+			<f playstep_more> // sessionid owner path handle = success:b msg res:U{VARVAL}v more:b
+				glocal vector<VARVAL> res;
+				glocal string msg;
+				glocal owner;
+				glocal handle;
+				glocal bool more = false;
+				<call bod_localremote>(glocal.con,glocal.con_sess,sessionid,path,true,"",glocal.nodename,glocal.msg);
+				<f local>
+					if (bod_is_document(entry,glocal.msg)){
+						<call documentd_client_playstep_more>(glocal.con_doc,glocal.handle);
+						<f ok>
+							if (!success){
+								glocal.msg = msg;
+							}else{
+								glocal.more = more;
+								for (auto &r:res) glocal.res.push_back(r);
+							}
+						</f>
+						</call>
+					}
+				</f>
+				<f remote>
+					<call webapi_playstep_more>(con,session,glocal.owner,fname,glocal.handle);
+					<f ok>
+						if (!success){
+							glocal.msg = msg;
+						}else{
+							glocal.more = more;
+							for (auto &r:res) glocal.res.push_back(r);
+						}
+					</f>
+					</call>
+				</f>
+				</call>
+				if (glocal.msg.size() != 0){
+					glocal.res.clear();
+					rep_playstep_more(false,glocal.msg,glocal.res,false);
+				}else{
+					rep_playstep_more(true,"",glocal.res,glocal.more);
 				}
 			</f>
 			<f waitevent>

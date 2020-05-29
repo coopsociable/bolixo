@@ -15,6 +15,7 @@ PROGS=_dict.o bod bod-client bod-control bo-writed bo-writed-control bo-sessiond
 DOCS=
 OPTIONS=$(DINSTRUMENT) -funsigned-char -O2 -Wall -g -DVERSION=\"$(PACKAGE_REV)\" -I/usr/include/tlmp -I/usr/include/trlitool
 LIBS=/usr/lib64/trlitool/trlitool.a -ltlmp -lstdc++ -lcrypto
+FILESYSTEMO=filesystem.o fs_makeid.o
 TLMP_LIB=$(RPM_BUILD_ROOT)/usr/lib/tlmp
 LDEVEL=/usr/lib64/tlmp-devel
 .SUFFIXES: .o .tex .tlcc .cc .png .uml
@@ -38,18 +39,18 @@ _dict.o: _dict.cc bolixo.m
 	gcc -Wall -c _dict.cc -o _dict.o
 	gcc -Wall -fPIC -c _dict.cc -o _dict.os
 
-bolixod: bolixod.tlcc proto/bolixod_control.protoh proto/bolixod_client.protoh filesystem.o verify.o
-	cctlcc -Wall $(OPTIONS) bolixod.tlcc filesystem.o verify.o _dict.o -o bolixod $(LIBS) -lssl -ltlmpsql -L/usr/lib64/mysql -lmysqlclient
+bolixod: bolixod.tlcc proto/bolixod_control.protoh proto/bolixod_client.protoh $(FILESYSTEMO) verify.o
+	cctlcc -Wall $(OPTIONS) bolixod.tlcc $(FILESYSTEMO) verify.o _dict.o -o bolixod $(LIBS) -lssl -ltlmpsql -L/usr/lib64/mysql -lmysqlclient
 
 bolixod-control: bolixod-control.tlcc proto/bolixod_control.protoh
 	cctlcc -Wall $(OPTIONS) bolixod-control.tlcc _dict.o -o bolixod-control $(LIBS) 
 
-bod: bod.o filesystem.o websocket-client.o _dict.o verify.o
-	cctlcc -Wall $(OPTIONS) bod.o filesystem.o websocket-client.o verify.o _dict.o -o bod $(LIBS) -lssl -ltlmpsql -L/usr/lib64/mysql -lmysqlclient
+bod: bod.o $(FILESYSTEMO) websocket-client.o _dict.o verify.o
+	cctlcc -Wall $(OPTIONS) bod.o $(FILESYSTEMO) websocket-client.o verify.o _dict.o -o bod $(LIBS) -lssl -ltlmpsql -L/usr/lib64/mysql -lmysqlclient
 
 bod.o: bod.tlcc proto/bod_control.protoh proto/bod_client.protoh proto/bod_admin.protoh \
 	proto/bo-writed_client.protoh proto/bo-sessiond_client.protoh proto/bolixod_client.protoh \
-	proto/documentd_client.protoh proto/bolixoapi.protoh proto/webapi.protoh _dict.o filesystem.o verify.o
+	proto/documentd_client.protoh proto/bolixoapi.protoh proto/webapi.protoh _dict.o 
 	cctlcc -Wall $(OPTIONS) -c bod.tlcc -o bod.o
 
 websocket-client.o: websocket-client.tlcc websocket-client.h proto/webapi.protoh
@@ -68,10 +69,10 @@ waitevent: waitevent.tlcc proto/bo-sessiond_client.protoh
 bod-control: bod-control.tlcc proto/bod_control.protoh
 	cctlcc -Wall $(OPTIONS) bod-control.tlcc _dict.o -o bod-control $(LIBS)
 
-bo-writed: bo-writed.tlcc filesystem.o proto/bo-writed_control.protoh proto/bo-writed_client.protoh \
+bo-writed: bo-writed.tlcc $(FILESYSTEMO) proto/bo-writed_control.protoh proto/bo-writed_client.protoh \
 	proto/bo-sessiond_admin.protoh proto/bo-log.protoh proto/bo-keysd_control.protoh \
-	proto/publishd_client.protoh verify.o filesystem.o
-	cctlcc -Wall $(OPTIONS) bo-writed.tlcc filesystem.o verify.o _dict.o -o bo-writed $(LIBS) -ltlmpsql -L/usr/lib64/mysql -lmysqlclient
+	proto/publishd_client.protoh 
+	cctlcc -Wall $(OPTIONS) bo-writed.tlcc $(FILESYSTEMO) verify.o _dict.o -o bo-writed $(LIBS) -ltlmpsql -L/usr/lib64/mysql -lmysqlclient
 
 bo-writed-control: bo-writed-control.tlcc proto/bo-writed_control.protoh
 	cctlcc -Wall $(OPTIONS) bo-writed-control.tlcc _dict.o -o bo-writed-control $(LIBS)
@@ -105,8 +106,8 @@ bo-keysd: bo-keysd.tlcc proto/bo-keysd_control.protoh
 bo-keysd-control: bo-keysd-control.tlcc proto/bo-keysd_control.protoh
 	cctlcc -Wall $(OPTIONS) bo-keysd-control.tlcc -o bo-keysd-control $(LIBS)
 
-publishd: publishd.tlcc proto/publishd_control.protoh proto/publishd_client.protoh _dict.o filesystem.o
-	cctlcc -Wall $(OPTIONS) publishd.tlcc _dict.o filesystem.o -o publishd $(LIBS) -lssl \
+publishd: publishd.tlcc proto/publishd_control.protoh proto/publishd_client.protoh _dict.o $(FILESYSTEMO)
+	cctlcc -Wall $(OPTIONS) publishd.tlcc _dict.o $(FILESYSTEMO) -o publishd $(LIBS) -lssl \
 		-ltlmpsql -L/usr/lib64/mysql -lmysqlclient
 
 publishd-control: publishd-control.tlcc proto/publishd_control.protoh
@@ -273,8 +274,8 @@ proto/bolixoapi.protoh: proto/bolixoapi.proto proto/bolixod_client.protoh
 		--protoch proto/bolixoapi.protoch proto/bolixoapi.proto >proto/bolixoapi.protoh
 
 DOCGAMES=doc_tictacto.o doc_sudoku.o doc_wordproc.o doc_checkers.o doc_chess.o doc_whiteboard.o
-documentd: documentd.o documentd_menu.o _dict.o ${DOCGAMES}
-	cctlcc -Wall $(OPTIONS) documentd.o documentd_menu.o ${DOCGAMES} _dict.o -o documentd $(LIBS) -lfreetype -lm
+documentd: documentd.o documentd_menu.o _dict.o fs_makeid.o ${DOCGAMES}
+	cctlcc -Wall $(OPTIONS) documentd.o documentd_menu.o fs_makeid.o ${DOCGAMES} _dict.o -o documentd $(LIBS) -lfreetype -lm
 
 documentd.o: documentd.tlcc documentd.h proto/documentd_control.protoh proto/documentd_client.protoh 
 	cctlcc -Wall $(OPTIONS) `freetype-config --cflags` -c documentd.tlcc -o documentd.o
@@ -331,6 +332,9 @@ proto/rssd_control.protoh: proto/rssd_control.proto
 ssltestsign: ssltestsign.tlcc
 	cctlcc $(OPTIONS) ssltestsign.tlcc -o ssltestsign -lstdc++ -lcrypto
 	
+fs_makeid.o: fs_makeid.tlcc filesystem.h
+	cctlcc -Wall $(OPTIONS) -c fs_makeid.tlcc -o fs_makeid.o
+
 filesystem.o: filesystem.tlcc filesystem.h proto/bod_client.protoh
 	cctlcc -Wall $(OPTIONS) -c filesystem.tlcc -o filesystem.o
 
