@@ -234,6 +234,18 @@ static void projects_popup_bottom()
 	tlmpweb_position_popup();
 }
 /*
+	Return the project path of this document
+*/
+static string projects_getdir (PARAM_STRING path)
+{
+	string ret;
+	auto tb = str_splitline (path.ptr,'/');
+	if (tb.size() >= 4){
+		ret = string_f("/%s/%s/%s",tb[1].c_str(),tb[2].c_str(),tb[3].c_str());
+	}
+	return ret;
+}
+/*
 	Dialogs for documents and games
 */
 <mod>
@@ -249,6 +261,7 @@ static void projects_dialogs (
 	glocal fields;
 	glocal con;
 	glocal session;
+	glocal sp;
 	glocal const char *path = path.ptr;
 	glocal dialog_name;
 	glocal vector<VARVAL> steps;
@@ -416,32 +429,42 @@ static void projects_dialogs (
 			/- Region
 			/- <td>
 			field_string (w_field2,"");
-			/- <tr><td>
-			button_submit();
 			/- </table>
+			if (glocal.error.size() > 0){
+				htmlprintf ("<span style=color:red; >%s</span><br>\n",glocal.error.c_str());
+			}else{
+				/- &nbsp;<br>
+			}
+			button_submit();
 		}
 	</f>
 	<f validate>
-		bool ret = true;
+		glocal bool ret = true;
 		if (strcmp(glocal.dialog_name,DIALOG_CHESS_CONFIG)==0){
 			if (strcmp(w_field1.c_str(),w_field2.c_str())==0){
 				glocal.error = MSG_U(E_SAMENAME,"The two players can't be the same");
-				ret = false;
 			}else if (strcmp(w_field1.c_str(),MSG_R(I_COMPUTER))==0 && w_check1){
 				glocal.error = MSG_U(E_INVITECOMPUTER,"You can't send an invite to the computer");
-				ret = false;
 			}else if (strcmp(w_field2.c_str(),MSG_R(I_COMPUTER))==0 && w_check2){
 				glocal.error = MSG_R(E_INVITECOMPUTER);
-				ret = false;
 			}else if (strcmp(userinfo.name.c_str(),w_field1.c_str())==0 && w_check1){
 				glocal.error = MSG_U(E_INVITEYOURSELF,"You can't invite yourself");
-				ret = false;
 			}else if (strcmp(userinfo.name.c_str(),w_field2.c_str())==0 && w_check2){
 				glocal.error = MSG_R(E_INVITEYOURSELF);
-				ret = false;
 			}
+		}else if (strcmp(glocal.dialog_name,DIALOG_IMBED)==0){
+			string subdoc = string_f("%s/%s",projects_getdir(glocal.path).c_str(),w_field1.c_str());
+			<call bod_client_stat> (glocal.con,glocal.session,subdoc,"");
+			<f ok>
+				if (!success){
+					glocal.error = string_f(MSG_U(E_DOCNOTEXIST,"document %s does not exist"),w_field1.c_str());
+				}else if (!file_is_doc(file.file_type)){
+					glocal.error = string_f(MSG_U(E_NOTADOCUMENT,"File %s is not a document or game. Can't link/embed"),w_field1.c_str());
+				}
+			</f>
+			</call>
 		}
-		return ret;
+		return glocal.error.size() > 0 ? false : true;
 	</f>
 	<f process>
 		VARVAL var;
@@ -474,6 +497,17 @@ static void projects_dialogs (
 			var.var = "imbed";
 			var.val += string_f("docid:%s\n",w_field1.c_str());
 			var.val += string_f("region:%s\n",w_field2.c_str());
+			// Send a test request (does nothing) to make sure the document is loaded in documentd
+			string subdoc = string_f("%s/%s",projects_getdir(glocal.path).c_str(),w_field1.c_str());
+			vector<VARVAL> steps;
+			VARVAL test;
+			test.var = "test";
+			steps.push_back(test);
+			<call bod_client_playstep>(glocal.con,glocal.session,"",subdoc,0,steps,glocal.sp);
+			<f ok>
+				if (!success) tlmp_error ("documentd imbed playstep error: %s",msg);
+			</f>
+			</call>
 		}
 		glocal.steps.emplace_back(var);
 	</f>
