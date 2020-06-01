@@ -44,7 +44,10 @@ enum FILE_TYPE {
 	FILE_DOC_WORDPROC,
 	FILE_DOC_WHITEBOARD,
 	FILE_WEBM,
+	FILE_IMAGE_TIFF,
+	FILE_PDF,
 	// Do not forget to edit the table tbftype below and tbhttptype in web/util.hcc
+	FILE_TYPE_LAST
 };
 
 enum VIEWED_STATUS{
@@ -60,10 +63,10 @@ inline bool file_is_sound (FILE_TYPE type){
 	return is_any_of(type,FILE_SOUND_MP3,FILE_SOUND_OGG);
 }
 inline bool file_is_image (FILE_TYPE type){
-	return is_any_of (type,FILE_IMAGE_JPG,FILE_IMAGE_GIF,FILE_IMAGE_PNG);
+	return is_any_of (type,FILE_IMAGE_JPG,FILE_IMAGE_GIF,FILE_IMAGE_PNG,FILE_IMAGE_TIFF);
 }
 inline bool file_is_video (FILE_TYPE type){
-	return type == FILE_VIDEO || type == FILE_WEBM;
+	return is_any_of(type,FILE_VIDEO,FILE_WEBM);
 }
 // is_doc contains documents and games
 inline bool file_is_game (FILE_TYPE type){
@@ -73,7 +76,7 @@ inline bool file_is_doc (FILE_TYPE type){
 	return is_any_of(type,FILE_DOC_SUDOKU,FILE_DOC_CHECKER,FILE_DOC_CHESS,FILE_DOC_TICTACTO,FILE_DOC_WORDPROC,FILE_DOC_WHITEBOARD);
 }
 inline bool file_is_data (FILE_TYPE type){
-	return is_any_of(type,FILE_ZIP,FILE_TGZ);
+	return is_any_of(type,FILE_ZIP,FILE_TGZ,FILE_PDF);
 }
 #ifdef DEFINE_TBTYPE
 static char tbtype[]={' ','_','D','F','M','C'};
@@ -97,6 +100,8 @@ const char *tbftype[]={
 	"wrd",	//FILE_DOC_WORDPROC
 	"whi",	//FILE_DOC_WHITEBOARD
 	"wbm",	//FILE_WEBM
+	"tiff", //FILE_IMAGE_TIFF
+	"pdf",	//FILE_PDF
 };
 #else
 extern const char *tbftype[];

@@ -399,6 +399,7 @@ install: msg.eng msg.fr
 	install -m644 web/robots.txt $(RPM_BUILD_ROOT)/var/www/html/robots.txt
 	install -m644 web/private.png $(RPM_BUILD_ROOT)/var/www/html/private.png
 	install -m644 web/zip.png $(RPM_BUILD_ROOT)/var/www/html/zip.png
+	install -m644 web/pdf.png $(RPM_BUILD_ROOT)/var/www/html/pdf.png
 	install -m644 web/new.png $(RPM_BUILD_ROOT)/var/www/html/new.png
 	install -m644 web/modified.png $(RPM_BUILD_ROOT)/var/www/html/modified.png
 	install -m644 web/seen.png $(RPM_BUILD_ROOT)/var/www/html/seen.png

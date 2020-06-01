@@ -85,6 +85,9 @@ zip.png: data.scad Makefile
 	openscad --imgsize 100,100 -ozip.png -Dview=\"zip\" --colorscheme=Nature --camera=50,50,50,0,0,10 data.scad
 	convert zip.png -fuzz 20% -transparent white zip.png 
 
+pdf.png:
+	convert -font helvetica -size 80x40 xc:white -pointsize 37 -draw "text 5,32 'PDF" pdf.png
+
 bolixo.png: bolixo.scad Makefile
 	openscad --imgsize 200,40 -obolixo.png -Dview=\"bolixo\" --colorscheme=Nature --camera=70,20,110,70,20,0 bolixo.scad
 	convert bolixo.png -fuzz 20% -transparent white bolixo.png 

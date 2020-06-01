@@ -735,7 +735,10 @@ static FILE_TYPE bo_writed_file_type (PARAM_STRING name, const BOB_TYPE &content
 		unsigned size = content.getsize();
 		const unsigned char *buf = (const unsigned char*) content.getbuffer();
 		//tlmp_error ("%02x %02x %02x\n",buf[0],buf[1],buf[2]);
-		if (size > 3 && buf[0] == 0x49 && buf[1] == 0x44 && buf[2] == 0x33){
+		if (size > 2 && buf[0] == 0xFF && is_any_of(buf[1],0xFB,0xF2,0xF3)){
+			// mp3
+			file_type = FILE_SOUND_MP3;
+		}else if (size > 3 && buf[0] == 0x49 && buf[1] == 0x44 && buf[2] == 0x33){
 			// mp3
 			file_type = FILE_SOUND_MP3;
 		}else if (size > 4 && buf[0] == 0x4F && buf[1] == 0x67 && buf[2] == 0x67 && buf[3] == 0x53){
@@ -744,6 +747,15 @@ static FILE_TYPE bo_writed_file_type (PARAM_STRING name, const BOB_TYPE &content
 		}else if (size > 4 && buf[0] == 0xFF && buf[1] == 0xD8 && buf[2] == 0xFF && buf[3] == 0xDB){
 			// jpeg
 			file_type = FILE_IMAGE_JPG;
+		}else if (size > 4 && buf[0] == 0x49 && buf[1] == 0x49 && buf[2] == 0x2A && buf[3] == 0x00){
+			// tiff little endian
+			file_type = FILE_IMAGE_TIFF;
+		}else if (size > 4 && buf[0] == 0x4D && buf[1] == 0x4D && buf[2] == 0x00 && buf[3] == 0x2A){
+			// tiff big endian
+			file_type = FILE_IMAGE_TIFF;
+		}else if (size > 5 && buf[0] == 0x25 && buf[1] == 0x50 && buf[2] == 0x44 && buf[3] == 0x46 && buf[4] == 0x2d){
+			// pdf
+			file_type = FILE_PDF;
 		}else if (size > 12 && buf[0] == 0xFF && buf[1] == 0xD8 && buf[2] == 0xFF && buf[3] == 0xE1
 			&& buf[6] == 0x45 && buf[7] == 0x78 && buf[8] == 0x69
 			&& buf[9] == 0x66 && buf[10] == 0x00 && buf[11] == 0x00){

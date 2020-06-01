@@ -107,6 +107,7 @@ make install
 /var/www/html/.tlmplibs
 /var/www/html/private.png
 /var/www/html/zip.png
+/var/www/html/pdf.png
 /var/www/html/new.png
 /var/www/html/modified.png
 /var/www/html/seen.png
