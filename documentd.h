@@ -122,6 +122,14 @@ template<typename T> void documentd_copychat(std::vector<T> &dst, const std::vec
 	}
 }
 
+struct DOCUMENT_EMBED{
+	std::string document;
+	std::string region;
+	unsigned short docnum=0;
+	bool operator < (const DOCUMENT_EMBED &n) const {
+			return tie(document,region) < tie(n.document,n.region);
+	}
+};
 
 struct DOC_CONTEXT{
 	const char *session = "";
@@ -294,6 +302,10 @@ public:
 	time_t get_last_activity() const {
 		return last_activity;
 	}
+	const char *get_gameid() const {
+		return gameid.c_str();
+	}
+	std::set<std::string> get_embed_list() const;
 	virtual const char *getclass() const =0;
 	virtual void save(DOC_WRITER &writer, bool save_session_info)=0;
 	virtual void load(DOC_READER &reader, std::string &msg)=0;
@@ -302,7 +314,7 @@ public:
 	virtual void exec (const char *var, const char *val, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res) = 0;
 	virtual void manyexec (const std::vector<VARVAL_receive> &steps, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
 	virtual void engine_reply (const char *line, std::string &notify, bool &done);
-	virtual std::set<std::string> get_embed_list() const;
+	virtual std::set<DOCUMENT_EMBED> get_embed_specs() const;
 	virtual ~GAME();
 };
 
@@ -335,7 +347,7 @@ void documentd_parsefields (const char *val, std::vector<VARVAL> &fields);
 unsigned documentd_displaylen (const char *line, unsigned fontsize, float size);
 const char *documentd_getflag(const char *flag);
 std::string documentd_imbed (PARAM_STRING gameid, PARAM_STRING document, PARAM_STRING command, PARAM_STRING option, unsigned docnum, const DOC_UI_SPECS_receive &sp, std::string &script);
-void documentd_imbeds(GAME *game, std::string &scripts, std::string &styles, const DOC_UI_SPECS_receive &sp);
+void documentd_imbeds(GAME *game, std::string &lines, const DOC_UI_SPECS_receive &sp);
 std::string documentd_js_loop_function(const char *board_prefix, const char *prefix);
 
 void fflush (DOC_WRITER *);

@@ -60,16 +60,11 @@ struct WORD_USERPREF{
 
 enum WORDPROC_LISTTYPE { LIST_NONE, LIST_BULLET,LIST_NUM,LIST_CENTER};
 
-struct WORDPROC_IMBED{
-	std::string document;
-	std::string region;
-	unsigned short docnum=0;
-};
 class WORDPROC_LINE{	// Well, a line is a paragraph...
 	unsigned char title_level=0;
 	unsigned char line_spec=0;	// Used for imbeds and images
 public:
-	WORDPROC_IMBED imbed;
+	DOCUMENT_EMBED imbed;
 	unsigned char tab_level=0;
 	WORDPROC_LISTTYPE listtype=LIST_NONE;
 	std::string line;
@@ -138,7 +133,7 @@ public:
 			title_level = 0;
 		}
 	}
-	void set_imbed (WORDPROC_IMBED &&_imbed){
+	void set_imbed (const DOCUMENT_EMBED &_imbed){
 		imbed = _imbed;
 		line_spec = 30;
 	}
@@ -181,7 +176,7 @@ public:
 	void testwin(std::vector<VARVAL> &res);
 	void exec (const char *var, const char *val, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
 	void manyexec (const std::vector<VARVAL_receive> &steps, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
-	set<string> get_embed_list() const;
+	set<DOCUMENT_EMBED> get_embed_specs() const;
 };
 
 GAME_P make_WORDPROC()
@@ -1037,11 +1032,14 @@ string WORDPROC::formatline(unsigned noline, const DOC_UI_SPECS_receive &sp, str
 			// There is a trick using padding-top:100% allowing you to control the aspect ratio ... but it does not work in all cases.
 			// Instead in the style defintion, we populate the variable --width and use it in the computation of the div below.
 			// So the width and height are properly set and will show the same on all display (same proportion of the display).
-			ret += string_f("<div class=%s style='width:calc(0.%u * var(--width)); height:calc(0.%u * var(--width));display: inline-block; position:relative;'>\n"
-				,cursors.size() > 0 ? "imgcursor" : "imgembed"
+			unsigned docnum = para.get_docnum();
+			ret += string_f("<div id='parent%u' class=%s"
+				" style='width:calc(0.%u * var(--width)); height:calc(0.%u * var(--width));display: inline-block; position:relative;'>\n"
+				,noline,cursors.size() > 0 ? "imgcursor" : "imgembed"
 				,para_width,para_width);
-			ret += documentd_imbed (gameid,para.get_document(),"region",para.get_region(),para.get_docnum(),isp,script);
+			
 			ret += "</div>\n";
+			script += string_f("show_template('temp%u','parent%u');\n",docnum,noline);
 			format = false;
 		}
 				
@@ -1600,18 +1598,13 @@ void wordproc_kbd (const char *val, MOD_KBD &mod, std::string &var, std::string 
 	newval = val;
 	// tlmp_warning ("kbd: var=%s val=%s lastline=%u",var,val,lastline);
 }
-set<string> WORDPROC::get_embed_list() const
+set<DOCUMENT_EMBED> WORDPROC::get_embed_specs() const
 {
-	set<string> ret;
-	auto tb = str_splitline (gameid,'/');
-	if (tb.size() >= 4){
-		string docprj = string_f("/%s/%s/%s/",tb[1].c_str(),tb[2].c_str(),tb[3].c_str());
-		for (auto &l:lines){
-			const char *doc = l.get_document();
-			if (doc[0] != '\0'){
-				//tlmp_warning ("wordproc document=%s%s",docprj.c_str(),doc);
-				ret.insert(docprj+doc);
-			}
+	set<DOCUMENT_EMBED> ret;
+	for (auto &l:lines){
+		const char *doc = l.get_document();
+		if (doc[0] != '\0'){
+			ret.insert(l.imbed);
 		}
 	}
 	return ret;
@@ -1664,8 +1657,8 @@ void WORDPROC::execstep (
 			VARVAL v;
 			v.var = VAR_CONTENT;
 
-			string imbed_scripts,imbed_styles;
-			documentd_imbeds (this,imbed_scripts,imbed_styles,sp);
+			//string imbed_scripts,imbed_styles;
+			documentd_imbeds (this,v.val,sp);
 
 			{
 				unsigned sp_width = width-30;	// Space for line numbers, during development
@@ -1736,12 +1729,20 @@ void WORDPROC::execstep (
 					v.val += "}\n";
 				}
 			}
-			v.val += imbed_styles;
+			//v.val += imbed_styles;
 			v.val += "</style>\n";
 
 			// event.location==1 tells if this is the left shift/alt key or right. We are not using it now
 			v.val += "<script>\n";
-			v.val += imbed_scripts;
+			//v.val += imbed_scripts;
+			// Copy a template
+			v.val += "function show_template(tid,pid) {\n";
+			v.val += "\tvar temp = document.getElementById(tid);\n";
+			v.val += "\tvar clon = temp.content.cloneNode(true);\n";
+			v.val += "\tvar parent = document.getElementById(pid);\n";
+			v.val += "\tparent.appendChild(clon);\n";
+			v.val += "}\n";
+
 			// Function find the last visible line on screen
 			v.val += "function getlastline(){\n";
 			v.val += string_f("\tvar elm = document.getElementById('text-%s');\n",gameid.c_str());
@@ -1832,7 +1833,7 @@ void WORDPROC::execstep (
 				documentd_button_end(v.val);
 			}else{
 				v.val += "<div id=tab_form style='margin-top:5; margin-bottom:5; background-color: lightgray;'>\n";
-				v.val += "Read only";
+				v.val += MSG_U(M_READONLY,"Read only");
 			}
 			v.val += "</div>\n";
 			// Document
@@ -2028,7 +2029,7 @@ void WORDPROC::execstep (
 			}else if (strcmp(var,"imbed")==0){
 				vector<VARVAL> fields;
 				documentd_parsefields(val,fields);
-				WORDPROC_IMBED imbed;
+				DOCUMENT_EMBED imbed;
 				for (auto &f:fields){
 					if (f.var == "docid"){
 						imbed.document = f.val;
@@ -2036,20 +2037,38 @@ void WORDPROC::execstep (
 						imbed.region = f.val;
 					}
 				}
-				// Allocate a document number
+				// Allocate a document number. Note that the document may exist several time (same doc, same region)
 				unsigned docnum = 0;
+				imbed.docnum = (unsigned short)-1;
 				for (auto &l:lines){
 					if (l.is_imbed()){
 						unsigned num = l.get_docnum();
-						if (num > docnum) docnum = num;
+						if (imbed.document==l.get_document() && imbed.region == l.get_region()){
+							imbed.docnum = num;
+							break;
+						}else{
+							if (num > docnum) docnum = num;
+						}
 					}
 				}
-				imbed.docnum = docnum+1;
+				if (imbed.docnum == (unsigned short)-1) imbed.docnum = docnum+1;
 				while (lines.size() <= pref.cursor.line) lines.push_back("");
-				lines[pref.cursor.line].set_imbed(move(imbed));
+				lines[pref.cursor.line].set_imbed(imbed);
 				notify_lines.insert(pref.cursor.line);
 				string script;
 				documentd_imbed (gameid,imbed.document,"functions","",imbed.docnum,sp,script);
+				notify_var.val += script;
+				string content = documentd_imbed (gameid,imbed.document,"styles","",imbed.docnum,sp,script);
+				notify_var.val += "document.body.innerHTML+=`";
+				notify_var.val += "<style>\n";
+				notify_var.val += content;
+				notify_var.val += "</style>`;\n";
+				content = documentd_imbed (gameid,imbed.document,"region",imbed.region,imbed.docnum,sp,script);
+				// First we add the sub-document template definition, then the scripts
+				notify_var.val += "document.body.innerHTML+=`";
+				notify_var.val += string_f("<template id='temp%u'>\n",imbed.docnum);
+				notify_var.val += content;
+				notify_var.val += "</template>`;\n";
 				notify_var.val += script;
 			// This is a catch all for images
 			// It means that all other case (other else) are not reached if the current line is an image.

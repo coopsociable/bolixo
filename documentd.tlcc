@@ -415,6 +415,19 @@ void GAME::engine_reply(const char *line, string &notify, bool &done)
 set<string> GAME::get_embed_list() const
 {
 	set<string> ret;
+	auto tb = str_splitline (gameid,'/');
+	if (tb.size() >= 4){
+		string docprj = string_f("/%s/%s/%s/",tb[1].c_str(),tb[2].c_str(),tb[3].c_str());
+		auto embs = get_embed_specs();
+		for (auto &e:embs){
+			ret.insert(docprj+e.document);
+		}
+	}
+	return ret;
+}
+set<DOCUMENT_EMBED> GAME::get_embed_specs() const
+{
+	set<DOCUMENT_EMBED> ret;
 	return ret;
 }
 static bool protocol_stats=false;	// produce a tlmp_warning showing how much is sent back
@@ -711,7 +724,7 @@ std::string documentd_imbed (
 			ctx.docnum = docnum; 
 			game->manyexec(steps,ctx,sp,res);
 			for (auto &r:res){
-				if (is_any_of(r.var,VAR_CONTENT)){
+				if (is_any_of(r.var,VAR_CONTENT,VAR_STYLES)){
 					ret = move(r.val);
 				}else if (is_any_of(r.var,VAR_DEFSCRIPT)){
 					script = move(r.val);
@@ -722,18 +735,18 @@ std::string documentd_imbed (
 	return ret;
 }
 /*
-	Get all the scripts and styles to support document embedding in this document
+	Get all the scripts, styles and templates to support document embedding in this document
 */
 void documentd_imbeds (
 	GAME *game,
-	string &scripts,
-	string &styles,
+	string &lines,
 	const DOC_UI_SPECS_receive &sp)
 {
 	set<string> type_seens;		// Document types already processed
-	auto tb = game->get_embed_list();
+	auto tb = game->get_embed_specs();
 	for (auto &t:tb){
-		auto p = pt_games->find(t);
+		string docpath = documentd_rel2abs(game->get_gameid(),t.document);
+		auto p = pt_games->find(docpath);
 		if (p != pt_games->end()){
 			GAME_P sub = p->second;
 			if (type_seens.insert(sub->getclass()).second){
@@ -743,14 +756,20 @@ void documentd_imbeds (
 				steps.push_back(var);
 				var.var = "styles";
 				steps.push_back(var);
+				var.var = "region";
+				var.val = t.region.c_str();
+				steps.push_back(var);
 				vector<VARVAL> res;
 				DOC_CONTEXT ctx;
 				sub->manyexec(steps,ctx,sp,res);
 				for (auto &r:res){
 					if (r.var == VAR_STYLES){
-						styles += move(r.val);
+						lines += "<style>\n" + r.val + "</style>\n";
 					}else if (r.var == VAR_DEFSCRIPT){
-						scripts += move(r.val);
+						lines += "<script>\n" + r.val + "</script>\n";
+					}else if (r.var == VAR_CONTENT){
+						lines += string_f("<template id='temp%u' >\n",t.docnum);
+						lines += r.val + "</template>\n";
 					}
 				}
 			}
@@ -772,25 +791,42 @@ string documentd_js_loop_function(const char *board_prefix, const char *prefix)
 	lines += string_f("\t\tvar whi = %s_lst[i];\n",prefix);
 	lines += string_f("\t\tif (whi.gameid==%s_cur_gameid){\n",prefix);
 	lines += string_f("\t\t\tvar svg=document.getElementById('%s-'+whi.gameid+','+whi.docnum);\n",board_prefix);
-	lines += "\t\t\tfct(svg);\n";
+	lines += "\t\t\tif (svg != null) fct(svg);\n";
+	lines += "\t\t\tvar tpls=document.getElementsByTagName('template');\n";
+	lines += "\t\t\tfor (var j=0; j<tpls.length; j++){\n";
+	lines += string_f("\t\t\t\tvar svg = tpls[j].content.getElementById('%s-'+whi.gameid+','+whi.docnum);\n",board_prefix);
+	lines += "\t\t\t\tif (svg != null) fct(svg);\n";
+	lines += "\t\t\t}\n";
 	lines += "\t\t}\n";
 	lines += "\t}\n";
 	lines += "};\n";
 
+	lines += string_f("function %s_loop_findid(svg,tag,id,fct){\n",prefix);
+	lines += "\tif (svg != null){\n";
+	lines += "\t\tvar elms=svg.getElementsByTagName(tag);\n";
+	lines += "\t\tfor (var j=0; j<elms.length; j++){\n";
+	lines += "\t\t\tvar e=elms[j];\n";
+	lines += "\t\t\tif (e.id == id){\n";
+	lines += "\t\t\t\tfct(e);\n";
+	lines += "\t\t\t}\n";
+	lines += "\t\t}\n";
+	lines += "\t}\n";
+	lines += "}\n";
+
+	// We loop in the list of registered document (whi_lst[])
+	// Then for each document, we try to locate it in the DOM and in templates
+	// We apply the previous function (loop_findid) to each.
 	lines += string_f("function %s_loop(tag,id,fct){\n",prefix);
 	//lines += "\tconsole.log('whi_lst.length='+whi_lst.length+' tag='+tag+' id='+id);\n";
 	lines += string_f("\tfor(var i=0; i<%s_lst.length; i++){\n",prefix);
 	lines += string_f("\t\tvar chs = %s_lst[i];\n",prefix);
 	lines += string_f("\t\tif (chs.gameid==%s_cur_gameid){\n",prefix);
 	lines += string_f("\t\t\tvar svg=document.getElementById('%s-'+chs.gameid+','+chs.docnum);\n",board_prefix);
-	//lines += "\tconsole.log('chs.gameid='+chs.gameid+' chs.docnum='+chs.docnum+' svg='+svg);\n";
-	lines += "\t\t\tvar elms=svg.getElementsByTagName(tag);\n";
-	//lines += "\t\t\tconsole.log ('elms.length='+elms.length);\n";
-	lines += "\t\t\tfor (var j=0; j<elms.length; j++){\n";
-	lines += "\t\t\t\tvar e=elms[j];\n";
-	lines += "\t\t\t\tif (e.id == id){\n";
-	lines += "\t\t\t\t\tfct(e);\n";
-	lines += "\t\t\t\t}\n";
+	lines += string_f("\t\t\t%s_loop_findid(svg,tag,id,fct);\n",prefix);
+	lines += "\t\t\tvar tpls=document.getElementsByTagName('template');\n";
+	lines += "\t\t\tfor (var j=0; j<tpls.length; j++){\n";
+	lines += string_f("\t\t\t\tvar svg = tpls[j].content.getElementById('%s-'+chs.gameid+','+chs.docnum);\n",board_prefix);
+	lines += string_f("\t\t\t\t%s_loop_findid(svg,tag,id,fct);\n",prefix);
 	lines += "\t\t\t}\n";
 	lines += "\t\t}\n";
 	lines += "\t}\n";
