@@ -26,3 +26,7 @@ struct WORDPROC_MENU{
 	std::string svg_imbed;
 	WORDPROC_MENU(DOC_BUTTON_SPECS &specs);
 };
+struct CALC_MENU{
+	std::string svg_clear;
+	CALC_MENU(DOC_BUTTON_SPECS &specs);
+};

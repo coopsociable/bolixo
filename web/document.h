@@ -18,6 +18,7 @@ EXTERN DOC_ID section_checker;
 EXTERN DOC_ID section_chess;
 EXTERN DOC_ID section_wordproc;
 EXTERN DOC_ID section_whiteboard;
+EXTERN DOC_ID section_calc;
 EXTERN DOC_ID section_whiteboard_operations;
 EXTERN DOC_ID section_contacts;
 EXTERN DOC_ID section_contact_req;

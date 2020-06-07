@@ -46,6 +46,7 @@ enum FILE_TYPE {
 	FILE_WEBM,
 	FILE_IMAGE_TIFF,
 	FILE_PDF,
+	FILE_DOC_CALC,
 	// Do not forget to edit the table tbftype below and tbhttptype in web/util.hcc
 	FILE_TYPE_LAST
 };
@@ -73,7 +74,7 @@ inline bool file_is_game (FILE_TYPE type){
 	return is_any_of(type,FILE_DOC_SUDOKU,FILE_DOC_CHECKER,FILE_DOC_CHESS,FILE_DOC_TICTACTO);
 }
 inline bool file_is_doc (FILE_TYPE type){
-	return is_any_of(type,FILE_DOC_SUDOKU,FILE_DOC_CHECKER,FILE_DOC_CHESS,FILE_DOC_TICTACTO,FILE_DOC_WORDPROC,FILE_DOC_WHITEBOARD);
+	return is_any_of(type,FILE_DOC_SUDOKU,FILE_DOC_CHECKER,FILE_DOC_CHESS,FILE_DOC_TICTACTO,FILE_DOC_WORDPROC,FILE_DOC_WHITEBOARD,FILE_DOC_CALC);
 }
 inline bool file_is_data (FILE_TYPE type){
 	return is_any_of(type,FILE_ZIP,FILE_TGZ,FILE_PDF);
@@ -102,6 +103,7 @@ const char *tbftype[]={
 	"wbm",	//FILE_WEBM
 	"tiff", //FILE_IMAGE_TIFF
 	"pdf",	//FILE_PDF
+	"clc",	//FILE_DOC_CALC
 };
 #else
 extern const char *tbftype[];

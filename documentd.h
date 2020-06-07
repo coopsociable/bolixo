@@ -326,6 +326,7 @@ GAME_P make_WORDPROC();
 GAME_P make_WHITEBOARD();
 GAME_P make_CHECKERS();
 GAME_P make_CHESS();
+GAME_P make_CALC();
 
 
 

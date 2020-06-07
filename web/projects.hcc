@@ -595,6 +595,7 @@ void projects(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER
 					field_list_item ("txt",MSG_U(I_TEXTFILE,"Text file"));
 					if (util_experimental()){
 						field_list_item ("doc",MSG_U(I_DOCUMENT,"Document"));
+						field_list_item ("clc",MSG_U(I_CALC,"Spreadsheet"));
 					}
 					field_list_item ("whi",MSG_U(I_WHITEBOARD,"White board"));
 					field_list_item ("chk",MSG_U(I_CHECKERSGAME,"Checkers game"));
@@ -655,9 +656,9 @@ void projects(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER
 						</f>
 						</call>
 					}
-				}else if (is_any_of(w_action.c_str(),"chk","chs","sud","tic","txt","doc","whi")){
+				}else if (is_any_of(w_action.c_str(),"chk","chs","sud","tic","txt","doc","whi","clc")){
 					string msg;
-					const char *magicline;
+					const char *magicline = "\n";
 					if (strcmp(w_action.c_str(),"sud")==0){
 						magicline = "boBOSUDO\n";
 					}else if (strcmp(w_action.c_str(),"chk")==0){
@@ -670,8 +671,8 @@ void projects(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER
 						magicline = "boBOWORD\n";
 					}else if (strcmp(w_action.c_str(),"whi")==0){
 						magicline = "boBOWHIT\n";
-					}else{
-						magicline = "\n";
+					}else if (strcmp(w_action.c_str(),"clc")==0){
+						magicline = "boBOCALC\n";
 					}
 					glocal string name;
 					string path = projects_autoname(glocal.con,glocal.path,w_filename.c_str(),w_action.c_str(),glocal.name,glocal.errmsg);
@@ -1047,6 +1048,10 @@ void projects(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER
 			glocal.docpointers[SECTION_DOCUMENTS].reset();
 			DIV d("webtable"); d.print();
 			index_doc(glocal.docpointers[SECTION_DOCUMENTS],section_whiteboard);
+		}else if (strcmp(id,"help_calc")==0){
+			glocal.docpointers[SECTION_DOCUMENTS].reset();
+			DIV d("webtable"); d.print();
+			index_doc(glocal.docpointers[SECTION_DOCUMENTS],section_calc);
 		}else if (strcmp(id,"helppreview")==0){
 			DIV d("webtable"); d.print();
 			index_doc(glocal.docpointers[SECTION_PREVIEW],section_preview);
@@ -1313,6 +1318,9 @@ static void projects_documents(
 		}else if (info.file_type == FILE_DOC_WHITEBOARD){
 			sethelp2 (webtabs,"help_whiteboard",MSG_U(T_WHITEBOARD,"WhiteBoard"));
 			base_content_id = "doc_whiteboard";
+		}else if (info.file_type == FILE_DOC_CALC){
+			sethelp2 (webtabs,"help_calc",MSG_U(T_CALC,"Speadsheet"));
+			base_content_id = "doc_calc";
 		}
 		string content_id = string_f("%s%s",uicontext,base_content_id);
 		/- <script>
@@ -1425,7 +1433,7 @@ static void projects_documents(
 		</call>
 		if (w_dialog.isset()){
 			//for (auto &f:glocal.fields) tlmp_warning ("fields :%s: :%s:",f.name.c_str(),f.value.c_str());
-			if (is_any_of(info.file_type,FILE_DOC_CHESS,FILE_DOC_WHITEBOARD,FILE_DOC_WORDPROC)){
+			if (is_any_of(info.file_type,FILE_DOC_CHESS,FILE_DOC_WHITEBOARD,FILE_DOC_WORDPROC,FILE_DOC_CALC)){
 				projects_dialogs (glocal.con,w_dialog.c_str(),glocal.fields,w_session.c_str(),glocal.path,docnum,sp);	
 			}
 		}

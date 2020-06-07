@@ -1,0 +1,371 @@
+/*
+	This file is part of Bolixo.
+
+	Bolixo is free software: you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation, either version 3 of the License, or
+	(at your option) any later version.
+
+	Bolixo is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+	GNU General Public License for more details.
+
+	You should have received a copy of the GNU General Public License
+	along with Bolixo.  If not, see <https://www.gnu.org/licenses/>.
+*/
+/*
+	calc is a spreadsheet program.
+*/
+#include <string.h>
+#include <stdio.h>
+#include <trlitool.h>
+#include <string>
+#include <stdlib.h>
+#include <math.h>
+#include <vector>
+#include <deque>
+#include <set>
+#include <map>
+#include <algorithm>
+#include <tlmplib.h>
+#include "bolixo.h"
+#include "proto/bod_client.protodef"
+#include "documentd.h"
+#include "documentd_menu.h"
+#include "bolixo.m"
+
+using namespace std;
+
+#include "proto/documentd_calc.protoch"
+#include "proto/documentd_calc.protoh"
+
+struct CALC_CELL{
+};
+
+struct CALC_PREF{
+	unsigned offset_x=0;
+	unsigned offset_y=0;
+	MOD_KBD mod;
+};
+
+class CALC: public GAME{
+	vector<vector<CALC_CELL>> grid;
+	void execstep (const char *var, const char *val, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp,
+		VARVAL &script_var, VARVAL &notify_var, set<unsigned> &notify_ids, std::vector<VARVAL> &res);
+	std::string draw_board (unsigned vx, unsigned vy, 
+		unsigned board_width, unsigned board_height, unsigned fontsize, unsigned docnum, bool editmode, string &script);
+	std::string define_functions(const DOC_CONTEXT &ctx, const CALC_PREF &pref, unsigned board_width, unsigned board_height);
+	std::string define_styles(const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp);
+	void update_msg (bool to_all, PARAM_STRING msg, const char *color, std::vector<VARVAL> &res);
+	map<string,CALC_PREF> prefs;	// Per session state
+public:
+	void save(DOC_WRITER &w, bool);
+	void load(DOC_READER &r, std::string &msg);
+	void resetgame();
+	CALC();
+	const char *getclass() const;
+	void testwin(std::vector<VARVAL> &res);
+	void exec (const char *var, const char *val, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
+	void manyexec (const vector<VARVAL_receive> &steps, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, vector<VARVAL> &res);
+};
+
+GAME_P make_CALC()
+{
+	return make_shared<CALC>();
+}
+
+CALC::CALC()
+{
+}
+void CALC::update_msg (bool to_all, PARAM_STRING msg, const char *color, std::vector<VARVAL> &res)
+{
+	VARVAL mvar;
+	mvar.var = to_all ? VAR_NOTIFY : VAR_SCRIPT;
+	mvar.val += string_f("calc_updmsg('%s','%s');\n",color,documentd_escape(msg).c_str());
+	res.emplace_back(mvar);
+}
+void CALC::save(DOC_WRITER &w, bool)
+{
+	documentd_calc_header(&w,revision);
+	vector<CALC_CHAT> schat;
+	documentd_copychat (schat,chat);
+	documentd_calc_chat(&w,schat);
+}
+<mod>
+void CALC::load(DOC_READER &r, std::string &msg)
+{
+	resetgame();
+	glocal revision;
+	glocal chat;
+	chat.clear();
+	<call documentd_calc>(&r);
+	<f header>
+		glocal.revision = revision;
+	</f>
+	<f chat>
+		for (auto l:lines) glocal.chat.emplace_back(l.time,l.line);
+	</f>
+	<f invalid>
+		tlmp_error ("Invalid record while reading whiteboard file: %s",msg);
+	</f>
+	</call>
+}
+</mod>
+	
+void CALC::resetgame()
+{
+	grid.clear();
+}
+const char *CALC::getclass() const
+{
+	return "CALC";
+}
+void CALC::testwin(std::vector<VARVAL> &res)
+{
+}
+
+void CALC::exec (
+	const char *var,
+	const char *val,
+	const DOC_CONTEXT &ctx,
+	const DOC_UI_SPECS_receive &sp,
+	std::vector<VARVAL> &res)
+{
+	tlmp_error ("CALC::exec called");
+}
+<mod>
+string CALC::draw_board (
+	unsigned vx,		// Viewbox specs
+	unsigned vy,
+	unsigned board_width,
+	unsigned board_height,
+	unsigned fontsize,
+	unsigned docnum,
+	bool editmode,		// Enable onXXXX function
+	string &script)
+{
+	glocal fontsize;
+	glocal string val;
+	glocal script;
+		
+	script += string_f("calc_cur_gameid='%s';\n",gameid.c_str());
+	// Generate JS objects
+	script += string_f(
+		"var calc_%u={\n"
+		"\tgameid:'%s',docnum:%u"
+		"};\n"
+		"calc_%u.gameselect=function(event){\n"
+		"\tcalc_gameselect(this.gameid,this.docnum,event);\n"
+		"};\n"
+		,docnum
+		,gameid.c_str(),docnum
+		,docnum);
+	script += "if (typeof calc_lst == 'undefined') var calc_lst=[];\n";
+	script += string_f("calc_lst.push(calc_%u);\n",docnum);
+	string onfuncs;
+	if (editmode){
+		onfuncs = string_f(" onmousedown='whi_%u.gameselect(event);'"
+			" onmouseup='whi_gamemouseup(event); return false;'"
+			" onwheel='whi_gamewheel(event); return false;'"
+			" onmousemove='whi_%u.gamemove(event); return false;'"
+			,docnum,docnum);
+	}
+
+	return glocal.val;
+}
+</mod>
+/*
+	Create the javascript functions
+*/
+string CALC::define_functions(
+	const DOC_CONTEXT &ctx,
+	const CALC_PREF &pref,
+	unsigned board_width,
+	unsigned board_height)
+{
+	string val;
+	return val;
+}
+string CALC::define_styles(const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp)
+{
+	string val;
+	return val;
+}
+
+<mod>
+void CALC::execstep (
+	const char *var,
+	const char *val,
+	const DOC_CONTEXT &ctx,
+	const DOC_UI_SPECS_receive &sp,
+	VARVAL &script_var,
+	VARVAL &notify_var,
+	set<unsigned> &notify_ids,
+	std::vector<VARVAL> &res)
+{
+	auto &pref = prefs[ctx.session];
+	unsigned waiting_users_width = sp.mobile ? 62 : 42;
+	unsigned board_width = sp.content_width - waiting_users_width;	// Space for user list
+	const unsigned scroll_thick = sp.mobile ? 12 : 6;
+	if (sp.content_height < board_width) board_width = sp.content_height;
+	board_width -= scroll_thick;
+	unsigned board_height = board_width;
+	string error,status,api_error;
+	setactivity();
+	string tmpvar,tmpval;
+	if (strcmp(var,"kbd")==0){
+		unsigned lastline = 1000;
+		wordproc_kbd(val,pref.mod,tmpvar,tmpval,lastline);
+		var = tmpvar.c_str();
+		val = tmpval.c_str();		
+	}
+	if (strcmp(var,"print")==0){
+		if (is_any_of(val,"","full")){
+			VARVAL v;
+			v.var = VAR_CONTENT;
+			v.val += "<style>\n";
+			v.val += define_styles(ctx,sp);
+			v.val += "</style>\n";
+			v.val += "<script>\n";
+			v.val += define_functions(ctx,pref,board_width,board_height);
+			v.val += "</script>\n";
+			// Buttons line
+			if (ctx.maywrite){
+				#define BUTTON_NEWDOC	0
+				v.val += "<div id=tab_form style='margin-top:5; margin-bottom:5; background-color: lightgray;'>\n";
+				DOC_BUTTON_SPECS specs;
+				if (sp.mobile){
+					specs.width = 60;
+					specs.radius = 6;
+					specs.margin_left = 10;
+					specs.margin_top = 4;
+					specs.margin_bottom = 4;
+				}
+				CALC_MENU menu(specs);
+				documentd_button_start(v.val,gameid);
+				documentd_bar_button (v.val,BUTTON_NEWDOC,menu.svg_clear,specs,false);
+				documentd_button_space(v.val);
+				documentd_button_end(v.val);
+			}else{
+				v.val += "<div id=tab_form style='margin-top:5; margin-bottom:5; background-color: lightgray;'>\n";
+				v.val += MSG_R(M_READONLY);
+			}
+			v.val += "</div>\n";
+			// Board
+			v.val += string_f("<div class=webtable id=%sdoc_calc style='display:flex; flex-flow:row;' >\n",val);
+			v.val += string_f("<div id='text-%s' style='flex:0 0 auto;width:%u;height:%u;border:1px solid black;"
+				" margin-left: auto;'"
+				" onkeydown='whi_gamepress(event);return false;'"
+				" tabindex=0 >\n",gameid.c_str(),board_width,board_height);
+			string script;
+			v.val += draw_board(pref.offset_x,pref.offset_y,board_width,board_height,sp.fontsize,ctx.docnum,true,script);
+			if (script.size() > 0){
+				v.val += "<script>\n";
+				v.val += script;
+				v.val += "</script>\n";
+			}
+			v.val += "<div style='background-color:ghostwhite;'>\n";
+			v.val += string_f("<svg width=%u height=%u>\n",board_width,scroll_thick);
+			v.val += string_f("<rect id='hscroll-%s' x=%u y=0 rx=3 ry=3 width=%u height=%u fill=lightgray />\n"
+				,gameid.c_str(),pref.offset_x*board_width/(4*board_width),board_width/4,scroll_thick);
+			v.val += "</svg>\n";
+			v.val += "</div>\n";
+			v.val += "</div>\n";
+			v.val += string_f("<div style='flex:0 0 auto; margin-right:auto; background-color: ghostwhite; width:%u;height:%u;'>",scroll_thick,board_height);
+			v.val += "<svg width=100% height=100%>\n";
+			v.val += string_f("<rect id='vscroll-%s' x=0 y=%u rx=3 ry=3 width=%u height=%u fill=lightgray />\n"
+				,gameid.c_str(),pref.offset_y*board_height/(4*board_height),scroll_thick,board_height/4);
+			v.val += "</svg>\n";
+			v.val += "</div>\n";
+			draw_waiting_users(v.val,waiting_users_width,board_height,"flex:0 0 auto;");
+			v.val += "</div>\n";
+			// Status line
+			v.val += "<div id=tab_form>\n";
+			v.val += string_f("<div id=msg-%s style=color:black>&nbsp;</div>\n",gameid.c_str());
+			documentd_chat (v.val,ctx.username,chat,sp.width-20,sp.mobile ? 200 : 100);
+			v.val += "</div>\n";
+			res.emplace_back(move(v));
+		}
+	}else if (strcmp(var,"functions")==0){
+		VARVAL var;
+		var.var = VAR_DEFSCRIPT;
+		var.val = define_functions (ctx,pref,board_width,board_height);
+		res.emplace_back(move(var));
+	}else if (strcmp(var,"styles")==0){
+		VARVAL var;
+		var.var = VAR_STYLES;
+		var.val += define_styles(ctx,sp);
+		res.emplace_back(move(var));
+	}else if (strcmp(var,"region")==0){
+		// For embedding
+	}else if (strcmp(var,"chat")==0){
+		appendchat(val,notify_var.val,res);
+	}else if (strcmp(var,REQ_GETFIELDS)==0){
+		VARVAL var;
+		var.var = VAR_FIELDS;
+		res.emplace_back(var);
+	}else if (strcmp(var,"dump")==0){
+		VARVAL var;
+		var.var = "elements";
+		var.val += "\n";
+		res.emplace_back(var);
+	}else if (ctx.maywrite){
+		if (strcmp(var,"deletechar")==0){
+		}else if (is_any_of(var,"backspace","insertchar","break")){
+		}else if (strcmp(var,"select")==0){
+		}else if (strcmp(var,"mousemove")==0){
+		}else if (strcmp(var,"wheel")==0){
+		}else if (strcmp(var,"newgame")==0){
+		// The other actions are Used to script modification of the document
+		}else if (strcmp(var,"resetgame")==0){
+			// val == 0: reset everything
+			if (is_any_of(val,"","0")){
+				resetgame();
+				notify_var.val += "calc_loop_board(function(svg){\n";
+				notify_var.val += "\twhile (svg.firstChild) {\n";
+				notify_var.val += "\t\tsvg.removeChild(svg.lastChild);\n";
+				notify_var.val += "\t}\n";
+				notify_var.val += "});\n";
+			}else{
+			}
+			setmodified(ctx.username);
+		}
+	}else{
+		error = MSG_R(E_READONLY);
+	}
+	if (api_error.size() > 0){
+		VARVAL var;
+		var.var = VAR_ERROR;
+		var.val = move(api_error);
+		res.emplace_back(move(var));
+	}
+	if (error.size() > 0){
+		update_msg(false,error,"red",res);
+	}else if (status.size() > 0){
+		update_msg(true,status,"red",res);
+	}else{
+		update_msg(false,"&nbsp;","white",res);
+	}
+}
+</mod>
+void CALC::manyexec (
+	const vector<VARVAL_receive> &steps,
+	const DOC_CONTEXT &ctx,
+	const DOC_UI_SPECS_receive &sp,
+	vector<VARVAL> &res)
+{
+	string cur_whi = string_f("calc_cur_gameid='%s';\n",gameid.c_str());
+	VARVAL script_var;
+	script_var.var = VAR_SCRIPT;
+	script_var.val = cur_whi;
+	VARVAL notify_var;
+	notify_var.var = VAR_NOTIFY;
+	notify_var.val = cur_whi;
+	set<unsigned> notify_ids;	// Lines to update using SCRIPT
+	for (auto &v:steps){
+		execstep (v.var,v.val,ctx,sp,script_var,notify_var,notify_ids,res);
+	}
+	if (notify_var.val != cur_whi) res.emplace_back(move(notify_var));
+	if (script_var.val != cur_whi) res.emplace_back(move(script_var));
+}

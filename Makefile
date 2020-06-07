@@ -215,6 +215,10 @@ proto/bo-writed_client.protoh: proto/bo-writed_client.proto
 	build-protocol $(INSTRUMENT) --secretmode --arg "int no" --arg "HANDLE_INFO *c" --arg "const char *host" --name bo_writed_client \
 		--protoch proto/bo-writed_client.protoch proto/bo-writed_client.proto >proto/bo-writed_client.protoh
 
+proto/documentd_calc.protoh: proto/documentd_calc.proto
+	build-protocol --file_mode --req_reader_type DOC_READER --req_writer_type DOC_WRITER --name documentd_calc \
+		--protoch proto/documentd_calc.protoch proto/documentd_calc.proto >proto/documentd_calc.protoh
+
 proto/documentd_whiteboard.protoh: proto/documentd_whiteboard.proto
 	build-protocol --file_mode --req_reader_type DOC_READER --req_writer_type DOC_WRITER --name documentd_whiteboard \
 		--protoch proto/documentd_whiteboard.protoch proto/documentd_whiteboard.proto >proto/documentd_whiteboard.protoh
@@ -273,7 +277,7 @@ proto/bolixoapi.protoh: proto/bolixoapi.proto proto/bolixod_client.protoh
 		--connect_info_obj CONNECT_HTTP_INFO --name bolixoapi \
 		--protoch proto/bolixoapi.protoch proto/bolixoapi.proto >proto/bolixoapi.protoh
 
-DOCGAMES=doc_tictacto.o doc_sudoku.o doc_wordproc.o doc_checkers.o doc_chess.o doc_whiteboard.o
+DOCGAMES=doc_tictacto.o doc_sudoku.o doc_wordproc.o doc_checkers.o doc_chess.o doc_whiteboard.o doc_calc.o
 documentd: documentd.o documentd_menu.o _dict.o fs_makeid.o ${DOCGAMES}
 	cctlcc -Wall $(OPTIONS) documentd.o documentd_menu.o fs_makeid.o ${DOCGAMES} _dict.o -o documentd $(LIBS) -lfreetype -lm
 
@@ -291,6 +295,9 @@ doc_wordproc.o: doc_wordproc.tlcc documentd.h documentd_menu.h proto/documentd_w
 
 doc_whiteboard.o: doc_whiteboard.tlcc documentd.h documentd_menu.h proto/documentd_whiteboard.protoh
 	cctlcc -Wall $(OPTIONS) -c doc_whiteboard.tlcc -o doc_whiteboard.o
+
+doc_calc.o: doc_calc.tlcc documentd.h documentd_menu.h proto/documentd_calc.protoh
+	cctlcc -Wall $(OPTIONS) -c doc_calc.tlcc -o doc_calc.o
 
 documentd_menu.o: documentd_menu.tlcc documentd_menu.h
 	cctlcc -Wall $(OPTIONS) -c documentd_menu.tlcc -o documentd_menu.o
