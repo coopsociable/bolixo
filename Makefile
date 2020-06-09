@@ -296,7 +296,7 @@ doc_wordproc.o: doc_wordproc.tlcc documentd.h documentd_menu.h proto/documentd_w
 doc_whiteboard.o: doc_whiteboard.tlcc documentd.h documentd_menu.h proto/documentd_whiteboard.protoh
 	cctlcc -Wall $(OPTIONS) -c doc_whiteboard.tlcc -o doc_whiteboard.o
 
-doc_calc.o: doc_calc.tlcc documentd.h documentd_menu.h proto/documentd_calc.protoh
+doc_calc.o: doc_calc.tlcc doc_calc.h documentd.h documentd_menu.h proto/documentd_calc.protoh
 	cctlcc -Wall $(OPTIONS) -c doc_calc.tlcc -o doc_calc.o
 
 documentd_menu.o: documentd_menu.tlcc documentd_menu.h

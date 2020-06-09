@@ -34,41 +34,23 @@
 #include "documentd.h"
 #include "documentd_menu.h"
 #include "bolixo.m"
+#include "doc_calc.h"
 
 using namespace std;
 
 #include "proto/documentd_calc.protoch"
 #include "proto/documentd_calc.protoh"
 
-struct CALC_CELL{
-};
-
-struct CALC_PREF{
-	unsigned offset_x=0;
-	unsigned offset_y=0;
-	MOD_KBD mod;
-};
-
-class CALC: public GAME{
-	vector<vector<CALC_CELL>> grid;
-	void execstep (const char *var, const char *val, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp,
-		VARVAL &script_var, VARVAL &notify_var, set<unsigned> &notify_ids, std::vector<VARVAL> &res);
-	std::string draw_board (unsigned vx, unsigned vy, 
-		unsigned board_width, unsigned board_height, unsigned fontsize, unsigned docnum, bool editmode, string &script);
-	std::string define_functions(const DOC_CONTEXT &ctx, const CALC_PREF &pref, unsigned board_width, unsigned board_height);
-	std::string define_styles(const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp);
-	void update_msg (bool to_all, PARAM_STRING msg, const char *color, std::vector<VARVAL> &res);
-	map<string,CALC_PREF> prefs;	// Per session state
-public:
-	void save(DOC_WRITER &w, bool);
-	void load(DOC_READER &r, std::string &msg);
-	void resetgame();
-	CALC();
-	const char *getclass() const;
-	void testwin(std::vector<VARVAL> &res);
-	void exec (const char *var, const char *val, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
-	void manyexec (const vector<VARVAL_receive> &steps, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, vector<VARVAL> &res);
-};
+string CELL_COOR::tostring() const
+{
+	if (col < 26){
+		return string_f("%c%u",'A'+col,line+1);
+	}else{
+		unsigned letter1 = col / 26;
+		unsigned letter2 = col % 26;
+		return string_f("%c%c%u",'A'+letter1,'A'+letter2,line+1);
+	}
+}
 
 GAME_P make_CALC()
 {
@@ -88,6 +70,15 @@ void CALC::update_msg (bool to_all, PARAM_STRING msg, const char *color, std::ve
 void CALC::save(DOC_WRITER &w, bool)
 {
 	documentd_calc_header(&w,revision);
+	vector<CELL> cells;
+	for (auto &g:grid){
+		CELL c;
+		c.l = g.first.line;
+		c.c = g.first.col;
+		c.text = g.second.text;
+		cells.emplace_back(move(c));
+	}
+	documentd_calc_cells(&w,cells);
 	vector<CALC_CHAT> schat;
 	documentd_copychat (schat,chat);
 	documentd_calc_chat(&w,schat);
@@ -97,11 +88,17 @@ void CALC::load(DOC_READER &r, std::string &msg)
 {
 	resetgame();
 	glocal revision;
+	glocal grid;
 	glocal chat;
 	chat.clear();
 	<call documentd_calc>(&r);
 	<f header>
 		glocal.revision = revision;
+	</f>
+	<f cells>
+		for (auto &c:cells){
+			glocal.grid[CELL_COOR(c.l,c.c)] = CALC_CELL(c.text);
+		}
 	</f>
 	<f chat>
 		for (auto l:lines) glocal.chat.emplace_back(l.time,l.line);
@@ -134,8 +131,11 @@ void CALC::exec (
 {
 	tlmp_error ("CALC::exec called");
 }
+const unsigned TBL_FIXED_LINES=40;
+const unsigned TBL_FIXED_COLUMNS=26;
 <mod>
 string CALC::draw_board (
+	const DOC_CONTEXT &ctx,
 	unsigned vx,		// Viewbox specs
 	unsigned vy,
 	unsigned board_width,
@@ -158,20 +158,55 @@ string CALC::draw_board (
 		"calc_%u.gameselect=function(event){\n"
 		"\tcalc_gameselect(this.gameid,this.docnum,event);\n"
 		"};\n"
+		"calc_%u.gamemove=function(event){\n"
+		"\tcalc_gamemove(this.gameid,this.docnum,event);\n"
+		"};\n"
 		,docnum
 		,gameid.c_str(),docnum
+		,docnum
 		,docnum);
 	script += "if (typeof calc_lst == 'undefined') var calc_lst=[];\n";
 	script += string_f("calc_lst.push(calc_%u);\n",docnum);
 	string onfuncs;
 	if (editmode){
-		onfuncs = string_f(" onmousedown='whi_%u.gameselect(event);'"
-			" onmouseup='whi_gamemouseup(event); return false;'"
-			" onwheel='whi_gamewheel(event); return false;'"
-			" onmousemove='whi_%u.gamemove(event); return false;'"
+		onfuncs = string_f(" onmousedown='calc_%u.gameselect(event);'"
+			" onmouseup='calc_gamemouseup(event); return false;'"
+			" onwheel='calc_gamewheel(event); return false;'"
+			" onmousemove='calc_%u.gamemove(event); return false;'"
 			,docnum,docnum);
 	}
-
+	glocal.val += string_f("<div style='width:%u;height:%u; overflow:hidden;'>\n",board_width,board_height);
+	glocal.val += string_f("<table class=calc id='tbl-%s,%d' border=1 %s>\n",gameid.c_str(),docnum,onfuncs.c_str());
+	// column names (letters)
+	glocal.val += "<tr><td>";
+	for (unsigned i=0; i<26; i++){
+		glocal.val += string_f("<td>&nbsp;%c&nbsp;",'A'+i);
+	}
+	for (unsigned line=0; line < TBL_FIXED_LINES; line++){
+		glocal.val += string_f("<tr><td>&nbsp;%d&nbsp;",line+1);
+		for (unsigned col=0; col < TBL_FIXED_COLUMNS; col++){
+			auto c = grid.find(CELL_COOR(line,col));
+			const char *style="";
+			for (auto &p:prefs){
+				if (p.second.cursor.line == line && p.second.cursor.col == col){
+					if (p.first == ctx.session){
+						style="style='background-color:lightblue;'";
+					}else{
+						style="style='background-color:lightgray;'";
+					}
+					break;
+				}
+			}
+			if (c != grid.end()){
+				glocal.val += string_f("<td id='c%u,%u' %s>%s",line,col,style,c->second.text.c_str());
+			}else{
+				glocal.val += string_f("<td %s>",style);
+			}
+		}
+		glocal.val += "\n";
+	}
+	glocal.val += "</table>\n";
+	glocal.val += "</div>\n";
 	return glocal.val;
 }
 </mod>
@@ -185,12 +220,105 @@ string CALC::define_functions(
 	unsigned board_height)
 {
 	string val;
+	wordproc_set_gamepress(val,"calc_gamepress");
+	// Dummy needed by gamepress, shared with doc_wordproc
+	val += "function getlastline(){\n";
+	val += "\treturn 0;\n";
+	val += "}\n";
+
+	// Update the message field
+	val += "function calc_updmsg(color,msg){\n";
+	val += string_f("\tvar elm = document.getElementById('msg-%s');\n",gameid.c_str());
+	val += "\tif (elm != null){\n";
+	val += "\t\telm.style.color=color;\n";
+	val += "\t\telm.innerHTML=msg;\n";
+	val += "\t}\n";
+	val += "}\n";
+
+	// Set the background color of a cell to indicate that it is current.
+	// Use a different color
+	val += "function set_td_bg(td,session){\n";
+	val += string_f("\tif (session=='%s'){\n",ctx.session);
+	val += "\t\ttd.style.background='lightblue';\n";
+	val += "\t}else{\n";
+	val += "\t\ttd.style.background='lightgray';\n";
+	val += "\t}\n";
+	val += "}\n";
+
+
+	// Select one cell using the mouse
+	// We walk all the TD in the table and report the one selected and the relative cursor position
+	val += "function calc_gameselect(gameid,docnum,event){\n";
+	val += "\tvar tbl = document.getElementById('tbl-'+gameid+','+docnum);\n";
+	val += "console.log('tbl='+tbl);\n";
+	val += "\tif (tbl != null){\n";
+	val += "\t\tvar tds = tbl.getElementsByTagName('td');\n";
+	val += "\t\tfor (var i=0; i<tds.length; i++){\n";
+	val += "\t\t\tvar rect = tds[i].getBoundingClientRect();\n";
+	val += "\t\t\tif (event.clientX >= rect.left && event.clientX < rect.right && event.clientY >= rect.top && event.clientY < rect.bottom){\n";
+	val += "\t\t\t\tgameaction(event,'select:'+i+','+(event.clientX-rect.left)+','+(event.clientY-rect.top)+ ','+event.which+','+event.shiftKey+','+event.ctrlKey);\n";
+	val += "\t\t\t\tbreak;\n";	
+	val += "\t\t\t}\n";	
+	val += "\t\t}\n";	
+	val += "\t}\n";	
+	val += "}\n";	
+
+	val += "function calc_gamemove(gameid,docnum,event){\n";
+	val += "}\n";
+	val += "function calc_gamemouseup(event){\n";
+	val += "}\n";
+	val += "function calc_gamewheel(event){\n";
+	val += "}\n";
+
+	val += documentd_js_loop_function("tbl","calc");
 	return val;
 }
 string CALC::define_styles(const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp)
 {
 	string val;
+	val += ".calc td{\n"
+		"\tmin-width:50px;\n"
+		"\tmax-width:50px;\n"
+		"\toverflow: hidden;\n"
+		"}\n";
 	return val;
+}
+void CALC::setfocus(VARVAL &var)
+{
+	var.val += string_f("document.getElementById('text-%s').focus();\n",gameid.c_str());
+}
+
+void CALC::update_cells(set<CELL_COOR> &cells, VARVAL &var)
+{
+	if (cells.size() > 0){
+		// We always draw a fixed number of lines and columns. There is no ids for td tag.
+		// So we count them
+		var.val += "calc_loop_board(function(e,calc){\n";
+		var.val += "\tvar tds=e.getElementsByTagName('td');\n";
+		for (auto &c:cells){
+			var.val += string_f("\tvar td=tds[%u];\n",(c.line+1)*27+c.col+1);
+			bool found = false;
+			for (auto &p:prefs){
+				if (p.second.cursor == c){
+					var.val += string_f("\tset_td_bg(td,'%s');\n",p.first.c_str());
+					found = true;
+					break;
+				}
+			}
+			if (!found) var.val += "\ttd.style.background='white';\n";
+		}
+		var.val += "});\n";
+	}
+}
+/*
+	Change the name of the current cell in the top status line.
+*/
+void CALC::update_cellname(CALC_PREF &pref, VARVAL &var)
+{
+	var.val += string_f("var elm = document.getElementById('cell-%s');\n",gameid.c_str());
+	var.val += "if (elm != null){\n";
+	var.val += string_f("\telm.innerHTML='%s';\n",pref.cursor.tostring().c_str());
+	var.val += "}\n";
 }
 
 <mod>
@@ -201,16 +329,15 @@ void CALC::execstep (
 	const DOC_UI_SPECS_receive &sp,
 	VARVAL &script_var,
 	VARVAL &notify_var,
-	set<unsigned> &notify_ids,
+	set<CELL_COOR> &notify_ids,
 	std::vector<VARVAL> &res)
 {
 	auto &pref = prefs[ctx.session];
 	unsigned waiting_users_width = sp.mobile ? 62 : 42;
 	unsigned board_width = sp.content_width - waiting_users_width;	// Space for user list
 	const unsigned scroll_thick = sp.mobile ? 12 : 6;
-	if (sp.content_height < board_width) board_width = sp.content_height;
 	board_width -= scroll_thick;
-	unsigned board_height = board_width;
+	unsigned board_height = sp.content_height-scroll_thick;
 	string error,status,api_error;
 	setactivity();
 	string tmpvar,tmpval;
@@ -233,7 +360,9 @@ void CALC::execstep (
 			// Buttons line
 			if (ctx.maywrite){
 				#define BUTTON_NEWDOC	0
-				v.val += "<div id=tab_form style='margin-top:5; margin-bottom:5; background-color: lightgray;'>\n";
+				#define BUTTON_COLSTYLE	1
+				v.val += "<div id=tab_form style='display:flex; flex-flow:column;'>\n";
+				v.val += "<div style='flex:0 0 auto; width:100%;margin-top:5; background-color: lightgray;'>\n";
 				DOC_BUTTON_SPECS specs;
 				if (sp.mobile){
 					specs.width = 60;
@@ -245,8 +374,16 @@ void CALC::execstep (
 				CALC_MENU menu(specs);
 				documentd_button_start(v.val,gameid);
 				documentd_bar_button (v.val,BUTTON_NEWDOC,menu.svg_clear,specs,false);
+				documentd_bar_button (v.val,BUTTON_COLSTYLE,"S",specs,false);
 				documentd_button_space(v.val);
 				documentd_button_end(v.val);
+				v.val += "</div>\n";
+				v.val += "<div style='flex:0 0 auto; margin-bottom:5;'>\n";
+				v.val += string_f("<span id='page-%s'>page 1</span>\n",gameid.c_str());
+				v.val += string_f("<span id='cell-%s'>%s</span>\n",gameid.c_str(),pref.cursor.tostring().c_str());
+				v.val += string_f("<input type=text id='edit-%s' style='width:400;'/>\n",gameid.c_str());
+
+				v.val += "</div>\n";
 			}else{
 				v.val += "<div id=tab_form style='margin-top:5; margin-bottom:5; background-color: lightgray;'>\n";
 				v.val += MSG_R(M_READONLY);
@@ -256,10 +393,10 @@ void CALC::execstep (
 			v.val += string_f("<div class=webtable id=%sdoc_calc style='display:flex; flex-flow:row;' >\n",val);
 			v.val += string_f("<div id='text-%s' style='flex:0 0 auto;width:%u;height:%u;border:1px solid black;"
 				" margin-left: auto;'"
-				" onkeydown='whi_gamepress(event);return false;'"
+				" onkeydown='calc_gamepress(event);return false;'"
 				" tabindex=0 >\n",gameid.c_str(),board_width,board_height);
 			string script;
-			v.val += draw_board(pref.offset_x,pref.offset_y,board_width,board_height,sp.fontsize,ctx.docnum,true,script);
+			v.val += draw_board(ctx,pref.offset_x,pref.offset_y,board_width,board_height,sp.fontsize,ctx.docnum,true,script);
 			if (script.size() > 0){
 				v.val += "<script>\n";
 				v.val += script;
@@ -311,25 +448,81 @@ void CALC::execstep (
 		var.val += "\n";
 		res.emplace_back(var);
 	}else if (ctx.maywrite){
+		auto old_cursor = pref.cursor;
 		if (strcmp(var,"deletechar")==0){
+		}else if (strcmp(var,"vmove")==0){
+			int move = atoi(val);
+			if (move > 0){
+				pref.cursor.line += move;
+			}else if (-move <= pref.cursor.line){
+				pref.cursor.line += move;
+			}
+		}else if (strcmp(var,"hmove")==0){
+			int move = atoi(val);
+			if (move > 0){
+				pref.cursor.col += move;
+			}else if (-move <= pref.cursor.col){
+				pref.cursor.col += move;
+			}
 		}else if (is_any_of(var,"backspace","insertchar","break")){
 		}else if (strcmp(var,"select")==0){
+			auto tb = str_splitline(val,',');
+			if (tb.size() == 6){
+				unsigned cell = atoi(tb[0].c_str());
+				#if 0
+				unsigned x = atoi(tb[1].c_str());
+				unsigned y = atoi(tb[2].c_str());
+				unsigned button = atoi(tb[3].c_str());
+				bool shiftkey = tb[4] == "true";
+				bool ctrlkey = tb[5] == "true";
+				#endif
+				unsigned line = cell/(TBL_FIXED_COLUMNS+1);
+				unsigned col  = cell%(TBL_FIXED_COLUMNS+1);
+				if (line > 0 && col > 0){
+					pref.cursor.line = line-1;
+					pref.cursor.col = col-1;
+				}else if (line == 0){
+					// Select one column
+				}else if (col == 0){
+					// Select one line
+				}
+			}
 		}else if (strcmp(var,"mousemove")==0){
 		}else if (strcmp(var,"wheel")==0){
 		}else if (strcmp(var,"newgame")==0){
+			int uval = atoi(val);
+			if (uval == BUTTON_NEWDOC){
+				VARVAL var;
+				var.var = VAR_DIALOG;
+				var.val = DIALOG_CALC_NEW;
+				res.emplace_back(var);
+			}else if (uval == BUTTON_COLSTYLE){
+				for (int i=0; i<10; i++){
+					grid[CELL_COOR(i,i)] = CALC_CELL(string_f("line%d,%d",i,i));
+				}
+				documentd_forcerefresh(res);
+			}else{
+				tlmp_error ("calc newgame=%d",uval);
+			}
+			setfocus(script_var);
 		// The other actions are Used to script modification of the document
 		}else if (strcmp(var,"resetgame")==0){
-			// val == 0: reset everything
-			if (is_any_of(val,"","0")){
-				resetgame();
-				notify_var.val += "calc_loop_board(function(svg){\n";
-				notify_var.val += "\twhile (svg.firstChild) {\n";
-				notify_var.val += "\t\tsvg.removeChild(svg.lastChild);\n";
-				notify_var.val += "\t}\n";
-				notify_var.val += "});\n";
-			}else{
-			}
+			resetgame();
+			// We erased all the td tag in the table except the first line and the first column
+			notify_var.val += "calc_loop_board(function(tbl){\n";
+			notify_var.val += "\tvar tds = tbl.getElementsByTagName('td');\n";
+			notify_var.val += string_f("\tfor (var i=1; i<=%u; i++){\n",TBL_FIXED_LINES);
+			notify_var.val += string_f("\t\tfor (var j=1; j<=%u; j++){\n",TBL_FIXED_COLUMNS);
+			notify_var.val += string_f("\t\ttds[i*%u+j].innerHTML = '';\n",TBL_FIXED_COLUMNS+1);
+			notify_var.val += "\t\t};\n";
+			notify_var.val += "\t};\n";
+			notify_var.val += "});\n";
 			setmodified(ctx.username);
+		}
+		if (old_cursor != pref.cursor){
+			notify_ids.insert(old_cursor);
+			notify_ids.insert(pref.cursor);
+			update_cellname (pref,script_var);
 		}
 	}else{
 		error = MSG_R(E_READONLY);
@@ -362,10 +555,11 @@ void CALC::manyexec (
 	VARVAL notify_var;
 	notify_var.var = VAR_NOTIFY;
 	notify_var.val = cur_whi;
-	set<unsigned> notify_ids;	// Lines to update using SCRIPT
+	set<CELL_COOR> notify_ids;	// Lines to update using SCRIPT
 	for (auto &v:steps){
 		execstep (v.var,v.val,ctx,sp,script_var,notify_var,notify_ids,res);
 	}
+	update_cells(notify_ids,notify_var);
 	if (notify_var.val != cur_whi) res.emplace_back(move(notify_var));
 	if (script_var.val != cur_whi) res.emplace_back(move(script_var));
 }
