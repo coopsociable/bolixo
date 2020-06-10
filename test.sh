@@ -1600,6 +1600,7 @@ elif [ "$1" = "lxc0-webssl" ]; then # prod:
 			-d /var/www/html \
 			$EXTRALXCPROG \
 			-e /var/www/html/favicon.ico \
+			-e /var/www/html/icon.png \
 			-e /var/www/html/robots.txt \
 			-e /var/www/html/private.png \
 			-e /var/www/html/zip.png \

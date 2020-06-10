@@ -400,6 +400,7 @@ install: msg.eng msg.fr
 	install -m755 web/bolixoapi.hc $(RPM_BUILD_ROOT)/var/www/html/bolixoapi.hc
 	install -m644 web/favicon.ico $(RPM_BUILD_ROOT)/var/www/html/favicon.ico
 	install -m644 web/favicon.jpg $(RPM_BUILD_ROOT)/var/www/html/favicon.jpg
+	install -m644 web/icon.png $(RPM_BUILD_ROOT)/var/www/html/icon.png
 	install -m644 web/dev-photo.jpg $(RPM_BUILD_ROOT)/var/www/html/dev-photo.jpg
 	install -m644 web/news-photo.jpg $(RPM_BUILD_ROOT)/var/www/html/news-photo.jpg
 	install -m644 web/about.html $(RPM_BUILD_ROOT)/var/www/html/about.html

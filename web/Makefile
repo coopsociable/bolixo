@@ -96,6 +96,10 @@ favicon.jpg: bolixo.scad Makefile
 	openscad --imgsize 40,40 -ofavicon.png -Dview=\"favicon\" --colorscheme=Nature --camera=35,20,160,35,20,0 bolixo.scad
 	convert favicon.png -fuzz 20% -transparent white favicon.jpg 
 
+icon.png: bolixo.scad Makefile
+	openscad --imgsize 192,192 -ofavicon.png -Dview=\"favicon\" --colorscheme=Nature --camera=35,20,160,35,20,0 bolixo.scad
+	convert favicon.png -fuzz 20% -transparent white icon.png 
+
 admin.jpg: admin.scad Makefile
 	openscad --imgsize 40,40 -oadmin.png -Dview=\"gear\" --colorscheme=Nature --camera=0,0,60,0,0,0 admin.scad
 	convert admin.png admin.jpg

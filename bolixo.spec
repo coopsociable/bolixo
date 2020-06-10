@@ -134,6 +134,7 @@ make install
 /var/www/html/about.html
 /var/www/html/favicon.ico
 /var/www/html/favicon.jpg
+/var/www/html/icon.png
 /var/www/html/dev-photo.jpg
 /var/www/html/news-photo.jpg
 /var/www/html/robots.txt
