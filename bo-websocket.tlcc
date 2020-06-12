@@ -238,6 +238,7 @@ static void webtab_init (const vector<SNAMEVAL_receive> &vals, set<string> &noti
 		}
 	}
 }
+static bool debug_header = false;
 static unsigned idle_delay=5*60;
 <mod>
 static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &con_bod, CONNECT_INFO &con_sessiond, CONNECT_INFO &con_waitevent, bool paused)
@@ -411,6 +412,7 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 			write (glocal.waiteventfd,line,info.linelen);
 		}else if (!glocal.header_seen){
 			const char *pt;
+			if (debug_header) tlmp_warning ("header: %s",line);
 			if (is_start_any_ofnc(line,pt,"Sec-WebSocket-Key:")){
 				pt = str_skip(pt);
 				string webkey = pt;
@@ -914,6 +916,7 @@ int main (int argc, char *argv[])
 					instrument_status(tb);
 					tb.push_back(string_f("workers: %lu",glocal.workers.size()));
 					tb.push_back(string_f("paused: %d",glocal.paused));
+					tb.push_back(string_f("set_debug_header: %d",debug_header));
 					tb.push_back(string_f("expect-replies: %u",glocal.expect_replies));
 					static const char *tbcmd[]={"none","end","pause","resume","test"};
 					const char *running = "none";
@@ -976,6 +979,9 @@ int main (int argc, char *argv[])
 						glocal.ptsub->exec();
 						// We do reply when receiving answers from all workers.
 					}
+				</f>
+				<f set_debug_header>
+					debug_header = on;
 				</f>
 				<f invalid>
 					tlmp_error ("Invalid command: %s\n",line);
