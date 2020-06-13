@@ -212,6 +212,7 @@ static void projects_documents(
 	unsigned tab_height,
 	_F_webtabs *webtabs,
 	unsigned webstep,
+	bool focus,
 	const char *extraargs,
 	const char *uicontext);
 
@@ -1267,7 +1268,7 @@ void projects(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER
 			</f>
 			</call>
 		}else{
-			projects_documents(glocal.con,glocal.con_sess,formid,id,tab_width,tab_height,this,step_projects,"","");
+			projects_documents(glocal.con,glocal.con_sess,formid,id,tab_width,tab_height,this,step_projects,selected(id),"","");
 		}
 	</f>
 	</call>
@@ -1287,6 +1288,7 @@ static void projects_documents(
 	unsigned tab_height,
 	_F_webtabs *webtabs,
 	unsigned webstep,	// Calling context
+	bool focus,		// The document must have the focus
 	const char *extraargs,
 	const char *uicontext)	// empty if we are running in normal mode
 				// full  if we are running fullscreen
@@ -1363,13 +1365,18 @@ static void projects_documents(
 			VARVAL var;
 			var.var = REQ_PRINT;
 			var.val = uicontext;
-			steps.emplace_back(var);
+			steps.emplace_back(move(var));
+		}
+		if (focus){
+			VARVAL var;
+			var.var = REQ_FOCUS;
+			steps.emplace_back(move(var));
 		}
 		if (w_dialog.isset()){
 			VARVAL var;
 			var.var = REQ_GETFIELDS;
 			var.val = w_dialog.c_str();
-			steps.emplace_back(var);
+			steps.emplace_back(move(var));
 		}
 		DOC_UI_SPECS sp;
 		sp.width = tab_width;
@@ -1398,6 +1405,10 @@ static void projects_documents(
 					for (auto &r:res){
 						if (strcmp(r.var,VAR_CONTENT)==0){
 							htmlout (r.val);
+						}else if (strcmp(r.var,VAR_SCRIPT)==0){
+							htmlout("<script>\n");
+							htmlout (r.val);
+							htmlout("</script>\n");
 						}else if (strcmp(r.var,VAR_ERROR)==0){
 							error = r.val;
 						}else if (strcmp(r.var,VAR_RESULT)==0){
@@ -1405,8 +1416,7 @@ static void projects_documents(
 						}else if (strcmp(r.var,VAR_FIELDS)==0){
 							// r.val is a list of fields. Each field has a name and a value on a single text line.
 							// name:value\nname:value\n
-							vector<string>tb;
-							str_splitline (r.val,'\n',tb);
+							auto tb = str_splitline (r.val,'\n');
 							for (auto &l:tb){
 								const char *start = l.c_str();
 								const char *pt = strchr(start,':');
@@ -1463,5 +1473,5 @@ void projects_documents(
 	unsigned tab_height)
 {
 	string extraargs = string_f("&document=%s",id);
-	projects_documents(con,con_sess,formid,id,tab_width,tab_height,nullptr,step_fullscreen,extraargs.c_str(),"full");
+	projects_documents(con,con_sess,formid,id,tab_width,tab_height,nullptr,step_fullscreen,true,extraargs.c_str(),"full");
 }

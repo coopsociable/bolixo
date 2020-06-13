@@ -1083,7 +1083,7 @@ static void limit_scroll (unsigned &pos, int move, unsigned board_size, unsigned
 }
 void WHITEBOARD::setfocus(VARVAL &var)
 {
-	var.val += string_f("document.getElementById('text-%s').focus();\n",gameid.c_str());
+	documentd_setfocus(var,string_f("text-%s",gameid.c_str()));
 }
 <mod>
 string WHITEBOARD::draw_board (
@@ -1439,7 +1439,7 @@ void WHITEBOARD::execstep (
 		var = tmpvar.c_str();
 		val = tmpval.c_str();		
 	}
-	if (strcmp(var,"print")==0){
+	if (strcmp(var,REQ_PRINT)==0){
 		if (is_any_of(val,"","full")){
 			VARVAL v;
 			v.var = VAR_CONTENT;
@@ -1534,17 +1534,17 @@ void WHITEBOARD::execstep (
 			v.val += "</div>\n";
 			res.emplace_back(move(v));
 		}
-	}else if (strcmp(var,"functions")==0){
+	}else if (strcmp(var,REQ_FUNCTIONS)==0){
 		VARVAL var;
 		var.var = VAR_DEFSCRIPT;
 		var.val = define_functions (ctx,pref,board_width,board_height);
 		res.emplace_back(move(var));
-	}else if (strcmp(var,"styles")==0){
+	}else if (strcmp(var,REQ_STYLES)==0){
 		VARVAL var;
 		var.var = VAR_STYLES;
 		var.val += define_styles(ctx,sp);
 		res.emplace_back(move(var));
-	}else if (strcmp(var,"region")==0){
+	}else if (strcmp(var,REQ_REGION)==0){
 		// For embedding
 		if (strlen(val)==2 && isalpha(val[0]) && isdigit(val[1])){
 			unsigned col = toupper(val[0])-'A';
@@ -1620,6 +1620,8 @@ void WHITEBOARD::execstep (
 			pref.viewbox_y = box_y;
 			script_var.val += string_f("whi_%u.setviewbox(%u,%u);\n",ctx.docnum,box_x,box_y);
 		}
+	}else if (strcmp(var,REQ_FOCUS)==0){
+		setfocus(script_var);
 	}else if (ctx.maywrite){
 		if (strcmp(var,"deletechar")==0){
 			if (pref.mod.shift){

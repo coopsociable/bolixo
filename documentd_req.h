@@ -3,7 +3,11 @@
 
 // Request sent to documents
 #define REQ_PRINT	"print"
+#define REQ_FOCUS	"focus"
 #define REQ_GETFIELDS	"getfields"
+#define REQ_FUNCTIONS	"functions"
+#define REQ_STYLES	"styles"
+#define REQ_REGION	"region"
 
 // Results produced by documents
 #define VAR_CONTENT	"content"	// HTML content to display

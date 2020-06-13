@@ -283,9 +283,9 @@ string CALC::define_styles(const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &s
 		"}\n";
 	return val;
 }
-void CALC::setfocus(VARVAL &var)
+void CALC::setfocus(VARVAL &script_var)
 {
-	var.val += string_f("document.getElementById('text-%s').focus();\n",gameid.c_str());
+	documentd_setfocus(script_var,string_f("text-%s",gameid.c_str()));
 }
 
 void CALC::update_cells(set<CELL_COOR> &cells, VARVAL &var)
@@ -347,7 +347,7 @@ void CALC::execstep (
 		var = tmpvar.c_str();
 		val = tmpval.c_str();		
 	}
-	if (strcmp(var,"print")==0){
+	if (strcmp(var,REQ_PRINT)==0){
 		if (is_any_of(val,"","full")){
 			VARVAL v;
 			v.var = VAR_CONTENT;
@@ -424,12 +424,14 @@ void CALC::execstep (
 			v.val += "</div>\n";
 			res.emplace_back(move(v));
 		}
-	}else if (strcmp(var,"functions")==0){
+	}else if (strcmp(var,REQ_FOCUS)==0){
+		setfocus(script_var);
+	}else if (strcmp(var,REQ_FUNCTIONS)==0){
 		VARVAL var;
 		var.var = VAR_DEFSCRIPT;
 		var.val = define_functions (ctx,pref,board_width,board_height);
 		res.emplace_back(move(var));
-	}else if (strcmp(var,"styles")==0){
+	}else if (strcmp(var,REQ_STYLES)==0){
 		VARVAL var;
 		var.var = VAR_STYLES;
 		var.val += define_styles(ctx,sp);

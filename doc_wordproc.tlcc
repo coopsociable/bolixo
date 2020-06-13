@@ -166,6 +166,7 @@ class WORDPROC: public GAME{
 		std::vector<VARVAL> &res);
 	void set_para_spec(class PARAGRAPH &para, unsigned noline, unsigned column, const DOC_UI_SPECS_receive &sp, unsigned &para_noline);
 	void set_para_spec(class PARAGRAPH &para, unsigned noline, const DOC_UI_SPECS_receive &sp);
+	void setfocus(VARVAL &script_var);
 public:
 	const char *getclass() const{
 		return "WORD";
@@ -1609,6 +1610,10 @@ set<DOCUMENT_EMBED> WORDPROC::get_embed_specs() const
 	}
 	return ret;
 }
+void WORDPROC::setfocus(VARVAL &script_var)
+{
+	documentd_setfocus(script_var,string_f("text-%s",gameid.c_str()));
+}
 
 void WORDPROC::execstep (
 	const char *var,
@@ -1910,6 +1915,8 @@ void WORDPROC::execstep (
 			}
 		}
 		res.emplace_back(var);
+	}else if (strcmp(var,REQ_FOCUS)==0){
+		setfocus(script_var);
 	}else{
 		MOD_KBD mod;
 		unsigned lastline = 1000;
@@ -2025,7 +2032,7 @@ void WORDPROC::execstep (
 				if (update_num_lines) wordproc_update_num_lines (pref.cursor.line,lines,notify_lines);
 				setmodified(ctx.username);
 				notify_lines.insert(pref.cursor.line);
-				script_var.val += string_f("document.getElementById('text-%s').focus();\n",gameid.c_str());
+				setfocus(script_var);
 			}else if (strcmp(var,"imbed")==0){
 				vector<VARVAL> fields;
 				documentd_parsefields(val,fields);
@@ -2056,14 +2063,14 @@ void WORDPROC::execstep (
 				lines[pref.cursor.line].set_imbed(imbed);
 				notify_lines.insert(pref.cursor.line);
 				string script;
-				documentd_imbed (gameid,imbed.document,"functions","",imbed.docnum,sp,script);
+				documentd_imbed (gameid,imbed.document,REQ_FUNCTIONS,"",imbed.docnum,sp,script);
 				notify_var.val += script;
-				string content = documentd_imbed (gameid,imbed.document,"styles","",imbed.docnum,sp,script);
+				string content = documentd_imbed (gameid,imbed.document,REQ_STYLES,"",imbed.docnum,sp,script);
 				notify_var.val += "document.body.innerHTML+=`";
 				notify_var.val += "<style>\n";
 				notify_var.val += content;
 				notify_var.val += "</style>`;\n";
-				content = documentd_imbed (gameid,imbed.document,"region",imbed.region,imbed.docnum,sp,script);
+				content = documentd_imbed (gameid,imbed.document,REQ_REGION,imbed.region,imbed.docnum,sp,script);
 				// First we add the sub-document template definition, then the scripts
 				notify_var.val += "document.body.innerHTML+=`";
 				notify_var.val += string_f("<template id='temp%u'>\n",imbed.docnum);
