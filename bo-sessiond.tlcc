@@ -122,7 +122,7 @@ struct USER_INFO{
 	vector<NOTIFY> notes;
 	vector<VAR> vars;
 };
-static unsigned max_key_notes=4;		// Number of notifications kept with the same key
+static unsigned max_key_notes=1;		// Number of notifications kept with the same key
 static void bo_sessiond_setnotify(
 	map<unsigned,USER_INFO> &userinfos,
 	map<unsigned,vector<int>> &waiting,
@@ -142,7 +142,7 @@ static void bo_sessiond_setnotify(
 		// So we keep around the last max_key_notes.
 		// Further, in waitevent, if there are several consecutive event for the same
 		// key, we return a concatenation of the scripts.
-		unsigned found = 0;
+		unsigned found = 1; // We count the one we will add next
 		for (auto &n:v.notes){
 			if (n.key == name){
 				found++;
@@ -549,6 +549,22 @@ int main (int argc, char *argv[])
 						it = next;
 					}
 					rep_eraseold(deletedanon,deleteduser,deletedadmin);
+				</f>
+				<f eraseoldnotes>
+					time_t old = time(nullptr)-nbseconds;
+					unsigned deleted = 0;
+					for (auto &p:glocal.userinfos){
+						auto &v = p.second.notes;
+						for (auto it=v.begin(); it != v.end(); ){
+							auto next_it = it+1;
+							if (it->when < old){
+								deleted++;
+								next_it = v.erase(it);
+							}
+							it = next_it;
+						}
+					}
+					rep_eraseoldnotes(deleted);
 				</f>
 				<f disconnect_waitings>
 					for (auto &w:glocal.waiting){

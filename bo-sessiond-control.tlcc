@@ -30,6 +30,24 @@ using namespace std;
 
 #include "proto/bo-sessiond_control.protoch"
 
+static unsigned bo_sessiond_cnvtime(const char *arg)
+{
+	unsigned old = atoi(arg);
+	const char *pt = str_skipdig(arg);
+	char letter = tolower(*pt);
+	if (letter == 'd'){
+		old *= 24*60*60;
+	}else if (letter == 'h'){
+		old *= 60*60;
+	}else if (letter == 'm'){
+		old *= 60;
+	}else if (letter != 's'){
+		tlmp_error (MSG_U(E_EXPECTDHMS,"Expect suffix d h m or s for duration, aborting\n"));
+		exit (-1);
+	}
+	return old;
+}
+
 <mod>
 int main (int argc, char *argv[])
 {
@@ -45,6 +63,8 @@ int main (int argc, char *argv[])
 			 "\tdisconnect_waitings\n"
 			 "\teraseold time anonymous normaluser adminuser\n"
 			 "\t\ttime is a number followed by d for days, h for hours, m for minutes, s for seconds\n"
+			 "\teraseoldnotes time\n"
+			 "\t\tsame definition for time as eraseold\n"
 			 "\tinstrument 0|1\n"
 			 "\tlistsessions offset nb\n"
 			 "\tmax_eq_notes max\n"
@@ -88,22 +108,17 @@ int main (int argc, char *argv[])
 			</f>
 			</call>
 		}else if (strcmp(argv[0],"eraseold")==0 && argc==5){
-			unsigned old = atoi(argv[1]);
-			const char *pt = str_skipdig(argv[1]);
-			char letter = tolower(*pt);
-			if (letter == 'd'){
-				old *= 24*60*60;
-			}else if (letter == 'h'){
-				old *= 60*60;
-			}else if (letter == 'm'){
-				old *= 60;
-			}else if (letter != 's'){
-				tlmp_error (MSG_U(E_EXPECTDHMS,"Expect suffix d h m or s for duration, aborting\n"));
-				exit (-1);
-			}
+			unsigned old = bo_sessiond_cnvtime(argv[1]);
 			<call bo_sessiond_control_eraseold>(con,old,atoi(argv[2]),atoi(argv[3]),atoi(argv[4]));
 			<f ok>
 				printf ("deletedanon=%u deleteduser=%u deletedadmin=%u\n",deletedanon,deleteduser,deletedadmin);
+			</f>
+			</call>
+		}else if (strcmp(argv[0],"eraseoldnotes")==0 && argc==2){
+			unsigned old = bo_sessiond_cnvtime(argv[1]);
+			<call bo_sessiond_control_eraseoldnotes>(con,old);
+			<f ok>
+				printf ("deleted=%u\n",deleted);
 			</f>
 			</call>
 		}else if (strcmp(argv[0],"debug")==0 && argc==2){

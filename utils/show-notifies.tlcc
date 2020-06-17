@@ -8,6 +8,7 @@
 #include <tlmplib.h>
 #include <string>
 #include <vector>
+#include <algorithm>
 #include <misc.h>
 #include "../helper.h"
 
@@ -19,11 +20,13 @@ int main (int argc, char *argv[])
 	glocal int ret = -1;
 	glocal bool show_geometry = false;
 	glocal bool show_sessionnum = false;
+	glocal bool cnv2lines = false;
 	glocal.ret = <call tlmpprogram>(argc,argv);
 	<f init>
 		setproginfo ("show-notifies","0.0","...");
 		setarg ('g',"show-geometry","Present geometry information instead of notifications",glocal.show_geometry,false);
 		setarg ('s',"show-sessionnum","Present the session number",glocal.show_sessionnum,false);
+		setarg ('l',"cnv2lines","Present the notifications one per line",glocal.cnv2lines,false);
 	</f>
 	<f main_noarg>
 		glocal string userid;
@@ -34,16 +37,14 @@ int main (int argc, char *argv[])
 			const char *pt = str_skip(line);
 			if (strncmp(line,"000",3)==0){
 				//printf ("%s\n",line);
-				vector<string> tb;
-				int n = str_splitline(line,' ',tb);
-				if (n > 3){
+				auto tb = str_splitline(line,' ');
+				if (tb.size() > 3){
 					glocal.userid=tb[3];
 					glocal.session=tb[0];
 				}
 			}else if (is_start_any_of (pt,NONEED,"notifies:") && !glocal.show_geometry){
 				// We must remove the timestamp and keep the sequence number
-				vector<string> words;
-				str_splitline(pt,' ',words);
+				auto words = str_splitline(pt,' ');
 				for (unsigned i=2; i<words.size(); i++){
 					string &w = words[i];
 					vector<string> args;
@@ -55,8 +56,13 @@ int main (int argc, char *argv[])
 				}
 				if (glocal.show_sessionnum) printf ("%s ",glocal.session.c_str());
 				printf ("%s",glocal.userid.c_str());
+				if (glocal.cnv2lines) sort (words.begin(),words.end());
 				for (auto const &w:words){
-					printf (" %s",w.c_str());
+					if (glocal.cnv2lines){
+						printf ("\t%s\n",w.c_str());
+					}else{
+						printf (" %s",w.c_str());
+					}
 				}
 				printf ("\n");
 			}else if (is_start_any_of (pt,NONEED,"id=")){
