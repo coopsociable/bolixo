@@ -1288,6 +1288,10 @@ string CHESS::draw_board(
 	lines += "</svg>\n";
 	return lines;
 }
+inline auto lim8(unsigned &val)
+{
+	return limits(val,0u,7u);
+}
 
 void CHESS::exec (
 	const char *var,
@@ -1474,10 +1478,8 @@ void CHESS::exec (
 		res.emplace_back(var);
 	}else if (ctx.maywrite){
 		if (strcmp(var,"place")==0){
-			unsigned lo,co;
-			int button;
-			int n = sscanf(val,"%u,%u,%d",&lo,&co,&button);
-			if (n == 3 && lo < 8 && co < 8 && is_any_of(button,1,2)){
+			unsigned lo,co,button;
+			if (splitline(val,',',lim8(lo),lim8(co),enums(button,{1u,2u}))){
 				if (reverse) lo = 8 -1 - lo;
 				CHESS_PLAYER *player = &player2;
 				CHESS_PLAYER *other_player = &player1;
@@ -1709,7 +1711,7 @@ void CHESS::exec (
 			robot_request(res);
 		}else if (strcmp(var,"playersel")==0){
 			unsigned playernum,button;
-			if (sscanf(val,"%u,%u",&playernum,&button)==2){
+			if (splitline(val,',',limits(playernum,0u,1u),limits(button,1u,2u))){
 				// One player has selected a color (white or black).
 				// If the player name is already in the other color, we do a swap.
 				// For example, player A is playing the whites and B, the blacks.
@@ -1769,10 +1771,8 @@ void CHESS::exec (
 			// For automated tests purpose
 			// It is permisive. It will find who is playing by lookup at the from_line,from_col cell.
 			// This helps create test sequences.
-			unsigned from_line,from_col,to_line,to_col;
-			int do_it;
-			int n = sscanf(val,"%u,%u,%u,%u,%d",&from_line,&from_col,&to_line,&to_col,&do_it);
-			if (n == 5 && from_line < 8 && from_col < 8 && to_line < 8 && to_col < 8 && is_any_of(do_it,0,1)){
+			unsigned from_line,from_col,to_line,to_col,do_it;
+			if (splitline(val,',',lim8(from_line),lim8(from_col),lim8(to_line),lim8(to_col),enums(do_it,{0u,1u}))){
 				CHESSMOVE_EFFECTS eff;
 				char cell = grid[from_line][from_col];
 				if (cell == ' '){
