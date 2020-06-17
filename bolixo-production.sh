@@ -264,6 +264,14 @@ elif [ "$1" = "eraseanon" ] ; then # prod: [old (default 1 day) anonymous normal
 	fi
 	echo Erase anonymous session older than $OLD 
 	/usr/lib/bolixo-test.sh eraseanon-lxc $OLD $*
+elif [ "$1" = "eraseaoldnotes" ] ; then # prod: [old (default 10 day) ]
+	OLD=10d
+	shift
+	if [ "$1" != "" ] ; then
+		OLD=$1
+		shift
+	fi
+	/usr/lib/bolixo-test.sh bo-sessiond-control eraseoldnotes $OLD
 elif [ "$1" = "listsessions" ] ; then # prod: list web sessions (offset)
 	OFF=0
 	if [ "$2" != "" ] ; then
