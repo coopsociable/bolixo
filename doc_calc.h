@@ -1,20 +1,45 @@
 #ifndef DOC_CALC_H
 #define DOC_CALC_H
 
-struct CALC_CELL{
-	std::string text;
-	bool value_valid = false;
-	double value;
-	CALC_CELL(){};
-	CALC_CELL(PARAM_STRING _text)
-		:text(_text.ptr){}
+enum CALC_TOK{
+	TOK_NUMBER,
+	TOK_CELL,
+	TOK_OPNPAR,
+	TOK_CLSPAR,
+	TOK_PLUS,
+	TOK_MINUS,
+	TOK_MULT,
+	TOK_DIV,
+	TOK_MODULO,
+	TOK_COMMA,
+	TOK_COLON,
+	TOK_SEMICOL,
+	TOK_EQUAL,
+	TOK_STRING,
+	TOK_SMALLER,
+	TOK_SMALLEREQ,
+	TOK_GREATER,
+	TOK_GREATEREQ,
+	TOK_KEYWORD,
+	TOK_FUNCTION,
+	TOK_ERROR,
+	TOK_EOL,
 };
 
+enum CALC_OPER{
+	CALC_OPER_NONE,
+	CALC_FUNC_SUM,
+	CALC_FUNC_AVG,
+	CALC_FUNC_MAX,
+	CALC_FUNC_MIN,
+};
 
 struct CELL_COOR{
 	unsigned short line=0;
 	unsigned short col=0;
 	CELL_COOR(){}
+	CELL_COOR(const CELL_COOR &c)
+		:line(c.line), col(c.col){}
 	CELL_COOR(unsigned short _line, unsigned short _col)
 		:line(_line), col(_col){}
 	bool operator < (const CELL_COOR &c) const {
@@ -28,6 +53,45 @@ struct CELL_COOR{
 	}
 	std::string tostring() const;
 };
+enum EVAL_TYPE {EVAL_VAL, EVAL_SEMI, EVAL_BEGIN, EVAL_RANGE};
+struct EVALELM{
+	EVAL_TYPE type;
+	double val=0;
+	CELL_COOR coor;
+	EVALELM(EVAL_TYPE _type, double _val): type(_type), val(_val){}
+	EVALELM(EVAL_TYPE _type, double _val, const CELL_COOR &_coor): type(_type), val(_val),coor(_coor){}
+};
+struct CALC_TOKEN {
+	CALC_TOK token;
+	CALC_OPER oper = CALC_OPER_NONE;
+	CELL_COOR coor;		// Translation of a TOK_CELL
+	std::string text;
+};
+
+enum CELL_STATE {
+	CELL_STATE_UNKNOWN,
+	CELL_STATE_NUM,
+	CELL_STATE_TEXT,
+	CELL_STATE_FORMULAERR,	// The cell contains an invalid formula (syntax error)
+	CELL_STATE_FORMULA,	// The cell contains a formula, not evaluated
+	CELL_STATE_COMPUTING,	// formula evaluation in progress. This is used to trigger loops in formula 
+	CELL_STATE_EVALED	// The formula has been evaluated
+};
+struct CALC_CELL{
+	std::string text;
+	CELL_STATE state = CELL_STATE_UNKNOWN;
+	double value=0;		// The result of the formula evaluation or simply the translation of 'text'.
+	std::vector<CALC_TOKEN> steps;	// Steps to evaluate a formula
+	CALC_CELL(){};
+	CALC_CELL(PARAM_STRING _text)
+		:text(_text.ptr){}
+	void eval0();
+	std::string gettext() const;
+	const char *getcolor() const;	// Return the text color
+	const char *getalign() const;	// Return the textAlign value
+};
+
+
 struct CALC_PREF{
 	unsigned offset_x=0;
 	unsigned offset_y=0;
@@ -39,8 +103,9 @@ class CALC: public GAME{
 	// Spreadsheet are often sparse. So we store only cells with some content.
 	std::map<CELL_COOR,CALC_CELL> grid;
 	void execstep (const char *var, const char *val, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp,
-		VARVAL &script_var, VARVAL &notify_var, std::set<CELL_COOR> &notify_ids, std::vector<VARVAL> &res);
-	std::string draw_board (const DOC_CONTEXT &ctx, unsigned vx, unsigned vy, 
+		VARVAL &script_var, VARVAL &notify_var, std::set<CELL_COOR> &notify_ids, std::vector<VARVAL> &res,
+		std::string &error, std::string &status);
+	std::string draw_board (const DOC_CONTEXT &ctx, CALC_PREF &pref, 
 		unsigned board_width, unsigned board_height, unsigned fontsize, unsigned docnum, bool editmode, std::string &script);
 	std::string define_functions(const DOC_CONTEXT &ctx, const CALC_PREF &pref, unsigned board_width, unsigned board_height);
 	std::string define_styles(const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp);
@@ -49,6 +114,15 @@ class CALC: public GAME{
 	void setfocus(VARVAL &var);
 	void update_cells(std::set<CELL_COOR> &cells, VARVAL &var);
 	void update_cellname(CALC_PREF &pref, VARVAL &var);
+	void update_celledit(CALC_PREF &pref, VARVAL &var);
+	void update_lines_cols(const CELL_COOR &old, const CELL_COOR &new_pos, VARVAL &var);
+	void update_onecell (CALC_PREF &pref, PARAM_STRING buf);
+	void reset_eval();
+	double evalformula(const std::vector<CALC_TOKEN> &steps, std::string &error);
+	void eval (std::set<CELL_COOR> &cells, std::string &error);
+	void walkrange(const CELL_COOR &from, const CELL_COOR &to, std::string &error, std::function<void(const CALC_CELL &)> f);
+	void evalfinal (CALC_CELL &cell, std::string &error);
+	void walkstack (std::stack<EVALELM> &st, std::string &error, std::function<void(double value)> f);
 public:
 	void save(DOC_WRITER &w, bool);
 	void load(DOC_READER &r, std::string &msg);

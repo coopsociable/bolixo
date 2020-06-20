@@ -27,6 +27,7 @@
 #include <deque>
 #include <set>
 #include <map>
+#include <stack>
 #include <algorithm>
 #include <tlmplib.h>
 #include "bolixo.h"
@@ -97,7 +98,9 @@ void CALC::load(DOC_READER &r, std::string &msg)
 	</f>
 	<f cells>
 		for (auto &c:cells){
-			glocal.grid[CELL_COOR(c.l,c.c)] = CALC_CELL(c.text);
+			auto &cc = glocal.grid[CELL_COOR(c.l,c.c)];
+			cc.text =  c.text;
+			cc.eval0();
 		}
 	</f>
 	<f chat>
@@ -107,6 +110,9 @@ void CALC::load(DOC_READER &r, std::string &msg)
 		tlmp_error ("Invalid record while reading whiteboard file: %s",msg);
 	</f>
 	</call>
+	set<CELL_COOR> ids;
+	string error;
+	eval(ids,error);
 }
 </mod>
 	
@@ -136,8 +142,7 @@ const unsigned TBL_FIXED_COLUMNS=26;
 <mod>
 string CALC::draw_board (
 	const DOC_CONTEXT &ctx,
-	unsigned vx,		// Viewbox specs
-	unsigned vy,
+	CALC_PREF &pref,
 	unsigned board_width,
 	unsigned board_height,
 	unsigned fontsize,
@@ -180,27 +185,38 @@ string CALC::draw_board (
 	// column names (letters)
 	glocal.val += "<tr><td>";
 	for (unsigned i=0; i<26; i++){
-		glocal.val += string_f("<td>&nbsp;%c&nbsp;",'A'+i);
+		const char *style = pref.cursor.col == i ? " style='background-color:lightblue;'" : "";
+		glocal.val += string_f("<td%s >&nbsp;%c&nbsp;",style,'A'+i);
 	}
 	for (unsigned line=0; line < TBL_FIXED_LINES; line++){
-		glocal.val += string_f("<tr><td>&nbsp;%d&nbsp;",line+1);
+		const char *style = pref.cursor.line == line ? " style='background-color:lightblue;'" : "";
+		glocal.val += string_f("<tr><td%s>&nbsp;%d&nbsp;",style,line+1);
 		for (unsigned col=0; col < TBL_FIXED_COLUMNS; col++){
 			auto c = grid.find(CELL_COOR(line,col));
-			const char *style="";
+			const char *bgcol = "white";
 			for (auto &p:prefs){
 				if (p.second.cursor.line == line && p.second.cursor.col == col){
 					if (p.first == ctx.session){
-						style="style='background-color:lightblue;'";
+						bgcol = "lightblue";
 					}else{
-						style="style='background-color:lightgray;'";
+						bgcol = "lightgray";
 					}
 					break;
 				}
 			}
 			if (c != grid.end()){
-				glocal.val += string_f("<td id='c%u,%u' %s>%s",line,col,style,c->second.text.c_str());
+				const char *color = c->second.getcolor();
+				const char *align = c->second.getalign();
+				if (strcmp(bgcol,"white")!=0 || strcmp(color,"black")!=0 || strcmp(align,"left")!=0){
+					glocal.val += string_f("<td style='background-color:%s;color:%s;text-align:%s;'>%s"
+						,bgcol,color,align,c->second.gettext().c_str());
+				}else{
+					glocal.val += string_f("<td>%s",c->second.gettext().c_str());
+				}
+			}else if (strcmp(bgcol,"white")!=0){
+				glocal.val += string_f("<td style='background-color:%s;'>",bgcol);
 			}else{
-				glocal.val += string_f("<td %s>",style);
+				glocal.val += "<td>";
 			}
 		}
 		glocal.val += "\n";
@@ -246,6 +262,14 @@ string CALC::define_functions(
 	val += "}\n";
 
 
+	// Check for enter on the edit field and transfer the content to the grid
+	val += "function calc_editpress(event){\n";
+	val += string_f("\tvar elm = document.getElementById('edit-%s');\n",gameid.c_str());
+	val += "if (elm != null){\n";
+	val += "\t\tgameaction(event,'edit:'+event.key+','+elm.value);\n";
+	val += "\t}\n";
+	val += "}\n";
+
 	// Select one cell using the mouse
 	// We walk all the TD in the table and report the one selected and the relative cursor position
 	val += "function calc_gameselect(gameid,docnum,event){\n";
@@ -288,6 +312,27 @@ void CALC::setfocus(VARVAL &script_var)
 	documentd_setfocus(script_var,string_f("text-%s",gameid.c_str()));
 }
 
+/*
+	Update the background color of the column and line, matching the new cursor position
+*/
+void CALC::update_lines_cols(const CELL_COOR &old, const CELL_COOR &new_pos, VARVAL &var)
+{
+	var.val += "calc_loop_board(function(e,calc){\n";
+	var.val += "\tvar tds=e.getElementsByTagName('td');\n";
+	if (old.line != new_pos.line){
+		var.val += string_f("\tvar td=tds[%u];\n",(old.line+1)*(TBL_FIXED_COLUMNS+1));
+		var.val += "\ttd.style.background='white';\n";
+		var.val += string_f("\tvar td=tds[%u];\n",(new_pos.line+1)*(TBL_FIXED_COLUMNS+1));
+		var.val += "\ttd.style.background='lightblue';\n";
+	}
+	if (old.col != new_pos.col){
+		var.val += string_f("\tvar td=tds[%u];\n",old.col+1);
+		var.val += "\ttd.style.background='white';\n";
+		var.val += string_f("\tvar td=tds[%u];\n",new_pos.col+1);
+		var.val += "\ttd.style.background='lightblue';\n";
+	}
+	var.val += "});\n";
+}
 void CALC::update_cells(set<CELL_COOR> &cells, VARVAL &var)
 {
 	if (cells.size() > 0){
@@ -296,8 +341,18 @@ void CALC::update_cells(set<CELL_COOR> &cells, VARVAL &var)
 		var.val += "calc_loop_board(function(e,calc){\n";
 		var.val += "\tvar tds=e.getElementsByTagName('td');\n";
 		for (auto &c:cells){
-			var.val += string_f("\tvar td=tds[%u];\n",(c.line+1)*27+c.col+1);
+			var.val += string_f("\tvar td=tds[%u];\n",(c.line+1)*(TBL_FIXED_COLUMNS+1)+c.col+1);
 			bool found = false;
+			auto g = grid.find(c);
+			if (g != grid.end()){
+				const char *color = g->second.getcolor();
+				const char *align = g->second.getalign();
+				var.val += string_f("\ttd.innerHTML='%s';\n",g->second.gettext().c_str());
+				var.val += string_f("\ttd.style.color='%s';\n",color);
+				var.val += string_f("\ttd.style.textAlign='%s';\n",align);
+			}else{
+				var.val += "\ttd.innerHTML='';\n";
+			}
 			for (auto &p:prefs){
 				if (p.second.cursor == c){
 					var.val += string_f("\tset_td_bg(td,'%s');\n",p.first.c_str());
@@ -320,7 +375,37 @@ void CALC::update_cellname(CALC_PREF &pref, VARVAL &var)
 	var.val += string_f("\telm.innerHTML='%s';\n",pref.cursor.tostring().c_str());
 	var.val += "}\n";
 }
+/*
+	Change the content of the edit field.
+*/
+void CALC::update_celledit(CALC_PREF &pref, VARVAL &var)
+{
+	var.val += string_f("var elm = document.getElementById('edit-%s');\n",gameid.c_str());
+	var.val += "if (elm != null){\n";
+	const char *celltext = "";
+	auto c = grid.find(pref.cursor);
+	if (c != grid.end()) celltext = c->second.text.c_str();
+	var.val += string_f("\telm.value='%s';\n",celltext);
+	var.val += "}\n";
+}
 
+/*
+	Update the content of one cell. If the content is empty, the cell is removed from the grid map.
+*/
+void CALC::update_onecell (CALC_PREF &pref, PARAM_STRING buf)
+{
+	if (buf.ptr[0] != '\0'){
+		auto &c = grid[pref.cursor];
+		c.text = buf.ptr;
+		c.state = CELL_STATE_UNKNOWN;
+		c.eval0();
+	}else{
+		auto g = grid.find(pref.cursor);
+		if (g != grid.end()){
+			grid.erase(g);
+		}
+	}
+}
 <mod>
 void CALC::execstep (
 	const char *var,
@@ -330,7 +415,9 @@ void CALC::execstep (
 	VARVAL &script_var,
 	VARVAL &notify_var,
 	set<CELL_COOR> &notify_ids,
-	std::vector<VARVAL> &res)
+	std::vector<VARVAL> &res,
+	string &error,
+	string &status)
 {
 	auto &pref = prefs[ctx.session];
 	unsigned waiting_users_width = sp.mobile ? 62 : 42;
@@ -338,7 +425,7 @@ void CALC::execstep (
 	const unsigned scroll_thick = sp.mobile ? 12 : 6;
 	board_width -= scroll_thick;
 	unsigned board_height = sp.content_height-scroll_thick;
-	string error,status,api_error;
+	string api_error;
 	setactivity();
 	string tmpvar,tmpval;
 	if (strcmp(var,"kbd")==0){
@@ -381,7 +468,11 @@ void CALC::execstep (
 				v.val += "<div style='flex:0 0 auto; margin-bottom:5;'>\n";
 				v.val += string_f("<span id='page-%s'>page 1</span>\n",gameid.c_str());
 				v.val += string_f("<span id='cell-%s'>%s</span>\n",gameid.c_str(),pref.cursor.tostring().c_str());
-				v.val += string_f("<input type=text id='edit-%s' style='width:400;'/>\n",gameid.c_str());
+				const char *content = "";
+				auto g = grid.find(pref.cursor);
+				if (g != grid.end()) content = g->second.text.c_str();
+				v.val += string_f("<input type=text id='edit-%s' style='width:400;' onkeyup='calc_editpress(event);' value='%s'/>\n"
+					,gameid.c_str(),documentd_escape(content).c_str());
 
 				v.val += "</div>\n";
 			}else{
@@ -396,7 +487,7 @@ void CALC::execstep (
 				" onkeydown='calc_gamepress(event);return false;'"
 				" tabindex=0 >\n",gameid.c_str(),board_width,board_height);
 			string script;
-			v.val += draw_board(ctx,pref.offset_x,pref.offset_y,board_width,board_height,sp.fontsize,ctx.docnum,true,script);
+			v.val += draw_board(ctx,pref,board_width,board_height,sp.fontsize,ctx.docnum,true,script);
 			if (script.size() > 0){
 				v.val += "<script>\n";
 				v.val += script;
@@ -451,9 +542,30 @@ void CALC::execstep (
 		res.emplace_back(var);
 	}else if (ctx.maywrite){
 		auto old_cursor = pref.cursor;
-		if (strcmp(var,"deletechar")==0){
-		}else if (strcmp(var,"vmove")==0){
-			int move = atoi(val);
+		if (is_any_of(var,"deletechar","backspace","insertchar")){
+			string buf;
+			auto c = grid.find(pref.cursor);
+			bool filled_cell = c != grid.end();
+			if (filled_cell){
+				buf = c->second.text;
+			}
+			if (strcmp(var,"deletechar")==0){
+				buf.clear();
+			}else if (strcmp(var,"backspace")==0){
+				if (buf.size() > 0) buf.resize(buf.size()-1);
+			}else{
+				buf += val;
+			}
+			update_onecell (pref,buf);
+			update_celledit (pref,script_var);
+			notify_ids.insert(pref.cursor);
+		}else if (is_any_of(var,"vmove","break")){
+			int move;
+			if (strcmp(var,"break")==0){
+				move = 1;
+			}else{
+				move = atoi(val);
+			}
 			if (move > 0){
 				pref.cursor.line += move;
 			}else if (-move <= pref.cursor.line){
@@ -466,7 +578,6 @@ void CALC::execstep (
 			}else if (-move <= pref.cursor.col){
 				pref.cursor.col += move;
 			}
-		}else if (is_any_of(var,"backspace","insertchar","break")){
 		}else if (strcmp(var,"select")==0){
 			auto tb = str_splitline(val,',');
 			if (tb.size() == 6){
@@ -507,6 +618,20 @@ void CALC::execstep (
 				tlmp_error ("calc newgame=%d",uval);
 			}
 			setfocus(script_var);
+		}else if (strcmp(var,"edit")==0){
+			const char *pt = strchr(val,',');
+			if (pt != nullptr){
+				// we only care about the key transfered if it is a Enter, so we change cell
+				string key = string(val,pt-val);
+				pt++;
+				update_onecell(pref,pt);
+				notify_ids.insert (pref.cursor);
+				if (key=="Enter"){
+					pref.cursor.line++;
+					notify_ids.insert (pref.cursor);
+					setfocus(script_var);
+				}
+			}
 		// The other actions are Used to script modification of the document
 		}else if (strcmp(var,"resetgame")==0){
 			resetgame();
@@ -525,6 +650,8 @@ void CALC::execstep (
 			notify_ids.insert(old_cursor);
 			notify_ids.insert(pref.cursor);
 			update_cellname (pref,script_var);
+			update_celledit (pref,script_var);
+			update_lines_cols (old_cursor,pref.cursor,script_var);
 		}
 	}else{
 		error = MSG_R(E_READONLY);
@@ -534,13 +661,6 @@ void CALC::execstep (
 		var.var = VAR_ERROR;
 		var.val = move(api_error);
 		res.emplace_back(move(var));
-	}
-	if (error.size() > 0){
-		update_msg(false,error,"red",res);
-	}else if (status.size() > 0){
-		update_msg(true,status,"red",res);
-	}else{
-		update_msg(false,"&nbsp;","white",res);
 	}
 }
 </mod>
@@ -558,8 +678,20 @@ void CALC::manyexec (
 	notify_var.var = VAR_NOTIFY;
 	notify_var.val = cur_whi;
 	set<CELL_COOR> notify_ids;	// Lines to update using SCRIPT
+	string error,status;
 	for (auto &v:steps){
-		execstep (v.var,v.val,ctx,sp,script_var,notify_var,notify_ids,res);
+		execstep (v.var,v.val,ctx,sp,script_var,notify_var,notify_ids,res,error,status);
+	}
+	if (error.size() == 0){
+		reset_eval();
+		eval (notify_ids,error);
+	}
+	if (error.size() > 0){
+		update_msg(false,error,"red",res);
+	}else if (status.size() > 0){
+		update_msg(true,status,"red",res);
+	}else{
+		update_msg(false,"&nbsp;","white",res);
 	}
 	update_cells(notify_ids,notify_var);
 	if (notify_var.val != cur_whi) res.emplace_back(move(notify_var));

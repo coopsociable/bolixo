@@ -1,0 +1,539 @@
+/*
+	This file is part of Bolixo.
+
+	Bolixo is free software: you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation, either version 3 of the License, or
+	(at your option) any later version.
+
+	Bolixo is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+	GNU General Public License for more details.
+
+	You should have received a copy of the GNU General Public License
+	along with Bolixo.  If not, see <https://www.gnu.org/licenses/>.
+*/
+/*
+	calc is a spreadsheet program.
+	This file provide the evaluation engine
+*/
+#include <string.h>
+#include <stdio.h>
+#include <trlitool.h>
+#include <string>
+#include <stdlib.h>
+#include <ctype.h>
+#include <math.h>
+#include <vector>
+#include <stack>
+#include <set>
+#include <map>
+#include <algorithm>
+#include <tlmplib.h>
+#include "bolixo.h"
+#include "proto/bod_client.protodef"
+#include "documentd.h"
+#include "doc_calc.h"
+#include "helper.h"
+
+using namespace std;
+
+
+struct CALC_PARSER{
+	const char *line;
+	const char *pos;
+	bool error = false;
+	vector<CALC_TOKEN> steps;
+	CALC_PARSER (const char *_line) : line(_line),pos(_line){}
+	CALC_TOKEN gettoken();
+	CALC_TOKEN evalpar();
+	CALC_TOKEN evalmult();
+	CALC_TOKEN evalplus();
+	CALC_TOKEN evalexpr();
+	void seterror (CALC_TOKEN &tok);
+	void popstep();
+	void swapsteps(unsigned pos);
+};
+
+void CALC_PARSER::popstep()
+{
+	steps.resize(steps.size()-1);
+}
+
+void CALC_PARSER::swapsteps(unsigned pos)
+{
+	auto tok = steps[pos];
+	steps.erase (steps.begin()+pos);
+	unsigned last = steps.size()-1;
+	steps.insert(steps.begin()+last,tok);
+}
+
+CALC_TOKEN CALC_PARSER::gettoken()
+{
+	static map<char,CALC_TOK> onecar{
+		{'+',TOK_PLUS},
+		{'-',TOK_MINUS},
+		{'*',TOK_MULT},
+		{'/',TOK_DIV},
+		{'%',TOK_MODULO},
+		{'(',TOK_OPNPAR},
+		{')',TOK_CLSPAR},
+		{',',TOK_COMMA},
+		{':',TOK_COLON},
+		{';',TOK_SEMICOL},
+		{'=',TOK_EQUAL},
+		{'<',TOK_SMALLER},
+		{'>',TOK_GREATER},
+	};
+	static map<string,CALC_OPER> functions{
+		{"sum",CALC_FUNC_SUM},
+		{"avg",CALC_FUNC_AVG},
+		{"max",CALC_FUNC_MAX},
+		{"min",CALC_FUNC_MIN},
+	};
+	CALC_TOKEN ret;
+	pos = str_skip(pos);
+	if (error){
+		ret.token = TOK_ERROR;
+	}else if (*pos == '\0'){
+		ret.token = TOK_EOL;
+	}else{
+		auto p = onecar.find(*pos);
+		if (p != onecar.end()){
+			ret.token = p->second;
+			if (is_any_of(ret.token,TOK_SMALLER,TOK_GREATER) && pos[1] == '='){
+				if (ret.token == TOK_SMALLER){
+					ret.token = TOK_SMALLEREQ;
+				}else{
+					ret.token = TOK_GREATEREQ;
+				}
+				ret.text = string(pos,2);
+				pos++;
+			}else{
+				ret.text = *pos;
+			}
+			pos++;
+		}else if (isalpha(*pos)){
+			const char *start = pos;
+			unsigned col = 0;
+			while (isalpha(*pos)){
+				col = col *26 + toupper(*pos)- 'A';
+				pos++;
+			}
+			if (isdigit(*pos)){
+				const char *startdig = pos;
+				while (isdigit(*pos)) pos++;
+				ret.token = TOK_CELL;
+				ret.text = string(start,pos-start);
+				ret.coor.line = atoi(startdig)-1;
+				ret.coor.col = col;
+			}else{
+				ret.text = string(start,pos-start);
+				auto f = functions.find(ret.text);
+				if (f != functions.end()){
+					ret.token = TOK_FUNCTION;
+					ret.oper = f->second;
+				}else{
+					ret.token = TOK_KEYWORD;
+				}
+			}
+		}else if (isdigit(*pos) || *pos == '.'){
+			const char *start = pos;
+			while (isdigit(*pos)) pos++;
+			if (*pos == '.') pos++;
+			while (isdigit(*pos)) pos++;
+			ret.token = TOK_NUMBER;
+			ret.text = string(start,pos-start);
+		}
+	}
+	steps.push_back(ret);
+	return ret;
+}
+
+void CALC_PARSER::seterror (CALC_TOKEN &tok)
+{
+	error = true;
+	tok.token = TOK_ERROR;
+}
+CALC_TOKEN CALC_PARSER::evalpar()
+{
+	CALC_TOKEN ret = gettoken();
+	if (ret.token == TOK_OPNPAR){
+		popstep();
+		ret = evalexpr();
+		if (ret.token == TOK_CLSPAR){
+			popstep();
+			ret = gettoken();
+		}else{
+			seterror(ret);
+		}
+	}else if (ret.token == TOK_FUNCTION){
+		unsigned oper_pos = steps.size()-1;
+		ret = gettoken();
+		if (ret.token == TOK_OPNPAR){
+			ret = evalexpr();
+			while (ret.token == TOK_SEMICOL){
+				ret = evalexpr();
+			}
+			if (ret.token == TOK_CLSPAR){
+				popstep();
+				ret = gettoken();
+				swapsteps(oper_pos);
+			}else{
+				seterror (ret);
+			}	
+		}else{
+			seterror (ret);
+		}
+	}else if (ret.token == TOK_CELL){
+		ret = gettoken();
+		if (ret.token == TOK_COLON){
+			unsigned oper_pos = steps.size()-1;
+			ret = gettoken();
+			if (ret.token == TOK_CELL){
+printf ("steps.size=%lu oper_pos=%u\n",steps.size(),oper_pos);
+				ret = gettoken();
+				swapsteps(oper_pos);
+			}else{
+				seterror(ret);
+			}
+		}
+	}else if (ret.token == TOK_NUMBER){
+		ret = gettoken();
+	}else{
+		seterror(ret);
+	}
+	return ret;
+}
+CALC_TOKEN CALC_PARSER::evalmult()
+{
+	CALC_TOKEN ret = evalpar();
+	while (is_any_of(ret.token,TOK_MULT,TOK_DIV,TOK_MODULO)){
+		unsigned oper_pos = steps.size()-1;
+		ret = evalpar();
+		swapsteps(oper_pos);
+	}
+	return ret;
+}
+CALC_TOKEN CALC_PARSER::evalplus()
+{
+	CALC_TOKEN ret = evalmult();
+	while (is_any_of(ret.token,TOK_PLUS,TOK_MINUS)){
+		unsigned oper_pos = steps.size()-1;
+		ret = evalmult();
+		swapsteps(oper_pos);
+	}
+	return ret;
+}
+CALC_TOKEN CALC_PARSER::evalexpr()
+{
+	CALC_TOKEN ret = evalplus();
+	return ret;
+}
+
+static bool is_number(PARAM_STRING s)
+{
+	const char *pt = s.ptr;
+	if (*pt == '-' || *pt == '+'){
+		pt++;
+	}
+	while (isdigit(*pt)) pt++;
+	if (*pt == '.' || *pt == ',') pt++;
+	while (isdigit(*pt)) pt++;
+	return *pt == '\0';
+}
+
+/*
+	We parse the content of the cell and set its state.
+	If it is a formula, we set the state to CELL_STATE_FORMULA. CALC::eval() will do the final evaluation.
+*/
+void CALC_CELL::eval0()
+{
+	steps.clear();
+	value = 0;
+	if (is_number(text)){
+		state = CELL_STATE_NUM;
+		value = atof(text.c_str());
+	}else if (text[0] == '='){
+		CALC_PARSER parser(text.c_str()+1);
+		CALC_TOKEN tok = parser.evalexpr();
+		if (tok.token == TOK_EOL){
+			state = CELL_STATE_FORMULA;
+			steps = move(parser.steps);
+		}else{
+			state = CELL_STATE_FORMULAERR;
+		}
+	}else{
+		state = CELL_STATE_TEXT;
+	}
+}
+void CALC::evalfinal (CALC_CELL &cell, string &error)
+{
+	if (cell.state == CELL_STATE_FORMULA){
+		cell.state = CELL_STATE_COMPUTING;
+		cell.value = evalformula(cell.steps,error);
+		if(error.size()==0) cell.state = CELL_STATE_EVALED;
+	}else if (cell.state == CELL_STATE_COMPUTING){
+		// Evaluation loop. The cell currently being evaluated needs this cell
+		// currently also being evaluated. This must be signal to the user.
+		error = "Evaluation loop";
+	}else if (cell.state == CELL_STATE_FORMULAERR){
+		error = "Cell with a formula synta error";
+	}
+}
+
+string CALC_CELL::gettext() const 
+{
+	if (state == CELL_STATE_TEXT){
+		return text;
+	}else if (state == CELL_STATE_NUM){
+		return string_f("%.2lf",value);
+	}else if (state == CELL_STATE_EVALED){
+		return string_f("%.2lf",value);
+	}else{
+		return text;
+	}
+}
+const char *CALC_CELL::getalign() const 
+{
+	const char *ret = "left";
+	if (is_any_of(state,CELL_STATE_NUM,CELL_STATE_EVALED)){
+		ret = "right";
+	}
+	return ret;
+}
+const char *CALC_CELL::getcolor() const 
+{
+	const char *ret = "black";
+	if (state == CELL_STATE_COMPUTING){
+		ret = "blue";
+	}else if (state == CELL_STATE_FORMULAERR){
+		ret = "red";
+	}
+	return ret;
+}
+
+void CALC::reset_eval()
+{
+	for (auto &g:grid){
+		if (is_any_of(g.second.state,CELL_STATE_COMPUTING,CELL_STATE_EVALED)) g.second.state = CELL_STATE_FORMULA;
+	}
+}
+
+/*
+	Walk a range and call a function for each cell. Make sure the cell is evaluated.
+	If the cell has no content, the function is called with an empty cell.
+*/
+void CALC::walkrange(const CELL_COOR &from, const CELL_COOR &to, string &error, std::function<void(const CALC_CELL &)> f)
+{
+tlmp_warning ("walkrange from=%u,%u to=%u,%u",from.line,from.col,to.line,to.col);
+	CALC_CELL empty;
+	for (unsigned line = from.line; line <= to.line; line++){
+		for (unsigned col=from.col; col <= to.col; col++){
+tlmp_warning ("walkrange line=%u col=%u",line,col);
+			CELL_COOR cell(line,col);
+			auto g = grid.find(cell);
+			if (g != grid.end()){
+				evalfinal(g->second,error);
+				f(g->second);
+			}else{
+				f(empty);
+			}
+		}
+	}
+}
+/*
+	Walk the evaluation stack processing all values the same. This is valid for function such as sum, min, max.
+	Some function such as sumifs can't use this.
+*/
+void CALC::walkstack (stack<EVALELM> &st, string &error, std::function<void(double value)> f)
+{
+	while (st.size() > 0){
+		auto &v = st.top();
+		if (v.type == EVAL_BEGIN){
+			st.pop();
+			break;
+		}else if (v.type == EVAL_VAL){
+			f(v.val);
+			st.pop();
+		}else if (v.type == EVAL_RANGE){
+			st.pop();
+			CELL_COOR to = st.top().coor;
+			st.pop();
+			CELL_COOR from = st.top().coor;
+			st.pop();
+			walkrange(from,to,error,[f](auto &cell){
+				f(cell.value);
+			});
+		}
+	}
+}
+double CALC::evalformula (const vector<CALC_TOKEN> &steps, string &error)
+{
+	stack<EVALELM> st;
+	for (auto &s:steps){
+		if (s.token == TOK_NUMBER){
+			st.emplace(EVAL_VAL,atof(s.text.c_str()));
+		}else if (s.token == TOK_CELL){
+			double val = 0;
+			auto g = grid.find(s.coor);
+			if (g != grid.end()){
+				evalfinal(g->second,error);
+				val = g->second.value;
+			}
+			st.emplace(EVAL_VAL,val,s.coor);
+		}else if (is_any_of(s.token,TOK_PLUS,TOK_MINUS,TOK_MULT,TOK_DIV,TOK_MODULO)){
+			double v2 = st.top().val;
+			st.pop();
+			double v1 = st.top().val;
+			st.pop();
+			switch(s.token){
+			case TOK_PLUS:
+				st.emplace (EVAL_VAL,v1+v2);
+				break;
+			case TOK_MINUS:
+				st.emplace (EVAL_VAL,v1-v2);
+				break;
+			case TOK_MULT:
+				st.emplace (EVAL_VAL,v1*v2);
+				break;
+			case TOK_DIV:
+				st.emplace (EVAL_VAL,v1/v2);
+				break;
+			case TOK_MODULO:
+				break;
+			default:
+				// Not possible
+				break;
+			}
+		}else if (s.token == TOK_FUNCTION){
+			double total = 0;
+			if (s.oper == CALC_FUNC_SUM){
+				walkstack(st,error,[&total](auto val){total += val;});
+			}else if (s.oper == CALC_FUNC_MIN){
+				total = 1e100;
+				walkstack(st,error,[&total](auto val){if (val < total) total = val;});
+			}else if (s.oper == CALC_FUNC_MAX){
+				total = -1e100;
+				walkstack(st,error,[&total](auto val){if (val > total) total = val;});
+			}else if (s.oper == CALC_FUNC_AVG){
+				unsigned nb = 0;
+				walkstack(st,error,[&nb,&total](auto val){nb++;total += val;});
+				if (nb > 0) total /= nb;
+			}
+			st.emplace(EVAL_VAL,total);
+		}else if (s.token == TOK_COLON){
+			st.emplace (EVAL_RANGE,0);
+		}else if (s.token == TOK_OPNPAR){
+			st.emplace (EVAL_BEGIN,0);
+		}
+		if (error.size() > 0) break;
+	}
+	tlmp_warning ("st.size=%lu st.top.val=%lf error=%s",st.size(),st.top().val,error.c_str());
+	return st.top().val;
+}
+void CALC::eval(set<CELL_COOR> &ids, string &error)
+{
+	for (auto &g:grid){
+		if (g.second.state == CELL_STATE_FORMULA){
+			ids.insert (g.first);
+			g.second.state = CELL_STATE_COMPUTING;
+			g.second.value = evalformula(g.second.steps,error);
+			if (error.size() > 0) break;
+			g.second.state = CELL_STATE_EVALED;
+		}
+	}	
+}
+
+static void calc_exec (const vector<CALC_TOKEN> &steps)
+{
+	stack<EVALELM> st;
+	for (auto &s:steps){
+		if (s.token == TOK_NUMBER){
+			st.emplace(EVAL_VAL,atof(s.text.c_str()));
+		}else if (is_any_of(s.token,TOK_PLUS,TOK_MINUS,TOK_MULT,TOK_DIV,TOK_MODULO)){
+			double v2 = st.top().val;
+			st.pop();
+			double v1 = st.top().val;
+			st.pop();
+			switch(s.token){
+			case TOK_PLUS:
+				st.emplace (EVAL_VAL,v1+v2);
+				break;
+			case TOK_MINUS:
+				st.emplace (EVAL_VAL,v1-v2);
+				break;
+			case TOK_MULT:
+				st.emplace (EVAL_VAL,v1*v2);
+				break;
+			case TOK_DIV:
+				st.emplace (EVAL_VAL,v1/v2);
+				break;
+			case TOK_MODULO:
+				break;
+			default:
+				// Not possible
+				break;
+			}
+		}else if (s.token == TOK_CELL){
+			printf ("push coor=%u,%u\n",s.coor.line,s.coor.col);
+			st.emplace(EVAL_VAL,99,s.coor);
+		}else if (s.token == TOK_FUNCTION){
+			if (s.text == "sum"){
+				double total = 0;
+				while (st.size() > 0){
+					auto &v = st.top();
+					if (v.type == EVAL_BEGIN){
+						st.pop();
+						break;
+					}else if (v.type == EVAL_VAL){
+						total += v.val;
+						st.pop();
+					}else if (v.type == EVAL_RANGE){
+						st.pop();
+						st.pop();
+						st.pop();
+						total += 1000;
+					}
+				}
+				st.emplace(EVAL_VAL,total);
+			}
+		}else if (s.token == TOK_COLON){
+			st.emplace (EVAL_RANGE,0);
+		}else if (s.token == TOK_OPNPAR){
+			st.emplace (EVAL_BEGIN,0);
+		}
+	}
+	printf ("st.size=%lu\n",st.size());
+	while (st.size() > 0){
+		auto v = st.top();
+		printf ("\t%d %lf    %u %u\n",v.type,v.val,v.coor.line,v.coor.col);
+		st.pop();
+	}
+}
+
+/*
+	Function for automated tests
+*/
+void calc_eval (const char *s)
+{
+	CALC_PARSER parser(s);
+	CALC_TOKEN tok = parser.evalexpr();
+	if (parser.error){
+		int off = parser.pos - parser.line;
+		printf ("error: %s\n",s);
+		printf ("       %*s\n",off,"^");
+	}else if (tok.token != TOK_EOL){
+		printf ("incomplete: tok=%d\n   %s\n",tok.token,s);
+		int off = parser.pos - parser.line;
+		printf ("   %*s\n",off,"^");
+	}else{
+		printf ("ok: %s\n",s);
+		calc_exec (parser.steps);
+	}
+	printf ("steps:\n");
+	for (auto &s:parser.steps){
+		printf ("\t%s\n",s.text.c_str());
+	}
+}

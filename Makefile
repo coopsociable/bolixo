@@ -277,7 +277,7 @@ proto/bolixoapi.protoh: proto/bolixoapi.proto proto/bolixod_client.protoh
 		--connect_info_obj CONNECT_HTTP_INFO --name bolixoapi \
 		--protoch proto/bolixoapi.protoch proto/bolixoapi.proto >proto/bolixoapi.protoh
 
-DOCGAMES=doc_tictacto.o doc_sudoku.o doc_wordproc.o doc_checkers.o doc_chess.o doc_whiteboard.o doc_calc.o
+DOCGAMES=doc_tictacto.o doc_sudoku.o doc_wordproc.o doc_checkers.o doc_chess.o doc_whiteboard.o doc_calc.o doc_calc_eval.o
 documentd: documentd.o documentd_menu.o _dict.o fs_makeid.o ${DOCGAMES}
 	cctlcc -Wall $(OPTIONS) documentd.o documentd_menu.o fs_makeid.o ${DOCGAMES} _dict.o -o documentd $(LIBS) -lfreetype -lm
 
@@ -298,6 +298,9 @@ doc_whiteboard.o: doc_whiteboard.tlcc documentd.h documentd_menu.h proto/documen
 
 doc_calc.o: doc_calc.tlcc doc_calc.h documentd.h documentd_menu.h proto/documentd_calc.protoh
 	cctlcc -Wall $(OPTIONS) -c doc_calc.tlcc -o doc_calc.o
+
+doc_calc_eval.o: doc_calc_eval.tlcc doc_calc.h documentd.h
+	cctlcc -Wall $(OPTIONS) -c doc_calc_eval.tlcc -o doc_calc_eval.o
 
 documentd_menu.o: documentd_menu.tlcc documentd_menu.h
 	cctlcc -Wall $(OPTIONS) -c documentd_menu.tlcc -o documentd_menu.o
