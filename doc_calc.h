@@ -15,6 +15,7 @@ enum CALC_TOK{
 	TOK_COLON,
 	TOK_SEMICOL,
 	TOK_EQUAL,
+	TOK_NOTEQUAL,
 	TOK_STRING,
 	TOK_SMALLER,
 	TOK_SMALLEREQ,
@@ -22,6 +23,7 @@ enum CALC_TOK{
 	TOK_GREATEREQ,
 	TOK_KEYWORD,
 	TOK_FUNCTION,
+	TOK_IF,
 	TOK_ERROR,
 	TOK_EOL,
 };
@@ -123,6 +125,7 @@ class CALC: public GAME{
 	void walkrange(const CELL_COOR &from, const CELL_COOR &to, std::string &error, std::function<void(const CALC_CELL &)> f);
 	void evalfinal (CALC_CELL &cell, std::string &error);
 	void walkstack (std::stack<EVALELM> &st, std::string &error, std::function<void(double value)> f);
+	void dump() const;
 public:
 	void save(DOC_WRITER &w, bool);
 	void load(DOC_READER &r, std::string &msg);
@@ -132,6 +135,7 @@ public:
 	void testwin(std::vector<VARVAL> &res);
 	void exec (const char *var, const char *val, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
 	void manyexec (const std::vector<VARVAL_receive> &steps, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
+	friend void calc_eval(int argc, char *argv[]);
 };
 
 #endif
