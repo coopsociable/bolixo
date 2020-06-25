@@ -141,7 +141,6 @@ struct HANDLE_INFO: public ARRAY_OBJ{
 #define bod_client_info_write_NOTNEED
 #define bod_client_waitevent_ASYNC
 #define bod_client_list_members_NOTNEED
-#define bod_client_playstep_more_NOTNEED
 
 #include "proto/bod_client.protoch"
 /*
@@ -182,8 +181,9 @@ struct WORKER_RESULT{
 static void bo_websocket_send (_F_TCPSERVER_V1 *c, int fd, unsigned opcode, PARAM_STRING msg)
 {
 	size_t lenmsg = strlen(msg.ptr);
-	size_t lenframe = 2+2+lenmsg;
-	char buf[lenframe];
+	size_t max_lenframe = 2+8+lenmsg;
+	size_t lenframe = 0;
+	char buf[max_lenframe];
 	buf[0] = 128+opcode;
 	char *ptbuf=buf+2;
 	if (lenmsg <= 125){
@@ -195,9 +195,20 @@ static void bo_websocket_send (_F_TCPSERVER_V1 *c, int fd, unsigned opcode, PARA
 		buf[2] = (lenmsg >> 8) &0xff;
 		buf[3] = lenmsg & 0xff;
 		ptbuf = buf+4;
+		lenframe = 2 + 2 + lenmsg;
 	}else{
-		tlmp_error ("bo_websocket_send lenmsg=%lu not supported",lenmsg);
-		return;
+		// Len is encoded using 64 bits
+		buf[1] = 127;
+		buf[2] = (lenmsg >> 56) &0xff;
+		buf[3] = (lenmsg >> 48) &0xff;
+		buf[4] = (lenmsg >> 40) &0xff;
+		buf[5] = (lenmsg >> 32) &0xff;
+		buf[6] = (lenmsg >> 24) &0xff;
+		buf[7] = (lenmsg >> 16) &0xff;
+		buf[8] = (lenmsg >> 8) &0xff;
+		buf[9] = lenmsg & 0xff;
+		ptbuf = buf+10;
+		lenframe = 2 + 8 + lenmsg;
 	}
 	memcpy (ptbuf,msg.ptr,lenmsg);
 	c->sendto (fd,buf,lenframe);
@@ -763,19 +774,46 @@ static void bo_websocket_game (int fd, int waitfd, CONNECT_INFO &con_bod, CONNEC
 // TODO
 unsigned docnum = 0;
 			glocal gameid;
+			glocal session;
+			glocal con_bod;
 			<call bod_client_playstep>(con_bod,session,"",gameid,docnum,steps,sp);
 			<f ok>
 				if (success){
-					if (more) tlmp_error ("playstep_more not supported: gameid=%s",glocal.gameid);
-					for (auto &r:res){
-						if (is_any_of(r.var,VAR_NOTIFY,VAR_SCRIPT)){
-							glocal.bo_websocket.send (r.val);
-						}else if (strcmp(r.var,VAR_REFRESH)==0){
-							glocal.bo_websocket.send ("callrefresh();");
-						}else if (strcmp(r.var,VAR_DIALOG)==0){
-							glocal.bo_websocket.send (string_f("calldialog(\"%s\");",r.val));
+					glocal string script;
+					glocal string notify;
+					glocal bool more = more;
+					glocal function<void(const vector<VARVAL_receive>&res)> fres;
+					glocal.fres = [&](const vector<VARVAL_receive> &res){
+						for (auto &r:res){
+							if (strcmp(r.var,VAR_NOTIFY)==0){
+								glocal.notify += r.val;
+							}else if (strcmp(r.var,VAR_SCRIPT)==0){
+								glocal.script += r.val;
+							}else if (strcmp(r.var,VAR_REFRESH)==0){
+								glocal.bo_websocket.send ("callrefresh();");
+							}else if (strcmp(r.var,VAR_DIALOG)==0){
+								glocal.bo_websocket.send (string_f("calldialog(\"%s\");",r.val));
+							}
 						}
+					};
+					glocal.fres(res);
+					while (glocal.more){
+tlmp_warning ("glocal.more=%d",glocal.more);
+						glocal.more = false;
+						<call bod_client_playstep_more>(glocal.con_bod,glocal.session,"",glocal.gameid,handle);
+						<f ok>
+							if (!success){
+								tlmp_error ("playstep_more msg=%s",msg);
+							}else{
+								glocal.more = more;
+								glocal.fres(res);
+							}
+						</f>
+						</call>
 					}
+					if (glocal.notify.size() > 0) glocal.bo_websocket.send (glocal.notify);
+					if (glocal.script.size() > 0) glocal.bo_websocket.send (glocal.script);
+
 				}else{
 					tlmp_warning ("success false");
 				}
