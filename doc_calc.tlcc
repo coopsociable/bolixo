@@ -80,6 +80,27 @@ void CALC::save(DOC_WRITER &w, bool)
 		cells.emplace_back(move(c));
 	}
 	documentd_calc_cells(&w,cells);
+	vector<COLFORMAT> formats;
+	for (auto &f:col_formats){
+		COLFORMAT cf;
+		cf.col = f.first;
+		cf.width = f.second.width;
+		cf.precision = f.second.precision;
+		cf.align = f.second.align;
+		formats.push_back(cf);
+	}
+	documentd_calc_col_formats(&w,formats);
+	vector<CALCPREF> sprefs;
+	for (auto &p:prefs){
+		CALCPREF s;
+		s.session = p.first;
+		s.curline = p.second.cursor.line;
+		s.curcol  = p.second.cursor.col;
+		s.offline = p.second.offset_line;
+		s.offcol  = p.second.offset_col;
+		sprefs.emplace_back(s);
+	}
+	documentd_calc_prefs(&w,sprefs);
 	vector<CALC_CHAT> schat;
 	documentd_copychat (schat,chat);
 	documentd_calc_chat(&w,schat);
@@ -90,7 +111,10 @@ void CALC::load(DOC_READER &r, std::string &msg)
 	resetgame();
 	glocal revision;
 	glocal grid;
+	glocal col_formats;
 	glocal chat;
+	glocal prefs;
+	prefs.clear();
 	chat.clear();
 	<call documentd_calc>(&r);
 	<f header>
@@ -101,6 +125,23 @@ void CALC::load(DOC_READER &r, std::string &msg)
 			auto &cc = glocal.grid[CELL_COOR(c.l,c.c)];
 			cc.text =  c.text;
 			cc.eval0();
+		}
+	</f>
+	<f col_formats>
+		for (auto &f:formats){
+			auto &lf = glocal.col_formats[f.col];
+			lf.width = f.width;
+			lf.precision = f.precision;
+			lf.align = f.align;
+		}
+	</f>
+	<f prefs>
+		for (auto &p:prefs){
+			auto &pp = glocal.prefs[p.session];
+			pp.cursor.line = p.curline;
+			pp.cursor.col  = p.curcol;
+			pp.offset_line = p.offline;
+			pp.offset_col  = p.offcol;
 		}
 	</f>
 	<f chat>
@@ -119,6 +160,7 @@ void CALC::load(DOC_READER &r, std::string &msg)
 void CALC::resetgame()
 {
 	grid.clear();
+	col_formats.clear();
 }
 const char *CALC::getclass() const
 {
@@ -139,6 +181,7 @@ void CALC::exec (
 }
 const unsigned TBL_FIXED_LINES=40;
 const unsigned TBL_FIXED_COLUMNS=26;
+const unsigned DEFAULT_COL_WIDTH=100;
 <mod>
 string CALC::draw_board (
 	const DOC_CONTEXT &ctx,
@@ -158,7 +201,7 @@ string CALC::draw_board (
 	// Generate JS objects
 	script += string_f(
 		"var calc_%u={\n"
-		"\tgameid:'%s',docnum:%u"
+		"\tgameid:'%s',docnum:%u,offline:%u,offcol:%u"
 		"};\n"
 		"calc_%u.gameselect=function(event){\n"
 		"\tcalc_gameselect(this.gameid,this.docnum,event);\n"
@@ -167,9 +210,37 @@ string CALC::draw_board (
 		"\tcalc_gamemove(this.gameid,this.docnum,event);\n"
 		"};\n"
 		,docnum
-		,gameid.c_str(),docnum
+		,gameid.c_str(),docnum,pref.offset_line,pref.offset_col
 		,docnum
 		,docnum);
+	// This function helps update a cell. We pass an absolute cell coordinate and function f is called (or not)
+	// with the proper td object.
+	script += string_f("calc_%u.selcell=function(tds,absline,abscol,f){\n",docnum);
+	script += "\tvar line = absline-this.offline;\n"
+		"\tvar col = abscol-this.offcol;\n";
+	script += string_f("\tif(line >= 0 && line < %u && col >= 0 && col < %u){\n",TBL_FIXED_LINES,TBL_FIXED_COLUMNS);
+	script += string_f("\t\tvar td=tds[(line+1)*%u+col+1];\n",TBL_FIXED_COLUMNS+1);
+	script += "\t\tf(td);\n"
+		"\t}\n"
+		"};\n";
+	script += string_f("calc_%u.updoff=function(offline,offcol){\n",ctx.docnum);
+	script += "\tthis.offline=offline;\n"
+		"\tthis.offcol=offcol;\n"
+		"\tvar tbl=document.getElementById('tbl-'+this.gameid+','+this.docnum);\n"
+		"\tvar tds=tbl.getElementsByTagName('td');\n";
+	script += string_f("\tfor (var i=1; i<=%u; i++){\n",TBL_FIXED_LINES);
+	script += string_f("\t\ttds[i*%u].innerHTML=i+this.offline;\n",TBL_FIXED_COLUMNS+1);
+	script += "\t}\n";
+	script += string_f("\tfor (var i=0; i<%u; i++){\n",TBL_FIXED_COLUMNS);
+	script += "\t\tvar col=i+this.offcol;\n"
+		"\t\tif(col < 26){\n"
+		"\t\t\ttds[i+1].innerHTML=String.fromCharCode(col+65);\n"
+		"\t\t}else{\n"
+		"\t\t\ttds[i+1].innerHTML=String.fromCharCode(col/26+65)+String.fromCharCode(col%26+65);\n"
+		"\t\t}\n"
+		"\t}\n"
+		"};\n";
+
 	script += "if (typeof calc_lst == 'undefined') var calc_lst=[];\n";
 	script += string_f("calc_lst.push(calc_%u);\n",docnum);
 	string onfuncs;
@@ -182,16 +253,37 @@ string CALC::draw_board (
 	}
 	glocal.val += string_f("<div style='width:%u;height:%u; overflow:hidden;'>\n",board_width,board_height);
 	glocal.val += string_f("<table class=calc id='tbl-%s,%d' border=1 %s>\n",gameid.c_str(),docnum,onfuncs.c_str());
+	// Set the width for all columns
+	glocal.val += "<col style='min-width:50px;max-width:50px;'>\n";	// This is for the line number column
+	for (unsigned col=0; col < TBL_FIXED_COLUMNS; col++){
+		unsigned width = DEFAULT_COL_WIDTH;
+		auto c = col_formats.find(col);
+		if (c != col_formats.end()) width = c->second.width;
+		glocal.val += string_f("<col style='min-width:%upx;max-width:%upx;'>\n",width,width);
+	}
 	// column names (letters)
 	glocal.val += "<tr><td>";
 	for (unsigned i=0; i<26; i++){
-		const char *style = pref.cursor.col == i ? " style='background-color:lightblue;'" : "";
-		glocal.val += string_f("<td%s >&nbsp;%c&nbsp;",style,'A'+i);
+		const char *color = pref.cursor.col == i ? "lightblue" : "#E8E8E8";
+		unsigned col = i+pref.offset_col;
+		string coltxt;
+		if (col < 26){
+			coltxt = 'A'+col;
+		}else{
+			unsigned letter1 = col / 26;
+			unsigned letter2 = col % 26;
+			coltxt = "  ";
+			coltxt[0] = 'A' + letter1;
+			coltxt[1] = 'A' + letter2;
+		}
+		glocal.val += string_f("<td style='text-align:center;background-color:%s;' >%s",color,coltxt.c_str());
 	}
-	for (unsigned line=0; line < TBL_FIXED_LINES; line++){
-		const char *style = pref.cursor.line == line ? " style='background-color:lightblue;'" : "";
-		glocal.val += string_f("<tr><td%s>&nbsp;%d&nbsp;",style,line+1);
-		for (unsigned col=0; col < TBL_FIXED_COLUMNS; col++){
+	for (unsigned i=0; i < TBL_FIXED_LINES; i++){
+		unsigned line = i+pref.offset_line;
+		const char *color = pref.cursor.line == line ? "lightblue" : "#E8E8E8";
+		glocal.val += string_f("<tr><td style='text-align:center; background-color:%s;'>%d",color,line+1);
+		for (unsigned j=0; j < TBL_FIXED_COLUMNS; j++){
+			unsigned col = j+pref.offset_col;
 			auto c = grid.find(CELL_COOR(line,col));
 			const char *bgcol = "white";
 			for (auto &p:prefs){
@@ -300,7 +392,10 @@ string CALC::define_functions(
 string CALC::define_styles(const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp)
 {
 	string val;
-	val += ".calc td{\n"
+	val += ".calc{\n"
+		"\ttable-layout: fixed;\n"
+		"}\n";
+	val += ".calc ttd{\n"
 		"\tmin-width:50px;\n"
 		"\tmax-width:50px;\n"
 		"\toverflow: hidden;\n"
@@ -315,24 +410,27 @@ void CALC::setfocus(VARVAL &script_var)
 /*
 	Update the background color of the column and line, matching the new cursor position
 */
-void CALC::update_lines_cols(const CELL_COOR &old, const CELL_COOR &new_pos, VARVAL &var)
+void CALC::update_lines_cols(CALC_PREF &pref, const CELL_COOR &old, const CELL_COOR &new_pos, VARVAL &var)
 {
 	var.val += "calc_loop_board(function(e,calc){\n";
 	var.val += "\tvar tds=e.getElementsByTagName('td');\n";
 	if (old.line != new_pos.line){
-		var.val += string_f("\tvar td=tds[%u];\n",(old.line+1)*(TBL_FIXED_COLUMNS+1));
-		var.val += "\ttd.style.background='white';\n";
-		var.val += string_f("\tvar td=tds[%u];\n",(new_pos.line+1)*(TBL_FIXED_COLUMNS+1));
+		var.val += string_f("\tvar td=tds[%u];\n",(old.line-pref.offset_line+1)*(TBL_FIXED_COLUMNS+1));
+		var.val += "\ttd.style.background='#E8E8E8';\n";
+		var.val += string_f("\tvar td=tds[%u];\n",(new_pos.line-pref.offset_line+1)*(TBL_FIXED_COLUMNS+1));
 		var.val += "\ttd.style.background='lightblue';\n";
 	}
 	if (old.col != new_pos.col){
-		var.val += string_f("\tvar td=tds[%u];\n",old.col+1);
-		var.val += "\ttd.style.background='white';\n";
-		var.val += string_f("\tvar td=tds[%u];\n",new_pos.col+1);
+		var.val += string_f("\tvar td=tds[%u];\n",old.col-pref.offset_col+1);
+		var.val += "\ttd.style.background='#E8E8E8';\n";
+		var.val += string_f("\tvar td=tds[%u];\n",new_pos.col-pref.offset_col+1);
 		var.val += "\ttd.style.background='lightblue';\n";
 	}
 	var.val += "});\n";
 }
+/*
+	Send update about some cells to all users
+*/
 void CALC::update_cells(set<CELL_COOR> &cells, VARVAL &var)
 {
 	if (cells.size() > 0){
@@ -341,26 +439,33 @@ void CALC::update_cells(set<CELL_COOR> &cells, VARVAL &var)
 		var.val += "calc_loop_board(function(e,calc){\n";
 		var.val += "\tvar tds=e.getElementsByTagName('td');\n";
 		for (auto &c:cells){
-			var.val += string_f("\tvar td=tds[%u];\n",(c.line+1)*(TBL_FIXED_COLUMNS+1)+c.col+1);
+			var.val += string_f("\tcalc.selcell(tds,%u,%u,function(td){\n",c.line,c.col);
+			#if 0
+			var.val += string_f("\tvar line=%u-calc.offline;\n",c.line);
+			var.val += string_f("\tvar col=%u-calc.offcol;\n",c.col);
+			var.val += string_f("\tif(line >= 0 && line < %u && col >=0 && col < %u){\n",TBL_FIXED_LINES,TBL_FIXED_COLUMNS);
+			var.val += string_f("\t\t\rvar td=tds[(line+1)*%u+col+1];\n",TBL_FIXED_COLUMNS+1);
+			#endif
 			bool found = false;
 			auto g = grid.find(c);
 			if (g != grid.end()){
 				const char *color = g->second.getcolor();
 				const char *align = g->second.getalign();
-				var.val += string_f("\ttd.innerHTML='%s';\n",g->second.gettext().c_str());
-				var.val += string_f("\ttd.style.color='%s';\n",color);
-				var.val += string_f("\ttd.style.textAlign='%s';\n",align);
+				var.val += string_f("\t\ttd.innerHTML='%s';\n",g->second.gettext().c_str());
+				var.val += string_f("\t\ttd.style.color='%s';\n",color);
+				var.val += string_f("\t\ttd.style.textAlign='%s';\n",align);
 			}else{
-				var.val += "\ttd.innerHTML='';\n";
+				var.val += "\t\ttd.innerHTML='';\n";
 			}
 			for (auto &p:prefs){
 				if (p.second.cursor == c){
-					var.val += string_f("\tset_td_bg(td,'%s');\n",p.first.c_str());
+					var.val += string_f("\t\tset_td_bg(td,'%s');\n",p.first.c_str());
 					found = true;
 					break;
 				}
 			}
-			if (!found) var.val += "\ttd.style.background='white';\n";
+			if (!found) var.val += "\t\ttd.style.background='white';\n";
+			var.val += "\t});\n";
 		}
 		var.val += "});\n";
 	}
@@ -406,6 +511,259 @@ void CALC::update_onecell (CALC_PREF &pref, PARAM_STRING buf)
 		}
 	}
 }
+void CALC::update_col_width(VARVAL &var, unsigned col, unsigned width)
+{
+	var.val += "calc_loop_board(function(e,calc){\n";
+	var.val += "\tvar cols=e.getElementsByTagName('col');\n";
+	col++;
+	var.val += string_f("\tcols[%u].style.minWidth='%upx';\n",col,width);
+	var.val += string_f("\tcols[%u].style.maxWidth='%upx';\n",col,width);
+	var.val += "});\n";
+}
+void CALC::update_offsets(VARVAL &var, const DOC_CONTEXT &ctx, CALC_PREF &pref)
+{
+	var.val += string_f("calc_%u.updoff(%u,%u);\n",ctx.docnum,pref.offset_line,pref.offset_col);
+}
+
+/*
+	Insert a line or a column in the grid.
+	This is done by copying the grid into a vector, updating the coordinate
+	and rebuilding the grid.
+	We update the formula as well.
+*/
+void CALC::insert_line_col(unsigned line, unsigned col, int offline, int offcol)
+{
+	struct KEYVAL {
+		CELL_COOR coor;
+		CALC_CELL cell;
+		KEYVAL(const CELL_COOR &_coor, const CALC_CELL &_cell):coor(_coor),cell(_cell){}
+	};
+	vector<KEYVAL> vec;
+	CELL_COOR ref (line,col);
+	for (auto &g:grid){
+		CELL_COOR coor(g.first);
+		if (coor.line >= line) coor.line++;
+		if (coor.col >= col) coor.col++;
+		g.second.applyoffset(ref,offline,offcol);
+		vec.emplace_back(coor,g.second);
+	}
+	grid.clear();
+	for (auto &v:vec) grid[v.coor] = v.cell;
+	struct KEYFORMAT{
+		unsigned col;
+		CALC_COL_FORMAT format;
+		KEYFORMAT (unsigned _col, const CALC_COL_FORMAT &_format)
+			:col(_col),format(_format){}
+	};
+	vector<KEYFORMAT> vecf;
+	for (auto &f:col_formats){
+		unsigned first = f.first;
+		if (first >= col) first++;
+		vecf.emplace_back(first,f.second);
+	}
+	col_formats.clear();
+	for (auto &v:vecf) col_formats[v.col] = v.format;
+}
+void CALC::delete_line_col(unsigned line, unsigned col, int offline, int offcol)
+{
+	struct KEYVAL {
+		CELL_COOR coor;
+		CALC_CELL cell;
+		KEYVAL(const CELL_COOR &_coor, const CALC_CELL &_cell):coor(_coor),cell(_cell){}
+	};
+	vector<KEYVAL> vec;
+	CELL_COOR ref (line,col);
+	for (auto &g:grid){
+		CELL_COOR coor(g.first);
+		if (coor.line != line && coor.col != col){
+			if (coor.line > line) coor.line--;
+			if (coor.col > col) coor.col--;
+			g.second.applyoffset(ref,offline,offcol);
+			vec.emplace_back(coor,g.second);
+		}
+	}
+	grid.clear();
+	for (auto &v:vec) grid[v.coor] = v.cell;
+	struct KEYFORMAT{
+		unsigned col;
+		CALC_COL_FORMAT format;
+		KEYFORMAT (unsigned _col, const CALC_COL_FORMAT &_format)
+			:col(_col),format(_format){}
+	};
+	vector<KEYFORMAT> vecf;
+	for (auto &f:col_formats){
+		unsigned first = f.first;
+		if (first != col){
+			if (first > col) first--;
+			vecf.emplace_back(first,f.second);
+		}
+	}
+	col_formats.clear();
+	for (auto &v:vecf) col_formats[v.col] = v.format;
+}
+/*
+	Insert one line in the grid.
+	Generate the javascript code.
+*/
+void CALC::insert_line(VARVAL &var, unsigned line)
+{
+	insert_line_col(line,(unsigned)-1,1,0);
+	// For each listener, we must remove the last <tr> and insert a new one, it it applies
+	// The first <tr> contains the heading.
+	var.val += "calc_loop_board(function(tbl,calc){\n";
+	var.val += string_f("\tvar offl=%u-calc.offline;\n",line);
+	var.val += "console.log('offl='+offl);\n";
+	var.val += string_f("\tif (offl >= 0 && offl < %u){\n",TBL_FIXED_LINES);
+	var.val += "\t\tvar trs = tbl.getElementsByTagName('tr');\n";
+	var.val += string_f("\t\ttrs[%u].parentNode.removeChild(trs[%u]);\n",TBL_FIXED_LINES,TBL_FIXED_LINES);
+	var.val += "\t\tvar newtr = document.createElement('tr');\n";
+	var.val += "\t\ttrs[0].parentNode.insertBefore(newtr,trs[offl+1]);\n";
+	var.val += "\t\tvar newtd = document.createElement('td');\n";
+	var.val += "\t\tnewtd.style.textAlign='center';\n";
+	var.val += "\t\tnewtr.appendChild(newtd);\n";
+	var.val += string_f("\t\tfor (var i=0; i<%u; i++){\n",TBL_FIXED_COLUMNS);
+	var.val += "\t\t\tvar newtd = document.createElement('td');\n";
+	var.val += "\t\t\tnewtr.appendChild(newtd);\n";
+	var.val += "\t\t}\n";
+	var.val += "\t\tcalc.updoff(calc.offline,calc.offcol);\n";
+	// Clear the cursor for all users on this line
+	for (auto &p:prefs){
+		if (p.second.cursor.line == line){
+			var.val += string_f("\t\tvar offc = %u - calc.offcol;\n",p.second.cursor.col);
+			var.val += string_f("\t\tif(offc >= 0 && offc < %u){\n",TBL_FIXED_COLUMNS);
+			var.val += "\t\t\tvar tds=trs[offl+2].getElementsByTagName('td');\n";
+			var.val += "\t\t\ttds[0].style.background='#E8E8E8';\n";
+			var.val += "\t\t\ttds[offc+1].style.background='white';\n";
+			var.val += "\t\t\tvar tds=trs[offl+1].getElementsByTagName('td');\n";
+			var.val += "\t\t\ttds[0].style.background='lightblue';\n";
+			var.val += string_f("\t\t\tset_td_bg(tds[offc+1],'%s');\n",p.first.c_str());
+			var.val += "\t\t}\n";
+		}
+	}
+	var.val += "\t}\n";
+	var.val += "});\n";
+}
+void CALC::insert_col(VARVAL &var, unsigned col)
+{
+	insert_line_col((unsigned)-1,col,0,1);
+	// For each listener, we must remove the last <td> of a line and insert a new one, if it applies
+	var.val += "calc_loop_board(function(tbl,calc){\n";
+	var.val += string_f("\tvar offc=%u-calc.offcol;\n",col);
+	var.val += "console.log('offc='+offc);\n";
+	var.val += string_f("\tif (offc >= 0 && offc < %u){\n",TBL_FIXED_COLUMNS);
+	// Remove last col, insert one
+	var.val += "\t\tvar cols = tbl.getElementsByTagName('col');\n";
+	var.val += string_f("\t\tcols[0].parentNode.removeChild(cols[%u]);\n",TBL_FIXED_COLUMNS);
+	var.val += "\t\tvar newcol = document.createElement('col');\n";
+	var.val += string_f("\t\tnewcol.style.minWidth='%upx';\n",DEFAULT_COL_WIDTH);
+	var.val += string_f("\t\tnewcol.style.maxWidth='%upx';\n",DEFAULT_COL_WIDTH);
+	var.val += "\t\tcols[0].parentNode.insertBefore(newcol,cols[offc+1]);\n";
+	// Remote last td and insert one for each tr
+	var.val += "\t\tvar trs = tbl.getElementsByTagName('tr');\n";
+	var.val += string_f("\t\tfor (var i=0; i<=%u; i++){\n",TBL_FIXED_LINES);
+	var.val += "\t\t\tvar tds = trs[i].getElementsByTagName('td');\n";
+	var.val += string_f("\t\t\ttds[0].parentNode.removeChild(tds[%u]);\n",TBL_FIXED_COLUMNS);
+	var.val += "\t\t\tvar newtd = document.createElement('td');\n";
+	var.val += "\t\t\tif (i==0){\n";
+	var.val += "\t\t\t\tnewtd.style.textAlign='center';\n";
+	var.val += "\t\t\t\tnewtd.style.background='#E8E8E8';\n";
+	var.val += "\t\t\t}\n";
+	var.val += "\t\t\ttds[0].parentNode.insertBefore(newtd,tds[offc+1]);\n";
+	var.val += "\t\t}\n";
+	var.val += "\t\tcalc.updoff(calc.offline,calc.offcol);\n";
+	// Clear the cursor for all users on this column
+	// Clear and set the background on the column header
+	var.val += "\t\tvar defcol='#E8E8E8';\n";
+	var.val += string_f("\t\tfor (var i=0; i<%u; i++){\n",TBL_FIXED_LINES);
+	var.val += "\t\tvar tds=trs[i].getElementsByTagName('td');\n";
+	var.val += "\t\t\tif(tds[offc+2].style.background!=defcol){\n";
+	var.val += "\t\t\t\ttds[offc+1].style.background=tds[offc+2].style.background;\n";
+	var.val += "\t\t\t\ttds[offc+2].style.background=defcol;\n";
+	var.val += "\t\t\t}else{\n";
+	var.val += "\t\t\t\ttds[offc+1].style.background=defcol;\n";
+	var.val += "\t\t\t}\n";
+	var.val += "\t\t\tdefcol='white';\n";
+	var.val += "\t\t}\n";
+	var.val += "\t}\n";
+	var.val += "});\n";
+}
+void CALC::delete_line(VARVAL &var, unsigned line)
+{
+	delete_line_col (line,(unsigned)-1,-1,0);
+	// For each listener, we must remove the line <tr> and append a new one at the end, if it applies
+	var.val += "calc_loop_board(function(tbl,calc){\n";
+	var.val += string_f("\tvar offl=%u-calc.offline;\n",line);
+	var.val += "console.log('offl='+offl);\n";
+	var.val += string_f("\tif (offl >= 0 && offl < %u){\n",TBL_FIXED_LINES);
+	var.val += "\t\tvar trs = tbl.getElementsByTagName('tr');\n";
+	var.val += "\t\ttrs[0].parentNode.removeChild(trs[offl+1]);\n";
+	var.val += "\t\tvar newtr = document.createElement('tr');\n";
+	var.val += "\t\ttrs[0].parentNode.appendChild(newtr);\n";
+	var.val += "\t\tvar newtd = document.createElement('td');\n";
+	var.val += "\t\tnewtd.style.textAlign='center';\n";
+	var.val += "\t\tnewtr.appendChild(newtd);\n";
+	var.val += string_f("\t\tfor (var i=0; i<%u; i++){\n",TBL_FIXED_COLUMNS);
+	var.val += "\t\t\tvar newtd = document.createElement('td');\n";
+	var.val += "\t\t\tnewtr.appendChild(newtd);\n";
+	var.val += "\t\t}\n";
+	var.val += "\t\tcalc.updoff(calc.offline,calc.offcol);\n";
+	// Set the cursor for all users on this line
+	for (auto &p:prefs){
+		if (p.second.cursor.line == line){
+			var.val += string_f("\t\tvar offc = %u - calc.offcol;\n",p.second.cursor.col);
+			var.val += string_f("\t\tif(offc >= 0 && offc < %u){\n",TBL_FIXED_COLUMNS);
+			var.val += "\t\t\tvar tds=trs[offl+1].getElementsByTagName('td');\n";
+			var.val += "\t\t\ttds[0].style.background='lightblue';\n";
+			var.val += string_f("\t\t\tset_td_bg(tds[offc+1],'%s');\n",p.first.c_str());
+			var.val += "\t\t}\n";
+		}
+	}
+	var.val += "\t}\n";
+	var.val += "});\n";
+}
+void CALC::delete_col(VARVAL &var, unsigned col)
+{
+	delete_line_col ((unsigned)-1,col,0,-1);
+	// For each listener, we must remove the col <td> of each line and append a new one, if it applies
+	var.val += "calc_loop_board(function(tbl,calc){\n";
+	var.val += string_f("\tvar offc=%u-calc.offcol;\n",col);
+	var.val += "console.log('offc='+offc);\n";
+	var.val += string_f("\tif (offc >= 0 && offc < %u){\n",TBL_FIXED_COLUMNS);
+	// move  the cursor for all users on this column to the next
+	var.val += "\t\tvar trs = tbl.getElementsByTagName('tr');\n";
+	// Clear and set the background on the column header
+	var.val += "\t\tvar defcol='#E8E8E8';\n";
+	var.val += string_f("\t\tfor (var i=0; i<%u; i++){\n",TBL_FIXED_LINES);
+	var.val += "\t\t\tvar tds=trs[i].getElementsByTagName('td');\n";
+	var.val += "\t\t\tif(tds[offc+1].style.background!=defcol){\n";
+	var.val += "\t\t\t\ttds[offc+2].style.background=tds[offc+1].style.background;\n";
+	var.val += "\t\t\t}else{\n";
+	var.val += "\t\t\t\ttds[offc+2].style.background=defcol;\n";
+	var.val += "\t\t\t}\n";
+	var.val += "\t\t\tdefcol='white';\n";
+	var.val += "\t\t}\n";
+	// Remove current col, append one
+	var.val += "\t\tvar cols = tbl.getElementsByTagName('col');\n";
+	var.val += "\t\tcols[0].parentNode.removeChild(cols[offc+1]);\n";
+	var.val += "\t\tvar newcol = document.createElement('col');\n";
+	var.val += string_f("\t\tnewcol.style.minWidth='%upx';\n",DEFAULT_COL_WIDTH);
+	var.val += string_f("\t\tnewcol.style.maxWidth='%upx';\n",DEFAULT_COL_WIDTH);
+	var.val += "\t\tcols[0].parentNode.appendChild(newcol);\n";
+	// Remote cur td and append one for each tr
+	var.val += string_f("\t\tfor (var i=0; i<=%u; i++){\n",TBL_FIXED_LINES);
+	var.val += "\t\t\tvar tds = trs[i].getElementsByTagName('td');\n";
+	var.val += "\t\t\ttds[0].parentNode.removeChild(tds[offc+1]);\n";
+	var.val += "\t\t\tvar newtd = document.createElement('td');\n";
+	var.val += "\t\t\tif (i==0){\n";
+	var.val += "\t\t\t\tnewtd.style.textAlign='center';\n";
+	var.val += "\t\t\t\tnewtd.style.background='#E8E8E8';\n";
+	var.val += "\t\t\t}\n";
+	var.val += "\t\t\ttds[0].parentNode.appendChild(newtd);\n";
+	var.val += "\t\t}\n";
+	var.val += "\t\tcalc.updoff(calc.offline,calc.offcol);\n";
+	var.val += "\t}\n";
+	var.val += "});\n";
+}
 <mod>
 void CALC::execstep (
 	const char *var,
@@ -432,7 +790,8 @@ void CALC::execstep (
 		unsigned lastline = 1000;
 		wordproc_kbd(val,pref.mod,tmpvar,tmpval,lastline);
 		var = tmpvar.c_str();
-		val = tmpval.c_str();		
+		val = tmpval.c_str();
+tlmp_warning ("var=%s val=%s",var,val);		
 	}
 	if (strcmp(var,REQ_PRINT)==0){
 		if (is_any_of(val,"","full")){
@@ -496,14 +855,14 @@ void CALC::execstep (
 			v.val += "<div style='background-color:ghostwhite;'>\n";
 			v.val += string_f("<svg width=%u height=%u>\n",board_width,scroll_thick);
 			v.val += string_f("<rect id='hscroll-%s' x=%u y=0 rx=3 ry=3 width=%u height=%u fill=lightgray />\n"
-				,gameid.c_str(),pref.offset_x*board_width/(4*board_width),board_width/4,scroll_thick);
+				,gameid.c_str(),pref.offset_col*board_width/(4*board_width),board_width/4,scroll_thick);
 			v.val += "</svg>\n";
 			v.val += "</div>\n";
 			v.val += "</div>\n";
 			v.val += string_f("<div style='flex:0 0 auto; margin-right:auto; background-color: ghostwhite; width:%u;height:%u;'>",scroll_thick,board_height);
 			v.val += "<svg width=100% height=100%>\n";
 			v.val += string_f("<rect id='vscroll-%s' x=0 y=%u rx=3 ry=3 width=%u height=%u fill=lightgray />\n"
-				,gameid.c_str(),pref.offset_y*board_height/(4*board_height),scroll_thick,board_height/4);
+				,gameid.c_str(),pref.offset_line*board_height/(4*board_height),scroll_thick,board_height/4);
 			v.val += "</svg>\n";
 			v.val += "</div>\n";
 			draw_waiting_users(v.val,waiting_users_width,board_height,"flex:0 0 auto;");
@@ -540,9 +899,45 @@ void CALC::execstep (
 		var.var = "elements";
 		var.val += "\n";
 		res.emplace_back(var);
+	}else if (is_any_of(var,"pageup","pagedown")){
+		if (strcmp(var,"pageup")==0){
+			if (pref.offset_line < 25){
+				if (pref.cursor.line >= 25) pref.cursor.line -= pref.offset_line;
+				pref.offset_line = 0;
+			}else{
+				pref.offset_line -= 25;
+				pref.cursor.line -= 25;
+			}
+		}else{
+			pref.offset_line += 25;
+			pref.cursor.line += 25;
+		}
+		update_offsets(script_var,ctx,pref);
+		set<CELL_COOR> ids;
+		for (unsigned line=0; line<TBL_FIXED_LINES; line++){
+			for (unsigned col=0; col<TBL_FIXED_COLUMNS; col++){
+				CELL_COOR coor(line+pref.offset_line,col+pref.offset_col);
+				ids.insert (coor);
+			}
+		}
+		update_cells(ids,script_var);
+		//documentd_forcerefresh(res);
+		//setfocus(script_var);
 	}else if (ctx.maywrite){
 		auto old_cursor = pref.cursor;
-		if (is_any_of(var,"deletechar","backspace","insertchar")){
+		if (strcmp(var,"break")==0 && pref.mod.shift){
+			insert_line (notify_var,pref.cursor.line);
+			update_celledit (pref,script_var);
+		}else if (strcmp(var,"break")==0 && pref.mod.ctrl){
+			insert_col (notify_var,pref.cursor.col);
+			update_celledit (pref,script_var);
+		}else if (strcmp(var,"deletechar")==0 && pref.mod.shift){
+			delete_line (notify_var,pref.cursor.line);
+			update_celledit (pref,script_var);
+		}else if (strcmp(var,"deletechar")==0 && pref.mod.ctrl){
+			delete_col (notify_var,pref.cursor.col);
+			update_celledit (pref,script_var);
+		}else if (is_any_of(var,"deletechar","backspace","insertchar")){
 			string buf;
 			auto c = grid.find(pref.cursor);
 			bool filled_cell = c != grid.end();
@@ -571,12 +966,32 @@ void CALC::execstep (
 			}else if (-move <= pref.cursor.line){
 				pref.cursor.line += move;
 			}
-		}else if (strcmp(var,"hmove")==0){
-			int move = atoi(val);
-			if (move > 0){
-				pref.cursor.col += move;
-			}else if (-move <= pref.cursor.col){
-				pref.cursor.col += move;
+		}else if (is_any_of(var,"hmove","tab")){
+			int move;
+			bool shift = pref.mod.shift;
+			if (strcmp(var,"tab")==0){
+				move = shift ? -1 : 1;
+				shift = false;
+			}else{
+				move = atoi(val);
+			}
+			if (shift){
+				unsigned width = DEFAULT_COL_WIDTH;
+				auto c = col_formats.find(pref.cursor.col);
+				if (c != col_formats.end()) width = c->second.width;
+				width += move*5;
+				if (width != DEFAULT_COL_WIDTH){
+					col_formats[pref.cursor.col].width = width;
+				}else if (c != col_formats.end()){
+					col_formats.erase(c);
+				}
+				update_col_width(notify_var,pref.cursor.col,width);
+			}else{
+				if (move > 0){
+					pref.cursor.col += move;
+				}else if (-move <= pref.cursor.col){
+					pref.cursor.col += move;
+				}
 			}
 		}else if (strcmp(var,"select")==0){
 			auto tb = str_splitline(val,',');
@@ -589,8 +1004,8 @@ void CALC::execstep (
 				bool shiftkey = tb[4] == "true";
 				bool ctrlkey = tb[5] == "true";
 				#endif
-				unsigned line = cell/(TBL_FIXED_COLUMNS+1);
-				unsigned col  = cell%(TBL_FIXED_COLUMNS+1);
+				unsigned line = pref.offset_line + cell/(TBL_FIXED_COLUMNS+1);
+				unsigned col  = pref.offset_col + cell%(TBL_FIXED_COLUMNS+1);
 				if (line > 0 && col > 0){
 					pref.cursor.line = line-1;
 					pref.cursor.col = col-1;
@@ -622,12 +1037,17 @@ void CALC::execstep (
 			const char *pt = strchr(val,',');
 			if (pt != nullptr){
 				// we only care about the key transfered if it is a Enter, so we change cell
+tlmp_warning ("edit val=%s",val);
 				string key = string(val,pt-val);
 				pt++;
 				update_onecell(pref,pt);
 				notify_ids.insert (pref.cursor);
 				if (key=="Enter"){
 					pref.cursor.line++;
+					notify_ids.insert (pref.cursor);
+					setfocus(script_var);
+				}else if (key=="Tab"){
+					pref.cursor.col++;
 					notify_ids.insert (pref.cursor);
 					setfocus(script_var);
 				}
@@ -640,10 +1060,23 @@ void CALC::execstep (
 			notify_var.val += "\tvar tds = tbl.getElementsByTagName('td');\n";
 			notify_var.val += string_f("\tfor (var i=1; i<=%u; i++){\n",TBL_FIXED_LINES);
 			notify_var.val += string_f("\t\tfor (var j=1; j<=%u; j++){\n",TBL_FIXED_COLUMNS);
-			notify_var.val += string_f("\t\ttds[i*%u+j].innerHTML = '';\n",TBL_FIXED_COLUMNS+1);
-			notify_var.val += "\t\t};\n";
-			notify_var.val += "\t};\n";
+			notify_var.val += string_f("\t\t\ttds[i*%u+j].innerHTML = '';\n",TBL_FIXED_COLUMNS+1);
+			notify_var.val += "\t\t}\n";
+			notify_var.val += "\t}\n";
+			notify_var.val += "\tvar cols = tbl.getElementsByTagName('col');\n";
+			notify_var.val += string_f("\tfor (var j=1; j<=%u; j++){\n",TBL_FIXED_COLUMNS);
+			notify_var.val += string_f("\t\tcols[j].style.minWidth='%upx';\n",DEFAULT_COL_WIDTH);
+			notify_var.val += string_f("\t\tcols[j].style.maxWidth='%upx';\n",DEFAULT_COL_WIDTH);
+			notify_var.val += "\t}\n";
 			notify_var.val += "});\n";
+			// Reset position of all users
+			for (auto &p:prefs){
+				p.second.offset_line = 0;
+				p.second.offset_col = 0;
+				p.second.cursor.line = 0;
+				p.second.cursor.col = 0;
+			}
+			update_offsets (notify_var,ctx,pref);
 			setmodified(ctx.username);
 		}
 		if (old_cursor != pref.cursor){
@@ -651,7 +1084,7 @@ void CALC::execstep (
 			notify_ids.insert(pref.cursor);
 			update_cellname (pref,script_var);
 			update_celledit (pref,script_var);
-			update_lines_cols (old_cursor,pref.cursor,script_var);
+			update_lines_cols (pref,old_cursor,pref.cursor,script_var);
 		}
 	}else{
 		error = MSG_R(E_READONLY);

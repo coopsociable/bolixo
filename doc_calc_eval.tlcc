@@ -35,6 +35,7 @@
 #include "proto/bod_client.protodef"
 #include "documentd.h"
 #include "doc_calc.h"
+#include "bolixo.m"
 #include "helper.h"
 #include <cassert>
 
@@ -220,7 +221,7 @@ CALC_TOKEN CALC_PARSER::evalpar()
 			unsigned oper_pos = steps.size()-1;
 			ret = gettoken();
 			if (ret.token == TOK_CELL){
-printf ("steps.size=%lu oper_pos=%u\n",steps.size(),oper_pos);
+				//printf ("steps.size=%lu oper_pos=%u\n",steps.size(),oper_pos);
 				ret = gettoken();
 				swapsteps(oper_pos);
 			}else{
@@ -318,9 +319,9 @@ void CALC::evalfinal (CALC_CELL &cell, string &error)
 	}else if (cell.state == CELL_STATE_COMPUTING){
 		// Evaluation loop. The cell currently being evaluated needs this cell
 		// currently also being evaluated. This must be signal to the user.
-		error = "Evaluation loop";
+		error = MSG_U(E_EVALLOOP,"Evaluation loop");
 	}else if (cell.state == CELL_STATE_FORMULAERR){
-		error = "Cell with a formula synta error";
+		error = MSG_U(E_CELLERROR,"Cell with a formula synta error");
 	}
 }
 
@@ -354,6 +355,62 @@ const char *CALC_CELL::getcolor() const
 	}
 	return ret;
 }
+void CALC_CELL::applyoffset (
+	CELL_COOR &coor,
+	int offset_line,
+	int offset_col)
+{
+	if (text[0] == '='){
+		string newtext("=");
+		CALC_PARSER parser(text.c_str()+1);
+		while (1){
+			CALC_TOKEN tok = parser.gettoken();
+			//printf ("tok %d\n",tok.token);
+			if (is_any_of(tok.token,TOK_ERROR,TOK_EOL)){
+				newtext += parser.pos;
+				break;
+			}else if (tok.token == TOK_CELL){
+				//printf ("Apply coor %u %u <> %u %u\n",coor.line,coor.col,tok.coor.line,tok.coor.col);
+				bool change = false;
+				if (coor.line <= tok.coor.line){
+					change = true;
+					tok.coor.line += offset_line;
+				}
+				if (coor.col  <= tok.coor.col){
+					change = true;
+					tok.coor.col += offset_col;
+				}
+				if (change){
+					newtext += tok.coor.tostring();
+				}else{
+					newtext += tok.text;
+				}
+			}else{
+				newtext += tok.text;
+			}
+		}
+		if (text != newtext){
+			text = newtext;
+			eval0();
+		}
+	}
+}
+//  Use the steps to rebuild the text formula (generally called by applyoffset();
+void CALC_CELL::reformat()
+{
+	text.clear();
+	vector<unsigned> offsets;
+	for (auto &s:steps){
+		offsets.push_back(text.size());
+		if (s.token == TOK_NUMBER){
+			text += s.text;
+		}else if (s.token == TOK_CELL){
+			text += s.coor.tostring();
+		}else if (is_any_of(s.token,TOK_COLON,TOK_PLUS,TOK_MINUS,TOK_MULT,TOK_DIV)){
+			text.insert(offsets[offsets.size()-2],s.text);
+		}
+	}
+}
 
 void CALC::reset_eval()
 {
@@ -368,11 +425,11 @@ void CALC::reset_eval()
 */
 void CALC::walkrange(const CELL_COOR &from, const CELL_COOR &to, string &error, std::function<void(const CALC_CELL &)> f)
 {
-tlmp_warning ("walkrange from=%u,%u to=%u,%u",from.line,from.col,to.line,to.col);
+	//tlmp_warning ("walkrange from=%u,%u to=%u,%u",from.line,from.col,to.line,to.col);
 	CALC_CELL empty;
 	for (unsigned line = from.line; line <= to.line; line++){
 		for (unsigned col=from.col; col <= to.col; col++){
-tlmp_warning ("walkrange line=%u col=%u",line,col);
+			//tlmp_warning ("walkrange line=%u col=%u",line,col);
 			CELL_COOR cell(line,col);
 			auto g = grid.find(cell);
 			if (g != grid.end()){
@@ -524,103 +581,6 @@ void CALC::eval(set<CELL_COOR> &ids, string &error)
 		}
 	}	
 }
-#if 0
-static void calc_exec (const vector<CALC_TOKEN> &steps)
-{
-	stack<EVALELM> st;
-	for (auto &s:steps){
-		if (s.token == TOK_NUMBER){
-			st.emplace(EVAL_VAL,atof(s.text.c_str()));
-		}else if (is_any_of(s.token,TOK_PLUS,TOK_MINUS,TOK_MULT,TOK_DIV,TOK_MODULO
-			,TOK_SMALLER,TOK_SMALLEREQ,TOK_EQUAL,TOK_NOTEQUAL,TOK_GREATER,TOK_GREATEREQ)){
-			double v2 = st.top().val;
-			st.pop();
-			double v1 = st.top().val;
-			st.pop();
-			switch(s.token){
-			case TOK_PLUS:
-				st.emplace (EVAL_VAL,v1+v2);
-				break;
-			case TOK_MINUS:
-				st.emplace (EVAL_VAL,v1-v2);
-				break;
-			case TOK_MULT:
-				st.emplace (EVAL_VAL,v1*v2);
-				break;
-			case TOK_DIV:
-				st.emplace (EVAL_VAL,v1/v2);
-				break;
-			case TOK_MODULO:
-				break;
-			case TOK_EQUAL:
-				st.emplace(EVAL_VAL,v1==v2);
-				break;
-			case TOK_NOTEQUAL:
-				st.emplace(EVAL_VAL,v1!=v2);
-				break;
-			case TOK_SMALLER:
-				st.emplace (EVAL_VAL,v1<v2);
-				break;
-			case TOK_SMALLEREQ:
-				st.emplace (EVAL_VAL,v1<=v2);
-				break;
-			case TOK_GREATER:
-				st.emplace (EVAL_VAL,v1>v2);
-				break;
-			case TOK_GREATEREQ:
-				st.emplace (EVAL_VAL,v1>=v2);
-				break;
-			default:
-				// Not possible
-				break;
-			}
-		}else if (s.token == TOK_CELL){
-			printf ("push coor=%u,%u\n",s.coor.line,s.coor.col);
-			st.emplace(EVAL_VAL,99,s.coor);
-		}else if (s.token == TOK_IF){
-			double vfalse = st.top().val;
-			st.pop();
-			double vtrue = st.top().val;
-			st.pop();
-			double cond = st.top().val;
-			st.pop();
-			assert(st.top().type == EVAL_BEGIN);
-			st.pop();
-			st.emplace(EVAL_VAL,cond != 0 ? vtrue : vfalse);
-		}else if (s.token == TOK_FUNCTION){
-			if (s.text == "sum"){
-				double total = 0;
-				while (st.size() > 0){
-					auto &v = st.top();
-					if (v.type == EVAL_BEGIN){
-						st.pop();
-						break;
-					}else if (v.type == EVAL_VAL){
-						total += v.val;
-						st.pop();
-					}else if (v.type == EVAL_RANGE){
-						st.pop();
-						st.pop();
-						st.pop();
-						total += 1000;
-					}
-				}
-				st.emplace(EVAL_VAL,total);
-			}
-		}else if (s.token == TOK_COLON){
-			st.emplace (EVAL_RANGE,0);
-		}else if (s.token == TOK_OPNPAR){
-			st.emplace (EVAL_BEGIN,0);
-		}
-	}
-	printf ("st.size=%lu\n",st.size());
-	while (st.size() > 0){
-		auto v = st.top();
-		printf ("\t%d %lf    %u %u\n",v.type,v.val,v.coor.line,v.coor.col);
-		st.pop();
-	}
-}
-#endif
 
 /*
 	Display all the cells value
@@ -671,9 +631,15 @@ void calc_eval (int argc, char *argv[])
 		}else{
 			printf ("ok: %s\n",s);
 			string error;
-			calc.grid[coor].value = calc.evalformula(parser.steps,error);
+			auto &c = calc.grid[coor];
+			c.text = string_f("=%s",s);
+			c.value = calc.evalformula(parser.steps,error);
+			c.steps = parser.steps;
+			CELL_COOR coor(2,2);	
+			c.applyoffset(coor,1,1);
+			printf ("applyoffset: text=%s\n",c.text.c_str());
 		}
-		printf ("steps:\n");
+		printf ("parser steps:\n");
 		for (auto &s:parser.steps){
 			printf ("\t%s\n",s.text.c_str());
 		}

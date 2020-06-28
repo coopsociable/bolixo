@@ -40,8 +40,7 @@ struct CELL_COOR{
 	unsigned short line=0;
 	unsigned short col=0;
 	CELL_COOR(){}
-	CELL_COOR(const CELL_COOR &c)
-		:line(c.line), col(c.col){}
+	CELL_COOR(const CELL_COOR &c) = default;
 	CELL_COOR(unsigned short _line, unsigned short _col)
 		:line(_line), col(_col){}
 	bool operator < (const CELL_COOR &c) const {
@@ -87,16 +86,30 @@ struct CALC_CELL{
 	CALC_CELL(){};
 	CALC_CELL(PARAM_STRING _text)
 		:text(_text.ptr){}
+	CALC_CELL(const CALC_CELL &n) = default;
 	void eval0();
 	std::string gettext() const;
 	const char *getcolor() const;	// Return the text color
 	const char *getalign() const;	// Return the textAlign value
+	void reformat();		//  Use the steps to rebuild the text formula (generally use after applyoffset());
+	void applyoffset (CELL_COOR &coor, int offset_line, int offset_col);
 };
 
+enum COL_ALIGN{
+	COL_DEFAULT,	// Alignment controled by type
+	COL_LEFT,
+	COL_CENTER,
+	COL_RIGHT
+};
+struct CALC_COL_FORMAT{
+	unsigned short width=100;
+	unsigned char precision=2;	// Precision for numbers
+	COL_ALIGN align=COL_LEFT;
+};
 
 struct CALC_PREF{
-	unsigned offset_x=0;
-	unsigned offset_y=0;
+	unsigned offset_line=0;
+	unsigned offset_col=0;
 	MOD_KBD mod;
 	CELL_COOR cursor;
 };
@@ -104,6 +117,7 @@ struct CALC_PREF{
 class CALC: public GAME{
 	// Spreadsheet are often sparse. So we store only cells with some content.
 	std::map<CELL_COOR,CALC_CELL> grid;
+	std::map<unsigned,CALC_COL_FORMAT> col_formats;		// Most columns use standard format
 	void execstep (const char *var, const char *val, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp,
 		VARVAL &script_var, VARVAL &notify_var, std::set<CELL_COOR> &notify_ids, std::vector<VARVAL> &res,
 		std::string &error, std::string &status);
@@ -117,7 +131,7 @@ class CALC: public GAME{
 	void update_cells(std::set<CELL_COOR> &cells, VARVAL &var);
 	void update_cellname(CALC_PREF &pref, VARVAL &var);
 	void update_celledit(CALC_PREF &pref, VARVAL &var);
-	void update_lines_cols(const CELL_COOR &old, const CELL_COOR &new_pos, VARVAL &var);
+	void update_lines_cols(CALC_PREF &pref, const CELL_COOR &old, const CELL_COOR &new_pos, VARVAL &var);
 	void update_onecell (CALC_PREF &pref, PARAM_STRING buf);
 	void reset_eval();
 	double evalformula(const std::vector<CALC_TOKEN> &steps, std::string &error);
@@ -126,6 +140,14 @@ class CALC: public GAME{
 	void evalfinal (CALC_CELL &cell, std::string &error);
 	void walkstack (std::stack<EVALELM> &st, std::string &error, std::function<void(double value)> f);
 	void dump() const;
+	void update_col_width(VARVAL &var, unsigned col, unsigned width);
+	void update_offsets(VARVAL &var, const DOC_CONTEXT &ctx, CALC_PREF &pref);
+	void insert_line_col(unsigned line, unsigned col, int offline, int offcol);
+	void insert_line(VARVAL &var, unsigned line);
+	void insert_col(VARVAL &var, unsigned col);
+	void delete_line_col(unsigned line, unsigned col, int offline, int offcol);
+	void delete_line(VARVAL &var, unsigned line);
+	void delete_col(VARVAL &var, unsigned col);
 public:
 	void save(DOC_WRITER &w, bool);
 	void load(DOC_READER &r, std::string &msg);
