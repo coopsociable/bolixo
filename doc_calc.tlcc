@@ -254,12 +254,12 @@ string CALC::draw_board (
 	glocal.val += string_f("<div style='width:%u;height:%u; overflow:hidden;'>\n",board_width,board_height);
 	glocal.val += string_f("<table class=calc id='tbl-%s,%d' border=1 %s>\n",gameid.c_str(),docnum,onfuncs.c_str());
 	// Set the width for all columns
-	glocal.val += "<col style='min-width:50px;max-width:50px;'>\n";	// This is for the line number column
+	glocal.val += "<col style='width:50px;min-width:50px;max-width:50px;'>\n";	// This is for the line number column
 	for (unsigned col=0; col < TBL_FIXED_COLUMNS; col++){
 		unsigned width = DEFAULT_COL_WIDTH;
 		auto c = col_formats.find(col);
 		if (c != col_formats.end()) width = c->second.width;
-		glocal.val += string_f("<col style='min-width:%upx;max-width:%upx;'>\n",width,width);
+		glocal.val += string_f("<col style='width:%upx;min-width:%upx;max-width:%upx;'>\n",width,width,width);
 	}
 	// column names (letters)
 	glocal.val += "<tr><td>";
@@ -344,13 +344,16 @@ string CALC::define_functions(
 	val += "}\n";
 
 	// Set the background color of a cell to indicate that it is current.
-	// Use a different color
-	val += "function set_td_bg(td,session){\n";
-	val += string_f("\tif (session=='%s'){\n",ctx.session);
-	val += "\t\ttd.style.background='lightblue';\n";
-	val += "\t}else{\n";
-	val += "\t\ttd.style.background='lightgray';\n";
+	// Use #E8E8E8 for cells current for other sessions, use lightblue for the current session
+	val += "function set_td_bg(td,sessions){\n";
+	val += "\tvar color='#E8E8E8';\n";
+	val += "\tfor (var i=0; i<sessions.length; i++){\n";
+	val += string_f("\t\tif (sessions[i]=='%s'){\n",ctx.session);
+	val += "\t\t\tcolor='lightblue';\n";
+	val += "\t\t\tbreak;\n";
+	val += "\t\t}\n";
 	val += "\t}\n";
+	val += "\ttd.style.background=color;\n";
 	val += "}\n";
 
 
@@ -393,13 +396,15 @@ string CALC::define_styles(const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &s
 {
 	string val;
 	val += ".calc{\n"
-		"\ttable-layout: fixed;\n"
+		"\table-layout: fixed;\n"
 		"}\n";
+	#if 0
 	val += ".calc ttd{\n"
 		"\tmin-width:50px;\n"
 		"\tmax-width:50px;\n"
 		"\toverflow: hidden;\n"
 		"}\n";
+	#endif
 	return val;
 }
 void CALC::setfocus(VARVAL &script_var)
@@ -440,13 +445,6 @@ void CALC::update_cells(set<CELL_COOR> &cells, VARVAL &var)
 		var.val += "\tvar tds=e.getElementsByTagName('td');\n";
 		for (auto &c:cells){
 			var.val += string_f("\tcalc.selcell(tds,%u,%u,function(td){\n",c.line,c.col);
-			#if 0
-			var.val += string_f("\tvar line=%u-calc.offline;\n",c.line);
-			var.val += string_f("\tvar col=%u-calc.offcol;\n",c.col);
-			var.val += string_f("\tif(line >= 0 && line < %u && col >=0 && col < %u){\n",TBL_FIXED_LINES,TBL_FIXED_COLUMNS);
-			var.val += string_f("\t\t\rvar td=tds[(line+1)*%u+col+1];\n",TBL_FIXED_COLUMNS+1);
-			#endif
-			bool found = false;
 			auto g = grid.find(c);
 			if (g != grid.end()){
 				const char *color = g->second.getcolor();
@@ -457,14 +455,18 @@ void CALC::update_cells(set<CELL_COOR> &cells, VARVAL &var)
 			}else{
 				var.val += "\t\ttd.innerHTML='';\n";
 			}
+			string sessions;
 			for (auto &p:prefs){
 				if (p.second.cursor == c){
-					var.val += string_f("\t\tset_td_bg(td,'%s');\n",p.first.c_str());
-					found = true;
-					break;
+					if (sessions.size() > 0) sessions += ',';
+					sessions += "'" + p.first + "'";
 				}
 			}
-			if (!found) var.val += "\t\ttd.style.background='white';\n";
+			if (sessions.size() > 0){
+				var.val += string_f("\t\tset_td_bg(td,[%s]);\n",sessions.c_str());
+			}else{
+				var.val += "\t\ttd.style.background='white';\n";
+			}
 			var.val += "\t});\n";
 		}
 		var.val += "});\n";
@@ -627,18 +629,24 @@ void CALC::insert_line(VARVAL &var, unsigned line)
 	var.val += "\t\t}\n";
 	var.val += "\t\tcalc.updoff(calc.offline,calc.offcol);\n";
 	// Clear the cursor for all users on this line
+	map<unsigned,string> sessions;	// Sessions associated with one column on that line
 	for (auto &p:prefs){
 		if (p.second.cursor.line == line){
-			var.val += string_f("\t\tvar offc = %u - calc.offcol;\n",p.second.cursor.col);
-			var.val += string_f("\t\tif(offc >= 0 && offc < %u){\n",TBL_FIXED_COLUMNS);
-			var.val += "\t\t\tvar tds=trs[offl+2].getElementsByTagName('td');\n";
-			var.val += "\t\t\ttds[0].style.background='#E8E8E8';\n";
-			var.val += "\t\t\ttds[offc+1].style.background='white';\n";
-			var.val += "\t\t\tvar tds=trs[offl+1].getElementsByTagName('td');\n";
-			var.val += "\t\t\ttds[0].style.background='lightblue';\n";
-			var.val += string_f("\t\t\tset_td_bg(tds[offc+1],'%s');\n",p.first.c_str());
-			var.val += "\t\t}\n";
+			auto &s = sessions[p.second.cursor.col];
+			if (s.size() > 0) s += ',';
+			s += "'" + p.first + "'";
 		}
+	}
+	for (auto &s:sessions){
+		var.val += string_f("\t\tvar offc = %u - calc.offcol;\n",s.first);
+		var.val += string_f("\t\tif(offc >= 0 && offc < %u){\n",TBL_FIXED_COLUMNS);
+		var.val += "\t\t\tvar tds=trs[offl+2].getElementsByTagName('td');\n";
+		var.val += "\t\t\ttds[0].style.background='#E8E8E8';\n";
+		var.val += "\t\t\ttds[offc+1].style.background='white';\n";
+		var.val += "\t\t\tvar tds=trs[offl+1].getElementsByTagName('td');\n";
+		var.val += string_f("\t\t\tset_td_bg(tds[0],[%s]);\n",s.second.c_str());
+		var.val += string_f("\t\t\tset_td_bg(tds[offc+1],[%s]);\n",s.second.c_str());
+		var.val += "\t\t}\n";
 	}
 	var.val += "\t}\n";
 	var.val += "});\n";
@@ -674,10 +682,12 @@ void CALC::insert_col(VARVAL &var, unsigned col)
 	// Clear the cursor for all users on this column
 	// Clear and set the background on the column header
 	var.val += "\t\tvar defcol='#E8E8E8';\n";
-	var.val += string_f("\t\tfor (var i=0; i<%u; i++){\n",TBL_FIXED_LINES);
-	var.val += "\t\tvar tds=trs[i].getElementsByTagName('td');\n";
-	var.val += "\t\t\tif(tds[offc+2].style.background!=defcol){\n";
-	var.val += "\t\t\t\ttds[offc+1].style.background=tds[offc+2].style.background;\n";
+	var.val += string_f("\t\tfor (var i=0; i<=%u; i++){\n",TBL_FIXED_LINES);
+	var.val += "\t\t\tvar tds=trs[i].getElementsByTagName('td');\n";
+	var.val += "\t\t\tvar bgcol = window.getComputedStyle(tds[offc+2], null).getPropertyValue('background-color');\n";
+	var.val += "console.log('bgcol='+bgcol);\n";
+	var.val += "\t\t\tif(bgcol!=defcol){\n";
+	var.val += "\t\t\t\ttds[offc+1].style.background=bgcol;\n";
 	var.val += "\t\t\t\ttds[offc+2].style.background=defcol;\n";
 	var.val += "\t\t\t}else{\n";
 	var.val += "\t\t\t\ttds[offc+1].style.background=defcol;\n";
@@ -708,15 +718,21 @@ void CALC::delete_line(VARVAL &var, unsigned line)
 	var.val += "\t\t}\n";
 	var.val += "\t\tcalc.updoff(calc.offline,calc.offcol);\n";
 	// Set the cursor for all users on this line
+	map<unsigned,string> sessions;	// Sessions associated with one column on that line
 	for (auto &p:prefs){
 		if (p.second.cursor.line == line){
-			var.val += string_f("\t\tvar offc = %u - calc.offcol;\n",p.second.cursor.col);
-			var.val += string_f("\t\tif(offc >= 0 && offc < %u){\n",TBL_FIXED_COLUMNS);
-			var.val += "\t\t\tvar tds=trs[offl+1].getElementsByTagName('td');\n";
-			var.val += "\t\t\ttds[0].style.background='lightblue';\n";
-			var.val += string_f("\t\t\tset_td_bg(tds[offc+1],'%s');\n",p.first.c_str());
-			var.val += "\t\t}\n";
+			auto &s = sessions[p.second.cursor.col];
+			if (s.size() > 0) s += ',';
+			s += "'" + p.first + "'";
 		}
+	}
+	for (auto &s:sessions){
+		var.val += string_f("\t\tvar offc = %u - calc.offcol;\n",s.first);
+		var.val += string_f("\t\tif(offc >= 0 && offc < %u){\n",TBL_FIXED_COLUMNS);
+		var.val += "\t\t\tvar tds=trs[offl+1].getElementsByTagName('td');\n";
+		var.val += string_f("\t\t\tset_td_bg(tds[0],[%s]);\n",s.second.c_str());
+		var.val += string_f("\t\t\tset_td_bg(tds[offc+1],[%s]);\n",s.second.c_str());
+		var.val += "\t\t}\n";
 	}
 	var.val += "\t}\n";
 	var.val += "});\n";
@@ -947,7 +963,7 @@ tlmp_warning ("var=%s val=%s",var,val);
 			if (strcmp(var,"deletechar")==0){
 				buf.clear();
 			}else if (strcmp(var,"backspace")==0){
-				if (buf.size() > 0) buf.resize(buf.size()-1);
+				documentd_eraselast(buf);
 			}else{
 				buf += val;
 			}
