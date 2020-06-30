@@ -591,6 +591,32 @@ void CALC::dump() const
 		printf ("[%u,%u]=%lf\n",g.first.line,g.first.col,g.second.value);
 	}
 }
+bool calc_parserange (PARAM_STRING line, CELL_COOR &start, CELL_COOR &end)
+{
+	bool ret = false;
+	CALC_PARSER parser(line.ptr);
+	CALC_TOKEN tok = parser.gettoken();
+	if (tok.token == TOK_CELL){
+		start = tok.coor;
+		tok = parser.gettoken();
+		if (tok.token == TOK_COLON){
+			tok = parser.gettoken();
+			if (tok.token == TOK_CELL){
+				end = tok.coor;
+				tok = parser.gettoken();
+				if (tok.token == TOK_EOL){
+					if (end.line >= start.line && end.col >= start.col){
+						ret = true;
+					}else{
+						start = CELL_COOR();
+						end = start;
+					}
+				}
+			}
+		}
+	}
+	return ret;
+}
 
 /*
 	Function for automated tests

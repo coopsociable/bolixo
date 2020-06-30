@@ -122,7 +122,7 @@ class CALC: public GAME{
 		VARVAL &script_var, VARVAL &notify_var, std::set<CELL_COOR> &notify_ids, std::vector<VARVAL> &res,
 		std::string &error, std::string &status);
 	std::string draw_board (const DOC_CONTEXT &ctx, CALC_PREF &pref, 
-		unsigned board_width, unsigned board_height, unsigned fontsize, unsigned docnum, bool editmode, std::string &script);
+		unsigned board_width, unsigned board_height, unsigned fontsize, unsigned docnum, bool editmode, const CELL_COOR &area, std::string &script);
 	std::string define_functions(const DOC_CONTEXT &ctx, const CALC_PREF &pref, unsigned board_width, unsigned board_height);
 	std::string define_styles(const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp);
 	void update_msg (bool to_all, PARAM_STRING msg, const char *color, std::vector<VARVAL> &res);
@@ -160,4 +160,5 @@ public:
 	friend void calc_eval(int argc, char *argv[]);
 };
 
+bool calc_parserange (PARAM_STRING line, CELL_COOR &start, CELL_COOR &end);
 #endif

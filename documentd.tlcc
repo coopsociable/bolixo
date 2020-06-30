@@ -212,14 +212,20 @@ void documentd_button (string &lines, unsigned command, PARAM_STRING txt, const 
 /*
 	Small button for a menu bar
 */
-void documentd_bar_button (string &lines, unsigned command, PARAM_STRING txt, const DOC_BUTTON_SPECS &specs, bool highlit)
+void documentd_bar_button (string &lines, unsigned command, PARAM_STRING txt, const DOC_BUTTON_SPECS &specs, bool highlit, PARAM_STRING title)
 {
 	lines += "&nbsp;";
-	lines += string_f("<div id=button%u onclick=gameaction(event,'newgame:%u')"
+	string tmptitle;
+	if (title.ptr != nullptr) tmptitle = string_f("title='%s'",title.ptr);
+	lines += string_f("<div %s id=button%u onclick=gameaction(event,'newgame:%u')"
 		" style='background-color:%s;color:white;flex:0 1 auto; border-radius:%upx; width:%u; text-align:center;cursor:default;"
 		" border:1px solid black; margin-left:%u; margin-top:%u; margin-bottom:%u;'>%s</div>\n"
-		,command,command,highlit ? "lightblue" : "lightgray"
+		,tmptitle.c_str(),command,command,highlit ? "lightblue" : "lightgray"
 		,specs.radius,specs.width,specs.margin_left,specs.margin_top,specs.margin_bottom,txt.ptr);
+}
+void documentd_bar_button (string &lines, unsigned command, PARAM_STRING txt, const DOC_BUTTON_SPECS &specs, bool highlit)
+{
+	documentd_bar_button(lines, command, txt, specs, highlit,nullptr);
 }
 
 /*
@@ -803,7 +809,7 @@ string documentd_js_loop_function(const char *board_prefix, const char *prefix)
 	lines += "\t\t\tvar tpls=document.getElementsByTagName('template');\n";
 	lines += "\t\t\tfor (var j=0; j<tpls.length; j++){\n";
 	lines += string_f("\t\t\t\tvar svg = tpls[j].content.getElementById('%s-'+whi.gameid+','+whi.docnum);\n",board_prefix);
-	lines += "\t\t\t\tif (svg != null) fct(svg);\n";
+	lines += "\t\t\t\tif (svg != null) fct(svg,whi);\n";
 	lines += "\t\t\t}\n";
 	lines += "\t\t}\n";
 	lines += "\t}\n";

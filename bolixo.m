@@ -2,7 +2,7 @@ extern const char **_dictionary_bolixo;
 #ifndef DICTIONARY_REQUEST
 	#define DICTIONARY_REQUEST \
 	const char **_dictionary_bolixo;\
-	TRANSLATE_SYSTEM_REQ _dictionary_req_bolixo("bolixo",_dictionary_bolixo,745,24);\
+	TRANSLATE_SYSTEM_REQ _dictionary_req_bolixo("bolixo",_dictionary_bolixo,764,24);\
 	void dummy_dict_bolixo(){}
 #endif
 #ifndef MSG_U
@@ -758,3 +758,22 @@ extern const char **_dictionary_bolixo;
 #define T_CALC	742
 #define E_EVALLOOP	743
 #define E_CELLERROR	744
+#define I_RESETDOC	745
+#define I_INSCOLLINE	746
+#define I_INSERTLINES	747
+#define I_INSERTCOLUMNS	748
+#define I_DELETELINES	749
+#define I_DELETECOLUMNS	750
+#define T_INSERTCELLS	751
+#define E_READONLYDOC	752
+#define I_ADDTEXT	753
+#define I_ADDCIRCLE	754
+#define I_ADDRECT	755
+#define I_ADDLINE	756
+#define I_ADDHANDLINE	757
+#define I_SELECTITEMS	758
+#define I_SELECTPARENTS	759
+#define I_SELECTIMBED	760
+#define I_SETBOXTYPE	761
+#define I_SELECTRELATION	762
+#define I_POSITIONTEXT	763

@@ -191,17 +191,26 @@ string CALC::draw_board (
 	unsigned fontsize,
 	unsigned docnum,
 	bool editmode,		// Enable onXXXX function
+	const CELL_COOR &area,	// Show only the cells defined by pref.offset_line/col and area.line/col if area.line>0
 	string &script)
 {
 	glocal fontsize;
 	glocal string val;
 	glocal script;
 		
+	unsigned draw_lines = TBL_FIXED_LINES;
+	unsigned draw_columns = TBL_FIXED_COLUMNS;
+	bool draw_headings = true;
+	if (area.line != 0){
+		draw_lines = area.line;
+		draw_columns = area.col;
+		draw_headings = false;
+	}
 	script += string_f("calc_cur_gameid='%s';\n",gameid.c_str());
 	// Generate JS objects
 	script += string_f(
 		"var calc_%u={\n"
-		"\tgameid:'%s',docnum:%u,offline:%u,offcol:%u"
+		"\tgameid:'%s',docnum:%u,offline:%u,offcol:%u,lines:%u,columns:%u,heading:%u"
 		"};\n"
 		"calc_%u.gameselect=function(event){\n"
 		"\tcalc_gameselect(this.gameid,this.docnum,event);\n"
@@ -210,7 +219,7 @@ string CALC::draw_board (
 		"\tcalc_gamemove(this.gameid,this.docnum,event);\n"
 		"};\n"
 		,docnum
-		,gameid.c_str(),docnum,pref.offset_line,pref.offset_col
+		,gameid.c_str(),docnum,pref.offset_line,pref.offset_col,draw_lines,draw_columns,draw_headings
 		,docnum
 		,docnum);
 	// This function helps update a cell. We pass an absolute cell coordinate and function f is called (or not)
@@ -218,8 +227,8 @@ string CALC::draw_board (
 	script += string_f("calc_%u.selcell=function(tds,absline,abscol,f){\n",docnum);
 	script += "\tvar line = absline-this.offline;\n"
 		"\tvar col = abscol-this.offcol;\n";
-	script += string_f("\tif(line >= 0 && line < %u && col >= 0 && col < %u){\n",TBL_FIXED_LINES,TBL_FIXED_COLUMNS);
-	script += string_f("\t\tvar td=tds[(line+1)*%u+col+1];\n",TBL_FIXED_COLUMNS+1);
+	script += "\tif(line >= 0 && line < this.lines && col >= 0 && col < this.columns){\n";
+	script += "\t\tvar td=tds[(line+this.heading)*(this.columns+this.heading)+col+this.heading];\n";
 	script += "\t\tf(td);\n"
 		"\t}\n"
 		"};\n";
@@ -252,48 +261,54 @@ string CALC::draw_board (
 			,docnum,docnum);
 	}
 	glocal.val += string_f("<div style='width:%u;height:%u; overflow:hidden;'>\n",board_width,board_height);
-	glocal.val += string_f("<table class=calc id='tbl-%s,%d' border=1 %s>\n",gameid.c_str(),docnum,onfuncs.c_str());
-	// Set the width for all columns
-	glocal.val += "<col style='width:50px;min-width:50px;max-width:50px;'>\n";	// This is for the line number column
-	for (unsigned col=0; col < TBL_FIXED_COLUMNS; col++){
+	glocal.val += string_f("<table width=100%% class=calc id='tbl-%s,%d' border=1 %s>\n",gameid.c_str(),docnum,onfuncs.c_str());
+	if (draw_headings){
+		glocal.val += "<col style='width:50px;min-width:50px;max-width:50px;'>\n";	// This is for the line number column
+	}
+	for (unsigned col=0; col < draw_columns; col++){
 		unsigned width = DEFAULT_COL_WIDTH;
 		auto c = col_formats.find(col);
 		if (c != col_formats.end()) width = c->second.width;
 		glocal.val += string_f("<col style='width:%upx;min-width:%upx;max-width:%upx;'>\n",width,width,width);
 	}
 	// column names (letters)
-	glocal.val += "<tr><td>";
-	for (unsigned i=0; i<26; i++){
-		const char *color = pref.cursor.col == i ? "lightblue" : "#E8E8E8";
-		unsigned col = i+pref.offset_col;
-		string coltxt;
-		if (col < 26){
-			coltxt = 'A'+col;
-		}else{
-			unsigned letter1 = col / 26;
-			unsigned letter2 = col % 26;
-			coltxt = "  ";
-			coltxt[0] = 'A' + letter1;
-			coltxt[1] = 'A' + letter2;
+	if (draw_headings){
+		glocal.val += "<tr><td>";
+		for (unsigned i=0; i<26; i++){
+			const char *color = pref.cursor.col == i ? "lightblue" : "#E8E8E8";
+			unsigned col = i+pref.offset_col;
+			string coltxt;
+			if (col < 26){
+				coltxt = 'A'+col;
+			}else{
+				unsigned letter1 = col / 26;
+				unsigned letter2 = col % 26;
+				coltxt = "  ";
+				coltxt[0] = 'A' + letter1;
+				coltxt[1] = 'A' + letter2;
+			}
+			glocal.val += string_f("<td style='text-align:center;background-color:%s;' >%s",color,coltxt.c_str());
 		}
-		glocal.val += string_f("<td style='text-align:center;background-color:%s;' >%s",color,coltxt.c_str());
 	}
-	for (unsigned i=0; i < TBL_FIXED_LINES; i++){
+	for (unsigned i=0; i < draw_lines; i++){
 		unsigned line = i+pref.offset_line;
 		const char *color = pref.cursor.line == line ? "lightblue" : "#E8E8E8";
-		glocal.val += string_f("<tr><td style='text-align:center; background-color:%s;'>%d",color,line+1);
-		for (unsigned j=0; j < TBL_FIXED_COLUMNS; j++){
+		glocal.val += "<tr>";
+		if (draw_headings) glocal.val += string_f("<td style='text-align:center; background-color:%s;'>%d",color,line+1);
+		for (unsigned j=0; j < draw_columns; j++){
 			unsigned col = j+pref.offset_col;
 			auto c = grid.find(CELL_COOR(line,col));
 			const char *bgcol = "white";
-			for (auto &p:prefs){
-				if (p.second.cursor.line == line && p.second.cursor.col == col){
-					if (p.first == ctx.session){
-						bgcol = "lightblue";
-					}else{
-						bgcol = "lightgray";
+			if (editmode){
+				for (auto &p:prefs){
+					if (p.second.cursor.line == line && p.second.cursor.col == col){
+						if (p.first == ctx.session){
+							bgcol = "lightblue";
+						}else{
+							bgcol = "lightgray";
+						}
+						break;
 					}
-					break;
 				}
 			}
 			if (c != grid.end()){
@@ -396,7 +411,7 @@ string CALC::define_styles(const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &s
 {
 	string val;
 	val += ".calc{\n"
-		"\table-layout: fixed;\n"
+		"\ttable-layout: fixed;\n"
 		"}\n";
 	#if 0
 	val += ".calc ttd{\n"
@@ -443,6 +458,7 @@ void CALC::update_cells(set<CELL_COOR> &cells, VARVAL &var)
 		// So we count them
 		var.val += "calc_loop_board(function(e,calc){\n";
 		var.val += "\tvar tds=e.getElementsByTagName('td');\n";
+		var.val += "\tconsole.log('calc='+calc);\n";
 		for (auto &c:cells){
 			var.val += string_f("\tcalc.selcell(tds,%u,%u,function(td){\n",c.line,c.col);
 			auto g = grid.find(c);
@@ -519,6 +535,7 @@ void CALC::update_col_width(VARVAL &var, unsigned col, unsigned width)
 	var.val += "\tvar cols=e.getElementsByTagName('col');\n";
 	col++;
 	var.val += string_f("\tcols[%u].style.minWidth='%upx';\n",col,width);
+	var.val += string_f("\tcols[%u].style.width='%upx';\n",col,width);
 	var.val += string_f("\tcols[%u].style.maxWidth='%upx';\n",col,width);
 	var.val += "});\n";
 }
@@ -807,7 +824,7 @@ void CALC::execstep (
 		wordproc_kbd(val,pref.mod,tmpvar,tmpval,lastline);
 		var = tmpvar.c_str();
 		val = tmpval.c_str();
-tlmp_warning ("var=%s val=%s",var,val);		
+		//tlmp_warning ("var=%s val=%s",var,val);		
 	}
 	if (strcmp(var,REQ_PRINT)==0){
 		if (is_any_of(val,"","full")){
@@ -823,6 +840,7 @@ tlmp_warning ("var=%s val=%s",var,val);
 			if (ctx.maywrite){
 				#define BUTTON_NEWDOC	0
 				#define BUTTON_COLSTYLE	1
+				#define BUTTON_INSCOLLINE 2
 				v.val += "<div id=tab_form style='display:flex; flex-flow:column;'>\n";
 				v.val += "<div style='flex:0 0 auto; width:100%;margin-top:5; background-color: lightgray;'>\n";
 				DOC_BUTTON_SPECS specs;
@@ -835,8 +853,9 @@ tlmp_warning ("var=%s val=%s",var,val);
 				}
 				CALC_MENU menu(specs);
 				documentd_button_start(v.val,gameid);
-				documentd_bar_button (v.val,BUTTON_NEWDOC,menu.svg_clear,specs,false);
-				documentd_bar_button (v.val,BUTTON_COLSTYLE,"S",specs,false);
+				documentd_bar_button (v.val,BUTTON_NEWDOC,menu.svg_clear,specs,false,MSG_U(I_RESETDOC,"Reset document"));
+				//documentd_bar_button (v.val,BUTTON_COLSTYLE,"S",specs,false);
+				documentd_bar_button (v.val,BUTTON_INSCOLLINE,"+",specs,false,MSG_U(I_INSCOLLINE,"Insert/Delete lines or columns"));
 				documentd_button_space(v.val);
 				documentd_button_end(v.val);
 				v.val += "</div>\n";
@@ -862,7 +881,7 @@ tlmp_warning ("var=%s val=%s",var,val);
 				" onkeydown='calc_gamepress(event);return false;'"
 				" tabindex=0 >\n",gameid.c_str(),board_width,board_height);
 			string script;
-			v.val += draw_board(ctx,pref,board_width,board_height,sp.fontsize,ctx.docnum,true,script);
+			v.val += draw_board(ctx,pref,board_width,board_height,sp.fontsize,ctx.docnum,true,CELL_COOR(),script);
 			if (script.size() > 0){
 				v.val += "<script>\n";
 				v.val += script;
@@ -902,8 +921,24 @@ tlmp_warning ("var=%s val=%s",var,val);
 		var.var = VAR_STYLES;
 		var.val += define_styles(ctx,sp);
 		res.emplace_back(move(var));
-	}else if (strcmp(var,"region")==0){
+	}else if (strcmp(var,REQ_REGION)==0){
 		// For embedding
+		// A region is either a range (a1:c3) or a name (not done yet)
+		CELL_COOR start,end;
+		if (calc_parserange(val,start,end)){
+			CALC_PREF p;
+			p.offset_line = start.line;
+			p.offset_col  = start.col;
+			CELL_COOR area;
+			area.line = end.line - start.line+1;
+			area.col  = end.col - start.col+1;
+			VARVAL var,var_script;
+			var.var = VAR_CONTENT;
+			var_script.var = VAR_DEFSCRIPT;
+			var.val += draw_board(ctx,p,board_width,board_height,sp.fontsize,ctx.docnum,false,area,var_script.val);
+			res.emplace_back(move(var));
+			res.emplace_back(move(var_script));
+		}
 	}else if (strcmp(var,"chat")==0){
 		appendchat(val,notify_var.val,res);
 	}else if (strcmp(var,REQ_GETFIELDS)==0){
@@ -1041,10 +1076,11 @@ tlmp_warning ("var=%s val=%s",var,val);
 				var.val = DIALOG_CALC_NEW;
 				res.emplace_back(var);
 			}else if (uval == BUTTON_COLSTYLE){
-				for (int i=0; i<10; i++){
-					grid[CELL_COOR(i,i)] = CALC_CELL(string_f("line%d,%d",i,i));
-				}
-				documentd_forcerefresh(res);
+			}else if (uval == BUTTON_INSCOLLINE){
+				VARVAL var;
+				var.var = VAR_DIALOG;
+				var.val = DIALOG_CALC_INSCOLLINE;
+				res.emplace_back(var);
 			}else{
 				tlmp_error ("calc newgame=%d",uval);
 			}
@@ -1053,7 +1089,7 @@ tlmp_warning ("var=%s val=%s",var,val);
 			const char *pt = strchr(val,',');
 			if (pt != nullptr){
 				// we only care about the key transfered if it is a Enter, so we change cell
-tlmp_warning ("edit val=%s",val);
+				// tlmp_warning ("edit val=%s",val);
 				string key = string(val,pt-val);
 				pt++;
 				update_onecell(pref,pt);
@@ -1094,6 +1130,19 @@ tlmp_warning ("edit val=%s",val);
 			}
 			update_offsets (notify_var,ctx,pref);
 			setmodified(ctx.username);
+		}else if (strcmp(var,"inscolline")==0){
+			if (strcmp(val,"inslines")==0){
+				insert_line (notify_var,pref.cursor.line);
+			}else if (strcmp(val,"inscolumns")==0){
+				insert_col (notify_var,pref.cursor.col);
+			}else if (strcmp(val,"dellines")==0){
+				delete_line (notify_var,pref.cursor.line);
+			}else if (strcmp(val,"delcolumns")==0){
+				delete_col (notify_var,pref.cursor.col);
+			}
+			update_celledit (pref,script_var);
+			setmodified(ctx.username);
+			setfocus (script_var);
 		}
 		if (old_cursor != pref.cursor){
 			notify_ids.insert(old_cursor);
@@ -1103,7 +1152,7 @@ tlmp_warning ("edit val=%s",val);
 			update_lines_cols (pref,old_cursor,pref.cursor,script_var);
 		}
 	}else{
-		error = MSG_R(E_READONLY);
+		error = MSG_U(E_READONLYDOC,"You do not have write access to this document");
 	}
 	if (api_error.size() > 0){
 		VARVAL var;

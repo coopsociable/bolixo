@@ -341,6 +341,7 @@ void documentd_button_space (std::string &line);
 void documentd_button_label (std::string &line, PARAM_STRING txt);
 void documentd_button (std::string &lines, unsigned command, PARAM_STRING txt, bool highlit);
 void documentd_button (std::string &lines, unsigned command, PARAM_STRING txt, const class DOC_BUTTON_SPECS &specs, bool highlit);
+void documentd_bar_button (std::string &lines, unsigned command, PARAM_STRING txt, const class DOC_BUTTON_SPECS &specs, bool highlit, PARAM_STRING title);
 void documentd_bar_button (std::string &lines, unsigned command, PARAM_STRING txt, const class DOC_BUTTON_SPECS &specs, bool highlit);
 void documentd_forcerefresh (std::vector<VARVAL> &res);
 void documentd_setchanges (std::vector<VARVAL> &res);
