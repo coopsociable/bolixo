@@ -209,6 +209,21 @@ void documentd_button (string &lines, unsigned command, PARAM_STRING txt, const 
 		,command,command,highlit ? "lightblue" : "lightgray"
 		,specs.radius,specs.width,specs.margin_left,specs.margin_top,specs.margin_bottom,txt.ptr);
 }
+// Replace ' by &#39;
+static string documentd_escape_squot(PARAM_STRING s)
+{
+	string ret;
+	const char *pt = s.ptr;
+	while (*pt != '\0'){
+		if (*pt == '\''){
+			ret += "&#39;";
+		}else{
+			ret += *pt;
+		}
+		pt++;
+	}
+	return ret;
+}
 /*
 	Small button for a menu bar
 */
@@ -216,7 +231,7 @@ void documentd_bar_button (string &lines, unsigned command, PARAM_STRING txt, co
 {
 	lines += "&nbsp;";
 	string tmptitle;
-	if (title.ptr != nullptr) tmptitle = string_f("title='%s'",title.ptr);
+	if (title.ptr != nullptr) tmptitle = string_f("title='%s'",documentd_escape_squot(title).c_str());
 	lines += string_f("<div %s id=button%u onclick=gameaction(event,'newgame:%u')"
 		" style='background-color:%s;color:white;flex:0 1 auto; border-radius:%upx; width:%u; text-align:center;cursor:default;"
 		" border:1px solid black; margin-left:%u; margin-top:%u; margin-bottom:%u;'>%s</div>\n"
@@ -437,6 +452,9 @@ set<string> GAME::get_embed_list() const
 	}
 	return ret;
 }
+void GAME::set_embed_options (const DOCUMENT_EMBED &embed, bool not_square)
+{
+}
 set<DOCUMENT_EMBED> GAME::get_embed_specs() const
 {
 	set<DOCUMENT_EMBED> ret;
@@ -588,6 +606,7 @@ static void documentd_create_popup(PARAM_STRING msg, const GAME_P doc)
 		{"WORD","doc_wordproc"},
 		{"WHIT","doc_whiteboard"},
 		{"TICT","doc_tictacto"},
+		{"CALC","doc_calc"},
 	};
 	const char *type = doc->getclass();
 	const char *docid=nullptr;
@@ -784,6 +803,7 @@ void documentd_imbeds (
 					}else if (r.var == VAR_CONTENT){
 						lines += string_f("<template id='temp%u' >\n",t.docnum);
 						lines += r.val + "</template>\n";
+						game->set_embed_options(t,r.val.find("not-square")!=string::npos);
 					}
 				}
 			}

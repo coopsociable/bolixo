@@ -232,6 +232,15 @@ string CALC::draw_board (
 	script += "\t\tf(td);\n"
 		"\t}\n"
 		"};\n";
+	// Update the columns width specification
+	script += string_f("calc_%u.updcolwidth=function(e,col,width){\n",ctx.docnum);
+	script += "\tvar cols=e.getElementsByTagName('col');\n";
+	script += "\tif (this.heading) col++;\n";
+	script += "\tcols[col].style.minWidth=width;\n";
+	script += "\tcols[col].style.width=width;\n";
+	script += "\tcols[col].style.maxWidth=width;\n";
+	script += "};\n";
+	// Update the offline,offcol of the current object, Update the heading as well
 	script += string_f("calc_%u.updoff=function(offline,offcol){\n",ctx.docnum);
 	script += "\tthis.offline=offline;\n"
 		"\tthis.offcol=offcol;\n"
@@ -260,7 +269,11 @@ string CALC::draw_board (
 			" onmousemove='calc_%u.gamemove(event); return false;'"
 			,docnum,docnum);
 	}
-	glocal.val += string_f("<div style='width:%u;height:%u; overflow:hidden;'>\n",board_width,board_height);
+	if (board_width != 0){
+		glocal.val += string_f("<div style='width:%u;height:%u; overflow:hidden;'>\n",board_width,board_height);
+	}else{
+		glocal.val += "<div>\n";
+	}
 	glocal.val += string_f("<table width=100%% class=calc id='tbl-%s,%d' border=1 %s>\n",gameid.c_str(),docnum,onfuncs.c_str());
 	if (draw_headings){
 		glocal.val += "<col style='width:50px;min-width:50px;max-width:50px;'>\n";	// This is for the line number column
@@ -532,11 +545,7 @@ void CALC::update_onecell (CALC_PREF &pref, PARAM_STRING buf)
 void CALC::update_col_width(VARVAL &var, unsigned col, unsigned width)
 {
 	var.val += "calc_loop_board(function(e,calc){\n";
-	var.val += "\tvar cols=e.getElementsByTagName('col');\n";
-	col++;
-	var.val += string_f("\tcols[%u].style.minWidth='%upx';\n",col,width);
-	var.val += string_f("\tcols[%u].style.width='%upx';\n",col,width);
-	var.val += string_f("\tcols[%u].style.maxWidth='%upx';\n",col,width);
+	var.val += string_f("\tcalc.updcolwidth(e,%u,%u);\n",col,width);
 	var.val += "});\n";
 }
 void CALC::update_offsets(VARVAL &var, const DOC_CONTEXT &ctx, CALC_PREF &pref)
@@ -935,7 +944,8 @@ void CALC::execstep (
 			VARVAL var,var_script;
 			var.var = VAR_CONTENT;
 			var_script.var = VAR_DEFSCRIPT;
-			var.val += draw_board(ctx,p,board_width,board_height,sp.fontsize,ctx.docnum,false,area,var_script.val);
+			var.val += "<!-- not-square -->\n";	// trick to pass rendering information to the parent document
+			var.val += draw_board(ctx,p,0,0,sp.fontsize,ctx.docnum,false,area,var_script.val);
 			res.emplace_back(move(var));
 			res.emplace_back(move(var_script));
 		}
@@ -972,8 +982,7 @@ void CALC::execstep (
 			}
 		}
 		update_cells(ids,script_var);
-		//documentd_forcerefresh(res);
-		//setfocus(script_var);
+		update_celledit (pref,script_var);
 	}else if (ctx.maywrite){
 		auto old_cursor = pref.cursor;
 		if (strcmp(var,"break")==0 && pref.mod.shift){

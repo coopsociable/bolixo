@@ -178,6 +178,7 @@ public:
 	void exec (const char *var, const char *val, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
 	void manyexec (const std::vector<VARVAL_receive> &steps, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
 	set<DOCUMENT_EMBED> get_embed_specs() const;
+	void set_embed_options (const DOCUMENT_EMBED &embed, bool not_square);
 };
 
 GAME_P make_WORDPROC()
@@ -1034,11 +1035,17 @@ string WORDPROC::formatline(unsigned noline, const DOC_UI_SPECS_receive &sp, str
 			// Instead in the style defintion, we populate the variable --width and use it in the computation of the div below.
 			// So the width and height are properly set and will show the same on all display (same proportion of the display).
 			unsigned docnum = para.get_docnum();
-			ret += string_f("<div id='parent%u' class=%s"
-				" style='width:calc(0.%u * var(--width)); height:calc(0.%u * var(--width));display: inline-block; position:relative;'>\n"
-				,noline,cursors.size() > 0 ? "imgcursor" : "imgembed"
-				,para_width,para_width);
-			
+			if (para.imbed.not_square){
+				ret += string_f("<div id='parent%u' class=%s"
+					" style='width:calc(0.%u * var(--width)); display: inline-block; position:relative;'>\n"
+					,noline,cursors.size() > 0 ? "imgcursor" : "imgembed"
+					,para_width);
+			}else{
+				ret += string_f("<div id='parent%u' class=%s"
+					" style='width:calc(0.%u * var(--width)); height:calc(0.%u * var(--width));display: inline-block; position:relative;'>\n"
+					,noline,cursors.size() > 0 ? "imgcursor" : "imgembed"
+					,para_width,para_width);
+			}	
 			ret += "</div>\n";
 			script += string_f("show_template('temp%u','parent%u');\n",docnum,noline);
 			format = false;
@@ -1612,6 +1619,14 @@ set<DOCUMENT_EMBED> WORDPROC::get_embed_specs() const
 	}
 	return ret;
 }
+void WORDPROC::set_embed_options (const DOCUMENT_EMBED &embed, bool not_square)
+{
+	for (auto &l:lines){
+		if (l.is_imbed() && l.imbed == embed){
+			l.imbed.not_square = not_square;
+		}
+	}
+}
 void WORDPROC::setfocus(VARVAL &script_var)
 {
 	documentd_setfocus(script_var,string_f("text-%s",gameid.c_str()));
@@ -2057,9 +2072,6 @@ void WORDPROC::execstep (
 					}
 				}
 				if (imbed.docnum == (unsigned short)-1) imbed.docnum = docnum+1;
-				while (lines.size() <= pref.cursor.line) lines.push_back("");
-				lines[pref.cursor.line].set_imbed(imbed);
-				notify_lines.insert(pref.cursor.line);
 				string script;
 				documentd_imbed (gameid,imbed.document,REQ_FUNCTIONS,"",imbed.docnum,sp,script);
 				notify_var.val += script;
@@ -2075,6 +2087,10 @@ void WORDPROC::execstep (
 				notify_var.val += content;
 				notify_var.val += "</template>`;\n";
 				notify_var.val += script;
+				if (content.find("not-square")!=string::npos) imbed.not_square = true;
+				while (lines.size() <= pref.cursor.line) lines.push_back("");
+				lines[pref.cursor.line].set_imbed(imbed);
+				notify_lines.insert(pref.cursor.line);
 			// This is a catch all for images
 			// It means that all other case (other else) are not reached if the current line is an image.
 			}else if (pref.cursor.line < lines.size()

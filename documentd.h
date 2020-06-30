@@ -126,8 +126,12 @@ struct DOCUMENT_EMBED{
 	std::string document;
 	std::string region;
 	unsigned short docnum=0;
+	bool not_square=false;
 	bool operator < (const DOCUMENT_EMBED &n) const {
 			return tie(document,region) < tie(n.document,n.region);
+	}
+	bool operator == (const DOCUMENT_EMBED &n) const {
+			return tie(document,region) == tie(n.document,n.region);
 	}
 };
 
@@ -315,6 +319,7 @@ public:
 	virtual void manyexec (const std::vector<VARVAL_receive> &steps, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
 	virtual void engine_reply (const char *line, std::string &notify, bool &done);
 	virtual std::set<DOCUMENT_EMBED> get_embed_specs() const;
+	virtual void set_embed_options (const DOCUMENT_EMBED &embed, bool not_square);
 	virtual ~GAME();
 };
 
