@@ -338,6 +338,7 @@ GAME_P make_CALC();
 #include "documentd_req.h"
 
 std::string documentd_escape(PARAM_STRING msg);
+std::string documentd_escape_html(PARAM_STRING msg);
 void documentd_eraselast (std::string &txt);
 void documentd_error (std::vector<VARVAL> &res, PARAM_STRING s);
 void documentd_button_start (std::string &line, const std::string &gameid);

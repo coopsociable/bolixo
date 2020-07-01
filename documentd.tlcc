@@ -158,7 +158,7 @@ string documentd_escape(PARAM_STRING msg)
 	string tmp;
 	const char *pt = msg.ptr;
 	while (*pt != '\0'){
-		if (*pt == '\''){
+		if (is_any_of(*pt,'\'','\\')){
 			tmp += '\\';
 		}
 		tmp += *pt++;
@@ -210,13 +210,15 @@ void documentd_button (string &lines, unsigned command, PARAM_STRING txt, const 
 		,specs.radius,specs.width,specs.margin_left,specs.margin_top,specs.margin_bottom,txt.ptr);
 }
 // Replace ' by &#39;
-static string documentd_escape_squot(PARAM_STRING s)
+string documentd_escape_html(PARAM_STRING s)
 {
 	string ret;
 	const char *pt = s.ptr;
 	while (*pt != '\0'){
 		if (*pt == '\''){
 			ret += "&#39;";
+		}else if (*pt == '\\'){
+			ret += "&#92;";
 		}else{
 			ret += *pt;
 		}
@@ -231,7 +233,7 @@ void documentd_bar_button (string &lines, unsigned command, PARAM_STRING txt, co
 {
 	lines += "&nbsp;";
 	string tmptitle;
-	if (title.ptr != nullptr) tmptitle = string_f("title='%s'",documentd_escape_squot(title).c_str());
+	if (title.ptr != nullptr) tmptitle = string_f("title='%s'",documentd_escape_html(title).c_str());
 	lines += string_f("<div %s id=button%u onclick=gameaction(event,'newgame:%u')"
 		" style='background-color:%s;color:white;flex:0 1 auto; border-radius:%upx; width:%u; text-align:center;cursor:default;"
 		" border:1px solid black; margin-left:%u; margin-top:%u; margin-bottom:%u;'>%s</div>\n"
