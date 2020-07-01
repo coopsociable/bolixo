@@ -784,29 +784,30 @@ void documentd_imbeds (
 		auto p = pt_games->find(docpath);
 		if (p != pt_games->end()){
 			GAME_P sub = p->second;
+			vector<VARVAL_receive> steps;
+			VARVAL_receive var;
 			if (type_seens.insert(sub->getclass()).second){
-				vector<VARVAL_receive> steps;
-				VARVAL_receive var;
+				// We only need those once per document type
 				var.var = REQ_FUNCTIONS;
 				steps.push_back(var);
 				var.var = REQ_STYLES;
 				steps.push_back(var);
-				var.var = REQ_REGION;
-				var.val = t.region.c_str();
-				steps.push_back(var);
-				vector<VARVAL> res;
-				DOC_CONTEXT ctx;
-				sub->manyexec(steps,ctx,sp,res);
-				for (auto &r:res){
-					if (r.var == VAR_STYLES){
-						lines += "<style>\n" + r.val + "</style>\n";
-					}else if (r.var == VAR_DEFSCRIPT){
-						lines += "<script>\n" + r.val + "</script>\n";
-					}else if (r.var == VAR_CONTENT){
-						lines += string_f("<template id='temp%u' >\n",t.docnum);
-						lines += r.val + "</template>\n";
-						game->set_embed_options(t,r.val.find("not-square")!=string::npos);
-					}
+			}
+			var.var = REQ_REGION;
+			var.val = t.region.c_str();
+			steps.push_back(var);
+			vector<VARVAL> res;
+			DOC_CONTEXT ctx;
+			sub->manyexec(steps,ctx,sp,res);
+			for (auto &r:res){
+				if (r.var == VAR_STYLES){
+					lines += "<style>\n" + r.val + "</style>\n";
+				}else if (r.var == VAR_DEFSCRIPT){
+					lines += "<script>\n" + r.val + "</script>\n";
+				}else if (r.var == VAR_CONTENT){
+					lines += string_f("<template id='temp%u' >\n",t.docnum);
+					lines += r.val + "</template>\n";
+					game->set_embed_options(t,r.val.find("not-square")!=string::npos);
 				}
 			}
 		}
