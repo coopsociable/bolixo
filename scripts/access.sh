@@ -439,6 +439,17 @@ elif [ "$1" = "doc-whiteboard-2many" ] ; then # test: tests many 2 many  on the 
 elif [ "$1" = "doc-whiteboard" ] ; then # test: many tests on the whiteboard document
 	$0 doc-whiteboard-3elms
 	$0 doc-whiteboard-2many
+elif [ "$1" = "doc-calc" ] ; then # test: many test on spreadsheet document
+	DOCNAME=/projects/jacques-A/public/test.sheet
+	. scripts/calc-help.sh
+	createdocument
+	resetdocument
+	setcells a1:c1 1,2,3
+	setcells a2:c2 1,2,3
+	setcells a3:c3 1,2,3
+	setcells a4:d4 "=sum(a1:a3),=sum(b1:b3),=sum(c1:c3),=sum(a4:c4)"
+	getcells a1:d4
+	getvals a1:d4
 elif [ "$1" = "infowrite" ] ; then # test: publish info to directory server
 	USER=jacques-A
 	echo Create mini-photo.jpg and photo.jpg for all users

@@ -244,17 +244,19 @@ string CALC::draw_board (
 	script += string_f("calc_%u.updoff=function(offline,offcol){\n",ctx.docnum);
 	script += "\tthis.offline=offline;\n"
 		"\tthis.offcol=offcol;\n"
-		"\tvar tbl=document.getElementById('tbl-'+this.gameid+','+this.docnum);\n"
-		"\tvar tds=tbl.getElementsByTagName('td');\n";
-	script += string_f("\tfor (var i=1; i<=%u; i++){\n",TBL_FIXED_LINES);
-	script += string_f("\t\ttds[i*%u].innerHTML=i+this.offline;\n",TBL_FIXED_COLUMNS+1);
-	script += "\t}\n";
-	script += string_f("\tfor (var i=0; i<%u; i++){\n",TBL_FIXED_COLUMNS);
-	script += "\t\tvar col=i+this.offcol;\n"
-		"\t\tif(col < 26){\n"
-		"\t\t\ttds[i+1].innerHTML=String.fromCharCode(col+65);\n"
-		"\t\t}else{\n"
-		"\t\t\ttds[i+1].innerHTML=String.fromCharCode(col/26+65)+String.fromCharCode(col%26+65);\n"
+		"\tif(this.heading){\n"
+		"\t\tvar tbl=document.getElementById('tbl-'+this.gameid+','+this.docnum);\n"
+		"\t\tvar tds=tbl.getElementsByTagName('td');\n";
+	script += "\t\tfor (var i=1; i<=this.lines; i++){\n";
+	script += "\t\t\ttds[i*(this.columns+1)].innerHTML=i+this.offline;\n";
+	script += "\t\t}\n";
+	script += "\t\tfor (var i=0; i<this.columns; i++){\n";
+	script += "\t\t\tvar col=i+this.offcol;\n"
+		"\t\t\tif(col < 26){\n"
+		"\t\t\t\ttds[i+1].innerHTML=String.fromCharCode(col+65);\n"
+		"\t\t\t}else{\n"
+		"\t\t\t\ttds[i+1].innerHTML=String.fromCharCode(col/26+65)+String.fromCharCode(col%26+65);\n"
+		"\t\t\t}\n"
 		"\t\t}\n"
 		"\t}\n"
 		"};\n";
@@ -317,10 +319,10 @@ string CALC::draw_board (
 					if (p.second.cursor.line == line && p.second.cursor.col == col){
 						if (p.first == ctx.session){
 							bgcol = "lightblue";
+							break;
 						}else{
 							bgcol = "lightgray";
 						}
-						break;
 					}
 				}
 			}
@@ -415,6 +417,12 @@ string CALC::define_functions(
 	val += "function calc_gamemouseup(event){\n";
 	val += "}\n";
 	val += "function calc_gamewheel(event){\n";
+	val += "\tif (event.deltaY < 0){\n";
+	val += "\t\tgameaction(event,'wheel:1,'+event.shiftKey+','+event.ctrlKey);\n";
+	val += "\t}else{\n";
+	val += "\t\tgameaction(event,'wheel:-1,'+event.shiftKey+','+event.ctrlKey);\n";
+	val += "\t}\n";
+	val += "\tevent.stopPropagation();\n";
 	val += "}\n";
 
 	val += documentd_js_loop_function("tbl","calc");
@@ -463,27 +471,18 @@ void CALC::update_lines_cols(CALC_PREF &pref, const CELL_COOR &old, const CELL_C
 }
 /*
 	Send update about some cells to all users
+	if optim is true, only cell with a value are sent. This is used for scroll operation where we known
+	that cells only contains cells in newly created <td> tags (so with an empty value).
 */
-void CALC::update_cells(set<CELL_COOR> &cells, VARVAL &var)
+void CALC::update_cells(set<CELL_COOR> &cells, VARVAL &var, bool optim)
 {
 	if (cells.size() > 0){
 		// We always draw a fixed number of lines and columns. There is no ids for td tag.
 		// So we count them
 		var.val += "calc_loop_board(function(e,calc){\n";
 		var.val += "\tvar tds=e.getElementsByTagName('td');\n";
-		var.val += "\tconsole.log('calc='+calc);\n";
+		var.val += "\tconsole.log('update_cells calc='+calc);\n";
 		for (auto &c:cells){
-			var.val += string_f("\tcalc.selcell(tds,%u,%u,function(td){\n",c.line,c.col);
-			auto g = grid.find(c);
-			if (g != grid.end()){
-				const char *color = g->second.getcolor();
-				const char *align = g->second.getalign();
-				var.val += string_f("\t\ttd.innerHTML='%s';\n",documentd_escape(g->second.gettext()).c_str());
-				var.val += string_f("\t\ttd.style.color='%s';\n",color);
-				var.val += string_f("\t\ttd.style.textAlign='%s';\n",align);
-			}else{
-				var.val += "\t\ttd.innerHTML='';\n";
-			}
 			string sessions;
 			for (auto &p:prefs){
 				if (p.second.cursor == c){
@@ -491,12 +490,25 @@ void CALC::update_cells(set<CELL_COOR> &cells, VARVAL &var)
 					sessions += "'" + p.first + "'";
 				}
 			}
-			if (sessions.size() > 0){
-				var.val += string_f("\t\tset_td_bg(td,[%s]);\n",sessions.c_str());
-			}else{
-				var.val += "\t\ttd.style.background='white';\n";
+			auto g = grid.find(c);
+			if (!optim || g != grid.end() || sessions.size() > 0){
+				var.val += string_f("\tcalc.selcell(tds,%u,%u,function(td){\n",c.line,c.col);
+				if (g != grid.end()){
+					const char *color = g->second.getcolor();
+					const char *align = g->second.getalign();
+					var.val += string_f("\t\ttd.innerHTML='%s';\n",documentd_escape(g->second.gettext()).c_str());
+					var.val += string_f("\t\ttd.style.color='%s';\n",color);
+					var.val += string_f("\t\ttd.style.textAlign='%s';\n",align);
+				}else{
+					var.val += "\t\ttd.innerHTML='';\n";
+				}
+				if (sessions.size() > 0){
+					var.val += string_f("\t\tset_td_bg(td,[%s]);\n",sessions.c_str());
+				}else{
+					var.val += "\t\ttd.style.background='white';\n";
+				}
+				var.val += "\t});\n";
 			}
-			var.val += "\t});\n";
 		}
 		var.val += "});\n";
 	}
@@ -653,10 +665,11 @@ void CALC::insert_line(VARVAL &var, unsigned line)
 	var.val += "\t\t\tvar newtd = document.createElement('td');\n";
 	var.val += "\t\t\tnewtr.appendChild(newtd);\n";
 	var.val += "\t\t}\n";
-	var.val += "\t\tcalc.updoff(calc.offline,calc.offcol);\n";
 	// Clear the cursor for all users on this line
 	map<unsigned,string> sessions;	// Sessions associated with one column on that line
 	for (auto &p:prefs){
+		if (p.second.offset_line > line) p.second.offset_line++;
+		if (p.second.cursor.line > line) p.second.cursor.line++;
 		if (p.second.cursor.line == line){
 			auto &s = sessions[p.second.cursor.col];
 			if (s.size() > 0) s += ',';
@@ -675,6 +688,8 @@ void CALC::insert_line(VARVAL &var, unsigned line)
 		var.val += "\t\t}\n";
 	}
 	var.val += "\t}\n";
+	var.val += string_f("\tif(calc.offline > %u) calc.offline++;\n",line);
+	var.val += "\tcalc.updoff(calc.offline,calc.offcol);\n";
 	var.val += "});\n";
 }
 void CALC::insert_col(VARVAL &var, unsigned col)
@@ -742,10 +757,11 @@ void CALC::delete_line(VARVAL &var, unsigned line)
 	var.val += "\t\t\tvar newtd = document.createElement('td');\n";
 	var.val += "\t\t\tnewtr.appendChild(newtd);\n";
 	var.val += "\t\t}\n";
-	var.val += "\t\tcalc.updoff(calc.offline,calc.offcol);\n";
 	// Set the cursor for all users on this line
 	map<unsigned,string> sessions;	// Sessions associated with one column on that line
 	for (auto &p:prefs){
+		if (p.second.offset_line > line) p.second.offset_line--;
+		if (p.second.cursor.line > line) p.second.cursor.line--;
 		if (p.second.cursor.line == line){
 			auto &s = sessions[p.second.cursor.col];
 			if (s.size() > 0) s += ',';
@@ -761,6 +777,8 @@ void CALC::delete_line(VARVAL &var, unsigned line)
 		var.val += "\t\t}\n";
 	}
 	var.val += "\t}\n";
+	var.val += string_f("\tif(calc.offline > %u) calc.offline--;\n",line);
+	var.val += "\tcalc.updoff(calc.offline,calc.offcol);\n";
 	var.val += "});\n";
 }
 void CALC::delete_col(VARVAL &var, unsigned col)
@@ -805,6 +823,95 @@ void CALC::delete_col(VARVAL &var, unsigned col)
 	var.val += "\t\tcalc.updoff(calc.offline,calc.offcol);\n";
 	var.val += "\t}\n";
 	var.val += "});\n";
+}
+// Execute a one line scroll
+void CALC::vscroll (VARVAL &var, CALC_PREF &pref, int move, set<CELL_COOR> &update_ids)
+{
+	unsigned old_offset = pref.offset_line;
+	if (move == -1){
+		if (pref.offset_line > 0) pref.offset_line--;
+	}else{
+		pref.offset_line++;
+	}
+	if (old_offset != pref.offset_line){
+		unsigned newline = move < 0 ? 0 : TBL_FIXED_LINES;
+		newline += pref.offset_line;
+		for (unsigned col=0; col<TBL_FIXED_COLUMNS; col++){
+			CELL_COOR coor(newline,col+pref.offset_col);
+			update_ids.insert (coor);
+		}
+		// We must clear on tr line and add a new one
+		// depending one the move direction, we either clear the first and add at the end, of clear the end and insert at the front.
+		// The first tr line is the heading (if there is a heading)
+		var.val += "calc_loop_board(function(tbl,calc){\n";
+		var.val += "\tvar trs = tbl.getElementsByTagName('tr');\n";
+		if (move < 0){
+			var.val += "\tvar lastline = calc.heading ? calc.lines : calc.lines-1;\n";
+			var.val += "\ttrs[0].parentNode.removeChild(trs[lastline]);\n";
+		}else{
+			var.val += "\ttrs[0].parentNode.removeChild(trs[calc.heading]);\n";
+		}
+		var.val += "\t\tvar newtr = document.createElement('tr');\n";
+		if (move < 0){
+			var.val += "\ttrs[0].parentNode.insertBefore(newtr,trs[calc.heading]);\n";
+		}else{
+			var.val += "\ttrs[0].parentNode.appendChild(newtr);\n";
+		}
+		var.val += "\tif (calc.heading){\n";
+		var.val += "\t\tvar newtd = document.createElement('td');\n";
+		var.val += "\t\tnewtd.style.textAlign='center';\n";
+		var.val += "\t\tnewtd.style.background='#E8E8E8';\n";
+		var.val += "\t\tnewtr.appendChild(newtd);\n";
+		var.val += "\t}\n";
+		var.val += "\tfor (var i=0; i<calc.columns; i++){\n";
+		var.val += "\t\tvar newtd = document.createElement('td');\n";
+		var.val += "\t\tnewtr.appendChild(newtd);\n";
+		var.val += "\t}\n";
+		var.val += string_f("\tcalc.updoff(%u,calc.offcol);\n",pref.offset_line);
+		var.val += "});\n";
+	}
+}
+// Execute a one column scroll
+void CALC::hscroll (VARVAL &var, CALC_PREF &pref, int move, set<CELL_COOR> &update_ids)
+{
+	unsigned old_offset = pref.offset_col;
+	if (move == -1){
+		if (pref.offset_col > 0) pref.offset_col--;
+	}else{
+		pref.offset_col++;
+	}
+	if (old_offset != pref.offset_col){
+		unsigned newcol = move < 0 ? 0 : TBL_FIXED_COLUMNS;
+		newcol += pref.offset_col;
+		for (unsigned line=0; line<TBL_FIXED_LINES; line++){
+			CELL_COOR coor(line+pref.offset_line,newcol);
+			update_ids.insert (coor);
+		}
+		// We must clear one column add a new one on each lines
+		// depending on the move direction, we either clear the first and add at the end, of clear the end and insert at the front.
+		// The first column  is the heading (if there is a heading)
+		var.val += "calc_loop_board(function(tbl,calc){\n";
+		var.val += "\tvar trs = tbl.getElementsByTagName('tr');\n";
+		if (move < 0){
+			var.val += "\tvar remove_col = calc.columns+calc.heading-1;\n";
+		}else{
+			var.val += "\tvar remove_col = calc.heading;\n";
+		}
+		var.val += "\tconsole.log('trs.length='+trs.length+' remove_col='+remove_col+' calc.lines='+calc.lines+' calc.heading='+calc.heading);\n";
+		var.val += "\tfor (var i=0; i<calc.lines; i++){\n";
+		var.val += "\t\tvar tr = trs[i+calc.heading];\n";
+		var.val += "\t\tvar tds = tr.getElementsByTagName('td');\n";
+		var.val += "\t\ttr.removeChild(tds[remove_col]);\n";
+		var.val += "\t\tvar newtd = document.createElement('td');\n";
+		if (move < 0){
+			var.val += "\t\ttr.insertBefore(newtd,tds[calc.heading]);\n";
+		}else{
+			var.val += "\t\ttr.appendChild(newtd);\n";
+		}
+		var.val += "\t}\n";
+		var.val += string_f("\tcalc.updoff(calc.offline,%u);\n",pref.offset_col);
+		var.val += "});\n";
+	}
 }
 <mod>
 void CALC::execstep (
@@ -981,7 +1088,7 @@ void CALC::execstep (
 				ids.insert (coor);
 			}
 		}
-		update_cells(ids,script_var);
+		update_cells(ids,script_var,true);
 		update_celledit (pref,script_var);
 	}else if (ctx.maywrite){
 		auto old_cursor = pref.cursor;
@@ -1026,6 +1133,12 @@ void CALC::execstep (
 			}else if (-move <= pref.cursor.line){
 				pref.cursor.line += move;
 			}
+			if (pref.cursor.line < pref.offset_line
+				|| pref.cursor.line > pref.offset_line+10){
+				set<CELL_COOR> ids;
+				vscroll (script_var,pref,move,ids);
+				update_cells (ids,script_var,true);
+			}
 		}else if (is_any_of(var,"hmove","tab")){
 			int move;
 			bool shift = pref.mod.shift;
@@ -1046,11 +1159,18 @@ void CALC::execstep (
 					col_formats.erase(c);
 				}
 				update_col_width(notify_var,pref.cursor.col,width);
+				setmodified (ctx.username);
 			}else{
 				if (move > 0){
 					pref.cursor.col += move;
 				}else if (-move <= pref.cursor.col){
 					pref.cursor.col += move;
+				}
+				if (pref.cursor.col < pref.offset_col
+					|| pref.cursor.col > pref.offset_col+5){
+					set<CELL_COOR> ids;
+					hscroll (script_var,pref,move,ids);
+					update_cells (ids,script_var,true);
 				}
 			}
 		}else if (strcmp(var,"select")==0){
@@ -1077,6 +1197,18 @@ void CALC::execstep (
 			}
 		}else if (strcmp(var,"mousemove")==0){
 		}else if (strcmp(var,"wheel")==0){
+			int move;
+			bool shift,ctrl;
+			if (splitline(val,',',move,shift,ctrl)){
+				move = move < 0 ? 1 : -1;
+				set<CELL_COOR> ids;
+				if (shift){
+					hscroll(script_var,pref,move,ids);
+				}else{
+					vscroll(script_var,pref,move,ids);
+				}
+				update_cells (ids,script_var,true);
+			}
 		}else if (strcmp(var,"newgame")==0){
 			int uval = atoi(val);
 			if (uval == BUTTON_NEWDOC){
@@ -1113,7 +1245,7 @@ void CALC::execstep (
 					setfocus(script_var);
 				}
 			}
-		// The other actions are Used to script modification of the document
+		// The other actions are Used to script modifications of the document
 		}else if (strcmp(var,"resetgame")==0){
 			resetgame();
 			// We erased all the td tag in the table except the first line and the first column
@@ -1152,6 +1284,47 @@ void CALC::execstep (
 			update_celledit (pref,script_var);
 			setmodified(ctx.username);
 			setfocus (script_var);
+		}else if (strcmp(var,"setcells")==0){
+			auto tb = str_splitlineq(val,',');
+			CELL_COOR start,end;
+			if (tb.size() >= 2 && calc_parserange(tb[0],start,end)){
+				if (start.line != end.line){
+					api_error = MSG_U(E_RANGELINE,"range must be on the same line");
+				}else if (start.col > end.col){
+					api_error = MSG_R(E_IVLDRANGE_COL);
+				}else if ((unsigned)(end.col-start.col)+1 != tb.size()-1){
+					api_error = MSG_U(E_IVLDNBCELLS,"invalid number of cells supplied");
+				}else{
+					for (unsigned i=1; i<tb.size(); i++){
+						CELL_COOR coor(start.line,start.col+i-1);
+						auto &g = grid[coor];
+						g.text = tb[i];
+						g.eval0();
+						notify_ids.insert(coor);
+					}
+				}
+			}
+		}else if (is_any_of(var,"getcells","getvals")){
+			CELL_COOR start,end;
+			if (calc_parserange(val,start,end)){
+				string content;
+				int nbcol = (end.col - start.col)+1;
+				int nocol = 0;
+				bool getvals = strcmp(var,"getvals")==0;
+				walkrange (start,end,api_error,[&content,nbcol,&nocol,getvals](auto &c){
+					if (nocol > 0) content += ',';
+					content += getvals ? c.gettext() : c.text;
+					nocol++;
+					if (nocol == nbcol){
+						content += '\n';
+						nocol = 0;
+					}
+				});
+				VARVAL var;
+				var.var = VAR_RESULT;
+				var.val = move(content);
+				res.emplace_back(move(var));
+			}
 		}
 		if (old_cursor != pref.cursor){
 			notify_ids.insert(old_cursor);
@@ -1200,7 +1373,7 @@ void CALC::manyexec (
 	}else{
 		update_msg(false,"&nbsp;","white",res);
 	}
-	update_cells(notify_ids,notify_var);
+	update_cells(notify_ids,notify_var,false);
 	if (notify_var.val != cur_whi) res.emplace_back(move(notify_var));
 	if (script_var.val != cur_whi) res.emplace_back(move(script_var));
 }

@@ -81,7 +81,7 @@ enum CELL_STATE {
 struct CALC_CELL{
 	std::string text;
 	CELL_STATE state = CELL_STATE_UNKNOWN;
-	double value=0;		// The result of the formula evaluation or simply the translation of 'text'.
+	double value=nan("");		// The result of the formula evaluation or simply the translation of 'text'.
 	std::vector<CALC_TOKEN> steps;	// Steps to evaluate a formula
 	CALC_CELL(){};
 	CALC_CELL(PARAM_STRING _text)
@@ -128,7 +128,7 @@ class CALC: public GAME{
 	void update_msg (bool to_all, PARAM_STRING msg, const char *color, std::vector<VARVAL> &res);
 	std::map<std::string,CALC_PREF> prefs;	// Per session state
 	void setfocus(VARVAL &var);
-	void update_cells(std::set<CELL_COOR> &cells, VARVAL &var);
+	void update_cells(std::set<CELL_COOR> &cells, VARVAL &var, bool optim);
 	void update_cellname(CALC_PREF &pref, VARVAL &var);
 	void update_celledit(CALC_PREF &pref, VARVAL &var);
 	void update_lines_cols(CALC_PREF &pref, const CELL_COOR &old, const CELL_COOR &new_pos, VARVAL &var);
@@ -148,6 +148,8 @@ class CALC: public GAME{
 	void delete_line_col(unsigned line, unsigned col, int offline, int offcol);
 	void delete_line(VARVAL &var, unsigned line);
 	void delete_col(VARVAL &var, unsigned col);
+	void vscroll (VARVAL &var, CALC_PREF &pref, int move, std::set<CELL_COOR> &update_ids);
+	void hscroll (VARVAL &var, CALC_PREF &pref, int move, std::set<CELL_COOR> &update_ids);
 public:
 	void save(DOC_WRITER &w, bool);
 	void load(DOC_READER &r, std::string &msg);

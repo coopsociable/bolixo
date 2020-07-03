@@ -155,15 +155,9 @@ void documentd_setchanges (vector<VARVAL> &res)
 */
 string documentd_escape(PARAM_STRING msg)
 {
-	string tmp;
-	const char *pt = msg.ptr;
-	while (*pt != '\0'){
-		if (is_any_of(*pt,'\'','\\')){
-			tmp += '\\';
-		}
-		tmp += *pt++;
-	}
-	return tmp;
+	return copystring (msg,[](auto &c, auto pt){
+			if (is_any_of(*pt,'\'','\\')) c.insert ('\\');
+		});
 }
 void documentd_setfocus (VARVAL &script_var, PARAM_STRING id)
 {
@@ -212,19 +206,13 @@ void documentd_button (string &lines, unsigned command, PARAM_STRING txt, const 
 // Replace ' by &#39;
 string documentd_escape_html(PARAM_STRING s)
 {
-	string ret;
-	const char *pt = s.ptr;
-	while (*pt != '\0'){
-		if (*pt == '\''){
-			ret += "&#39;";
-		}else if (*pt == '\\'){
-			ret += "&#92;";
-		}else{
-			ret += *pt;
-		}
-		pt++;
-	}
-	return ret;
+	return copystring (s,[](auto &c, auto pt){
+			if (*pt == '\''){
+				c.replace(1,"&#39;");
+			}else if (*pt == '\\'){
+				c.replace(1,"&#92;");
+			}
+		});
 }
 /*
 	Small button for a menu bar
