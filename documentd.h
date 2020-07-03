@@ -320,6 +320,7 @@ public:
 	virtual void engine_reply (const char *line, std::string &notify, bool &done);
 	virtual std::set<DOCUMENT_EMBED> get_embed_specs() const;
 	virtual void set_embed_options (const DOCUMENT_EMBED &embed, bool not_square);
+	virtual void remove_session(const char *session);
 	virtual ~GAME();
 };
 
