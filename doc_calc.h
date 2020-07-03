@@ -111,7 +111,14 @@ struct CALC_PREF{
 	unsigned offset_line=0;
 	unsigned offset_col=0;
 	MOD_KBD mod;
-	CELL_COOR cursor;
+	CELL_COOR cursor = CELL_COOR((unsigned short)-1,(unsigned short)-1);
+	bool is_modified() const {
+		return offset_line != 0 || offset_col != 0 || cursor.line != (unsigned short)-1 || cursor.col != (unsigned short)-1;
+	}
+	void reset(){
+		offset_line = offset_col = 0;
+		cursor.line = cursor.col = 0;
+	}
 };
 
 class CALC: public GAME{
@@ -148,8 +155,8 @@ class CALC: public GAME{
 	void delete_line_col(unsigned line, unsigned col, int offline, int offcol);
 	void delete_line(VARVAL &var, unsigned line);
 	void delete_col(VARVAL &var, unsigned col);
-	void vscroll (VARVAL &var, CALC_PREF &pref, int move, std::set<CELL_COOR> &update_ids);
-	void hscroll (VARVAL &var, CALC_PREF &pref, int move, std::set<CELL_COOR> &update_ids);
+	void vscroll (VARVAL &var, CALC_PREF &pref, int move);
+	void hscroll (VARVAL &var, CALC_PREF &pref, int move);
 public:
 	void save(DOC_WRITER &w, bool);
 	void load(DOC_READER &r, std::string &msg);

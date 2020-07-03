@@ -92,13 +92,16 @@ void CALC::save(DOC_WRITER &w, bool)
 	documentd_calc_col_formats(&w,formats);
 	vector<CALCPREF> sprefs;
 	for (auto &p:prefs){
-		CALCPREF s;
-		s.session = p.first;
-		s.curline = p.second.cursor.line;
-		s.curcol  = p.second.cursor.col;
-		s.offline = p.second.offset_line;
-		s.offcol  = p.second.offset_col;
-		sprefs.emplace_back(s);
+		// We only save prefs that were used for editing/moving.
+		if (p.second.is_modified()){
+			CALCPREF s;
+			s.session = p.first;
+			s.curline = p.second.cursor.line;
+			s.curcol  = p.second.cursor.col;
+			s.offline = p.second.offset_line;
+			s.offcol  = p.second.offset_col;
+			sprefs.emplace_back(s);
+		}
 	}
 	documentd_calc_prefs(&w,sprefs);
 	vector<CALC_CHAT> schat;
@@ -359,9 +362,34 @@ string CALC::define_functions(
 {
 	string val;
 	wordproc_set_gamepress(val,"calc_gamepress");
-	// Dummy needed by gamepress, shared with doc_wordproc
+	// Return the last visible line, needed by gamepress, shared with doc_wordproc
 	val += "function getlastline(){\n";
-	val += "\treturn 0;\n";
+	val += string_f("\tvar elm = document.getElementById('tbl-%s,%u');\n",gameid.c_str(),ctx.docnum);
+	val += "\tvar rect = elm.parentNode.getBoundingClientRect();\n";
+	val += "\tvar trs = elm.getElementsByTagName('tr');\n";
+	val += "\tvar last=25;\n";
+	val += "\tfor (var i=0; i<trs.length; i++){\n";
+	val += "\t\tvar trrect = trs[i].getBoundingClientRect();\n";
+	//val += "\t\tconsole.log ('i='+i+' bottoms='+rect.bottom+' '+trrect.bottom);\n";
+	val += "\t\tif (trrect.bottom > rect.bottom) break;\n";
+	val += "\t\tlast = i;\n";
+	val += "\t}\n";
+	val += "\treturn last;\n";
+	val += "}\n";
+	// Same thing for columns
+	val += "function getlastcol(){\n";
+	val += string_f("\tvar elm = document.getElementById('tbl-%s,%u');\n",gameid.c_str(),ctx.docnum);
+	val += "\tvar rect = elm.parentNode.getBoundingClientRect();\n";
+	val += "\tvar trs = elm.getElementsByTagName('tr');\n";
+	val += "\tvar tds = trs[0].getElementsByTagName('td');\n";
+	val += "\tvar last=25;\n";
+	val += "\tfor (var i=0; i<tds.length; i++){\n";
+	val += "\t\tvar tdrect = tds[i].getBoundingClientRect();\n";
+	// val += "\t\tconsole.log ('i='+i+' rightss='+rect.right+' '+tdrect.right);\n";
+	val += "\t\tif (tdrect.right > rect.right) break;\n";
+	val += "\t\tlast = i;\n";
+	val += "\t}\n";
+	val += "\treturn last;\n";
 	val += "}\n";
 
 	// Update the message field
@@ -825,7 +853,7 @@ void CALC::delete_col(VARVAL &var, unsigned col)
 	var.val += "});\n";
 }
 // Execute a one line scroll
-void CALC::vscroll (VARVAL &var, CALC_PREF &pref, int move, set<CELL_COOR> &update_ids)
+void CALC::vscroll (VARVAL &var, CALC_PREF &pref, int move)
 {
 	unsigned old_offset = pref.offset_line;
 	if (move == -1){
@@ -834,6 +862,7 @@ void CALC::vscroll (VARVAL &var, CALC_PREF &pref, int move, set<CELL_COOR> &upda
 		pref.offset_line++;
 	}
 	if (old_offset != pref.offset_line){
+		set<CELL_COOR> update_ids;
 		unsigned newline = move < 0 ? 0 : TBL_FIXED_LINES;
 		newline += pref.offset_line;
 		for (unsigned col=0; col<TBL_FIXED_COLUMNS; col++){
@@ -869,10 +898,11 @@ void CALC::vscroll (VARVAL &var, CALC_PREF &pref, int move, set<CELL_COOR> &upda
 		var.val += "\t}\n";
 		var.val += string_f("\tcalc.updoff(%u,calc.offcol);\n",pref.offset_line);
 		var.val += "});\n";
+		update_cells (update_ids,var,true);
 	}
 }
 // Execute a one column scroll
-void CALC::hscroll (VARVAL &var, CALC_PREF &pref, int move, set<CELL_COOR> &update_ids)
+void CALC::hscroll (VARVAL &var, CALC_PREF &pref, int move)
 {
 	unsigned old_offset = pref.offset_col;
 	if (move == -1){
@@ -881,6 +911,7 @@ void CALC::hscroll (VARVAL &var, CALC_PREF &pref, int move, set<CELL_COOR> &upda
 		pref.offset_col++;
 	}
 	if (old_offset != pref.offset_col){
+		set<CELL_COOR> update_ids;
 		unsigned newcol = move < 0 ? 0 : TBL_FIXED_COLUMNS;
 		newcol += pref.offset_col;
 		for (unsigned line=0; line<TBL_FIXED_LINES; line++){
@@ -911,6 +942,7 @@ void CALC::hscroll (VARVAL &var, CALC_PREF &pref, int move, set<CELL_COOR> &upda
 		var.val += "\t}\n";
 		var.val += string_f("\tcalc.updoff(calc.offline,%u);\n",pref.offset_col);
 		var.val += "});\n";
+		update_cells (update_ids,var,true);
 	}
 }
 <mod>
@@ -935,12 +967,13 @@ void CALC::execstep (
 	string api_error;
 	setactivity();
 	string tmpvar,tmpval;
+	unsigned lastline = 25;
+	unsigned lastcol = 8;
 	if (strcmp(var,"kbd")==0){
-		unsigned lastline = 1000;
-		wordproc_kbd(val,pref.mod,tmpvar,tmpval,lastline);
+		wordproc_kbd(val,pref.mod,tmpvar,tmpval,lastline,lastcol);
 		var = tmpvar.c_str();
 		val = tmpval.c_str();
-		//tlmp_warning ("var=%s val=%s",var,val);		
+		//tlmp_warning ("var=%s val=%s lastline=%u lastcol=%u",var,val,lastline,lastcol);		
 	}
 	if (strcmp(var,REQ_PRINT)==0){
 		if (is_any_of(val,"","full")){
@@ -1069,16 +1102,16 @@ void CALC::execstep (
 		res.emplace_back(var);
 	}else if (is_any_of(var,"pageup","pagedown")){
 		if (strcmp(var,"pageup")==0){
-			if (pref.offset_line < 25){
-				if (pref.cursor.line >= 25) pref.cursor.line -= pref.offset_line;
+			if (pref.offset_line < lastline){
+				if (pref.cursor.line >= lastline) pref.cursor.line -= pref.offset_line;
 				pref.offset_line = 0;
 			}else{
-				pref.offset_line -= 25;
-				pref.cursor.line -= 25;
+				pref.offset_line -= lastline;
+				pref.cursor.line -= lastline;
 			}
 		}else{
-			pref.offset_line += 25;
-			pref.cursor.line += 25;
+			pref.offset_line += lastline;
+			pref.cursor.line += lastline;
 		}
 		update_offsets(script_var,ctx,pref);
 		set<CELL_COOR> ids;
@@ -1088,8 +1121,26 @@ void CALC::execstep (
 				ids.insert (coor);
 			}
 		}
-		update_cells(ids,script_var,true);
+		update_cells(ids,script_var,false);
 		update_celledit (pref,script_var);
+	}else if (strcmp(var,"wheel")==0){
+		int move;
+		bool shift,ctrl;
+		if (splitline(val,',',move,shift,ctrl)){
+			move = move < 0 ? 1 : -1;
+			if (shift){
+				hscroll(script_var,pref,move);
+			}else{
+				vscroll(script_var,pref,move);
+			}
+		}
+	}else if (!ctx.maywrite && is_any_of(var,"vmove","hmove")){
+		int move = atoi(val);
+		if (strcmp(var,"hmove")==0){
+			hscroll(script_var,pref,move);
+		}else{
+			vscroll(script_var,pref,move);
+		}
 	}else if (ctx.maywrite){
 		auto old_cursor = pref.cursor;
 		if (strcmp(var,"break")==0 && pref.mod.shift){
@@ -1134,10 +1185,8 @@ void CALC::execstep (
 				pref.cursor.line += move;
 			}
 			if (pref.cursor.line < pref.offset_line
-				|| pref.cursor.line > pref.offset_line+10){
-				set<CELL_COOR> ids;
-				vscroll (script_var,pref,move,ids);
-				update_cells (ids,script_var,true);
+				|| pref.cursor.line > pref.offset_line+lastline-1){
+				vscroll (script_var,pref,move);
 			}
 		}else if (is_any_of(var,"hmove","tab")){
 			int move;
@@ -1167,10 +1216,8 @@ void CALC::execstep (
 					pref.cursor.col += move;
 				}
 				if (pref.cursor.col < pref.offset_col
-					|| pref.cursor.col > pref.offset_col+5){
-					set<CELL_COOR> ids;
-					hscroll (script_var,pref,move,ids);
-					update_cells (ids,script_var,true);
+					|| pref.cursor.col > pref.offset_col+lastcol-1){
+					hscroll (script_var,pref,move);
 				}
 			}
 		}else if (strcmp(var,"select")==0){
@@ -1196,19 +1243,6 @@ void CALC::execstep (
 				}
 			}
 		}else if (strcmp(var,"mousemove")==0){
-		}else if (strcmp(var,"wheel")==0){
-			int move;
-			bool shift,ctrl;
-			if (splitline(val,',',move,shift,ctrl)){
-				move = move < 0 ? 1 : -1;
-				set<CELL_COOR> ids;
-				if (shift){
-					hscroll(script_var,pref,move,ids);
-				}else{
-					vscroll(script_var,pref,move,ids);
-				}
-				update_cells (ids,script_var,true);
-			}
 		}else if (strcmp(var,"newgame")==0){
 			int uval = atoi(val);
 			if (uval == BUTTON_NEWDOC){
@@ -1264,10 +1298,7 @@ void CALC::execstep (
 			notify_var.val += "});\n";
 			// Reset position of all users
 			for (auto &p:prefs){
-				p.second.offset_line = 0;
-				p.second.offset_col = 0;
-				p.second.cursor.line = 0;
-				p.second.cursor.col = 0;
+				if (p.second.is_modified()) p.second.reset();
 			}
 			update_offsets (notify_var,ctx,pref);
 			setmodified(ctx.username);
@@ -1341,6 +1372,12 @@ void CALC::execstep (
 		var.var = VAR_ERROR;
 		var.val = move(api_error);
 		res.emplace_back(move(var));
+	}
+tlmp_warning ("prefs.size()=%lu %u %u %u %u",prefs.size(),pref.offset_line,pref.offset_col,pref.cursor.line,pref.cursor.col);
+	if (!pref.is_modified()){
+		// The prefs was allocated on the fly at the start of this function, but were not used
+		auto p = prefs.find(ctx.session);
+		if (p != prefs.end()) prefs.erase(p);
 	}
 }
 </mod>

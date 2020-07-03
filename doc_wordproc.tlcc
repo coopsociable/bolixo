@@ -1508,7 +1508,7 @@ void wordproc_set_gamepress(string &lines, const char *funcname)
 	lines += "\tctrlKey=event.ctrlKey;\n";
 	lines += "\tshiftKey=event.shiftKey;\n";
 	//v.val += "\tif (gamecode.substring(0,3)!='Key' && gamekey != 'Dead' && gamekey != 'Process'){\n";
-	lines += "\tgameaction(event,'kbd:'+gamecode + ' ' + gamekey+' '+altKey+' '+ctrlKey+' '+shiftKey+' '+getlastline());\n";
+	lines += "\tgameaction(event,'kbd:'+gamecode + ' ' + gamekey+' '+altKey+' '+ctrlKey+' '+shiftKey+' '+getlastline()+' '+getlastcol());\n";
 	//v.val += "\t}\n";
 	lines += "\tevent.stopPropagation();\n";
 	lines += "\treturn false;\n";
@@ -1517,19 +1517,20 @@ void wordproc_set_gamepress(string &lines, const char *funcname)
 /*
 	Analyse the message sent by the gamepress javascript function
 */
-void wordproc_kbd (const char *val, MOD_KBD &mod, std::string &var, std::string &newval, unsigned &lastline)
+void wordproc_kbd (const char *val, MOD_KBD &mod, std::string &var, std::string &newval, unsigned &lastline, unsigned &lastcol)
 {
 	vector<string> tb;
 	int n = str_splitline(val,' ',tb);
 	//tlmp_warning ("n=%d val=%s",n,val);
-	if (n == 5 && is_any_of(tb[0],"Space")){
+	if (n == 6 && is_any_of(tb[0],"Space")){
 		var = "insertchar";
 		val = " ";
 		lastline = atoi(tb[4].c_str());
-	}else if (n != 6){
+	}else if (n != 7){
 		// Do nothing
 	}else{
 		lastline = atoi(tb[5].c_str());
+		lastcol = atoi(tb[6].c_str());
 		mod.alt = tb[2] == "true";
 		mod.ctrl = tb[3] == "true";
 		mod.shift = tb[4] == "true";
@@ -1780,6 +1781,10 @@ void WORDPROC::execstep (
 			v.val += "\t}\n";
 			v.val += "\treturn 0;\n";
 			v.val += "}\n";
+			// Dummy, for columns
+			v.val += "function getlastcol(){\n";
+			v.val += "\treturn 0;\n";
+			v.val += "}\n";
 			// Function called when the user click
 			v.val += "function gameselect(event){\n";
 			v.val += string_f("\tvar elm = document.getElementById('text-%s');\n",gameid.c_str());
@@ -1805,7 +1810,7 @@ void WORDPROC::execstep (
 			wordproc_set_gamepress(v.val,"gamepress");
 			v.val += "function funcinput(event){\n";
 			v.val += "\tif (event.data == null) gamekey=event.data;\n";
-			v.val += "\tgameaction(event,'kbd:'+gamecode + ' ' + gamekey+' '+altKey+' '+ctrlKey+' '+shiftKey+' '+getlastline());\n";
+			v.val += "\tgameaction(event,'kbd:'+gamecode + ' ' + gamekey+' '+altKey+' '+ctrlKey+' '+shiftKey+' '+getlastline()+' '+getlastcol());\n";
 			v.val += "\tconsole.log('kbd:'+gamecode + ' ' + gamekey+' '+altKey+' '+ctrlKey+' '+shiftKey+' '+getlastline());\n";
 			v.val += "\tevent.stopPropagation();\n";
 			v.val += "\treturn false;\n";
@@ -1939,7 +1944,8 @@ void WORDPROC::execstep (
 		unsigned lastline = 1000;
 		string tmpvar,tmpval;
 		if (strcmp(var,"kbd")==0){
-			wordproc_kbd(val,mod,tmpvar,tmpval,lastline);
+			unsigned lastcol;
+			wordproc_kbd(val,mod,tmpvar,tmpval,lastline,lastcol);
 			var = tmpvar.c_str();
 			val = tmpval.c_str();		
 		}

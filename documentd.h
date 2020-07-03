@@ -370,6 +370,6 @@ struct MOD_KBD{
 	bool shift = false;
 	bool alt = false;
 };
-void wordproc_kbd (const char *val, MOD_KBD &mod, std::string &var, std::string &newval, unsigned &lastline);
+void wordproc_kbd (const char *val, MOD_KBD &mod, std::string &var, std::string &newval, unsigned &lastline, unsigned &lastcol);
 size_t utf8_codepoint_size(uint8_t text);
 #endif
