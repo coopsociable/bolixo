@@ -44,12 +44,28 @@ using namespace std;
 
 string CELL_COOR::tostring() const
 {
-	if (col < 26){
+	if (line == (unsigned short)-1 || col == (unsigned short)-1){
+		return "";
+	}else if (col < 26){
 		return string_f("%c%u",'A'+col,line+1);
-	}else{
+	}else if (col < 26*26){
 		unsigned letter1 = col / 26;
 		unsigned letter2 = col % 26;
 		return string_f("%c%c%u",'A'+letter1,'A'+letter2,line+1);
+	}else if (col < 26*26*26){
+		unsigned letter1 = col / (26*26);
+		unsigned left = col % (26*26);
+		unsigned letter2 = left / 26;
+		unsigned letter3 = left % 26;
+		return string_f("%c%c%c%u",'A'+letter1,'A'+letter2,'A'+letter3,line+1);
+	}else{
+		unsigned letter1 = col / (26*26*26);
+		unsigned left = col % (26*26*26);
+		unsigned letter2 = left / (26*26);
+		left %= (26*26);
+		unsigned letter3 = left / 26;
+		unsigned letter4 = left % 26;
+		return string_f("%c%c%c%c%u",'A'+letter1,'A'+letter2,'A'+letter3,'A'+letter4,line+1);
 	}
 }
 
@@ -1099,6 +1115,11 @@ void CALC::execstep (
 		VARVAL var;
 		var.var = "elements";
 		var.val += "\n";
+		static const char *tb[]={"UNKNOWN","NUM","TEXT","FORMULAERR","FORMULA","COMPUTING","EVALED"};
+		static_assert(sizeof(tb)/sizeof(tb[0])==CELL_STATE_LAST,"tb is incomplete");
+		for (auto &g:grid){
+			var.val += string_f("[%u,%u]=%s,%s,%lf\n",g.first.line,g.first.col,tb[g.second.state],g.second.text.c_str(),g.second.value);
+		}
 		res.emplace_back(var);
 	}else if (is_any_of(var,"pageup","pagedown")){
 		if (strcmp(var,"pageup")==0){
@@ -1373,7 +1394,6 @@ void CALC::execstep (
 		var.val = move(api_error);
 		res.emplace_back(move(var));
 	}
-tlmp_warning ("prefs.size()=%lu %u %u %u %u",prefs.size(),pref.offset_line,pref.offset_col,pref.cursor.line,pref.cursor.col);
 	if (!pref.is_modified()){
 		// The prefs was allocated on the fly at the start of this function, but were not used
 		auto p = prefs.find(ctx.session);

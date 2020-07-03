@@ -76,7 +76,8 @@ enum CELL_STATE {
 	CELL_STATE_FORMULAERR,	// The cell contains an invalid formula (syntax error)
 	CELL_STATE_FORMULA,	// The cell contains a formula, not evaluated
 	CELL_STATE_COMPUTING,	// formula evaluation in progress. This is used to trigger loops in formula 
-	CELL_STATE_EVALED	// The formula has been evaluated
+	CELL_STATE_EVALED,	// The formula has been evaluated
+	CELL_STATE_LAST		// Not a state, just to size a table in dump
 };
 struct CALC_CELL{
 	std::string text;

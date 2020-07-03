@@ -450,6 +450,7 @@ elif [ "$1" = "doc-calc" ] ; then # test: many test on spreadsheet document
 	setcells a4:d4 "=sum(a1:a3),=sum(b1:b3),=sum(c1:c3),=sum(a4:c4)"
 	getcells a1:d4
 	getvals a1:d4
+	dump
 elif [ "$1" = "infowrite" ] ; then # test: publish info to directory server
 	USER=jacques-A
 	echo Create mini-photo.jpg and photo.jpg for all users

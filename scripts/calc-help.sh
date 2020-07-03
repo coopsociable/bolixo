@@ -29,3 +29,6 @@ getcells(){
 getvals(){
 	$BOFS documents --noscripts --playstep --docname $DOCNAME --step "getvals=$1"
 }
+dump(){
+	$BOFS documents --noscripts --playstep --docname $DOCNAME --step "dump="
+}
