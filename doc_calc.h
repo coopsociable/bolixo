@@ -148,7 +148,7 @@ class CALC: public GAME{
 	void evalfinal (CALC_CELL &cell, std::string &error);
 	void walkstack (std::stack<EVALELM> &st, std::string &error, std::function<void(double value)> f);
 	void dump() const;
-	void update_col_width(VARVAL &var, unsigned col, unsigned width);
+	void update_col_width(VARVAL &var, unsigned col);
 	void update_offsets(VARVAL &var, const DOC_CONTEXT &ctx, CALC_PREF &pref);
 	void insert_line_col(unsigned line, unsigned col, int offline, int offcol);
 	void insert_line(VARVAL &var, unsigned line);

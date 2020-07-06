@@ -254,10 +254,13 @@ string CALC::draw_board (
 	// Update the columns width specification
 	script += string_f("calc_%u.updcolwidth=function(e,col,width){\n",ctx.docnum);
 	script += "\tvar cols=e.getElementsByTagName('col');\n";
-	script += "\tif (this.heading) col++;\n";
-	script += "\tcols[col].style.minWidth=width;\n";
-	script += "\tcols[col].style.width=width;\n";
-	script += "\tcols[col].style.maxWidth=width;\n";
+	script += "\tif (col >= this.offcol && col < this.offcol+this.columns){\n";
+	script += "\t\tcol -= this.offcol;\n";
+	script += "\t\tif (this.heading) col++;\n";
+	script += "\t\tcols[col].style.minWidth=width;\n";
+	script += "\t\tcols[col].style.width=width;\n";
+	script += "\t\tcols[col].style.maxWidth=width;\n";
+	script += "\t}\n";
 	script += "};\n";
 	// Update the offline,offcol of the current object, Update the heading as well
 	script += string_f("calc_%u.updoff=function(offline,offcol){\n",ctx.docnum);
@@ -301,7 +304,7 @@ string CALC::draw_board (
 	}
 	for (unsigned col=0; col < draw_columns; col++){
 		unsigned width = DEFAULT_COL_WIDTH;
-		auto c = col_formats.find(col);
+		auto c = col_formats.find(pref.offset_col+col);
 		if (c != col_formats.end()) width = c->second.width;
 		glocal.val += string_f("<col style='width:%upx;min-width:%upx;max-width:%upx;'>\n",width,width,width);
 	}
@@ -598,8 +601,12 @@ void CALC::update_onecell (CALC_PREF &pref, PARAM_STRING buf)
 		}
 	}
 }
-void CALC::update_col_width(VARVAL &var, unsigned col, unsigned width)
+void CALC::update_col_width(VARVAL &var, unsigned col)
 {
+	unsigned width = DEFAULT_COL_WIDTH;
+	auto f = col_formats.find(col);
+	if (f != col_formats.end()) width = f->second.width;
+
 	var.val += "calc_loop_board(function(e,calc){\n";
 	var.val += string_f("\tcalc.updcolwidth(e,%u,%u);\n",col,width);
 	var.val += "});\n";
@@ -743,14 +750,12 @@ void CALC::insert_col(VARVAL &var, unsigned col)
 	var.val += "calc_loop_board(function(tbl,calc){\n";
 	var.val += string_f("\tvar offc=%u-calc.offcol;\n",col);
 	var.val += "console.log('offc='+offc);\n";
-	var.val += string_f("\tif (offc >= 0 && offc < %u){\n",TBL_FIXED_COLUMNS);
+	var.val += "\tif (offc >= 0 && offc < calc.columns){\n";
 	// Remove last col, insert one
 	var.val += "\t\tvar cols = tbl.getElementsByTagName('col');\n";
-	var.val += string_f("\t\tcols[0].parentNode.removeChild(cols[%u]);\n",TBL_FIXED_COLUMNS);
+	var.val += "\t\tcols[0].parentNode.removeChild(cols[calc.columns]);\n";
 	var.val += "\t\tvar newcol = document.createElement('col');\n";
-	var.val += string_f("\t\tnewcol.style.minWidth='%upx';\n",DEFAULT_COL_WIDTH);
-	var.val += string_f("\t\tnewcol.style.maxWidth='%upx';\n",DEFAULT_COL_WIDTH);
-	var.val += "\t\tcols[0].parentNode.insertBefore(newcol,cols[offc+1]);\n";
+	var.val += "\t\tcols[0].parentNode.insertBefore(newcol,cols[offc+calc.heading]);\n";
 	// Remote last td and insert one for each tr
 	var.val += "\t\tvar trs = tbl.getElementsByTagName('tr');\n";
 	var.val += string_f("\t\tfor (var i=0; i<=%u; i++){\n",TBL_FIXED_LINES);
@@ -781,6 +786,7 @@ void CALC::insert_col(VARVAL &var, unsigned col)
 	var.val += "\t\t}\n";
 	var.val += "\t}\n";
 	var.val += "});\n";
+	update_col_width(var,col);
 }
 void CALC::delete_line(VARVAL &var, unsigned line)
 {
@@ -938,12 +944,20 @@ void CALC::hscroll (VARVAL &var, CALC_PREF &pref, int move)
 		// depending on the move direction, we either clear the first and add at the end, of clear the end and insert at the front.
 		// The first column  is the heading (if there is a heading)
 		var.val += "calc_loop_board(function(tbl,calc){\n";
-		var.val += "\tvar trs = tbl.getElementsByTagName('tr');\n";
 		if (move < 0){
 			var.val += "\tvar remove_col = calc.columns+calc.heading-1;\n";
 		}else{
 			var.val += "\tvar remove_col = calc.heading;\n";
 		}
+		var.val += "\tvar cols = tbl.getElementsByTagName('col');\n";
+		var.val += "\tcols[0].parentNode.removeChild(cols[remove_col]);\n";
+		var.val += "\tvar newcol = document.createElement('col');\n";
+		if (move < 0){
+			var.val += "\tcols[0].parentNode.insertBefore(newcol,cols[calc.heading]);\n";
+		}else{
+			var.val += "\tcols[0].parentNode.appendChild(newcol);\n";
+		}
+		var.val += "\tvar trs = tbl.getElementsByTagName('tr');\n";
 		var.val += "\tconsole.log('trs.length='+trs.length+' remove_col='+remove_col+' calc.lines='+calc.lines+' calc.heading='+calc.heading);\n";
 		var.val += "\tfor (var i=0; i<calc.lines; i++){\n";
 		var.val += "\t\tvar tr = trs[i+calc.heading];\n";
@@ -959,6 +973,11 @@ void CALC::hscroll (VARVAL &var, CALC_PREF &pref, int move)
 		var.val += string_f("\tcalc.updoff(calc.offline,%u);\n",pref.offset_col);
 		var.val += "});\n";
 		update_cells (update_ids,var,true);
+		if (move < 0){
+			update_col_width (var,pref.offset_col);
+		}else{
+			update_col_width (var,pref.offset_col+TBL_FIXED_COLUMNS-1);
+		}
 	}
 }
 <mod>
@@ -1234,7 +1253,7 @@ void CALC::execstep (
 				}else if (c != col_formats.end()){
 					col_formats.erase(c);
 				}
-				update_col_width(notify_var,pref.cursor.col,width);
+				update_col_width(notify_var,pref.cursor.col);
 				setmodified (ctx.username);
 			}else{
 				if (move > 0){
