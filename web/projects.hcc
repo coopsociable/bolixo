@@ -315,6 +315,18 @@ static void projects_dialogs (
 					w_field2 = f.value;
 				}
 			}
+		}else if (strcmp(glocal.dialog_name,DIALOG_CALC_FORMATCELL)==0){
+			for (auto &f:glocal.fields){
+				if (f.name == "width"){
+					w_field1 = f.value;
+				}else if (f.name == "precision"){
+					w_field2 = f.value;
+				}else if (f.name == "align"){
+					static const char *tbalign[]={"default","left","center","right"};
+					unsigned val = atoi(f.value.c_str());
+					if (val < sizeof(tbalign)/sizeof(tbalign[0])) w_field3 = tbalign[val];
+				}
+			}
 		}
 	</f>
 	<f setup>
@@ -461,14 +473,39 @@ static void projects_dialogs (
 			button_submit();	
 			/- </center>
 			/- <br>
-		}else if (strcmp(glocal.dialog_name,DIALOG_IMBED)==0){
+		}else if (strcmp(glocal.dialog_name,DIALOG_CALC_FORMATCELL)==0){
 			/- <table border=0>
 			/- <tr><td>
-			/- document/game
+			/-#F_COLWIDTH Column width
 			/- <td>
 			field_string (w_field1,"");
 			/- <tr><td>
-			/- Region
+			/-#F_COLPRECISION Number precision
+			/- <td>
+			field_string (w_field2,"");
+			/- <tr><td>
+			/-#F_COLALIGN Horizontal alignment
+			/- <td>
+			field_list (w_field3,"");
+			field_list_item ("default",MSG_U(I_ALIGNDEFAULT,"default"));
+			field_list_item ("left",MSG_U(I_ALIGNLEFT,"left"));
+			field_list_item ("center",MSG_U(I_ALIGNCENTER,"center"));
+			field_list_item ("right",MSG_U(I_ALIGNRIGHT,"right"));
+			field_list_end();
+			/- </table>
+			if (glocal.error.size() > 0){
+				htmlprintf ("<span style=color:red; >%s</span><br>\n",glocal.error.c_str());
+			}else{
+				/- &nbsp;<br>
+			}
+		}else if (strcmp(glocal.dialog_name,DIALOG_IMBED)==0){
+			/- <table border=0>
+			/- <tr><td>
+			/-#F_DOCORGAME document/game
+			/- <td>
+			field_string (w_field1,"");
+			/- <tr><td>
+			/-#F_REGION Region
 			/- <td>
 			field_string (w_field2,"");
 			/- </table>
@@ -481,7 +518,6 @@ static void projects_dialogs (
 		}
 	</f>
 	<f validate>
-		glocal bool ret = true;
 		if (strcmp(glocal.dialog_name,DIALOG_CHESS_CONFIG)==0){
 			if (strcmp(w_field1.c_str(),w_field2.c_str())==0){
 				glocal.error = MSG_U(E_SAMENAME,"The two players can't be the same");
@@ -505,6 +541,14 @@ static void projects_dialogs (
 				}
 			</f>
 			</call>
+		}else if (strcmp(glocal.dialog_name,DIALOG_CALC_FORMATCELL)==0){
+			unsigned width = atoi(w_field1.c_str());
+			unsigned precision = atoi(w_field2.c_str());
+			if (width < 30 || width >300){
+				glocal.error = MSG_U(E_WIDTHRANGE,"Width must be between 30 and 300");
+			}else if (precision > 10){
+				glocal.error = MSG_U(E_COLPRECISION,"Precision must be less than 11");
+			}
 		}
 		return glocal.error.size() > 0 ? false : true;
 	</f>
@@ -553,6 +597,11 @@ static void projects_dialogs (
 				if (!success) tlmp_error ("documentd imbed playstep error: %s",msg);
 			</f>
 			</call>
+		}else if (strcmp(glocal.dialog_name,DIALOG_CALC_FORMATCELL)==0){
+			var.var = "formatcol";
+			var.val = string_f("width:%u\nprecision:%u\nalign:%s\n"
+				,atoi(w_field1.c_str()),atoi(w_field2.c_str()),w_field3.c_str());
+			
 		}
 		glocal.steps.emplace_back(var);
 	</f>

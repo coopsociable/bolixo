@@ -29,6 +29,7 @@
 #define DIALOG_WHITEBOARD_NEW	"newwhite"
 #define DIALOG_CALC_NEW		"newcalc"
 #define DIALOG_CALC_INSCOLLINE	"inscolline"
+#define DIALOG_CALC_FORMATCELL	"formatcell"
 #define DIALOG_IMBED		"imbed"
 #define CHESS_ROBOT		"--robot--"
 #endif

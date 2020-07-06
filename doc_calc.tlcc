@@ -42,6 +42,8 @@ using namespace std;
 #include "proto/documentd_calc.protoch"
 #include "proto/documentd_calc.protoh"
 
+static const char *tbalign[]={"","left","center","right"};
+
 string CELL_COOR::tostring() const
 {
 	if (line == (unsigned short)-1 || col == (unsigned short)-1){
@@ -351,11 +353,17 @@ string CALC::draw_board (
 			if (c != grid.end()){
 				const char *color = c->second.getcolor();
 				const char *align = c->second.getalign();
+				auto f = col_formats.find(col);
+				unsigned precision = 2;
+				if (f != col_formats.end()){
+					if (f->second.align != COL_DEFAULT) align = tbalign[f->second.align];
+					precision = f->second.precision;
+				}
 				if (strcmp(bgcol,"white")!=0 || strcmp(color,"black")!=0 || strcmp(align,"left")!=0){
 					glocal.val += string_f("<td style='background-color:%s;color:%s;text-align:%s;'>%s"
-						,bgcol,color,align,c->second.gettext().c_str());
+						,bgcol,color,align,c->second.gettext(precision).c_str());
 				}else{
-					glocal.val += string_f("<td>%s",c->second.gettext().c_str());
+					glocal.val += string_f("<td>%s",c->second.gettext(precision).c_str());
 				}
 			}else if (strcmp(bgcol,"white")!=0){
 				glocal.val += string_f("<td style='background-color:%s;'>",bgcol);
@@ -543,7 +551,13 @@ void CALC::update_cells(set<CELL_COOR> &cells, VARVAL &var, bool optim)
 				if (g != grid.end()){
 					const char *color = g->second.getcolor();
 					const char *align = g->second.getalign();
-					var.val += string_f("\t\ttd.innerHTML='%s';\n",documentd_escape(g->second.gettext()).c_str());
+					unsigned precision = 2;
+					auto f = col_formats.find(c.col);
+					if (f != col_formats.end()){
+						precision = f->second.precision;
+						if (f->second.align != COL_DEFAULT) align = tbalign[f->second.align];
+					}
+					var.val += string_f("\t\ttd.innerHTML='%s';\n",documentd_escape(g->second.gettext(precision)).c_str());
 					var.val += string_f("\t\ttd.style.color='%s';\n",color);
 					var.val += string_f("\t\ttd.style.textAlign='%s';\n",align);
 				}else{
@@ -1044,8 +1058,8 @@ void CALC::execstep (
 				CALC_MENU menu(specs);
 				documentd_button_start(v.val,gameid);
 				documentd_bar_button (v.val,BUTTON_NEWDOC,menu.svg_clear,specs,false,MSG_U(I_RESETDOC,"Reset document"));
-				//documentd_bar_button (v.val,BUTTON_COLSTYLE,"S",specs,false);
 				documentd_bar_button (v.val,BUTTON_INSCOLLINE,"+",specs,false,MSG_U(I_INSCOLLINE,"Insert/Delete lines or columns"));
+				documentd_bar_button (v.val,BUTTON_COLSTYLE,"F",specs,false,MSG_U(I_FORMATCELL,"Specify format for column cells"));
 				documentd_button_space(v.val);
 				documentd_button_end(v.val);
 				v.val += "</div>\n";
@@ -1135,6 +1149,13 @@ void CALC::execstep (
 	}else if (strcmp(var,REQ_GETFIELDS)==0){
 		VARVAL var;
 		var.var = VAR_FIELDS;
+		if (strcmp(val,DIALOG_CALC_FORMATCELL)==0){
+			// We return the format of the currently selected cell, or selected column.
+			auto c = col_formats.find(pref.cursor.col);
+			CALC_COL_FORMAT format;
+			if (c != col_formats.end()) format = c->second;
+			var.val = string_f("width:%u\nprecision:%u\nalign:%u\n",format.width,format.precision,format.align);
+		}
 		res.emplace_back(var);
 	}else if (strcmp(var,"dump")==0){
 		VARVAL var;
@@ -1297,6 +1318,10 @@ void CALC::execstep (
 				var.val = DIALOG_CALC_NEW;
 				res.emplace_back(var);
 			}else if (uval == BUTTON_COLSTYLE){
+				VARVAL var;
+				var.var = VAR_DIALOG;
+				var.val = DIALOG_CALC_FORMATCELL;
+				res.emplace_back(var);
 			}else if (uval == BUTTON_INSCOLLINE){
 				VARVAL var;
 				var.var = VAR_DIALOG;
@@ -1361,6 +1386,56 @@ void CALC::execstep (
 			update_celledit (pref,script_var);
 			setmodified(ctx.username);
 			setfocus (script_var);
+		}else if (strcmp(var,"formatcol")==0){
+			vector<VARVAL> fields;
+			documentd_parsefields(val,fields);
+			CALC_COL_FORMAT format;
+			bool error = false;
+			for (auto &f:fields){
+				if (f.var == "width"){
+					format.width = atoi(f.val.c_str());;
+				}else if (f.var == "precision"){
+					format.precision = atoi(f.val.c_str());
+				}else if (f.var == "align"){
+					static map<string,COL_ALIGN> s2a={
+						{"default",COL_DEFAULT},{"left",COL_LEFT},{"center",COL_CENTER},{"right",COL_RIGHT}};
+					auto s = s2a.find(f.val);
+					if (s != s2a.end()){
+						format.align = s->second;
+					}else{
+						error = true;
+					}
+				}
+			}
+			if (!error){
+				CALC_COL_FORMAT old_format;
+				if (format.is_default()){
+					auto c = col_formats.find(pref.cursor.col);
+					if (c != col_formats.end()){
+						old_format = c->second;
+						col_formats.erase(c);
+					}
+				}else{
+					auto &f = col_formats[pref.cursor.col];
+					old_format = f;
+					f = format;
+				}
+				if (format.width != old_format.width){
+					update_col_width(notify_var,pref.cursor.col);
+				}
+				if (format.precision != old_format.precision || format.align != old_format.align){
+					// We have to update all cells in the column, but we only send updates for
+					// cells actually visible by some users.
+					for (auto &pp:prefs){
+						auto &p = pp.second;
+						if (pref.cursor.col >= p.offset_col && pref.cursor.col < p.offset_col + TBL_FIXED_COLUMNS){
+							CELL_COOR cell (0,pref.cursor.col);
+							for (cell.line=p.offset_line; cell.line < p.offset_line+TBL_FIXED_LINES; cell.line++) notify_ids.insert(cell);
+						}
+					}
+				}
+				
+			}
 		}else if (strcmp(var,"setcells")==0){
 			auto tb = str_splitlineq(val,',');
 			CELL_COOR start,end;
@@ -1390,7 +1465,7 @@ void CALC::execstep (
 				bool getvals = strcmp(var,"getvals")==0;
 				walkrange (start,end,api_error,[&content,nbcol,&nocol,getvals](auto &c){
 					if (nocol > 0) content += ',';
-					content += getvals ? c.gettext() : c.text;
+					content += getvals ? c.gettext(2) : c.text;
 					nocol++;
 					if (nocol == nbcol){
 						content += '\n';

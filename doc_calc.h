@@ -89,7 +89,7 @@ struct CALC_CELL{
 		:text(_text.ptr){}
 	CALC_CELL(const CALC_CELL &n) = default;
 	void eval0();
-	std::string gettext() const;
+	std::string gettext(unsigned precision) const;
 	const char *getcolor() const;	// Return the text color
 	const char *getalign() const;	// Return the textAlign value
 	void reformat();		//  Use the steps to rebuild the text formula (generally use after applyoffset());
@@ -105,7 +105,10 @@ enum COL_ALIGN{
 struct CALC_COL_FORMAT{
 	unsigned short width=100;
 	unsigned char precision=2;	// Precision for numbers
-	COL_ALIGN align=COL_LEFT;
+	COL_ALIGN align=COL_DEFAULT;
+	bool is_default() const {
+		return width == 100 && precision == 2 && align == COL_DEFAULT;
+	}
 };
 
 struct CALC_PREF{
