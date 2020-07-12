@@ -31,5 +31,6 @@
 #define DIALOG_CALC_INSCOLLINE	"inscolline"
 #define DIALOG_CALC_FORMATCELL	"formatcell"
 #define DIALOG_IMBED		"imbed"
+#define DIALOG_IMAGE		"image"
 #define CHESS_ROBOT		"--robot--"
 #endif

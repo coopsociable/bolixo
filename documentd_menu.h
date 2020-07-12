@@ -15,10 +15,12 @@ struct WHITEBOARD_MENU{
 	std::string svg_handline;
 	std::string svg_select;
 	std::string svg_star;
-	std::string svg_imbed;
+	std::string svg_parent;
 	std::string svg_dashrect;
 	std::string svg_linetype;
 	std::string svg_textpos;
+	std::string svg_image;
+	std::string svg_imbed;
 	WHITEBOARD_MENU(DOC_BUTTON_SPECS &specs);
 };
 struct WORDPROC_MENU{

@@ -78,6 +78,7 @@ enum BOX_TYPE{
 	BOX_LAST,	// Last item in the list + 1
 };
 
+#define documentd_whiteboard_elements_NOTNEED
 #include "proto/documentd_whiteboard.protoch"
 #include "proto/documentd_whiteboard.protoh"
 
@@ -142,6 +143,25 @@ struct WHITEBOARD_ELM{
 	vector<unsigned> insides;		// insides are drawn inside the element.
 	vector<SUBELM> subelms;		// subelms are related elements.
 	vector<ARROW_ANGLE> arrows[4];	// All lines going to and from this element with angle, for the four sides
+	DOCUMENT_EMBED embed;
+	string imageurl;
+
+
+	bool is_imbed() const {
+		return embed.document.size() > 0;
+	}
+	const char *get_document() const{
+		return embed.document.c_str();
+	}
+	const char *get_region() const{
+		return embed.region.c_str();
+	}
+	unsigned get_docnum() const{
+		return embed.docnum;
+	}
+	bool is_image() const {
+		return imageurl.size() > 0;
+	}
 	void resize(int val, bool horizontal_only, bool vertical_only){
 		if (horizontal_only){
 			check_limit(width,val);
@@ -221,7 +241,7 @@ struct WHITEBOARD_ELM{
 		if (type == TYPE_ELLIPSE){
 			var.val += string_f("replace_ellipse('e%u',%u,%u,%u,%u,'%s',%u);\n",id,x,y,w_2,h_2,stroke_color,box_type);
 		}else if (type == TYPE_RECT){
-			var.val += string_f("replace_rect('e%u',%d,%d,%u,%u,'%s',%u);\n",id,(int)x-w_2,(int)y-h_2,width,height,stroke_color,box_type);
+			var.val += string_f("replace_rect('%u',%d,%d,%u,%u,'%s',%u);\n",id,(int)x-w_2,(int)y-h_2,width,height,stroke_color,box_type);
 		}else if (type == TYPE_LINE){
 			var.val += string_f("replace_typeline('e%u',%u,%u,%u,%u,'%s',%u);\n",id,x,y,x1,y1,stroke_color,box_type);
 		}else if (type == TYPE_TEXT){
@@ -356,7 +376,30 @@ public:
 	void exec (const char *var, const char *val, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
 	void manyexec (const vector<VARVAL_receive> &steps, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, vector<VARVAL> &res);
 	void remove_session (const char *session);
+	void set_embed_options (const DOCUMENT_EMBED &embed, bool not_square);
+	set<DOCUMENT_EMBED> get_embed_specs() const;
 };
+set<DOCUMENT_EMBED> WHITEBOARD::get_embed_specs() const
+{
+	set<DOCUMENT_EMBED> ret;
+	for (auto &e:elms){
+		auto &ee = e.second;
+		const char *doc = ee.get_document();
+		if (doc[0] != '\0'){
+			ret.insert(ee.embed);
+		}
+	}
+	return ret;
+}
+void WHITEBOARD::set_embed_options (const DOCUMENT_EMBED &embed, bool not_square)
+{
+	for (auto &e:elms){
+		auto &ee = e.second;
+		if (ee.is_imbed() && ee.embed == embed){
+			ee.embed.not_square = not_square;
+		}
+	}
+}
 
 GAME_P make_WHITEBOARD()
 {
@@ -376,9 +419,9 @@ void WHITEBOARD::update_msg (bool to_all, PARAM_STRING msg, const char *color, s
 void WHITEBOARD::save(DOC_WRITER &w, bool)
 {
 	documentd_whiteboard_header(&w,revision,alloc_id);
-	vector<WHITEBOARD_ELEMENT> elements;
+	vector<WHITEBOARD_ELEMENT2> elements;
 	for (auto &m:elms){
-		WHITEBOARD_ELEMENT elm;
+		WHITEBOARD_ELEMENT2 elm;
 		WHITEBOARD_ELM &e = m.second;
 		elm.id = e.id;
 		elm.selmode = e.selmode;
@@ -400,9 +443,13 @@ void WHITEBOARD::save(DOC_WRITER &w, bool)
 			selm.arrow = s.arrow;
 			elm.subelms.emplace_back(move(selm));
 		}
+		elm.document = e.embed.document;
+		elm.region = e.embed.region;
+		elm.docnum = e.embed.docnum;
+		elm.image = e.imageurl;
 		elements.emplace_back(move(elm));
 	}
-	documentd_whiteboard_elements (&w,elements);
+	documentd_whiteboard_elements2 (&w,elements);
 	documentd_whiteboard_baseelms (&w,baseelms);
 	vector<WHIPREF> wprefs;
 	for (auto &p:prefs){
@@ -460,6 +507,31 @@ void WHITEBOARD::load(DOC_READER &r, std::string &msg)
 			elm.textpos = e.textpos;
 			elm.insides = e.insides;
 			for (auto &s:e.subelms) elm.subelms.emplace_back(s.id,s.arrow);
+			glocal.elms[elm.id] = move(elm);
+		}
+	</f>
+	<f elements2>
+		for (auto &e:elements){
+			WHITEBOARD_ELM elm;
+			elm.id = e.id;
+			elm.selmode = e.selmode;
+			elm.box_type = e.box_type;
+			elm.x = e.x;
+			elm.y = e.y;
+			elm.x1 = e.x1;
+			elm.y1 = e.y1;
+			elm.width = e.width;
+			elm.height = e.height;
+			elm.type = (WHITEBOARD_ELMTYPE)e.type;
+			elm.label = e.label;
+			elm.txt = e.txt;
+			elm.textpos = e.textpos;
+			elm.insides = e.insides;
+			for (auto &s:e.subelms) elm.subelms.emplace_back(s.id,s.arrow);
+			elm.embed.document = e.document;
+			elm.embed.region = e.region;
+			elm.embed.docnum = e.docnum;
+			elm.imageurl = e.image;
 			glocal.elms[elm.id] = move(elm);
 		}
 	</f>
@@ -834,10 +906,10 @@ static void addsvgelement(
 	var.val += "whi_loop_board(function(svg){\n";
 	var.val += string_f("\tvar newElement = document.createElementNS('http://www.w3.org/2000/svg', '%s');\n",elmtype);
 	var.val += string_f("\tnewElement.id='%s';\n",id.ptr);
-	var.val += string_f("\tnewElement.style.stroke = '%s';\n",color);
+	if (color != nullptr) var.val += string_f("\tnewElement.style.stroke = '%s';\n",color);
 	if (strcmp(elmtype,"text")==0){
 		var.val += "\tnewElement.classList.add('whitext');\n";
-	}else{
+	}else if (stroke_width != 0){
 		var.val += "\tnewElement.style.fill = 'none';\n";
 		var.val += string_f("\tnewElement.style.strokeWidth = '%u';\n",stroke_width);
 	}
@@ -1144,6 +1216,16 @@ string WHITEBOARD::draw_board (
 			case TYPE_RECT:
 				glocal.val += string_f("<rect id='e%u' x=%d y=%d rx=5 ry=5 width=%u height=%u stroke='%s' stroke-width='2' fill='none'%s />\n"
 					,elm.id,(int)elm.x-elm.width/2,(int)elm.y-elm.height/2,elm.width,elm.height,color,dasharray);
+				if (elm.is_imbed() || elm.is_image()){
+					unsigned docnum = elm.get_docnum();
+					glocal.val += string_f("<foreignobject id=f%u class='node' x='%u' y='%u' width='%u' height='%u'>\n"
+						,elm.id,elm.x-elm.width/2,elm.y-elm.height/2,elm.width,elm.height);
+					if (elm.is_image()){
+						glocal.val += string_f("<img src=%s>\n",elm.imageurl.c_str());
+					}
+					glocal.val += "</foreignobject>\n";
+					if (elm.is_imbed()) glocal.script += string_f("show_template(document,'temp%u','f%u');\n",docnum,elm.id);
+				}
 				break;
 			case TYPE_LINE:
 				glocal.val += string_f("<line id='e%u' x1=%u y1=%u x2=%u y2=%u stroke='%s' stroke-width='2' fill='none'%s />\n"
@@ -1262,7 +1344,7 @@ string WHITEBOARD::define_functions(
 	val += "}\n";
 
 	val += "function replace_rect(id, x, y, w,h, color,boxtype){\n";
-	val += "\twhi_loop('rect',id,function(e){\n";
+	val += "\twhi_loop('rect','e'+id,function(e){\n";
 	//val += "\t\tconsole.log ('fct rect id='+id);\n";
 	val += "\t\te.setAttribute('x',x);\n"; 
 	val += "\t\te.setAttribute('y',y);\n"; 
@@ -1272,6 +1354,14 @@ string WHITEBOARD::define_functions(
 	val += "\t\te.setAttribute('height',h);\n"; 
 	val += "\t\te.style.stroke=color;\n";
 	val += "\t\tsetboxtype(e,boxtype);\n";
+	val += "\t});\n";
+	// Move the foreignobject (HTML associated with the rect
+	val += "\twhi_loop('foreignObject','f'+id,function(e){\n";
+	val += "\t\tconsole.log ('fct foreign id='+id);\n";
+	val += "\t\te.setAttribute('x',x);\n"; 
+	val += "\t\te.setAttribute('y',y);\n"; 
+	val += "\t\te.setAttribute('width',w);\n"; 
+	val += "\t\te.setAttribute('height',h);\n"; 
 	val += "\t});\n";
 	val += "}\n";
 
@@ -1434,11 +1524,20 @@ void WHITEBOARD::execstep (
 		if (is_any_of(val,"","full")){
 			VARVAL v;
 			v.var = VAR_CONTENT;
+			documentd_imbeds (this,v.val,sp);
 			v.val += "<style>\n";
 			v.val += define_styles(ctx,sp);
 			v.val += "</style>\n";
 			v.val += "<script>\n";
 			v.val += define_functions(ctx,pref,board_width,board_height);
+			// Copy a template
+			v.val += "function show_template(doc,tid,pid) {\n";
+			v.val += "\tvar temp = document.getElementById(tid);\n";
+			v.val += "\tvar clon = temp.content.cloneNode(true);\n";
+			v.val += "\tvar parent = doc.getElementById(pid);\n";
+			v.val += "console.log ('show_template '+temp+' '+parent);\n";
+			v.val += "\tparent.appendChild(clon);\n";
+			v.val += "}\n";
 			v.val += "</script>\n";
 			// Buttons line
 			if (ctx.maywrite){
@@ -1454,6 +1553,8 @@ void WHITEBOARD::execstep (
 				#define BUTTON_BOXTYPE	9
 				#define BUTTON_LINETYPE	10
 				#define BUTTON_TEXTPOS	11
+				#define BUTTON_IMAGE	12
+				#define BUTTON_LINKDOC	13
 				v.val += "<div id=tab_form style='margin-top:5; margin-bottom:5; background-color: lightgray;'>\n";
 				DOC_BUTTON_SPECS specs;
 				if (sp.mobile){
@@ -1477,13 +1578,15 @@ void WHITEBOARD::execstep (
 				documentd_button_space(v.val);
 				documentd_bar_button (v.val,BUTTON_SELECT,menu.svg_select,specs,pref.selecting,MSG_U(I_SELECTITEMS,"Select elements"));
 				documentd_bar_button (v.val,BUTTON_STARMODE,menu.svg_star,specs,pref.starmode,MSG_U(I_SELECTPARENTS,"Select parents"));
-				documentd_bar_button (v.val,BUTTON_IMBEDMODE,menu.svg_imbed,specs,pref.imbedmode,MSG_U(I_SELECTIMBED,"Select embedding parent"));
+				documentd_bar_button (v.val,BUTTON_IMBEDMODE,menu.svg_parent,specs,pref.imbedmode,MSG_U(I_SELECTIMBED,"Select embedding parent"));
 
 				// Actions on selected elements
 				documentd_button_space(v.val);
 				documentd_bar_button (v.val,BUTTON_BOXTYPE,menu.svg_dashrect,specs,false,MSG_U(I_SETBOXTYPE,"Select the box type of selected elements"));
 				documentd_bar_button (v.val,BUTTON_LINETYPE,menu.svg_linetype,specs,false,MSG_U(I_SELECTRELATION,"Select line relation between parents and selected elements"));
 				documentd_bar_button (v.val,BUTTON_TEXTPOS,menu.svg_textpos,specs,false,MSG_U(I_POSITIONTEXT,"Position the text of selected elements"));
+				documentd_bar_button (v.val,BUTTON_IMAGE,menu.svg_image,specs,false,MSG_U(I_ASSIGNIMAGE,"Assign an image to selected elements"));
+				documentd_bar_button (v.val,BUTTON_LINKDOC,menu.svg_imbed,specs,false,MSG_U(I_ASSIGNDOCUMEN,"Link a document to selected elements"));
 				documentd_button_end(v.val);
 			}else{
 				v.val += "<div id=tab_form style='margin-top:5; margin-bottom:5; background-color: lightgray;'>\n";
@@ -1555,6 +1658,19 @@ void WHITEBOARD::execstep (
 	}else if (strcmp(var,REQ_GETFIELDS)==0){
 		VARVAL var;
 		var.var = VAR_FIELDS;
+		if (is_any_of(val,DIALOG_IMAGE,DIALOG_IMBED)){
+			auto selects = findselected(SEL_SELECTED);
+			if (selects.size() > 0){
+				// We use the specs of the first selected elements. THey will all share the result
+				auto s = selects[0];
+				if (strcmp(val,DIALOG_IMAGE)==0){
+					var.val = string_f("url:%s\n",s->imageurl.c_str());
+				}else{
+					var.val = string_f("docid:%s\n",s->embed.document.c_str());
+					var.val += string_f("region:%s\n",s->embed.region.c_str());
+				}
+			}
+		}
 		res.emplace_back(var);
 	}else if (strcmp(var,"dump")==0){
 		VARVAL var;
@@ -1817,6 +1933,27 @@ void WHITEBOARD::execstep (
 						notify_ids.insert(s->id);
 					}
 				}
+			}else if (is_any_of(uval,BUTTON_IMAGE,BUTTON_LINKDOC)){
+				auto selects = findselected (SEL_SELECTED);
+				if (selects.size() == 0){
+					error = MSG_R(E_NONODE);
+				}else if (uval == BUTTON_IMAGE){
+					VARVAL var;
+					var.var = VAR_DIALOG;
+					var.val = DIALOG_IMAGE;
+					res.emplace_back(var);
+				}else if (uval == BUTTON_LINKDOC){
+					bool only_rect = true;
+					for (auto s:selects) if (s->type != TYPE_RECT) only_rect = false;
+					if (only_rect){
+						VARVAL var;
+						var.var = VAR_DIALOG;
+						var.val = DIALOG_IMBED;
+						res.emplace_back(var);
+					}else{
+						error = MSG_U(E_LINKONRECT,"You can only link a document on squares/rectangles");
+					}
+				}
 			}else{
 				tlmp_error ("whiteboard newgame=%d",uval);
 			}
@@ -1824,6 +1961,45 @@ void WHITEBOARD::execstep (
 			whiteboard_update_button (script_var.val, oldpref.starmode,pref.starmode, BUTTON_STARMODE);
 			whiteboard_update_button (script_var.val, oldpref.imbedmode,pref.imbedmode, BUTTON_IMBEDMODE);
 			setfocus(script_var);
+		}else if (strcmp(var,"imbed")==0){
+			vector<VARVAL> fields;
+			documentd_parsefields(val,fields);
+			DOCUMENT_EMBED imbed;
+			for (auto &f:fields){
+				if (f.var == "docid"){
+					imbed.document = f.val;
+				}else if (f.var == "region"){
+					imbed.region = f.val;
+				}
+			}
+			// Allocate a document number. Note that the document may exist several time (same doc, same region)
+			unsigned docnum = 0;
+			imbed.docnum = (unsigned short)-1;
+			for (auto &e:elms){
+				auto &ee = e.second;
+				if (ee.is_imbed()){
+					unsigned num = ee.get_docnum();
+					if (imbed.document == ee.get_document() && imbed.region == ee.get_region()){
+						imbed.docnum = num;
+						break;
+					}else{
+						if (num > docnum) docnum = num;
+					}
+				}
+			}
+			if (imbed.docnum == (unsigned short)-1) imbed.docnum = docnum+1;
+			documentd_insert_imbed (gameid,notify_var,imbed,sp);
+			auto selects = findselected(SEL_SELECTED);
+			for (auto s:selects){
+				if (!s->is_imbed()){
+					addsvgelement(notify_var,gameid,"foreignObject",nullptr,0,string_f("f%u",s->id));
+				}
+				s->embed = imbed;
+				notify_ids.insert(s->id);	// Make sure the foreignObject is positionned
+				notify_var.val += "whi_loop_board(function(svg){\n";
+				notify_var.val += string_f("\tshow_template(svg,'temp%u','f%u');\n",imbed.docnum,s->id);
+				notify_var.val += "\t});\n";
+			}
 		// The other actions are Used to script modification of the document
 		}else if (strcmp(var,"addelm")==0){
 			// val format: label "text" type x y width height

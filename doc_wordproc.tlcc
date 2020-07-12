@@ -1023,12 +1023,7 @@ string WORDPROC::formatline(unsigned noline, const DOC_UI_SPECS_receive &sp, str
 				if (cursors.size() > 0) ret += "</div>";
 			}
 		}else if (para.is_imbed()){
-			DOC_UI_SPECS_receive isp;
-			isp.clear();
 			unsigned para_width = para.get_image_width();
-			isp.content_width = para_width*sp.content_width/100;
-			isp.content_height = isp.content_width;
-			isp.fontsize = sp.fontsize;
 			// We have to express the width and height relative to the display, using percent.
 			// But it is not possible to express using CSS that you want the height equals to the width.
 			// There is a trick using padding-top:100% allowing you to control the aspect ratio ... but it does not work in all cases.
@@ -1757,7 +1752,6 @@ void WORDPROC::execstep (
 
 			// event.location==1 tells if this is the left shift/alt key or right. We are not using it now
 			v.val += "<script>\n";
-			//v.val += imbed_scripts;
 			// Copy a template
 			v.val += "function show_template(tid,pid) {\n";
 			v.val += "\tvar temp = document.getElementById(tid);\n";
@@ -2078,22 +2072,7 @@ void WORDPROC::execstep (
 					}
 				}
 				if (imbed.docnum == (unsigned short)-1) imbed.docnum = docnum+1;
-				string script;
-				documentd_imbed (gameid,imbed.document,REQ_FUNCTIONS,"",imbed.docnum,sp,script);
-				notify_var.val += script;
-				string content = documentd_imbed (gameid,imbed.document,REQ_STYLES,"",imbed.docnum,sp,script);
-				notify_var.val += "document.body.innerHTML+=`";
-				notify_var.val += "<style>\n";
-				notify_var.val += content;
-				notify_var.val += "</style>`;\n";
-				content = documentd_imbed (gameid,imbed.document,REQ_REGION,imbed.region,imbed.docnum,sp,script);
-				// First we add the sub-document template definition, then the scripts
-				notify_var.val += "document.body.innerHTML+=`";
-				notify_var.val += string_f("<template id='temp%u'>\n",imbed.docnum);
-				notify_var.val += content;
-				notify_var.val += "</template>`;\n";
-				notify_var.val += script;
-				if (content.find("not-square")!=string::npos) imbed.not_square = true;
+				documentd_insert_imbed (gameid,notify_var,imbed,sp);
 				while (lines.size() <= pref.cursor.line) lines.push_back("");
 				lines[pref.cursor.line].set_imbed(imbed);
 				notify_lines.insert(pref.cursor.line);

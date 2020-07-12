@@ -805,6 +805,33 @@ void documentd_imbeds (
 	}	
 }
 /*
+	Insert a new imbedded document into a document currently displayed.
+	We are using this function when a user is adding a new document.
+*/
+void documentd_insert_imbed(
+	PARAM_STRING gameid,
+	VARVAL &notify_var,
+	DOCUMENT_EMBED &imbed,
+	const DOC_UI_SPECS_receive &sp)
+{
+	string script;
+	documentd_imbed (gameid,imbed.document,REQ_FUNCTIONS,"",imbed.docnum,sp,script);
+	notify_var.val += script;
+	string content = documentd_imbed (gameid,imbed.document,REQ_STYLES,"",imbed.docnum,sp,script);
+	notify_var.val += "document.body.innerHTML+=`";
+	notify_var.val += "<style>\n";
+	notify_var.val += content;
+	notify_var.val += "</style>`;\n";
+	content = documentd_imbed (gameid,imbed.document,REQ_REGION,imbed.region,imbed.docnum,sp,script);
+	// First we add the sub-document template definition, then the scripts
+	notify_var.val += "document.body.innerHTML+=`";
+	notify_var.val += string_f("<template id='temp%u'>\n",imbed.docnum);
+	notify_var.val += content;
+	notify_var.val += "</template>`;\n";
+	notify_var.val += script;
+	if (content.find("not-square")!=string::npos) imbed.not_square = true;
+}
+/*
 	Generate the function to loop inside all javascript object, then search for an id and apply a function
 */
 string documentd_js_loop_function(const char *board_prefix, const char *prefix)
