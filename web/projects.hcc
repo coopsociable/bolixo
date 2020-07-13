@@ -315,6 +315,12 @@ static void projects_dialogs (
 					w_field2 = f.value;
 				}
 			}
+		}else if (strcmp(glocal.dialog_name,DIALOG_IMAGE)==0){
+			for (auto &f:glocal.fields){
+				if (f.name == "url"){
+					w_field1 = f.value;
+				}
+			}
 		}else if (strcmp(glocal.dialog_name,DIALOG_CALC_FORMATCELL)==0){
 			for (auto &f:glocal.fields){
 				if (f.name == "width"){
@@ -515,6 +521,19 @@ static void projects_dialogs (
 				/- &nbsp;<br>
 			}
 			button_submit();
+		}else if (strcmp(glocal.dialog_name,DIALOG_IMAGE)==0){
+			/- <table border=0>
+			/- <tr><td>
+			/-#F_IMAGEURL Image URL
+			/- <td>
+			field_string (w_field1,"");
+			/- </table>
+			if (glocal.error.size() > 0){
+				htmlprintf ("<span style=color:red; >%s</span><br>\n",glocal.error.c_str());
+			}else{
+				/- &nbsp;<br>
+			}
+			button_submit();
 		}
 	</f>
 	<f validate>
@@ -541,6 +560,19 @@ static void projects_dialogs (
 				}
 			</f>
 			</call>
+		}else if (strcmp(glocal.dialog_name,DIALOG_IMAGE)==0){
+			if (!is_start_any_ofnc(w_field1.c_str(),NONEED,"http://","https://")){
+				string subdoc = string_f("%s/%s",projects_getdir(glocal.path).c_str(),w_field1.c_str());
+				<call bod_client_stat> (glocal.con,glocal.session,subdoc,"");
+				<f ok>
+					if (!success){
+						glocal.error = string_f(MSG_R(E_DOCNOTEXIST),w_field1.c_str());
+					}else if (!file_is_image(file.file_type)){
+						glocal.error = string_f(MSG_U(E_NOTIMAGE,"File %s is not an image."),w_field1.c_str());
+					}
+				</f>
+				</call>
+			}
 		}else if (strcmp(glocal.dialog_name,DIALOG_CALC_FORMATCELL)==0){
 			unsigned width = atoi(w_field1.c_str());
 			unsigned precision = atoi(w_field2.c_str());
@@ -597,6 +629,9 @@ static void projects_dialogs (
 				if (!success) tlmp_error ("documentd imbed playstep error: %s",msg);
 			</f>
 			</call>
+		}else if (strcmp(glocal.dialog_name,DIALOG_IMAGE)==0){
+			var.var = "image";
+			var.val += string_f("url:%s\n",w_field1.c_str());
 		}else if (strcmp(glocal.dialog_name,DIALOG_CALC_FORMATCELL)==0){
 			var.var = "formatcol";
 			var.val = string_f("width:%u\nprecision:%u\nalign:%s\n"

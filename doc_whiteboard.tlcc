@@ -239,7 +239,7 @@ struct WHITEBOARD_ELM{
 		unsigned w_2 = width/2;
 		unsigned h_2 = height/2;
 		if (type == TYPE_ELLIPSE){
-			var.val += string_f("replace_ellipse('e%u',%u,%u,%u,%u,'%s',%u);\n",id,x,y,w_2,h_2,stroke_color,box_type);
+			var.val += string_f("replace_ellipse('%u',%u,%u,%u,%u,'%s',%u);\n",id,x,y,w_2,h_2,stroke_color,box_type);
 		}else if (type == TYPE_RECT){
 			var.val += string_f("replace_rect('%u',%d,%d,%u,%u,'%s',%u);\n",id,(int)x-w_2,(int)y-h_2,width,height,stroke_color,box_type);
 		}else if (type == TYPE_LINE){
@@ -1139,6 +1139,17 @@ void WHITEBOARD::setfocus(VARVAL &var)
 {
 	documentd_setfocus(var,string_f("text-%s",gameid.c_str()));
 }
+
+static string whiteboard_converturl(PARAM_STRING gameid, PARAM_STRING url)
+{
+	string ret = url.ptr;
+	if (!is_start_any_ofnc(url.ptr,NONEED,"http://","https://")){
+		string abspath = documentd_rel2abs(gameid,url);
+		ret = documentd_escape(string_f("/index.hc?webstep=5&image=%s",abspath.c_str()));
+	}
+	return ret;
+}
+
 <mod>
 string WHITEBOARD::draw_board (
 	unsigned vx,		// Viewbox specs
@@ -1155,6 +1166,7 @@ string WHITEBOARD::draw_board (
 	glocal fontsize;
 	glocal string val;
 	glocal script;
+	glocal gameid;
 		
 	script += string_f("whi_cur_gameid='%s';\n",gameid.c_str());
 	// Generate JS objects
@@ -1212,6 +1224,13 @@ string WHITEBOARD::draw_board (
 			case TYPE_ELLIPSE:
 				glocal.val += string_f("<ellipse id='e%u' cx=%u cy=%u rx=%u ry=%u stroke='%s' stroke-width=2 fill='none'%s />\n"
 					,elm.id,elm.x,elm.y,elm.width/2,elm.height/2,color,dasharray);
+				if (elm.is_image()){
+					glocal.val += string_f("<foreignobject id=f%u class='node' x='%u' y='%u' width='%u' height='%u'>\n"
+						,elm.id,elm.x-elm.width/2,elm.y-elm.height/2,elm.width,elm.height);
+					string paramurl = whiteboard_converturl (glocal.gameid,elm.imageurl);
+					glocal.val += string_f("<img style='border-radius: 50%%;' width=100%% src=%s>\n",paramurl.c_str());
+					glocal.val += "</foreignobject>\n";
+				}
 				break;
 			case TYPE_RECT:
 				glocal.val += string_f("<rect id='e%u' x=%d y=%d rx=5 ry=5 width=%u height=%u stroke='%s' stroke-width='2' fill='none'%s />\n"
@@ -1221,7 +1240,8 @@ string WHITEBOARD::draw_board (
 					glocal.val += string_f("<foreignobject id=f%u class='node' x='%u' y='%u' width='%u' height='%u'>\n"
 						,elm.id,elm.x-elm.width/2,elm.y-elm.height/2,elm.width,elm.height);
 					if (elm.is_image()){
-						glocal.val += string_f("<img src=%s>\n",elm.imageurl.c_str());
+						string paramurl = whiteboard_converturl (glocal.gameid,elm.imageurl);
+						glocal.val += string_f("<img width=100%% src=%s>\n",paramurl.c_str());
 					}
 					glocal.val += "</foreignobject>\n";
 					if (elm.is_imbed()) glocal.script += string_f("show_template(document,'temp%u','f%u');\n",docnum,elm.id);
@@ -1331,8 +1351,18 @@ string WHITEBOARD::define_functions(
 	val += string_f("\te.setAttribute('x',x*%u/%u);\n",board_width,4*SVG_BOARD_WIDTH);
 	val += "}\n";
 
+	val += "function replace_foreign(id, x, y, w,h,color,boxtype){\n";
+	val += "\twhi_loop('foreignObject','f'+id,function(e){\n";
+	val += "\t\tconsole.log ('fct foreign id='+id);\n";
+	val += "\t\te.setAttribute('x',x);\n"; 
+	val += "\t\te.setAttribute('y',y);\n"; 
+	val += "\t\te.setAttribute('width',w);\n"; 
+	val += "\t\te.setAttribute('height',h);\n"; 
+	val += "\t});\n";
+	val += "}\n";
+
 	val += "function replace_ellipse(id, x, y, rx,ry,color,boxtype){\n";
-	val += "\twhi_loop('ellipse',id,function(e){\n";
+	val += "\twhi_loop('ellipse','e'+id,function(e){\n";
 	//val += "\t\tconsole.log ('fct ellipse id='+id);\n";
 	val += "\t\te.setAttribute('cx',x);\n"; 
 	val += "\t\te.setAttribute('cy',y);\n"; 
@@ -1341,6 +1371,8 @@ string WHITEBOARD::define_functions(
 	val += "\t\te.style.stroke=color;\n"; 
 	val += "\t\tsetboxtype(e,boxtype);\n";
 	val += "\t});\n";
+	// Move the foreignobject (HTML associated with the ellipse
+	val += "\treplace_foreign(id,x-rx,y-ry,rx*2,ry*2);\n";
 	val += "}\n";
 
 	val += "function replace_rect(id, x, y, w,h, color,boxtype){\n";
@@ -1356,13 +1388,7 @@ string WHITEBOARD::define_functions(
 	val += "\t\tsetboxtype(e,boxtype);\n";
 	val += "\t});\n";
 	// Move the foreignobject (HTML associated with the rect
-	val += "\twhi_loop('foreignObject','f'+id,function(e){\n";
-	val += "\t\tconsole.log ('fct foreign id='+id);\n";
-	val += "\t\te.setAttribute('x',x);\n"; 
-	val += "\t\te.setAttribute('y',y);\n"; 
-	val += "\t\te.setAttribute('width',w);\n"; 
-	val += "\t\te.setAttribute('height',h);\n"; 
-	val += "\t});\n";
+	val += "\treplace_foreign(id,x,y,w,h);\n";
 	val += "}\n";
 
 	val += "function replace_typeline(id, x1, y1, x2, y2, color,boxtype){\n";
@@ -1530,13 +1556,22 @@ void WHITEBOARD::execstep (
 			v.val += "</style>\n";
 			v.val += "<script>\n";
 			v.val += define_functions(ctx,pref,board_width,board_height);
-			// Copy a template
+			// Copy a template in a foreignobject
 			v.val += "function show_template(doc,tid,pid) {\n";
 			v.val += "\tvar temp = document.getElementById(tid);\n";
 			v.val += "\tvar clon = temp.content.cloneNode(true);\n";
 			v.val += "\tvar parent = doc.getElementById(pid);\n";
 			v.val += "console.log ('show_template '+temp+' '+parent);\n";
 			v.val += "\tparent.appendChild(clon);\n";
+			v.val += "}\n";
+			// Add an IMG tag to a foreignobject
+			v.val += "function show_image(doc,url,radius,pid) {\n";
+			v.val += "\tvar img = document.createElement('img');\n";
+			v.val += "\timg.style.borderRadius = radius;\n";
+			v.val += "\timg.src = url;\n";
+			v.val += "\timg.style.width='100%';\n";
+			v.val += "\tvar parent = doc.getElementById(pid);\n";
+			v.val += "\tparent.appendChild(img);\n";
 			v.val += "}\n";
 			v.val += "</script>\n";
 			// Buttons line
@@ -1938,10 +1973,16 @@ void WHITEBOARD::execstep (
 				if (selects.size() == 0){
 					error = MSG_R(E_NONODE);
 				}else if (uval == BUTTON_IMAGE){
-					VARVAL var;
-					var.var = VAR_DIALOG;
-					var.val = DIALOG_IMAGE;
-					res.emplace_back(var);
+					bool valid_type = true;
+					for (auto s:selects) if (!is_any_of(s->type,TYPE_ELLIPSE,TYPE_RECT)) valid_type = false;
+					if (valid_type){
+						VARVAL var;
+						var.var = VAR_DIALOG;
+						var.val = DIALOG_IMAGE;
+						res.emplace_back(var);
+					}else{
+						error = MSG_U(E_IMGONRECTELLIPSE,"You can only apply an image to rectangles or ellipses");
+					}
 				}else if (uval == BUTTON_LINKDOC){
 					bool only_rect = true;
 					for (auto s:selects) if (s->type != TYPE_RECT) only_rect = false;
@@ -1961,6 +2002,24 @@ void WHITEBOARD::execstep (
 			whiteboard_update_button (script_var.val, oldpref.starmode,pref.starmode, BUTTON_STARMODE);
 			whiteboard_update_button (script_var.val, oldpref.imbedmode,pref.imbedmode, BUTTON_IMBEDMODE);
 			setfocus(script_var);
+		}else if (strcmp(var,"image")==0){
+			vector<VARVAL> fields;
+			documentd_parsefields(val,fields);
+			string url;
+			for (auto &f:fields) if (f.var == "url") url = f.val;
+			auto selects = findselected(SEL_SELECTED);
+			string paramurl = whiteboard_converturl (gameid,url);
+			for (auto s:selects){
+				if (!s->is_image()){
+					addsvgelement(notify_var,gameid,"foreignObject",nullptr,0,string_f("f%u",s->id));
+				}
+				s->imageurl = url;
+				notify_ids.insert(s->id);	// Make sure the foreignObject is positionned
+				notify_var.val += "whi_loop_board(function(svg){\n";
+				notify_var.val += string_f("\tshow_image(svg,'%s','%s','f%u');\n"
+					,paramurl.c_str(),s->type == TYPE_ELLIPSE ? "50%" : "5px",s->id);
+				notify_var.val += "\t});\n";
+			}
 		}else if (strcmp(var,"imbed")==0){
 			vector<VARVAL> fields;
 			documentd_parsefields(val,fields);
