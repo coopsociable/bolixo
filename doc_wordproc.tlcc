@@ -167,6 +167,9 @@ class WORDPROC: public GAME{
 	void set_para_spec(class PARAGRAPH &para, unsigned noline, unsigned column, const DOC_UI_SPECS_receive &sp, unsigned &para_noline);
 	void set_para_spec(class PARAGRAPH &para, unsigned noline, const DOC_UI_SPECS_receive &sp);
 	void setfocus(VARVAL &script_var);
+	std::string draw_text (WORD_USERPREF &pref, unsigned docnum, unsigned visible_lines, const DOC_UI_SPECS_receive &sp, bool editmode, std::string &script);
+	std::string define_functions(const DOC_CONTEXT &ctx, const WORD_USERPREF &pref, unsigned width, unsigned height);
+	std::string define_styles(const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp);
 public:
 	const char *getclass() const{
 		return "WORD";
@@ -1460,8 +1463,9 @@ void WORDPROC::page_up_down(
 void WORDPROC::update_lines (string &script, set<unsigned> &updlines, const DOC_UI_SPECS_receive &sp)
 {
 	if (updlines.size() > 0){
-		js_find_loop_start_class(script,"text","oneline");
-		script += "\t\tfor (var i=0; i<elms.length; i++){\n";	
+		script += "word_loop_board(function(txt){\n";
+		script += "\tvar elms = txt.getElementsByClassName('oneline');\n";
+		script += "\tfor (var i=0; i<elms.length; i++){\n";	
 		script += "\t\t\tvar e=elms[i];\n";
 		unsigned nol = 0;
 		for (auto l:updlines){
@@ -1477,8 +1481,8 @@ void WORDPROC::update_lines (string &script, set<unsigned> &updlines, const DOC_
 			}
 			nol++;
 		}
-		script += "\t\t}\n";
-		js_find_loop_end(script);
+		script += "\t}\n";
+		script += "\t});\n";
 	}
 }
 void WORDPROC::exec (
@@ -1625,7 +1629,188 @@ void WORDPROC::set_embed_options (const DOCUMENT_EMBED &embed, bool not_square)
 }
 void WORDPROC::setfocus(VARVAL &script_var)
 {
-	documentd_setfocus(script_var,string_f("text-%s",gameid.c_str()));
+	documentd_setfocus(script_var,string_f("text-%s,0",gameid.c_str()));
+}
+
+
+string WORDPROC::draw_text (
+	WORD_USERPREF &pref,
+	unsigned docnum,
+	unsigned visible_lines,
+	const DOC_UI_SPECS_receive &sp,
+	bool editmode,
+	std::string &scripts)
+{
+	scripts += string_f(
+		"var word_%u={\n"
+		"\tgameid:'%s',docnum:%u,offset:%u\n"
+		"};\n"
+		"word_%u.gameselect=function(event){\n"
+		"\tword_gameselect(this.gameid,this.docnum,event);\n"
+		"};\n"
+		,docnum
+		,gameid.c_str(),docnum,pref.offset
+		,docnum);
+	scripts += "if (typeof word_lst == 'undefined') var word_lst=[];\n";
+	scripts += string_f("word_lst.push(word_%u);\n",docnum);
+	string onfuncs;
+	if (editmode){
+		onfuncs = string_f(" onkeydown='word_gamepress(event);return false;'"
+			" oninput=word_funcinput(event)"
+			" onclick=word_%u.gameselect(event)"
+			" onwheel='word_gamewheel(event); return false;'"
+			,docnum);
+	}
+
+	string val;
+	val += string_f("<div id='text-%s,%u' %s"
+		//" contenteditable"
+		" spellcheck"
+		" tabindex=0 style='flex:0 0 auto; overflow: hidden; width:%u'"
+		" >\n",gameid.c_str(),docnum,onfuncs.c_str(),sp.content_width);
+	unsigned line = 0;
+	if (pref.offset < lines.size()){
+		for (auto p=lines.begin()+pref.offset; p != lines.end() && line < visible_lines; p++){
+			unsigned doc_line = line+pref.offset;
+			string script;
+			val += string_f("<div class=oneline id=l%u>%s</div>\n",doc_line
+				,formatline(doc_line,sp,script).c_str());
+			scripts += script;
+			line++;
+		}
+	}
+	for (; line<visible_lines; line++){
+		static string empty;
+		unsigned doc_line = line+pref.offset;
+		string script;
+		val += string_f("<div class=oneline id=l%u>%s</div>\n",doc_line
+			,formatline(doc_line,sp,script).c_str());
+		scripts += script;
+	}
+	val += "</div>\n";
+	return val;
+}
+string WORDPROC::define_functions(const DOC_CONTEXT &ctx, const WORD_USERPREF &pref, unsigned width, unsigned height)
+{
+	string val;
+	val += documentd_js_loop_function("text","word");
+	// Function called when the user click
+	val += "function word_gameselect(gameid,docnum,event){\n";
+	val += "\tvar elm = document.getElementById('text-'+gameid+','+docnum);\n";
+	val += "\tvar elms = elm.getElementsByClassName('oneline');\n";
+	val += "\tfor (var i=0; i<elms.length; i++){\n";
+	val += "\t\tvar para= elms[i];\n";
+	val += "\t\tvar rect = para.getBoundingClientRect();\n";
+	val += "\t\tif (event.clientY >= rect.top && event.clientY < rect.bottom){\n";
+	val += "\t\t\tvar divs=para.getElementsByTagName('div');\n";
+	val += "\t\t\tvar r=divs[divs.length-1].getBoundingClientRect();\n";
+	val += "\t\t\tgameaction(event,'select:'+i+' '+(event.clientX-r.left)+' '+(event.clientY-r.top)+' '+getlastline());\n";
+	val += "\t\t\tbreak;\n";
+	val += "\t\t}\n";
+	val += "\t}\n";
+	val += "}\n";
+	// Function called when the user uses the keyboard
+	val += "var gamekey=null;\n";
+	val += "var gamecode=null;\n";
+	val += "var altKey=null;\n";
+	val += "var ctrlKey=null;\n";
+	val += "var shiftKey=null;\n";
+
+	wordproc_set_gamepress(val,"word_gamepress");
+	val += "function word_funcinput(event){\n";
+	val += "\tif (event.data == null) gamekey=event.data;\n";
+	val += "\tgameaction(event,'kbd:'+gamecode + ' ' + gamekey+' '+altKey+' '+ctrlKey+' '+shiftKey+' '+getlastline()+' '+getlastcol());\n";
+	val += "\tconsole.log('kbd:'+gamecode + ' ' + gamekey+' '+altKey+' '+ctrlKey+' '+shiftKey+' '+getlastline());\n";
+	val += "\tevent.stopPropagation();\n";
+	val += "\treturn false;\n";
+	val += "}\n";
+	val += "function gamefalse(event){\n";
+	//v.val += "\tconsole.log ('gamefalse type='+event.type+' data='+event.data);\n";
+	val += "\tevent.stopPropagation();\n";
+	val += "\treturn false;\n";
+	val += "}\n";
+	// function called when the user uses the mouse wheel
+	val += "function word_gamewheel(event){\n";
+	//v.val += "\tconsole.log('deltaX='+event.deltaX+' deltaY='+event.deltaY);\n";
+	val += "\tif (event.deltaY < 0){\n";
+	val += "\t\tgameaction(event,'voffset:-1');\n";
+	val += "\t}else{\n";
+	val += "\t\tgameaction(event,'voffset:1');\n";
+	val += "\t}\n";
+	val += "}\n";
+	return val;
+}
+const unsigned MAX_TAB_LEVEL=8;
+string WORDPROC::define_styles(const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp)
+{
+	string val;
+	unsigned sp_width = sp.content_width-30;	// Space for line numbers, during development
+	// Cursor insert mode
+	val += ".icursor{\n";
+	val += "\tbackground-color:lightgray;>";
+	val += "}\n";
+	// Cursor replace mode
+	val += ".rcursor{\n";
+	val += "\tbackground-color:lightpink;>";
+	val += "}\n";
+
+	// Border around image, when focus
+	val += ".imgcursor{\n";
+	val += "\tborder:2px solid lightgray;\n";
+	val += "}\n";
+	// Border around embed document, no focus
+	val += ".imgembed{\n";
+	val += "\tborder:1px solid black;\n";
+	val += "}\n";
+
+	val += ".oneline{\n";
+	val += "\tflex:0 1 auto;\n";
+	val += "}\n";
+	val += ".onecol{\n";
+	val += "\tflex:0 1 auto;\n";
+	val += "\twidth:30;\n";
+	val += "}\n";
+
+	val += ".oneline .col{\n";
+	val += "\tdisplay:flex;\n";
+	val += "\tflex-flow:row;\n";
+	val += "\tmargin-bottom:5px;\n";
+	val += "}\n";
+
+	val += ".tab-center{\n";
+	val += "\ttext-align:center;\n";
+	val += "\toverflow-wrap: break-word;\n";
+	val += "\tflex:0 1 auto;\n";
+	val += string_f("\twidth:%u;\n",sp_width);
+	val += string_f("\t--width:%upx;\n",sp_width);
+	val += "}\n";
+
+	for (unsigned i=0; i<=MAX_TAB_LEVEL; i++){
+		val += string_f(".bullet%u{\n",i);
+		val += "\tflex:0 1 auto;\n";
+		val += "\twidth:10;\n";
+		unsigned i_tab_width = i*tab_width;
+		val += string_f("\tmargin-left:%u;\n",i_tab_width+5);
+		val += "\tmargin-right:5;\n";
+		val += "}\n";
+		val += string_f(".tab%u{\n",i);
+		val += "\toverflow-wrap: break-word;\n";
+		val += "\tflex:0 1 auto;\n";
+		val += string_f("\twidth:%u;\n",sp_width-i_tab_width);
+		val += string_f("\t--width:%upx;\n",sp_width-i_tab_width);
+		val += string_f("\tmargin-left:%u;\n",i_tab_width);
+		val += "\tfont-family:'serif';\n";
+		val += "}\n";
+		val += string_f(".tab%u-bullet{\n",i);
+		val += "\toverflow-wrap: break-word;\n";
+		val += "\tflex:0 1 auto;\n";
+		val += string_f("\twidth:%u;\n",sp_width-i_tab_width-bullet_width);
+		val += string_f("\t--width:%upx;\n",sp_width-i_tab_width-bullet_width);
+		val += "\tmargin-left:0;\n";
+		val += "\tfont-family:'serif';\n";
+		val += "}\n";
+	}
+	return val;
 }
 
 void WORDPROC::execstep (
@@ -1646,7 +1831,6 @@ void WORDPROC::execstep (
 	//tlmp_warning ("visible_lines=%u content_height=%u fontsize=%u",visible_lines,sp.content_height,sp.fontsize);
 	// Force visible_lines to 60 because the specs are not always available, for now
 	//visible_lines = 60;
-	const unsigned MAX_TAB_LEVEL=8;
 	if (strcmp(var,REQ_PRINT)==0){
 		if (strcmp(val,"console")==0){
 			VARVAL v;
@@ -1671,83 +1855,14 @@ void WORDPROC::execstep (
 			}
 			res.emplace_back(v);
 		}else{
-			unsigned width = sp.content_width;
 			VARVAL v;
 			v.var = VAR_CONTENT;
 
 			//string imbed_scripts,imbed_styles;
 			documentd_imbeds (this,v.val,sp);
 
-			{
-				unsigned sp_width = width-30;	// Space for line numbers, during development
-				v.val += "<style>\n";
-				// Cursor insert mode
-				v.val += ".icursor{\n";
-				v.val += "\tbackground-color:lightgray;>";
-				v.val += "}\n";
-				// Cursor replace mode
-				v.val += ".rcursor{\n";
-				v.val += "\tbackground-color:lightpink;>";
-				v.val += "}\n";
-
-				// Border around image, when focus
-				v.val += ".imgcursor{\n";
-				v.val += "\tborder:2px solid lightgray;\n";
-				v.val += "}\n";
-				// Border around embed document, no focus
-				v.val += ".imgembed{\n";
-				v.val += "\tborder:1px solid black;\n";
-				v.val += "}\n";
-
-				v.val += ".oneline{\n";
-				v.val += "\tflex:0 1 auto;\n";
-				v.val += "}\n";
-				v.val += ".onecol{\n";
-				v.val += "\tflex:0 1 auto;\n";
-				v.val += "\twidth:30;\n";
-				v.val += "}\n";
-
-				v.val += ".oneline .col{\n";
-				v.val += "\tdisplay:flex;\n";
-				v.val += "\tflex-flow:row;\n";
-				v.val += "\tmargin-bottom:5px;\n";
-				v.val += "}\n";
-
-				v.val += ".tab-center{\n";
-				v.val += "\ttext-align:center;\n";
-				v.val += "\toverflow-wrap: break-word;\n";
-				v.val += "\tflex:0 1 auto;\n";
-				v.val += string_f("\twidth:%u;\n",sp_width);
-				v.val += string_f("\t--width:%upx;\n",sp_width);
-				v.val += "}\n";
-
-				for (unsigned i=0; i<=MAX_TAB_LEVEL; i++){
-					v.val += string_f(".bullet%u{\n",i);
-					v.val += "\tflex:0 1 auto;\n";
-					v.val += "\twidth:10;\n";
-					unsigned i_tab_width = i*tab_width;
-					v.val += string_f("\tmargin-left:%u;\n",i_tab_width+5);
-					v.val += "\tmargin-right:5;\n";
-					v.val += "}\n";
-					v.val += string_f(".tab%u{\n",i);
-					v.val += "\toverflow-wrap: break-word;\n";
-					v.val += "\tflex:0 1 auto;\n";
-					v.val += string_f("\twidth:%u;\n",sp_width-i_tab_width);
-					v.val += string_f("\t--width:%upx;\n",sp_width-i_tab_width);
-					v.val += string_f("\tmargin-left:%u;\n",i_tab_width);
-					v.val += "\tfont-family:'serif';\n";
-					v.val += "}\n";
-					v.val += string_f(".tab%u-bullet{\n",i);
-					v.val += "\toverflow-wrap: break-word;\n";
-					v.val += "\tflex:0 1 auto;\n";
-					v.val += string_f("\twidth:%u;\n",sp_width-i_tab_width-bullet_width);
-					v.val += string_f("\t--width:%upx;\n",sp_width-i_tab_width-bullet_width);
-					v.val += "\tmargin-left:0;\n";
-					v.val += "\tfont-family:'serif';\n";
-					v.val += "}\n";
-				}
-			}
-			//v.val += imbed_styles;
+			v.val += "<style>\n";
+			v.val += define_styles(ctx,sp);
 			v.val += "</style>\n";
 
 			// event.location==1 tells if this is the left shift/alt key or right. We are not using it now
@@ -1762,7 +1877,7 @@ void WORDPROC::execstep (
 
 			// Function find the last visible line on screen
 			v.val += "function getlastline(){\n";
-			v.val += string_f("\tvar elm = document.getElementById('text-%s');\n",gameid.c_str());
+			v.val += string_f("\tvar elm = document.getElementById('text-%s,0');\n",gameid.c_str());
 			v.val += "\tvar rect = elm.getBoundingClientRect();\n";
 			v.val += "\tvar elms = elm.getElementsByClassName('oneline');\n";
 			//v.val += "\tconsole.log('getlastline length='+elms.length);\n";
@@ -1779,50 +1894,7 @@ void WORDPROC::execstep (
 			v.val += "function getlastcol(){\n";
 			v.val += "\treturn 0;\n";
 			v.val += "}\n";
-			// Function called when the user click
-			v.val += "function gameselect(event){\n";
-			v.val += string_f("\tvar elm = document.getElementById('text-%s');\n",gameid.c_str());
-			v.val += "\tvar elms = elm.getElementsByClassName('oneline');\n";
-			v.val += "\tfor (var i=0; i<elms.length; i++){\n";
-			v.val += "\t\tvar para= elms[i];\n";
-			v.val += "\t\tvar rect = para.getBoundingClientRect();\n";
-			v.val += "\t\tif (event.clientY >= rect.top && event.clientY < rect.bottom){\n";
-			v.val += "\t\t\tvar divs=para.getElementsByTagName('div');\n";
-			v.val += "\t\t\tvar r=divs[divs.length-1].getBoundingClientRect();\n";
-			v.val += "\t\t\tgameaction(event,'select:'+i+' '+(event.clientX-r.left)+' '+(event.clientY-r.top)+' '+getlastline());\n";
-			v.val += "\t\t\tbreak;\n";
-			v.val += "\t\t}\n";
-			v.val += "\t}\n";
-			v.val += "}\n";
-			// Function called when the user uses the keyboard
-			v.val += "var gamekey=null;\n";
-			v.val += "var gamecode=null;\n";
-			v.val += "var altKey=null;\n";
-			v.val += "var ctrlKey=null;\n";
-			v.val += "var shiftKey=null;\n";
-
-			wordproc_set_gamepress(v.val,"gamepress");
-			v.val += "function funcinput(event){\n";
-			v.val += "\tif (event.data == null) gamekey=event.data;\n";
-			v.val += "\tgameaction(event,'kbd:'+gamecode + ' ' + gamekey+' '+altKey+' '+ctrlKey+' '+shiftKey+' '+getlastline()+' '+getlastcol());\n";
-			v.val += "\tconsole.log('kbd:'+gamecode + ' ' + gamekey+' '+altKey+' '+ctrlKey+' '+shiftKey+' '+getlastline());\n";
-			v.val += "\tevent.stopPropagation();\n";
-			v.val += "\treturn false;\n";
-			v.val += "}\n";
-			v.val += "function gamefalse(event){\n";
-			//v.val += "\tconsole.log ('gamefalse type='+event.type+' data='+event.data);\n";
-			v.val += "\tevent.stopPropagation();\n";
-			v.val += "\treturn false;\n";
-			v.val += "}\n";
-			// function called when the user uses the mouse wheel
-			v.val += "function gamewheel(event){\n";
-			//v.val += "\tconsole.log('deltaX='+event.deltaX+' deltaY='+event.deltaY);\n";
-			v.val += "\tif (event.deltaY < 0){\n";
-			v.val += "\t\tgameaction(event,'voffset:-1');\n";
-			v.val += "\t}else{\n";
-			v.val += "\t\tgameaction(event,'voffset:1');\n";
-			v.val += "\t}\n";
-			v.val += "}\n";
+			v.val += define_functions(ctx,pref,sp.content_width,sp.content_height);
 			v.val += "</script>\n";
 			// Buttons line
 			if (ctx.maywrite){
@@ -1859,33 +1931,8 @@ void WORDPROC::execstep (
 			v.val += "</div>\n";
 			// Document
 			v.val += string_f("<div class=webtable id=%sdoc_wordproc style='display:flex; flex-flow:row;'>\n",val);
-			v.val += string_f("<div id='text-%s' onkeydown='gamepress(event);return false;' oninput=funcinput(event) onclick=gameselect(event)"
-				" onwheel='gamewheel(event); return false;'"
-				//" contenteditable"
-				" spellcheck"
-				" tabindex=0 style='flex:0 0 auto; overflow: hidden; width:%u'"
-				" >\n",gameid.c_str(),width);
-			unsigned line = 0;
 			string scripts;
-			if (pref.offset < lines.size()){
-				for (auto p=lines.begin()+pref.offset; p != lines.end() && line < visible_lines; p++){
-					unsigned doc_line = line+pref.offset;
-					string script;
-					v.val += string_f("<div class=oneline id=l%u>%s</div>\n",doc_line
-						,formatline(doc_line,sp,script).c_str());
-					scripts += script;
-					line++;
-				}
-			}
-			for (; line<visible_lines; line++){
-				static string empty;
-				unsigned doc_line = line+pref.offset;
-				string script;
-				v.val += string_f("<div class=oneline id=l%u>%s</div>\n",doc_line
-					,formatline(doc_line,sp,script).c_str());
-				scripts += script;
-			}
-			v.val += "</div>\n";
+			v.val += draw_text(pref,ctx.docnum,visible_lines,sp,true,scripts);
 			v.val += "</div>\n";
 			if (scripts.size() > 0){
 				v.val += "<script>\n";
@@ -1920,6 +1967,23 @@ void WORDPROC::execstep (
 			}
 		}
 		res.emplace_back(move(var));
+	}else if (strcmp(var,REQ_FUNCTIONS)==0){
+		VARVAL var;
+		var.var = VAR_DEFSCRIPT;
+		var.val += define_functions(ctx,pref,sp.content_width,sp.content_height);
+		res.emplace_back(move(var));
+	}else if (strcmp(var,REQ_STYLES)==0){
+		VARVAL var;
+		var.var = VAR_STYLES;
+		var.val += define_styles(ctx,sp);
+		res.emplace_back(move(var));
+	}else if (strcmp(var,REQ_REGION)==0){
+		VARVAL var,var_script;
+		var.var = VAR_CONTENT;
+		var_script.var = VAR_DEFSCRIPT;
+		var.val += draw_text(pref,ctx.docnum,visible_lines,sp,false,var_script.val);
+		res.emplace_back(move(var));
+		res.emplace_back(move(var_script));
 	}else if (strcmp(var,REQ_GETFIELDS)==0){
 		VARVAL var;
 		var.var = VAR_FIELDS;
@@ -2423,12 +2487,15 @@ void WORDPROC::manyexec (
 	const DOC_UI_SPECS_receive &sp,
 	vector<VARVAL> &res)
 {
+	string cur_word = string_f("word_cur_gameid='%s';\n",gameid.c_str());
 	setactivity();
 	VARVAL script_var;
 	script_var.var = VAR_SCRIPT;
+	script_var.val = cur_word;
 	set<unsigned> script_lines;	// Lines to update using SCRIPT (Private to this user)
 	VARVAL notify_var;
 	notify_var.var = VAR_NOTIFY;
+	notify_var.val = cur_word;
 	set<unsigned> notify_lines;	// Lines to update using SCRIPT
 	for (auto &v:steps){
 		execstep (v.var,v.val,ctx,sp,script_var,script_lines,notify_var,notify_lines,res);
@@ -2443,7 +2510,7 @@ void WORDPROC::manyexec (
 	tlmp_warning ("manyexec steps=%lu stats script_size=%lu -> %lu notify_size=%lu -> %lu script_lines=%lu notify_lines=%lu"
 		,steps.size(),script_size,script_var.val.size(),notify_size,notify_var.val.size(),script_lines.size(),notify_lines.size());
 	#endif
-	res.emplace_back(move(notify_var));
-	res.emplace_back(move(script_var));
+	if (notify_var.val != cur_word) res.emplace_back(move(notify_var));
+	if (script_var.val != cur_word) res.emplace_back(move(script_var));
 }
 
