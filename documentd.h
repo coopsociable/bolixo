@@ -244,6 +244,12 @@ protected:
 		lines += string_f("\tvar elms = elm.getElementsByClassName('%s');\n",cls);
 		lines += "\tif (elms.length > 0){\n";
 	}
+	inline void js_find_loop_start_class(std::string &lines, const char *prefix, unsigned docnum, const char *cls){
+		lines += string_f ("var elm = document.getElementById('%s-%s,%u');\n",prefix,gameid.c_str(),docnum);
+		lines += "if (elm != null){\n";
+		lines += string_f("\tvar elms = elm.getElementsByClassName('%s');\n",cls);
+		lines += "\tif (elms.length > 0){\n";
+	}
 	inline void js_find_loop_end(std::string &lines){
 		lines += "\t}\n";
 		lines += "}\n";
