@@ -78,7 +78,9 @@ enum BOX_TYPE{
 	BOX_LAST,	// Last item in the list + 1
 };
 
+#define documentd_whiteboard_header_NOTNEED
 #define documentd_whiteboard_elements_NOTNEED
+#define documentd_whiteboard_elements2_NOTNEED
 #include "proto/documentd_whiteboard.protoch"
 #include "proto/documentd_whiteboard.protoh"
 
@@ -136,6 +138,7 @@ struct WHITEBOARD_ELM{
 	unsigned short y1=0;
 	unsigned short width=0;
 	unsigned short height=0;
+	short textsize=0;
 	std::string label;	// Useful to reference the element in scripts ?
 	WHITEBOARD_ELMTYPE type;
 	std::string txt;	// Caption
@@ -234,7 +237,15 @@ struct WHITEBOARD_ELM{
 		unsigned textlen;
 		gettextpos(textx,texty,textlen,fontsize);
 	}
-	void redraw(VARVAL &var, unsigned fontsize){
+	// Compute the effective font size of this element
+	// by combining the default browser fontsize and this document default textsize
+	unsigned compute_fontsize(unsigned browser_fontsize, unsigned default_textsize){
+		int size = default_textsize + textsize;
+		if (size < 1) size = 1;
+		float size_factor = size / 10.0;
+		return browser_fontsize * size_factor;
+	}
+	void redraw(VARVAL &var, unsigned browser_fontsize, unsigned default_textsize){
 		const char *stroke_color = tbcolor[selmode];
 		unsigned w_2 = width/2;
 		unsigned h_2 = height/2;
@@ -248,9 +259,11 @@ struct WHITEBOARD_ELM{
 			var.val += string_f("replace_typetext('e%u',%u,%u,'%s');\n",id,x,y,stroke_color);
 		}else{
 		}
+		unsigned fontsize = compute_fontsize(browser_fontsize,default_textsize);
 		unsigned textx,texty;
 		gettextpos(textx,texty,fontsize);
-		var.val += string_f("replace_text('t%u',%u,%u,'%s','%s');\n",id,textx,texty,stroke_color,documentd_escape(txt).c_str());
+		var.val += string_f("replace_text('t%u',%u,%u,'%u','%s','%s');\n"
+			,id,textx,texty,fontsize,stroke_color,documentd_escape(txt).c_str());
 	}
 	void changetextpos(){
 		textpos = (WHITEBOARD_TEXTPOS)(textpos+1);
@@ -261,6 +274,9 @@ struct WHITEBOARD_ELM{
 				textpos = TEXTPOS_INSIDE;
 			}
 		}
+	}
+	void changetextsize(int incr){
+		textsize += incr;
 	}
 };
 
@@ -280,6 +296,7 @@ class WHITEBOARD: public GAME{
 	vector<unsigned> baseelms;
 	map<string,WHITEBOARD_PREF> prefs;	// Per session state
 	unsigned alloc_id=0;
+	unsigned textsize=10;			// default textsize x 10 (so 10 is 1em).
 	void update_msg (bool to_all, PARAM_STRING msg, const char *color, std::vector<VARVAL> &res);
 	void resetsel(WHITEBOARD_SELMODE, set<unsigned> &ids);
 	void redraw(const set<unsigned> &ids, VARVAL &var, unsigned fontsize);
@@ -418,10 +435,10 @@ void WHITEBOARD::update_msg (bool to_all, PARAM_STRING msg, const char *color, s
 }
 void WHITEBOARD::save(DOC_WRITER &w, bool)
 {
-	documentd_whiteboard_header(&w,revision,alloc_id);
-	vector<WHITEBOARD_ELEMENT2> elements;
+	documentd_whiteboard_header2(&w,revision,alloc_id,textsize);
+	vector<WHITEBOARD_ELEMENT3> elements;
 	for (auto &m:elms){
-		WHITEBOARD_ELEMENT2 elm;
+		WHITEBOARD_ELEMENT3 elm;
 		WHITEBOARD_ELM &e = m.second;
 		elm.id = e.id;
 		elm.selmode = e.selmode;
@@ -447,9 +464,10 @@ void WHITEBOARD::save(DOC_WRITER &w, bool)
 		elm.region = e.embed.region;
 		elm.docnum = e.embed.docnum;
 		elm.image = e.imageurl;
+		elm.textsize = e.textsize;
 		elements.emplace_back(move(elm));
 	}
-	documentd_whiteboard_elements2 (&w,elements);
+	documentd_whiteboard_elements3 (&w,elements);
 	documentd_whiteboard_baseelms (&w,baseelms);
 	vector<WHIPREF> wprefs;
 	for (auto &p:prefs){
@@ -478,6 +496,7 @@ void WHITEBOARD::load(DOC_READER &r, std::string &msg)
 	resetgame();
 	glocal alloc_id;
 	glocal revision;
+	glocal textsize;
 	glocal elms;
 	glocal baseelms;
 	glocal chat;
@@ -488,6 +507,11 @@ void WHITEBOARD::load(DOC_READER &r, std::string &msg)
 	<f header>
 		glocal.revision = revision;
 		glocal.alloc_id = alloc_id;
+	</f>
+	<f header2>
+		glocal.revision = revision;
+		glocal.alloc_id = alloc_id;
+		glocal.textsize = textsize;
 	</f>
 	<f elements>
 		for (auto &e:elements){
@@ -532,6 +556,32 @@ void WHITEBOARD::load(DOC_READER &r, std::string &msg)
 			elm.embed.region = e.region;
 			elm.embed.docnum = e.docnum;
 			elm.imageurl = e.image;
+			glocal.elms[elm.id] = move(elm);
+		}
+	</f>
+	<f elements3>
+		for (auto &e:elements){
+			WHITEBOARD_ELM elm;
+			elm.id = e.id;
+			elm.selmode = e.selmode;
+			elm.box_type = e.box_type;
+			elm.x = e.x;
+			elm.y = e.y;
+			elm.x1 = e.x1;
+			elm.y1 = e.y1;
+			elm.width = e.width;
+			elm.height = e.height;
+			elm.type = (WHITEBOARD_ELMTYPE)e.type;
+			elm.label = e.label;
+			elm.txt = e.txt;
+			elm.textpos = e.textpos;
+			elm.insides = e.insides;
+			for (auto &s:e.subelms) elm.subelms.emplace_back(s.id,s.arrow);
+			elm.embed.document = e.document;
+			elm.embed.region = e.region;
+			elm.embed.docnum = e.docnum;
+			elm.imageurl = e.image;
+			elm.textsize = e.textsize;
 			glocal.elms[elm.id] = move(elm);
 		}
 	</f>
@@ -757,11 +807,12 @@ void WHITEBOARD::redraw(const set<unsigned> &ids, VARVAL &var, unsigned fontsize
 	glocal ids;
 	glocal var;
 	glocal fontsize;
+	glocal textsize;
 	if (ids.size() > 0){
 		<call walkboard>(this);
 		<f element>
 			if (glocal.ids.count(elm.id) > 0){
-				elm.redraw(glocal.var,glocal.fontsize);
+				elm.redraw(glocal.var,glocal.fontsize,glocal.textsize);
 				if (parent != nullptr){
 					LINE_SPEC spec(*parent,elm,quarter,nosubelm,nbsubelm);
 					glocal.var.val += string_f("replace_line('l%u,%u',%u,%u,%lf,%u,'black',%u);\n"
@@ -816,6 +867,7 @@ WHITEBOARD_ELM *WHITEBOARD::locate (unsigned x, unsigned y, unsigned fontsize)
 	glocal x;
 	glocal y;
 	glocal fontsize;
+	glocal textsize;
 	<call walkboard>(this);
 	<f element>
 		bool found = false;
@@ -869,9 +921,10 @@ WHITEBOARD_ELM *WHITEBOARD::locate (unsigned x, unsigned y, unsigned fontsize)
 		// We can click on the text of an element
 		if (!found && elm.txt.size() > 0){
 			unsigned textx1,texty2,lentxt;
-			elm.gettextpos(textx1,texty2,lentxt,glocal.fontsize);
+			unsigned fontsize = elm.compute_fontsize(glocal.fontsize,glocal.textsize);
+			elm.gettextpos(textx1,texty2,lentxt,fontsize);
 			unsigned textx2 = textx1 + lentxt;
-			unsigned texty1 = texty2 - glocal.fontsize;
+			unsigned texty1 = texty2 - fontsize;
 			if (x >= textx1 && x <= textx2 && y >= texty1 && y <= texty2){
 				found = true;
 			}
@@ -1164,6 +1217,7 @@ string WHITEBOARD::draw_board (
 	string &script)
 {
 	glocal fontsize;
+	glocal textsize;
 	glocal string val;
 	glocal script;
 	glocal gameid;
@@ -1258,9 +1312,10 @@ string WHITEBOARD::draw_board (
 					,elm.id,color,elm.x,elm.y,elm.width/2);
 			}
 			unsigned textx,texty;
-			elm.gettextpos(textx,texty,glocal.fontsize);
-			glocal.val += string_f("<text class=whitext id='t%u' X=%u Y=%u style='stroke:%s;fill:%s;'>%s</text>\n"
-				,elm.id,textx,texty,color,color,documentd_escape(elm.txt).c_str());
+			unsigned fontsize = elm.compute_fontsize(glocal.fontsize,glocal.textsize);
+			elm.gettextpos(textx,texty,fontsize);
+			glocal.val += string_f("<text class=whitext id='t%u' X=%u Y=%u style='stroke:%s;fill:%s;font-size:%u'>%s</text>\n"
+				,elm.id,textx,texty,color,color,fontsize,documentd_escape(elm.txt).c_str());
 		}
 		if (parent != nullptr){
 			LINE_SPEC spec(*parent,elm,quarter,nosubelm,nbsubelm);
@@ -1410,12 +1465,13 @@ string WHITEBOARD::define_functions(
 	val += "\t});\n";
 	val += "}\n";
 
-	val += "function replace_text(id, x, y, color, txt){\n";
+	val += "function replace_text(id, x, y, size,color, txt){\n";
 	val += "\twhi_loop('text',id,function(e){\n";
 	val += "\t\te.setAttribute('x',x);\n"; 
 	val += "\t\te.setAttribute('y',y);\n"; 
 	val += "\t\te.style.stroke=color;\n"; 
 	val += "\t\te.style.fill=color;\n"; 
+	val += "\t\te.style.fontSize=size;\n"; 
 	val += "\t\te.innerHTML=txt;\n"; 
 	val += "\t});\n";
 	val += "}\n";
@@ -1506,7 +1562,7 @@ string WHITEBOARD::define_styles(const DOC_CONTEXT &ctx, const DOC_UI_SPECS_rece
 	val += ".whitext{\n";
 	val += "\tfont-family: serif;\n";
 	val += "\tstroke-width: 0.5;\n";
-	val += string_f("\tfont-size:%u;\n",sp.mobile ? sp.fontsize - 15 : sp.fontsize + 3);
+	//val += string_f("\tfont-size:%u;\n",sp.mobile ? sp.fontsize - 15 : sp.fontsize + 3);
 	val += "}\n";
 	return val;
 }
@@ -1586,8 +1642,10 @@ void WHITEBOARD::execstep (
 				#define BUTTON_BOXTYPE	9
 				#define BUTTON_LINETYPE	10
 				#define BUTTON_TEXTPOS	11
-				#define BUTTON_IMAGE	12
-				#define BUTTON_LINKDOC	13
+				#define BUTTON_INCTEXTSIZE	12
+				#define BUTTON_DECTEXTSIZE	13
+				#define BUTTON_IMAGE	14
+				#define BUTTON_LINKDOC	15
 				v.val += "<div id=tab_form style='margin-top:5; margin-bottom:5; background-color: lightgray;'>\n";
 				DOC_BUTTON_SPECS specs;
 				if (sp.mobile){
@@ -1618,6 +1676,8 @@ void WHITEBOARD::execstep (
 				documentd_bar_button (v.val,BUTTON_BOXTYPE,menu.svg_dashrect,specs,false,MSG_U(I_SETBOXTYPE,"Select the box type of selected elements"));
 				documentd_bar_button (v.val,BUTTON_LINETYPE,menu.svg_linetype,specs,false,MSG_U(I_SELECTRELATION,"Select line relation between parents and selected elements"));
 				documentd_bar_button (v.val,BUTTON_TEXTPOS,menu.svg_textpos,specs,false,MSG_U(I_POSITIONTEXT,"Position the text of selected elements"));
+				documentd_bar_button (v.val,BUTTON_INCTEXTSIZE,menu.svg_inctextsize,specs,false,MSG_U(I_SIZETEXT,"Increase the size of texts"));
+				documentd_bar_button (v.val,BUTTON_DECTEXTSIZE,menu.svg_dectextsize,specs,false,MSG_U(I_DECSIZETEXT,"Decrease the size of texts"));
 				documentd_bar_button (v.val,BUTTON_IMAGE,menu.svg_image,specs,false,MSG_U(I_ASSIGNIMAGE,"Assign an image to selected elements"));
 				documentd_bar_button (v.val,BUTTON_LINKDOC,menu.svg_imbed,specs,false,MSG_U(I_ASSIGNDOCUMEN,"Link a document to selected elements"));
 				documentd_button_end(v.val);
@@ -1963,6 +2023,23 @@ void WHITEBOARD::execstep (
 				}else{
 					for (auto s:selects){
 						s->changetextpos();
+						notify_ids.insert(s->id);
+					}
+				}
+			}else if (is_any_of(uval,BUTTON_INCTEXTSIZE,BUTTON_DECTEXTSIZE)){
+				auto selects = findselected (SEL_SELECTED);
+				int incr = uval == BUTTON_INCTEXTSIZE ? 1 : -1;
+				if (selects.size()==0){
+					// No elements selected, so we change the default
+					if (incr != -1 || textsize > 1){
+						textsize += incr;
+						for (auto &e:elms) notify_ids.insert(e.first);
+					}else{
+						error = "too small";
+					}
+				}else{
+					for (auto s:selects){
+						s->changetextsize(incr);
 						notify_ids.insert(s->id);
 					}
 				}
