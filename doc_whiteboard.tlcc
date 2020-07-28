@@ -1841,20 +1841,41 @@ void WHITEBOARD::execstep (
 					if (selects.size() > 1){
 						error = MSG_U(E_DUPLICATEONE,"Duplication only applies to one element at once");
 					}else{
-						s->selmode = SEL_NONE;
+						s->selmode = SEL_NONE; // Unselect the old element
+						/*
+							When placing the new element, either below or to the right,
+							we must take the old element text position and size.
+						*/
+						unsigned fontsize = s->compute_fontsize(sp.fontsize,textsize); 
+						unsigned textx,texty,textlen;
+						s->gettextpos(textx,texty,textlen,fontsize); 
 						unsigned x = s->x;
 						unsigned y = s->y;
 						if (pref.mod.shift){
 							// Instead we duplicate the element to the right
-							x += s->width + 10; 
+							unsigned w_2 = s->width/2;
+							x += w_2;
+							unsigned endtext = textx + textlen;
+							if (endtext > x){
+								// Text is on the right
+								x = endtext;
+							}else if (textx < x-s->width){
+								// Text is on the left
+								x += textlen;
+							}
+							x += w_2 + 10;
 						}else{
 							// We duplicate the element just below it.
-							y += s->height+sp.fontsize;
+							unsigned h_2 = s->height/2;
+							y += h_2;
+							if (texty > y) y = texty;
+							y += h_2 + fontsize;
 						}
 						unsigned id = place_newelm(s->type,x,y,s->width,s->height,star_elms,imbed_elms,notify_var,notify_ids);
 						auto &newelm = elms[id];
 						newelm.txt = s->txt;
 						newelm.textpos = s->textpos;
+						newelm.textsize = s->textsize;
 					}
 				}else{
 					s->txt += val;
