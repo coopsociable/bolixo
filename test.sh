@@ -880,6 +880,9 @@ elif [ "$1" = "createadmin" ] ; then # config: Create the admin account
 	# Make the admin account visible (public page)
 	echo $BOFS -u admin misc -w -V 1
 	$BOFS -u admin misc -w -V 1
+	# Enable email notificsation for the short message inbox
+	$BOFS -u admin misc --set_notification -K inbox --notify_email --notify_ui
+	# Install admin photos
 	$BOFS -u admin cp /var/www/html/admin.jpg bo://projects/admin/public/mini-photo.jpg
 	$BOFS -u admin cp /var/www/html/admin-photo.jpg bo://projects/admin/public/photo.jpg
 elif [ "$1" = "registernode" ]; then # config: Register this node in bolixo.org
