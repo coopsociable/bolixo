@@ -15,6 +15,10 @@ template<typename T, typename T1, typename ... Ts>
 bool is_any_of(T t, T1 t1, Ts ... ts){
 	return is_any_of(t,t1) || is_any_of(t,ts...);
 }
+template<typename T, typename T1>
+bool is_eq(T t, T1 t1){
+	return is_any_of(t,t1);
+}
 // Replace a sequence of if (a!=b && a!=c && a==d ...
 // with is_not_in (a,b,c,d,...)
 inline bool is_not_in (const char *t, const char *t1)
