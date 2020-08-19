@@ -328,7 +328,8 @@ elif [ "$1" = "restart" ] ; then # prod: restart some services (webs, internals,
 		flock --close /var/run/bolixo-restart.lock $0 restart-nolock $*
 	else
 		echo
-		echo "Can't restart"
+		echo "System is not up to date"
+		echo "Can't restart $*"
 		echo The command
 		echo "    bolixo-production update-script --doit"
 		echo must be used to update the system
