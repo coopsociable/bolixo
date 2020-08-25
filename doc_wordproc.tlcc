@@ -170,6 +170,8 @@ class WORDPROC: public GAME{
 	std::string draw_text (WORD_USERPREF &pref, unsigned docnum, unsigned visible_lines, const DOC_UI_SPECS_receive &sp, bool editmode, std::string &script);
 	std::string define_functions(const DOC_CONTEXT &ctx, const WORD_USERPREF &pref, unsigned width, unsigned height);
 	std::string define_styles(const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp);
+	void growdoc(unsigned nol);
+	void set_imbed(unsigned nol, PARAM_STRING document, PARAM_STRING region, VARVAL &notify_var, set<unsigned> &notify_lines, const DOC_UI_SPECS_receive &sp);
 public:
 	const char *getclass() const{
 		return "WORD";
@@ -1813,6 +1815,45 @@ string WORDPROC::define_styles(const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receiv
 	}
 	return val;
 }
+/*
+	Make sure paragraph nol exist in the document. If not, empty lines are added
+*/
+void WORDPROC::growdoc(unsigned nol)
+{
+	while (lines.size() <= nol) lines.emplace_back(WORDPROC_LINE());
+}
+// Assign a document/region to a paragraph
+void WORDPROC::set_imbed(
+	unsigned nol,
+	PARAM_STRING document,
+	PARAM_STRING region,
+	VARVAL &notify_var,
+	set<unsigned> &notify_lines,
+	const DOC_UI_SPECS_receive &sp)
+{
+	DOCUMENT_EMBED imbed;
+	imbed.document = document.ptr;
+	imbed.region = region.ptr;
+	// Allocate a document number. Note that the document may exist several time (same doc, same region)
+	unsigned docnum = 0;
+	imbed.docnum = (unsigned short)-1;
+	for (auto &l:lines){
+		if (l.is_imbed()){
+			unsigned num = l.get_docnum();
+			if (imbed.document==l.get_document() && imbed.region == l.get_region()){
+				imbed.docnum = num;
+				break;
+			}else{
+				if (num > docnum) docnum = num;
+			}
+		}
+	}
+	if (imbed.docnum == (unsigned short)-1) imbed.docnum = docnum+1;
+	documentd_insert_imbed (gameid,notify_var,imbed,sp);
+	growdoc(nol);
+	lines[nol].set_imbed(imbed);
+	notify_lines.insert(nol);
+}
 
 void WORDPROC::execstep (
 	const char *var,
@@ -1825,6 +1866,7 @@ void WORDPROC::execstep (
 	set<unsigned> &notify_lines,
 	vector<VARVAL> &res)
 {
+	string api_error;
 	auto &pref = prefs[ctx.username];
 	pref.maywrite = ctx.maywrite;
 	unsigned visible_lines = 60;
@@ -1832,7 +1874,7 @@ void WORDPROC::execstep (
 	//tlmp_warning ("visible_lines=%u content_height=%u fontsize=%u",visible_lines,sp.content_height,sp.fontsize);
 	// Force visible_lines to 60 because the specs are not always available, for now
 	//visible_lines = 60;
-	if (strcmp(var,REQ_PRINT)==0){
+	if (is_eq(var,REQ_PRINT)){
 		if (strcmp(val,"console")==0){
 			VARVAL v;
 			v.var = VAR_CONTENT;
@@ -1957,7 +1999,7 @@ void WORDPROC::execstep (
 			v.val += "</div>\n";
 			res.emplace_back(v);
 		}
-	}else if (strcmp(var,"dump")==0){
+	}else if (is_eq(var,"dump")){
 		VARVAL var;
 		var.var = "lines";
 		for (auto &l:lines){
@@ -1968,24 +2010,24 @@ void WORDPROC::execstep (
 			}
 		}
 		res.emplace_back(move(var));
-	}else if (strcmp(var,REQ_FUNCTIONS)==0){
+	}else if (is_eq(var,REQ_FUNCTIONS)){
 		VARVAL var;
 		var.var = VAR_DEFSCRIPT;
 		var.val += define_functions(ctx,pref,sp.content_width,sp.content_height);
 		res.emplace_back(move(var));
-	}else if (strcmp(var,REQ_STYLES)==0){
+	}else if (is_eq(var,REQ_STYLES)){
 		VARVAL var;
 		var.var = VAR_STYLES;
 		var.val += define_styles(ctx,sp);
 		res.emplace_back(move(var));
-	}else if (strcmp(var,REQ_REGION)==0){
+	}else if (is_eq(var,REQ_REGION)){
 		VARVAL var,var_script;
 		var.var = VAR_CONTENT;
 		var_script.var = VAR_DEFSCRIPT;
 		var.val += draw_text(pref,ctx.docnum,visible_lines,sp,false,var_script.val);
 		res.emplace_back(move(var));
 		res.emplace_back(move(var_script));
-	}else if (strcmp(var,REQ_GETFIELDS)==0){
+	}else if (is_eq(var,REQ_GETFIELDS)){
 		VARVAL var;
 		var.var = VAR_FIELDS;
 		if (strcmp(val,DIALOG_IMBED)==0){
@@ -1996,20 +2038,20 @@ void WORDPROC::execstep (
 			}
 		}
 		res.emplace_back(var);
-	}else if (strcmp(var,REQ_FOCUS)==0){
+	}else if (is_eq(var,REQ_FOCUS)){
 		setfocus(script_var);
 	}else{
 		MOD_KBD mod;
 		unsigned lastline = 1000;
 		string tmpvar,tmpval;
-		if (strcmp(var,"kbd")==0){
+		if (is_eq(var,"kbd")){
 			unsigned lastcol;
 			wordproc_kbd(val,mod,tmpvar,tmpval,lastline,lastcol);
 			var = tmpvar.c_str();
 			val = tmpval.c_str();		
 		}
 		if (ctx.maywrite){
-			if (strcmp(var,"vmove")==0){
+			if (is_eq(var,"vmove")){
 				// Move cursor
 				int move = atoi(val);
 				unsigned current_line = pref.cursor.line;
@@ -2019,9 +2061,9 @@ void WORDPROC::execstep (
 					notify_lines.insert(pref.cursor.line);
 				}
 			}else if (is_any_of(var,"pageup","pagedown")){
-				int new_offset = strcmp(var,"pageup")==0 ? pref.offset-lastline : pref.offset + lastline;
+				int new_offset = is_eq(var,"pageup") ? pref.offset-lastline : pref.offset + lastline;
 				page_up_down(new_offset,visible_lines,lastline,pref,script_var,script_lines,notify_lines);
-			}else if (strcmp(var,"select")==0){	// Position cursor using the mouse
+			}else if (is_eq(var,"select")){	// Position cursor using the mouse
 				//tlmp_warning ("select=%s",val);
 				unsigned noline,xcoor,ycoor,lastline;
 				if (splitline(val,noline,xcoor,ycoor,lastline)){
@@ -2043,8 +2085,8 @@ void WORDPROC::execstep (
 						notify_lines.insert(pref.cursor.line);
 					}
 				}
-			}else if (strcmp(var,"newgame")==0){
-				while (lines.size() <= pref.cursor.line) lines.push_back("");
+			}else if (is_eq(var,"newgame")){
+				growdoc(pref.cursor.line);
 				unsigned uval = atoi(val);
 				bool update_num_lines = false;
 				auto &wl = lines[pref.cursor.line];
@@ -2111,41 +2153,24 @@ void WORDPROC::execstep (
 				setmodified(ctx.username);
 				notify_lines.insert(pref.cursor.line);
 				setfocus(script_var);
-			}else if (strcmp(var,"imbed")==0){
+			}else if (is_eq(var,"imbed")){
+				// Apply the change from the dialog
 				vector<VARVAL> fields;
 				documentd_parsefields(val,fields);
-				DOCUMENT_EMBED imbed;
+				string document,region;
 				for (auto &f:fields){
 					if (f.var == "docid"){
-						imbed.document = f.val;
+						document = f.val;
 					}else if (f.var == "region"){
-						imbed.region = f.val;
+						region = f.val;
 					}
 				}
-				// Allocate a document number. Note that the document may exist several time (same doc, same region)
-				unsigned docnum = 0;
-				imbed.docnum = (unsigned short)-1;
-				for (auto &l:lines){
-					if (l.is_imbed()){
-						unsigned num = l.get_docnum();
-						if (imbed.document==l.get_document() && imbed.region == l.get_region()){
-							imbed.docnum = num;
-							break;
-						}else{
-							if (num > docnum) docnum = num;
-						}
-					}
-				}
-				if (imbed.docnum == (unsigned short)-1) imbed.docnum = docnum+1;
-				documentd_insert_imbed (gameid,notify_var,imbed,sp);
-				while (lines.size() <= pref.cursor.line) lines.push_back("");
-				lines[pref.cursor.line].set_imbed(imbed);
-				notify_lines.insert(pref.cursor.line);
+				set_imbed (pref.cursor.line,document,region,notify_var,notify_lines,sp);
 			// This is a catch all for images
 			// It means that all other case (other else) are not reached if the current line is an image.
 			}else if (pref.cursor.line < lines.size()
 				&& (lines[pref.cursor.line].is_image() || lines[pref.cursor.line].is_imbed())){
-				if (strcmp(var,"break")==0){
+				if (is_eq(var,"break")){
 					unsigned cur_line = pref.cursor.line;
 					if (mod.shift){
 						// Append a new line just after the image
@@ -2155,7 +2180,7 @@ void WORDPROC::execstep (
 					for (unsigned l=cur_line; l<lines.size(); l++) notify_lines.insert(l);
 					pref.cursor.column=0;
 					setmodified(ctx.username);
-				}else if (strcmp(var,"hmove")==0){
+				}else if (is_eq(var,"hmove")){
 					int move = atoi(val);
 					auto &para = lines[pref.cursor.line];
 					unsigned rep = mod.ctrl ? 10 : 1;
@@ -2168,11 +2193,11 @@ void WORDPROC::execstep (
 					}
 					notify_lines.insert(pref.cursor.line);
 				}
-			}else if (strcmp(var,"insertmode")==0){
+			}else if (is_eq(var,"insertmode")){
 				pref.insertmode = !pref.insertmode;
 				notify_lines.insert(pref.cursor.line);
-			}else if (strcmp(var,"insertchar")==0){
-				while (lines.size() <= pref.cursor.line) lines.push_back("");
+			}else if (is_eq(var,"insertchar")){
+				growdoc(pref.cursor.line);
 				auto &wl = lines[pref.cursor.line];
 				string &l = wl.line;
 				while (wordproc_linelen(l) < pref.cursor.column) l += ' ';
@@ -2227,8 +2252,8 @@ void WORDPROC::execstep (
 				if (update_num_lines) wordproc_update_num_lines (pref.cursor.line,lines,notify_lines);
 				notify_lines.insert(pref.cursor.line);
 				setmodified(ctx.username);
-			}else if (strcmp(var,"break")==0){
-				while (lines.size() <= pref.cursor.line) lines.emplace_back(WORDPROC_LINE());
+			}else if (is_eq(var,"break")){
+				growdoc(pref.cursor.line);
 				auto &para = lines[pref.cursor.line];
 				string &l = para.line;
 				auto nextline = lines.begin() + (pref.cursor.line+1);
@@ -2265,7 +2290,7 @@ void WORDPROC::execstep (
 					pref.cursor.column=0;
 				}
 				setmodified(ctx.username);
-			}else if (strcmp(var,"backspace")==0){
+			}else if (is_eq(var,"backspace")){
 				notify_lines.insert(pref.cursor.line);
 				// We start by moving the cursor back one character if possible.
 				// If we are at the start of a line, we go at the end of the previous line.
@@ -2308,7 +2333,7 @@ void WORDPROC::execstep (
 					}
 				}
 				setmodified(ctx.username);
-			}else if (strcmp(var,"deletechar")==0){
+			}else if (is_eq(var,"deletechar")){
 				if (mod.shift){
 					// Delete from cursor to the end of the line
 					PARAGRAPH para;
@@ -2333,8 +2358,8 @@ void WORDPROC::execstep (
 					deletechar(notify_lines,pref);
 				}
 				setmodified(ctx.username);
-			}else if (strcmp(var,"voffset")==0){
-				// Change page up or down
+			}else if (is_eq(var,"voffset")){
+				// scroll wheel
 				int move = atoi(val);
 				if (move > 0 || pref.offset > 0){
 					unsigned cur_line = pref.cursor.line;
@@ -2349,7 +2374,7 @@ void WORDPROC::execstep (
 					pref.cursor.line = cur_line;;
 					pref.cursor.column = cur_column;
 				}
-			}else if (strcmp(var,"hmove")==0){
+			}else if (is_eq(var,"hmove")){
 				int move = atoi(val);
 				if (move < 0){
 					if (pref.cursor.column == 0){
@@ -2414,7 +2439,7 @@ void WORDPROC::execstep (
 					}
 					notify_lines.insert(pref.cursor.line);
 				}
-			}else if (strcmp(var,"home")==0){	// KEY home
+			}else if (is_eq(var,"home")){	// KEY home
 				if (pref.cursor.column != 0){
 					PARAGRAPH para;
 					unsigned noline;
@@ -2423,7 +2448,7 @@ void WORDPROC::execstep (
 					pref.cursor.column = para.get_para_home(noline);
 					notify_lines.insert(pref.cursor.line);
 				}
-			}else if (strcmp(var,"end")==0){	// KEY end
+			}else if (is_eq(var,"end")){	// KEY end
 				PARAGRAPH para;
 				unsigned noline;
 				set_para_spec (para,pref.cursor.line,pref.cursor.column,sp,noline);
@@ -2433,6 +2458,74 @@ void WORDPROC::execstep (
 					pref.cursor.column = column;
 					notify_lines.insert(pref.cursor.line);
 				}
+			// For scripting
+			}else if (is_eq(var,"setline")){
+				unsigned nol;
+				string content;
+				if (splitlineq(val,nol,content)){
+					growdoc(nol);
+					auto &wl = lines[nol];
+					if (wl.line != content){
+						wl.line = content;
+						notify_lines.insert(nol);
+					}
+				}else{
+					api_error = MSG_U(E_IVLDSETLINE,"Invalid setline request");
+				}
+			}else if (is_eq(var,"setlisttype")){
+				unsigned nol;
+				unsigned listtype;
+				if (splitlineq(val,nol,limits(listtype,0u,3u))){
+					growdoc(nol);
+					auto &wl = lines[nol];
+					if (wl.listtype != (WORDPROC_LISTTYPE)listtype){
+						wl.listtype = (WORDPROC_LISTTYPE)listtype;
+						notify_lines.insert(nol);
+					}
+				}else{
+					api_error = MSG_U(E_IVLDLISTTYPE,"Invalid setlisttype request");
+				}
+			}else if (is_eq(var,"settablevel")){
+				unsigned nol;
+				unsigned tab_level;
+				if (splitlineq(val,nol,limits(tab_level,0u,8u))){
+					growdoc(nol);
+					auto &wl = lines[nol];
+					if (wl.tab_level != tab_level){
+						wl.tab_level = tab_level;
+						notify_lines.insert(nol);
+					}
+				}else{
+					api_error = MSG_U(E_IVLDTABLEVEL,"Invalid settablevel request");
+				}
+			}else if (is_eq(var,"setimage")){
+				unsigned nol;
+				string image;
+				if (splitlineq(val,nol,image)){
+					growdoc(nol);
+					auto &wl = lines[nol];
+					if (!wl.is_image() || wl.line != image){
+						wl.line = image;
+						wl.set_image(true);
+						notify_lines.insert(nol);
+					}
+				}else{
+					api_error = MSG_U(E_IVLDSETIMAGE,"Invalid setimage request");
+				}
+			}else if (is_eq(var,"setimbed")){
+				unsigned nol;
+				string document,region;
+				if (splitlineq(val,nol,document,region)){
+					growdoc(nol);
+					auto &wl = lines[nol];
+					if (!wl.is_imbed() || document != wl.get_document() || region != wl.get_region()){
+						set_imbed (nol,document,region,notify_var,notify_lines,sp);
+					}
+				}else{
+					api_error = MSG_U(E_IVLDSETIMBED,"Invalid setimbed request");
+				}
+			}else if (is_eq(var,"resetgame")){
+				resetgame();
 			}
 			// Update the buttons bar
 			if (pref.cursor.line < lines.size()){
@@ -2457,8 +2550,8 @@ void WORDPROC::execstep (
 				wordproc_update_buttons (script_var.val,pref,newstates);
 			}
 		}else{
-			if (strcmp(var,"vmove")==0){
-				// Vertical arrows are producing scrolls in read only mode.
+			if (is_any_of(var,"vmove","voffset")){
+				// Vertical arrows are producing scrolls in read only mode, like the wheel.
 				int move = atoi(val);
 				if (move < 0){
 					pref.cursor.line = pref.offset;
@@ -2475,6 +2568,12 @@ void WORDPROC::execstep (
 			}
 			res.emplace_back(script_var);
 		}
+	}
+	if (api_error.size() > 0){
+		VARVAL var;
+		var.var = VAR_ERROR;
+		var.val = move(api_error);
+		res.emplace_back(move(var));
 	}
 	if (0){
 		string tmp;

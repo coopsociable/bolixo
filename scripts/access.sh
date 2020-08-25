@@ -451,6 +451,30 @@ elif [ "$1" = "doc-calc" ] ; then # test: many test on spreadsheet document
 	getcells a1:d4
 	getvals a1:d4
 	dump
+elif [ "$1" = "doc-word" ] ; then # test: many test on text document
+	DOCNAME=/projects/jacques-A/public/test.doc
+	. scripts/word-help.sh
+	createdocument
+	resetdocument
+	setline 0 "this is the first line"
+	setline 2 "this is the third line"
+	setline 3 "bullet 1"
+	setline 4 "bullet 2"
+	setline 5 "Numeric 1"
+	setline 6 "Numeric 2"
+	setline 7 "Center"
+	# Invalid setline
+	$BOFS documents --noscripts --playstep --docname $DOCNAME --step "setline=7 a b"
+	setlisttype 3 1 
+	setlisttype 4 1 
+	settablevel 3 1
+	settablevel 4 1
+	setlisttype 5 2 
+	setlisttype 6 2 
+	setlisttype 7 3 
+	setimage 8 http://test1.bolixo.org/icon.png
+	setimbed 9 test.white a1
+	docdump
 elif [ "$1" = "infowrite" ] ; then # test: publish info to directory server
 	USER=jacques-A
 	echo Create mini-photo.jpg and photo.jpg for all users
