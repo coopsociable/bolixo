@@ -526,7 +526,7 @@ void CALC::update_lines_cols(CALC_PREF &pref, const CELL_COOR &old, const CELL_C
 }
 /*
 	Send update about some cells to all users
-	if optim is true, only cell with a value are sent. This is used for scroll operation where we known
+	if optim is true, only cell with a value are sent. This is used for scroll operation where we know
 	that cells only contains cells in newly created <td> tags (so with an empty value).
 */
 void CALC::update_cells(set<CELL_COOR> &cells, VARVAL &var, bool optim)
@@ -1211,17 +1211,25 @@ void CALC::execstep (
 	}else if (ctx.maywrite){
 		auto old_cursor = pref.cursor;
 		if (strcmp(var,"break")==0 && pref.mod.shift){
+			// Insert a line
 			insert_line (notify_var,pref.cursor.line);
 			update_celledit (pref,script_var);
+			setmodified(ctx.username);
 		}else if (strcmp(var,"break")==0 && pref.mod.ctrl){
+			// Insert of a column
 			insert_col (notify_var,pref.cursor.col);
 			update_celledit (pref,script_var);
+			setmodified(ctx.username);
 		}else if (strcmp(var,"deletechar")==0 && pref.mod.shift){
+			// Remove a line
 			delete_line (notify_var,pref.cursor.line);
 			update_celledit (pref,script_var);
+			setmodified(ctx.username);
 		}else if (strcmp(var,"deletechar")==0 && pref.mod.ctrl){
+			// Remove a column
 			delete_col (notify_var,pref.cursor.col);
 			update_celledit (pref,script_var);
+			setmodified(ctx.username);
 		}else if (is_any_of(var,"deletechar","backspace","insertchar")){
 			string buf;
 			auto c = grid.find(pref.cursor);
@@ -1239,6 +1247,7 @@ void CALC::execstep (
 			update_onecell (pref,buf);
 			update_celledit (pref,script_var);
 			notify_ids.insert(pref.cursor);
+			setmodified(ctx.username);
 		}else if (is_any_of(var,"vmove","break")){
 			int move;
 			if (strcmp(var,"break")==0){
@@ -1265,6 +1274,7 @@ void CALC::execstep (
 				move = atoi(val);
 			}
 			if (shift){
+				// Modify the current column width
 				unsigned width = DEFAULT_COL_WIDTH;
 				auto c = col_formats.find(pref.cursor.col);
 				if (c != col_formats.end()) width = c->second.width;
@@ -1434,7 +1444,7 @@ void CALC::execstep (
 						}
 					}
 				}
-				
+				setmodified(ctx.username);
 			}
 		}else if (strcmp(var,"setcells")==0){
 			auto tb = str_splitlineq(val,',');
@@ -1455,6 +1465,7 @@ void CALC::execstep (
 						notify_ids.insert(coor);
 					}
 				}
+				setmodified(ctx.username);	
 			}
 		}else if (is_any_of(var,"getcells","getvals")){
 			CELL_COOR start,end;
