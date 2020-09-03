@@ -1646,6 +1646,8 @@ void WHITEBOARD::execstep (
 				#define BUTTON_DECTEXTSIZE	13
 				#define BUTTON_IMAGE	14
 				#define BUTTON_LINKDOC	15
+				#define BUTTON_DELITEMS	16
+				#define BUTTON_UNDO	17
 				v.val += "<div id=tab_form style='margin-top:5; margin-bottom:5; background-color: lightgray;'>\n";
 				DOC_BUTTON_SPECS specs;
 				if (sp.mobile){
@@ -1680,6 +1682,9 @@ void WHITEBOARD::execstep (
 				documentd_bar_button (v.val,BUTTON_DECTEXTSIZE,menu.svg_dectextsize,specs,false,MSG_U(I_DECSIZETEXT,"Decrease the size of texts"));
 				documentd_bar_button (v.val,BUTTON_IMAGE,menu.svg_image,specs,false,MSG_U(I_ASSIGNIMAGE,"Assign an image to selected elements"));
 				documentd_bar_button (v.val,BUTTON_LINKDOC,menu.svg_imbed,specs,false,MSG_U(I_ASSIGNDOCUMEN,"Link a document to selected elements"));
+				documentd_button_space(v.val);
+				documentd_bar_button (v.val,BUTTON_DELITEMS,menu.svg_delitems,specs,false,MSG_U(I_DELITEMS,"Delete selected elements"));
+				//documentd_bar_button (v.val,BUTTON_UNDO,menu.svg_undo,specs,false,MSG_U(I_UNDOEDIT,"Undo the last modification"));
 				documentd_button_end(v.val);
 			}else{
 				v.val += "<div id=tab_form style='margin-top:5; margin-bottom:5; background-color: lightgray;'>\n";
@@ -1980,14 +1985,20 @@ void WHITEBOARD::execstep (
 			}
 		}else if (strcmp(var,"wheel")==0){
 			auto selects = findselected(SEL_SELECTED);
-			if (selects.size() > 0){
+			if (selects.size() == 0){
+					error = MSG_R(E_NONODE);
+			}else{
 				int grow;
 				bool shiftkey,ctrlkey;
 				if (splitline(val,',',grow,shiftkey,ctrlkey)){
 					grow *= 5;
 					for (auto elm:selects){
-						elm->resize(grow,ctrlkey,shiftkey);
-						notify_ids.insert(elm->id);
+						if (is_any_of(elm->type,TYPE_ELLIPSE,TYPE_RECT)){
+							elm->resize(grow,ctrlkey,shiftkey);
+							notify_ids.insert(elm->id);
+						}else{
+							error = MSG_U(E_ONLYRECTELLIPSE,"Resize only applies to rectangles and ellipses");
+						}
 					}
 					setmodified(ctx.username);
 				}
@@ -2089,6 +2100,15 @@ void WHITEBOARD::execstep (
 						res.emplace_back(var);
 					}else{
 						error = MSG_U(E_LINKONRECT,"You can only link a document on squares/rectangles");
+					}
+				}
+			}else if (uval == BUTTON_DELITEMS){
+				auto selects = findselected (SEL_SELECTED);
+				if (selects.size() == 0){
+					error = MSG_R(E_NONODE);
+				}else{
+					for (auto s:selects){
+						delete_elm (s->id,notify_var);
 					}
 				}
 			}else{

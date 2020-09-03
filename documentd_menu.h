@@ -23,6 +23,8 @@ struct WHITEBOARD_MENU{
 	std::string svg_imbed;
 	std::string svg_inctextsize;
 	std::string svg_dectextsize;
+	std::string svg_delitems;
+	std::string svg_undo;
 	WHITEBOARD_MENU(DOC_BUTTON_SPECS &specs);
 };
 struct WORDPROC_MENU{
