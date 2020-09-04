@@ -27,6 +27,10 @@ addelm(){
 resetsel(){
 	$BOFS documents --noscripts --playstep --docname $DOCNAME --step "resetselect=3"
 }
+# Select one element: label 0|1|2
+# 0 normal selection
+# 1 parent selection
+# 2 grouping selection
 labelselect(){
 	$BOFS documents --noscripts --playstep --docname $DOCNAME --step "labelselect=$1 $2"
 }
