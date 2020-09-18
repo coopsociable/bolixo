@@ -1707,7 +1707,7 @@ string WORDPROC::define_functions(const DOC_CONTEXT &ctx, const WORD_USERPREF &p
 	val += "\t\tif (event.clientY >= rect.top && event.clientY < rect.bottom){\n";
 	val += "\t\t\tvar divs=para.getElementsByTagName('div');\n";
 	val += "\t\t\tvar r=divs[divs.length-1].getBoundingClientRect();\n";
-	val += "\t\t\tgameaction(event,'select:'+i+' '+(event.clientX-r.left)+' '+(event.clientY-r.top)+' '+getlastline());\n";
+	val += "\t\t\tgameaction(event,'select:'+i+' '+Math.floor(event.clientX-r.left)+' '+Math.floor(event.clientY-r.top)+' '+getlastline());\n";
 	val += "\t\t\tbreak;\n";
 	val += "\t\t}\n";
 	val += "\t}\n";
@@ -2064,11 +2064,11 @@ void WORDPROC::execstep (
 				int new_offset = is_eq(var,"pageup") ? pref.offset-lastline : pref.offset + lastline;
 				page_up_down(new_offset,visible_lines,lastline,pref,script_var,script_lines,notify_lines);
 			}else if (is_eq(var,"select")){	// Position cursor using the mouse
-				//tlmp_warning ("select=%s",val);
 				unsigned noline,xcoor,ycoor,lastline;
 				if (splitline(val,noline,xcoor,ycoor,lastline)){
 					// We receive 4 arguments: relative paragraph number, X coordinate inside the paragraph, Y coordinate
 					// and lastline (last visible paragraph)
+					//tlmp_warning ("select noline=%u visible_lines=%u",noline,visible_lines);
 					if (noline < visible_lines){
 						unsigned newline = pref.offset + noline;
 						if (newline != pref.cursor.line){
@@ -2084,6 +2084,8 @@ void WORDPROC::execstep (
 						}
 						notify_lines.insert(pref.cursor.line);
 					}
+				}else{
+					tlmp_warning ("Invalid select: %s",val);
 				}
 			}else if (is_eq(var,"newgame")){
 				growdoc(pref.cursor.line);

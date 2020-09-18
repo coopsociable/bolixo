@@ -53,6 +53,10 @@ elif [ "$1" = "whiteboard" ] ; then # White board sample
 elif [ "$1" = "whiteboard-fr" ] ; then # White board french sample
 	DOCNAME=/projects/jacques-A/public/doc.blanc
 	whiteboard groupe-1
+elif [ "$1" = "dumpdoc" ] ; then # wordproc dump
+	DOCNAME=/projects/jacques-A/$2
+	. scripts/word-help.sh
+	docdump
 else
 	echo command
 fi
