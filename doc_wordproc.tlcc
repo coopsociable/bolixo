@@ -157,7 +157,7 @@ class WORDPROC: public GAME{
 	bool isspace(WORD_USERPREF &pref, bool &inside_doc);
 	void deletechar(std::set<unsigned> &updlines, WORD_USERPREF &pref);
 	void vmove (int move, unsigned docnum, unsigned visible_lines, unsigned lastline, WORD_USERPREF &pref, const DOC_UI_SPECS_receive &sp, VARVAL &script_var, std::set<unsigned> &updlines);
-	void page_up_down(int new_offset, unsigned visible_lines, unsigned lastline, WORD_USERPREF &pref, VARVAL &script_var,
+	void page_up_down(int new_offset, unsigned docnum, unsigned visible_lines, unsigned lastline, WORD_USERPREF &pref, VARVAL &script_var,
 		std::set<unsigned> &script_lines, std::set<unsigned> &notify_lines);
 	void update_lines (std::string &line, std::set<unsigned> &updlines, const DOC_UI_SPECS_receive &sp);
 	std::string formatline (unsigned noline, const DOC_UI_SPECS_receive &sp, std::string &script);
@@ -1429,6 +1429,7 @@ void WORDPROC::vmove (
 }
 void WORDPROC::page_up_down(
 	int new_offset, 
+	unsigned docnum,
 	unsigned visible_lines,
 	unsigned lastline,
 	WORD_USERPREF &pref,
@@ -1440,7 +1441,7 @@ void WORDPROC::page_up_down(
 	if ((unsigned)new_offset != pref.offset){
 		int offline = pref.cursor.line - pref.offset;
 		if (offline < 0) offline = 0;
-		js_find_loop_start (script_var.val,"text","div");
+		js_find_loop_start (script_var.val,"text",docnum,"div");
 		// Remove all div
 		script_var.val += "\telm.innerHTML='';\n";
 		// Add new ones
@@ -2062,7 +2063,7 @@ void WORDPROC::execstep (
 				}
 			}else if (is_any_of(var,"pageup","pagedown")){
 				int new_offset = is_eq(var,"pageup") ? pref.offset-lastline : pref.offset + lastline;
-				page_up_down(new_offset,visible_lines,lastline,pref,script_var,script_lines,notify_lines);
+				page_up_down(new_offset,ctx.docnum,visible_lines,lastline,pref,script_var,script_lines,notify_lines);
 			}else if (is_eq(var,"select")){	// Position cursor using the mouse
 				unsigned noline,xcoor,ycoor,lastline;
 				if (splitline(val,noline,xcoor,ycoor,lastline)){
@@ -2564,7 +2565,7 @@ void WORDPROC::execstep (
 			}else if (is_any_of(var,"pageup","pagedown")){
 				int new_offset = strcmp(var,"pageup")==0 ? pref.offset-lastline : pref.offset + lastline;
 				set<unsigned> notify_lines;
-				page_up_down (new_offset,visible_lines,lastline,pref,script_var,script_lines,notify_lines);
+				page_up_down (new_offset,ctx.docnum,visible_lines,lastline,pref,script_var,script_lines,notify_lines);
 			}else{
 				documentd_error (res,MSG_R(E_READONLYDOC));
 			}
