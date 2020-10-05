@@ -192,9 +192,18 @@ static int test_loop (
 	glocal vector<string> *out = &out;
 	out.clear();
 	glocal.ret = test_system (out);
-	time_t start = time(NULL);
+	long long start = fdpass_getnow();
+	long long last_now = start;
 	for (auto &s:socks){
-		if (debug) out.push_back(string_f("%sdebug=%lu",ok_marker,time(NULL)-start));
+		if (debug){
+			long long now = fdpass_getnow();
+			long long diff = now - start;
+			long long diff_now = now - last_now;
+			out.push_back(string_f("%sdebug=%Lu.%06Lu last=%Lu.%06Lu",ok_marker
+				,diff/1000000,diff%1000000
+				,diff_now/1000000,diff_now%1000000));
+			last_now = now;
+		}
 		glocal const char *path = s.c_str();
 		CONNECT_INFO con;
 		con.port = glocal.path;
@@ -364,6 +373,15 @@ static int test_loop (
 				glocal.out->push_back(string_f("%sDon't know how to handle this socket; %s",err_marker,glocal.path));
 			}
 		}
+	}
+	if (debug){
+		long long now = fdpass_getnow();
+		long long diff = now - start;
+		long long diff_now = now - last_now;
+		out.push_back(string_f("%sdebug=%Lu.%06Lu last=%Lu.%06Lu",ok_marker
+			,diff/1000000,diff%1000000
+			,diff_now/1000000,diff_now%1000000));
+		last_now = now;
 	}
 	return glocal.ret;
 }
