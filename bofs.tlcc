@@ -4023,6 +4023,14 @@ static int bofs_bolixoapi (CONTEXT &ctx, int argc, char *argv[])
 	return glocal.ret;
 }
 </mod>
+static void bofs_printvar (bool novarname, PARAM_STRING var, PARAM_STRING val)
+{
+	if (novarname){
+		fputs (val.ptr,stdout);
+	}else{
+		printf ("var=%s val=%s\n",var.ptr,val.ptr);
+	}
+}
 
 <mod>
 static int bofs_documents (CONTEXT &ctx, int argc, char *argv[])
@@ -4035,6 +4043,7 @@ static int bofs_documents (CONTEXT &ctx, int argc, char *argv[])
 	glocal vector<string> steps;
 	glocal const char *docname = nullptr;
 	glocal bool noscripts = false;
+	glocal bool novarname = false;
 
 	glocal.ret = <call tlmpprogram>(argc,argv);
 	<f init>
@@ -4055,6 +4064,7 @@ static int bofs_documents (CONTEXT &ctx, int argc, char *argv[])
 		setarg ('d',"docname",MSG_U(O_DOCNAME,"Document name"),glocal.docname,false);
 		setarg (' ',"sequence",MSG_U(O_SEQUENCE,"Sequence number for waitevent"),glocal.sequence,false);
 		setarg (' ',"noscripts",MSG_U(O_NOSCRIPTS,"Do not print output for notify,script and refresh"),glocal.noscripts,false);
+		setarg (' ',"novarname",MSG_U(O_NOVARNAME,"Do not print the variable name, only content"),glocal.novarname,false);
 	</f>
 	<f main_noarg>
 		glocal int ret = -1;
@@ -4092,7 +4102,7 @@ static int bofs_documents (CONTEXT &ctx, int argc, char *argv[])
 								if (strcmp(r.var,VAR_RESULT)==0){
 									printf ("%s\n",r.val);
 								}else{
-									printf ("r=var=%s r.val=%s\n",r.var,r.val);
+									bofs_printvar (glocal.novarname,r.var,r.val);
 								}
 							}
 							glocal bool more = more;
@@ -4106,7 +4116,7 @@ static int bofs_documents (CONTEXT &ctx, int argc, char *argv[])
 										glocal.more = more;
 										for (auto &r:res){
 											if (glocal.noscripts && is_any_of(r.var,"notify","script","refresh")) continue;
-											printf ("r=var=%s r.val=%s\n",r.var,r.val);
+											bofs_printvar (glocal.novarname,r.var,r.val);
 										}
 									}
 								</f>
@@ -4124,7 +4134,7 @@ static int bofs_documents (CONTEXT &ctx, int argc, char *argv[])
 						}else{
 							for (auto &r:res){
 								if (glocal.noscripts && is_any_of(r.var,"notify","script","refresh")) continue;
-								printf ("r=var=%s r.val=%s\n",r.var,r.val);
+								bofs_printvar (glocal.novarname,r.var,r.val);
 							}
 							glocal bool more = more;
 							while (glocal.more){
@@ -4137,7 +4147,7 @@ static int bofs_documents (CONTEXT &ctx, int argc, char *argv[])
 										glocal.more = more;
 										for (auto &r:res){
 											if (glocal.noscripts && is_any_of(r.var,"notify","script","refresh")) continue;
-											printf ("r=var=%s r.val=%s\n",r.var,r.val);
+											bofs_printvar (glocal.novarname,r.var,r.val);
 										}
 									}
 								</f>
