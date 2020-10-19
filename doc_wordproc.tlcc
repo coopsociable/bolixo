@@ -432,7 +432,7 @@ void PARAGRAPH::init(PARAM_STRING txt, unsigned width, unsigned _fontsize)
 			}else if (*pt == CAR_BREAK){
 				// This ends the line
 				word.addchunk (start,pt-start,txtlen,state,fontsize);
-				words.emplace_back(move(word));
+				if (word.chunks.size() > 0) words.emplace_back(move(word));
 				word.reset();
 				// After the loop, the emplace_back will add an empty word (no chunks).
 				// This will be used to detect BREAK later when building paragraph.
@@ -455,14 +455,15 @@ void PARAGRAPH::init(PARAM_STRING txt, unsigned width, unsigned _fontsize)
 
 	unsigned offset = 0;
 	unsigned wordnum = 1;
+	//tlmp_warning ("words.size()=%lu\n",words.size());
 	while (wordnum < words.size()){
-		// We assemble a line made of words until its width is larger than the div width.
+		// We assemble a line made of words until its width is larger than the div (user interface) width.
 		auto &wo = words[offset];
 		wo.remove_first_space(fontsize);
 		unsigned linelen = wo.len;
 		for (unsigned i=offset+1; i<=wordnum; i++) linelen += words[i].len;
-		//htmlprintf ("linelen=%u width=%u lines.size()=%lu<br>\n",linelen,width,lines.size());
 		bool empty_word = words[wordnum].len==0;// CAR_BREAK
+		//tlmp_warning ("wordnum=%u linelen=%u width=%u lines.size()=%lu empty_word=%d\n",wordnum,linelen,width,lines.size(),empty_word);
 		if (linelen < width && !empty_word){
 			wordnum++;
 		}else{
