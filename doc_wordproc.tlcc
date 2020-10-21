@@ -46,6 +46,15 @@ struct WORD_DOCPOS{
 	void reset(){
 		line = column = 0;
 	}
+	bool operator == (const WORD_DOCPOS &n) const {
+		return tie(line,column) == tie(n.line,n.column);
+	}
+	bool operator != (const WORD_DOCPOS &n) const {
+		return tie(line,column) != tie(n.line,n.column);
+	}
+	bool operator < (const WORD_DOCPOS &n) const {
+		return tie(line,column) < tie(n.line,n.column);
+	}
 };
 // WORDPROC user preference
 struct WORD_USERPREF{
@@ -191,6 +200,7 @@ GAME_P make_WORDPROC()
 	return make_shared<WORDPROC>();
 }
 
+#define documentd_wordproc_users_NOTNEED
 #define documentd_wordproc_lines_NOTNEED
 #define documentd_wordproc_lines_v2_NOTNEED
 #define documentd_wordproc_lines_v3_NOTNEED
@@ -657,17 +667,21 @@ void wordproc_testparagraph(const char *line, unsigned width, unsigned fontsize,
 void WORDPROC::save(DOC_WRITER &w, bool save_session_info)
 {
 	documentd_wordproc_header (&w,revision);
-	vector<WORDPROC_USER> users;
+	vector<WORDPROC_USER_V2> users;
 	for (auto &p:prefs){
-		WORDPROC_USER user;
+		WORDPROC_USER_V2 user;
 		user.name = p.first;
 		user.line = p.second.cursor.line;
 		user.column = p.second.cursor.column;
 		user.offset = p.second.offset;
 		user.insertmode = p.second.insertmode;
+		user.mark1_line = p.second.mark1.line;
+		user.mark1_column = p.second.mark1.column;
+		user.mark2_line = p.second.mark2.line;
+		user.mark2_column = p.second.mark2.column;
 		users.emplace_back(user);
 	}
-	documentd_wordproc_users (&w,users);
+	documentd_wordproc_users_v2 (&w,users);
 	vector<WORDPROC_PARA_V4> paras;
 	for (auto &l:lines){
 		WORDPROC_PARA_V4 para;
@@ -703,6 +717,19 @@ void WORDPROC::load(DOC_READER &r, string &msg)
 			p.cursor.column = u.column;
 			p.offset = u.offset;
 			p.insertmode = u.insertmode;
+		}
+	</f>
+	<f users_v2>
+		for (auto &u:users){
+			WORD_USERPREF &p = glocal.prefs[u.name];
+			p.cursor.line = u.line;
+			p.cursor.column = u.column;
+			p.offset = u.offset;
+			p.insertmode = u.insertmode;
+			p.mark1.line = u.mark1_line;
+			p.mark1.column = u.mark1_column;
+			p.mark2.line = u.mark2_line;
+			p.mark2.column = u.mark2_column;
 		}
 	</f>
 	<f lines>
@@ -963,9 +990,41 @@ string WORDPROC::formatline(unsigned noline, const DOC_UI_SPECS_receive &sp, str
 		CURSOR(unsigned _column, bool _insertmode): column(_column), insertmode(_insertmode){}
 	};
 	vector<CURSOR> cursors;
+	struct {	// Merge of the marks of all sessions
+			// We want to know where the mark starts and end in the paragraph.
+		unsigned start = (unsigned)-1;
+		unsigned end = 0;
+	} mark;
+	
 	for (auto &p:prefs){
-		if (p.second.maywrite && p.second.cursor.line == noline) cursors.emplace_back(p.second.cursor.column,p.second.insertmode);
+		if (p.second.maywrite){
+			auto &ps = p.second;
+			if (ps.cursor.line == noline) cursors.emplace_back(ps.cursor.column,ps.insertmode);
+			if (ps.mark1 != ps.mark2){
+tlmp_warning ("mark1=%u,%u mark2=%u,%u",ps.mark1.line,ps.mark1.column,ps.mark2.line,ps.mark2.column);
+				auto f = [&mark,noline,&line](const WORD_DOCPOS &mark1, const WORD_DOCPOS &mark2){
+					if (mark1.line <= noline && mark2.line >= noline){
+						if (mark1.line < noline){
+							mark.start = 0;
+						}else if (mark1.column < mark.start){
+							mark.start = mark1.column;
+						}
+						if (mark2.line > noline){
+							mark.end = line.size();
+						}else if (mark2.column > mark.end){
+							mark.end = mark2.column;
+						}
+					}
+				};
+				if (ps.mark1 < ps.mark2){
+					f(ps.mark1,ps.mark2);
+				}else{
+					f(ps.mark2,ps.mark1);
+				}
+			}
+		}
 	}
+tlmp_warning ("noline=%u line.size()=%lu mark.start=%u mark.end=%u",noline,line.size(),mark.start,mark.end);
 	stack<string> effects;
 	string closetitle,closetab;
 	{
@@ -1093,6 +1152,13 @@ string WORDPROC::formatline(unsigned noline, const DOC_UI_SPECS_receive &sp, str
 					ret += effects.top();
 					effects.pop();
 				}else{
+					if (pos == mark.start){
+						ret += "<span class=blkmark>";
+						effects.push("</span>");
+					}else if (pos != 0 && pos == mark.end){
+						ret += effects.top();
+						effects.pop();
+					}
 					if (pos == column){
 						ret += string_f("<span class=%ccursor>",cursors[cursor_no].insertmode ? 'i' : 'r');
 					}
@@ -1750,6 +1816,10 @@ string WORDPROC::define_styles(const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receiv
 {
 	string val;
 	unsigned sp_width = sp.content_width-30;	// Space for line numbers, during development
+	// Block mark
+	val += ".blkmark{\n";
+	val += "\tbackground-color:lightblue;>";
+	val += "}\n";
 	// Cursor insert mode
 	val += ".icursor{\n";
 	val += "\tbackground-color:lightgray;>";
@@ -1855,6 +1925,25 @@ void WORDPROC::set_imbed(
 	growdoc(nol);
 	lines[nol].set_imbed(imbed);
 	notify_lines.insert(nol);
+}
+
+static void update_mark_lines (const WORD_DOCPOS &mark1, const WORD_DOCPOS &mark2, set<unsigned> &notify_lines)
+{
+	unsigned old_line = mark1.line;
+	unsigned new_line = mark2.line;
+	if (new_line < old_line) swap(new_line,old_line);
+	for (unsigned l=old_line; l<=new_line; l++) notify_lines.insert(l);
+}
+/*
+	Reset the cut/copy mark
+*/
+static void reset_mark (WORD_USERPREF &pref, set<unsigned> &notify_lines)
+{
+	if (pref.mark1 != pref.mark2){
+		update_mark_lines (pref.mark1,pref.mark2,notify_lines);
+	}
+	pref.mark1.reset();
+	pref.mark2.reset();
 }
 
 void WORDPROC::execstep (
@@ -2059,6 +2148,7 @@ void WORDPROC::execstep (
 			val = tmpval.c_str();		
 		}
 		if (ctx.maywrite){
+			auto old_cursor = pref.cursor;
 			if (is_eq(var,"vmove")){
 				// Move cursor
 				int move = atoi(val);
@@ -2558,6 +2648,18 @@ void WORDPROC::execstep (
 					}
 				}
 				wordproc_update_buttons (script_var.val,pref,newstates);
+			}
+			if (is_any_of(var,"hmove","home","end","vmove","pageup","pagedown")){
+				if (mod.shift){
+					if (pref.mark1 == pref.mark2){
+						pref.mark1 = old_cursor;
+					}
+					pref.mark2 = pref.cursor;
+					// Send update to all lines between old_cursor and pref.cursor
+					update_mark_lines (old_cursor,pref.cursor,notify_lines);
+				}else{
+					reset_mark(pref,notify_lines);
+				}
 			}
 		}else{
 			if (is_any_of(var,"vmove","voffset")){
