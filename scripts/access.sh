@@ -475,6 +475,11 @@ elif [ "$1" = "doc-word" ] ; then # test: many test on text document
 	setimage 8 http://test1.bolixo.org/icon.png
 	setimbed 9 test.white a1
 	docdump
+	$0 doc-word-print | grep -v gamesequence=
+elif [ "$1" = "doc-word-print" ] ; then # test: print the test document
+	DOCNAME=/projects/jacques-A/public/test.doc
+	. scripts/word-help.sh
+	docprint
 elif [ "$1" = "infowrite" ] ; then # test: publish info to directory server
 	USER=jacques-A
 	echo Create mini-photo.jpg and photo.jpg for all users

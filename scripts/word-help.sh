@@ -43,4 +43,6 @@ settablevel(){
 docdump(){
 	$BOFS documents --noscripts --playstep --docname $DOCNAME --step "dump="
 }
-
+docprint(){
+	$BOFS documents --noscripts --playstep --docname $DOCNAME --step "print=document" --novarname 
+}

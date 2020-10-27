@@ -2076,6 +2076,7 @@ void WORDPROC::execstep (
 			}
 			res.emplace_back(v);
 		}else{
+			bool document_only = is_eq(val,"document");
 			sp.content_width -= waiting_users_width;
 			VARVAL v;
 			v.var = VAR_CONTENT;
@@ -2119,43 +2120,45 @@ void WORDPROC::execstep (
 			v.val += define_functions(ctx,pref,sp.content_width,sp.content_height);
 			v.val += "</script>\n";
 			// Buttons line
-			if (ctx.maywrite){
-				v.val += "<div id=tab_form style='margin-top:5; margin-bottom:5; background-color: lightgray;'>\n";
-				DOC_BUTTON_SPECS specs;
-				if (sp.mobile){
-					specs.width = 60;
-					specs.radius = 6;
-					specs.margin_left = 10;
-					specs.margin_top = 4;
-					specs.margin_bottom = 4;
+			if (!document_only){
+				if (ctx.maywrite){
+					v.val += "<div id=tab_form style='margin-top:5; margin-bottom:5; background-color: lightgray;'>\n";
+					DOC_BUTTON_SPECS specs;
+					if (sp.mobile){
+						specs.width = 60;
+						specs.radius = 6;
+						specs.margin_left = 10;
+						specs.margin_top = 4;
+						specs.margin_bottom = 4;
+					}
+					WORDPROC_MENU menu(specs);
+					documentd_button_start(v.val,gameid);
+					documentd_bar_button (v.val,BUTTON_TITLE_PLUS,"T",specs,false);
+					documentd_bar_button (v.val,BUTTON_TITLE_LESS,"t",specs,false);
+					documentd_bar_button (v.val,BUTTON_BOLD,"<b>B</b>",specs,false);
+					documentd_bar_button (v.val,BUTTON_ITALIC,"<i>I</i>",specs,false);
+					documentd_bar_button (v.val,BUTTON_UNDERLINE,"<u>U</u>",specs,false);
+					documentd_bar_button (v.val,BUTTON_SUP,"A<sup>2</sup>",specs,false);
+					documentd_bar_button (v.val,BUTTON_SUB,"A<sub>2</sub>",specs,false);
+					documentd_bar_button (v.val,BUTTON_TAB_PLUS,"->",specs,false);
+					documentd_bar_button (v.val,BUTTON_TAB_LESS,"<-",specs,false);
+					documentd_bar_button (v.val,BUTTON_CENTER,"<>",specs,false);
+					documentd_bar_button (v.val,BUTTON_BULLET,"&bull;",specs,false);
+					documentd_bar_button (v.val,BUTTON_NUMLIST,"N.",specs,false);
+					documentd_bar_button (v.val,BUTTON_IMAGE,menu.svg_image,specs,false);
+					documentd_bar_button (v.val,BUTTON_IMBED,menu.svg_imbed,specs,false);
+					documentd_button_end(v.val);
+				}else{
+					v.val += "<div id=tab_form style='margin-top:5; margin-bottom:5; background-color: lightgray;'>\n";
+					v.val += MSG_U(M_READONLY,"Read only");
 				}
-				WORDPROC_MENU menu(specs);
-				documentd_button_start(v.val,gameid);
-				documentd_bar_button (v.val,BUTTON_TITLE_PLUS,"T",specs,false);
-				documentd_bar_button (v.val,BUTTON_TITLE_LESS,"t",specs,false);
-				documentd_bar_button (v.val,BUTTON_BOLD,"<b>B</b>",specs,false);
-				documentd_bar_button (v.val,BUTTON_ITALIC,"<i>I</i>",specs,false);
-				documentd_bar_button (v.val,BUTTON_UNDERLINE,"<u>U</u>",specs,false);
-				documentd_bar_button (v.val,BUTTON_SUP,"A<sup>2</sup>",specs,false);
-				documentd_bar_button (v.val,BUTTON_SUB,"A<sub>2</sub>",specs,false);
-				documentd_bar_button (v.val,BUTTON_TAB_PLUS,"->",specs,false);
-				documentd_bar_button (v.val,BUTTON_TAB_LESS,"<-",specs,false);
-				documentd_bar_button (v.val,BUTTON_CENTER,"<>",specs,false);
-				documentd_bar_button (v.val,BUTTON_BULLET,"&bull;",specs,false);
-				documentd_bar_button (v.val,BUTTON_NUMLIST,"N.",specs,false);
-				documentd_bar_button (v.val,BUTTON_IMAGE,menu.svg_image,specs,false);
-				documentd_bar_button (v.val,BUTTON_IMBED,menu.svg_imbed,specs,false);
-				documentd_button_end(v.val);
-			}else{
-				v.val += "<div id=tab_form style='margin-top:5; margin-bottom:5; background-color: lightgray;'>\n";
-				v.val += MSG_U(M_READONLY,"Read only");
+				v.val += "</div>\n";
 			}
-			v.val += "</div>\n";
 			// Document
 			v.val += string_f("<div class=webtable id=%sdoc_wordproc style='display:flex; flex-flow:row;'>\n",val);
 			string scripts;
 			v.val += draw_text(pref,ctx.docnum,visible_lines,sp,true,scripts);
-			draw_waiting_users(v.val,waiting_users_width,sp.content_height,"flex:0 0 auto;");
+			if (!document_only) draw_waiting_users(v.val,waiting_users_width,sp.content_height,"flex:0 0 auto;");
 			v.val += "</div>\n";
 			if (scripts.size() > 0){
 				v.val += "<script>\n";
@@ -2169,14 +2172,16 @@ void WORDPROC::execstep (
 			v.val += string_f("document.getElementById('text-%s').addEventListener('compositionend', gamefalse);\n",gameid.c_str());
 			v.val += "</script>\n";
 			#endif
-			// Status line
-			v.val += "<div id=tab_form>\n";
-			v.val += "&nbsp;";
-			#if 0
-				// Trick to make the document window shorter
-				for (int i=0; i<25; i++) v.val += "allo<br>\n";
-			#endif
-			v.val += "</div>\n";
+			if (!document_only){
+				// Status line
+				v.val += "<div id=tab_form>\n";
+				v.val += "&nbsp;";
+				#if 0
+					// Trick to make the document window shorter
+					for (int i=0; i<25; i++) v.val += "allo<br>\n";
+				#endif
+				v.val += "</div>\n";
+			}
 			res.emplace_back(v);
 		}
 	}else if (is_eq(var,"dump")){
