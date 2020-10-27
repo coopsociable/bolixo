@@ -65,6 +65,10 @@ struct WORD_USERPREF{
 	WORD_DOCPOS mark1,mark2;	// Cut & Paste
 	bool states_valid = false;	// Tell if the UI is in sync with the states variable below
 	WORD_EFFECTS_STATE states;
+	// Is there a block marked
+	bool is_marked() const {
+		return mark1 != mark2;
+	}
 };
 
 enum WORDPROC_LISTTYPE { LIST_NONE, LIST_BULLET,LIST_NUM,LIST_CENTER};
@@ -164,7 +168,9 @@ class WORDPROC: public GAME{
 	std::vector<WORDPROC_LINE> lines;
 	std::map<std::string,WORD_USERPREF> prefs;
 	bool isspace(WORD_USERPREF &pref, bool &inside_doc);
+	void deletechar(std::set<unsigned> &updlines, const WORD_DOCPOS &pos);
 	void deletechar(std::set<unsigned> &updlines, WORD_USERPREF &pref);
+	void deleteline(unsigned line, set<unsigned> &updlines);
 	void vmove (int move, unsigned docnum, unsigned visible_lines, unsigned lastline, WORD_USERPREF &pref, const DOC_UI_SPECS_receive &sp, VARVAL &script_var, std::set<unsigned> &updlines);
 	void page_up_down(int new_offset, unsigned docnum, unsigned visible_lines, unsigned lastline, WORD_USERPREF &pref, VARVAL &script_var,
 		std::set<unsigned> &script_lines, std::set<unsigned> &notify_lines);
@@ -181,6 +187,8 @@ class WORDPROC: public GAME{
 	std::string define_styles(const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp);
 	void growdoc(unsigned nol);
 	void set_imbed(unsigned nol, PARAM_STRING document, PARAM_STRING region, VARVAL &notify_var, set<unsigned> &notify_lines, const DOC_UI_SPECS_receive &sp);
+	void delete_to_eol(const WORD_DOCPOS &cursor, const DOC_UI_SPECS_receive &sp, set<unsigned> &notify_lines);
+	void delete_block (WORD_USERPREF &pref, const DOC_UI_SPECS_receive &sp, set<unsigned> &notify_lines);
 public:
 	const char *getclass() const{
 		return "WORD";
@@ -999,9 +1007,8 @@ string WORDPROC::formatline(unsigned noline, const DOC_UI_SPECS_receive &sp, str
 	for (auto &p:prefs){
 		if (p.second.maywrite){
 			auto &ps = p.second;
-			if (ps.cursor.line == noline) cursors.emplace_back(ps.cursor.column,ps.insertmode);
-			if (ps.mark1 != ps.mark2){
-tlmp_warning ("mark1=%u,%u mark2=%u,%u",ps.mark1.line,ps.mark1.column,ps.mark2.line,ps.mark2.column);
+			if (ps.is_marked()){
+				// tlmp_warning ("mark1=%u,%u mark2=%u,%u",ps.mark1.line,ps.mark1.column,ps.mark2.line,ps.mark2.column);
 				auto f = [&mark,noline,&line](const WORD_DOCPOS &mark1, const WORD_DOCPOS &mark2){
 					if (mark1.line <= noline && mark2.line >= noline){
 						if (mark1.line < noline){
@@ -1021,10 +1028,13 @@ tlmp_warning ("mark1=%u,%u mark2=%u,%u",ps.mark1.line,ps.mark1.column,ps.mark2.l
 				}else{
 					f(ps.mark2,ps.mark1);
 				}
+			}else{
+				// When a user is marking a block, the cursor is now shown.
+				if (ps.cursor.line == noline) cursors.emplace_back(ps.cursor.column,ps.insertmode);
 			}
 		}
 	}
-tlmp_warning ("noline=%u line.size()=%lu mark.start=%u mark.end=%u",noline,line.size(),mark.start,mark.end);
+	// tlmp_warning ("noline=%u line.size()=%lu mark.start=%u mark.end=%u",noline,line.size(),mark.start,mark.end);
 	stack<string> effects;
 	string closetitle,closetab;
 	{
@@ -1301,7 +1311,7 @@ bool WORDPROC::isspace(WORD_USERPREF &pref, bool &inside_doc)
 	if (lines.size() > pref.cursor.line){
 		string &l = lines[pref.cursor.line].line;
 		unsigned len = wordproc_linelen(l);
-		// tlmp_warning ("deletechar column=%u len=%u",pref.cursor.column,len);
+		// tlmp_warning ("isspace column=%u len=%u",pref.cursor.column,len);
 		if (len > pref.cursor.column){
 			inside_doc = true;
 			// We are inside the line, we remove the current character
@@ -1312,19 +1322,27 @@ bool WORDPROC::isspace(WORD_USERPREF &pref, bool &inside_doc)
 	}
 	return ret;
 }
+// Remove one line(paragraph) from the document
+void WORDPROC::deleteline(unsigned line, set<unsigned> &updlines)
+{
+	if (line < lines.size()){
+		lines.erase(lines.begin()+line);
+		for (unsigned l=line; l<lines.size()+1; l++) updlines.insert(l);
+	}
+}
 /*
 	Delete the character at the cursor
 */
-void WORDPROC::deletechar (set<unsigned> &updlines, WORD_USERPREF &pref)
+void WORDPROC::deletechar (set<unsigned> &updlines, const WORD_DOCPOS &cursor)
 {
-	if (lines.size() > pref.cursor.line){
-		string &l = lines[pref.cursor.line].line;
+	if (lines.size() > cursor.line){
+		string &l = lines[cursor.line].line;
 		unsigned len = wordproc_linelen(l);
-		// tlmp_warning ("deletechar column=%u len=%u",pref.cursor.column,len);
-		if (len > pref.cursor.column){
+		// tlmp_warning ("deletechar column=%u len=%u",cursor.column,len);
+		if (len > cursor.column){
 			// We are inside the line, we remove the current character
 			size_t sizecar;
-			unsigned pos = wordproc_jump2col(l,pref.cursor.column,sizecar);
+			unsigned pos = wordproc_jump2col(l,cursor.column,sizecar);
 			if (sizecar > 0){
 				// When positionned at the end of an effect, if the marker is
 				// CAR_END_EFFECT, wordproc_jump2col() returns a pos right
@@ -1348,22 +1366,26 @@ void WORDPROC::deletechar (set<unsigned> &updlines, WORD_USERPREF &pref)
 				// The cleanup is also done when we use the button to turn off an effect
 			}
 		}else{
-			unsigned nextline = pref.cursor.line+1;
+			unsigned nextline = cursor.line+1;
 			if (lines.size() > nextline && !lines[nextline].is_image()){
 				// We are at the end of the line, or further.
 				// So we merge the next line here.
 				// First we grow the line
-				while (len < pref.cursor.column){
+				while (len < cursor.column){
 					l += ' ';
 					len++;
 				}
 				l += lines[nextline].line;
-				lines.erase(lines.begin()+nextline);
-				for (unsigned l=nextline; l<lines.size()+1; l++) updlines.insert(l);
+				deleteline (nextline,updlines);
 			}
 		}
-		updlines.insert(pref.cursor.line);
+		updlines.insert(cursor.line);
 	}
+}
+// Delete one char at the current cursor position
+void WORDPROC::deletechar (set<unsigned> &updlines, WORD_USERPREF &pref)
+{
+	deletechar (updlines,pref.cursor);
 }
 const unsigned bullet_width=15+5;	// width of a bullet
 const unsigned tab_width=30;		// width per tab level
@@ -1939,8 +1961,70 @@ static void update_mark_lines (const WORD_DOCPOS &mark1, const WORD_DOCPOS &mark
 */
 static void reset_mark (WORD_USERPREF &pref, set<unsigned> &notify_lines)
 {
-	if (pref.mark1 != pref.mark2){
+	if (pref.is_marked()){
 		update_mark_lines (pref.mark1,pref.mark2,notify_lines);
+	}
+	pref.mark1.reset();
+	pref.mark2.reset();
+}
+// Delete from cursor to the end of the line
+void WORDPROC::delete_to_eol(
+	const WORD_DOCPOS &pos,
+	const DOC_UI_SPECS_receive &sp,
+	set<unsigned> &notify_lines)
+{
+	PARAGRAPH para;
+	unsigned noline;
+	set_para_spec (para,pos.line,pos.column,sp,noline);
+	unsigned cursor = para.get_para_cursor(noline);
+	unsigned endline = para.get_para_end(noline);
+	while (cursor < endline){
+		deletechar(notify_lines,pos);
+		cursor++;
+	}
+}
+void WORDPROC::delete_block (
+	WORD_USERPREF &pref,
+	const DOC_UI_SPECS_receive &sp,
+	set<unsigned> &notify_lines)
+{
+	if (pref.mark2 < pref.mark1) swap (pref.mark1,pref.mark2);
+	pref.cursor = pref.mark1;
+	// It goes line this
+	// if mark1.line < mark2.line, we delete from mark1 to the end of the line.
+	// Then we delete all lines between mark1.line and mark2.line.
+	// Then we delete in the last line up to mark2.
+	// While we do this, we update pref.mark1
+	bool delete_line = pref.mark1.column == 0;
+	unsigned merge_line = (unsigned)-1;	// At the end, we must merge the last line on this line.
+	while (pref.mark1.line < lines.size() && pref.mark1.line < pref.mark2.line){
+		if (delete_line){
+			deleteline (pref.mark1.line,notify_lines);
+			pref.mark2.line--;
+		}else{
+			merge_line = pref.mark1.line;
+			auto &l = lines[pref.mark1.line].line;
+			unsigned pos = wordproc_jump2col(l,pref.mark1.column);
+			l = l.substr(0,pos);
+			notify_lines.insert(pref.mark1.line);
+			pref.mark1.line++;
+			pref.mark1.column = 0;
+			delete_line = true;
+		}
+	}
+	// Now we delete between mark1 and mark2 since they are on the same line.
+	if (pref.mark1.line < lines.size()){
+		auto &l2 = lines[pref.mark1.line].line;
+		unsigned pos2 = wordproc_jump2col(l2,pref.mark2.column);
+		if (merge_line != (unsigned)-1){
+			auto &l1 = lines[merge_line].line;
+			l1 = l1 + l2.substr(pos2,l2.size());	
+			deleteline (pref.mark1.line,notify_lines);
+		}else{
+			unsigned pos1 = wordproc_jump2col(l2,pref.mark1.column);
+			l2 = l2.substr(0,pos1) + l2.substr(pos2,l2.size());
+		}
+		notify_lines.insert(pref.mark1.line);
 	}
 	pref.mark1.reset();
 	pref.mark2.reset();
@@ -2297,6 +2381,10 @@ void WORDPROC::execstep (
 				pref.insertmode = !pref.insertmode;
 				notify_lines.insert(pref.cursor.line);
 			}else if (is_eq(var,"insertchar")){
+				if (pref.is_marked()){
+					pref.cursor = pref.mark1 < pref.mark2 ? pref.mark1 : pref.mark2;
+					delete_block(pref,sp,notify_lines);
+				}
 				growdoc(pref.cursor.line);
 				auto &wl = lines[pref.cursor.line];
 				string &l = wl.line;
@@ -2333,18 +2421,6 @@ void WORDPROC::execstep (
 						wl.listtype = LIST_NUM;
 					}
 					update_num_lines = true;
-				}else if (strcmp(val,"z")==0 && mod.alt){
-					if (lines.size()==1 && lines[0].line.size()==0){
-						// Fill with many lines
-						resetgame();
-						string para;
-						para = "allo comment ca va le monde et toi et encore et encore et encore";
-						for (unsigned i=0; i<2; i++) para += " allo comment ca va le monde et toi et encore et encore et encore";
-						for (unsigned i=0; i<100; i++) lines.push_back(string_f("line %lu:",lines.size())+para);
-					}else{
-						resetgame();
-					}
-					documentd_forcerefresh (res);
 				}else{
 					l.insert(pos,val);
 					pref.cursor.column ++;
@@ -2391,60 +2467,58 @@ void WORDPROC::execstep (
 				}
 				setmodified(ctx.username);
 			}else if (is_eq(var,"backspace")){
-				notify_lines.insert(pref.cursor.line);
-				// We start by moving the cursor back one character if possible.
-				// If we are at the start of a line, we go at the end of the previous line.
-				// We do a deletechar after that
-				if (pref.cursor.column > 0){
-					//tlmp_warning ("backspace column=%u",pref.cursor.column);
-					if (mod.ctrl){
-						// backspace to the start of the word. If we are on a space, we backspace until we reach a word
-						// then we backspace over the word.
-						pref.cursor.column--;
-						bool inside_doc;
-						while (isspace(pref,inside_doc)){
-							deletechar(notify_lines,pref);
-							if (pref.cursor.column == 0) break;
+				if (pref.is_marked()){
+					delete_block(pref,sp,notify_lines);
+				}else{
+					notify_lines.insert(pref.cursor.line);
+					// We start by moving the cursor back one character if possible.
+					// If we are at the start of a line, we go at the end of the previous line.
+					// We do a deletechar after that
+					if (pref.cursor.column > 0){
+						//tlmp_warning ("backspace column=%u",pref.cursor.column);
+						if (mod.ctrl){
+							// backspace to the start of the word. If we are on a space, we backspace until we reach a word
+							// then we backspace over the word.
 							pref.cursor.column--;
-						}
-						while (1){
-							bool space = isspace(pref,inside_doc);
-							if (space || !inside_doc) break;
-							deletechar(notify_lines,pref);
-							if (pref.cursor.column == 0) break;
+							bool inside_doc;
+							while (isspace(pref,inside_doc)){
+								deletechar(notify_lines,pref);
+								if (pref.cursor.column == 0) break;
+								pref.cursor.column--;
+							}
+							while (1){
+								bool space = isspace(pref,inside_doc);
+								if (space || !inside_doc) break;
+								deletechar(notify_lines,pref);
+								if (pref.cursor.column == 0) break;
+								pref.cursor.column--;
+							}
+						}else{
 							pref.cursor.column--;
+							deletechar(notify_lines,pref);
 						}
-					}else{
-						pref.cursor.column--;
-						deletechar(notify_lines,pref);
-					}
-				}else if (pref.cursor.line > 0){
-					bool prec_is_image = pref.cursor.line < lines.size() && lines[pref.cursor.line-1].is_image();
-					if (!prec_is_image){
-						pref.cursor.line--;
-						pref.cursor.column=0;
-						if (lines.size() > pref.cursor.line){
-							string &l = lines[pref.cursor.line].line;
-							unsigned len = wordproc_linelen(l);
-							pref.cursor.column = len;
+					}else if (pref.cursor.line > 0){
+						bool prec_is_image = pref.cursor.line < lines.size() && lines[pref.cursor.line-1].is_image();
+						if (!prec_is_image){
+							pref.cursor.line--;
+							pref.cursor.column=0;
+							if (lines.size() > pref.cursor.line){
+								string &l = lines[pref.cursor.line].line;
+								unsigned len = wordproc_linelen(l);
+								pref.cursor.column = len;
+							}
+							notify_lines.insert(pref.cursor.line);
+							deletechar(notify_lines,pref);
 						}
-						notify_lines.insert(pref.cursor.line);
-						deletechar(notify_lines,pref);
 					}
 				}
 				setmodified(ctx.username);
 			}else if (is_eq(var,"deletechar")){
-				if (mod.shift){
-					// Delete from cursor to the end of the line
-					PARAGRAPH para;
-					unsigned noline;
-					set_para_spec (para,pref.cursor.line,pref.cursor.column,sp,noline);
-					unsigned cursor = para.get_para_cursor(noline);
-					unsigned endline = para.get_para_end(noline);
-					while (cursor < endline){
-						deletechar(notify_lines,pref);
-						cursor++;
-					}
+				if (pref.is_marked()){
+					// A block is marked, we have to delete it.
+					delete_block(pref,sp,notify_lines);
+				}else if (mod.shift){
+					delete_to_eol(pref.cursor,sp,notify_lines);
 				}else if (mod.ctrl){
 					// Delete to the end of the word. If we are on a space, delete to the start of the word, then the word.
 					bool inside_doc;
@@ -2651,7 +2725,7 @@ void WORDPROC::execstep (
 			}
 			if (is_any_of(var,"hmove","home","end","vmove","pageup","pagedown")){
 				if (mod.shift){
-					if (pref.mark1 == pref.mark2){
+					if (!pref.is_marked()){
 						pref.mark1 = old_cursor;
 					}
 					pref.mark2 = pref.cursor;

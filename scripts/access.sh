@@ -456,7 +456,7 @@ elif [ "$1" = "doc-word" ] ; then # test: many test on text document
 	. scripts/word-help.sh
 	createdocument
 	resetdocument
-	setline 0 "this is the first line"
+	setline 0 "this is the first line and it is a long line that creates a paragraph spanning multiple lines. I am adding more and more stuff to reach the goal of a longer line. Now it is getting long enouch I believe."
 	setline 2 "this is the third line"
 	setline 3 "bullet 1"
 	setline 4 "bullet 2"
