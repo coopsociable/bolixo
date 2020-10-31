@@ -134,8 +134,8 @@ void webtabs(_F_webtabs &c,
 	map<string,WEBTAB_CTRL> &alltabs,
 	unsigned size[5]);
 
-unsigned webtabs_getsubtab();
 void webtabs_forcevar(PARAM_STRING val);
 void webtabs_set_subtab (unsigned val);
 unsigned webtabs_get_subtab ();
+bool webtabs_adding();
 #endif

@@ -301,6 +301,16 @@ static void bolixo_title (const char *title, _F_websteps *c, bool doc_full_scree
 		/- </table>
 		/- </td>
 	}
+	if (is_mobile && is_any_of(glocal.step,step_projects,step_talks)){ 
+		unsigned subtab = webtabs_get_subtab();
+		bool adding = webtabs_adding();
+		if (adding || subtab > 0){
+			if (!adding && subtab > 0) subtab--;
+			htmlprintf ("<a href='#' onclick=formsubmit('%s?subtab=%u')>\n",tlmpweb_curpage(),subtab);
+			util_draw_dotmenu ("",false,false);
+			htmlout ("</a>\n");
+		}
+	}
 	if (!doc_full_screen){
 		/- <td align=right valign=top>
 		show_buttons_right (c);
@@ -1606,7 +1616,7 @@ extern "C" void webmain_real()
 		}
 		/- </div>
 		/- </div>
-		util_endscript(string_f("webstep=%u&subtab=%u%s",getcurstep(),webtabs_getsubtab(),getextraargs()));
+		util_endscript(string_f("webstep=%u&subtab=%u%s",getcurstep(),webtabs_get_subtab(),getextraargs()));
 		{
 			// Save the position in the document
 			bool one_changed = false;
@@ -2238,8 +2248,8 @@ extern "C" void webmain_real()
 		noend();
 	</f>
 	<f step7> // TAB Projects
-		bolixo_title (MSG_R(M_PROJECTS),this);
 		webtabs_set_subtab (subtab_projects);
+		bolixo_title (MSG_R(M_PROJECTS),this);
 		projects (glocal.con,glocal.con_sess,glocal.docpointers);
 		index_set_subtab (glocal.con_sess,subtab_projects);
 	</f>
@@ -2248,10 +2258,10 @@ extern "C" void webmain_real()
 		mail (glocal.con,glocal.docpointers);
 	</f>
 	<f step9>	// TAB Talks
+		webtabs_set_subtab (subtab_talk);
 		bolixo_title (MSG_U(T_TALKS,"Talks"),this);
 		static unsigned size[5]={15,40,45,0,0};
 		static unsigned size_mobile[5]={25,60,15,0,0};
-		webtabs_set_subtab (subtab_talk);
 		<call webtabs>("talks",tabs,is_mobile ? size_mobile : size);
 		<f documents>
 			sethelp();
