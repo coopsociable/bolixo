@@ -856,6 +856,40 @@ elif [ "$1" = "exim-rm" ] ; then # prod: Remove some message from exim queue
 	eximrm $@
 elif [ "$1" = "exim-mailq" ] ; then # prod: Print exim queue
 	lxc-attach -n exim mailq
+elif [ "$1" = "account-unlock" ] ; then # accounts: unlock an account
+	if [ "$2" = "" ]; then
+		echo account name
+		exit 1
+	fi
+	if $0 account-exist $2 >/dev/null
+	then
+		$0 users <<-EOF
+		update users set nbfail=0 where name = '$2';
+		EOF
+	fi
+elif [ "$1" = "account-status" ] ; then # accounts: show account status
+	if [ "$2" = "" ]; then
+		echo account name
+		exit 1
+	fi
+	$0 users --table <<-EOF
+	select name,email,nbfail,created,confirmed,lastaccess,deleted,disabled from users where name = '$2';
+	EOF
+elif [ "$1" = "account-exist" ] ; then # accounts: tell if one account exist
+	if [ "$2" = "" ]; then
+		echo account name
+		exit 1
+	fi
+	COUNT=`$0 users -s <<-EOF
+	select count(*) from users where name = '$2';
+	EOF`
+	if [ "$COUNT" = 1 ]; then
+		echo account exist
+		exit 0
+	else
+		echo account does not exist >&2
+		exit 1
+	fi
 else
 	echo Invalid command
 fi
