@@ -642,6 +642,12 @@ void profile(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER>
 						</call>
 						vector<GROUP_MEMBER> newmembers;
 						config_parsemembers(newmembers);
+						if (glocal.adding){
+							// Make sure the owner is there. By default, at group creation, the user is not a member of his own group
+							// which is confusing. So we inject it here.
+							auto it = find_if(newmembers.begin(),newmembers.end(),[](auto &m){ return m.user == userinfo.name;});
+							if (it == newmembers.end()) newmembers.emplace_back(userinfo.name,"W","");
+						}
 						for (auto &member:newmembers){
 							glocal const char *user = member.user.c_str();
 							<call bod_client_set_member>(glocal.con,w_session.c_str(),glocal.grpname
