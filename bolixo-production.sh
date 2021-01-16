@@ -736,7 +736,6 @@ elif [ "$1" = "record-keysd-pass" ] ; then # prod: Record the keysd passphrase f
 	fi
 elif [ "$1" = "install-required" ] ; then # config: install required packages
 	LIST="lxc lxc-templates \
-		gd \
 		mariadb-server mariadb-connector-c boost-date-time \
 		liberation-sans-fonts dejavu-sans-fonts freetype httpd mod_ssl \
 		dejavu-serif-fonts gnuchess \
