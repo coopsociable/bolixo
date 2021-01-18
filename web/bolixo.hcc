@@ -81,12 +81,19 @@ static void bolixo_script()
 			}
 			return maxwidth;
 		}
+		function setcol(divs,width){
+			if (divs != null){
+				for (var i=0; i<divs.length; i++){
+					var d = divs[i];
+					d.style.width = width;
+				}
+			}
+		}
 		function fixsize(){
 			var w = fitcol (document.getElementsByClassName('col0'));
 			w += fitcol (document.getElementsByClassName('col1'));
 			w += fitcol (document.getElementsByClassName('col2'));
-			w += fitcol (document.getElementsByClassName('col3'));
-			var tb = document.getElementById("tb");
+			var tb = document.getElementById("search");
 			if (tb != null){
 				var tb_b = tb.getBoundingClientRect();
 				var top = document.getElementById("topform");
@@ -94,6 +101,7 @@ static void bolixo_script()
 					var top_b = top.getBoundingClientRect();
 					//if (tb_b.width > top_b.width) top.style.width = tb_b.width;
 				}
+				setcol (document.getElementsByClassName('col3'),tb_b.width-w);
 			}
 			var top = document.getElementById("top");
 			var middle = document.getElementById("middle");
@@ -141,9 +149,14 @@ struct WEBENC{
 	}
 };
 
-static void bolixo_prevnext(bool display_more)
+static void bolixo_prevnext(bool display_more, bool mobile)
 {
-	/- <tr><td align=right colspan=2>
+	DIV page;
+	if (mobile){
+		/- <tr><td align=right colspan=2>
+	}else{
+		page.w(100).textalign("right").print();
+	}
 	WEBENC enc;
 	if (w_offset.getval() > 0){
 		htmlprintf ("<a href=%s?webstep=8&offset=%u&user=%s&fullname=%s&address=%s&city=%s&state=%s&country=%s&interest=%s>%s</a>\n"
@@ -409,17 +422,17 @@ static void webmain_real()
 				}else{
 					d.w(90).vpaddings(5,5).marginauto().vmargins(10,0).bg("white").border(1,"black").borderradius(5).autoscroll().print();
 				}
-				//is_mobile = true;
-				/- <table id=tb border=0>
-				bolixo_prevnext(users.size()==10);
+				// We are using a table on mobile. Each columns are moved on a separe row.
+				// On desktop, we are using the flex system.
+				if (is_mobile) htmlout("<table id=tb border=0>\n");
+				bolixo_prevnext(users.size()==10,is_mobile);
 				for (auto &u:users){
-					if (is_mobile){
-						/- <tr><td valign=top>
-					}else{
-						/- <tr><td valign=top>
-					}
 					DIV info;
-					if (!is_mobile) info.dispflex().flowrow().print();
+					if (is_mobile){
+						htmlout ("<tr><td valign=top>\n");
+					}else{
+						info.dispflex().flowrow().print();
+					}
 					{
 						const char *nodename;
 						if (is_start_any_ofnc(u.nodename,nodename,"https://","http://")){
@@ -471,9 +484,9 @@ static void webmain_real()
 						htmlout (util_format_shortmsg(u.interest,100));
 					}
 				}
-				bolixo_prevnext(users.size()==10);
+				bolixo_prevnext(users.size()==10,is_mobile);
 			}
-			/- </table>
+			if (is_mobile) htmlout ("</table>\n");
 		</f>
 		</call>
 		// /- </center>
