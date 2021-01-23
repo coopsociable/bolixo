@@ -395,6 +395,7 @@ public:
 	void remove_session (const char *session);
 	void set_embed_options (const DOCUMENT_EMBED &embed, bool not_square);
 	set<DOCUMENT_EMBED> get_embed_specs() const;
+	void move_lower_bullets(WHITEBOARD_ELM &be_del, unsigned fontsize, set<unsigned> &notify_ids);
 };
 set<DOCUMENT_EMBED> WHITEBOARD::get_embed_specs() const
 {
@@ -1344,7 +1345,10 @@ string WHITEBOARD::define_functions(
 
 	// Clicking on the board
 	val += "var mbuttons=[0,0,0];\n";
+	val += "var clickedWhen=0;\n";
 	val += "function whi_gameselect(gameid,docnum,vboxx,vboxy,width,height,event){\n";
+	val += "\tvar d = new Date();\n";
+	val += "\tclickedWhen = d.getTime();\n";
 	val += "\tmbuttons[event.which-1] = 1;\n";
 	val += "\tvar elm = document.getElementById('board-'+gameid+','+docnum);\n";
 	val += "\tvar rect = elm.getBoundingClientRect();\n";
@@ -1369,9 +1373,11 @@ string WHITEBOARD::define_functions(
 	val += "\tevent.stopPropagation();\n";
 	val += "}\n";
 
-	// Moving an object
+	// Moving an object, wait some time after the click to perform the move (200ms).
+	// So when a user just select an object, it does not move.
 	val += "function whi_gamemove(gameid,docnum,vboxx,vboxy,width,height,event){\n";
-	val += "\tif(mbuttons[0] == 1){\n";
+	val += "\tvar d = new Date();\n";
+	val += "\tif(mbuttons[0] == 1 && d.getTime()-clickedWhen > 200){\n";
 	val += "\t\tvar elm = document.getElementById('board-'+gameid+','+docnum);\n";
 	val += "\t\tvar rect = elm.getBoundingClientRect();\n";
 	val += string_f("\tvar x = (event.clientX-rect.left)*%u/width + vboxx;\n",SVG_BOARD_WIDTH);
@@ -1570,6 +1576,21 @@ void WHITEBOARD::remove_session (const char *session)
 {
 	auto p = prefs.find(session);
 	if (p != prefs.end()) prefs.erase(p);
+}
+// be_del is an element which will be deleted.
+// if be_del is a text bullet, raise all text bullet with the same X coordinate and lower.
+void WHITEBOARD::move_lower_bullets(WHITEBOARD_ELM &be_del, unsigned fontsize, set<unsigned> &notify_ids)
+{
+	if (be_del.type == TYPE_TEXT){
+		unsigned movey = be_del.compute_fontsize(fontsize,textsize) + be_del.height;
+		for (auto &elm:elms){
+			auto &e = elm.second;
+			if (e.type == TYPE_TEXT && e.x == be_del.x && e.y > be_del.y){
+				notify_ids.insert (e.id);
+				e.y -= movey;
+			}
+		}
+	}
 }
 
 <mod>
@@ -1832,15 +1853,21 @@ void WHITEBOARD::execstep (
 			if (pref.mod.shift){
 				auto selects = findselected(SEL_SELECTED);
 				for (auto s:selects){
+					move_lower_bullets(*s,sp.fontsize,notify_ids);
 					delete_elm (s->id,notify_var);
 				}
 			}
-		}else if (is_any_of(var,"backspace","insertchar","break")){
+		}else if (is_any_of(var,"backspace","insertchar","break","tab")){
 			auto selects = findselected(SEL_SELECTED);
 			for (auto s:selects){
-				if (strcmp(var,"backspace")==0){
+				if (is_eq(var,"backspace")){
 					documentd_eraselast(s->txt);
-				}else if (strcmp(var,"break")==0){
+				}else if (is_eq(var,"tab")){
+					if (s->type != TYPE_TEXT){
+						error = ""; 
+					}else{
+					}
+				}else if (is_eq(var,"break")){
 					auto star_elms = findselected(SEL_STAR);
 					auto imbed_elms = findselected(SEL_IMBED);
 					if (selects.size() > 1){
@@ -1878,9 +1905,21 @@ void WHITEBOARD::execstep (
 						}
 						unsigned id = place_newelm(s->type,x,y,s->width,s->height,star_elms,imbed_elms,notify_var,notify_ids);
 						auto &newelm = elms[id];
-						newelm.txt = s->txt;
-						newelm.textpos = s->textpos;
-						newelm.textsize = s->textsize;
+						// When duplicating a text element, we do not copy the text. It just creates an empty bullet
+						if (newelm.type != TYPE_TEXT){
+							newelm.txt = s->txt;
+							newelm.textpos = s->textpos;
+							newelm.textsize = s->textsize;
+						}else{
+							// We move lower all text element with the same X coordinate and larger Y
+							for (auto &elm:elms){
+								auto &e = elm.second;
+								if (e.id != newelm.id && e.type == TYPE_TEXT && e.x == newelm.x and e.y >= newelm.y){
+									notify_ids.insert(e.id);
+									e.y += newelm.y - s->y;
+								}
+							}
+						}
 					}
 				}else{
 					s->txt += val;
@@ -2108,6 +2147,7 @@ void WHITEBOARD::execstep (
 					error = MSG_R(E_NONODE);
 				}else{
 					for (auto s:selects){
+						move_lower_bullets(*s,sp.fontsize,notify_ids);
 						delete_elm (s->id,notify_var);
 					}
 				}
