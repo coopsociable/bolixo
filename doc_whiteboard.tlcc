@@ -166,18 +166,23 @@ struct WHITEBOARD_ELM{
 		return imageurl.size() > 0;
 	}
 	void resize(int val, bool horizontal_only, bool vertical_only){
-		if (horizontal_only){
+		if (type == TYPE_TEXT){
+			// Resizing a bullet text simply change its indentation
 			check_limit(width,val);
-		}else if (vertical_only){
-			check_limit(height,val);
-		}else if (width == height || width == 0 || height == 0){
-			check_limit (width,val);
-			check_limit (height,val);
 		}else{
-			// Here we should compute the aspect ratio of the object and preserve it.
-			double ratio = (double)width/height;
-			check_limit(width,ratio*val);
-			check_limit(height,val/ratio);
+			if (horizontal_only){
+				check_limit(width,val);
+			}else if (vertical_only){
+				check_limit(height,val);
+			}else if (width == height || width == 0 || height == 0){
+				check_limit (width,val);
+				check_limit (height,val);
+			}else{
+				// Here we should compute the aspect ratio of the object and preserve it.
+				double ratio = (double)width/height;
+				check_limit(width,ratio*val);
+				check_limit(height,val/ratio);
+			}
 		}
 		if (width < 8) width = 8;
 		if (height < 8) height = 8;
@@ -194,6 +199,37 @@ struct WHITEBOARD_ELM{
 			elements[e].move(elements,movex,movey,ids);
 		}
 	}
+	// Compute where should go new items (duplicate) to the right and below
+	pair<unsigned,unsigned> compute_next_item(unsigned browser_fontsize, unsigned textsize){
+		unsigned fontsize = compute_fontsize(browser_fontsize,textsize); 
+		unsigned textx,texty,textlen;
+		gettextpos(textx,texty,textlen,fontsize); 
+		unsigned nextx = x;
+		unsigned nexty = y;
+		{
+			// Compute the item to the right
+			unsigned w_2 = width/2;
+			nextx += w_2;
+			unsigned endtext = textx + textlen;
+			if (endtext > nextx){
+				// Text is on the right
+				nextx = endtext;
+			}else if (textx < nextx-width){
+				// Text is on the left
+				nextx += textlen;
+			}
+			nextx += w_2 + 10;
+		}
+		{
+			// Compute the item below
+			unsigned h_2 = height/2;
+			nexty += h_2;
+			if (texty > nexty) nexty = texty;
+			nexty += h_2 + fontsize;
+		}
+		return pair<unsigned,unsigned>(nextx,nexty);
+	}
+
 	void gettextpos(unsigned &textx, unsigned &texty, unsigned &textlen, unsigned fontsize){
 		textx=0;
 		texty=0;
@@ -245,6 +281,11 @@ struct WHITEBOARD_ELM{
 		float size_factor = size / 10.0;
 		return browser_fontsize * size_factor;
 	}
+	// Return the X position of an element.
+	// For text bullet, the position is affected by the width.
+	unsigned getadjx() const {
+		return type == TYPE_TEXT ? x + (width-8)/2 : x;
+	}
 	void redraw(VARVAL &var, unsigned browser_fontsize, unsigned default_textsize){
 		const char *stroke_color = tbcolor[selmode];
 		unsigned w_2 = width/2;
@@ -256,7 +297,7 @@ struct WHITEBOARD_ELM{
 		}else if (type == TYPE_LINE){
 			var.val += string_f("replace_typeline('e%u',%u,%u,%u,%u,'%s',%u);\n",id,x,y,x1,y1,stroke_color,box_type);
 		}else if (type == TYPE_TEXT){
-			var.val += string_f("replace_typetext('e%u',%u,%u,'%s');\n",id,x,y,stroke_color);
+			var.val += string_f("replace_typetext('e%u',%u,%u,'%s');\n",id,getadjx(),y,stroke_color);
 		}else{
 		}
 		unsigned fontsize = compute_fontsize(browser_fontsize,default_textsize);
@@ -356,10 +397,11 @@ class WHITEBOARD: public GAME{
 		baseelms.push_back(ret);
 		return ret;
 	}
-	unsigned add_text (const vector<WHITEBOARD_ELM*> &imbed_elms, unsigned x0, unsigned y0){
+	unsigned add_text (const vector<WHITEBOARD_ELM*> &imbed_elms, unsigned x0, unsigned y0, unsigned width){
 		WHITEBOARD_ELM elm;
 		alloc_elm(elm,TYPE_TEXT,x0,y0);
-		elm.width = elm.height = 8;
+		elm.width = width;
+		elm.height = 8;
 		elm.textpos = TEXTPOS_RIGHT;
 		unsigned ret = elm.id;
 		vector<WHITEBOARD_ELM*> empty;
@@ -1160,7 +1202,7 @@ unsigned WHITEBOARD::place_newelm(
 		id = add_handline(x,y,x+width,y+height);
 		svgtype = "path";
 	}else if (type == TYPE_TEXT){
-		id = add_text(imbed_elms,x,y);
+		id = add_text(imbed_elms,x,y,width);
 		svgtype = "circle";
 	}
 	addsvgelement(notify_var,gameid,svgtype,"red",stroke_width,string_f("e%u",id));
@@ -1309,8 +1351,9 @@ string WHITEBOARD::draw_board (
 					,elm.id,color,elm.x,elm.y,elm.x1,elm.y1);
 				break;
 			case TYPE_TEXT:
+				// The width is used to position the text, and the bullet, but the bullet is always 8 large
 				glocal.val += string_f("<circle id='e%u' stroke='%s' fill='black' cx=%u cy=%u r=%u />\n"
-					,elm.id,color,elm.x,elm.y,elm.width/2);
+					,elm.id,color,elm.getadjx(),elm.y,8/2);
 			}
 			unsigned textx,texty;
 			unsigned fontsize = elm.compute_fontsize(glocal.fontsize,glocal.textsize);
@@ -1582,12 +1625,17 @@ void WHITEBOARD::remove_session (const char *session)
 void WHITEBOARD::move_lower_bullets(WHITEBOARD_ELM &be_del, unsigned fontsize, set<unsigned> &notify_ids)
 {
 	if (be_del.type == TYPE_TEXT){
-		unsigned movey = be_del.compute_fontsize(fontsize,textsize) + be_del.height;
+		// We compute the position (nexty) of the item  below
+		// and we compute the diference. Each item is raised using this "movey" difference
+		auto next = be_del.compute_next_item(fontsize,textsize);
+		unsigned movey = next.second - be_del.y;
 		for (auto &elm:elms){
 			auto &e = elm.second;
 			if (e.type == TYPE_TEXT && e.x == be_del.x && e.y > be_del.y){
 				notify_ids.insert (e.id);
 				e.y -= movey;
+				// When we delete a bullet, the one just below become selected.
+				if (e.y == be_del.y) e.selmode = SEL_SELECTED;
 			}
 		}
 	}
@@ -1863,11 +1911,13 @@ void WHITEBOARD::execstep (
 				if (is_eq(var,"backspace")){
 					documentd_eraselast(s->txt);
 				}else if (is_eq(var,"tab")){
-					if (s->type != TYPE_TEXT){
-						error = ""; 
-					}else{
-					}
+					// We use the TAB key to change the width and height of an item by a fixed increment.
+					// For text bullet, we use a larger increment.
+					int incr = s->type == TYPE_TEXT ? 60 : 5;
+					int grow = pref.mod.shift ? -incr : incr;
+					s->resize(grow,false,false);
 				}else if (is_eq(var,"break")){
+					// Duplicate items either below or to the right
 					auto star_elms = findselected(SEL_STAR);
 					auto imbed_elms = findselected(SEL_IMBED);
 					if (selects.size() > 1){
@@ -1878,30 +1928,14 @@ void WHITEBOARD::execstep (
 							When placing the new element, either below or to the right,
 							we must take the old element text position and size.
 						*/
-						unsigned fontsize = s->compute_fontsize(sp.fontsize,textsize); 
-						unsigned textx,texty,textlen;
-						s->gettextpos(textx,texty,textlen,fontsize); 
+						auto next = s->compute_next_item(sp.fontsize,textsize);
 						unsigned x = s->x;
 						unsigned y = s->y;
 						if (pref.mod.shift){
 							// Instead we duplicate the element to the right
-							unsigned w_2 = s->width/2;
-							x += w_2;
-							unsigned endtext = textx + textlen;
-							if (endtext > x){
-								// Text is on the right
-								x = endtext;
-							}else if (textx < x-s->width){
-								// Text is on the left
-								x += textlen;
-							}
-							x += w_2 + 10;
+							x = next.first;
 						}else{
-							// We duplicate the element just below it.
-							unsigned h_2 = s->height/2;
-							y += h_2;
-							if (texty > y) y = texty;
-							y += h_2 + fontsize;
+							y = next.second;
 						}
 						unsigned id = place_newelm(s->type,x,y,s->width,s->height,star_elms,imbed_elms,notify_var,notify_ids);
 						auto &newelm = elms[id];
@@ -2056,10 +2090,11 @@ void WHITEBOARD::execstep (
 				auto imbed_elms = findselected(SEL_IMBED);
 				// tlmp_warning ("star_elm=%lu imbed_elm=%lu",star_elms.size(),imbed_elms.size());
 				static WHITEBOARD_ELMTYPE tbtype[]={TYPE_TEXT,TYPE_ELLIPSE,TYPE_RECT,TYPE_LINE,TYPE_HANDLINE};
-				const unsigned default_size=50;
+				auto type = tbtype[uval-BUTTON_TEXT];
+				const unsigned default_size= type == TYPE_TEXT ? 8 : 50;
 				const unsigned x=50 + pref.viewbox_x;
 				const unsigned y=50 + pref.viewbox_y;
-				place_newelm(tbtype[uval-BUTTON_TEXT],x,y,default_size,default_size,star_elms,imbed_elms,notify_var,notify_ids);
+				place_newelm(type,x,y,default_size,default_size,star_elms,imbed_elms,notify_var,notify_ids);
 				setmodified(ctx.username);
 				pref.selecting = true;
 				pref.starmode = pref.imbedmode = false;
