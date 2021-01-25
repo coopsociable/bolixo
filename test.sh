@@ -1014,6 +1014,23 @@ elif [ "$1" = "test-sequence" ] ; then # S: Reloads database (big,medium,real,no
 		fi
 		shift
 	done
+	if [ "$CMP" = 1 ] ; then
+		# The compare system for the test sequence is confused if the timestamp
+		# span over 2 minutes. So we have to start the test early
+		date
+		while true
+		do
+			SEC=`date +%S`
+			if [ "$SEC" -lt 20 ] ; then
+				echo
+				echo Good to go
+				break
+			else
+				printf "%02d\r" $SEC
+				sleep 1
+			fi
+		done
+	fi
 	$0 dropbolixodb
 	$0 createbolixodb
 	rm -f /var/lib/bolixo/*
