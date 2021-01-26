@@ -79,6 +79,7 @@ enum BOX_TYPE{
 };
 
 #define documentd_whiteboard_header_NOTNEED
+#define documentd_whiteboard_header2_NOTNEED
 #define documentd_whiteboard_elements_NOTNEED
 #define documentd_whiteboard_elements2_NOTNEED
 #include "proto/documentd_whiteboard.protoch"
@@ -127,6 +128,17 @@ inline void check_limit (unsigned short &size, int val)
 		size += val;
 	}
 }
+static int snap2grid(int x, int grid){
+	if (grid != 0){
+		int modx = x % grid;
+		if (modx < grid/2){
+			return x - modx;
+		}else{
+			return x + (grid - modx);
+		}
+	}
+	return x;
+}
 struct WHITEBOARD_ELM{
 	WHITEBOARD_SELMODE selmode = SEL_NONE;	// Make the element more visible
 						// for other actions
@@ -165,23 +177,29 @@ struct WHITEBOARD_ELM{
 	bool is_image() const {
 		return imageurl.size() > 0;
 	}
-	void resize(int val, bool horizontal_only, bool vertical_only){
+	void resize(int val, unsigned gridcell, bool horizontal_only, bool vertical_only){
 		if (type == TYPE_TEXT){
 			// Resizing a bullet text simply change its indentation
 			check_limit(width,val);
 		}else{
 			if (horizontal_only){
 				check_limit(width,val);
+				width = snap2grid (width,gridcell);
 			}else if (vertical_only){
 				check_limit(height,val);
+				height = snap2grid (height,gridcell);
 			}else if (width == height || width == 0 || height == 0){
 				check_limit (width,val);
 				check_limit (height,val);
+				width = snap2grid (width,gridcell);
+				height = snap2grid (height,gridcell);
 			}else{
 				// Here we should compute the aspect ratio of the object and preserve it.
 				double ratio = (double)width/height;
 				check_limit(width,ratio*val);
 				check_limit(height,val/ratio);
+				width = snap2grid (width,gridcell);
+				height = snap2grid (height,gridcell);
 			}
 		}
 		if (width < 8) width = 8;
@@ -230,7 +248,7 @@ struct WHITEBOARD_ELM{
 		return pair<unsigned,unsigned>(nextx,nexty);
 	}
 
-	void gettextpos(unsigned &textx, unsigned &texty, unsigned &textlen, unsigned fontsize){
+	void gettextpos(unsigned &textx, unsigned &texty, unsigned &textlen, unsigned fontsize) const{
 		textx=0;
 		texty=0;
 		unsigned w_2 = width/2;
@@ -275,7 +293,7 @@ struct WHITEBOARD_ELM{
 	}
 	// Compute the effective font size of this element
 	// by combining the default browser fontsize and this document default textsize
-	unsigned compute_fontsize(unsigned browser_fontsize, unsigned default_textsize){
+	unsigned compute_fontsize(unsigned browser_fontsize, unsigned default_textsize) const{
 		int size = default_textsize + textsize;
 		if (size < 1) size = 1;
 		float size_factor = size / 10.0;
@@ -319,7 +337,70 @@ struct WHITEBOARD_ELM{
 	void changetextsize(int incr){
 		textsize += incr;
 	}
+	bool is_inside(unsigned posx, unsigned posy, unsigned browser_fontsize, unsigned textsize) const;
 };
+// Return true if a coordinate posx,posy lies inside the element.
+bool WHITEBOARD_ELM::is_inside(unsigned posx, unsigned posy, unsigned browser_fontsize, unsigned textsize) const
+{
+	bool ret = false;
+	auto w_2 = width/2;
+	auto h_2 = height/2;
+	switch(type){
+	case TYPE_TEXT:
+	case TYPE_ELLIPSE:
+	case TYPE_RECT:
+		// tlmp_warning ("x=%u x0=%d x1=%d y=%u y0=%d y1=%u",x,elm.x-elm.len,elm.x+elm.len,y,elm.y-elm.len,elm.y+elm.len);
+		if ((int)posx > x-w_2 && (int)posx < x+w_2 && (int)posy > y-h_2 && (int)posy < y+h_2){
+			ret = true;
+		}
+		break;
+	case TYPE_LINE:
+		/*
+			Selecting a line is harder for the user.
+			Here is the logic
+			1. We compute the angle of the line: angle
+			2. We compute the len of the line: len
+			3. We compute the angle of the line made from the start of the line to the pointer position x,y: angle2
+			4. We compute the len of this new line: len2
+			5. We compute the angle of a triangle rectangle made this way. We use len2 as the base and 5 as the side.
+			   This angle represent the how far away the user can click off the line. This is max_angle_diff.
+		*/	
+		{
+			int diffx = x1 - x;
+			int diffy = y1 - y;
+			double angle = atan2(diffy,diffx);
+			//tlmp_warning ("diffy=%d diffx=%d angle=%lf",diffy,diffx,angle);
+			double len = sqrt(diffx*diffx+diffy*diffy);
+			diffx = posx - x;
+			diffy = posy - y;
+			double angle2 = atan2(diffy,diffx);
+			double len2 = sqrt(diffx*diffx+diffy*diffy);
+			//tlmp_warning ("diffy=%d diffx=%d angle2=%lf",diffy,diffx,angle2);
+			//tlmp_warning ("angle=%lf angle2=%lf fabs=%lf len=%lf len2=%lf",angle,angle2,fabs(angle2-angle),len,len2);
+			double max_angle_diff = atan2 (5,len2);
+			//tlmp_warning ("max_angle_diff=%lf",max_angle_diff);
+			if (len2 <= len && fabs(angle2-angle) < max_angle_diff){
+				//tlmp_warning ("found line");
+				ret = true;
+			}
+		}
+		break;
+	case TYPE_HANDLINE:
+		break;
+	}
+	// We can click on the text of an element
+	if (!ret && txt.size() > 0){
+		unsigned textx1,texty2,lentxt;
+		unsigned fontsize = compute_fontsize(browser_fontsize,textsize);
+		gettextpos(textx1,texty2,lentxt,fontsize);
+		unsigned textx2 = textx1 + lentxt;
+		unsigned texty1 = texty2 - fontsize;
+		if (posx >= textx1 && posx <= textx2 && posy >= texty1 && posy <= texty2){
+			ret = true;
+		}
+	}
+	return ret;
+}
 
 struct WHITEBOARD_PREF{
 	bool selecting = true;
@@ -338,6 +419,7 @@ class WHITEBOARD: public GAME{
 	map<string,WHITEBOARD_PREF> prefs;	// Per session state
 	unsigned alloc_id=0;
 	unsigned textsize=10;			// default textsize x 10 (so 10 is 1em).
+	unsigned gridcell=0;			// Grid unit (0 = no grid)
 	void update_msg (bool to_all, PARAM_STRING msg, const char *color, std::vector<VARVAL> &res);
 	void resetsel(WHITEBOARD_SELMODE, set<unsigned> &ids);
 	void redraw(const set<unsigned> &ids, VARVAL &var, unsigned fontsize);
@@ -478,7 +560,7 @@ void WHITEBOARD::update_msg (bool to_all, PARAM_STRING msg, const char *color, s
 }
 void WHITEBOARD::save(DOC_WRITER &w, bool)
 {
-	documentd_whiteboard_header2(&w,revision,alloc_id,textsize);
+	documentd_whiteboard_header3(&w,revision,alloc_id,textsize,gridcell);
 	vector<WHITEBOARD_ELEMENT3> elements;
 	for (auto &m:elms){
 		WHITEBOARD_ELEMENT3 elm;
@@ -540,6 +622,7 @@ void WHITEBOARD::load(DOC_READER &r, std::string &msg)
 	glocal alloc_id;
 	glocal revision;
 	glocal textsize;
+	glocal gridcell;
 	glocal elms;
 	glocal baseelms;
 	glocal chat;
@@ -555,6 +638,12 @@ void WHITEBOARD::load(DOC_READER &r, std::string &msg)
 		glocal.revision = revision;
 		glocal.alloc_id = alloc_id;
 		glocal.textsize = textsize;
+	</f>
+	<f header3>
+		glocal.revision = revision;
+		glocal.alloc_id = alloc_id;
+		glocal.textsize = textsize;
+		glocal.gridcell = gridcell;
 	</f>
 	<f elements>
 		for (auto &e:elements){
@@ -913,65 +1002,7 @@ WHITEBOARD_ELM *WHITEBOARD::locate (unsigned x, unsigned y, unsigned fontsize)
 	glocal textsize;
 	<call walkboard>(this);
 	<f element>
-		bool found = false;
-		auto x = glocal.x;
-		auto y = glocal.y;
-		auto w_2 = elm.width/2;
-		auto h_2 = elm.height/2;
-		switch(elm.type){
-		case TYPE_TEXT:
-		case TYPE_ELLIPSE:
-		case TYPE_RECT:
-			// tlmp_warning ("x=%u x0=%d x1=%d y=%u y0=%d y1=%u",x,elm.x-elm.len,elm.x+elm.len,y,elm.y-elm.len,elm.y+elm.len);
-			if ((int)x > elm.x-w_2 && (int)x < elm.x+w_2 && (int)y > elm.y-h_2 && (int)y < elm.y+h_2){
-				found = true;
-			}
-			break;
-		case TYPE_LINE:
-			/*
-				Selecting a line is harder of the user.
-				Here is the logic
-				1. We compute the angle of the line: angle
-				2. We compute the len of the line: len
-				3. We compute the angle of the line made from the start of the line to the pointer position x,y: angle2
-				4. We compute the len of this new line: len2
-				5. We compute the angle of a triangle rectangle made this way. We use len2 as the base and 5 as the side.
-				   This angle represent the how far away the user can click off the line. This is max_angle_diff.
-			*/	
-			{
-				int diffx = elm.x1 - elm.x;
-				int diffy = elm.y1 - elm.y;
-				double angle = atan2(diffy,diffx);
-				//tlmp_warning ("diffy=%d diffx=%d angle=%lf",diffy,diffx,angle);
-				double len = sqrt(diffx*diffx+diffy*diffy);
-				diffx = glocal.x - elm.x;
-				diffy = glocal.y - elm.y;
-				double angle2 = atan2(diffy,diffx);
-				double len2 = sqrt(diffx*diffx+diffy*diffy);
-				//tlmp_warning ("diffy=%d diffx=%d angle2=%lf",diffy,diffx,angle2);
-				//tlmp_warning ("angle=%lf angle2=%lf fabs=%lf len=%lf len2=%lf",angle,angle2,fabs(angle2-angle),len,len2);
-				double max_angle_diff = atan2 (5,len2);
-				//tlmp_warning ("max_angle_diff=%lf",max_angle_diff);
-				if (len2 <= len && fabs(angle2-angle) < max_angle_diff){
-					//tlmp_warning ("found line");
-					found = true;
-				}
-			}
-			break;
-		case TYPE_HANDLINE:
-			break;
-		}
-		// We can click on the text of an element
-		if (!found && elm.txt.size() > 0){
-			unsigned textx1,texty2,lentxt;
-			unsigned fontsize = elm.compute_fontsize(glocal.fontsize,glocal.textsize);
-			elm.gettextpos(textx1,texty2,lentxt,fontsize);
-			unsigned textx2 = textx1 + lentxt;
-			unsigned texty1 = texty2 - fontsize;
-			if (x >= textx1 && x <= textx2 && y >= texty1 && y <= texty2){
-				found = true;
-			}
-		}
+		bool found = elm.is_inside(glocal.x,glocal.y,glocal.fontsize,glocal.textsize);
 		if (found){
 			// An element may be on top of another and larger, so we won't be able to select it.
 			// We note the distance from the center of the object to the point selected by the user.
@@ -1307,6 +1338,32 @@ string WHITEBOARD::draw_board (
 		" >\n"
 		,gameid.c_str(),docnum,vx,vy,width,height
 		,onfuncs.c_str());
+	// Draw the grid. The grid is drawn as 2 SVG paths.
+	// By default, the lines are white. When we turn the two paths on, we get the finest grid
+	// When we turn only one on, we get the coarse grid.
+	{
+		const char *tbcol[2]={"none","none"};
+		if (gridcell == 20){
+			tbcol[0] = "lightgray";
+			tbcol[1] = "lightgray";
+		}else if (gridcell == 40){
+			tbcol[0] = "lightgray";
+		}
+		for (unsigned i=0; i<2; i++){
+			string p = string_f("<path id=\"grid%u-%s,%u\" stroke=%s stroke-width=1 fill=none d='M %u 0"
+				,i,gameid.c_str(),docnum,tbcol[i],i*20);
+			unsigned width4=width*4;
+			for (unsigned pos=0; pos < width4; pos += 40){
+				p += string_f(" v %u m 40 0 v -%u m 40 0",width4,width4);
+			}
+			p += string_f(" M 0 %u",i*20);
+			for (unsigned pos=0; pos < width4; pos += 40){
+				p += string_f(" h %u m 0 40 h -%u m 0 40",width4,width4);
+			}
+			p += "'/>\n";
+			glocal.val += p;
+		}
+	}
 	<call walkboard>(this);
 	<f element>
 		if (firstseen){
@@ -1717,6 +1774,7 @@ void WHITEBOARD::execstep (
 				#define BUTTON_LINKDOC	15
 				#define BUTTON_DELITEMS	16
 				#define BUTTON_UNDO	17
+				#define BUTTON_GRID	18
 				v.val += "<div id=tab_form style='margin-top:5; margin-bottom:5; background-color: lightgray;'>\n";
 				DOC_BUTTON_SPECS specs;
 				if (sp.mobile){
@@ -1752,6 +1810,7 @@ void WHITEBOARD::execstep (
 				documentd_bar_button (v.val,BUTTON_IMAGE,menu.svg_image,specs,false,MSG_U(I_ASSIGNIMAGE,"Assign an image to selected elements"));
 				documentd_bar_button (v.val,BUTTON_LINKDOC,menu.svg_imbed,specs,false,MSG_U(I_ASSIGNDOCUMEN,"Link a document to selected elements"));
 				documentd_button_space(v.val);
+				documentd_bar_button (v.val,BUTTON_GRID,menu.svg_grid,specs,false,MSG_U(I_GRID,"Turn the grid on/off"));
 				documentd_bar_button (v.val,BUTTON_DELITEMS,menu.svg_delitems,specs,false,MSG_U(I_DELITEMS,"Delete selected elements"));
 				//documentd_bar_button (v.val,BUTTON_UNDO,menu.svg_undo,specs,false,MSG_U(I_UNDOEDIT,"Undo the last modification"));
 				documentd_button_end(v.val);
@@ -1915,7 +1974,7 @@ void WHITEBOARD::execstep (
 					// For text bullet, we use a larger increment.
 					int incr = s->type == TYPE_TEXT ? 60 : 5;
 					int grow = pref.mod.shift ? -incr : incr;
-					s->resize(grow,false,false);
+					s->resize(grow,0,false,false);
 				}else if (is_eq(var,"break")){
 					// Duplicate items either below or to the right
 					auto star_elms = findselected(SEL_STAR);
@@ -2033,41 +2092,62 @@ void WHITEBOARD::execstep (
 				bool shiftkey,ctrlkey;
 				if (splitline(val,',',dx,dy,shiftkey,ctrlkey)){
 					unsigned x = dx, y = dy;
-					int movex = x-pref.lastx;
-					int movey = y-pref.lasty;
-					pref.lastx = x;
-					pref.lasty = y;
-					for (auto elm:selects){
-						if (elm->type == TYPE_LINE){
-							if(shiftkey){
-								check_limit (elm->x,movex);
-								check_limit (elm->y,movey);
-							}else if (ctrlkey){
-								check_limit (elm->x1,movex);
-								check_limit (elm->y1,movey);
+					int snapx = x;
+					int snapy = y;
+					int last_snapx = pref.lastx;
+					int last_snapy = pref.lasty;
+					if (gridcell != 0){
+						// snap to grid. We do not use the last mouse position, but the position
+						// of the elm itself
+						snapx = snap2grid(x,gridcell);
+						snapy = snap2grid(y,gridcell);
+						// We are using the x,y coordinates of one of the selected elements
+						// We must find the one currently 'touched' by the mouse.
+						for (auto e:selects){
+							if (e->is_inside(x,y,sp.fontsize,textsize)){
+								last_snapx = e->x;
+								last_snapy = e->y;
+								break;
+							}
+						}
+					}
+					if (snapx != last_snapx || snapy != last_snapy){
+						int movex = snapx-last_snapx;
+						int movey = snapy-last_snapy;
+						pref.lastx = snapx;
+						pref.lasty = snapy;
+						for (auto elm:selects){
+							if (elm->type == TYPE_LINE){
+								if(shiftkey){
+									check_limit (elm->x,movex);
+									check_limit (elm->y,movey);
+								}else if (ctrlkey){
+									check_limit (elm->x1,movex);
+									check_limit (elm->y1,movey);
+								}else{
+									elm->move(elms,movex,movey,notify_ids);
+								}
+								notify_ids.insert(elm->id);
 							}else{
 								elm->move(elms,movex,movey,notify_ids);
 							}
-							notify_ids.insert(elm->id);
-						}else{
-							elm->move(elms,movex,movey,notify_ids);
 						}
+						setmodified(ctx.username);
 					}
-					setmodified(ctx.username);
 				}
 			}
 		}else if (strcmp(var,"wheel")==0){
 			auto selects = findselected(SEL_SELECTED);
 			if (selects.size() == 0){
-					error = MSG_R(E_NONODE);
+				error = MSG_R(E_NONODE);
 			}else{
 				int grow;
 				bool shiftkey,ctrlkey;
 				if (splitline(val,',',grow,shiftkey,ctrlkey)){
-					grow *= 5;
+					grow *= gridcell == 0 ? 5 : gridcell;
 					for (auto elm:selects){
 						if (is_any_of(elm->type,TYPE_ELLIPSE,TYPE_RECT)){
-							elm->resize(grow,ctrlkey,shiftkey);
+							elm->resize(grow,gridcell,ctrlkey,shiftkey);
 							notify_ids.insert(elm->id);
 						}else{
 							error = MSG_U(E_ONLYRECTELLIPSE,"Resize only applies to rectangles and ellipses");
@@ -2185,6 +2265,20 @@ void WHITEBOARD::execstep (
 						move_lower_bullets(*s,sp.fontsize,notify_ids);
 						delete_elm (s->id,notify_var);
 					}
+				}
+			}else if (uval == BUTTON_GRID){
+				gridcell += 20;
+				if (gridcell > 40) gridcell = 0;
+				const char *tbcol[2]={"none","none"};
+				if (gridcell == 20){
+					tbcol[0] = "lightgray";
+					tbcol[1] = "lightgray";
+				}else if (gridcell == 40){
+					tbcol[0] = "lightgray";
+				}
+				for (unsigned i=0; i<2; i++){
+					notify_var.val += string_f("var p = document.getElementById('grid%u-%s,%u');\n",i,gameid.c_str(),ctx.docnum);
+					notify_var.val += string_f("p.style.stroke='%s';\n",tbcol[i]);
 				}
 			}else{
 				tlmp_error ("whiteboard newgame=%d",uval);
