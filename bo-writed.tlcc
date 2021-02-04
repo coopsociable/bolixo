@@ -922,10 +922,12 @@ static int bo_writed_addfile_bob (
 		if (info.fileid != -1){
 			const char *basename = name.ptr;
 			if (basename == nullptr) basename = info.fileuuid.c_str();
-			if (fs_insert_entry(dirid,info.fileid,info.modified.buf,basename,type,0,recipients)==-1){
+			// If the recipients list is empty, we insert a null in the database
+			const char *recipients_ptr = recipients.ptr == nullptr || recipients.ptr[0] == '\0' ? nullptr : recipients.ptr;
+			if (fs_insert_entry(dirid,info.fileid,info.modified.buf,basename,type)==-1){
 				msg = "Internal error (dirs_files table)";
-			}else if (sql_action("insert into files (id,modified,filetype,content,signature) values (%d,'%s',%u,'%s','%s')"
-				,info.fileid,info.modified.buf,info.file_type,content_str,sign.c_str())==-1){
+			}else if (sql_action("insert into files (id,modified,filetype,content,signature,recipients) values (%d,'%s',%u,'%s','%s','%s')"
+				,info.fileid,info.modified.buf,info.file_type,content_str,sign.c_str(),recipients_ptr)==-1){
 				msg = "Internal error (files table)";
 			}else{
 				if (content_str == NULL){
