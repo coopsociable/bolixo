@@ -771,6 +771,7 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 	$0 createdb-patch6
 	$0 createdb-patch7
 	$0 createdb-patch8
+	$0 createdb-patch9
 	mysqladmin -uroot -S $SOCKN create $DBNAMET
 	mysql -uroot -S $SOCKN $DBNAMET <<-EOF
 		create table formids(
@@ -863,6 +864,14 @@ elif [ "$1" = "createdb-patch8" ]; then # db: add table updates
 			name char(30),
 			done datetime default current_timestamp
 		);
+	EOF
+elif [ "$1" = "createdb-patch9" ]; then # db: move recipients field to table dirs_content
+	ENGINE=myisam
+	mysql -uroot -S $SOCKN $DBNAME <<-EOF
+		alter table dirs_content add recipients varchar(250) default null;
+		update dirs_content join files on dirs_content.itemid=files.id and dirs_content.modified=files.modified
+			set dirs_content.recipients=files.recipients;
+		alter table files drop recipients;
 	EOF
 elif [ "$1" = "load-timezones" ]; then # db: load timezone definitions
 	mysql_tzinfo_to_sql /usr/share/zoneinfo | mysql -uroot -S $SOCKN mysql

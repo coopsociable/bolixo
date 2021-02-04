@@ -104,6 +104,13 @@ static bool fs_check_access(unsigned userid, unsigned ownerid, unsigned group_li
 	return glocal.ret;
 }
 </mod>
+int fs_insert_entry (int parentid,int id,PARAM_STRING modified,PARAM_STRING name, ENTRY_TYPE type, unsigned copiedby, PARAM_STRING recipients)
+{
+	// If the recipients list is empty, we insert a null in the database
+	const char *recipients_ptr = recipients.ptr == nullptr || recipients.ptr[0] == '\0' ? nullptr : recipients.ptr;
+	return sql_action("insert into dirs_content (dirid,itemid,modified,type,name,copiedby,recipients) values (%d,%d,'%s',%u,'%s',%u,'%s')"
+		,parentid,id,modified.ptr,type,name.ptr,copiedby,recipients_ptr);
+}
 int fs_insert_entry (int parentid,int id,PARAM_STRING modified,PARAM_STRING name, ENTRY_TYPE type, unsigned copiedby)
 {
 	return sql_action("insert into dirs_content (dirid,itemid,modified,type,name,copiedby) values (%d,%d,'%s',%u,'%s',%u)"

@@ -765,17 +765,59 @@ void index_paste(CONNECT_INFO &con, PARAM_STRING path)
 }
 </mod>
 <mod>
+static void index_list_contacts(CONNECT_INFO &con, vector<string> &contacts)
+{
+	glocal contacts;
+	<call bod_client_list_contacts>(con,w_session.c_str(),"");
+	<f ok>
+		for (auto m:members) glocal.contacts.push_back(m);
+	</f>
+	</call>
+}
+</mod>
+// Paste something into a message.
+// If the group is the inbox, we need a recipient.
+<mod>
 static void index_paste(CONNECT_INFO &con, PARAM_STRING path, PARAM_STRING groupowner, PARAM_STRING group)
 {
+	glocal con;
 	if (fcopy.path.size()==0){
 		htmlprintf (MSG_R(E_NOTHINGTOPASTE),fcopy.path.c_str());
 	}else{
-		static vector<string> empty;
-		<call bod_client_sendtalk_file> (con,w_session.c_str(),"",empty,group,groupowner,fcopy.path,fcopy.date);
-		<f ok>
-			if (!success) htmlprintf (MSG_R(E_CANTPASTEENTRY),msg);
-		</f>
-		</call>
+		glocal vector<string> recipients;
+		glocal bool ok = false;
+		if (is_eq(group,"inbox")){
+			<call form>("recipients");
+			<f setup>
+				vector<string> contacts;
+				index_list_contacts (glocal.con,contacts);
+				/-#I_RECIPIENTNEEDED Please provide one or more recipients for this message.
+				/- <p>
+				/- <table border=0>
+				/- <tr><td>
+				htmlout (MSG_R(F_RECIPIENTS));
+				/- <td>
+				field_string (w_name,"",contacts);
+				/- </table>
+			</f>
+			<f validate>
+				return true;
+			</f>
+			<f process>
+				glocal.recipients.push_back(w_name.c_str());
+				glocal.ok = true;
+			</f>
+			</call>
+		}else{
+			glocal.ok = true;
+		}
+		if (glocal.ok){
+			<call bod_client_sendtalk_file> (con,w_session.c_str(),"",glocal.recipients,group,groupowner,fcopy.path,fcopy.date);
+			<f ok>
+				if (!success) htmlprintf (MSG_R(E_CANTPASTEENTRY),msg);
+			</f>
+			</call>
+		}
 	}
 }
 </mod>
@@ -2388,11 +2430,7 @@ extern "C" void webmain_real()
 						const unsigned vspace=tlmpweb_ismobile() ? 10: 3;
 						const unsigned hspace=3;
 						glocal vector<string> contacts;
-						<call bod_client_list_contacts>(glocal.con,w_session.c_str(),"");
-						<f ok>
-							for (auto m:members) glocal.contacts.push_back(m);
-						</f>
-						</call>
+						index_list_contacts(glocal.con,glocal.contacts);
 						if (glocal.private_inbox){
 							DIV dd; dd.w(100).flexfixe().vmargins(vspace,0).print();
 							DIV ddd; ddd.dispflex().flowrow().print();

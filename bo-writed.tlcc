@@ -524,7 +524,7 @@ static int bo_writed_project_msg(
 	return ret;
 }
 </mod>
-
+// Is this a remote user ?
 static bool bo_writed_remote_user (PARAM_STRING user)
 {
 	return strchr(user.ptr,'@')!=NULL;
@@ -922,12 +922,10 @@ static int bo_writed_addfile_bob (
 		if (info.fileid != -1){
 			const char *basename = name.ptr;
 			if (basename == nullptr) basename = info.fileuuid.c_str();
-			// If the recipients list is empty, we insert a null in the database
-			const char *recipients_ptr = recipients.ptr == nullptr || recipients.ptr[0] == '\0' ? nullptr : recipients.ptr;
-			if (fs_insert_entry(dirid,info.fileid,info.modified.buf,basename,type)==-1){
+			if (fs_insert_entry(dirid,info.fileid,info.modified.buf,basename,type,0,recipients)==-1){
 				msg = "Internal error (dirs_files table)";
-			}else if (sql_action("insert into files (id,modified,filetype,content,signature,recipients) values (%d,'%s',%u,'%s','%s','%s')"
-				,info.fileid,info.modified.buf,info.file_type,content_str,sign.c_str(),recipients_ptr)==-1){
+			}else if (sql_action("insert into files (id,modified,filetype,content,signature) values (%d,'%s',%u,'%s','%s')"
+				,info.fileid,info.modified.buf,info.file_type,content_str,sign.c_str())==-1){
 				msg = "Internal error (files table)";
 			}else{
 				if (content_str == NULL){
@@ -3663,8 +3661,8 @@ int main (int argc, char *argv[])
 				</f>
 				<f sendtalk_file>	// sessionid owner to:v groupname groupowner filename filedate = success:b msg
 					glocal string msg;
-					glocal const char *groupname = groupname;
-					glocal const char *groupowner = groupowner;
+					glocal groupname;
+					glocal groupowner;
 					glocal ENTRY srcentry;
 					bool force_admin = bo_writed_public_msg (filename);
 					if (bo_writed_findentry (glocal.con,sessionid,filename,filedate,glocal.srcentry,true,force_admin)==-1){
