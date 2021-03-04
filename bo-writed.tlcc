@@ -3670,49 +3670,92 @@ int main (int argc, char *argv[])
 					if (bo_writed_findentry (glocal.con,sessionid,filename,filedate,glocal.srcentry,true,force_admin)==-1){
 						glocal.msg = glocal.srcentry.msg;
 					}else{
-						// We store the message in the short inbox of the group owner (like mail sent to the project) 
-						// The query is to check if the user posting the message is a member of the group
-						// and to validate the group exist
-						<call sql_query>("select groups.ownerid from groups"
-							" join id2name on id2name.userid=groups.ownerid"
-							" join group_members on group_members.groupid = groups.id"
-							" where id2name.name='%s' and groups.name='%s' and group_members.userid=%u"
-							,groupowner,groupname,glocal.srcentry.userid);
-						<f empty>
-							glocal.msg = MSG_R(E_UNKNOWNGROUP);
-						</f>
-						<f onerow>
-							bool created;
-							unsigned ownerid = atoi(row[0]);
-							int dirid = fs_find_short_inbox (ownerid,glocal.groupowner,glocal.groupname,glocal.msg,true,created);
-							if (dirid != -1){
-								string newname = fs_makeid();
-								if (fs_insert_entry(dirid,glocal.srcentry.entryid,glocal.srcentry.modified
-									,newname,ENTRY_MSG,glocal.srcentry.userid)==-1){
-									glocal.msg = "Internal error (dirs_content table)";
-								}else{
-									bo_writed_update_dirdate(dirid);
-								}
-								bo_writed_update_interest(created,glocal.groupname,ownerid,dirid);
-								if (!bo_writed_remote_user(glocal.groupowner)){
-									glocal string username;
-									<call sql_query>("select name from id2name where userid=%u",glocal.srcentry.userid);
-									<f onerow>
-										glocal.username = row[0];
-									</f>
-									</call>
-									<call publishd_client_sendmessage>(glocal.ctx.con_publish,ownerid
-										,dirid,glocal.srcentry.entryid,glocal.srcentry.modified,newname
-										,glocal.groupname,glocal.username);
-									<f ok>
-										if (!success) tlmp_error ("publishd_client_sendmessage: %s\n",msg);
-									</f>
-									</call>
-								}
+						glocal vector<pair<string,unsigned>> uids;
+						bo_writed_check_recipients(glocal.srcentry.userid,to,glocal.uids,glocal.msg,glocal.srcentry.is_admin);
+						if (to.size() == 0 && groupname[0] == '\0'){
+							glocal.msg = MSG_R(E_NODEST);
+						}else if (glocal.msg.size() == 0){
+							glocal string recipients;
+							for (auto s:to){
+								if (glocal.recipients.size() > 0) glocal.recipients += " ";
+								glocal.recipients += s;
 							}
-							end = true;
-						</f>
-						</call>
+							// We store the message in the short inbox of the group owner (like mail sent to the project) 
+							// The query is to check if the user posting the message is a member of the group
+							// and to validate the group exist
+							<call sql_query>("select groups.ownerid from groups"
+								" join id2name on id2name.userid=groups.ownerid"
+								" join group_members on group_members.groupid = groups.id"
+								" where id2name.name='%s' and groups.name='%s' and group_members.userid=%u"
+								,groupowner,groupname,glocal.srcentry.userid);
+							<f empty>
+								glocal.msg = MSG_R(E_UNKNOWNGROUP);
+							</f>
+							<f onerow>
+								bool created;
+								unsigned ownerid = atoi(row[0]);
+								int dirid = fs_find_short_inbox (ownerid,glocal.groupowner,glocal.groupname,glocal.msg,true,created);
+								if (dirid != -1){
+									string newname = fs_makeid();
+									if (fs_insert_entry(dirid,glocal.srcentry.entryid,glocal.srcentry.modified
+										,newname,ENTRY_MSG,glocal.srcentry.userid,glocal.recipients)==-1){
+										glocal.msg = "Internal error (dirs_content table)";
+									}else{
+										bo_writed_update_dirdate(dirid);
+									}
+									bo_writed_update_interest(created,glocal.groupname,ownerid,dirid);
+									if (!bo_writed_remote_user(glocal.groupowner)){
+										glocal string username;
+										<call sql_query>("select name from id2name where userid=%u",glocal.srcentry.userid);
+										<f onerow>
+											glocal.username = row[0];
+										</f>
+										</call>
+										// Publish the message to all remote members of the group.
+										<call publishd_client_sendmessage>(glocal.ctx.con_publish,ownerid
+											,dirid,glocal.srcentry.entryid,glocal.srcentry.modified,newname
+											,glocal.groupname,glocal.username);
+										<f ok>
+											if (!success) tlmp_error ("publishd_client_sendmessage: %s\n",msg);
+										</f>
+										</call>
+										// Retrieve the text content of the message for notification
+										glocal BOB_TYPE content;
+										glocal FILE_TYPE file_type;
+										<call sql_query>("select content,filetype from files where id=%u and modified='%s'"
+											,glocal.srcentry.entryid,glocal.srcentry.modified.c_str());
+										<f onerow>
+											if (row[0] != nullptr) glocal.content.setbuffer(row[0],strlen(row[0]),true);
+											glocal.file_type = (FILE_TYPE)atoi(row[1]);
+										</f>
+										</call>
+										// Now that we have created the message in the group, we
+										// simply link the message in all recipients, except remote user.
+										for (auto &u:glocal.uids){
+											if (!bo_writed_remote_user(u.first)){
+												int udirid = bo_writed_find_short_inbox (u.second,u.first,glocal.msg);
+												if (udirid != -1){
+													if (fs_insert_entry(udirid,glocal.srcentry.entryid,glocal.srcentry.modified,newname
+														,ENTRY_MSG,glocal.srcentry.userid,glocal.recipients)==-1){
+														tlmp_error ("Insert in short user inbox, internal error %s\n",u.first.c_str());
+														break;
+													}
+													string email_title,email_content;
+													bo_writed_set_email_notify (glocal.username,u.first,"inbox",glocal.file_type
+														,glocal.content,email_title,email_content);
+													bo_writed_notify_talk_inbox(glocal.ctx,glocal.con,u.first,u.second,email_title,email_content);
+												}else{
+													tlmp_error ("Insert in short user inbox, missing inbox, internal error %s\n",u.first.c_str());
+													break;
+												}
+											}
+										}
+									}
+								}
+								end = true;
+							</f>
+							</call>
+						}
 					}
 					if (glocal.msg.size() > 0){
 						rep_sendtalk_file (false,glocal.msg);

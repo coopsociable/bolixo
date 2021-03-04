@@ -1544,6 +1544,7 @@ static void bod_remote_sendtalk(
 		glocal r;
 		r.initcon();
 		if (bod_remotelogin (con,r.con,rem.username,nodename,sessionid,r.sessionid)!=-1){
+			tlmp_warning ("sendtalk groupname=%s groupowner=%s\n",r.groupname.c_str(),r.groupowner.c_str());
 			<call webapi_sendtalk> (r.con,r.sessionid,"",r.users,r.groupname,r.groupowner,content,more,name,sign,createdby);
 			<f ok>
 				glocal.r.handle = handle;
@@ -1553,6 +1554,90 @@ static void bod_remote_sendtalk(
 			if (!more){
 				r.logout();
 			}
+		}
+	}
+}
+</mod>
+struct REMOTE_RECIPIENTS{
+	string groupname;
+	string groupowner;
+	vector<string> recipients;
+};
+/*
+	Perform a sendtalk_file to remote users
+*/
+<mod>
+static void bod_remote_sendtalk_file(
+	CONNECT_INFO &con,
+	const char *sessionid,
+	PARAM_STRING username,
+	const map<string,REMOTE_RECIPIENTS> &mp,
+	const BOB_TYPE *content,
+	FILE *fin,
+	const char *nodename,	// Our nodename
+	PARAM_STRING sign,
+	PARAM_STRING created)
+{
+	const char *name = "";
+	string createdby;
+	if (strchr(created.ptr,'@')!=nullptr){
+		createdby = created.ptr;
+	}else{
+		createdby = bod_format_remote_user(created,nodename);
+	}
+	for (auto &m:mp){
+		CONNECT_HTTP_INFO r_con;
+		bod_inithcon (r_con,m.first);
+		string r_sessionid;
+		tlmp_warning ("sendtalk_file: connect to %s\n",m.first.c_str());
+		if (bod_remotelogin (con,r_con,username,nodename,sessionid,r_sessionid)!=-1){
+			tlmp_warning ("sendtalk_file groupname=%s groupowner=%s createdby=%s sign=%s\n",m.second.groupname.c_str(),m.second.groupowner.c_str(),createdby.c_str(),sign.ptr);
+			if (content != nullptr){
+				<call webapi_sendtalk> (r_con,r_sessionid,"",m.second.recipients,m.second.groupname,m.second.groupowner,*content,false,name,sign,createdby);
+				<f ok>
+					if (!success) tlmp_error ("remote_sendtalk_file: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
+				</f>
+				</call>
+			}else{
+				struct stat64 st;
+				if (fstat64(fileno(fin),&st)==-1){
+					tlmp_error ("Internal error, getting file size\n");
+				}else{
+					rewind(fin);
+					bool first = true;
+					glocal string handle;
+					glocal bool done = false;
+					while (!glocal.done){
+						char buf[REQ_CONTENT_CHUNK];
+						int len = fread (buf,1,sizeof(buf),fin);
+						if (len == 0) break;
+						BOB_TYPE bob (buf,len,false);
+						bool more = len==REQ_CONTENT_CHUNK;
+						if (first){
+							first = false;
+							<call webapi_sendtalk> (r_con,r_sessionid,"",m.second.recipients,m.second.groupname,m.second.groupowner,bob,more,name,sign,createdby);
+							<f ok>
+								glocal.handle = handle;
+								if (!success){
+									tlmp_error ("remote_sendtalk_file: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
+									glocal.done = true;
+								}
+							</f>
+							</call>
+						}else{
+							<call webapi_appendfile> (r_con,r_sessionid,glocal.handle,bob,more);
+							<f ok>
+								if (!success){
+									tlmp_error ("remote_sendtalk_file append: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
+									glocal.done = true;
+								}
+							</f>
+							</call>
+						}
+					}
+				}
+			}
+			bod_remotelogout(r_con,r_sessionid);
 		}
 	}
 }
@@ -2017,6 +2102,21 @@ static bool bod_is_document (ENTRY &entry, string &msg)
 	return ret;
 }
 </mod>
+
+// Split remote user by server
+static map<string,REMOTE_RECIPIENTS> bod_classify_recipients(const vector<const char *> &to, const char *nodename)
+{
+	map<string,REMOTE_RECIPIENTS> mp;
+	for (auto s:to){
+		string tmpuser,remote_user,remote;
+		if (bod_parse_user(s,tmpuser,remote_user,remote,nodename)!=-1
+			&& remote.size() > 0){
+			auto &m = mp[remote];
+			m.recipients.push_back(remote_user);
+		}
+	}
+	return mp;
+}
 
 <mod>
 static int bod_main (
@@ -3625,7 +3725,7 @@ static int bod_main (
 				</call> 
 				rep_verifysign (glocal.status,glocal.msg);
 			</f>
-			<f sendtalk>	// sessionid owner to:v groupname groupowner content:o filename sign createdby = success:b msg handle
+			<f sendtalk>	// sessionid owner to:v groupname groupowner content:o more filename sign createdby = success:b msg handle
 				glocal groupname;
 				glocal groupowner;
 				glocal const char *sessionid = sessionid;
@@ -3670,17 +3770,17 @@ static int bod_main (
 
 								Then we check if this is a remote group name. If so, we copy the message to the
 								group owner server.
+
+								There is an added complexity: the more flag. sendtalk may only
+								provide the start of the message and appendfile provides the rest.
+								The REMOTE_HANDLE object keep the stat for each remote destination.
+
+								The sendtalk_file has the same logic, but has access to the full content
+								of the message, so do not use REMOTE_HANDLE.
 							*/
 							// tlmp_warning ("propagate message %s from user %s",fileuuid,glocal.username.c_str());
 							// We have to find if there are remote users and we organize them by servers
-							map<string,vector<string>> mp;
-							for (auto s:glocal.to){
-								string tmpuser,remote_user,remote;
-								if (bod_parse_user(s,tmpuser,remote_user,remote,glocal.nodename)!=-1
-									&& remote.size() > 0){
-									mp[remote].push_back(remote_user);
-								}
-							}
+							auto mp = bod_classify_recipients(glocal.to,glocal.nodename);
 							string remote_group,remote;
 							{
 								string tmpuser;
@@ -3691,7 +3791,7 @@ static int bod_main (
 								auto rem = make_unique<REMOTE_HANDLE>();
 								rem->username = glocal.username;
 								if (remote_group.size() > 0) rem->addgroup (glocal.groupname,remote,remote_group);
-								for (auto p:mp) rem->addto(p.first,p.second);
+								for (auto p:mp) rem->addto(p.first,p.second.recipients);
 								bod_remote_sendtalk (glocal.con,glocal.sessionid,*rem,glocal.content,glocal.nodename
 									,glocal.more,fileuuid,sign,glocal.createdby);
 								if (handle[0] != '\0'){
@@ -3712,11 +3812,76 @@ static int bod_main (
 				}
 			</f>
 			<f sendtalk_file>	// sessionid owner to:v groupname groupowner filename filedate = success:b msg handle
+				glocal sessionid;
+				glocal filename;
+				glocal filedate;
+				glocal groupname;
+				glocal owner;
+				glocal to;
+				glocal groupowner;
+				glocal string msg;
 				<call bo_writed_client_sendtalk_file>(glocal.con,sessionid,owner,to,groupname,groupowner,filename,filedate);
 				<f ok>
-					glocal.bod_client.rep_sendtalk_file(success,msg);
+					glocal.msg = msg;
+					if (success){
+						glocal map<string,REMOTE_RECIPIENTS> mp = bod_classify_recipients(glocal.to,glocal.nodename);
+						{
+							string tmpuser,remote_group,remote;
+							bod_parse_user(glocal.groupowner,tmpuser,remote_group,remote,glocal.nodename);
+							if (remote_group.size() > 0){
+								auto &m = glocal.mp[remote];
+								m.groupname = glocal.groupname;
+								m.groupowner = remote_group;
+							}
+						}
+						// tlmp_warning ("mp.size()=%lu remote_user=%s remote=%s username=%s",mp.size(),remote_group.c_str(),remote.c_str(),glocal.username.c_str());
+						if (glocal.mp.size() > 0){
+							glocal ENTRY entry;
+							if (bod_findentry (glocal.con_sess,glocal.sessionid,glocal.filename,glocal.entry,glocal.filedate)!=-1){
+								// See comment about limit 1 in <f readfile_bob>
+								<call sql_query>("select content,signature,id2name.name from files"
+									" join ids on ids.id=files.id"
+									" join id2name on id2name.userid=ids.ownerid"
+									" where files.id=%d and files.modified='%s' limit 1"
+									,glocal.entry.entryid,glocal.entry.modified.c_str());
+								<f onerow>
+									const char *signature = row[1] != nullptr ? row[1] : "";
+									const char *createdby = row[2] != nullptr ? row[2] : "";
+									string username;
+									bo_writed_get_group_owner (glocal.con_sess, glocal.sessionid, glocal.owner, username, glocal.msg);
+									if (row[0] != nullptr){
+										unsigned len = strlen(row[0]);
+										BOB_TYPE bob (row[0],len,false);
+										bod_remote_sendtalk_file(glocal.con,glocal.sessionid
+											,username,glocal.mp,&bob,nullptr
+											,glocal.nodename,signature,createdby);
+									}else{
+										string handle;
+										FILE *fin = fs_alloc_file_handle (glocal.entry.entryid,glocal.entry.modified,"r",handle,glocal.sessionid);
+										if (fin == nullptr){
+											glocal.msg == "Internal error, reading content file";
+										}else{
+											bod_remote_sendtalk_file(glocal.con,glocal.sessionid
+												,username,glocal.mp,nullptr,fin
+												,glocal.nodename,signature,createdby);
+										}
+										fs_delete_handle (handle);
+									}
+								</f>
+								<f empty>
+									glocal.msg = "Internal error, reading table files";
+								</f>
+								</call>
+							}
+						}
+					}
 				</f>
 				</call>
+				if (glocal.msg.size() > 0){
+					rep_sendtalk_file(false,glocal.msg);
+				}else{
+					rep_sendtalk_file(true,glocal.msg);
+				}
 			</f>
 			<f sendtalk_anon>	// to content:o = success:b msg handle
 				<call bo_writed_client_sendtalk_anon>(glocal.con,sessionid,to,content,more);

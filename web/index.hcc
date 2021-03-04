@@ -26,6 +26,7 @@
 #include <tlmplib.h>
 #include <tlmpdoc.h>
 #include <trlitool.h>
+#include <functional>
 #include <string>
 #include <algorithm>
 #include <deque>
@@ -785,7 +786,19 @@ static void index_paste(CONNECT_INFO &con, PARAM_STRING path, PARAM_STRING group
 		htmlprintf (MSG_R(E_NOTHINGTOPASTE),fcopy.path.c_str());
 	}else{
 		glocal vector<string> recipients;
-		glocal bool ok = false;
+		glocal function<void(bool &fail)> fun;
+		glocal.fun = [&](bool &fail){
+			glocal fail;
+			fail = false;
+			<call bod_client_sendtalk_file> (con,w_session.c_str(),"",glocal.recipients,group,groupowner,fcopy.path,fcopy.date);
+			<f ok>
+				if (!success){
+					glocal.fail = true;
+					htmlprintf (MSG_R(E_CANTPASTEENTRY),msg);
+				}
+			</f>
+			</call>
+		};
 		if (is_eq(group,"inbox")){
 			<call form>("recipients");
 			<f setup>
@@ -801,22 +814,23 @@ static void index_paste(CONNECT_INFO &con, PARAM_STRING path, PARAM_STRING group
 				/- </table>
 			</f>
 			<f validate>
-				return true;
+				auto tb = str_splitline(w_name.c_str());
+				for (auto &t:tb) glocal.recipients.push_back(t);
+				bool ret = true;
+				// bod_client_sendtalk_file validates the recipients
+				if (glocal.recipients.size() == 0){
+					htmlprintf ("%s<br>\n",MSG_R(E_NORECIPIENT));
+					ret = false;
+				}
+				return ret;
 			</f>
 			<f process>
-				glocal.recipients.push_back(w_name.c_str());
-				glocal.ok = true;
+				glocal.fun(fail);
 			</f>
 			</call>
 		}else{
-			glocal.ok = true;
-		}
-		if (glocal.ok){
-			<call bod_client_sendtalk_file> (con,w_session.c_str(),"",glocal.recipients,group,groupowner,fcopy.path,fcopy.date);
-			<f ok>
-				if (!success) htmlprintf (MSG_R(E_CANTPASTEENTRY),msg);
-			</f>
-			</call>
+			bool fail;
+			glocal.fun(fail);
 		}
 	}
 }
