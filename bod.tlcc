@@ -1888,6 +1888,8 @@ static void bod_localremote(
 						if (c.dologout){
 							bod_remotelogout(hcon,session);
 						}
+					}else{
+						tlmp_warning ("remote login failed: fname=%s server=%s\n",fname,server.c_str());
 					}
 				}else{
 					msg = MSG_R(E_IVLDPATH);
@@ -2808,20 +2810,26 @@ static int bod_main (
 				glocal sessionid;
 				// Are we trying to read /projects/user@remote_node/...
 				// In general, you are trying to read the public photo of the user.
+				// or the content of a remote project folder.
+				// Note that this does not apply to message (/msgs/) since they are copied from server to server
+				// while projects can't since they may be modified.
 				string remote_user,remote,remote_name;
-				if (strncmp(name,"/projects/",10)==0){
-					// All failure in this parsing end up with remote_user being empty,
-					// so the normal case (bod_findentry) is used.
-					const char *user = name+10;
-					const char *slash = strchr(user,'/');
-					if (slash != NULL){
-						string tmp = string(user,slash-user);
-						user = tmp.c_str();
-						const char *sepat = strchr(user,'@');
-						if (sepat != NULL){
-							remote = sepat+1;
-							remote_user = string(user,sepat-user);
-							remote_name = string_f("/projects/%s/%s",remote_user.c_str(),slash+1);
+				if (strchr(name,'@')!=nullptr){
+					const char *user;
+					if (is_start_any_of(name,user,"/projects/")){
+						// All failure in this parsing end up with remote_user being empty,
+						// so the normal case (bod_findentry) is used.
+						const char *slash = strchr(user,'/');
+						if (slash != NULL){
+							string tmp = string(user,slash-user);
+							string local_user;
+							bod_parse_user (tmp.c_str(),local_user,remote_user,remote,glocal.nodename);
+							if (remote_user.size() > 0){
+								remote_name = string_f("/projects/%s/%s",remote_user.c_str(),slash+1);
+							}else{
+								remote_name = string_f("/projects/%s/%s",local_user.c_str(),slash+1);
+								name = remote_name.c_str();
+							}
 						}
 					}
 				}

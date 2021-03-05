@@ -242,9 +242,6 @@ documentd_restore(){
 cmpsequence(){
 	STOP=$1
 	shift
-	rm -f /tmp/bofs.testuuids
-	ssh root@preprod.bolixo.org rm -f /tmp/bofs.testuuids
-	ssh root@preprod2.bolixo.org rm -f /tmp/bofs.testuuids
 	ssh root@preprod.bolixo.org bofs --clearpubcache --pubsite test1.bolixo.org
 	ssh root@preprod2.bolixo.org bofs --clearpubcache --pubsite test1.bolixo.org
 	unset LANG
@@ -253,6 +250,9 @@ cmpsequence(){
 	mkdir $CMPDIR
 	for test in $*
 	do
+		rm -f /tmp/bofs.testuuids
+		ssh root@preprod.bolixo.org rm -f /tmp/bofs.testuuids
+		ssh root@preprod2.bolixo.org rm -f /tmp/bofs.testuuids
 		OPT=
 		if [ "$test" = "public" ]; then
 			OPT=jacques-A
@@ -1020,7 +1020,7 @@ elif [ "$1" = "test-sequence" ] ; then # S: Reloads database (big,medium,real,no
 		fi
 		shift
 	done
-	if [ "$CMP" = 1 ] ; then
+	if [ "$CMP" = 1 -o "$CMPSANE" = 1 ] ; then
 		# The compare system for the test sequence is confused if the timestamp
 		# span over 2 minutes. So we have to start the test early
 		date
