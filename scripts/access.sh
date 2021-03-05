@@ -76,6 +76,14 @@ elif [ "$1" = "msgs" ] ; then # test: List all short messages
 		echo user $user
 		listdir $user /msgs/$user
 	done
+elif [ "$1" = "sendtalk_file" ] ; then # test: send a bolixo file as a message
+	USER=jacques-A
+	./bofs -u $USER groups --set-member --groupname public --user jacquesg@preprod.bolixo.org
+	./bofs -u $USER msgs -f -L /projects/jacques-A/public/mini-photo.jpg --groupname inbox --recipient jacques-B --recipient jacques-C --recipient jacquesg@preprod.bolixo.org
+	./bofs -u $USER msgs -f -L /projects/jacques-A/public/mini-photo.jpg --groupname public --recipient jacques-C
+	if [ "$2" != "keep" ] ; then
+		./bofs -u $USER groups --set-member --groupname public --user jacquesg@preprod.bolixo.org --access -
+	fi
 elif [ "$1" = "userfiles" ] ; then # help: List user files
 	shift
 	if [ "$1" = "" ] ; then
@@ -151,10 +159,12 @@ elif [ "$1" = "ivldsession" ] ; then # test: Test access with invalid session (a
 	testseq $SESSION dir1
 	./test.sh bod-control nodelogout http://test1.bolixo.org $SESSION
 elif [ "$1" = "remote-contact" ] ; then # test: Perform remote contact request
+	echo "==== contact request"
 	for user in bolixodev bolixonews bolixonouvelles jacquesg
 	do
 		./bofs misc --contact_request -u $user@preprod.bolixo.org
 	done
+	echo "==== contact manage"
 	for user in bolixodev bolixonews bolixonouvelles jacquesg
 	do
 		sleep 0.2

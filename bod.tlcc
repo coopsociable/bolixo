@@ -1544,7 +1544,7 @@ static void bod_remote_sendtalk(
 		glocal r;
 		r.initcon();
 		if (bod_remotelogin (con,r.con,rem.username,nodename,sessionid,r.sessionid)!=-1){
-			tlmp_warning ("sendtalk groupname=%s groupowner=%s\n",r.groupname.c_str(),r.groupowner.c_str());
+			//tlmp_warning ("sendtalk groupname=%s groupowner=%s\n",r.groupname.c_str(),r.groupowner.c_str());
 			<call webapi_sendtalk> (r.con,r.sessionid,"",r.users,r.groupname,r.groupowner,content,more,name,sign,createdby);
 			<f ok>
 				glocal.r.handle = handle;
@@ -1840,6 +1840,9 @@ string _F_bod_localremote::mapfname (PARAM_STRING path)
 	return ret;
 }
 
+static bool onlylocal = false;	// Some instance of bod are not allowed to interact with remote servers
+				// This would create deadlocks.
+
 static void bod_localremote(
 	_F_bod_localremote &c,
 	CONNECT_INFO &con,
@@ -1872,7 +1875,10 @@ static void bod_localremote(
 		}
 		if (msg.empty()){
 			if (remote_user.size() > 0){
-				if (tb.size() >= 2){
+				if (onlylocal){
+					tlmp_error ("Remote requests not allowed for this bod: fname=%s\n",fname);
+					msg = "Remote request denied";
+				}else if (tb.size() >= 2){
 					c.dstproject = string(fname,pt-fname)+remote_user+'/'+tb[1] + '/';
 					CONNECT_HTTP_INFO hcon;
 					bod_inithcon(hcon,server);
@@ -5165,6 +5171,7 @@ int main (int argc, char *argv[])
 		setarg (' ',"nonstrict",MSG_R(O_NONSTRICT),nonstrict,false);
 		setarg (' ',"usehttp",MSG_U(O_USEHTTP,"Use HTTP (not HTTPS) to reach this node"),usehttp,false);
 		setarg (' ',"keepmsgs",MSG_U(O_KEEPMSGS,"Show only messages younger than N days in main screen"),keepdays,false);
+		setarg (' ',"onlylocal",MSG_U(O_ONLYLOCAL,"Perform on local requests"),onlylocal,false);
 		setgrouparg ("Database");
 		setarg (' ',"dbserv","Database server",glocal.dbserv,false);
 		setarg (' ',"dbname","Database name",glocal.dbname,false);
