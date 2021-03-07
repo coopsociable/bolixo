@@ -344,16 +344,25 @@ std::set<string> GAME::get_waiting_users()
 	}
 	return ret;
 }
+static const char *nodename = nullptr;
 std::string GAME::format_draw_waiting (const std::set<std::string> &waitings)
 {
 	string line;
 	line = "draw_waiting([";
 	const char *sep = "";
 	for (auto &w:waitings){
-		line += string_f("%s'%s'",sep,w.c_str());
+		if (w.find('@')==string::npos){
+			const char *pt;
+			if (is_start_any_ofnc(nodename,pt,"http://","https://")){
+				line += string_f("%s'%s@%s'",sep,w.c_str(),pt);
+			}
+		}else{
+			line += string_f("%s'%s'",sep,w.c_str());
+		}
 		sep = ",";
 	}
 	line += "]);\n";
+	//tlmp_warning ("line=%s\n",line.c_str());
 	return line;
 }
 
@@ -1172,6 +1181,7 @@ int main (int argc, char *argv[])
 		setarg (' ',"daemon","Run in background",glocal.daemon,false);
 		setarg (' ',"pidfile","File holding the PID of the process",glocal.pidfile,false);
 		setarg (' ',"client-secrets","File holding client secrets for communication",glocal.client_secretfile,false);
+		setarg (' ',"nodename",MSG_R(O_NODENAME),nodename,true);
 	</f>
 	<f showerror>
 		if (glocal.daemon){
