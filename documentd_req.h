@@ -33,4 +33,6 @@
 #define DIALOG_IMBED		"imbed"
 #define DIALOG_IMAGE		"image"
 #define CHESS_ROBOT		"--robot--"
+#define DIALOG_PHOTOS_CONFIG	"photoconfig"
+#define DIALOG_VIDCONF_CONFIG	"vidconfconfig"
 #endif

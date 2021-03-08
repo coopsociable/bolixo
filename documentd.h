@@ -264,6 +264,7 @@ protected:
 	void appendchat(PARAM_STRING line, std::string &notify, std::vector<VARVAL> &res);
 	std::string format_draw_waiting (const std::set<std::string> &waitings);
 	void draw_waiting_users(std::string &lines, unsigned width, unsigned height, const char *style);
+	virtual void update_msg(bool to_all,	PARAM_STRING msg, const char *color, std::vector<VARVAL> &res);
 public:
 	unsigned get_nbwait() const {
 		return notification_fds.size();
@@ -325,8 +326,8 @@ public:
 	virtual const char *getclass() const =0;
 	virtual void save(DOC_WRITER &writer, bool save_session_info)=0;
 	virtual void load(DOC_READER &reader, std::string &msg)=0;
-	virtual void resetgame() = 0;
-	virtual void testwin(std::vector<VARVAL> &res) = 0;
+	virtual void resetgame();
+	virtual void testwin(std::vector<VARVAL> &res);
 	virtual void exec (const char *var, const char *val, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res) = 0;
 	virtual void manyexec (const std::vector<VARVAL_receive> &steps, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
 	virtual void engine_reply (const char *line, std::string &notify, bool &done);
@@ -345,6 +346,8 @@ GAME_P make_WHITEBOARD();
 GAME_P make_CHECKERS();
 GAME_P make_CHESS();
 GAME_P make_CALC();
+GAME_P make_PHOTOS();
+GAME_P make_VIDCONF();
 
 
 

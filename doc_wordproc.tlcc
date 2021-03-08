@@ -188,7 +188,7 @@ class WORDPROC: public GAME{
 	void growdoc(unsigned nol);
 	void set_imbed(unsigned nol, PARAM_STRING document, PARAM_STRING region, VARVAL &notify_var, set<unsigned> &notify_lines, const DOC_UI_SPECS_receive &sp);
 	void delete_to_eol(const WORD_DOCPOS &cursor, const DOC_UI_SPECS_receive &sp, set<unsigned> &notify_lines);
-	void delete_block (WORD_USERPREF &pref, const DOC_UI_SPECS_receive &sp, set<unsigned> &notify_lines);
+	void delete_block (WORD_USERPREF &pref, const DOC_UI_SPECS_receive &sp, set<unsigned> &notify_lines, VARVAL &script_var);
 public:
 	const char *getclass() const{
 		return "WORD";
@@ -196,7 +196,6 @@ public:
 	void save(DOC_WRITER &w, bool save_session_info);
 	void load(DOC_READER &r, std::string &msg);
 	void resetgame();
-	void testwin(std::vector<VARVAL> &res);
 	void exec (const char *var, const char *val, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
 	void manyexec (const std::vector<VARVAL_receive> &steps, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
 	set<DOCUMENT_EMBED> get_embed_specs() const;
@@ -800,10 +799,6 @@ void WORDPROC::resetgame()
 	lines.clear();
 	prefs.clear();
 }
-void WORDPROC::testwin(vector<VARVAL> &res)
-{
-}
-
 
 static string::const_iterator wordproc_skipeffect(const string &line, string::const_iterator p)
 {
@@ -1986,7 +1981,8 @@ void WORDPROC::delete_to_eol(
 void WORDPROC::delete_block (
 	WORD_USERPREF &pref,
 	const DOC_UI_SPECS_receive &sp,
-	set<unsigned> &notify_lines)
+	set<unsigned> &notify_lines,
+	VARVAL &script_var)
 {
 	if (pref.mark2 < pref.mark1) swap (pref.mark1,pref.mark2);
 	pref.cursor = pref.mark1;
@@ -2388,7 +2384,7 @@ void WORDPROC::execstep (
 			}else if (is_eq(var,"insertchar")){
 				if (pref.is_marked()){
 					pref.cursor = pref.mark1 < pref.mark2 ? pref.mark1 : pref.mark2;
-					delete_block(pref,sp,notify_lines);
+					delete_block(pref,sp,notify_lines,script_var);
 				}
 				growdoc(pref.cursor.line);
 				auto &wl = lines[pref.cursor.line];
@@ -2426,6 +2422,8 @@ void WORDPROC::execstep (
 						wl.listtype = LIST_NUM;
 					}
 					update_num_lines = true;
+				}else if (is_eq(val,"c") && mod.ctrl){
+					script_var.val += "navigator.clipboard.writeText('clipclip');\n";
 				}else{
 					l.insert(pos,val);
 					pref.cursor.column ++;
@@ -2473,7 +2471,7 @@ void WORDPROC::execstep (
 				setmodified(ctx.username);
 			}else if (is_eq(var,"backspace")){
 				if (pref.is_marked()){
-					delete_block(pref,sp,notify_lines);
+					delete_block(pref,sp,notify_lines,script_var);
 				}else{
 					notify_lines.insert(pref.cursor.line);
 					// We start by moving the cursor back one character if possible.
@@ -2521,7 +2519,7 @@ void WORDPROC::execstep (
 			}else if (is_eq(var,"deletechar")){
 				if (pref.is_marked()){
 					// A block is marked, we have to delete it.
-					delete_block(pref,sp,notify_lines);
+					delete_block(pref,sp,notify_lines,script_var);
 				}else if (mod.shift){
 					delete_to_eol(pref.cursor,sp,notify_lines);
 				}else if (mod.ctrl){

@@ -420,7 +420,6 @@ class WHITEBOARD: public GAME{
 	unsigned alloc_id=0;
 	unsigned textsize=10;			// default textsize x 10 (so 10 is 1em).
 	unsigned gridcell=0;			// Grid unit (0 = no grid)
-	void update_msg (bool to_all, PARAM_STRING msg, const char *color, std::vector<VARVAL> &res);
 	void resetsel(WHITEBOARD_SELMODE, set<unsigned> &ids);
 	void redraw(const set<unsigned> &ids, VARVAL &var, unsigned fontsize);
 	void alloc_elm(WHITEBOARD_ELM &elm, WHITEBOARD_ELMTYPE type, unsigned x0, unsigned y0){
@@ -513,7 +512,6 @@ public:
 	void resetgame();
 	WHITEBOARD();
 	const char *getclass() const;
-	void testwin(std::vector<VARVAL> &res);
 	void exec (const char *var, const char *val, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
 	void manyexec (const vector<VARVAL_receive> &steps, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, vector<VARVAL> &res);
 	void remove_session (const char *session);
@@ -550,13 +548,6 @@ GAME_P make_WHITEBOARD()
 
 WHITEBOARD::WHITEBOARD()
 {
-}
-void WHITEBOARD::update_msg (bool to_all, PARAM_STRING msg, const char *color, std::vector<VARVAL> &res)
-{
-	VARVAL mvar;
-	mvar.var = to_all ? VAR_NOTIFY : VAR_SCRIPT;
-	mvar.val += string_f("whi_updmsg('%s','%s');\n",color,documentd_escape(msg).c_str());
-	res.emplace_back(mvar);
 }
 void WHITEBOARD::save(DOC_WRITER &w, bool)
 {
@@ -983,9 +974,6 @@ void WHITEBOARD::resetgame()
 const char *WHITEBOARD::getclass() const
 {
 	return "WHIT";
-}
-void WHITEBOARD::testwin(std::vector<VARVAL> &res)
-{
 }
 
 /*
@@ -1652,7 +1640,7 @@ string WHITEBOARD::define_functions(
 	val += "}\n";
 
 	// Update the message field
-	val += "function whi_updmsg(color,msg){\n";
+	val += "function WHIT_updmsg(color,msg){\n";
 	val += string_f("\tvar elm = document.getElementById('msg-%s');\n",gameid.c_str());
 	val += "\tif (elm != null){\n";
 	val += "\t\telm.style.color=color;\n";

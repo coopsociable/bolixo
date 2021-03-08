@@ -1,0 +1,165 @@
+/*
+	This file is part of Bolixo.
+
+	Bolixo is free software: you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation, either version 3 of the License, or
+	(at your option) any later version.
+
+	Bolixo is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+	GNU General Public License for more details.
+
+	You should have received a copy of the GNU General Public License
+	along with Bolixo.  If not, see <https://www.gnu.org/licenses/>.
+*/
+#include <string.h>
+#include <stdio.h>
+#include <trlitool.h>
+#include <string>
+#include <stdlib.h>
+#include <math.h>
+#include <vector>
+#include <map>
+#include <tlmplib.h>
+#include "bolixo.h"
+#include "proto/bod_client.protodef"
+#include "documentd.h"
+#include "bolixo.m"
+
+using namespace std;
+
+
+class PHOTOS: public GAME{
+	std::string message;
+	std::string define_styles(bool mobile);
+	std::string define_functions(bool reverse, bool mobile);
+	std::string draw_board (bool reverse, bool mobile, unsigned docnum, bool editmode, std::string &script);
+public:
+	PHOTOS();
+	const char *getclass() const{
+		return "PHOT";
+	}
+	void save(DOC_WRITER &w, bool save_session_info);
+	void load(DOC_READER &r, std::string &msg);
+	void exec (const char *var, const char *val, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
+};
+
+GAME_P make_PHOTOS()
+{
+	return make_shared<PHOTOS>();
+}
+
+#include "proto/documentd_photos.protoh"
+#include "proto/documentd_photos.protoch"
+
+
+PHOTOS::PHOTOS()
+{
+	resetgame();
+}
+
+void PHOTOS::save(DOC_WRITER &w, bool save_session_info)
+{
+	documentd_photos_header (&w,revision);
+}
+<mod>
+void PHOTOS::load(DOC_READER &r, std::string &msg)
+{
+	glocal revision;
+	glocal msg;
+	<call documentd_photos>(&r);
+	<f header>
+		glocal.revision = revision;
+	</f>
+	<f invalid>
+		glocal.msg = "Invalid format for photo file";
+	</f>
+	</call>
+}
+</mod>
+
+string PHOTOS::define_styles(bool mobile)
+{
+	string lines;
+	return lines;
+}
+string PHOTOS::define_functions(bool reverse, bool mobile)
+{
+	string lines;
+	return lines;
+}
+string PHOTOS::draw_board(
+	bool reverse,
+	bool mobile,
+	unsigned docnum,
+	bool editmode,		// Enable onXXXX function
+	string &script)
+{
+	string lines;
+	return lines;
+}
+
+void PHOTOS::exec (
+	const char *var,
+	const char *val,
+	const DOC_CONTEXT &ctx,
+	const DOC_UI_SPECS_receive &sp,
+	vector<VARVAL> &res)
+{
+	string error,status;
+	setactivity();
+	VARVAL notify_var;
+	notify_var.var = VAR_NOTIFY;
+	notify_var.val = string_f("photos_cur_gameid='%s';\n",gameid.c_str());
+	if (strcmp(var,REQ_PRINT)==0){
+	}else if (strcmp(var,REQ_FUNCTIONS)==0){
+		VARVAL var;
+		var.var = VAR_DEFSCRIPT;
+		var.val = define_functions (false,sp.mobile);
+		res.emplace_back(move(var));
+	}else if (strcmp(var,REQ_STYLES)==0){
+		VARVAL var;
+		var.var = VAR_STYLES;
+		var.val += define_styles(sp.mobile);
+		res.emplace_back(move(var));
+	}else if (strcmp(var,REQ_REGION)==0){
+		// For embedding
+		VARVAL var,var_script;
+		var.var = VAR_CONTENT;
+		var_script.var = VAR_DEFSCRIPT;
+		var.val = draw_board(false,sp.mobile,ctx.docnum,false,var_script.val);
+		res.emplace_back(move(var));
+		res.emplace_back(move(var_script));
+	}else if (strcmp(var,"chat")==0){
+		appendchat(val,notify_var.val,res);
+	}else if (strcmp(var,REQ_GETFIELDS)==0){
+		VARVAL var;
+		var.var = VAR_FIELDS;
+		if (strcmp(val,DIALOG_PHOTOS_CONFIG)==0){
+		}
+		res.emplace_back(var);
+	}else if (ctx.maywrite){
+		if (strcmp(var,"place")==0){
+		}else if (strcmp(var,"newgame")==0){
+		}else if (strcmp(var,"resetgame")==0){
+			resetgame();
+		}else if (strcmp(var,"config")==0){
+		}else if (strcmp(var,"dump")==0){
+			VARVAL var;
+			res.emplace_back(var);
+		}
+	}else{
+		error = MSG_R(E_READONLY);
+	}
+	if (notify_var.val.size() > 0) res.emplace_back(move(notify_var));
+	if (error.size() > 0){
+		update_msg(false,error,"red",res);
+	}else if (status.size() > 0){
+		update_msg(true,status,"red",res);
+	}else{
+		update_msg(false,"&nbsp;","white",res);
+	}
+}
+

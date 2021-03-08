@@ -235,6 +235,14 @@ proto/documentd_chess.protoh: proto/documentd_chess.proto
 	build-protocol --file_mode --req_reader_type DOC_READER --req_writer_type DOC_WRITER --name documentd_chess \
 		--protoch proto/documentd_chess.protoch proto/documentd_chess.proto >proto/documentd_chess.protoh
 
+proto/documentd_photos.protoh: proto/documentd_photos.proto
+	build-protocol --file_mode --req_reader_type DOC_READER --req_writer_type DOC_WRITER --name documentd_photos \
+		--protoch proto/documentd_photos.protoch proto/documentd_photos.proto >proto/documentd_photos.protoh
+
+proto/documentd_vidconf.protoh: proto/documentd_vidconf.proto
+	build-protocol --file_mode --req_reader_type DOC_READER --req_writer_type DOC_WRITER --name documentd_vidconf \
+		--protoch proto/documentd_vidconf.protoch proto/documentd_vidconf.proto >proto/documentd_vidconf.protoh
+
 proto/documentd_wordproc.protoh: proto/documentd_wordproc.proto
 	build-protocol --file_mode --req_reader_type DOC_READER --req_writer_type DOC_WRITER --name documentd_wordproc \
 		--protoch proto/documentd_wordproc.protoch proto/documentd_wordproc.proto >proto/documentd_wordproc.protoh
@@ -277,7 +285,7 @@ proto/bolixoapi.protoh: proto/bolixoapi.proto proto/bolixod_client.protoh
 		--connect_info_obj CONNECT_HTTP_INFO --name bolixoapi \
 		--protoch proto/bolixoapi.protoch proto/bolixoapi.proto >proto/bolixoapi.protoh
 
-DOCGAMES=doc_tictacto.o doc_sudoku.o doc_wordproc.o doc_checkers.o doc_chess.o doc_whiteboard.o doc_calc.o doc_calc_eval.o
+DOCGAMES=doc_tictacto.o doc_sudoku.o doc_wordproc.o doc_checkers.o doc_chess.o doc_whiteboard.o doc_calc.o doc_calc_eval.o doc_photos.o doc_vidconf.o
 documentd: documentd.o documentd_menu.o _dict.o fs_makeid.o ${DOCGAMES}
 	cctlcc -Wall $(OPTIONS) documentd.o documentd_menu.o fs_makeid.o ${DOCGAMES} _dict.o -o documentd $(LIBS) -lfreetype -lm
 
@@ -289,6 +297,12 @@ doc_checkers.o: doc_checkers.tlcc documentd.h proto/documentd_checkers.protoh
 
 doc_chess.o: doc_chess.tlcc documentd.h proto/documentd_chess.protoh
 	cctlcc -Wall $(OPTIONS) -c doc_chess.tlcc -o doc_chess.o
+
+doc_photos.o: doc_photos.tlcc documentd.h proto/documentd_photos.protoh
+	cctlcc -Wall $(OPTIONS) -c doc_photos.tlcc -o doc_photos.o
+
+doc_vidconf.o: doc_vidconf.tlcc documentd.h proto/documentd_vidconf.protoh
+	cctlcc -Wall $(OPTIONS) -c doc_vidconf.tlcc -o doc_vidconf.o
 
 doc_wordproc.o: doc_wordproc.tlcc documentd.h documentd_menu.h proto/documentd_wordproc.protoh
 	cctlcc -Wall $(OPTIONS) -c doc_wordproc.tlcc -o doc_wordproc.o

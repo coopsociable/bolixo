@@ -419,6 +419,17 @@ const char *GAME::locate_event (unsigned &sequence)
 	}
 	return ret;
 }
+void GAME::update_msg(
+	bool to_all,	// The message will be shown to all player or not
+	PARAM_STRING msg,
+	const char *color,
+	vector<VARVAL> &res)
+{
+	VARVAL mvar;
+	mvar.var = to_all ? VAR_NOTIFY : VAR_SCRIPT;
+	mvar.val += string_f("%s_updmsg('%s','%s');\n",getclass(),color,documentd_escape(msg).c_str());
+	res.emplace_back(mvar);
+}
 
 void GAME::manyexec (
 	const std::vector<VARVAL_receive> &steps,
@@ -431,6 +442,12 @@ void GAME::manyexec (
 	}
 }
 
+void GAME::resetgame()
+{
+}
+void GAME::testwin(vector<VARVAL> &res)
+{
+}
 void GAME::engine_reply(const char *line, string &notify, bool &done)
 {
 	done = true;
@@ -566,6 +583,8 @@ static GAME_P documentd_newgame(const char *type, const char *gameid, string &ms
 		p = make_CHECKERS();
 	}else if (strncmp(type,"boBOCHES",8)==0){
 		p = make_CHESS();
+	}else if (strncmp(type,"boBOPHOT",8)==0){
+		p = make_PHOTOS();
 	}else if (strncmp(type,"boBOCALC",8)==0){
 		p = make_CALC();
 	}else{

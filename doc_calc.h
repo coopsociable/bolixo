@@ -136,7 +136,6 @@ class CALC: public GAME{
 		unsigned board_width, unsigned board_height, unsigned fontsize, unsigned docnum, bool editmode, const CELL_COOR &area, std::string &script);
 	std::string define_functions(const DOC_CONTEXT &ctx, const CALC_PREF &pref, unsigned board_width, unsigned board_height);
 	std::string define_styles(const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp);
-	void update_msg (bool to_all, PARAM_STRING msg, const char *color, std::vector<VARVAL> &res);
 	std::map<std::string,CALC_PREF> prefs;	// Per session state
 	void setfocus(VARVAL &var);
 	void update_cells(std::set<CELL_COOR> &cells, VARVAL &var, bool optim);
@@ -167,7 +166,6 @@ public:
 	void resetgame();
 	CALC();
 	const char *getclass() const;
-	void testwin(std::vector<VARVAL> &res);
 	void exec (const char *var, const char *val, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
 	void manyexec (const std::vector<VARVAL_receive> &steps, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
 	void remove_session(const char *session);
