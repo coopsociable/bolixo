@@ -1742,8 +1742,9 @@ void WHITEBOARD::execstep (
 			v.val += "\tparent.appendChild(img);\n";
 			v.val += "}\n";
 			v.val += "</script>\n";
-			// Buttons line
-			if (ctx.maywrite){
+			glocal pref;
+			<call button_bar>(this,sp.mobile,ctx.maywrite,v.val);
+			<f draw>
 				#define BUTTON_NEWDOC	0
 				#define BUTTON_TEXT	1
 				#define BUTTON_ELLIPSE	2
@@ -1763,50 +1764,36 @@ void WHITEBOARD::execstep (
 				#define BUTTON_DELITEMS	16
 				#define BUTTON_UNDO	17
 				#define BUTTON_GRID	18
-				v.val += "<div id=tab_form style='margin-top:5; margin-bottom:5; background-color: lightgray;'>\n";
-				DOC_BUTTON_SPECS specs;
-				if (sp.mobile){
-					specs.width = 60;
-					specs.radius = 6;
-					specs.margin_left = 10;
-					specs.margin_top = 4;
-					specs.margin_bottom = 4;
-				}
 				WHITEBOARD_MENU menu(specs);
-				documentd_button_start(v.val,gameid);
-				documentd_bar_button (v.val,BUTTON_NEWDOC,menu.svg_clear,specs,false,MSG_R(I_RESETDOC));
-				documentd_button_space(v.val);
-				documentd_bar_button (v.val,BUTTON_TEXT,menu.svg_text,specs,false,MSG_U(I_ADDTEXT,"Add text"));
-				documentd_bar_button (v.val,BUTTON_ELLIPSE,menu.svg_ellipse,specs,false,MSG_U(I_ADDCIRCLE,"Add circles/ellipses"));
-				documentd_bar_button (v.val,BUTTON_RECT,menu.svg_rect,specs,false,MSG_U(I_ADDRECT,"Add rectangles"));
-				documentd_bar_button (v.val,BUTTON_LINE,menu.svg_line,specs,false,MSG_U(I_ADDLINE,"Add lines"));
+				documentd_bar_button (lines,BUTTON_NEWDOC,menu.svg_clear,specs,false,MSG_R(I_RESETDOC));
+				documentd_button_space(lines);
+				documentd_bar_button (lines,BUTTON_TEXT,menu.svg_text,specs,false,MSG_U(I_ADDTEXT,"Add text"));
+				documentd_bar_button (lines,BUTTON_ELLIPSE,menu.svg_ellipse,specs,false,MSG_U(I_ADDCIRCLE,"Add circles/ellipses"));
+				documentd_bar_button (lines,BUTTON_RECT,menu.svg_rect,specs,false,MSG_U(I_ADDRECT,"Add rectangles"));
+				documentd_bar_button (lines,BUTTON_LINE,menu.svg_line,specs,false,MSG_U(I_ADDLINE,"Add lines"));
 				if (documentd_getflag("whiteboard_handline")!=nullptr){
-					documentd_bar_button (v.val,BUTTON_HANDLINE,menu.svg_handline,specs,false,MSG_U(I_ADDHANDLINE,"Add hand drawn line"));
+					documentd_bar_button (lines,BUTTON_HANDLINE,menu.svg_handline,specs,false,MSG_U(I_ADDHANDLINE,"Add hand drawn line"));
 				}
-				documentd_button_space(v.val);
-				documentd_bar_button (v.val,BUTTON_SELECT,menu.svg_select,specs,pref.selecting,MSG_U(I_SELECTITEMS,"Select elements"));
-				documentd_bar_button (v.val,BUTTON_STARMODE,menu.svg_star,specs,pref.starmode,MSG_U(I_SELECTPARENTS,"Select parents"));
-				documentd_bar_button (v.val,BUTTON_IMBEDMODE,menu.svg_parent,specs,pref.imbedmode,MSG_U(I_SELECTIMBED,"Select embedding parent"));
+				documentd_button_space(lines);
+				documentd_bar_button (lines,BUTTON_SELECT,menu.svg_select,specs,glocal.pref.selecting,MSG_U(I_SELECTITEMS,"Select elements"));
+				documentd_bar_button (lines,BUTTON_STARMODE,menu.svg_star,specs,glocal.pref.starmode,MSG_U(I_SELECTPARENTS,"Select parents"));
+				documentd_bar_button (lines,BUTTON_IMBEDMODE,menu.svg_parent,specs,glocal.pref.imbedmode,MSG_U(I_SELECTIMBED,"Select embedding parent"));
 
 				// Actions on selected elements
-				documentd_button_space(v.val);
-				documentd_bar_button (v.val,BUTTON_BOXTYPE,menu.svg_dashrect,specs,false,MSG_U(I_SETBOXTYPE,"Select the box type of selected elements"));
-				documentd_bar_button (v.val,BUTTON_LINETYPE,menu.svg_linetype,specs,false,MSG_U(I_SELECTRELATION,"Select line relation between parents and selected elements"));
-				documentd_bar_button (v.val,BUTTON_TEXTPOS,menu.svg_textpos,specs,false,MSG_U(I_POSITIONTEXT,"Position the text of selected elements"));
-				documentd_bar_button (v.val,BUTTON_INCTEXTSIZE,menu.svg_inctextsize,specs,false,MSG_U(I_SIZETEXT,"Increase the size of texts"));
-				documentd_bar_button (v.val,BUTTON_DECTEXTSIZE,menu.svg_dectextsize,specs,false,MSG_U(I_DECSIZETEXT,"Decrease the size of texts"));
-				documentd_bar_button (v.val,BUTTON_IMAGE,menu.svg_image,specs,false,MSG_U(I_ASSIGNIMAGE,"Assign an image to selected elements"));
-				documentd_bar_button (v.val,BUTTON_LINKDOC,menu.svg_imbed,specs,false,MSG_U(I_ASSIGNDOCUMEN,"Link a document to selected elements"));
-				documentd_button_space(v.val);
-				documentd_bar_button (v.val,BUTTON_GRID,menu.svg_grid,specs,false,MSG_U(I_GRID,"Turn the grid on/off"));
-				documentd_bar_button (v.val,BUTTON_DELITEMS,menu.svg_delitems,specs,false,MSG_U(I_DELITEMS,"Delete selected elements"));
-				//documentd_bar_button (v.val,BUTTON_UNDO,menu.svg_undo,specs,false,MSG_U(I_UNDOEDIT,"Undo the last modification"));
-				documentd_button_end(v.val);
-			}else{
-				v.val += "<div id=tab_form style='margin-top:5; margin-bottom:5; background-color: lightgray;'>\n";
-				v.val += MSG_R(M_READONLY);
-			}
-			v.val += "</div>\n";
+				documentd_button_space(lines);
+				documentd_bar_button (lines,BUTTON_BOXTYPE,menu.svg_dashrect,specs,false,MSG_U(I_SETBOXTYPE,"Select the box type of selected elements"));
+				documentd_bar_button (lines,BUTTON_LINETYPE,menu.svg_linetype,specs,false,MSG_U(I_SELECTRELATION,"Select line relation between parents and selected elements"));
+				documentd_bar_button (lines,BUTTON_TEXTPOS,menu.svg_textpos,specs,false,MSG_U(I_POSITIONTEXT,"Position the text of selected elements"));
+				documentd_bar_button (lines,BUTTON_INCTEXTSIZE,menu.svg_inctextsize,specs,false,MSG_U(I_SIZETEXT,"Increase the size of texts"));
+				documentd_bar_button (lines,BUTTON_DECTEXTSIZE,menu.svg_dectextsize,specs,false,MSG_U(I_DECSIZETEXT,"Decrease the size of texts"));
+				documentd_bar_button (lines,BUTTON_IMAGE,menu.svg_image,specs,false,MSG_U(I_ASSIGNIMAGE,"Assign an image to selected elements"));
+				documentd_bar_button (lines,BUTTON_LINKDOC,menu.svg_imbed,specs,false,MSG_U(I_ASSIGNDOCUMEN,"Link a document to selected elements"));
+				documentd_button_space(lines);
+				documentd_bar_button (lines,BUTTON_GRID,menu.svg_grid,specs,false,MSG_U(I_GRID,"Turn the grid on/off"));
+				documentd_bar_button (lines,BUTTON_DELITEMS,menu.svg_delitems,specs,false,MSG_U(I_DELITEMS,"Delete selected elements"));
+				//documentd_bar_button (lines,BUTTON_UNDO,menu.svg_undo,specs,false,MSG_U(I_UNDOEDIT,"Undo the last modification"));
+			</f>
+			</call>
 			// Board
 			v.val += string_f("<div class=webtable id=%sdoc_whiteboard style='display:flex; flex-flow:row;' >\n",val);
 			v.val += string_f("<div id='text-%s' style='flex:0 0 auto;width:%u;height:%u;border:1px solid black;"
@@ -1867,7 +1854,7 @@ void WHITEBOARD::execstep (
 				res.emplace_back(move(var_script));
 			}
 		}
-	}else if (strcmp(var,"chat")==0){
+	}else if (strcmp(var,REQ_CHAT)==0){
 		appendchat(val,notify_var.val,res);
 	}else if (strcmp(var,REQ_GETFIELDS)==0){
 		VARVAL var;

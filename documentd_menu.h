@@ -5,6 +5,21 @@ struct DOC_BUTTON_SPECS{
 	unsigned margin_left = 5;
 	unsigned margin_top = 2;
 	unsigned margin_bottom = 2;
+	DOC_BUTTON_SPECS(bool mobile){
+		if (mobile){
+			width = 60;
+			radius = 6;
+			margin_left = 10;
+			margin_top = 4;
+			margin_bottom = 4;
+		}else{
+			width = 25;
+			radius = 4;
+			margin_left = 5;
+			margin_top = 2;
+			margin_bottom = 2;
+		}
+	}
 };
 struct WHITEBOARD_MENU{
 	std::string svg_clear;
@@ -36,4 +51,8 @@ struct WORDPROC_MENU{
 struct CALC_MENU{
 	std::string svg_clear;
 	CALC_MENU(DOC_BUTTON_SPECS &specs);
+};
+struct PHOTOS_MENU{
+	std::string svg_config;
+	PHOTOS_MENU(DOC_BUTTON_SPECS &specs);
 };

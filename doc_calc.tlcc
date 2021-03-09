@@ -1031,43 +1031,29 @@ void CALC::execstep (
 			v.val += define_functions(ctx,pref,board_width,board_height);
 			v.val += "</script>\n";
 			// Buttons line
-			if (ctx.maywrite){
+			glocal pref;
+			glocal grid;
+			<call button_bar>(this,sp.mobile,ctx.maywrite,v.val);
+			<f draw>
 				#define BUTTON_NEWDOC	0
 				#define BUTTON_COLSTYLE	1
 				#define BUTTON_INSCOLLINE 2
-				v.val += "<div id=tab_form style='display:flex; flex-flow:column;'>\n";
-				v.val += "<div style='flex:0 0 auto; width:100%;margin-top:5; background-color: lightgray;'>\n";
-				DOC_BUTTON_SPECS specs;
-				if (sp.mobile){
-					specs.width = 60;
-					specs.radius = 6;
-					specs.margin_left = 10;
-					specs.margin_top = 4;
-					specs.margin_bottom = 4;
-				}
 				CALC_MENU menu(specs);
-				documentd_button_start(v.val,gameid);
-				documentd_bar_button (v.val,BUTTON_NEWDOC,menu.svg_clear,specs,false,MSG_U(I_RESETDOC,"Reset document"));
-				documentd_bar_button (v.val,BUTTON_INSCOLLINE,"+",specs,false,MSG_U(I_INSCOLLINE,"Insert/Delete lines or columns"));
-				documentd_bar_button (v.val,BUTTON_COLSTYLE,"F",specs,false,MSG_U(I_FORMATCELL,"Specify format for column cells"));
-				documentd_button_space(v.val);
-				documentd_button_end(v.val);
-				v.val += "</div>\n";
-				v.val += "<div style='flex:0 0 auto; margin-bottom:5;'>\n";
-				v.val += string_f("<span id='page-%s'>page 1</span>\n",gameid.c_str());
-				v.val += string_f("<span id='cell-%s'>%s</span>\n",gameid.c_str(),pref.cursor.tostring().c_str());
+				documentd_bar_button (lines,BUTTON_NEWDOC,menu.svg_clear,specs,false,MSG_U(I_RESETDOC,"Reset document"));
+				documentd_bar_button (lines,BUTTON_INSCOLLINE,"+",specs,false,MSG_U(I_INSCOLLINE,"Insert/Delete lines or columns"));
+				documentd_bar_button (lines,BUTTON_COLSTYLE,"F",specs,false,MSG_U(I_FORMATCELL,"Specify format for column cells"));
+			</f>
+			<f status>
+				lines += string_f("<span id='page-%s'>page 1</span>\n",gameid);
+				lines += string_f("<span id='cell-%s'>%s</span>\n",gameid,glocal.pref.cursor.tostring().c_str());
 				const char *content = "";
-				auto g = grid.find(pref.cursor);
-				if (g != grid.end()) content = g->second.text.c_str();
-				v.val += string_f("<input type=text id='edit-%s' style='width:400;' onkeyup='calc_editpress(event);' value='%s'/>\n"
-					,gameid.c_str(),documentd_escape_html(content).c_str());
+				auto g = glocal.grid.find(glocal.pref.cursor);
+				if (g != glocal.grid.end()) content = g->second.text.c_str();
+				lines += string_f("<input type=text id='edit-%s' style='width:400;' onkeyup='calc_editpress(event);' value='%s'/>\n"
+					,gameid,documentd_escape_html(content).c_str());
 
-				v.val += "</div>\n";
-			}else{
-				v.val += "<div id=tab_form style='margin-top:5; margin-bottom:5; background-color: lightgray;'>\n";
-				v.val += MSG_R(M_READONLY);
-			}
-			v.val += "</div>\n";
+			</f>
+			</call>
 			// Board
 			v.val += string_f("<div class=webtable id=%sdoc_calc style='display:flex; flex-flow:row;' >\n",val);
 			v.val += string_f("<div id='text-%s' style='flex:0 0 auto;width:%u;height:%u;border:1px solid black;"
@@ -1134,7 +1120,7 @@ void CALC::execstep (
 			res.emplace_back(move(var));
 			res.emplace_back(move(var_script));
 		}
-	}else if (strcmp(var,"chat")==0){
+	}else if (strcmp(var,REQ_CHAT)==0){
 		appendchat(val,notify_var.val,res);
 	}else if (strcmp(var,REQ_GETFIELDS)==0){
 		VARVAL var;

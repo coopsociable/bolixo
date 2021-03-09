@@ -350,6 +350,16 @@ GAME_P make_PHOTOS();
 GAME_P make_VIDCONF();
 
 
+#define _TLMP_button_bar
+struct _F_button_bar{
+	#define _F_button_bar_draw(x) void x draw (class DOC_BUTTON_SPECS &specs, const char *gameid, std::string &lines)
+	virtual _F_button_bar_draw( )=0;
+	#define _F_button_bar_status(x) void x status (const char *gameid, std::string &lines)
+	virtual _F_button_bar_status( );
+};
+
+void button_bar(_F_button_bar &c, GAME *game, bool mobile, bool maywrite, std::string &lines);
+
 
 #include "documentd_req.h"
 

@@ -2018,3 +2018,37 @@ unsigned documentd_displaylen (const char *title, unsigned fontsize, float size)
 	return ret;
 }
 
+void _F_button_bar::status(const char *gameid, string &lines)
+{
+}
+
+// Draw the button bar
+void button_bar (_F_button_bar &c, GAME *game, bool mobile, bool maywrite, string &lines)
+{
+	if (maywrite){
+		const char *gameid = game->get_gameid();
+		string but_lines;
+		DOC_BUTTON_SPECS specs(mobile);
+		documentd_button_start(but_lines,gameid);
+		c.draw (specs,gameid,but_lines);
+		documentd_button_end(but_lines);
+		string st_lines;
+		c.status (gameid,st_lines);
+		if (st_lines.empty()){
+			lines += "<div id=tab_form style='margin-top:5; margin-bottom:5; background-color: lightgray;'>\n";
+			lines += move(but_lines);
+		}else{
+			lines += "<div id=tab_form style='display:flex; flex-flow:column;'>\n";
+			lines += "<div style='flex:0 0 auto; width:100%;margin-top:5; background-color: lightgray;'>\n";
+			lines += move(but_lines);
+			lines += "</div>\n";
+			lines += "<div style='flex:0 0 auto; margin-bottom:5;'>\n";
+			lines += move(st_lines);
+			lines += "</div>\n";
+		}
+	}else{
+		lines += "<div id=tab_form style='margin-top:5; margin-bottom:5; background-color: lightgray;'>\n";
+		lines += MSG_R(M_READONLY);
+	}
+	lines += "</div>\n";
+}

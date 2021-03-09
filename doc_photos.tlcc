@@ -26,6 +26,7 @@
 #include "bolixo.h"
 #include "proto/bod_client.protodef"
 #include "documentd.h"
+#include "documentd_menu.h"
 #include "bolixo.m"
 
 using namespace std;
@@ -35,7 +36,7 @@ class PHOTOS: public GAME{
 	std::string message;
 	std::string define_styles(bool mobile);
 	std::string define_functions(bool reverse, bool mobile);
-	std::string draw_board (bool reverse, bool mobile, unsigned docnum, bool editmode, std::string &script);
+	std::string draw_board (bool mobile, unsigned docnum, bool editmode, std::string &script);
 public:
 	PHOTOS();
 	const char *getclass() const{
@@ -91,16 +92,17 @@ string PHOTOS::define_functions(bool reverse, bool mobile)
 	return lines;
 }
 string PHOTOS::draw_board(
-	bool reverse,
 	bool mobile,
 	unsigned docnum,
 	bool editmode,		// Enable onXXXX function
 	string &script)
 {
 	string lines;
+	lines += "<img style='width:100%;image-orientation:from-image;object-fit:contain' src=http://test1.bolixo.org/whiteboard.jpg>\n";
 	return lines;
 }
 
+<mod>
 void PHOTOS::exec (
 	const char *var,
 	const char *val,
@@ -108,12 +110,57 @@ void PHOTOS::exec (
 	const DOC_UI_SPECS_receive &sp,
 	vector<VARVAL> &res)
 {
+	unsigned waiting_users_width = sp.mobile ? 62 : 42;
+	unsigned board_width = sp.content_width - waiting_users_width;	// Space for user list
+	unsigned board_height = sp.content_height;
 	string error,status;
 	setactivity();
 	VARVAL notify_var;
 	notify_var.var = VAR_NOTIFY;
 	notify_var.val = string_f("photos_cur_gameid='%s';\n",gameid.c_str());
 	if (strcmp(var,REQ_PRINT)==0){
+		VARVAL v;
+		v.var = VAR_CONTENT;
+		<call button_bar>(this,sp.mobile,ctx.maywrite,v.val);
+		<f draw>
+			#define BUTTON_CONFIG	0
+			PHOTOS_MENU menu(specs);
+			documentd_bar_button (lines,BUTTON_CONFIG,menu.svg_config,specs,false,MSG_R(I_RESETDOC));
+		</f>
+		</call>
+		// Main image
+		unsigned mini_height = 100;	// Size of the mini photos
+		v.val += string_f("<div class=webtable id=%sdoc_photos style='display:flex; flex-flow:row;' >\n",val);
+		v.val += "<div style='display:flex; flex-flow:column;' >\n";
+		v.val += string_f("<div id='text-%s' style='flex:0 0 auto;width:%u;height:%u;border:1px solid black;"
+			" margin-left: auto;'"
+			" onkeydown='photos_gamepress(event);return false;'"
+			" tabindex=0 >\n",gameid.c_str(),board_width,board_height-mini_height);
+		string script;
+		v.val += draw_board(sp.mobile,ctx.docnum,true,script);
+		if (script.size() > 0){
+			v.val += "<script>\n";
+			v.val += script;
+			v.val += "</script>\n";
+		}
+		v.val += "</div>\n";
+		v.val += string_f("<div id='mini-%s' style='flex:0 0 auto;width:%u;height:%u;border:1px solid black;"
+			" margin-left: auto;'"
+			" onkeydown='photos_gamepress(event);return false;'"
+			" tabindex=0 >\n",gameid.c_str(),board_width,mini_height);
+		for (unsigned i=0; i<5; i++){
+			v.val += string_f("<img src=%s width=100/>\n","http://test1.bolixo.org/whiteboard.jpg");
+		}
+		v.val += "</div>\n";
+		v.val += "</div>\n";
+		draw_waiting_users(v.val,waiting_users_width,board_height,"flex:0 0 auto;");
+		v.val += "</div>\n";
+		// Status line
+		v.val += "<div id=tab_form>\n";
+		v.val += string_f("<div id=msg-%s style=color:black>&nbsp;</div>\n",gameid.c_str());
+		documentd_chat (v.val,ctx.username,chat,sp.width-20,sp.mobile ? 200 : 100);
+		v.val += "</div>\n";
+		res.emplace_back(move(v));
 	}else if (strcmp(var,REQ_FUNCTIONS)==0){
 		VARVAL var;
 		var.var = VAR_DEFSCRIPT;
@@ -129,10 +176,10 @@ void PHOTOS::exec (
 		VARVAL var,var_script;
 		var.var = VAR_CONTENT;
 		var_script.var = VAR_DEFSCRIPT;
-		var.val = draw_board(false,sp.mobile,ctx.docnum,false,var_script.val);
+		var.val = draw_board(sp.mobile,ctx.docnum,false,var_script.val);
 		res.emplace_back(move(var));
 		res.emplace_back(move(var_script));
-	}else if (strcmp(var,"chat")==0){
+	}else if (strcmp(var,REQ_CHAT)==0){
 		appendchat(val,notify_var.val,res);
 	}else if (strcmp(var,REQ_GETFIELDS)==0){
 		VARVAL var;
@@ -140,6 +187,7 @@ void PHOTOS::exec (
 		if (strcmp(val,DIALOG_PHOTOS_CONFIG)==0){
 		}
 		res.emplace_back(var);
+	}else if (strcmp(var,REQ_FOCUS)==0){
 	}else if (ctx.maywrite){
 		if (strcmp(var,"place")==0){
 		}else if (strcmp(var,"newgame")==0){
@@ -162,4 +210,5 @@ void PHOTOS::exec (
 		update_msg(false,"&nbsp;","white",res);
 	}
 }
+</mod>
 

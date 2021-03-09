@@ -8,6 +8,7 @@
 #define REQ_FUNCTIONS	"functions"
 #define REQ_STYLES	"styles"
 #define REQ_REGION	"region"
+#define REQ_CHAT	"chat"
 
 // Results produced by documents
 #define VAR_CONTENT	"content"	// HTML content to display
