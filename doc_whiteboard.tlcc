@@ -1622,15 +1622,7 @@ string WHITEBOARD::define_functions(
 	val += "\t});\n";
 	val += "}\n";
 
-	wordproc_set_gamepress(val,"whi_gamepress");
-
-	// Dummy needed by gamepress, shared with doc_wordproc
-	val += "function getlastline(){\n";
-	val += "\treturn 0;\n";
-	val += "}\n";
-	val += "function getlastcol(){\n";
-	val += "\treturn 0;\n";
-	val += "}\n";
+	wordproc_set_gamepress(val,"whi_gamepress",true);
 
 	// Remove an element
 	val += "function removeelm(id,tag){\n";
@@ -1899,27 +1891,27 @@ void WHITEBOARD::execstep (
 		}
 		var.val += "\n";
 		res.emplace_back(var);
-	}else if (is_any_of(var,"pageup","pagedown","hmove","vmove")){
+	}else if (is_any_of(var,KBD_PAGEUP,KBD_PAGEDOWN,KBD_HMOVE,KBD_VMOVE)){
 		unsigned box_x = pref.viewbox_x;
 		unsigned box_y = pref.viewbox_y;
-		if (strcmp(var,"pageup")==0){
+		if (is_eq(var,KBD_PAGEUP)){
 			if (pref.mod.shift){
 				limit_scroll (box_x,-SVG_BOARD_WIDTH,SVG_BOARD_WIDTH,4);
 			}else{
 				limit_scroll (box_y,-SVG_BOARD_HEIGHT,SVG_BOARD_HEIGHT,4);
 			}
-		}else if (strcmp(var,"pagedown")==0){
+		}else if (is_eq(var,KBD_PAGEDOWN)){
 			if (pref.mod.shift){
 				limit_scroll (box_x,SVG_BOARD_WIDTH,SVG_BOARD_WIDTH,4);
 			}else{
 				limit_scroll (box_y,SVG_BOARD_HEIGHT,SVG_BOARD_HEIGHT,4);
 			}
-		}else if (strcmp(var,"hmove")==0){
-			int move = strcmp(val,"1")==0 ? SVG_BOARD_WIDTH/4 : -(SVG_BOARD_WIDTH/4);
+		}else if (is_eq(var,KBD_HMOVE)){
+			int move = is_eq(val,"1") ? SVG_BOARD_WIDTH/4 : -(SVG_BOARD_WIDTH/4);
 			if (pref.mod.shift) move *= 4;
 			limit_scroll (box_x,move,SVG_BOARD_WIDTH,4);
-		}else if (strcmp(var,"vmove")==0){
-			int move = strcmp(val,"1")==0 ? SVG_BOARD_HEIGHT/4 : -(SVG_BOARD_HEIGHT/4);
+		}else if (is_eq(var,KBD_VMOVE)){
+			int move = is_eq(val,"1") ? SVG_BOARD_HEIGHT/4 : -(SVG_BOARD_HEIGHT/4);
 			if (pref.mod.shift) move *= 4;
 			limit_scroll (box_y,move,SVG_BOARD_HEIGHT,4);
 		}
@@ -1931,7 +1923,7 @@ void WHITEBOARD::execstep (
 	}else if (strcmp(var,REQ_FOCUS)==0){
 		setfocus(script_var);
 	}else if (ctx.maywrite){
-		if (strcmp(var,"deletechar")==0){
+		if (is_eq(var,KBD_DELETECHAR)){
 			if (pref.mod.shift){
 				auto selects = findselected(SEL_SELECTED);
 				for (auto s:selects){
@@ -1939,18 +1931,18 @@ void WHITEBOARD::execstep (
 					delete_elm (s->id,notify_var);
 				}
 			}
-		}else if (is_any_of(var,"backspace","insertchar","break","tab")){
+		}else if (is_any_of(var,KBD_BACKSPACE,KBD_INSERTCHAR,KBD_BREAK,KBD_TAB)){
 			auto selects = findselected(SEL_SELECTED);
 			for (auto s:selects){
-				if (is_eq(var,"backspace")){
+				if (is_eq(var,KBD_BACKSPACE)){
 					documentd_eraselast(s->txt);
-				}else if (is_eq(var,"tab")){
+				}else if (is_eq(var,KBD_TAB)){
 					// We use the TAB key to change the width and height of an item by a fixed increment.
 					// For text bullet, we use a larger increment.
 					int incr = s->type == TYPE_TEXT ? 60 : 5;
 					int grow = pref.mod.shift ? -incr : incr;
 					s->resize(grow,0,false,false);
-				}else if (is_eq(var,"break")){
+				}else if (is_eq(var,KBD_BREAK)){
 					// Duplicate items either below or to the right
 					auto star_elms = findselected(SEL_STAR);
 					auto imbed_elms = findselected(SEL_IMBED);

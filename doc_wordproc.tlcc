@@ -1585,7 +1585,7 @@ void WORDPROC::exec (
 /*
 	Create the gamepress javascript function
 */
-void wordproc_set_gamepress(string &lines, const char *funcname)
+void wordproc_set_gamepress(string &lines, const char *funcname, bool dummies)
 {
 	lines += string_f("function %s(event){\n",funcname);
 	lines += "\tconsole.log ('press key='+event.key+' '+' code='+event.code+' '+event.altKey+' '+event.ctrlKey+' '+event.shiftKey);\n";
@@ -1600,7 +1600,17 @@ void wordproc_set_gamepress(string &lines, const char *funcname)
 	lines += "\tevent.stopPropagation();\n";
 	lines += "\treturn false;\n";
 	lines += "}\n";
+	if (dummies){
+		// Define some dummy function meaningless for the caller
+		lines += "function getlastline(){\n";
+		lines += "\treturn 0;\n";
+		lines += "}\n";
+		lines += "function getlastcol(){\n";
+		lines += "\treturn 0;\n";
+		lines += "}\n";
+	}
 }
+
 /*
 	Analyse the message sent by the gamepress javascript function
 */
@@ -1610,7 +1620,7 @@ void wordproc_kbd (const char *val, MOD_KBD &mod, std::string &var, std::string 
 	int n = str_splitline(val,' ',tb);
 	//tlmp_warning ("n=%d val=%s",n,val);
 	if (n == 6 && is_any_of(tb[0],"Space")){
-		var = "insertchar";
+		var = KBD_INSERTCHAR;
 		val = " ";
 		lastline = atoi(tb[4].c_str());
 	}else if (n != 7){
@@ -1624,73 +1634,73 @@ void wordproc_kbd (const char *val, MOD_KBD &mod, std::string &var, std::string 
 		const char *tb0 = tb[0].c_str();
 		const char *tb1 = tb[1].c_str();
 		if (is_any_of(tb0,"Enter","NumpadEnter")){
-			var = "break";
+			var = KBD_BREAK;
 		}else if (is_any_of(tb0,"NumpadDecimal")){
 			if (tb[1] == "Delete"){
-				var = "deletechar";
+				var = KBD_DELETECHAR;
 			}else{
-				var = "insertchar";
+				var = KBD_INSERTCHAR;
 				val = tb1;
 			}
 		}else if (is_any_of(tb0,"Tab")){
-			var = "tab";
+			var = KBD_TAB;
 		}else if (is_start_any_of(tb0,NONEED,"Numpad")){
 			if (tb[1].size()==1){
-				var = "insertchar";
+				var = KBD_INSERTCHAR;
 				val = tb1;
 			}else if (strcmp(tb1,"Home")==0){
-				var = "home";
+				var = KBD_HOME;
 			}else if (strcmp(tb1,"End")==0){
-				var = "end";
+				var = KBD_END;
 			}else if (strcmp(tb1,"ArrowLeft")==0){
-				var = "hmove";
+				var = KBD_HMOVE;
 				val = "-1";
 			}else if (strcmp(tb1,"ArrowRight")==0){
-				var = "hmove";
+				var = KBD_HMOVE;
 				val = "1";
 			}else if (strcmp(tb1,"ArrowUp")==0){
-				var = "vmove";
+				var = KBD_VMOVE;
 				val = "-1";
 			}else if (strcmp(tb1,"ArrowDown")==0){
-				var = "vmove";
+				var = KBD_VMOVE;
 				val = "1";
 			}else if (strcmp(tb1,"Insert")==0){
-				var = "insertmode";
+				var = KBD_INSERTMODE;
 			}else if (strcmp(tb1,"PageUp")==0){
-				var = "pageup";
+				var = KBD_PAGEUP;
 			}else if (strcmp(tb1,"PageDown")==0){
-				var = "pagedown";
+				var = KBD_PAGEDOWN;
 			}
 		}else if (is_start_any_of(tb0,NONEED,"Key","Digit","Slash","Period"
 			,"Comma","Quote","Backslash","Minus","Equa","Bracket","Backquote","Semicolon")){
-			var = "insertchar";
+			var = KBD_INSERTCHAR;
 			val = tb1;
 		}else if (is_any_of(tb0,"Insert")){
-			var = "insertmode";
+			var = KBD_INSERTMODE;
 		}else if (is_any_of(tb0,"Delete")){
-			var = "deletechar";
+			var = KBD_DELETECHAR;
 		}else if (is_any_of(tb0,"Home")){
-			var = "home";
+			var = KBD_HOME;
 		}else if (is_any_of(tb0,"End")){
-			var = "end";
+			var = KBD_END;
 		}else if (is_any_of(tb0,"ArrowUp")){
-			var = "vmove";
+			var = KBD_VMOVE;
 			val = "-1";
 		}else if (is_any_of(tb0,"ArrowDown")){
-			var = "vmove";
+			var = KBD_VMOVE;
 			val = "1";
 		}else if (is_any_of(tb0,"ArrowLeft")){
-			var = "hmove";
+			var = KBD_HMOVE;
 			val = "-1";
 		}else if (is_any_of(tb0,"ArrowRight")){
-			var = "hmove";
+			var = KBD_HMOVE;
 			val = "1";
 		}else if (is_any_of(tb0,"Backspace")){
-			var = "backspace";
+			var = KBD_BACKSPACE;
 		}else if (is_any_of(tb0,"PageUp")){
-			var = "pageup";
+			var = KBD_PAGEUP;
 		}else if (is_any_of(tb0,"PageDown")){
-			var = "pagedown";
+			var = KBD_PAGEDOWN;
 		}
 	}
 	newval = val;
@@ -1804,7 +1814,7 @@ string WORDPROC::define_functions(const DOC_CONTEXT &ctx, const WORD_USERPREF &p
 	val += "var ctrlKey=null;\n";
 	val += "var shiftKey=null;\n";
 
-	wordproc_set_gamepress(val,"word_gamepress");
+	wordproc_set_gamepress(val,"word_gamepress",false);
 	val += "function word_funcinput(event){\n";
 	val += "\tif (event.data == null) gamekey=event.data;\n";
 	val += "\tgameaction(event,'kbd:'+gamecode + ' ' + gamekey+' '+altKey+' '+ctrlKey+' '+shiftKey+' '+getlastline()+' '+getlastcol());\n";
@@ -2222,7 +2232,7 @@ void WORDPROC::execstep (
 		}
 		if (ctx.maywrite){
 			auto old_cursor = pref.cursor;
-			if (is_eq(var,"vmove")){
+			if (is_eq(var,KBD_VMOVE)){
 				// Move cursor
 				int move = atoi(val);
 				unsigned current_line = pref.cursor.line;
@@ -2231,8 +2241,8 @@ void WORDPROC::execstep (
 					notify_lines.insert(current_line);
 					notify_lines.insert(pref.cursor.line);
 				}
-			}else if (is_any_of(var,"pageup","pagedown")){
-				int new_offset = is_eq(var,"pageup") ? pref.offset-lastline : pref.offset + lastline;
+			}else if (is_any_of(var,KBD_PAGEUP,KBD_PAGEDOWN)){
+				int new_offset = is_eq(var,KBD_PAGEUP) ? pref.offset-lastline : pref.offset + lastline;
 				page_up_down(new_offset,ctx.docnum,visible_lines,lastline,pref,script_var,script_lines,notify_lines);
 			}else if (is_eq(var,"select")){	// Position cursor using the mouse
 				unsigned noline,xcoor,ycoor,lastline;
@@ -2343,7 +2353,7 @@ void WORDPROC::execstep (
 			// It means that all other case (other else) are not reached if the current line is an image.
 			}else if (pref.cursor.line < lines.size()
 				&& (lines[pref.cursor.line].is_image() || lines[pref.cursor.line].is_imbed())){
-				if (is_eq(var,"break")){
+				if (is_eq(var,KBD_BREAK)){
 					unsigned cur_line = pref.cursor.line;
 					if (mod.shift){
 						// Append a new line just after the image
@@ -2353,7 +2363,7 @@ void WORDPROC::execstep (
 					for (unsigned l=cur_line; l<lines.size(); l++) notify_lines.insert(l);
 					pref.cursor.column=0;
 					setmodified(ctx.username);
-				}else if (is_eq(var,"hmove")){
+				}else if (is_eq(var,KBD_HMOVE)){
 					int move = atoi(val);
 					auto &para = lines[pref.cursor.line];
 					unsigned rep = mod.ctrl ? 10 : 1;
@@ -2366,10 +2376,10 @@ void WORDPROC::execstep (
 					}
 					notify_lines.insert(pref.cursor.line);
 				}
-			}else if (is_eq(var,"insertmode")){
+			}else if (is_eq(var,KBD_INSERTMODE)){
 				pref.insertmode = !pref.insertmode;
 				notify_lines.insert(pref.cursor.line);
-			}else if (is_eq(var,"insertchar")){
+			}else if (is_eq(var,KBD_INSERTCHAR)){
 				if (pref.is_marked()){
 					pref.cursor = pref.mark1 < pref.mark2 ? pref.mark1 : pref.mark2;
 					delete_block(pref,sp,notify_lines,script_var);
@@ -2419,7 +2429,7 @@ void WORDPROC::execstep (
 				if (update_num_lines) wordproc_update_num_lines (pref.cursor.line,lines,notify_lines);
 				notify_lines.insert(pref.cursor.line);
 				setmodified(ctx.username);
-			}else if (is_eq(var,"break")){
+			}else if (is_eq(var,KBD_BREAK)){
 				growdoc(pref.cursor.line);
 				auto &para = lines[pref.cursor.line];
 				string &l = para.line;
@@ -2457,7 +2467,7 @@ void WORDPROC::execstep (
 					pref.cursor.column=0;
 				}
 				setmodified(ctx.username);
-			}else if (is_eq(var,"backspace")){
+			}else if (is_eq(var,KBD_BACKSPACE)){
 				if (pref.is_marked()){
 					delete_block(pref,sp,notify_lines,script_var);
 				}else{
@@ -2504,7 +2514,7 @@ void WORDPROC::execstep (
 					}
 				}
 				setmodified(ctx.username);
-			}else if (is_eq(var,"deletechar")){
+			}else if (is_eq(var,KBD_DELETECHAR)){
 				if (pref.is_marked()){
 					// A block is marked, we have to delete it.
 					delete_block(pref,sp,notify_lines,script_var);
@@ -2539,7 +2549,7 @@ void WORDPROC::execstep (
 					pref.cursor.line = cur_line;;
 					pref.cursor.column = cur_column;
 				}
-			}else if (is_eq(var,"hmove")){
+			}else if (is_eq(var,KBD_HMOVE)){
 				int move = atoi(val);
 				if (move < 0){
 					if (pref.cursor.column == 0){
@@ -2604,7 +2614,7 @@ void WORDPROC::execstep (
 					}
 					notify_lines.insert(pref.cursor.line);
 				}
-			}else if (is_eq(var,"home")){	// KEY home
+			}else if (is_eq(var,KBD_HOME)){	// KEY home
 				if (pref.cursor.column != 0){
 					PARAGRAPH para;
 					unsigned noline;
@@ -2613,7 +2623,7 @@ void WORDPROC::execstep (
 					pref.cursor.column = para.get_para_home(noline);
 					notify_lines.insert(pref.cursor.line);
 				}
-			}else if (is_eq(var,"end")){	// KEY end
+			}else if (is_eq(var,KBD_END)){	// KEY end
 				PARAGRAPH para;
 				unsigned noline;
 				set_para_spec (para,pref.cursor.line,pref.cursor.column,sp,noline);
@@ -2714,7 +2724,7 @@ void WORDPROC::execstep (
 				}
 				wordproc_update_buttons (script_var.val,pref,newstates);
 			}
-			if (is_any_of(var,"hmove","home","end","vmove","pageup","pagedown")){
+			if (is_any_of(var,KBD_HMOVE,KBD_HOME,KBD_END,KBD_VMOVE,KBD_PAGEUP,KBD_PAGEDOWN)){
 				if (mod.shift){
 					if (!pref.is_marked()){
 						pref.mark1 = old_cursor;
@@ -2727,7 +2737,7 @@ void WORDPROC::execstep (
 				}
 			}
 		}else{
-			if (is_any_of(var,"vmove","voffset")){
+			if (is_any_of(var,KBD_VMOVE,"voffset")){
 				// Vertical arrows are producing scrolls in read only mode, like the wheel.
 				int move = atoi(val);
 				if (move < 0){
@@ -2736,8 +2746,8 @@ void WORDPROC::execstep (
 					pref.cursor.line = pref.offset + visible_lines - 1;
 				}
 				vmove (move,ctx.docnum,visible_lines,lastline,pref,sp,script_var,script_lines);
-			}else if (is_any_of(var,"pageup","pagedown")){
-				int new_offset = strcmp(var,"pageup")==0 ? pref.offset-lastline : pref.offset + lastline;
+			}else if (is_any_of(var,KBD_PAGEUP,KBD_PAGEDOWN)){
+				int new_offset = is_eq(var,KBD_PAGEUP) ? pref.offset-lastline : pref.offset + lastline;
 				set<unsigned> notify_lines;
 				page_up_down (new_offset,ctx.docnum,visible_lines,lastline,pref,script_var,script_lines,notify_lines);
 			}else{

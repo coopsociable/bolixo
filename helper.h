@@ -120,6 +120,15 @@ template<typename T1, typename ... Ts>
 bool is_start_any_ofnc(const std::string &t, NONEED_T no, T1 t1, Ts ... ts){
 	return is_start_any_ofnc(t.c_str(),no,t1,ts...);
 }
+// Specialisation for PARAM_STRING
+template<typename T1, typename ... Ts>
+bool is_start_any_ofnc(PARAM_STRING t, const char *&pt, T1 t1, Ts ... ts){
+	return is_start_any_ofnc(t.ptr,pt,t1,ts...);
+}
+template<typename T1, typename ... Ts>
+bool is_start_any_ofnc(PARAM_STRING t, NONEED_T no, T1 t1, Ts ... ts){
+	return is_start_any_ofnc(t.ptr,no,t1,ts...);
+}
 // Specialisation for char *
 template<typename T1, typename ... Ts>
 bool is_start_any_ofnc(char *t, const char *&pt, T1 t1, Ts ... ts){

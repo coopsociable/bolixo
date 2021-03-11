@@ -21,7 +21,7 @@
 #include <stdlib.h>
 #include <math.h>
 #include <vector>
-#include <map>
+#include <set>
 #include <tlmplib.h>
 #include "bolixo.h"
 #include "proto/bod_client.protodef"
@@ -33,10 +33,16 @@ using namespace std;
 
 
 class PHOTOS: public GAME{
-	std::string message;
+	vector<string> images;
+	unsigned main_image=0;	// Image currently displayed
 	std::string define_styles(bool mobile);
-	std::string define_functions(bool reverse, bool mobile);
-	std::string draw_board (bool mobile, unsigned docnum, bool editmode, std::string &script);
+	std::string define_functions();
+	std::string draw_main_image (bool mobile, unsigned docnum, bool editmode, std::string &script);
+	std::string draw_small_images (bool mobile, unsigned docnum, bool editmode, unsigned height, std::string &script);
+	void resetgame();
+	void setfocus(VARVAL &var);
+	void update_main_image(VARVAL &notify_var);
+	void update_mini_images(const set<unsigned> &updates, unsigned height, VARVAL &notify_var);
 public:
 	PHOTOS();
 	const char *getclass() const{
@@ -55,7 +61,10 @@ GAME_P make_PHOTOS()
 #include "proto/documentd_photos.protoh"
 #include "proto/documentd_photos.protoch"
 
-
+void PHOTOS::resetgame()
+{
+	images.clear();
+}
 PHOTOS::PHOTOS()
 {
 	resetgame();
@@ -63,16 +72,24 @@ PHOTOS::PHOTOS()
 
 void PHOTOS::save(DOC_WRITER &w, bool save_session_info)
 {
-	documentd_photos_header (&w,revision);
+	documentd_photos_header (&w,revision,main_image);
+	documentd_photos_images(&w,images);
 }
 <mod>
 void PHOTOS::load(DOC_READER &r, std::string &msg)
 {
 	glocal revision;
+	glocal main_image;
+	glocal images;
 	glocal msg;
+	images.clear();
 	<call documentd_photos>(&r);
 	<f header>
 		glocal.revision = revision;
+		glocal.main_image = main_image;
+	</f>
+	<f images>
+		for (auto s:images) glocal.images.push_back(s);
 	</f>
 	<f invalid>
 		glocal.msg = "Invalid format for photo file";
@@ -86,22 +103,163 @@ string PHOTOS::define_styles(bool mobile)
 	string lines;
 	return lines;
 }
-string PHOTOS::define_functions(bool reverse, bool mobile)
+string PHOTOS::define_functions()
 {
 	string lines;
+	wordproc_set_gamepress(lines,"photos_gamepress",true);
+	lines += documentd_js_loop_function("main","photos");
+	lines += documentd_js_loop_function("mini","mini");
+	// Update the message field
+	lines += "function PHOT_updmsg(color,msg){\n";
+	lines += string_f("\tvar elm = document.getElementById('msg-%s');\n",gameid.c_str());
+	lines += "\tif (elm != null){\n";
+	lines += "\t\telm.style.color=color;\n";
+	lines += "\t\telm.innerHTML=msg;\n";
+	lines += "\t}\n";
+	lines += "}\n";
 	return lines;
 }
-string PHOTOS::draw_board(
+static string photos_converturl(PARAM_STRING gameid, PARAM_STRING url)
+{
+	string ret = url.ptr;
+	if (!is_start_any_ofnc(url.ptr,NONEED,"http://","https://")){
+		string abspath = documentd_rel2abs(gameid,url);
+		ret = documentd_escape(string_f("/index.hc?webstep=5&image=%s",abspath.c_str()));
+	}
+	return ret;
+}
+string PHOTOS::draw_main_image(
 	bool mobile,
 	unsigned docnum,
 	bool editmode,		// Enable onXXXX function
 	string &script)
 {
 	string lines;
-	lines += "<img style='width:100%;image-orientation:from-image;object-fit:contain' src=http://test1.bolixo.org/whiteboard.jpg>\n";
+	script += string_f(
+		"var pho_%u={\n"
+		"\tgameid:'%s',docnum:%u\n"
+		"};\n"
+		"pho_%u.gameselect=function(event){\n"
+		"\tpho_gameselect(this.gameid,this.docnum,event);\n"
+		"};\n"
+		,docnum
+		,gameid.c_str(),docnum
+		,docnum);
+	script += "if (typeof photos_lst == 'undefined') var photos_lst=[];\n";
+	script += string_f("photos_lst.push(pho_%u);\n",docnum);
+	if (images.size() > main_image){
+		auto &image = images[main_image];
+		lines += string_f("<img id='main-%s,%u' style='width:100%%;image-orientation:from-image;object-fit:contain;max-height:95%%' src=%s>\n"
+			,gameid.c_str(),docnum,photos_converturl(gameid,image).c_str());
+	}
+	return lines;
+}
+string PHOTOS::draw_small_images(
+	bool mobile,
+	unsigned docnum,
+	bool editmode,		// Enable onXXXX function
+	unsigned height,
+	string &script)
+{
+	string lines;
+	unsigned no = 0;
+	script += string_f(
+		"var pho_mini_%u={\n"
+		"\tgameid:'%s',docnum:%u\n"
+		"};\n"
+		"pho_mini_%u.gameselect=function(event){\n"
+		"\tpho_gameselect(this.gameid,this.docnum,event);\n"
+		"};\n"
+		,docnum
+		,gameid.c_str(),docnum
+		,docnum);
+	script += "if (typeof mini_lst == 'undefined') var mini_lst=[];\n";
+	script += string_f("mini_lst.push(pho_mini_%u);\n",docnum);
+	lines += string_f("<div id='mini-%s,%u' style='display:flex; flex-flow:row;' >\n",gameid.c_str(),docnum);
+	for (auto &im:images){
+		lines += string_f("<div style='border:2px solid %s;'>\n",no==main_image ? "red" : "black");
+		lines += string_f("<img id='mini-%u-%s' src=%s width=%u/>\n",no,gameid.c_str(),photos_converturl(gameid,im).c_str(),height-4);
+		lines += "</div>";
+		no++;
+	}
+	lines += "</div>";
 	return lines;
 }
 
+// Some lexical validation for the last part of a URL or a path
+static bool photos_checkpath(PARAM_STRING path)
+{
+	bool ret = false;
+	const char *pt = path.ptr;
+	if (*pt != '\0'){
+		while (*pt != '\0'){
+			char carac = *pt;
+			if (isalpha(carac) || isdigit(carac) || is_any_of(carac,'/','-','.','_')){
+				pt++;
+			}else{
+				break;
+			}
+		}
+		ret = *pt == '\0';
+	}
+	return ret;
+}
+
+// Some lexical validation for a URL or a path
+static bool photos_checkurlpath(PARAM_STRING image)
+{
+	const char *pt;
+	return (is_start_any_ofnc(image,pt,"http://","https://")
+		&& photos_checkpath(pt))
+		|| photos_checkpath(image);
+}
+void PHOTOS::setfocus(VARVAL &var)
+{
+	documentd_setfocus(var,string_f("text-%s",gameid.c_str()));
+}
+void PHOTOS::update_main_image(VARVAL &notify_var)
+{
+	notify_var.val += "photos_loop_board(function(elm){\n";
+	notify_var.val += string_f("\telm.src='%s';\n",photos_converturl(gameid,images[main_image]).c_str());
+	notify_var.val += "});\n";
+}
+// Update the images in the mini images area
+void PHOTOS::update_mini_images(const set<unsigned> &updates, unsigned height, VARVAL &notify_var)
+{
+	if (updates.size() == 0) return;
+	bool update_main = false;
+	notify_var.val += "mini_loop_board(function(elm){\n";
+	notify_var.val += "\tvar divs=elm.getElementsByTagName('div');\n";
+	// Make sure divs is large enough
+	notify_var.val += string_f("\tfor (var i=divs.length; i<%zu; i++){\n",images.size());
+	notify_var.val += "\t\tvar newdiv = document.createElement('div');\n";
+	notify_var.val += "\t\tvar newimg = document.createElement('img');\n";
+	notify_var.val += string_f("\t\tconsole.log('mini-'+i+'-%s');\n",gameid.c_str());
+	notify_var.val += string_f("\t\tnewimg.id='mini-'+i+'-%s';\n",gameid.c_str());
+	notify_var.val += string_f("\t\tnewimg.style.width=%u;\n",height-4);
+	notify_var.val += "\t\tnewdiv.style.border='2px solid black';\n";
+	notify_var.val += "\t\tnewdiv.appendChild(newimg);\n";
+	notify_var.val += "\t\telm.appendChild(newdiv);\n";
+	notify_var.val += "\t}\n";
+	// Make sure divs is not to large
+	notify_var.val += string_f("\tfor (var i=divs.length-1; i>=%zu; i--){\n",images.size());
+	notify_var.val += "\t\telm.removeChild(divs[i]);\n";
+	notify_var.val += "\t}\n";
+	
+	notify_var.val += "\tdivs=elm.getElementsByTagName('div');\n";
+	for (auto im:updates){
+		const char *color = "black";
+		if (im == main_image){
+			update_main = true;
+			color = "red";
+		}
+		notify_var.val += string_f("\tdivs[%u].style.borderColor='%s';\n",im,color);
+		notify_var.val += string_f("\tvar imgs=divs[%u].getElementsByTagName('img');\n",im);
+		notify_var.val += string_f("\timgs[0].src='%s';\n",photos_converturl(gameid,images[im]).c_str());
+	}
+	notify_var.val += "});\n";
+	if (update_main) update_main_image(notify_var);
+}
 <mod>
 void PHOTOS::exec (
 	const char *var,
@@ -110,15 +268,30 @@ void PHOTOS::exec (
 	const DOC_UI_SPECS_receive &sp,
 	vector<VARVAL> &res)
 {
+	const unsigned mini_height = 100;	// Size of the mini photos
 	unsigned waiting_users_width = sp.mobile ? 62 : 42;
 	unsigned board_width = sp.content_width - waiting_users_width;	// Space for user list
 	unsigned board_height = sp.content_height;
-	string error,status;
+	string error,status,api_error;
 	setactivity();
 	VARVAL notify_var;
 	notify_var.var = VAR_NOTIFY;
-	notify_var.val = string_f("photos_cur_gameid='%s';\n",gameid.c_str());
-	if (strcmp(var,REQ_PRINT)==0){
+	notify_var.val += string_f("photos_cur_gameid='%s';\n",gameid.c_str());
+	notify_var.val += string_f("mini_cur_gameid='%s';\n",gameid.c_str());
+	size_t base_notify_size = notify_var.val.size();
+	VARVAL script_var;
+	script_var.var = VAR_SCRIPT;
+	set<unsigned> updimages;
+	string tmpvar,tmpval;
+	if (is_eq(var,"kbd")){
+		unsigned lastline = 1000;
+		unsigned lastcol=1000;
+		MOD_KBD mod;
+		wordproc_kbd(val,mod,tmpvar,tmpval,lastline,lastcol);
+		var = tmpvar.c_str();
+		val = tmpval.c_str();		
+	}
+	if (is_eq(var,REQ_PRINT)){
 		VARVAL v;
 		v.var = VAR_CONTENT;
 		<call button_bar>(this,sp.mobile,ctx.maywrite,v.val);
@@ -129,7 +302,9 @@ void PHOTOS::exec (
 		</f>
 		</call>
 		// Main image
-		unsigned mini_height = 100;	// Size of the mini photos
+		v.val += "<script>\n";
+		v.val += define_functions();
+		v.val += "</script>\n";
 		v.val += string_f("<div class=webtable id=%sdoc_photos style='display:flex; flex-flow:row;' >\n",val);
 		v.val += "<div style='display:flex; flex-flow:column;' >\n";
 		v.val += string_f("<div id='text-%s' style='flex:0 0 auto;width:%u;height:%u;border:1px solid black;"
@@ -137,19 +312,17 @@ void PHOTOS::exec (
 			" onkeydown='photos_gamepress(event);return false;'"
 			" tabindex=0 >\n",gameid.c_str(),board_width,board_height-mini_height);
 		string script;
-		v.val += draw_board(sp.mobile,ctx.docnum,true,script);
-		if (script.size() > 0){
-			v.val += "<script>\n";
-			v.val += script;
-			v.val += "</script>\n";
-		}
+		v.val += draw_main_image(sp.mobile,ctx.docnum,true,script);
 		v.val += "</div>\n";
 		v.val += string_f("<div id='mini-%s' style='flex:0 0 auto;width:%u;height:%u;border:1px solid black;"
 			" margin-left: auto;'"
 			" onkeydown='photos_gamepress(event);return false;'"
 			" tabindex=0 >\n",gameid.c_str(),board_width,mini_height);
-		for (unsigned i=0; i<5; i++){
-			v.val += string_f("<img src=%s width=100/>\n","http://test1.bolixo.org/whiteboard.jpg");
+		v.val += draw_small_images(sp.mobile,ctx.docnum,true,mini_height,script);
+		if (script.size() > 0){
+			v.val += "<script>\n";
+			v.val += script;
+			v.val += "</script>\n";
 		}
 		v.val += "</div>\n";
 		v.val += "</div>\n";
@@ -161,47 +334,116 @@ void PHOTOS::exec (
 		documentd_chat (v.val,ctx.username,chat,sp.width-20,sp.mobile ? 200 : 100);
 		v.val += "</div>\n";
 		res.emplace_back(move(v));
-	}else if (strcmp(var,REQ_FUNCTIONS)==0){
+	}else if (is_eq(var,REQ_FUNCTIONS)){
 		VARVAL var;
 		var.var = VAR_DEFSCRIPT;
-		var.val = define_functions (false,sp.mobile);
+		var.val = define_functions ();
 		res.emplace_back(move(var));
-	}else if (strcmp(var,REQ_STYLES)==0){
+	}else if (is_eq(var,REQ_STYLES)){
 		VARVAL var;
 		var.var = VAR_STYLES;
 		var.val += define_styles(sp.mobile);
 		res.emplace_back(move(var));
-	}else if (strcmp(var,REQ_REGION)==0){
+	}else if (is_eq(var,REQ_REGION)){
 		// For embedding
 		VARVAL var,var_script;
 		var.var = VAR_CONTENT;
 		var_script.var = VAR_DEFSCRIPT;
-		var.val = draw_board(sp.mobile,ctx.docnum,false,var_script.val);
+		if (strcmp(val,"main")==0){
+			var.val = draw_main_image(sp.mobile,ctx.docnum,false,var_script.val);
+		}else if (strcmp(val,"mini")==0){
+			var.val = draw_small_images(sp.mobile,ctx.docnum,false,mini_height,var_script.val);
+		}
 		res.emplace_back(move(var));
 		res.emplace_back(move(var_script));
-	}else if (strcmp(var,REQ_CHAT)==0){
+	}else if (is_eq(var,REQ_CHAT)){
 		appendchat(val,notify_var.val,res);
-	}else if (strcmp(var,REQ_GETFIELDS)==0){
+	}else if (is_eq(var,REQ_GETFIELDS)){
 		VARVAL var;
 		var.var = VAR_FIELDS;
 		if (strcmp(val,DIALOG_PHOTOS_CONFIG)==0){
 		}
 		res.emplace_back(var);
-	}else if (strcmp(var,REQ_FOCUS)==0){
+	}else if (is_eq(var,REQ_FOCUS)){
+		setfocus(script_var);
 	}else if (ctx.maywrite){
-		if (strcmp(var,"place")==0){
-		}else if (strcmp(var,"newgame")==0){
-		}else if (strcmp(var,"resetgame")==0){
+		if (is_eq(var,KBD_HMOVE)){
+			unsigned old = main_image;
+			if (is_eq(val,"1")){
+				if (images.size() > 0 && main_image < images.size()-1) main_image++;
+			}else{
+				if (main_image > 0) main_image--;
+			}
+			if (old != main_image){
+				update_main_image(notify_var);
+				updimages.insert (old);
+				updimages.insert (main_image);
+				if (0){
+				notify_var.val += "mini_loop_board(function(elm){\n";
+				notify_var.val += "\tvar divs=elm.getElementsByTagName('div');\n";
+				notify_var.val += string_f("\tdivs[%u].style.borderColor='black';\n",old);
+				notify_var.val += string_f("\tdivs[%u].style.borderColor='red';\n",main_image);
+				notify_var.val += "});\n";
+				}
+				
+			}
+		}else if (is_eq(var,"place")){
+		}else if (is_eq(var,"newgame")){
+		}else if (is_eq(var,"resetgame")){
 			resetgame();
-		}else if (strcmp(var,"config")==0){
-		}else if (strcmp(var,"dump")==0){
+			setmodified(ctx.username);
+		}else if (is_eq(var,"config")){
+		}else if (is_eq(var,"addimage")){
+			string image;
+			bool ok = false;
+			if (splitlineq(val,image)){
+				if (images.size() < 100 && photos_checkurlpath(image)){
+					updimages.insert(images.size());
+					images.push_back(image);
+					ok = true;
+					setmodified(ctx.username);
+				}
+			}
+			if (!ok){
+				api_error = MSG_U(E_IVLADDIMAGE,"Invalid addimage command");
+			}
+		}else if (is_eq(var,"setimage")){
+			unsigned no;
+			string image;
+			bool ok = false;
+			if (splitlineq(val,no,image)){
+				if (no < 100 && photos_checkurlpath(image)){
+					while (images.size() <= no){
+						updimages.insert(images.size());
+						images.push_back("");
+					}
+					images[no] = image;
+					updimages.insert(no);
+					ok = true;
+					setmodified(ctx.username);
+				}
+			}
+			if (!ok){
+				api_error = MSG_U(E_IVLSETIMAGE,"Invalid setimage command");
+			}
+		}else if (is_eq(var,"dump")){
 			VARVAL var;
+			var.var = "images";
+			for (auto &im:images) var.val += string_f("%s\n",im.c_str());
 			res.emplace_back(var);
 		}
 	}else{
 		error = MSG_R(E_READONLY);
 	}
-	if (notify_var.val.size() > 0) res.emplace_back(move(notify_var));
+	update_mini_images(updimages,mini_height,notify_var);
+	if (notify_var.val.size() > base_notify_size) res.emplace_back(move(notify_var));
+	if (script_var.val.size() > 0) res.emplace_back(move(script_var));
+	if (api_error.size() > 0){
+		VARVAL var;
+		var.var = VAR_ERROR;
+		var.val = move(api_error);
+		res.emplace_back(move(var));
+	}
 	if (error.size() > 0){
 		update_msg(false,error,"red",res);
 	}else if (status.size() > 0){

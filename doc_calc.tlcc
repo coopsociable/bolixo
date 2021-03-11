@@ -378,7 +378,7 @@ string CALC::define_functions(
 	unsigned board_height)
 {
 	string val;
-	wordproc_set_gamepress(val,"calc_gamepress");
+	wordproc_set_gamepress(val,"calc_gamepress",false);
 	// Return the last visible line, needed by gamepress, shared with doc_wordproc
 	val += "function getlastline(){\n";
 	val += string_f("\tvar elm = document.getElementById('tbl-%s,%u');\n",gameid.c_str(),ctx.docnum);
@@ -1143,8 +1143,8 @@ void CALC::execstep (
 			var.val += string_f("[%u,%u]=%s,%s,%lf\n",g.first.line,g.first.col,tb[g.second.state],g.second.text.c_str(),g.second.value);
 		}
 		res.emplace_back(var);
-	}else if (is_any_of(var,"pageup","pagedown")){
-		if (strcmp(var,"pageup")==0){
+	}else if (is_any_of(var,KBD_PAGEUP,KBD_PAGEDOWN)){
+		if (is_eq(var,KBD_PAGEUP)){
 			if (pref.offset_line < lastline){
 				if (pref.cursor.line >= lastline) pref.cursor.line -= pref.offset_line;
 				pref.offset_line = 0;
@@ -1177,45 +1177,45 @@ void CALC::execstep (
 				vscroll(script_var,pref,move);
 			}
 		}
-	}else if (!ctx.maywrite && is_any_of(var,"vmove","hmove")){
+	}else if (!ctx.maywrite && is_any_of(var,KBD_VMOVE,KBD_HMOVE)){
 		int move = atoi(val);
-		if (strcmp(var,"hmove")==0){
+		if (is_eq(var,KBD_HMOVE)){
 			hscroll(script_var,pref,move);
 		}else{
 			vscroll(script_var,pref,move);
 		}
 	}else if (ctx.maywrite){
 		auto old_cursor = pref.cursor;
-		if (strcmp(var,"break")==0 && pref.mod.shift){
+		if (is_eq(var,KBD_BREAK) && pref.mod.shift){
 			// Insert a line
 			insert_line (notify_var,pref.cursor.line);
 			update_celledit (pref,script_var);
 			setmodified(ctx.username);
-		}else if (strcmp(var,"break")==0 && pref.mod.ctrl){
+		}else if (is_eq(var,KBD_BREAK) && pref.mod.ctrl){
 			// Insert of a column
 			insert_col (notify_var,pref.cursor.col);
 			update_celledit (pref,script_var);
 			setmodified(ctx.username);
-		}else if (strcmp(var,"deletechar")==0 && pref.mod.shift){
+		}else if (is_eq(var,KBD_DELETECHAR) && pref.mod.shift){
 			// Remove a line
 			delete_line (notify_var,pref.cursor.line);
 			update_celledit (pref,script_var);
 			setmodified(ctx.username);
-		}else if (strcmp(var,"deletechar")==0 && pref.mod.ctrl){
+		}else if (is_eq(var,KBD_DELETECHAR) && pref.mod.ctrl){
 			// Remove a column
 			delete_col (notify_var,pref.cursor.col);
 			update_celledit (pref,script_var);
 			setmodified(ctx.username);
-		}else if (is_any_of(var,"deletechar","backspace","insertchar")){
+		}else if (is_any_of(var,KBD_DELETECHAR,KBD_BACKSPACE,KBD_INSERTCHAR)){
 			string buf;
 			auto c = grid.find(pref.cursor);
 			bool filled_cell = c != grid.end();
 			if (filled_cell){
 				buf = c->second.text;
 			}
-			if (strcmp(var,"deletechar")==0){
+			if (is_eq(var,KBD_DELETECHAR)){
 				buf.clear();
-			}else if (strcmp(var,"backspace")==0){
+			}else if (is_eq(var,KBD_BACKSPACE)){
 				documentd_eraselast(buf);
 			}else{
 				buf += val;
@@ -1224,9 +1224,9 @@ void CALC::execstep (
 			update_celledit (pref,script_var);
 			notify_ids.insert(pref.cursor);
 			setmodified(ctx.username);
-		}else if (is_any_of(var,"vmove","break")){
+		}else if (is_any_of(var,KBD_VMOVE,KBD_BREAK)){
 			int move;
-			if (strcmp(var,"break")==0){
+			if (is_eq(var,KBD_BREAK)){
 				move = 1;
 			}else{
 				move = atoi(val);
@@ -1240,10 +1240,10 @@ void CALC::execstep (
 				|| pref.cursor.line > pref.offset_line+lastline-1){
 				vscroll (script_var,pref,move);
 			}
-		}else if (is_any_of(var,"hmove","tab")){
+		}else if (is_any_of(var,KBD_HMOVE,KBD_TAB)){
 			int move;
 			bool shift = pref.mod.shift;
-			if (strcmp(var,"tab")==0){
+			if (is_eq(var,KBD_TAB)){
 				move = shift ? -1 : 1;
 				shift = false;
 			}else{

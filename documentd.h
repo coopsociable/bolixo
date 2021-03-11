@@ -392,7 +392,7 @@ void fflush (DOC_WRITER *);
 char *fgets(char *s, int size, DOC_READER *r);
 unsigned chess_getmaxskill();
 void chess_setmaxskill(unsigned maxskill);
-void wordproc_set_gamepress(std::string &lines, const char *funcname);
+void wordproc_set_gamepress(std::string &lines, const char *funcname, bool dummies);
 struct MOD_KBD{
 	bool ctrl = false;
 	bool shift = false;
@@ -400,4 +400,18 @@ struct MOD_KBD{
 };
 void wordproc_kbd (const char *val, MOD_KBD &mod, std::string &var, std::string &newval, unsigned &lastline, unsigned &lastcol);
 size_t utf8_codepoint_size(uint8_t text);
+
+#define KBD_PAGEUP	"pageup"
+#define KBD_PAGEDOWN	"pagedown"
+#define KBD_VMOVE	"vmove"
+#define KBD_HMOVE	"hmove"
+#define KBD_INSERTCHAR	"insertchar"
+#define KBD_DELETECHAR	"deletechar"
+#define KBD_INSERTMODE	"insertmode"
+#define KBD_BREAK	"break"
+#define KBD_BACKSPACE	"backspace"
+#define KBD_HOME	"home"
+#define KBD_END		"end"
+#define KBD_TAB		"tab"
+
 #endif

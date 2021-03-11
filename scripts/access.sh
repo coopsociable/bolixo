@@ -490,6 +490,44 @@ elif [ "$1" = "doc-word-print" ] ; then # test: print the test document
 	DOCNAME=/projects/jacques-A/public/test.doc
 	. scripts/word-help.sh
 	docprint
+elif [ "$1" = "doc-photos" ] ; then # test: many test on photo gallery document
+	DOCNAME=/projects/jacques-A/public/test.pho
+	. scripts/photos-help.sh
+	createdocument
+	resetdocument
+	if [ "$2" = "" ] ; then
+		setimage 0 mini-photo.jpg
+		setimage 1 photo.jpg
+		setimage 2 http://test1.bolixo.org/whiteboard.jpg
+		setimage 3 http://test1.bolixo.org/project.jpg
+		addimage http://test1.bolixo.org/project.jpg
+		addimage http://test1.bolixo.org/project.jpg
+		addimage http://test1.bolixo.org/project.jpg
+	elif [ "$2" = "change" ] ; then
+		# Same as above, but the second image is changed
+		setimage 0 mini-photo.jpg
+		setimage 1 mini-photo.jpg
+		setimage 2 http://test1.bolixo.org/whiteboard.jpg
+		setimage 3 http://test1.bolixo.org/project.jpg
+		addimage http://test1.bolixo.org/project.jpg
+		addimage http://test1.bolixo.org/project.jpg
+		addimage http://test1.bolixo.org/project.jpg
+	elif [ "$2" = "few1" ]; then
+		# Only one image
+		setimage 0 mini-photo.jpg
+	elif [ "$2" = "few2" ]; then
+		# Only two images
+		setimage 0 mini-photo.jpg
+		setimage 1 photo.jpg
+	elif [ "$2" = "few3" ]; then
+		# Only three images
+		setimage 0 mini-photo.jpg
+		setimage 1 photo.jpg
+		setimage 2 http://test1.bolixo.org/whiteboard.jpg
+	else
+		echo Unknown option $2 >&2
+	fi
+	docdump
 elif [ "$1" = "infowrite" ] ; then # test: publish info to directory server
 	USER=jacques-A
 	echo Create mini-photo.jpg and photo.jpg for all users
