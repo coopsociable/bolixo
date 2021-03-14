@@ -733,6 +733,8 @@ static void dup_close (int fd, int target_fd)
 
 /*
 	Convert a relative path (relative to the project) to absolute path.
+	If the relative path starts with a /, it means it is a path relative to the project.
+	If not, it is relative to the folder holding the gameid.
 	The project is extracted from the gameid.
 */
 string documentd_rel2abs (PARAM_STRING gameid, PARAM_STRING relpath)
@@ -740,8 +742,17 @@ string documentd_rel2abs (PARAM_STRING gameid, PARAM_STRING relpath)
 	string ret;
 	auto tb = str_splitline (gameid.ptr,'/');
 	if (tb.size() >= 4){
-		ret = string_f("/%s/%s/%s/%s",tb[1].c_str(),tb[2].c_str(),tb[3].c_str(),relpath.ptr);
+		ret = string_f("/%s/%s/%s",tb[1].c_str(),tb[2].c_str(),tb[3].c_str());
+		if (relpath.ptr[0] == '/'){
+			ret += relpath.ptr;
+		}else{
+			for (unsigned i=4; i<tb.size()-1; i++){
+				ret += string_f("/%s",tb[i].c_str());
+			}
+			ret += string_f("/%s",relpath.ptr);
+		}
 	}
+	//tlmp_warning ("gameid=%s relpath=%s ret=%s\n",gameid.ptr,relpath.ptr,ret.c_str());
 	return ret;
 }
 

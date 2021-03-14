@@ -43,6 +43,7 @@ class PHOTOS: public GAME{
 	void setfocus(VARVAL &var);
 	void update_main_image(VARVAL &notify_var);
 	void update_mini_images(const set<unsigned> &updates, unsigned height, VARVAL &notify_var);
+	void updateif (unsigned old, set<unsigned> &updimages, VARVAL &notify_var);
 public:
 	PHOTOS();
 	const char *getclass() const{
@@ -74,6 +75,9 @@ void PHOTOS::save(DOC_WRITER &w, bool save_session_info)
 {
 	documentd_photos_header (&w,revision,main_image);
 	documentd_photos_images(&w,images);
+	vector<PHOTOS_CHAT> schat;
+	documentd_copychat (schat,chat);
+	documentd_photos_chat(&w,schat);
 }
 <mod>
 void PHOTOS::load(DOC_READER &r, std::string &msg)
@@ -82,7 +86,9 @@ void PHOTOS::load(DOC_READER &r, std::string &msg)
 	glocal main_image;
 	glocal images;
 	glocal msg;
+	glocal chat;
 	images.clear();
+	chat.clear();
 	<call documentd_photos>(&r);
 	<f header>
 		glocal.revision = revision;
@@ -90,6 +96,9 @@ void PHOTOS::load(DOC_READER &r, std::string &msg)
 	</f>
 	<f images>
 		for (auto s:images) glocal.images.push_back(s);
+	</f>
+	<f chat>
+		for (auto l:lines) glocal.chat.emplace_back(l.time,l.line);
 	</f>
 	<f invalid>
 		glocal.msg = "Invalid format for photo file";
@@ -101,6 +110,11 @@ void PHOTOS::load(DOC_READER &r, std::string &msg)
 string PHOTOS::define_styles(bool mobile)
 {
 	string lines;
+	lines += ".photos{\n";
+	lines += "\timage-orientation:from-image;\n";
+	lines += "\tobject-fit:contain;\n";
+	lines += "\tmax-height:95%;\n";
+	lines += "}\n";
 	return lines;
 }
 string PHOTOS::define_functions()
@@ -116,6 +130,21 @@ string PHOTOS::define_functions()
 	lines += "\t\telm.style.color=color;\n";
 	lines += "\t\telm.innerHTML=msg;\n";
 	lines += "\t}\n";
+	lines += "}\n";
+	lines += "function pho_gameselect(gameid,docnum,event){\n";
+	lines += "\tvar elm = document.getElementById('main-'+gameid+','+docnum);\n";
+	lines += "\tvar rect = elm.getBoundingClientRect();\n";
+	lines += "\tvar x = event.clientX-rect.left;\n";
+	lines += "\tvar y = event.clientY-rect.top;\n";
+	lines += "\tgameaction(event,'select:'+x+','+y+ ','+event.which+','+event.shiftKey+','+event.ctrlKey);\n";
+	lines += "}\n";
+	lines += "function pho_mini_gameselect(gameid,docnum,event){\n";
+	lines += "\tvar elm = document.getElementById('mini-'+gameid+','+docnum);\n";
+	lines += "\tvar rect = elm.getBoundingClientRect();\n";
+	lines += "\tvar h = elm.clientHeight;\n";	//rect.bottom - rect.top;\n";
+	lines += "\tvar x = (event.clientX-rect.left + elm.scrollLeft);\n";
+	lines += "\tvar y = event.clientY-rect.top;\n";
+	lines += "\tgameaction(event,'mselect:' +x+ ',' +y+ ',' +event.which+ ',' +event.shiftKey+ ',' +event.ctrlKey);\n";
 	lines += "}\n";
 	return lines;
 }
@@ -149,8 +178,12 @@ string PHOTOS::draw_main_image(
 	script += string_f("photos_lst.push(pho_%u);\n",docnum);
 	if (images.size() > main_image){
 		auto &image = images[main_image];
-		lines += string_f("<img id='main-%s,%u' style='width:100%%;image-orientation:from-image;object-fit:contain;max-height:95%%' src=%s>\n"
-			,gameid.c_str(),docnum,photos_converturl(gameid,image).c_str());
+		string onfuncs;
+		if (editmode){
+			onfuncs = string_f(" onmousedown='pho_%u.gameselect(event);'",docnum);
+		}
+		lines += string_f("<img %s class=photos id='main-%s,%u' style='width:100%%;' src=%s>\n"
+			,onfuncs.c_str(),gameid.c_str(),docnum,photos_converturl(gameid,image).c_str());
 	}
 	return lines;
 }
@@ -168,17 +201,22 @@ string PHOTOS::draw_small_images(
 		"\tgameid:'%s',docnum:%u\n"
 		"};\n"
 		"pho_mini_%u.gameselect=function(event){\n"
-		"\tpho_gameselect(this.gameid,this.docnum,event);\n"
+		"\tpho_mini_gameselect(this.gameid,this.docnum,event);\n"
 		"};\n"
 		,docnum
 		,gameid.c_str(),docnum
 		,docnum);
 	script += "if (typeof mini_lst == 'undefined') var mini_lst=[];\n";
 	script += string_f("mini_lst.push(pho_mini_%u);\n",docnum);
-	lines += string_f("<div id='mini-%s,%u' style='display:flex; flex-flow:row;' >\n",gameid.c_str(),docnum);
+	string onfuncs;
+	if (editmode){
+		onfuncs = string_f(" onmousedown='pho_mini_%u.gameselect(event);'",docnum);
+	}
+	lines += string_f("<div %s id='mini-%s,%u' style='height:%u; overflow:auto; display:flex; flex-flow:row;' >\n",onfuncs.c_str(),gameid.c_str(),docnum,height);
 	for (auto &im:images){
-		lines += string_f("<div style='border:2px solid %s;'>\n",no==main_image ? "red" : "black");
-		lines += string_f("<img id='mini-%u-%s' src=%s width=%u/>\n",no,gameid.c_str(),photos_converturl(gameid,im).c_str(),height-4);
+		lines += string_f("<div style='height:96%%;border:2px solid %s;'>\n",no==main_image ? "red" : "black");
+		lines += string_f("<img class=photos id='mini-%u-%s' src=%s style='width:%u;'/>\n"
+			,no,gameid.c_str(),photos_converturl(gameid,im).c_str(),height-6);
 		lines += "</div>";
 		no++;
 	}
@@ -237,7 +275,9 @@ void PHOTOS::update_mini_images(const set<unsigned> &updates, unsigned height, V
 	notify_var.val += string_f("\t\tconsole.log('mini-'+i+'-%s');\n",gameid.c_str());
 	notify_var.val += string_f("\t\tnewimg.id='mini-'+i+'-%s';\n",gameid.c_str());
 	notify_var.val += string_f("\t\tnewimg.style.width=%u;\n",height-4);
+	notify_var.val += "\t\tnewimg.className='photos';\n";
 	notify_var.val += "\t\tnewdiv.style.border='2px solid black';\n";
+	notify_var.val += string_f("\t\tnewdiv.style.height=%u;\n",height-4);
 	notify_var.val += "\t\tnewdiv.appendChild(newimg);\n";
 	notify_var.val += "\t\telm.appendChild(newdiv);\n";
 	notify_var.val += "\t}\n";
@@ -260,6 +300,16 @@ void PHOTOS::update_mini_images(const set<unsigned> &updates, unsigned height, V
 	notify_var.val += "});\n";
 	if (update_main) update_main_image(notify_var);
 }
+// Update the displayed image there was a change in selection
+void PHOTOS::updateif (unsigned old, set<unsigned> &updimages, VARVAL &notify_var)
+{
+	if (old != main_image){
+		update_main_image(notify_var);
+		updimages.insert (old);
+		updimages.insert (main_image);
+	}
+}
+
 <mod>
 void PHOTOS::exec (
 	const char *var,
@@ -294,6 +344,9 @@ void PHOTOS::exec (
 	if (is_eq(var,REQ_PRINT)){
 		VARVAL v;
 		v.var = VAR_CONTENT;
+		v.val += "<style>\n";
+		v.val += define_styles(sp.mobile);
+		v.val += "</style>\n";
 		<call button_bar>(this,sp.mobile,ctx.maywrite,v.val);
 		<f draw>
 			#define BUTTON_CONFIG	0
@@ -312,13 +365,13 @@ void PHOTOS::exec (
 			" onkeydown='photos_gamepress(event);return false;'"
 			" tabindex=0 >\n",gameid.c_str(),board_width,board_height-mini_height);
 		string script;
-		v.val += draw_main_image(sp.mobile,ctx.docnum,true,script);
+		v.val += draw_main_image(sp.mobile,ctx.docnum,ctx.maywrite,script);
 		v.val += "</div>\n";
 		v.val += string_f("<div id='mini-%s' style='flex:0 0 auto;width:%u;height:%u;border:1px solid black;"
 			" margin-left: auto;'"
 			" onkeydown='photos_gamepress(event);return false;'"
 			" tabindex=0 >\n",gameid.c_str(),board_width,mini_height);
-		v.val += draw_small_images(sp.mobile,ctx.docnum,true,mini_height,script);
+		v.val += draw_small_images(sp.mobile,ctx.docnum,ctx.maywrite,mini_height,script);
 		if (script.size() > 0){
 			v.val += "<script>\n";
 			v.val += script;
@@ -362,6 +415,7 @@ void PHOTOS::exec (
 		VARVAL var;
 		var.var = VAR_FIELDS;
 		if (strcmp(val,DIALOG_PHOTOS_CONFIG)==0){
+			for (auto &im:images) var.val += string_f("img:%s\n",im.c_str());
 		}
 		res.emplace_back(var);
 	}else if (is_eq(var,REQ_FOCUS)){
@@ -374,21 +428,34 @@ void PHOTOS::exec (
 			}else{
 				if (main_image > 0) main_image--;
 			}
-			if (old != main_image){
-				update_main_image(notify_var);
-				updimages.insert (old);
-				updimages.insert (main_image);
-				if (0){
-				notify_var.val += "mini_loop_board(function(elm){\n";
-				notify_var.val += "\tvar divs=elm.getElementsByTagName('div');\n";
-				notify_var.val += string_f("\tdivs[%u].style.borderColor='black';\n",old);
-				notify_var.val += string_f("\tdivs[%u].style.borderColor='red';\n",main_image);
-				notify_var.val += "});\n";
+			updateif (old,updimages,notify_var);
+		}else if (is_any_of(var,"select","mselect")){
+			double dx,dy;
+			unsigned button;
+			bool shiftkey,ctrlkey;
+			if (splitline(val,',',dx,dy,limits(button,1u,2u),shiftkey,ctrlkey)){
+				// tlmp_warning ("dx=%lf dy=%lf val=%s\n",dx,dy,val);
+				unsigned old = main_image;
+				if (is_eq(var,"select")){
+					if (dx > board_width/2){
+						if (images.size() > 0 && main_image < images.size()-1) main_image++;
+					}else{
+						if (main_image > 0) main_image--;	
+					}
+				}else{
+					unsigned new_main_image = dx/(mini_height-4);
+					if (new_main_image < images.size()) main_image = new_main_image;
 				}
-				
+				updateif (old,updimages,notify_var);
 			}
-		}else if (is_eq(var,"place")){
 		}else if (is_eq(var,"newgame")){
+			int uval = atoi(val);
+			if (uval == BUTTON_CONFIG){
+				VARVAL var;
+				var.var = VAR_DIALOG;
+				var.val = DIALOG_PHOTOS_CONFIG;
+				res.emplace_back(var);
+			}
 		}else if (is_eq(var,"resetgame")){
 			resetgame();
 			setmodified(ctx.username);
@@ -426,6 +493,21 @@ void PHOTOS::exec (
 			if (!ok){
 				api_error = MSG_U(E_IVLSETIMAGE,"Invalid setimage command");
 			}
+		}else if (is_eq(var,"images")){
+			// Receives the images from the configuration dialog
+			vector<VARVAL> fields;
+			documentd_parsefields(val,fields);
+			images.clear();
+			unsigned no = 0;
+			for (auto &v:fields){
+				if (v.var == "img"){
+					updimages.insert(no);
+					images.push_back(v.val);
+					no++;
+				}
+			}
+			if (main_image >= images.size()) main_image = 0;
+			setmodified(ctx.username);
 		}else if (is_eq(var,"dump")){
 			VARVAL var;
 			var.var = "images";

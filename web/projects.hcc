@@ -238,14 +238,41 @@ static void projects_popup_bottom()
 /*
 	Return the project path of this document
 */
-static string projects_getdir (PARAM_STRING path)
+static string projects_getprjdir (PARAM_STRING doc)
 {
 	string ret;
-	auto tb = str_splitline (path.ptr,'/');
+	auto tb = str_splitline (doc.ptr,'/');
 	if (tb.size() >= 4){
 		ret = string_f("/%s/%s/%s",tb[1].c_str(),tb[2].c_str(),tb[3].c_str());
 	}
 	return ret;
+}
+/*
+	Return the directory holding this document.
+	Set also the relative directory holding the document (relative to the project)
+*/
+static string projects_getcurdir (PARAM_STRING doc, string &reldir)
+{
+	string ret;
+	auto tb = str_splitline (doc.ptr,'/');
+	if (tb.size() >= 4){
+		for (unsigned i=1; i<tb.size()-1; i++){
+			ret += string_f("/%s",tb[i].c_str());
+		}
+		for (unsigned i=4; i<tb.size()-1; i++){
+			reldir += string_f("/%s",tb[i].c_str());
+		}
+	}
+	return ret;
+}
+
+static string projects_makepath (const string &prjdir, const string &curdir, PARAM_STRING name)
+{
+	if (name.ptr[0] == '/'){
+		return prjdir+name.ptr;
+	}else{
+		return curdir + '/' + name.ptr;
+	}
 }
 /*
 	Dialogs for documents and games
@@ -267,6 +294,7 @@ static void projects_dialogs (
 	glocal const char *path = path.ptr;
 	glocal dialog_name;
 	glocal vector<VARVAL> steps;
+	glocal vector<string> images;	// For DIALOG_PHOTOS_CONFIG
 	FORM_HIDDEN h1(w_dialog);
 	FORM_HIDDEN h2(w_mousex);
 	FORM_HIDDEN h3(w_mousey);
@@ -277,7 +305,8 @@ static void projects_dialogs (
 			glocal.maxskill=atoi(f.value.c_str());
 		}
 	}
-	<call form>(dialog_name);
+	string formid = string_f("%s-%s",dialog_name,path.ptr);
+	<call form>(formid);
 	<f top>
 		projects_popup_top();
 	</f>
@@ -333,6 +362,15 @@ static void projects_dialogs (
 					if (val < sizeof(tbalign)/sizeof(tbalign[0])) w_field3 = tbalign[val];
 				}
 			}
+		}else if (is_eq(glocal.dialog_name,DIALOG_PHOTOS_CONFIG)){
+			string imgs;
+			for (auto &f:glocal.fields){
+				if (f.name == "img"){
+					imgs += f.value;
+					imgs += "\n";
+				}
+			}
+			w_field1 = imgs;
 		}
 	</f>
 	<f setup>
@@ -534,10 +572,34 @@ static void projects_dialogs (
 				/- &nbsp;<br>
 			}
 			button_submit();
+		}else if (is_eq(glocal.dialog_name,DIALOG_PHOTOS_CONFIG)){
+			<?#I_PHOTOS_CONFIG
+				Enter a list of images to display.<br>
+				Images must be selected from the same project or from the web (starting with http:// or https://).<br>
+				You can enter folders and all images inside will be selected.<br>
+				You can select images inside the main folder of the projet by entering a slash.<br>
+				You can select images inside the folder holding this document by entering a dot.
+			?>
+			/- <p>
+			/- <table border=0>
+			/- <tr><td>
+			/-#F_IMAGES Images
+			/- <td>
+			field_textarea (w_field1,8,70,"");
+			/- </table>
+			if (glocal.error.size() > 0){
+				htmlprintf ("<span style=color:red; >%s</span><br>\n",glocal.error.c_str());
+			}else{
+				/- &nbsp;<br>
+			}
+			button_submit();
 		}
 	</f>
 	<f validate>
-		if (strcmp(glocal.dialog_name,DIALOG_CHESS_CONFIG)==0){
+		string prjdir = projects_getprjdir(glocal.path);
+		string reldir;
+		string curdir = projects_getcurdir(glocal.path,reldir);
+		if (is_eq(glocal.dialog_name,DIALOG_CHESS_CONFIG)){
 			if (strcmp(w_field1.c_str(),w_field2.c_str())==0){
 				glocal.error = MSG_U(E_SAMENAME,"The two players can't be the same");
 			}else if (strcmp(w_field1.c_str(),MSG_R(I_COMPUTER))==0 && w_check1){
@@ -549,8 +611,8 @@ static void projects_dialogs (
 			}else if (strcmp(userinfo.name.c_str(),w_field2.c_str())==0 && w_check2){
 				glocal.error = MSG_R(E_INVITEYOURSELF);
 			}
-		}else if (strcmp(glocal.dialog_name,DIALOG_IMBED)==0){
-			string subdoc = string_f("%s/%s",projects_getdir(glocal.path).c_str(),w_field1.c_str());
+		}else if (is_eq(glocal.dialog_name,DIALOG_IMBED)){
+			string subdoc = projects_makepath (prjdir,curdir,w_field1.c_str());
 			<call bod_client_stat> (glocal.con,glocal.session,subdoc,"");
 			<f ok>
 				if (!success){
@@ -560,9 +622,9 @@ static void projects_dialogs (
 				}
 			</f>
 			</call>
-		}else if (strcmp(glocal.dialog_name,DIALOG_IMAGE)==0){
+		}else if (is_eq(glocal.dialog_name,DIALOG_IMAGE)){
 			if (!is_start_any_ofnc(w_field1.c_str(),NONEED,"http://","https://")){
-				string subdoc = string_f("%s/%s",projects_getdir(glocal.path).c_str(),w_field1.c_str());
+				string subdoc = projects_makepath (prjdir,curdir,w_field1.c_str());
 				<call bod_client_stat> (glocal.con,glocal.session,subdoc,"");
 				<f ok>
 					if (!success){
@@ -573,13 +635,55 @@ static void projects_dialogs (
 				</f>
 				</call>
 			}
-		}else if (strcmp(glocal.dialog_name,DIALOG_CALC_FORMATCELL)==0){
+		}else if (is_eq(glocal.dialog_name,DIALOG_CALC_FORMATCELL)){
 			unsigned width = atoi(w_field1.c_str());
 			unsigned precision = atoi(w_field2.c_str());
 			if (width < 30 || width >300){
 				glocal.error = MSG_U(E_WIDTHRANGE,"Width must be between 30 and 300");
 			}else if (precision > 10){
 				glocal.error = MSG_U(E_COLPRECISION,"Precision must be less than 11");
+			}
+		}else if (is_eq(glocal.dialog_name,DIALOG_PHOTOS_CONFIG)){	
+			auto newimages = str_cnv2lines(w_field1.c_str());
+			glocal.images.clear();
+			for (auto &im:newimages){
+				if (im.size() > 0){
+					// Extract the content of a directory
+					function<void(PARAM_STRING,PARAM_STRING)> fdir=[&](PARAM_STRING dir, PARAM_STRING filepath){
+						glocal const char *dir = dir.ptr;
+						<call bod_client_listdir>(glocal.con,w_session.c_str(),filepath,"",false,0,100);
+						<f ok>
+							for (auto &f:files){
+								if (file_is_image(f.file_type)){
+									glocal.images.emplace_back(string_f("%s/%s",glocal.dir,f.name));
+								}
+							}
+						</f>
+						</call>
+					};
+					if (is_eq(im,"/")){
+						fdir("",prjdir);
+					}else if (is_eq(im,".")){
+						fdir(reldir,curdir);
+					}else if (!is_start_any_ofnc(im,NONEED,"http://","https://")){
+						string filepath = projects_makepath (prjdir,curdir,im);
+						FILEINFO info;
+						ENTRY_TYPE type = util_entrytype (glocal.con,filepath,info);
+						if (type == ENTRY_NONE){
+							glocal.error = string_f(MSG_U(E_FILENOTFOUND,"File %s does not exist"),im.c_str());
+							break;
+						}else if (type == ENTRY_DIR){
+							fdir(im,filepath);
+						}else if (!file_is_image(info.file_type)){
+							glocal.error = string_f(MSG_U(E_FILENOTIMAGE,"File %s is not an image"),im.c_str());
+							break;
+						}else{
+							glocal.images.push_back(im);
+						}
+					}else{
+						glocal.images.push_back(im);
+					}
+				}
 			}
 		}
 		return glocal.error.size() > 0 ? false : true;
@@ -619,7 +723,7 @@ static void projects_dialogs (
 			var.val += string_f("docid:%s\n",w_field1.c_str());
 			var.val += string_f("region:%s\n",w_field2.c_str());
 			// Send a test request (does nothing) to make sure the document is loaded in documentd
-			string subdoc = string_f("%s/%s",projects_getdir(glocal.path).c_str(),w_field1.c_str());
+			string subdoc = string_f("%s/%s",projects_getprjdir(glocal.path).c_str(),w_field1.c_str());
 			vector<VARVAL> steps;
 			VARVAL test;
 			test.var = "test";
@@ -636,7 +740,11 @@ static void projects_dialogs (
 			var.var = "formatcol";
 			var.val = string_f("width:%u\nprecision:%u\nalign:%s\n"
 				,atoi(w_field1.c_str()),atoi(w_field2.c_str()),w_field3.c_str());
-			
+		}else if (is_eq(glocal.dialog_name,DIALOG_PHOTOS_CONFIG)){	
+			var.var = "images";
+			for (auto &im:glocal.images){
+				var.val += string_f("img:%s\n",im.c_str());
+			}
 		}
 		glocal.steps.emplace_back(var);
 	</f>
@@ -1602,7 +1710,7 @@ static void projects_documents(
 		</call>
 		if (w_dialog.isset()){
 			//for (auto &f:glocal.fields) tlmp_warning ("fields :%s: :%s:",f.name.c_str(),f.value.c_str());
-			if (is_any_of(info.file_type,FILE_DOC_CHESS,FILE_DOC_WHITEBOARD,FILE_DOC_WORDPROC,FILE_DOC_CALC)){
+			if (is_any_of(info.file_type,FILE_DOC_CHESS,FILE_DOC_WHITEBOARD,FILE_DOC_WORDPROC,FILE_DOC_CALC,FILE_DOC_PHOTOS)){
 				projects_dialogs (glocal.con,w_dialog.c_str(),glocal.fields,w_session.c_str(),glocal.path,docnum,sp);	
 			}
 		}

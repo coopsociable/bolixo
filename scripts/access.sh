@@ -524,6 +524,14 @@ elif [ "$1" = "doc-photos" ] ; then # test: many test on photo gallery document
 		setimage 0 mini-photo.jpg
 		setimage 1 photo.jpg
 		setimage 2 http://test1.bolixo.org/whiteboard.jpg
+	elif [ "$2" = "many" ]; then
+		# Add many images
+		for ((i=0; i<10; i++))
+		do
+			addimage mini-photo.jpg
+			addimage photo.jpg
+			addimage http://test1.bolixo.org/whiteboard.jpg
+		done
 	else
 		echo Unknown option $2 >&2
 	fi
