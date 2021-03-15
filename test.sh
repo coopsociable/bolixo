@@ -1073,7 +1073,8 @@ elif [ "$1" = "test-sendmail" ] ;then # prod: ask writed to send one email
 	./bo-writed-control -p /var/lib/lxc/writed/rootfs/tmp/bo-writed-0.sock sendmail jack@dns.solucorp.qc.ca test body1
 elif [ "$1" = "cmp-sequence" ] ; then # S: Execute QA tests
 	cmpsequence "$2" cleartest1 directory createsubdir projects msgs ivldsession public remote-contact remote-interest contact-utf8 notifications \
-		remote-sendlarge cp-admin badnames setaccess remote-member delete-group remote-group remote-contact-fail infowrite doc-chess doc-whiteboard doc-word
+		remote-sendlarge cp-admin badnames setaccess remote-member delete-group remote-group remote-contact-fail infowrite doc-chess doc-whiteboard doc-word \
+		doc-photos
 elif [ "$1" = "cmpsane-sequence" ] ; then # S: Execute QA tests
 	cmpsequence "$2" cleartest1 directory createsubdir projects msgs  public remote-contact remote-interest contact-utf8 notifications \
 		remote-sendlarge cp-admin setaccess remote-member remote-group infowrite
