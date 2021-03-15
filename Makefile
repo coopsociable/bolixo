@@ -397,6 +397,7 @@ install: msg.eng msg.fr
 	install -m644 scripts/whiteboard-help.sh $(RPM_BUILD_ROOT)/usr/share/bolixo/whiteboard-help.sh
 	install -m644 scripts/calc-help.sh $(RPM_BUILD_ROOT)/usr/share/bolixo/calc-help.sh
 	install -m644 scripts/word-help.sh $(RPM_BUILD_ROOT)/usr/share/bolixo/word-help.sh
+	install -m644 scripts/photos-help.sh $(RPM_BUILD_ROOT)/usr/share/bolixo/photos-help.sh
 	install -m755 bolixo-production.sh $(RPM_BUILD_ROOT)/usr/sbin/bolixo-production
 	ln -s bolixo-production $(RPM_BUILD_ROOT)/usr/sbin/bo
 	install -m755 bo-complete $(RPM_BUILD_ROOT)/usr/lib/bo-complete

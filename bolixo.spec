@@ -177,3 +177,4 @@ id bolixo >/dev/null 2>/dev/null || useradd -r bolixo
 /usr/share/bolixo/whiteboard-help.sh
 /usr/share/bolixo/calc-help.sh
 /usr/share/bolixo/word-help.sh
+/usr/share/bolixo/photos-help.sh
