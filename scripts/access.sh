@@ -490,6 +490,10 @@ elif [ "$1" = "doc-word-print" ] ; then # test: print the test document
 	DOCNAME=/projects/jacques-A/public/test.doc
 	. scripts/word-help.sh
 	docprint
+elif [ "$1" = "doc-photos-dump" ] ; then # test: dump test.pho
+	DOCNAME=/projects/jacques-A/public/test.pho
+	. scripts/photos-help.sh
+	docdump
 elif [ "$1" = "doc-photos" ] ; then # test: many test on photo gallery document
 	DOCNAME=/projects/jacques-A/public/test.pho
 	. scripts/photos-help.sh
@@ -535,6 +539,10 @@ elif [ "$1" = "doc-photos" ] ; then # test: many test on photo gallery document
 	else
 		echo Unknown option $2 >&2
 	fi
+	setcaption mini-photo.jpg 'This is the small picture'
+	setcaption photo.jpg 'This is the large picture. It is shown on the public page and on bolixo.org'
+	# Set the caption on a missing picture
+	setcaption wrong-picture 'some text'
 	docdump
 elif [ "$1" = "infowrite" ] ; then # test: publish info to directory server
 	USER=jacques-A

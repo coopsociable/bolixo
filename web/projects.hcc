@@ -371,6 +371,16 @@ static void projects_dialogs (
 				}
 			}
 			w_field1 = imgs;
+		}else if (is_eq(glocal.dialog_name,DIALOG_PHOTOS_TXTEDIT)){
+			string lines;
+			for (auto &f:glocal.fields){
+				if (f.name == "img"){
+					w_field1 = f.value;
+				}else if (f.name == "line"){
+					lines += f.value+"\n";
+				}
+			}
+			w_field2 = lines;
 		}
 	</f>
 	<f setup>
@@ -593,6 +603,22 @@ static void projects_dialogs (
 				/- &nbsp;<br>
 			}
 			button_submit();
+		}else if (is_eq(glocal.dialog_name,DIALOG_PHOTOS_TXTEDIT)){
+			field_hidden (w_field1);
+			<?#I_PHOTOS_TXTEDIT
+				Edit the caption of the image currently displayed.
+			?>
+			/- <p>
+			/- <table border=0>
+			/- <tr><td>
+			field_textarea (w_field2,8,70,"");
+			/- </table>
+			if (glocal.error.size() > 0){
+				htmlprintf ("<span style=color:red; >%s</span><br>\n",glocal.error.c_str());
+			}else{
+				/- &nbsp;<br>
+			}
+			button_submit();
 		}
 	</f>
 	<f validate>
@@ -745,6 +771,13 @@ static void projects_dialogs (
 			for (auto &im:glocal.images){
 				var.val += string_f("img:%s\n",im.c_str());
 			}
+		}else if (is_eq(glocal.dialog_name,DIALOG_PHOTOS_TXTEDIT)){	
+			var.var = "caption";
+			var.val = string_f("img:%s\n",w_field1.c_str());
+			auto lines = str_cnv2lines(w_field2.c_str());
+			for (auto &l:lines){
+				var.val += string_f("line:%s\n",l.c_str());
+			}
 		}
 		glocal.steps.emplace_back(var);
 	</f>
@@ -839,8 +872,8 @@ void projects(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER
 					field_list_item ("chs",MSG_U(I_CHESSGAME,"Chess game"));
 					field_list_item ("sud",MSG_U(I_SUDOKUGAME,"Sudoku game"));
 					field_list_item ("tic",MSG_U(I_TICTACTOGAME,"Tic-Tac-Toe game"));
+					field_list_item ("pho",MSG_U(I_PHOTOS,"Photo gallery"));
 					if (util_experimental()){
-						field_list_item ("pho",MSG_U(I_PHOTOS,"Photo gallery"));
 						field_list_item ("vdc",MSG_U(I_VIDCONF,"Video conference"));
 					}
 					field_list_end();

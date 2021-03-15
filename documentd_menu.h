@@ -54,5 +54,6 @@ struct CALC_MENU{
 };
 struct PHOTOS_MENU{
 	std::string svg_config;
+	std::string svg_txtedit;
 	PHOTOS_MENU(DOC_BUTTON_SPECS &specs);
 };

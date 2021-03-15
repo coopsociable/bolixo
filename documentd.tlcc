@@ -151,7 +151,8 @@ void documentd_setchanges (vector<VARVAL> &res)
 }
 
 /*
-	Escape ' in a stringh
+	Escape ' in a string and \.
+	This is used to encode string as javascript statements.
 */
 string documentd_escape(PARAM_STRING msg)
 {
@@ -211,6 +212,8 @@ string documentd_escape_html(PARAM_STRING s)
 				c.replace(1,"&#39;");
 			}else if (*pt == '\\'){
 				c.replace(1,"&#92;");
+			}else if (*pt == '<'){
+				c.replace(1,"&lt;");
 			}
 		});
 }
@@ -232,7 +235,17 @@ void documentd_bar_button (string &lines, unsigned command, PARAM_STRING txt, co
 {
 	documentd_bar_button(lines, command, txt, specs, highlit,nullptr);
 }
-
+// A chat line starts with the user followed by : followed by some user content
+// So we put the user in bold and escape the content
+static void formatchatline (time_t now, PARAM_STRING line, string &notify)
+{
+	const char *pt = strchr(line.ptr,':');
+	if (pt != nullptr){
+		string user = string(line.ptr,pt-line.ptr);
+		pt++;
+		notify += string_f("appendchat(%ld,'<b>%s</b>: %s');\n",now,user.c_str(),documentd_escape_html(pt).c_str());
+	}
+}
 /*
 	Create a small one line chat
 */
@@ -259,7 +272,7 @@ void documentd_chat(string &lines, PARAM_STRING username, const vector<CHATLINE>
 		"function funcchat(event){\n"
 		"\tif (event.key=='Enter'){\n"
 		"\tvar txt = document.getElementById('inputchat');\n";
-	lines += string_f("\t\tgameaction(event,'chat:<b>%s:</b> '+txt.value);\n",username.ptr);
+	lines += string_f("\t\tgameaction(event,'chat:%s: '+txt.value);\n",username.ptr);
 	lines +=
 		"\t\ttxt.value = '';\n"
 		"\t}\n"
@@ -269,7 +282,7 @@ void documentd_chat(string &lines, PARAM_STRING username, const vector<CHATLINE>
 	// We can't write the content directly to the following div. Instead we are sending the content using the appendchat
 	// This allows the browser to convert the time_t in localised date.
 	for (auto &c:content){
-		lines += string_f("appendchat(%ld,\"%s\");\n",c.time,documentd_escape(c.line).c_str());
+		formatchatline (c.time,c.line,lines);
 	}
 	lines += "</script>\n";
 }
@@ -302,7 +315,7 @@ void GAME::appendchat(PARAM_STRING line, string &notify)
 	time_t now = time(nullptr);
 	chat.emplace_back(now,line.ptr);
 	while (chat.size() > 20) chat.erase(chat.begin());
-	notify += string_f("appendchat(%ld,'%s');\n",now,documentd_escape(line.ptr).c_str());
+	formatchatline (now,line,notify);
 }
 void GAME::appendchat(PARAM_STRING line, string &notify, vector<VARVAL> &res)
 {
