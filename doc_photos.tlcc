@@ -196,15 +196,16 @@ string PHOTOS::draw_main_image(
 		,docnum);
 	script += "if (typeof photos_lst == 'undefined') var photos_lst=[];\n";
 	script += string_f("photos_lst.push(pho_%u);\n",docnum);
+	string src;
 	if (images.size() > main_image){
-		auto &image = images[main_image].image;
-		string onfuncs;
-		if (editmode){
-			onfuncs = string_f(" onmousedown='pho_%u.gameselect(event);'",docnum);
-		}
-		lines += string_f("<img %s class=photos id='main-%s,%u' style='width:100%%;' src=%s>\n"
-			,onfuncs.c_str(),gameid.c_str(),docnum,photos_converturl(gameid,image).c_str());
+		src=string_f("src=%s",photos_converturl(gameid,images[main_image].image).c_str());
 	}
+	string onfuncs;
+	if (editmode){
+		onfuncs = string_f(" onmousedown='pho_%u.gameselect(event);'",docnum);
+	}
+	lines += string_f("<img %s class=photos id='main-%s,%u' style='width:100%%;' %s>\n"
+		,onfuncs.c_str(),gameid.c_str(),docnum,src.c_str());
 	return lines;
 }
 string PHOTOS::draw_main_caption(
@@ -464,15 +465,42 @@ void PHOTOS::exec (
 		VARVAL var,var_script;
 		var.var = VAR_CONTENT;
 		var_script.var = VAR_DEFSCRIPT;
-		if (strcmp(val,"main")==0){
+		if (is_eq(val,"main")){
 			var.val = draw_main_image(sp.mobile,ctx.docnum,false,var_script.val);
-		}else if (strcmp(val,"caption")==0){
+		}else if (is_eq(val,"caption")){
 			var.val = draw_main_caption(sp.mobile,ctx.docnum,var_script.val);
-		}else if (strcmp(val,"mini")==0){
+		}else if (is_eq(val,"mini")){
 			var.val = draw_small_images(sp.mobile,ctx.docnum,false,mini_height,var_script.val);
+		}else if (is_any_of(val,"","all")){
+			var.val += "<div style='display:flex; flex-flow:column;' >\n";
+			var.val += string_f("<div id='text-%s' style='flex:0 0 auto;width:100%%;height:60%%;border:1px solid black;"
+				" margin-left: auto;'"
+				" >\n",gameid.c_str());
+			var.val += draw_main_image(sp.mobile,ctx.docnum,ctx.maywrite,var_script.val);
+			var.val += "</div>\n";
+			var.val += string_f("<div id='caption-%s' style='flex:0 0 auto;width:100%%;height:20%%;border:1px solid black;"
+				" margin-left: auto;'"
+				" >\n",gameid.c_str());
+			var.val += draw_main_caption(sp.mobile,ctx.docnum,var_script.val);
+			var.val += "</div>\n";
+			var.val += string_f("<div id='mini-%s' style='flex:0 0 auto;width:100%%;height:20%%;border:1px solid black;"
+				" margin-left: auto;'"
+				" onkeydown='photos_gamepress(event);return false;'"
+				" tabindex=0 >\n",gameid.c_str());
+			var.val += draw_small_images(sp.mobile,ctx.docnum,ctx.maywrite,mini_height,var_script.val);
+			var.val += "</div>\n";
+			var.val += "</div>\n";
 		}
 		res.emplace_back(move(var));
 		res.emplace_back(move(var_script));
+	}else if (is_eq(var,REQ_LISTREGION)){
+		VARVAL var,var_script;
+		var.var = VAR_CONTENT;
+		var.val += string_f("main:%s\n",MSG_U(I_PHOTOREGION_MAIN,"Large image"));
+		var.val += string_f("mini:%s\n",MSG_U(I_PHOTOREGION_MINI,"Small images"));
+		var.val += string_f("caption:%s\n",MSG_U(I_PHOTOREGION_CAPTION,"Image caption"));
+		var.val += string_f("all:%s\n",MSG_U(I_PHOTOREGION_ALL,"All regions"));
+		res.emplace_back(move(var));
 	}else if (is_eq(var,REQ_CHAT)){
 		appendchat(val,notify_var.val,res);
 	}else if (is_eq(var,REQ_GETFIELDS)){
@@ -593,7 +621,6 @@ void PHOTOS::exec (
 			// Receives the images from the configuration dialog
 			vector<VARVAL> fields;
 			documentd_parsefields(val,fields);
-			images.clear();
 			unsigned no = 0;
 			// We receive a new image list, but we must preserve the captions
 			vector<IMAGE> newimages;
