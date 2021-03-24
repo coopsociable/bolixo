@@ -536,6 +536,28 @@ elif [ "$1" = "doc-photos" ] ; then # test: many test on photo gallery document
 			addimage photo.jpg
 			addimage http://test1.bolixo.org/whiteboard.jpg
 		done
+	elif [ "$2" = "doc-example" ] ; then
+		# Use to create the image in the documentation
+		addimage mini-photo.jpg
+		addimage photo.jpg
+		addimage http://test1.bolixo.org/bolixo.png
+		addimage http://test1.bolixo.org/chess.jpg
+		setcaption mini-photo.jpg 'This is the small picture'
+		setcaption photo.jpg 'This is the large picture. It is shown on the public page and on bolixo.org'
+		setcaption http://test1.bolixo.org/bolixo.png "This is Bolixo official logo"
+		setcaption http://test1.bolixo.org/chess.jpg "This is a chess game screen shot"
+		exit 0
+	elif [ "$2" = "doc-example-fr" ] ; then
+		# Use to create the image in the documentation
+		addimage mini-photo.jpg
+		addimage photo.jpg
+		addimage http://test1.bolixo.org/bolixo.png
+		addimage http://test1.bolixo.org/chess-fr.jpg
+		setcaption mini-photo.jpg 'Ceci est une petite image'
+		setcaption photo.jpg 'Ceci est la grande image. Elle apparaît dans la page publique et sur bolixo.org'
+		setcaption http://test1.bolixo.org/bolixo.png "Voici le logo officiel de Bolixo"
+		setcaption http://test1.bolixo.org/chess-fr.jpg "Ceci est une saisie d'écran d'une partie d'échec"
+		exit 0
 	else
 		echo Unknown option $2 >&2
 	fi

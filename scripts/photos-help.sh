@@ -21,7 +21,7 @@ resetdocument(){
 }
 # setcaption image caption
 setcaption(){
-	$BOFS documents --noscripts --playstep --docname $DOCNAME --step "setcaption=$1 '$2'"
+	$BOFS documents --noscripts --playstep --docname $DOCNAME --step "setcaption=$1 \"$2\""
 }
 # setimage image-number image/url
 setimage(){
