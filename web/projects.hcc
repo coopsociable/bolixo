@@ -990,6 +990,8 @@ void projects(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER
 					// it to /tmp/newfile. So it is preserved. This is not multi-user at all.
 					// A better solution is needed.
 					glocal bool ok = true;
+					glocal bool overwrite = false;	// If the target file exist
+									// the user may choose to overwrite
 					glocal string filepath = string_f("%s/%s",glocal.path.c_str(),w_upload.c_str());
 					const char *tempname = tlmpweb_getfilename(w_upload);
 					string newfile = string_f("/tmp/newfile.%s",w_session.c_str());
@@ -1014,12 +1016,21 @@ void projects(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER
 						</f>
 						<f load>
 							w_name = w_upload.c_str();
+							w_check1 = 0;
 						</f>
 						<f setup>
 							/- <center>
 							htmlout (MSG_R(T_ATTENTION));
 							/- </center><br>
+							<?#I_RENAMEORCHECK
+								There is a file with the same name<br>
+								Enter a different name or select the <b>overwrite</b> check box<p>
+							?>
 							/- <table><tr><td>
+							/-#F_OVERWRITE Overwrite
+							/- <td>
+							field_checkbox(w_check1,"");
+							/- <tr><td>
 							htmlout (MSG_R(F_NEWNAME));
 							/- <td>
 							field_string (w_name,"");
@@ -1037,8 +1048,12 @@ void projects(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER
 							bool ret = true;
 							string newpath = string_f("%s/%s",glocal.path.c_str(),w_name.c_str());
 							if (util_entrytype(glocal.con,newpath)!=ENTRY_NONE){
-								glocal.error = MSG_R(E_FILEEXIST);
-								ret = false;
+								if (w_check1 == 0){
+									glocal.error = MSG_R(E_FILEEXIST);
+									ret = false;
+								}else{
+									glocal.overwrite = true;
+								}
 							}
 							return ret;
 						</f>
@@ -1051,12 +1066,21 @@ void projects(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER
 					if (glocal.ok){
 						<call sendfile>(glocal.filepath,tempname,glocal.fail,glocal.errmsg);
 						<f start>
-							<call bod_client_addfile_bob>(glocal.con,w_session.c_str(),filepath,content,more,"");
-							<f ok>
-								glocal.sendfile.sethandle(handle);
-								glocal.sendfile.setresult(success,msg);
-							</f>
-							</call>
+							if (glocal.overwrite){
+								<call bod_client_modifyfile_bob>(glocal.con,w_session.c_str(),filepath,content,more,"");
+								<f ok>
+									glocal.sendfile.sethandle(handle);
+									glocal.sendfile.setresult(success,msg);
+								</f>
+								</call>
+							}else{
+								<call bod_client_addfile_bob>(glocal.con,w_session.c_str(),filepath,content,more,"");
+								<f ok>
+									glocal.sendfile.sethandle(handle);
+									glocal.sendfile.setresult(success,msg);
+								</f>
+								</call>
+							}
 						</f>
 						<f rest>
 							<call bod_client_appendfile>(glocal.con,w_session.c_str(),handle,content,more);
