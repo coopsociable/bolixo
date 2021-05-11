@@ -7,7 +7,7 @@ Vendor: Solucorp
 Group: Networking/util
 Source0: bolixo-REV.src.tar.gz
 BuildRoot: /var/tmp/bolixo
-BuildRequires: tlmp-devel mariadb-devel trlitool tlmpsql tlmpweb
+BuildRequires: tlmp-devel mariadb-devel trlitool tlmpsql tlmpweb libxml2-devel
 Requires: mariadb-connector-c, tlmp >= TLMPVERSION, tlmpsql >= TLMPSQLVERSION, trlitool >= TRLITOOLVERSION, tlmpweb >= TLMPWEBVERSION
 Requires: dejavu-serif-fonts
 
