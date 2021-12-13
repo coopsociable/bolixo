@@ -1334,7 +1334,37 @@ int main (int argc, char *argv[])
 		}else if (strcmp(argv[0],"testcalc")==0){
 			void calc_eval (int argc, char *argv[]);
 			calc_eval (argc-1,argv+1);
-			
+		}else if (strcmp(argv[0],"doc2html")==0){
+			if (argc == 2){
+				string msg;
+				FILE *fin = fopen (argv[1],"r");
+				if (fin == nullptr){
+					msg = "Can't open document";
+				}else{
+					char buf[100];
+					if (fgets(buf,sizeof(buf)-1,fin)!=NULL){
+						GAME_P p = documentd_newgame(buf,"id",msg);
+						if (p != NULL){
+							DOC_READER doc(fin);
+							p->load (doc,msg);
+							if (msg.size() == 0){
+								DOC_CONTEXT ctx;
+								DOC_UI_SPECS_receive sp;
+								vector<VARVAL> res;
+								vector<VARVAL_receive> steps;
+								VARVAL_receive rec;
+								rec.var = REQ_PRINT;
+								rec.val = "console";
+								steps.push_back(rec);
+								p->manyexec (steps,ctx,sp,res);
+								for (auto &r:res) printf ("var=%s: %s\n",r.var.c_str(),r.val.c_str());
+							}
+						}
+					}
+					fclose (fin);
+				}
+				if (msg.size() > 0) tlmp_error ("Error: %s\n",msg.c_str());
+			}
 		}else{
 			tlmp_error ("Invalid test command\n");
 		}
