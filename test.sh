@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/sh
 ## db: Database
 ## prod: Production
 ## S: Test sequences
@@ -1519,8 +1519,22 @@ elif [ "$1" = "lxc0-proto" ]; then # prod:
 	chmod +x /var/lib/lxc/protocheck/protocheck-lxc0.sh
 elif [ "$1" = "make-httpd-log" ] ; then # config: httpd strace log for lxc0
 	mkdir -p /root/stracelogs
+	CONF=/etc/httpd/conf/httpd.conf
+	SSLCONF=/etc/httpd/conf.d/ssl.conf
+	echo Change listen directive in $CONF and $SSLCONF
+	echo rename $CONF to $CONF.original
+	mv $CONF $CONF.original
+	echo rename $SSLCONF to $SSLCONF.original
+	mv $SSLCONF $SSLCONF.original
+	sed 's/Listen 80/Listen 81/' <$CONF.original >$CONF
+	sed 's/Listen 443/Listen 444/' <$SSLCONF.original >$SSLCONF
+	#grep Listen $CONF $SSLCONF
 	echo  httpd is started. Wait and killall httpd in another console
 	strace -f -o /root/stracelogs/log.web /usr/sbin/httpd 
+	echo Rename $CONF.original to $CONF
+	mv -f $CONF.original $CONF
+	echo Rename $SSLCONF.original to $SSLCONF
+	mv -f $SSLCONF.original $SSLCONF
 	echo /root/stracelogs/log.web was produced
 elif [ "$1" = "lxc0-web" ]; then # prod:
 	#su - root -c "nohup strace -o /tmp/log.root -f /usr/sbin/httpd --daemon"
