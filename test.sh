@@ -104,6 +104,13 @@ webtest(){
 	fi
 	time -p $BOWEBTEST -f $page -h $url $n $N $OPTS
 }
+make_log_web3(){
+	if [ -x utils/dnsrequest ] ; then
+		strace -f -o /tmp/log.web3 utils/dnsrequest >/dev/null
+	elif [ -f /usr/lib/dnsrequest ] ; then
+		strace -f -o /tmp/log.web3 /usr/lib/dnsrequest >/dev/null
+	fi
+}
 mysql_save(){
 	ROOTFS=/var/lib/lxc/$1/rootfs
 	SAVE=/var/lib/lxc/$1/$1.save
@@ -355,9 +362,9 @@ elif [ "$1" = "bolixod" ] ; then # A: Runs bolixod
 			$BOLIXOPATH/bolixod $WOPTIONS
 		done
 	fi
-elif [ "$1" = "documentd" ] ; then # A: Runs bolixod
+elif [ "$1" = "documentd" ] ; then # A: Runs documentd
 	OPTIONS="--user $USER \
-		--client-secrets $BOLIXOCONF/secrets.client \
+		--client-secrets $BOLIXOCONF/secrets.client --nodename foo \
 		"
 	shift
 	WORKERS=1
@@ -375,7 +382,7 @@ elif [ "$1" = "documentd" ] ; then # A: Runs bolixod
 	else
 		echo $BOLIXOPATH/documentd $OPTIONS
 	fi
-	mkdir -p /var/lib/lxc/documentd/rootfs/var/run/blackhole
+	#mkdir -p /var/lib/lxc/documentd/rootfs/var/run/blackhole
 	$STRACE $BOLIXOPATH/documentd $OPTIONS
 elif [ "$1" = "publishd" ] ; then # A: Runs bolixod
 	OPTIONS="--user $USER \
@@ -446,6 +453,7 @@ elif [ "$1" = "bo-writed" ] ; then # A: Runs writed
 			OPTIONS="--debug $OPTIONS"
 		elif [ "$1" = "lxc0" ] ; then
 			STRACE="strace -o /tmp/log -f"
+			OPTIONS="$OPTIONS --timezones /dev/null"
 		else
 			WORKERS=$1
 		fi
@@ -506,8 +514,6 @@ elif [ "$1" = "bo-keysd" ] ; then # A: Runs keysd
 		echo $BOLIXOPATH/bo-keysd $OPTIONS
 	fi
 	$STRACE $BOLIXOPATH/bo-keysd $OPTIONS
-elif [ "$1" = "documentd" ] ; then # A: Runs documentd
-	./documentd -c /tmp/documentd.sock --admin-secrets data/secrets.admin --user `id -un`
 elif [ "$1" = "reload" ] ; then # S: Reloads the database using writed log
 	$0 resetdb
 	OPTIONS="--data_dbserv $DBSERV --data_dbuser $TRLI_WRITED_DBUSER --data_dbname $DBNAME \
@@ -1247,14 +1253,8 @@ elif [ "$1" = "createsqlusers" ] ; then # db: Generates SQL to create users
 	BOLIXOSQL=/tmp/bolixo.sql
 	rm -f $TRLISQL $USERSQL $BOLIXOSQL
 	(
-	echo "delete from user;"
+	echo "delete from user where user <> 'root' and user <> 'mariadb.sys';"
 	echo "delete from db;"
-	echo "insert into user (host,user,password,select_priv,Insert_priv,Update_priv,Delete_priv,Create_priv,Drop_priv,Reload_priv,Shutdown_priv,Process_priv,File_priv,Grant_priv,References_priv,
-	Index_priv,Alter_priv,Show_db_priv,Super_priv,
-	Create_tmp_table_priv,Lock_tables_priv,Execute_priv,Repl_slave_priv,Repl_client_priv,Create_view_priv,Show_view_priv,Create_routine_priv,
-        Alter_routine_priv,Create_user_priv,Event_priv,Trigger_priv,Create_tablespace_priv,ssl_cipher,x509_issuer,x509_subject,authentication_string)
-	values
-	('localhost','root',password('$MYSQL_PWD'),'Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','','','','');"
 	echo "create user '$BOD_DBUSER'@'localhost' identified by '$BOD_PWD';"
 	echo "create user '$BO_WRITED_DBUSER'@'localhost' identified by '$BO_WRITED_PWD';"
 	echo "insert into db (host,db,user,select_priv) values ('localhost','$DBNAME','$BOD_DBUSER','y');"
@@ -1262,26 +1262,14 @@ elif [ "$1" = "createsqlusers" ] ; then # db: Generates SQL to create users
 	echo "insert into db (host,db,user,select_priv,Insert_priv,Update_priv,Delete_priv) values ('localhost','$DBNAMET','$BOD_DBUSER','y','y','y','y');"
 	) >$TRLISQL
 	(
-	echo "delete from user;"
+	echo "delete from user where user <> 'root' and user <> 'mariadb.sys';"
 	echo "delete from db;"
-	echo "insert into user (host,user,password,select_priv,Insert_priv,Update_priv,Delete_priv,Create_priv,Drop_priv,Reload_priv,Shutdown_priv,Process_priv,File_priv,Grant_priv,References_priv,
-	Index_priv,Alter_priv,Show_db_priv,Super_priv,
-	Create_tmp_table_priv,Lock_tables_priv,Execute_priv,Repl_slave_priv,Repl_client_priv,Create_view_priv,Show_view_priv,Create_routine_priv,
-        Alter_routine_priv,Create_user_priv,Event_priv,Trigger_priv,Create_tablespace_priv,ssl_cipher,x509_issuer,x509_subject,authentication_string)
-	values
-	('localhost','root',password('$MYSQL_PWD'),'Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','','','','');"
 	echo "create user '$BO_WRITED_DBUSER'@'localhost' identified by '$BO_WRITED_PWD';"
 	echo "insert into db (host,db,user,select_priv,Insert_priv,Update_priv,Delete_priv) values ('localhost','$DBNAMEU','$BO_WRITED_DBUSER','y','y','y','y');"
 	) >$USERSQL
 	(
-	echo "delete from user;"
+	echo "delete from user where user <> 'root' and user <> 'mariadb.sys';"
 	echo "delete from db;"
-	echo "insert into user (host,user,password,select_priv,Insert_priv,Update_priv,Delete_priv,Create_priv,Drop_priv,Reload_priv,Shutdown_priv,Process_priv,File_priv,Grant_priv,References_priv,
-	Index_priv,Alter_priv,Show_db_priv,Super_priv,
-	Create_tmp_table_priv,Lock_tables_priv,Execute_priv,Repl_slave_priv,Repl_client_priv,Create_view_priv,Show_view_priv,Create_routine_priv,
-        Alter_routine_priv,Create_user_priv,Event_priv,Trigger_priv,Create_tablespace_priv,ssl_cipher,x509_issuer,x509_subject,authentication_string)
-	values
-	('localhost','root',password('$MYSQL_PWD'),'Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','Y','','','','');"
 	echo "create user '$BOLIXOD_DBUSER'@'localhost' identified by '$BOLIXOD_PWD';"
 	echo "insert into db (host,db,user,select_priv,Insert_priv,Update_priv,Delete_priv) values ('localhost','$DBNAMEBOLIXO','$BOLIXOD_DBUSER','y','y','y','y');"
 	) >$BOLIXOSQL
@@ -1381,6 +1369,7 @@ elif [ "$1" = "blackhole-control" ] ; then # A: Talks to blackhole
 	blackhole-control -p /tmp/blackhole.sock $*
 elif [ "$1" = "lxc0-bolixod" ]; then # prod:
 	export LANG=eng
+	export LXCSOCK=off
 	$0 bolixod lxc0 &
 	sleep 1
 	# Force bolixod to make a resolver request
@@ -1426,17 +1415,18 @@ elif [ "$1" = "lxc0-documentd" ]; then # prod:
 	$0 documentd-control quit
 	mkdir -p /var/lib/lxc/documentd
 	strace -o /tmp/log.qqwing qqwing --generate 1 --compact --solution --difficulty easy >/dev/null
+	make_log_web3
 	trli-lxc0 $LXC0USELINK \
 		--filelist /var/lib/lxc/documentd/documentd.files \
 		--savefile /var/lib/lxc/documentd/documentd.save \
 		--restorefile /var/lib/lxc/documentd/documentd.restore \
 		$EXTRALXCPROG \
 		$INCLUDELANGS \
-		-e /usr/share/fonts/dejavu/DejaVuSerif.ttf \
-		-e /usr/share/fonts/dejavu/DejaVuSans.ttf \
+		-e /usr/share/fonts/dejavu*/DejaVuSerif.ttf \
+		-e /usr/share/fonts/dejavu*/DejaVuSans.ttf \
 		-e /usr/share/fonts/liberation*/LiberationSans-Regular.ttf \
 		-e /bin/sh \
-		-i /usr/sbin/trli-init -l /tmp/log -l /tmp/log.qqwing \
+		-i /usr/sbin/trli-init -l /tmp/log -l /tmp/log.qqwing -l /tmp/log.web3 \
 		-n documentd -p $BOLIXOPATH/documentd >/var/lib/lxc/documentd/documentd-lxc0.sh
 	chmod +x /var/lib/lxc/documentd/documentd-lxc0.sh
 	documentd_save documentd
@@ -1462,46 +1452,52 @@ elif [ "$1" = "lxc0-bod" ]; then # prod:
 	bod_restore bod
 elif [ "$1" = "lxc0-writed" ]; then # prod:
 	export LANG=eng
+	export LXCSOCK=off
 	$0 bo-writed lxc0 &
 	sleep 1
 	$0 bo-writed-control quit
 	mkdir -p /var/lib/lxc/writed
+	make_log_web3
 	/usr/sbin/trli-lxc0 $LXC0USELINK \
 		--filelist /var/lib/lxc/writed/writed.files \
 		--savefile /var/lib/lxc/writed/writed.save \
 		--restorefile /var/lib/lxc/writed/writed.restore \
 		$EXTRALXCPROG \
 		$INCLUDELANGS \
-		-i /usr/sbin/trli-init -l /tmp/log -n writed -p $BOLIXOPATH/bo-writed >/var/lib/lxc/writed/writed-lxc0.sh
+		-i /usr/sbin/trli-init -l /tmp/log -l /tmp/log.web3 -n writed -p $BOLIXOPATH/bo-writed >/var/lib/lxc/writed/writed-lxc0.sh
 	chmod +x /var/lib/lxc/writed/writed-lxc0.sh
 	writed_save writed
 	writed_restore writed
 elif [ "$1" = "lxc0-sessiond" ]; then # prod:
 	export LANG=eng
+	export LXCSOCK=off
 	rm -f /tmp/sessions.log
 	$0 bo-sessiond lxc0 &
 	sleep 1
 	$0 bo-sessiond-control quit
 	mkdir -p /var/lib/lxc/sessiond
+	make_log_web3
 	/usr/sbin/trli-lxc0 $LXC0USELINK \
 		--filelist /var/lib/lxc/sessiond/sessiond.files \
 		--savefile /var/lib/lxc/sessiond/sessiond.save \
 		--restorefile /var/lib/lxc/sessiond/sessiond.restore \
 		$EXTRALXCPROG \
-		-i /usr/sbin/trli-init -l /tmp/log -n sessiond -p $BOLIXOPATH/bo-sessiond >/var/lib/lxc/sessiond/sessiond-lxc0.sh
+		-i /usr/sbin/trli-init -l /tmp/log -l /tmp/log.web3 -n sessiond -p $BOLIXOPATH/bo-sessiond >/var/lib/lxc/sessiond/sessiond-lxc0.sh
 	chmod +x /var/lib/lxc/sessiond/sessiond-lxc0.sh
 elif [ "$1" = "lxc0-keysd" ]; then # prod:
 	export LANG=eng
+	export LXCSOCK=off
 	$0 bo-keysd lxc0 &
 	sleep 1
 	$0 bo-keysd-control quit
 	mkdir -p /var/lib/lxc/keysd
+	make_log_web3
 	/usr/sbin/trli-lxc0 $LXC0USELINK \
 		--filelist /var/lib/lxc/keysd/keysd.files \
 		--savefile /var/lib/lxc/keysd/keysd.save \
 		--restorefile /var/lib/lxc/keysd/keysd.restore \
 		$EXTRALXCPROG \
-		-i /usr/sbin/trli-init -l /tmp/log -n keysd -p $BOLIXOPATH/bo-keysd >/var/lib/lxc/keysd/keysd-lxc0.sh
+		-i /usr/sbin/trli-init -l /tmp/log -l /tmp/log.web3 -n keysd -p $BOLIXOPATH/bo-keysd >/var/lib/lxc/keysd/keysd-lxc0.sh
 	chmod +x /var/lib/lxc/keysd/keysd-lxc0.sh
 elif [ "$1" = "lxc0-proto" ]; then # prod:
 	export LANG=eng
@@ -1583,12 +1579,13 @@ elif [ "$1" = "lxc0-web" ]; then # prod:
 			-e /usr/lib/tlmp/help.fr/tlmpsql.fr \
 			-e /usr/lib/tlmp/help.fr/tlmpweb.fr \
 			-e /var/www/html/.tlmplibs \
-			-e /usr/share/fonts/dejavu/DejaVuSerif.ttf \
-			-e /usr/share/fonts/dejavu/DejaVuSans.ttf \
+			-e /usr/share/fonts/dejavu*/DejaVuSerif.ttf \
+			-e /usr/share/fonts/dejavu*/DejaVuSans.ttf \
 			-e /usr/share/fonts/liberation*/LiberationSans-Regular.ttf \
 			-e /var/www/html/no-mini-photo.jpg \
 			-e /var/www/html/no-photo.jpg \
 			-e /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem \
+			-e /usr/libexec/httpd-ssl-pass-dialog \
 			-n $w -p /usr/sbin/httpd >/var/lib/lxc/$w/$w-lxc0.sh
 			chmod +x /var/lib/lxc/$w/$w-lxc0.sh
 	done
@@ -1642,6 +1639,7 @@ elif [ "$1" = "lxc0-webssl" ]; then # prod:
 			-e /var/www/html/conditions-d-utilisation.html \
 			-e /var/www/html/email-outline.svg \
 			-e /var/www/html/email-open-outline.svg \
+			-e /usr/libexec/httpd-ssl-pass-dialog \
 			-i /usr/sbin/trli-init \
 			-l $LOG \
 			-n $w -p /usr/sbin/httpd >/var/lib/lxc/$w/$w-lxc0.sh

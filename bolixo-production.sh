@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/sh
 ## db: Database
 ## prod: Production
 ## config: Configuration
@@ -97,18 +97,22 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 		/usr/lib/bolixo-test.sh createbolixodb
 	fi
 elif [ "$1" = "createsqluser" ] ; then # db: Configure sql user
+	ROOTPWD=$MYSQL_PWD
 	unset MYSQL_PWD
 	/usr/lib/bolixo-test.sh createsqlusers
 	if [ -d /var/lib/lxc/bosqlddata/rootfs ] ; then
 		/var/lib/lxc/bosqlddata/bosqlddata.runsql mysql </tmp/files.sql
+		/var/lib/lxc/bosqlddata/bosqlddata.admsql password $ROOTPWD
 		/var/lib/lxc/bosqlddata/bosqlddata.admsql reload
 	fi
 	if [ -d /var/lib/lxc/bosqlduser/rootfs ] ; then
 		/var/lib/lxc/bosqlduser/bosqlduser.runsql mysql </tmp/users.sql
+		/var/lib/lxc/bosqlduser/bosqlduser.admsql password $ROOTPWD
 		/var/lib/lxc/bosqlduser/bosqlduser.admsql reload
 	fi
 	if [ -d /var/lib/lxc/bosqldbolixo/rootfs ] ; then
 		/var/lib/lxc/bosqldbolixo/bosqldbolixo.runsql mysql </tmp/bolixo.sql
+		/var/lib/lxc/bosqldbolixo/bosqldbolixo.admsql password $ROOTPWD
 		/var/lib/lxc/bosqldbolixo/bosqldbolixo.admsql reload
 	fi
 elif [ "$1" = "checks" ]; then # A: Sanity checks blackhole
@@ -273,11 +277,22 @@ elif [ "$1" = "eraseaoldnotes" ] ; then # prod: [old (default 10 day) ]
 	fi
 	/usr/lib/bolixo-test.sh bo-sessiond-control eraseoldnotes $OLD
 elif [ "$1" = "listsessions" ] ; then # prod: list web sessions (offset)
-	OFF=0
 	if [ "$2" != "" ] ; then
 		OFF=$2
+		bo-sessiond-control -p /var/lib/lxc/sessiond/rootfs/var/run/blackhole/bo-sessiond.sock listsessions $OFF 100
+	else
+		# List all sessions. Should be done inside bo-sessiond-control
+		OFF=0
+		while true
+		do
+			NB=`bo-sessiond-control -p /var/lib/lxc/sessiond/rootfs/var/run/blackhole/bo-sessiond.sock listsessions $OFF 100 | wc -l`
+			if [ "$NB" = 1 ] ; then
+				break
+			fi
+			bo-sessiond-control -p /var/lib/lxc/sessiond/rootfs/var/run/blackhole/bo-sessiond.sock listsessions $OFF 100 
+			OFF=`expr $OFF + 100`
+		done
 	fi
-	bo-sessiond-control -p /var/lib/lxc/sessiond/rootfs/var/run/blackhole/bo-sessiond.sock listsessions $OFF 100
 elif [ "$1" = "who" ] ; then # accounts: who is connected
 	$0 listsessions | grep 000 | grep @ | while read a b c d e f g
 	do
@@ -738,7 +753,7 @@ elif [ "$1" = "install-required" ] ; then # config: install required packages
 	LIST="lxc lxc-templates \
 		mariadb-server mariadb-connector-c boost-date-time \
 		liberation-sans-fonts dejavu-sans-fonts freetype httpd mod_ssl \
-		dejavu-serif-fonts gnuchess \
+		dejavu-serif-fonts stockfish \
 		libvirt-daemon libvirt-daemon-driver-network \
 		libvirt-daemon-config-network libvirt-client \
 		libvirt-daemon-driver-qemu bridge-utils \
