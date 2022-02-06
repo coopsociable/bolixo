@@ -1725,7 +1725,8 @@ elif [ "$1" = "lxc0-mysql" ]; then # config:
 	fi
 elif [ "$1" = "make-exim-log" ] ; then # config: exim strace log for lxc0
 	mkdir -p /root/stracelogs
-	strace -f -o /root/stracelogs/log.exim /usr/sbin/exim -bd -q1h
+	echo exim has been started and will be killed in 5 seconds
+	strace -f -o /root/stracelogs/log.exim /usr/sbin/exim -bd -q1h &
 	sleep 5
 	killall exim
 	echo /root/stracelogs/log.exim was produced
