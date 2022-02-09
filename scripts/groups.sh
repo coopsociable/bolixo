@@ -1,6 +1,13 @@
 #!/bin/sh
 # Script to populate groups
 FILES=/b6/files
+LARGEIMAGE=$HOME/Images/large-image.jpg
+checklargeimage(){
+	if [ ! -f $LARGEIMAGE ] ; then
+		echo $LARGEIMAGE does not exist, ending
+		exit 1
+	fi
+}
 if [ "$1" = "" ] ; then
 	if [ -x /usr/sbin/menutest ] ; then
 		/usr/sbin/menutest -s $0
@@ -69,15 +76,13 @@ elif [ "$1" = "sequence" ] ; then # test: Create some users from scratch
 		fi
 	done
 	echo Enable public view for some users and write a short message
-	if [ -x /usr/bin/import ] ; then
-		import -window root /tmp/image.jpg
-	fi
+	checklargeimage
 	for user in jacques-A jacques-B jacques-G jacques-H
 	do
 		./bofs -u $user misc -w -V 1
 		./bofs -u $user msgs -t --groupowner $user -G public -C "This is a message"
 		if [ -f /tmp/image.jpg ] ; then
-			./bofs -u $user msgs -t --groupowner $user -G public -F /tmp/image.jpg
+			./bofs -u $user msgs -t --groupowner $user -G public -F $LARGEIMAGE
 		fi
 	done
 	echo Make jacques-B member of jacques-A public project
@@ -157,15 +162,13 @@ elif [ "$1" = "writemails" ] ; then # test: Write some mails and small messages
 	./bofs              msgs -t -G common --groupowner jacques-B -C "Jacques-A writes to jacques-B:common"
 	./bofs -u jacques-B msgs -t -G common --groupowner jacques-A -C "Jacques-B writes to jacques-A:common"
 	./bofs -u jacques-B msgs -t -G common --groupowner jacques-B -C "Jacques-B writes to jacques-B:common"
-	echo Create an image from screen capture
-	if [ -x /usr/bin/import ] ; then
-		import -window root /tmp/image.jpg
-		convert /tmp/image.jpg /tmp/image.gif
-		convert /tmp/image.jpg /tmp/image.png
-		./bofs msgs -t -G Agroup1 --groupowner jacques-A -F /tmp/image.jpg
-		./bofs msgs -t -G Agroup1 --groupowner jacques-A -F /tmp/image.gif
-		./bofs msgs -t -G Agroup1 --groupowner jacques-A -F /tmp/image.png
-	fi
+	checklargeimage
+	convert $LARGEIMAGE /tmp/image.gif
+	convert $LARGEIMAGE /tmp/image.png
+	./bofs msgs -t -G Agroup1 --groupowner jacques-A -F $LARGEIMAGE
+	./bofs msgs -t -G Agroup1 --groupowner jacques-A -F /tmp/image.gif
+	./bofs msgs -t -G Agroup1 --groupowner jacques-A -F /tmp/image.png
+
 	./bofs msgs -t -G Agroup1 --groupowner jacques-A -F $FILES/file.mp3
 	./bofs msgs -t -G Agroup1 --groupowner jacques-A -F $FILES/file.mp4
 	# Populate projects
@@ -238,10 +241,9 @@ elif [ "$1" = "manysubdirs" ] ; then # test: Add many subdirs to project public 
 		./bofs mkdir bo://projects/jacques-A/public/sdir-$i
 	done
 elif [ "$1" = "manypublish" ] ; then # test: Add many entries into the bolixo.org directory
-	import -window root /tmp/tmpphoto.jpg
-	convert -resize 100x100 /tmp/tmpphoto.jpg /tmp/photo.jpg
-	convert -resize 40x40 /tmp/tmpphoto.jpg /tmp/mini-photo.jpg
-	rm -f /tmp/tmpphoto.jpg
+	checklargeimage
+	convert -resize 100x100 $LARGEIMAGE /tmp/photo.jpg
+	convert -resize 40x40 $LARGEIMAGE /tmp/mini-photo.jpg
 	for ((i=0; i<100; i++))
 	do
 		./bofs bolixoapi --filldummy publish http://test1.bolixo.org jacques-X$i

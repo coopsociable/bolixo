@@ -1008,6 +1008,12 @@ elif [ "$1" = "test-sequence" ] ; then # S: Reloads database (big,medium,real,no
 	CMPSANE=
 	shift
 	$0 bo-writed-control mailctrl 0 keep
+	# Options
+	# all: execute "scripts/groups.sh sequence" to add more stuff to the database
+	# cmp: does a complete test sequence, but leave the systems in improper state
+	# cmpsane: does a less complete test, but leave the systems in a sane state
+	# mail: Allow mails to be sent by writed
+	# many: fill the database wil many users
 	while [ "$1" != "" ]
 	do
 		if [ "$1" = "mail" ] ; then

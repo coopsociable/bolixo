@@ -1,4 +1,5 @@
 #!/bin/sh
+LARGEIMAGE=$HOME/Images/large-image.jpg
 inittest(){
 	./bofs misc --writeconfig -L eng
 }
@@ -41,7 +42,12 @@ addcontact(){
 		fi
 	fi
 }
-
+checklargeimage(){
+	if [ ! -f $LARGEIMAGE ] ; then
+		echo $LARGEIMAGE does not exist, ending
+		exit 1
+	fi
+}
 if [ "$1" = "" ] ; then
 	if [ -x /usr/sbin/menutest ] ; then
 		/usr/sbin/menutest -s $0
@@ -249,11 +255,11 @@ elif [ "$1" = "remote-sendlarge" ] ; then # test: Send large file to remote
 		echo Remote user $USER not in contact list >&2
 		exit 1
 	fi
-	import -window root /tmp/image.png
-	./bofs msgs --shortmsg --groupname inbox --recipient $USER -F /tmp/image.png
+	checklargeimage
+	./bofs msgs --shortmsg --groupname inbox --recipient $USER -F $LARGEIMAGE
 	# Compare the size of the image
 	REMOTESIZE=`ssh root@preprod.bolixo.org bofs -u jacquesg msgs -s --groupname inbox | head -1 | (read a b c d e f; echo $f)`
-	LOCALSIZE=`stat --print="%s\n" /tmp/image.png`
+	LOCALSIZE=`stat --print="%s\n" $LARGEIMAGE`
 	if [ "$REMOTESIZE" != "$LOCALSIZE" ] ; then
 		echo remote size differ from local size: local=$LOCALSIZE remote=$REMOTESIZE
 	fi
