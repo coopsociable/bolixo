@@ -15,6 +15,26 @@ template<typename T, typename T1, typename ... Ts>
 bool is_any_of(T t, T1 t1, Ts ... ts){
 	return is_any_of(t,t1) || is_any_of(t,ts...);
 }
+inline bool is_any_ofnc (const char *t, const char *t1)
+{
+	return strcasecmp(t,t1)==0;
+}
+inline bool is_any_ofnc (const std::string &t, const char *t1)
+{
+	return strcasecmp(t.c_str(),t1)==0;
+}
+inline bool is_any_ofnc (const std::string &t, const std::string &t1)
+{
+	return strcasecmp(t.c_str(),t1.c_str())==0;
+}
+inline bool is_any_ofnc (const char *t, const std::string &t1)
+{
+	return strcasecmp(t,t1.c_str())==0;
+}
+template<typename T, typename T1, typename ... Ts>
+bool is_any_ofnc(T t, T1 t1, Ts ... ts){
+	return is_any_ofnc(t,t1) || is_any_ofnc(t,ts...);
+}
 template<typename T, typename T1>
 bool is_eq(T t, T1 t1){
 	return is_any_of(t,t1);
