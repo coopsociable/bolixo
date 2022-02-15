@@ -132,6 +132,16 @@ struct WEB {
 		secret = _secret;
 	}
 };
+struct EXIM {
+	string server;
+	vector<string> alias;	// Extra domains we accept as equivalent
+	EXIM (const string &_server){
+		server = _server;
+	}
+	void addalias(PARAM_STRING _alias){
+		alias.push_back(_alias.ptr);
+	}
+};
 struct MON {
 	string server;
 	string bod_secret;
@@ -273,7 +283,7 @@ struct CONFIG {
 	vector<WEB> webssls;
 	vector<WEB> logs;
 	vector<WEB> computes;
-	vector<WEB> exims;
+	vector<EXIM> exims;
 	vector<WEB> dnsproxys;
 	vector<MON> monitors;
 	vector<BOLIXOD> bolixods;
@@ -373,16 +383,24 @@ static void generateconfig (
 	for (auto t:config.webssls){
 		for (auto x:config.webs){
 			// http requests
+			fprintf (fout,"%s %srule %s webssl unix /dev/web.sock http:%s web 80\n",bk_control,prefix,t.server.c_str(),x.server.c_str());
+			fprintf (fout,"%s %srule %s webssl-fail unix /dev/web.sock http:%s web 80\n",bk_control,prefix,t.server.c_str(),x.server.c_str());
 			fprintf (fout,"%s %srule %s webssl ip0 9080 http:%s web 80\n",bk_control,prefix,t.server.c_str(),x.server.c_str());
 			fprintf (fout,"%s %srule %s webssl-fail ip0 9080 http:%s web 80\n",bk_control,prefix,t.server.c_str(),x.server.c_str());
 			prefix = "a";
+			fprintf (fout,"%s %srule %s webssl unix /dev/web.sock http:%s web-fail 80\n",bk_control,prefix,t.server.c_str(),x.server.c_str());
+			fprintf (fout,"%s %srule %s webssl-fail unix /dev/web.sock http:%s web-fail 80\n",bk_control,prefix,t.server.c_str(),x.server.c_str());
 			fprintf (fout,"%s %srule %s webssl ip0 9080 http:%s web-fail 80\n",bk_control,prefix,t.server.c_str(),x.server.c_str());
 			fprintf (fout,"%s %srule %s webssl-fail ip0 9080 http:%s web-fail 80\n",bk_control,prefix,t.server.c_str(),x.server.c_str());
 			fprintf (fout,"%s setweight %s web-fail 80 1\n",bk_control,x.server.c_str());
 			// web sockets
+			fprintf (fout,"%s %srule %s webssl unix /dev/ws.sock %s web /var/run/websocket.sock\n",bk_control,prefix,t.server.c_str(),x.server.c_str());
+			fprintf (fout,"%s %srule %s webssl-fail unix /dev/ws.sock %s web /var/run/websocket.sock\n",bk_control,prefix,t.server.c_str(),x.server.c_str());
 			fprintf (fout,"%s %srule %s webssl ip0 9082 %s web /var/run/websocket.sock\n",bk_control,prefix,t.server.c_str(),x.server.c_str());
 			fprintf (fout,"%s %srule %s webssl-fail ip0 9082 %s web /var/run/websocket.sock\n",bk_control,prefix,t.server.c_str(),x.server.c_str());
 			prefix = "a";
+			fprintf (fout,"%s %srule %s webssl unix /dev/ws.sock %s web-fail /var/run/websocket.sock\n",bk_control,prefix,t.server.c_str(),x.server.c_str());
+			fprintf (fout,"%s %srule %s webssl-fail unix /dev/ws.sock %s web-fail /var/run/websocket.sock\n",bk_control,prefix,t.server.c_str(),x.server.c_str());
 			fprintf (fout,"%s %srule %s webssl ip0 9082 %s web-fail /var/run/websocket.sock\n",bk_control,prefix,t.server.c_str(),x.server.c_str());
 			fprintf (fout,"%s %srule %s webssl-fail ip0 9082 %s web-fail /var/run/websocket.sock\n",bk_control,prefix,t.server.c_str(),x.server.c_str());
 			fprintf (fout,"%s setweight %s web-fail /var/run/websocket.sock 1\n",bk_control,x.server.c_str());
@@ -1473,7 +1491,7 @@ static void print_configs (
 						fprintf (fout,"chown %s /var/lib/lxc/%s/rootfs/dev/keysd.sock\n",trli_user,name);
 					</f>
 					<f insert>
-						fprintf (fout,"ulimit -SH -s 8192 -v 100000\n");
+						fprintf (fout,"ulimit -SH -s 8192 -v 200000\n");
 					</f>
 					</call>
 					fprintf (glocal.all_fout,"%s\n",startfile.c_str());
@@ -2091,6 +2109,14 @@ static void print_configs (
 						</call>
 						string startfile;	
 						<call lxc_start> (w,glocal.ip,startfile,"apache",48);
+						<f horizon>
+							fprintf (fout,"%s/horizon-control -p %s/horizon.sock --bind unix,/dev/web.sock:/var/lib/lxc/%s/rootfs/dev/web.sock,%s\n"
+								,blackhole_path,sock_dir,name,name);
+							fprintf (fout,"chown 48 /var/lib/lxc/%s/rootfs/dev/web.sock\n",name);
+							fprintf (fout,"%s/horizon-control -p %s/horizon.sock --bind unix,/dev/ws.sock:/var/lib/lxc/%s/rootfs/dev/ws.sock,%s\n"
+								,blackhole_path,sock_dir,name,name);
+							fprintf (fout,"chown 48 /var/lib/lxc/%s/rootfs/dev/ws.sock\n",name);
+						</f>
 						<f insert>
 							fprintf (fout,"#!/bin/sh\n");
 							fprintf (fout,"echo %s %s >>/var/lib/lxc/%s/rootfs/etc/hosts\n",glocal.ip,glocal.hostname,name);
@@ -2098,11 +2124,13 @@ static void print_configs (
 							fprintf (fout,"DirectoryIndex index.hc\n");
 							// The CGI execution timeout is 10 minutes, so make this one minute less.
 							// This affects the notitication system. It means the connection will timeout every 9 minutes.
-							fprintf (fout,"ProxyPass \"/index.hc\" \"http://192.168.4.1:9080/index.hc\" timeout=%d\n",9*60);
-							fprintf (fout,"ProxyPass \"/webapi.hc\" \"http://192.168.4.1:9080/webapi.hc\"\n");
-							fprintf (fout,"ProxyPass \"/bolixoapi.hc\" \"http://192.168.4.1:9080/bolixoapi.hc\"\n");
-							fprintf (fout,"ProxyPass \"/bolixo.hc\" \"http://192.168.4.1:9080/bolixo.hc\"\n");
-							fprintf (fout,"ProxyPass \"/wss\" \"ws://192.168.4.1:9082/\"\n");
+							const char *unixwebsock = "unix:/dev/web.sock|";
+							const char *unixwssock = "unix:/dev/ws.sock|";
+							fprintf (fout,"ProxyPass \"/index.hc\" \"%shttp://192.168.4.1:9080/index.hc\" timeout=%d\n",unixwebsock,9*60);
+							fprintf (fout,"ProxyPass \"/webapi.hc\" \"%shttp://192.168.4.1:9080/webapi.hc\"\n",unixwebsock);
+							fprintf (fout,"ProxyPass \"/bolixoapi.hc\" \"%shttp://192.168.4.1:9080/bolixoapi.hc\"\n",unixwebsock);
+							fprintf (fout,"ProxyPass \"/bolixo.hc\" \"%shttp://192.168.4.1:9080/bolixo.hc\"\n",unixwebsock);
+							fprintf (fout,"ProxyPass \"/wss\" \"%sws://192.168.4.1:9082/\"\n",unixwssock);
 							fprintf (fout,"RewriteEngine On\n");
 							fprintf (fout,"#LogLevel alert rewrite:trace7\n");
 							fprintf (fout,"RewriteRule ^/public/(.*) /public.hc?image=\\$1 [PT,QSA]\n");
@@ -2193,7 +2221,17 @@ static void print_configs (
 						</call>
 						fprintf (glocal.all_fout,"%s\n",startfile.c_str());
 						string stopcmd;
-						lxc_stop (w,NULL,NULL,-1,stopcmd);
+						<call lxc_stop> (w,NULL,NULL,-1,stopcmd);
+						<f horizon>
+							fprintf (fout,"%s/horizon-control -p %s/horizon.sock unbindfd unix /dev/web.sock %s\n"
+								,blackhole_path,sock_dir,name);
+							fprintf (fout,"%s/horizon-control -p %s/horizon.sock unbindfd unix /dev/ws.sock %s\n"
+								,blackhole_path,sock_dir,name);
+						</f>
+						<f insert>
+							fprintf (fout,"lxc-stop -n %s\n",name);
+						</f>
+						</call>
 						if (glocal.stopwebssl.size() > 0) glocal.stopwebssl += "\n";
 						glocal.stopwebssl += stopcmd.c_str();
 						lxc_config (w,glocal.hostname,glocal.ip,true);
@@ -2278,7 +2316,7 @@ static void print_configs (
 			// SERVICE exim
 			for (auto s:glocal.config->exims){
 				if (s.server == glocal.server){
-					glocal WEB *p = &s;
+					glocal EXIM *p = &s;
 					mkdir ("/var/lib/lxc/exim",0755);
 					<call savefile>("/var/lib/lxc/exim/exim.init",false);
 					<f dowrite>
@@ -2319,8 +2357,10 @@ static void print_configs (
 						fprintf (fout,"test -f /etc/letsencrypt/live/%s/privkey.pem && cp /etc/letsencrypt/live/%s/privkey.pem $DIRPRIVATE/exim.pem\n"
 							,glocal.hostname,glocal.hostname);
 						// Make sure exim accepts the hostname as well as the bolixo.org domain.
-						fprintf (fout,"sed 's/localhost.localdomain/localhost.localdomain : %s/' </var/lib/lxc/%s/rootfs/etc/exim/exim.conf"
-							" >/var/lib/lxc/%s/rootfs/etc/exim/exim.conf.new\n",glocal.hostname,name,name);
+						string alias;
+						for (auto &s:glocal.p->alias) alias += string_f(" : %s",s.c_str());
+						fprintf (fout,"sed 's/localhost.localdomain/localhost.localdomain : %s%s/' </var/lib/lxc/%s/rootfs/etc/exim/exim.conf"
+							" >/var/lib/lxc/%s/rootfs/etc/exim/exim.conf.new\n",glocal.hostname,alias.c_str(),name,name);
 						fprintf (fout,"mv -f /var/lib/lxc/%s/rootfs/etc/exim/exim.conf.new"
 							" /var/lib/lxc/%s/rootfs/etc/exim/exim.conf\n",name,name);
 					</f>
@@ -2591,8 +2631,10 @@ int main (int argc, char *argv[])
 						glocal.config.logs.push_back(WEB(tb[1]));
 					}else if (strcmp(word,"compute")==0 && n == 2){
 						glocal.config.computes.push_back(WEB(tb[1]));
-					}else if (strcmp(word,"exim")==0 && n == 2){
-						glocal.config.exims.push_back(WEB(tb[1]));
+					}else if (strcmp(word,"exim")==0 && n >= 2){
+						EXIM exim(tb[1]);
+						for (int i=2; i<n; i++) exim.addalias(tb[i]);
+						glocal.config.exims.push_back(exim);
 					}else if (strcmp(word,"dnsproxy")==0 && n == 2){
 						glocal.config.dnsproxys.push_back(WEB(tb[1]));
 					}else if (strcmp(word,"monitor")==0 && n == 7){
