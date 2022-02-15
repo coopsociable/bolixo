@@ -944,6 +944,22 @@ elif [ "$1" = "resetdb" ] ; then # db: drops and creates databases
 elif [ "$1" = "listsessions" ] ; then # prod: Lists sessions
 	export LXCSOCK=on
 	$0 bo-sessiond-control listsessions 0 100
+	if [ "$2" != "" ] ; then
+		OFF=$2
+		$0 bo-sessiond-control listsessions $OFF 100
+	else
+		# List all sessions. Should be done inside bo-sessiond-control
+		OFF=0
+		while true
+		do
+			NB=`$0 bo-sessiond-control listsessions $OFF 100 | wc -l`
+			if [ "$NB" = 1 ] ; then
+				break
+			fi
+			$0 bo-sessiond-control listsessions $OFF 100 
+			OFF=`expr $OFF + 100`
+		done
+	fi
 elif [ "$1" = "test-system" ] ; then # T: Tests all bolixo components
 	shift
 	NBREP=1
@@ -1694,6 +1710,7 @@ elif [ "$1" = "lxc0-mysql" ]; then # config:
 			--filelist /var/lib/lxc/bosqlddata/bosqlddata.files \
 			-i /usr/sbin/trli-init \
 			-e /usr/bin/mysqladmin -e /usr/bin/mysql \
+			-d /var/tmp \
 			-x /var/lib/mysql \
 			-l $LOG \
 			-n bosqlddata -p /usr/libexec/mysqld >/var/lib/lxc/bosqlddata/bosqlddata-lxc0.sh
@@ -1708,6 +1725,7 @@ elif [ "$1" = "lxc0-mysql" ]; then # config:
 			--filelist /var/lib/lxc/bosqlduser/bosqlduser.files \
 			-i /usr/sbin/trli-init \
 			-e /usr/bin/mysqladmin -e /usr/bin/mysql \
+			-d /var/tmp \
 			-x /var/lib/mysql \
 			-l $LOG \
 			-n bosqlduser -p /usr/libexec/mysqld >/var/lib/lxc/bosqlduser/bosqlduser-lxc0.sh
@@ -1722,6 +1740,7 @@ elif [ "$1" = "lxc0-mysql" ]; then # config:
 			--filelist /var/lib/lxc/bosqldbolixo/bosqldbolixo.files \
 			-i /usr/sbin/trli-init \
 			-e /usr/bin/mysqladmin -e /usr/bin/mysql \
+			-d /var/tmp \
 			-x /var/lib/mysql \
 			-l $LOG \
 			-n bosqldbolixo -p /usr/libexec/mysqld >/var/lib/lxc/bosqldbolixo/bosqldbolixo-lxc0.sh
