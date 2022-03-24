@@ -55,6 +55,14 @@
 
 using namespace std;
 
+inline long long bod_getnow()
+{
+	#ifdef INSTRUMENT
+		return fdpass_getnow();
+	#else
+		return 0;
+	#endif
+}
 static DEBUG_KEY D_PROTO ("proto","Protocol information");
 
 using HANDLE_WSS_P = shared_ptr<HANDLE_WSS>;
@@ -3083,16 +3091,14 @@ static int bod_main (
 				glocal nb;
 				glocal bool deletes=false;	// Is there some entries to undelete
 				glocal vector<FILEINFO> files;
-				#ifdef INSTRUMENT
-				glocal long long start = fdpass_getnow();
-				#endif
+				glocal long long start = bod_getnow();
 				glocal string msg;
 				<call bod_localremote>(glocal.con,glocal.con_sess,sessionid,name,true,threshold,glocal.nodename,glocal.msg);
 				<f local>
 					glocal map<string,DIRENTRY> mp;
 					#ifdef INSTRUMENT
 					if (f_instrument != NULL){
-						long long end = fdpass_getnow();
+						long long end = bod_getnow();
 						fprintf (f_instrument,"%Ld listdir:findentry %lf userid=%u dirid=%d name=%s\n"
 							,glocal.start,(end-glocal.start)/1000000.0,entry.userid,entry.entryid,fname);
 						glocal.start = end;
@@ -3123,7 +3129,7 @@ static int bod_main (
 						<f onerow>
 							#ifdef INSTRUMENT
 							if (rownum==0 && f_instrument != NULL){
-								long long end = fdpass_getnow();
+								long long end = bod_getnow();
 								fprintf (f_instrument,"%Ld listdir:row0 %lf\n",glocal.start,(end-glocal.start)/1000000.0);
 								glocal.start = end;
 							}
@@ -3181,7 +3187,7 @@ static int bod_main (
 						</call>
 						#ifdef INSTRUMENT
 						if (f_instrument != NULL){
-							long long end = fdpass_getnow();
+							long long end = bod_getnow();
 							fprintf (f_instrument,"%Ld listdir:endsql %lf\n",glocal.start,(end-glocal.start)/1000000.0);
 							glocal.start = end;
 						}
@@ -3226,7 +3232,7 @@ static int bod_main (
 				</call>	
 				#ifdef INSTRUMENT
 				if (f_instrument != NULL){
-					long long end = fdpass_getnow();
+					long long end = bod_getnow();
 					fprintf (f_instrument,"%Ld listdir:rep %lf\n",glocal.start,(end-glocal.start)/1000000.0);
 				}
 				#endif
@@ -4231,9 +4237,7 @@ static int bod_main (
 				glocal unsigned userid = bo_writed_get_group_owner (glocal.con_sess, sessionid, owner, glocal.msg);
 				for (auto f:fulltext) glocal.fulltext.insert(f);
 				if (glocal.userid != 0){
-					#ifdef INSTRUMENT
-					glocal long long start = fdpass_getnow();
-					#endif
+					glocal long long start = bod_getnow();
 					DATEASC keepdate;
 					fdpass_asctime(time(NULL)-keepdays*24*60*60,keepdate);
 					<call sql_query>("select id2name.name,dirs2.name,convert_tz(dirs2.modified,'system','%s')"
@@ -4252,7 +4256,7 @@ static int bod_main (
 					<f onerow>
 						#ifdef INSTRUMENT
 						if (rownum==0 && f_instrument != NULL){
-							long long end = fdpass_getnow();
+							long long end = bod_getnow();
 							fprintf (f_instrument,"%Ld interest_check:row0 %lf\n",glocal.start,(end-glocal.start)/1000000.0);
 						}
 						#endif
