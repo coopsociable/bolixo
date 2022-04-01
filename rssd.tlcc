@@ -502,11 +502,11 @@ static int rssd_getrss(PARAM_STRING url, string &rss)
 				const char *endbuf = line+len;
 				const char *pt = line;
 				while (pt < endbuf && *pt != '\n') pt++;
-				debug_printf (D_GETRSS,"header_seen=%d process len=%u %lu %d\n",glocal.header_seen,len,pt-line,pt<endbuf);
+				debug_printf (D_GETRSS,"header_seen=%d process len=%u %zu %d\n",glocal.header_seen,len,pt-line,pt<endbuf);
 				if (pt < endbuf){
 					ret = (pt-line)+1;
 					string tmp = string(line,pt-line);
-					debug_printf (D_GETRSS,"line[%lu]=%s\n",tmp.size(),tmp.c_str());
+					debug_printf (D_GETRSS,"line[%zu]=%s\n",tmp.size(),tmp.c_str());
 					if (rssd_ncmp(tmp,CONST_STR("HTTP/"))==0
 						&& (tmp.find(" 301 ") != string::npos
 							|| tmp.find(" 302 ") != string::npos)){
@@ -811,7 +811,7 @@ static int rssd_process (CONNECT_INFO &con, RSSD_CONFIG &config, PARAM_STRING na
 				}
 				// Load the link already process for that site
 				mkdir (savelinkdir,0755);
-				glocal map<string,unsigned> links;
+				glocal map<string,time_t> links;
 				glocal time_t now = time(NULL);
 				string fname = string_f("%s/%s.links",savelinkdir,name.ptr);
 				<call loadfile>(fname,true);
@@ -821,7 +821,7 @@ static int rssd_process (CONNECT_INFO &con, RSSD_CONFIG &config, PARAM_STRING na
 				<f oneline>
 					// Older versions had the date and the link as the key, but it was not reliable.
 					// Now, we only keep the URL.
-					unsigned timestamp = atoi(line);
+					time_t timestamp = atoi(line);
 					line = str_skipdig(line);
 					line = str_skip(line);
 					if (line[0] != '\0') glocal.links[line] = timestamp;
@@ -874,7 +874,7 @@ static int rssd_process (CONNECT_INFO &con, RSSD_CONFIG &config, PARAM_STRING na
 					// We keep old links around for 30 days
 					time_t old = time(NULL)-(30*24*60*60);
 					for (auto const &s:glocal.links){
-						if (s.second > old) fprintf (fout,"%u %s\n",s.second,s.first.c_str());
+						if (s.second > old) fprintf (fout,"%ld %s\n",s.second,s.first.c_str());
 					}
 					return 0;
 				</f>
