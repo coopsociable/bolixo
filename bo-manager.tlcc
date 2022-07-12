@@ -864,6 +864,29 @@ static unsigned trli_atou(const string &s)
 static const char *zoneinfo_cmd = "(cd /usr/share/zoneinfo && find -type f | grep -v ./posix/ | grep -v ./right/ | sed s':^./::'; echo system)  | sort";
 
 /*
+	Generate the code to check if a umount of a directory if needed.
+	/var/lib/bolixo is mounted (shared) in many containers (bod,writed,publishd,...).
+	When we start a container, we delete the old rootfs and create a new one. Before
+	launching a "rm -fr rootfs", we make sure the /var/lib/lxc/CONTAINER/rootfs/var/lib/bolixo
+	is not mounted.
+	This situation may happen if a container is not stopped normally.
+
+	This applies also to bolixod and /var/lib/bolixod
+*/
+static void umount_needed(FILE *fout, const char *name, const char *dirname)
+{
+	auto dir = string_f ("/var/lib/lxc/%s/rootfs/var/lib/%s",name,dirname);
+	fprintf (fout,"if cat /proc/mounts | grep -q \" %s\"\n",dir.c_str());
+	fprintf (fout,"then\n");
+	fprintf (fout,"\techo \"***** unclean shutdown, umounting %s is needed\"\n",dir.c_str());
+	fprintf (fout,"\techo \"***** perform /var/lib/lxc/%s/%s.stop to do a clean shutdown\"\n",name,name);
+	fprintf (fout,"\techo \"***** aborting\"\n");
+	fprintf (fout,"\texit 1\n");
+	fprintf (fout,"fi\n");
+}
+
+
+/*
 	Print all configururation for services running on a given server
 */
 <mod>
@@ -1419,6 +1442,9 @@ static void print_configs (
 							,blackhole_path,sock_dir,name,name);
 						fprintf (fout,"chown %s /var/lib/lxc/%s/rootfs/dev/sessiond.sock\n",trli_user,name);
 					</f>
+					<f prestart>
+						umount_needed(fout,name,"bolixod");
+					</f>
 					<f insert>
 						fprintf (fout,"echo nameserver %s >/var/lib/lxc/%s/rootfs/etc/resolv.conf\n"
 							,horizon_ip,name);
@@ -1551,6 +1577,9 @@ static void print_configs (
 							,blackhole_path,sock_dir,name,name);
 						fprintf (fout,"chown %s /var/lib/lxc/%s/rootfs/dev/keysd.sock\n",trli_user,name);
 					</f>
+					<f prestart>
+						umount_needed(fout,name,"bolixo");
+					</f>
 					<f insert>
 						fprintf (fout,"echo nameserver %s >/var/lib/lxc/%s/rootfs/etc/resolv.conf\n"
 							,horizon_ip,name);
@@ -1658,6 +1687,9 @@ static void print_configs (
 						fprintf (fout,"%s/horizon-control -p %s/horizon.sock --bind unix,/var/lib/mysql/mysql-users.sock:/var/lib/lxc/%s/rootfs/var/lib/mysql/mysql-users.sock,%s\n"
 							,blackhole_path,sock_dir,name,name);
 						fprintf (fout,"chown %s /var/lib/lxc/%s/rootfs/var/lib/mysql/mysql-users.sock\n",trli_user,name);
+					</f>
+					<f prestart>
+						umount_needed(fout,name,"bolixo");
 					</f>
 					<f insert>
 						// Generate the list of time zones
@@ -1784,6 +1816,9 @@ static void print_configs (
 						fprintf (fout,"%s/horizon-control -p %s/horizon.sock --bind unix,/var/lib/mysql/mysql.sock:/var/lib/lxc/%s/rootfs/var/lib/mysql/mysql.sock,%s\n"
 							,blackhole_path,sock_dir,name,name);
 						fprintf (fout,"chown %s /var/lib/lxc/%s/rootfs/var/lib/mysql/mysql.sock\n",trli_user,name);
+					</f>
+					<f prestart>
+						umount_needed (fout,name,"bolixo");
 					</f>
 					<f insert>
 						fprintf (fout,"echo nameserver %s >/var/lib/lxc/%s/rootfs/etc/resolv.conf\n"
