@@ -74,7 +74,7 @@ fi
 RESOLVESOCK=/run/systemd/resolve/io.systemd.Resolve 
 hide_systemd_resolve(){
 	USERID=`id -u`
-	if [ "$USERID" = -0 -a -S "$RESOLVESOCK" ] ; then
+	if [ "$USERID" = 0 -a -S "$RESOLVESOCK" ] ; then
 		echo "    "Hide $RESOLVESOCK
 	        mv $RESOLVESOCK $RESOLVESOCK.save
 	fi
