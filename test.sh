@@ -67,6 +67,34 @@ if [ -x bo-webtest ] ; then
 else
 	BOWEBTEST=/usr/sbin/bo-webtest
 fi
+# For services accessing the internet, use normal DNS.
+# We could as well install a systemd resolve socket in the container
+# and proxy the protocol to the host systemd resolve. More tests needed.
+# We have not found a way to disable systemd resolve for one process...
+RESOLVESOCK=/run/systemd/resolve/io.systemd.Resolve 
+hide_systemd_resolve(){
+	if [ -S "$RESOLVESOCK" ] ; then
+		echo "    "Hide $RESOLVESOCK
+	        mv $RESOLVESOCK $RESOLVESOCK.save
+	fi
+}
+show_systemd_resolve(){
+	if [ -S "$RESOLVESOCK.save" ] ; then
+		echo "    "Un-hide $RESOLVESOCK
+	        mv $RESOLVESOCK.save $RESOLVESOCK
+	fi
+}
+do_dnsrequest(){
+	LOGFILE=$1
+	hide_systemd_resolve
+	echo "    "Perform a DNS request
+	if [ -x utils/dnsrequest ] ; then
+		strace -f -o $LOGFILE utils/dnsrequest >/dev/null
+	elif [ -f /usr/lib/dnsrequest ] ; then
+		strace -f -o $LOGFILE /usr/lib/dnsrequest >/dev/null
+	fi
+	show_systemd_resolve
+}
 webtest(){
 	#$0 test-system
 	page=$1
@@ -104,12 +132,8 @@ webtest(){
 	fi
 	time -p $BOWEBTEST -f $page -h $url $n $N $OPTS
 }
-make_log_web3(){
-	if [ -x utils/dnsrequest ] ; then
-		strace -f -o /tmp/log.web3 utils/dnsrequest >/dev/null
-	elif [ -f /usr/lib/dnsrequest ] ; then
-		strace -f -o /tmp/log.web3 /usr/lib/dnsrequest >/dev/null
-	fi
+make_log_dns(){
+	do_dnsrequest /tmp/log.dns
 }
 mysql_save(){
 	ROOTFS=/var/lib/lxc/$1/rootfs
@@ -1437,7 +1461,7 @@ elif [ "$1" = "lxc0-documentd" ]; then # prod:
 	$0 documentd-control quit
 	mkdir -p /var/lib/lxc/documentd
 	strace -o /tmp/log.qqwing qqwing --generate 1 --compact --solution --difficulty easy >/dev/null
-	make_log_web3
+	make_log_dns
 	trli-lxc0 $LXC0USELINK \
 		--filelist /var/lib/lxc/documentd/documentd.files \
 		--savefile /var/lib/lxc/documentd/documentd.save \
@@ -1448,7 +1472,7 @@ elif [ "$1" = "lxc0-documentd" ]; then # prod:
 		-e /usr/share/fonts/dejavu*/DejaVuSans.ttf \
 		-e /usr/share/fonts/liberation*/LiberationSans-Regular.ttf \
 		-e /bin/sh \
-		-i /usr/sbin/trli-init -l /tmp/log -l /tmp/log.qqwing -l /tmp/log.web3 \
+		-i /usr/sbin/trli-init -l /tmp/log -l /tmp/log.qqwing -l /tmp/log.dns \
 		-n documentd -p $BOLIXOPATH/documentd >/var/lib/lxc/documentd/documentd-lxc0.sh
 	chmod +x /var/lib/lxc/documentd/documentd-lxc0.sh
 	documentd_save documentd
@@ -1461,6 +1485,7 @@ elif [ "$1" = "lxc0-bod" ]; then # prod:
 	$0 bod-control help_connect xxx.bolixo.org 25 quit >/dev/null
 	$0 bod-control quit
 	mkdir -p /var/lib/lxc/bod
+	make_log_dns
 	trli-lxc0 $LXC0USELINK \
 		--filelist /var/lib/lxc/bod/bod.files \
 		--savefile /var/lib/lxc/bod/bod.save \
@@ -1468,7 +1493,7 @@ elif [ "$1" = "lxc0-bod" ]; then # prod:
 		-e /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem \
 		$EXTRALXCPROG \
 		$INCLUDELANGS \
-		-i /usr/sbin/trli-init -l /tmp/log -n bod -p $BOLIXOPATH/bod >/var/lib/lxc/bod/bod-lxc0.sh
+		-i /usr/sbin/trli-init -l /tmp/log -l /tmp/log.dns -n bod -p $BOLIXOPATH/bod >/var/lib/lxc/bod/bod-lxc0.sh
 	chmod +x /var/lib/lxc/bod/bod-lxc0.sh
 	bod_save bod
 	bod_restore bod
@@ -1479,14 +1504,14 @@ elif [ "$1" = "lxc0-writed" ]; then # prod:
 	sleep 1
 	$0 bo-writed-control quit
 	mkdir -p /var/lib/lxc/writed
-	make_log_web3
+	make_log_dns
 	/usr/sbin/trli-lxc0 $LXC0USELINK \
 		--filelist /var/lib/lxc/writed/writed.files \
 		--savefile /var/lib/lxc/writed/writed.save \
 		--restorefile /var/lib/lxc/writed/writed.restore \
 		$EXTRALXCPROG \
 		$INCLUDELANGS \
-		-i /usr/sbin/trli-init -l /tmp/log -l /tmp/log.web3 -n writed -p $BOLIXOPATH/bo-writed >/var/lib/lxc/writed/writed-lxc0.sh
+		-i /usr/sbin/trli-init -l /tmp/log -l /tmp/log.dns -n writed -p $BOLIXOPATH/bo-writed >/var/lib/lxc/writed/writed-lxc0.sh
 	chmod +x /var/lib/lxc/writed/writed-lxc0.sh
 	writed_save writed
 	writed_restore writed
@@ -1498,13 +1523,13 @@ elif [ "$1" = "lxc0-sessiond" ]; then # prod:
 	sleep 1
 	$0 bo-sessiond-control quit
 	mkdir -p /var/lib/lxc/sessiond
-	make_log_web3
+	make_log_dns
 	/usr/sbin/trli-lxc0 $LXC0USELINK \
 		--filelist /var/lib/lxc/sessiond/sessiond.files \
 		--savefile /var/lib/lxc/sessiond/sessiond.save \
 		--restorefile /var/lib/lxc/sessiond/sessiond.restore \
 		$EXTRALXCPROG \
-		-i /usr/sbin/trli-init -l /tmp/log -l /tmp/log.web3 -n sessiond -p $BOLIXOPATH/bo-sessiond >/var/lib/lxc/sessiond/sessiond-lxc0.sh
+		-i /usr/sbin/trli-init -l /tmp/log -l /tmp/log.dns -n sessiond -p $BOLIXOPATH/bo-sessiond >/var/lib/lxc/sessiond/sessiond-lxc0.sh
 	chmod +x /var/lib/lxc/sessiond/sessiond-lxc0.sh
 elif [ "$1" = "lxc0-keysd" ]; then # prod:
 	export LANG=eng
@@ -1513,13 +1538,13 @@ elif [ "$1" = "lxc0-keysd" ]; then # prod:
 	sleep 1
 	$0 bo-keysd-control quit
 	mkdir -p /var/lib/lxc/keysd
-	make_log_web3
+	make_log_dns
 	/usr/sbin/trli-lxc0 $LXC0USELINK \
 		--filelist /var/lib/lxc/keysd/keysd.files \
 		--savefile /var/lib/lxc/keysd/keysd.save \
 		--restorefile /var/lib/lxc/keysd/keysd.restore \
 		$EXTRALXCPROG \
-		-i /usr/sbin/trli-init -l /tmp/log -l /tmp/log.web3 -n keysd -p $BOLIXOPATH/bo-keysd >/var/lib/lxc/keysd/keysd-lxc0.sh
+		-i /usr/sbin/trli-init -l /tmp/log -l /tmp/log.dns -n keysd -p $BOLIXOPATH/bo-keysd >/var/lib/lxc/keysd/keysd-lxc0.sh
 	chmod +x /var/lib/lxc/keysd/keysd-lxc0.sh
 elif [ "$1" = "lxc0-proto" ]; then # prod:
 	export LANG=eng
@@ -1573,11 +1598,7 @@ elif [ "$1" = "lxc0-web" ]; then # prod:
 	fi
 	echo web
 	strace -f -o /tmp/log.web2 /var/www/cgi-bin/tlmpweb >/dev/null
-	if [ -x utils/dnsrequest ] ; then
-		strace -f -o /tmp/log.web3 utils/dnsrequest >/dev/null
-	elif [ -f /usr/lib/dnsrequest ] ; then
-		strace -f -o /tmp/log.web3 /usr/lib/dnsrequest >/dev/null
-	fi
+	make_log_dns
 	if [ -x bo-websocket ] ; then
 		strace -f -o /tmp/log.web4 ./bo-websocket --help >/dev/null
 	elif [ -f /usr/sbin/bo-websocket ] ; then
@@ -1597,7 +1618,7 @@ elif [ "$1" = "lxc0-web" ]; then # prod:
 			--preserve /tmp/agent.log \
 			--preserve /tmp/login.log \
 			$EXTRALXCPROG \
-			-i /usr/sbin/trli-init -l $LOG -l /tmp/log.web2 -l /tmp/log.web3 -l /tmp/log.web4 \
+			-i /usr/sbin/trli-init -l $LOG -l /tmp/log.web2 -l /tmp/log.dns -l /tmp/log.web4 \
 			-e /var/www/html/index.hc \
 			-e /var/www/html/webapi.hc \
 			-e /var/www/html/bolixoapi.hc \
@@ -1769,11 +1790,12 @@ elif [ "$1" = "lxc0-exim" ]; then # prod:
 	# /bin/bash is needed so lxc-attach works (eximrm and mailq)
 	echo exim
 	mkdir -p /var/lib/lxc/exim
+	make_log_dns
 	/usr/sbin/trli-lxc0 $LXC0USELINK \
 		$EXTRALXCPROG \
 		--filelist /var/lib/lxc/exim/exim.files \
 		-i /usr/sbin/trli-init \
-		-l $LOG \
+		-l $LOG -l /tmp/log.dns \
 		-e /bin/bash \
 		-d /var/spool/exim \
 		-d /usr/lib64/exim/*/lookups \
