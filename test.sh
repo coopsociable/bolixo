@@ -73,7 +73,8 @@ fi
 # We have not found a way to disable systemd resolve for one process...
 RESOLVESOCK=/run/systemd/resolve/io.systemd.Resolve 
 hide_systemd_resolve(){
-	if [ -S "$RESOLVESOCK" ] ; then
+	USERID=`id -u`
+	if [ "$USERID" = -0 -a -S "$RESOLVESOCK" ] ; then
 		echo "    "Hide $RESOLVESOCK
 	        mv $RESOLVESOCK $RESOLVESOCK.save
 	fi
@@ -1438,9 +1439,10 @@ elif [ "$1" = "lxc0-publishd" ]; then # prod:
 	export LXCSOCK=off
 	$0 publishd lxc0 &
 	sleep 1
-	# Force publishd to make a resolver request
-	$0 publishd-control help_connect xxx.bolixo.org 25 quit >/dev/null
-	$0 publishd-control quit
+	# Force publishd to make a resolver request (replace by make_log_dns)
+	#$0 publishd-control help_connect xxx.bolixo.org 25 quit >/dev/null
+	#$0 publishd-control quit
+	make_log_dns
 	mkdir -p /var/lib/lxc/publishd
 	trli-lxc0 $LXC0USELINK \
 		--filelist /var/lib/lxc/publishd/publishd.files \
@@ -1449,7 +1451,7 @@ elif [ "$1" = "lxc0-publishd" ]; then # prod:
 		-e /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem \
 		$EXTRALXCPROG \
 		$INCLUDELANGS \
-		-i /usr/sbin/trli-init -l /tmp/log -n publishd -p $BOLIXOPATH/publishd >/var/lib/lxc/publishd/publishd-lxc0.sh
+		-i /usr/sbin/trli-init -l /tmp/log -l /tmp/log.dns -n publishd -p $BOLIXOPATH/publishd >/var/lib/lxc/publishd/publishd-lxc0.sh
 	chmod +x /var/lib/lxc/publishd/publishd-lxc0.sh
 	publishd_save publishd
 	publishd_restore publishd
