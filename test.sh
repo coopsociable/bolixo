@@ -1441,7 +1441,7 @@ elif [ "$1" = "lxc0-publishd" ]; then # prod:
 	sleep 1
 	# Force publishd to make a resolver request (replace by make_log_dns)
 	#$0 publishd-control help_connect xxx.bolixo.org 25 quit >/dev/null
-	#$0 publishd-control quit
+	$0 publishd-control quit
 	make_log_dns
 	mkdir -p /var/lib/lxc/publishd
 	trli-lxc0 $LXC0USELINK \
