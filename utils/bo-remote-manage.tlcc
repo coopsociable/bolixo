@@ -254,11 +254,16 @@ int main (int argc, char *argv[])
 						}
 						printf ("%s: %s\n",server,expdate);
 					}else if (glocal.getexpdate){
+						glocal bool this_server = false;	// The server may hold several certificates
+											// alpha.bolixo.org also manages bolixo.org
 						<call walkpopen>(string_f("ssh root@%s bo certificates",server),10);
 						<f oneline>
 							const char *pt;
 							line = str_skip(line);
-							if (is_start_any_of(line,pt,"Expiry Date:")){
+							if (is_start_any_of(line,pt,"Certificate Name:")){
+								pt = str_skip(pt);
+								glocal.this_server = is_eq(glocal.server,pt);
+							}else if (glocal.this_server && is_start_any_of(line,pt,"Expiry Date:")){
 								string date;
 								str_copyword (date,pt);
 								glocal.expdates[glocal.server] = date;
@@ -271,7 +276,7 @@ int main (int argc, char *argv[])
 						vector<string> tb;
 						tb.push_back(server);
 						// Temp. bolixo.org is hosted on the same server as alpha.bolixo.org
-						if (strcmp(server,"alpha.bolixo.org")==0) tb.push_back("bolixo.org");
+						if (is_eq(server,"alpha.bolixo.org")) tb.push_back("bolixo.org");
 						for (auto &s:tb){
 							printf ("----------------- %s\n",s.c_str());
 							<call walkpopen>(string_f("ssh root@%s bo certificate-renew doit %s",server,s.c_str()),10);
