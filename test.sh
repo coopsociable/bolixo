@@ -968,7 +968,6 @@ elif [ "$1" = "resetdb" ] ; then # db: drops and creates databases
 	$0 createdb
 elif [ "$1" = "listsessions" ] ; then # prod: Lists sessions
 	export LXCSOCK=on
-	$0 bo-sessiond-control listsessions 0 100
 	if [ "$2" != "" ] ; then
 		OFF=$2
 		$0 bo-sessiond-control listsessions $OFF 100
