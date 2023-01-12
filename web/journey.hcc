@@ -1864,6 +1864,125 @@ static void journey_forminforms()
 	/- <p>
 	htmlprintf ("<a href=%s>Restart</a>\n",tlmpweb_curpage());
 }
+/*
+	Try to play a video using mediasource
+*/
+static void journey_videostream()
+{
+	<?
+	<script>
+	// ... (definition of the MediaSource and its SourceBuffers)
+	/**
+		 * Fetch a video or an audio segment, and returns it as an ArrayBuffer, in a
+		 * Promise.
+		 * @param {string} url
+		 * @returns {Promise.<ArrayBuffer>}
+	*/
+	function fetchSegment(url, start, len) {
+		//console.log ("avant range");
+		range="bytes=" + start.toString()+"-"+(start+len-1).toString();
+		//console.log(range);
+		headers = {headers: {
+				'content-type': 'multipart/byteranges',
+				'range': range,
+				}};
+		console.log (headers.headers);
+		return fetch(url,headers)
+			.then(function(response) {
+			var ret = response.arrayBuffer();
+			console.log ("content-type="+response.headers.get('content-type'));
+			console.log ("content-Encoding="+response.headers.get('content-encoding'));
+			//for (let [key, value] of response.headers) {
+			//	console.log(`${key} = ${value}`);
+			//}
+			console.log ("return array="+ret);
+			return ret;
+		}).then(function(buffer){
+			console.log ("return buffer "+buffer);
+			return buffer;
+		}).catch(function(error){
+			console.error(error);
+		});
+	}
+
+
+
+	</script>
+	<video id='my-video' width=800 height=600 controls>
+		Your browser does not support the video tag.
+	</video>
+	<script>
+		const videoTag = document.getElementById("my-video");
+		console.log (videoTag);
+		// creating the MediaSource, just with the "new" keyword, and the URL for it
+		const myMediaSource = new MediaSource();
+		console.log ('avant0');
+		console.log ('avant1');
+		const url = URL.createObjectURL(myMediaSource);
+		myMediaSource.addEventListener('sourceopen', sourceOpen);
+
+		// attaching the MediaSource to the video tag
+		videoTag.src = url;
+		console.log ('apres0');
+		var position = 0;
+		function sourceOpen(){
+			console.log("sourceopen state="+this.readyState); // open
+			//const audioSourceBuffer = this.addSourceBuffer('audio/mp4; codecs="mp4a.40.2"');
+			const videoSourceBuffer = this.addSourceBuffer('video/mp4; codecs="avc1.64001e, mp4a.40.2,avc1.4d401e"');
+			function addsegment(){
+				const chunk = 1000000;
+				var cur_position = position;
+				position += chunk;
+				fetchSegment("http://test1.bolixo.org/film.mp4",cur_position,chunk)
+					.then(function(segment) {
+						console.log("apres1 cur_position="+cur_position+" segment.byteLength="+segment.byteLength);
+						videoSourceBuffer.appendBuffer(segment);
+					});
+			}
+			console.log ('apres00');
+			videoSourceBuffer.addEventListener('updateend', function() {
+				console.log ('updateend');
+			});
+			videoTag.addEventListener('play', function() {
+				console.log ('play');
+				addsegment();
+			}, false);
+			videoTag.addEventListener('playing', function() {
+				console.log ('playing');
+			}, false);
+			videoTag.addEventListener('waiting', function() {
+				console.log ('waiting');
+				addsegment();
+			}, false);
+			videoTag.addEventListener('stalled', function() {
+				console.log ('stalled');
+			}, false);
+			videoTag.addEventListener('progress', function() {
+				console.log ('progress');
+			}, false);
+			videoTag.addEventListener('timeupdate', function() {
+				console.log ('timeupdate');
+			}, false);
+			videoTag.addEventListener('seeking', function() {
+				console.log ('seeking');
+			}, false);
+			videoTag.addEventListener('seeked', function() {
+				console.log ('seeked');
+			}, false);
+			videoTag.addEventListener('loadeddata', function() {
+				console.log ('loadeddata');
+			}, false);
+			videoTag.addEventListener('loadedmetadata', function() {
+				console.log ('loadedmetadata');
+			}, false);
+			videoTag.addEventListener('error', function() {
+				console.log ('error');
+			}, false);
+		}
+	</script>
+	?>
+	
+}
 </mod>
 extern "C" void webmain()
 {
@@ -1886,6 +2005,7 @@ extern "C" void webmain()
 	//journey_animation();
 	//journey_chat();
 	//journey_filebutton();	
-	journey_forminforms();
+	//journey_forminforms();
+	journey_videostream();
 }
 
