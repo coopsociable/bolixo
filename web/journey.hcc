@@ -19,10 +19,12 @@
 */
 // To learn and experiment with HTML
 #include <unistd.h>
+#include <dialog.h>
 #include <tlmplib.h>
 #include <tlmpweb.h>
 #include <trlitool.h>
 #include <tlmp/translat.h>
+#include <tlmp/helper.h>
 #include "../instrument.h"
 
 extern "C" void tlmp_initmod()
@@ -1865,9 +1867,9 @@ static void journey_forminforms()
 	htmlprintf ("<a href=%s>Restart</a>\n",tlmpweb_curpage());
 }
 /*
-	Try to play a video using mediasource
+	Generate the javascript code to fetch a video segment from the server
 */
-static void journey_videostream()
+static void journey_generate_fetchsegment()
 {
 	<?
 	<script>
@@ -1904,10 +1906,107 @@ static void journey_videostream()
 			console.error(error);
 		});
 	}
-
-
-
 	</script>
+	?>
+}
+/*
+	Generate a fetchsegment that simply create buffers using a local (server side) file
+*/
+<mod>
+static void journey_generate_jsfetch()
+{
+	/- <script>
+	/- var nosegment=0;
+	/- var tbsegment=[
+	glocal const char *prefix = "";
+	glocal vector<string> tb;
+	<call walkfs>("/tmp");
+	<f onefile>
+		if (is_start_any_of(path,NONEED,"/tmp/film-")){
+			glocal.tb.push_back(path);
+		}
+	</f>
+	</call>
+	sort (glocal.tb.begin(),glocal.tb.end());
+	for (auto &path:glocal.tb){
+		FILE *fin = fopen (path.c_str(),"r");
+		if (fin == nullptr){
+			printf ("<h1>Can't open file /tmp/film.mp4</h1><br>\n");
+		}else{
+			const size_t line_size = 1000000;
+			char buf[line_size];
+			int nb;
+			if ((nb=fread(buf,1,line_size,fin))>0){
+				char *base64 = base64_encode(buf,nb);
+				string longline;
+				// Remove line feed
+				char *pt = base64;
+				while (*pt != '\0'){
+					if (*pt > ' ') longline += *pt;
+					pt++;
+				}
+				free (base64);
+				printf ("%s'%s'",glocal.prefix,longline.c_str());
+				glocal.prefix = ",\n";
+			}
+			fclose (fin);
+		}
+	}
+	printf ("\n");
+		/- ];
+		/- const b64tobin = (b64Data) => {
+		/-	const byteCharacters = atob(b64Data);
+		/-      const buf = new ArrayBuffer(byteCharacters.length);
+		/-	const bytes = new Uint8Array(buf);
+		/-	console.log ("buf.byteLength=",buf.byteLength);
+		/-	for (let i = 0; i < byteCharacters.length; i++) {
+		/-		bytes[i] = byteCharacters.charCodeAt(i);
+		/-		// if (i<10) console.log ("bytes["+i+"]="+bytes[i]);
+		/-	}
+		/-	return buf;
+		/- }
+		/- const b64toBlob = (b64Data, contentType='', sliceSize=512) => {
+		/-	const byteCharacters = atob(b64Data);
+		/-	const byteArrays = [];
+		/-	for (let offset = 0; offset < byteCharacters.length; offset += sliceSize) {
+		/-		const slice = byteCharacters.slice(offset, offset + sliceSize);
+		/-		const byteNumbers = new Array(slice.length);
+		/-		for (let i = 0; i < slice.length; i++) {
+		/-			byteNumbers[i] = slice.charCodeAt(i);
+		/-		}
+		/-		const byteArray = new Uint8Array(byteNumbers);
+		/-		byteArrays.push(byteArray);
+		/-	}
+		/-	const blob = new Blob(byteArrays, {type: contentType});
+		/-	return blob;
+		/- }
+		/- function fetchSegment(url, start, len) {
+		/- 	var buffer=null;
+		/-      console.log ("fetchsegment="+nosegment);
+		/- 	if (nosegment < tbsegment.length){
+		/-		// buffer = await (await b64toBlob(tbsegment[nosegment], 'video/mp4')).arrayBuffer();
+		/-		//var x = b64toBlob(tbsegment[nosegment], 'video/mp4');
+		/-		//console.log ('blob='+x);
+		/-		buffer = b64tobin(tbsegment[nosegment]);
+		/-		console.log ('buffer='+buffer);
+		/-		nosegment++;
+		/-	}
+		/-	return buffer;
+		/- }
+		/- </script>
+}
+</mod>
+/*
+	Try to play a video using mediasource
+*/
+static void journey_videostream()
+{
+	if (0){
+		journey_generate_fetchsegment();
+	}else{
+		journey_generate_jsfetch();
+	}
+	<?
 	<video id='my-video' width=800 height=600 controls>
 		Your browser does not support the video tag.
 	</video>
@@ -1925,23 +2024,47 @@ static void journey_videostream()
 		videoTag.src = url;
 		console.log ('apres0');
 		var position = 0;
+		var videoSourceBuffer = null;
 		function sourceOpen(){
+			var thisthis = this;
 			console.log("sourceopen state="+this.readyState); // open
 			//const audioSourceBuffer = this.addSourceBuffer('audio/mp4; codecs="mp4a.40.2"');
-			const videoSourceBuffer = this.addSourceBuffer('video/mp4; codecs="avc1.64001e, mp4a.40.2,avc1.4d401e"');
+			videoSourceBuffer = this.addSourceBuffer('video/mp4; codecs="avc1.64001e, mp4a.40.2,avc1.4d401e"');
+			const curMode = videoSourceBuffer.mode;
+			if (curMode === 'segments') {
+				videoSourceBuffer.mode = 'sequence';
+			}
+			console.log ('sourceBuffer.mode='+videoSourceBuffer.mode);
+			var endseen = false;
 			function addsegment(){
 				const chunk = 1000000;
 				var cur_position = position;
 				position += chunk;
-				fetchSegment("http://test1.bolixo.org/film.mp4",cur_position,chunk)
-					.then(function(segment) {
-						console.log("apres1 cur_position="+cur_position+" segment.byteLength="+segment.byteLength);
-						videoSourceBuffer.appendBuffer(segment);
-					});
+				var segment = fetchSegment();
+				if (segment != null){
+					console.log("apres1 cur_position="+cur_position+" segment="+segment+" state="+thisthis.readyState+" updating="+videoSourceBuffer.updating);
+					videoSourceBuffer.appendBuffer(segment);
+				}else{
+					console.log("endOfStream");
+					myMediaSource.endOfStream();
+					endseen = true;
+				}
+				//fetchSegment("http://test1.bolixo.org/film.mp4",cur_position,chunk)
+				//	.then(function(segment) {
+				//		console.log("apres1 cur_position="+cur_position+" segment.byteLength="+segment.byteLength);
+				//		videoSourceBuffer.appendBuffer(segment);
+				//	});
 			}
 			console.log ('apres00');
+			videoSourceBuffer.addEventListener('update', function() {
+				console.log ('update');
+				if (!endseen) addsegment();
+			});
 			videoSourceBuffer.addEventListener('updateend', function() {
 				console.log ('updateend');
+			});
+			videoSourceBuffer.addEventListener('error', function() {
+				console.log ('buffer error');
 			});
 			videoTag.addEventListener('play', function() {
 				console.log ('play');
@@ -1952,7 +2075,6 @@ static void journey_videostream()
 			}, false);
 			videoTag.addEventListener('waiting', function() {
 				console.log ('waiting');
-				addsegment();
 			}, false);
 			videoTag.addEventListener('stalled', function() {
 				console.log ('stalled');
@@ -1979,6 +2101,7 @@ static void journey_videostream()
 				console.log ('error');
 			}, false);
 		}
+		console.log ("End of journey");
 	</script>
 	?>
 	
