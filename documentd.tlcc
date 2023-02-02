@@ -600,6 +600,8 @@ static GAME_P documentd_newgame(const char *type, const char *gameid, string &ms
 		p = make_PHOTOS();
 	}else if (strncmp(type,"boBOCALC",8)==0){
 		p = make_CALC();
+	}else if (strncmp(type,"boBOVIDC",8)==0){
+		p = make_VIDCONF();
 	}else{
 		msg = "Unknown game or document type";
 	}
@@ -642,6 +644,7 @@ static void documentd_create_popup(PARAM_STRING msg, const GAME_P doc)
 		{"TICT","doc_tictacto"},
 		{"CALC","doc_calc"},
 		{"PHOT","doc_photos"},
+		{"VIDC","doc_vidconf"},
 	};
 	const char *type = doc->getclass();
 	const char *docid=nullptr;
@@ -2107,3 +2110,64 @@ void button_bar (_F_button_bar &c, GAME *game, bool mobile, bool maywrite, strin
 	}
 	lines += "</div>\n";
 }
+
+void _F_doc_layout::menu_bar(class DOC_BUTTON_SPECS &specs, const char *gameid, std::string &lines)
+{
+}
+void _F_doc_layout::menu_status(const char *gameid, std::string &lines)
+{
+}
+/*
+	Manage the layout of a document or game
+*/
+<mod>
+void doc_layout (
+	_F_doc_layout &c,
+	const char *id_prefix,
+	GAME *game,
+	const DOC_CONTEXT &ctx,
+	const DOC_UI_SPECS_receive &sp,
+  	VARVAL &v)
+{
+	unsigned waiting_users_width = sp.mobile ? 62 : 42;
+	unsigned board_width = sp.content_width - waiting_users_width;	// Space for user list
+	unsigned board_height = sp.content_height;
+	v.var = VAR_CONTENT;
+	v.val += "<style>\n";
+	v.val += c.styles(sp);
+	v.val += "</style>\n";
+	v.val += "<script>\n";
+	v.val += c.functions(sp);
+	v.val += "</script>\n";
+	glocal c;
+	<call button_bar>(game,sp.mobile,ctx.maywrite,v.val);
+	<f draw>
+		glocal.c.menu_bar(specs,gameid,lines);
+	</f>
+	<f status>
+		glocal.c.menu_status(gameid,lines);
+	</f>
+	</call>
+	const char *gameid = game->get_gameid();
+	v.val += string_f("<div class=webtable id=%sdoc_vidconf style='display:flex; flex-flow:row;' >\n",id_prefix);
+	v.val += string_f("<div id='text-%s' style='flex:0 0 auto;width:%u;height:%u;border:1px solid black;"
+		" margin-left: auto;'"
+		" tabindex=0 >\n",gameid,board_width,board_height);
+	string script;
+	v.val += c.content (ctx,sp,gameid,script);
+	if (script.size() > 0){
+		v.val += "<script>\n";
+		v.val += script;
+		v.val += "</script>\n";
+	}
+	v.val += "</div>\n";
+	game->draw_waiting_users(v.val,waiting_users_width,board_height,"flex:0 0 auto;");
+	v.val += "</div>\n";
+	// Status line
+	v.val += "<div id=tab_form>\n";
+	v.val += string_f("<div id=msg-%s style=color:black>&nbsp;</div>\n",gameid);
+	documentd_chat (v.val,ctx.username,game->chat,sp.width-20,sp.mobile ? 200 : 100);
+	v.val += "</div>\n";
+}
+</mod>
+

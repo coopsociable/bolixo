@@ -1933,21 +1933,26 @@ static void journey_generate_jsfetch()
 		if (fin == nullptr){
 			printf ("<h1>Can't open file /tmp/film.mp4</h1><br>\n");
 		}else{
-			const size_t line_size = 1000000;
-			char buf[line_size];
-			int nb;
-			if ((nb=fread(buf,1,line_size,fin))>0){
-				char *base64 = base64_encode(buf,nb);
-				string longline;
-				// Remove line feed
-				char *pt = base64;
-				while (*pt != '\0'){
-					if (*pt > ' ') longline += *pt;
-					pt++;
+			// Decompose the file in 10k chunks
+			while(true){
+				const size_t line_size = 10000;
+				char buf[line_size];
+				int nb;
+				if ((nb=fread(buf,1,line_size,fin))>0){
+					char *base64 = base64_encode(buf,nb);
+					string longline;
+					// Remove line feed
+					char *pt = base64;
+					while (*pt != '\0'){
+						if (*pt > ' ') longline += *pt;
+						pt++;
+					}
+					free (base64);
+					printf ("%s'%s'",glocal.prefix,longline.c_str());
+					glocal.prefix = ",\n";
+				}else{
+					break;
 				}
-				free (base64);
-				printf ("%s'%s'",glocal.prefix,longline.c_str());
-				glocal.prefix = ",\n";
 			}
 			fclose (fin);
 		}

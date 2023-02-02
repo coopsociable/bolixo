@@ -500,6 +500,19 @@ elif [ "$1" = "doc-photos-dump" ] ; then # test: dump test.pho
 	DOCNAME=/projects/jacques-A/public/test.pho
 	. scripts/photos-help.sh
 	docdump
+elif [ "$1" = "doc-vidconf" ] ; then # test: generate content in a video conference
+	NB=$2
+	if [ "$NB" = "" ] ; then
+		NB=100
+	fi
+	DOCNAME=/projects/jacques-A/public/test.vdc
+	. scripts/vidconf-help.sh
+	createdocument
+	FILM=~/films/frag_bunny.mp4
+	base64 $FILM -w40000| head -$NB| while read line
+	do
+		append $line
+	done
 elif [ "$1" = "doc-photos" ] ; then # test: many test on photo gallery document
 	DOCNAME=/projects/jacques-A/public/test.pho
 	. scripts/photos-help.sh

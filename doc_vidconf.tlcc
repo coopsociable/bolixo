@@ -26,6 +26,7 @@
 #include "bolixo.h"
 #include "proto/bod_client.protodef"
 #include "documentd.h"
+#include "documentd_menu.h"
 #include "bolixo.m"
 
 using namespace std;
@@ -34,12 +35,12 @@ using namespace std;
 class VIDCONF: public GAME{
 	std::string message;
 	std::string define_styles(bool mobile);
-	std::string define_functions(bool reverse, bool mobile);
-	std::string draw_board (bool reverse, bool mobile, unsigned docnum, bool editmode, std::string &script);
+	std::string define_functions(bool mobile);
+	std::string draw_board (bool mobile, unsigned docnum, std::string &script);
 public:
 	VIDCONF();
 	const char *getclass() const{
-		return "PHOT";
+		return "VIDC";
 	}
 	void save(DOC_WRITER &w, bool save_session_info);
 	void load(DOC_READER &r, std::string &msg);
@@ -63,15 +64,23 @@ VIDCONF::VIDCONF()
 void VIDCONF::save(DOC_WRITER &w, bool save_session_info)
 {
 	documentd_vidconf_header (&w,revision);
+	vector<VIDCONF_CHAT> schat;
+	documentd_copychat (schat,chat);
+	documentd_vidconf_chat(&w,schat);
 }
 <mod>
 void VIDCONF::load(DOC_READER &r, std::string &msg)
 {
 	glocal revision;
 	glocal msg;
+	glocal chat;
+	chat.clear();
 	<call documentd_vidconf>(&r);
 	<f header>
 		glocal.revision = revision;
+	</f>
+	<f chat>
+		for (auto l:lines) glocal.chat.emplace_back(l.time,l.line);
 	</f>
 	<f invalid>
 		glocal.msg = "Invalid format for vidconf file";
@@ -85,22 +94,123 @@ string VIDCONF::define_styles(bool mobile)
 	string lines;
 	return lines;
 }
-string VIDCONF::define_functions(bool reverse, bool mobile)
+string VIDCONF::define_functions(bool mobile)
 {
-	string lines;
+	string lines = 
+		"const b64tobin = (b64Data) => {\n"
+		"\tconst byteCharacters = atob(b64Data);\n"
+		"\tconst buf = new ArrayBuffer(byteCharacters.length);\n"
+		"\tconst bytes = new Uint8Array(buf);\n"
+		"\tconsole.log ('buf.byteLength=',buf.byteLength);\n"
+		"\tfor (let i = 0; i < byteCharacters.length; i++) {\n"
+		"\t\tbytes[i] = byteCharacters.charCodeAt(i);\n"
+		"\t}\n"
+		"\treturn buf;\n"
+		"}\n"
+		"var vidc_chunks=[];\n"
+		"var sourcebuffer=null;\n"
+		"function vidc_add(chunk) {\n"
+		"\tvar bchunk=b64tobin(chunk);\n"
+		"\tif (vidc_chunks.length > 0 || sourcebuffer.updating){\n"
+		"\t\tvidc_chunks.push(bchunk);\n"
+		"\t}else{\n"
+		"\t\tsourcebuffer.appendBuffer(bchunk);\n"
+		"\t}\n"
+		"}\n"
+		;
+	lines += "function VIDC_updmsg(color,msg){\n";
+	lines += string_f("\tvar elm = document.getElementById('msg-%s');\n",gameid.c_str());
+	lines += "\tif (elm != null){\n";
+	lines += "\t\telm.style.color=color;\n";
+	lines += "\t\telm.innerHTML=msg;\n";
+	lines += "\t}\n";
+	lines += "}\n";
 	return lines;
 }
 string VIDCONF::draw_board(
-	bool reverse,
 	bool mobile,
 	unsigned docnum,
-	bool editmode,		// Enable onXXXX function
 	string &script)
 {
 	string lines;
+	lines += string_f("<video id='vidc-%s' width=100%% height=100%% controls>\n",gameid.c_str());
+	lines += "Your browser does not support the video tag.\n";
+	lines += "</video>\n";
+
+	script += string_f("const videoTag = document.getElementById('vidc-%s');\n",gameid.c_str());
+	script +=
+		"const myMediaSource = new MediaSource();\n"
+		"const url = URL.createObjectURL(myMediaSource);\n"
+		"myMediaSource.addEventListener('sourceopen', sourceOpen);\n"
+		"videoTag.src = url;\n"
+		"function sourceOpen(){\n"
+		//"\tvideoTag.play();\n"
+		"\tconsole.log('sourceopen state='+this.readyState); // open\n"
+		"\tconst mtype = 'video/mp4; codecs=\"avc1.64001e, mp4a.40.2,avc1.4d401e\"';\n"
+		"\tif (MediaSource.isTypeSupported(mtype)){\n"
+		"\t\tconsole.log('mp4 codec supported');\n"
+		"\t}else{\n"
+		"\t\tconsole.log('mp4 codec not supported');\n"
+		"\t}\n"
+		"\tsourcebuffer = this.addSourceBuffer(mtype);\n"
+		"\tconst curMode = sourcebuffer.mode;\n"
+		"\tif (curMode === 'segments') {\n"
+		"\t\tsourcebuffer.mode = 'sequence';\n"
+		"\t}\n"
+		"\tconsole.log ('sourcebuffer.mode='+sourcebuffer.mode);\n"
+		"\tsourcebuffer.addEventListener('update', function() {\n"
+		"\t\tconsole.log ('update');\n"
+		"\t\tif(vidc_chunks.length > 0){\n"
+		"\t\t\tsourcebuffer.appendBuffer(vidc_chunks.shift());\n"
+		"\t\t}\n"
+		"\t\t});\n"
+		"\tsourcebuffer.addEventListener('updateend', function() {\n"
+		"\t\tconsole.log ('updateend');\n"
+		"\t});\n"
+		"\tsourcebuffer.addEventListener('error', function(e) {\n"
+		"\t\tconsole.log ('buffer error');\n"
+		"\t\tconsole.log(e);\n"	
+		"\t});\n"
+		"\tvideoTag.addEventListener('play', function() {\n"
+		"\t\tconsole.log ('play');\n"
+		"\t}, false);\n"
+		"\tvideoTag.addEventListener('playing', function() {\n"
+		"\t\tconsole.log ('playing');\n"
+		"\t}, false);\n"
+		"\tvideoTag.addEventListener('waiting', function() {\n"
+		"\t\tconsole.log ('waiting');\n"
+		"\t}, false);\n"
+		"\tvideoTag.addEventListener('stalled', function() {\n"
+		"\t\tconsole.log ('stalled');\n"
+		"\t}, false);\n"
+		"\tvideoTag.addEventListener('progress', function() {\n"
+		"\t\tconsole.log ('progress');\n"
+		"\t}, false);\n"
+		"\tvideoTag.addEventListener('timeupdate', function() {\n"
+		"\t\tconsole.log ('timeupdate');\n"
+		"\t}, false);\n"
+		"\tvideoTag.addEventListener('seeking', function() {\n"
+		"\t\tconsole.log ('seeking');\n"
+		"\t}, false);\n"
+		"\tvideoTag.addEventListener('seeked', function() {\n"
+		"\t\tconsole.log ('seeked');\n"
+		"\t}, false);\n"
+		"\tvideoTag.addEventListener('loadeddata', function() {\n"
+		"\t\tconsole.log ('loadeddata');\n"
+		"\t}, false);\n"
+		"\tvideoTag.addEventListener('loadedmetadata', function() {\n"
+		"\t\tconsole.log ('loadedmetadata');\n"
+		"\t}, false);\n"
+		"\tvideoTag.addEventListener('error', function(e) {\n"
+		"\t\tconsole.log ('videotag error');\n"
+		"\t\tconsole.log (e);\n"
+		"\t}, false);\n"
+		"}\n"
+		;
 	return lines;
 }
 
+<mod>
 void VIDCONF::exec (
 	const char *var,
 	const char *val,
@@ -108,52 +218,78 @@ void VIDCONF::exec (
 	const DOC_UI_SPECS_receive &sp,
 	vector<VARVAL> &res)
 {
-	string error,status;
+	string error,status,api_error;
 	setactivity();
 	VARVAL notify_var;
 	notify_var.var = VAR_NOTIFY;
 	notify_var.val = string_f("vidconf_cur_gameid='%s';\n",gameid.c_str());
-	if (strcmp(var,REQ_PRINT)==0){
-	}else if (strcmp(var,REQ_FUNCTIONS)==0){
+	if (is_eq(var,REQ_PRINT)){
+		if (is_any_of(val,"","full")){
+			VARVAL v;
+			glocal VIDCONF *doc = this;
+			<call doc_layout>(val,this,ctx,sp,v);
+			<f styles>
+				return glocal.doc->define_styles(sp.mobile);
+			</f>
+			<f functions>
+				return glocal.doc->define_functions(sp.mobile);
+			</f>
+			<f menu_bar>
+				#define BUTTON_CONFIG	0
+				VIDEO_MENU menu(specs);
+				documentd_bar_button (lines,BUTTON_CONFIG,menu.svg_config,specs,false,"");
+			</f>
+			<f content>
+				return glocal.doc->draw_board(sp.mobile,ctx.docnum,script);
+			</f>
+			</call>
+			res.emplace_back(move(v));
+		}
+	}else if (is_eq(var,REQ_FUNCTIONS)){
 		VARVAL var;
 		var.var = VAR_DEFSCRIPT;
-		var.val = define_functions (false,sp.mobile);
+		var.val = define_functions (sp.mobile);
 		res.emplace_back(move(var));
-	}else if (strcmp(var,REQ_STYLES)==0){
+	}else if (is_eq(var,REQ_STYLES)){
 		VARVAL var;
 		var.var = VAR_STYLES;
 		var.val += define_styles(sp.mobile);
 		res.emplace_back(move(var));
-	}else if (strcmp(var,REQ_REGION)==0){
+	}else if (is_eq(var,REQ_REGION)){
 		// For embedding
 		VARVAL var,var_script;
 		var.var = VAR_CONTENT;
 		var_script.var = VAR_DEFSCRIPT;
-		var.val = draw_board(false,sp.mobile,ctx.docnum,false,var_script.val);
+		var.val = draw_board(sp.mobile,ctx.docnum,var_script.val);
 		res.emplace_back(move(var));
 		res.emplace_back(move(var_script));
-	}else if (strcmp(var,REQ_CHAT)==0){
+	}else if (is_eq(var,REQ_CHAT)){
 		appendchat(val,notify_var.val,res);
-	}else if (strcmp(var,REQ_GETFIELDS)==0){
+	}else if (is_eq(var,REQ_GETFIELDS)){
 		VARVAL var;
 		var.var = VAR_FIELDS;
-		if (strcmp(val,DIALOG_VIDCONF_CONFIG)==0){
+		if (is_eq(val,DIALOG_VIDCONF_CONFIG)){
 		}
 		res.emplace_back(var);
+	}else if (is_eq(var,REQ_FOCUS)){
+		// Nothing to do
 	}else if (ctx.maywrite){
-		if (strcmp(var,"place")==0){
-		}else if (strcmp(var,"newgame")==0){
-		}else if (strcmp(var,"resetgame")==0){
-			resetgame();
-		}else if (strcmp(var,"config")==0){
-		}else if (strcmp(var,"dump")==0){
-			VARVAL var;
-			res.emplace_back(var);
+		if (is_eq(var,"append")){
+			notify_var.val += string_f("vidc_add('%s');\n",val);
+		}else{
+			api_error = MSG_R(E_IVLAPICOMMAND);
 		}
 	}else{
+		tlmp_error ("var=%s\n",var);
 		error = MSG_R(E_READONLY);
 	}
 	if (notify_var.val.size() > 0) res.emplace_back(move(notify_var));
+	if (api_error.size() > 0){
+		VARVAL var;
+		var.var = VAR_ERROR;
+		var.val = move(api_error);
+		res.emplace_back(move(var));
+	}
 	if (error.size() > 0){
 		update_msg(false,error,"red",res);
 	}else if (status.size() > 0){
@@ -162,4 +298,4 @@ void VIDCONF::exec (
 		update_msg(false,"&nbsp;","white",res);
 	}
 }
-
+</mod>
