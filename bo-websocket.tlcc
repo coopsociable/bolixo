@@ -250,7 +250,7 @@ static void webtab_init (const vector<SNAMEVAL_receive> &vals, set<string> &noti
 	}
 }
 static bool debug_header = false;
-static unsigned idle_delay=5*60;
+static unsigned idle_delay=45;	// see set_idle_timeout below
 <mod>
 static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &con_bod, CONNECT_INFO &con_sessiond, CONNECT_INFO &con_waitevent, bool paused)
 {
@@ -284,17 +284,23 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 	<f newclient>
 	</f>
 	<f endclient>
+		tlmp_error ("endserver endclient");
 		endserver = true;
 	</f>
 	<f idle>
 		if (glocal.end_in_idle){
+			tlmp_warning ("endserver end_in_idle");
 			endserver = true;
 		}else{
 			unsigned diff = time(nullptr) - glocal.lastactivity;
 			if (diff > idle_delay){
-				if (glocal.nbping > 2) endserver = true;
-				tlmp_warning ("idle since=%d diff=%u ping sent nbping=%u gameid=%s",since,diff,glocal.nbping,glocal.gameid.c_str());
+				if (glocal.nbping > 2){
+					tlmp_warning ("endserver nbping > 2");
+					endserver = true;
+				}
+				//tlmp_warning ("idle since=%d diff=%u ping sent nbping=%u gameid=%s",since,diff,glocal.nbping,glocal.gameid.c_str());
 				bo_websocket_send (this,glocal.fd,9,"hello");
+				glocal.nbping++;
 			}
 		}
 	</f>
@@ -303,6 +309,7 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 		glocal line;
 		glocal info;
 		glocal.c.tcp = this;
+		// tlmp_error ("receive %d no=%d fd=%d waitfd=%d sessionfd=%d waiteventfd=%d",info.linelen,no,glocal.fd,glocal.waitfd,glocal.sessionfd,glocal.waiteventfd);
 		if (0) {
 			<call savefile>("/tmp/log",true);
 			<f dowrite>
@@ -367,6 +374,7 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 				char buf[100*1024];
 				int ret = read(no,buf,sizeof(buf));
 				if (ret <= 0){
+					tlmp_error ("endserver ret <= 0");
 					endserver = true;
 				}else{
 					<call streamp_do>(glocal.waiteventbuf,buf,ret);
@@ -383,6 +391,7 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 							}
 							unsigned opcode = line[0] &0xf;
 							if (opcode == 8){	// Close
+								tlmp_error ("endserver opcode 8");
 								glocal.endserver = true;
 							}else{
 								bool mask = (line[1]&0x80)!=0;
@@ -546,7 +555,7 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 								tlmp_warning ("ping msg=%s",msg.c_str());
 								bo_websocket_send(&glocal.TCPSERVER,glocal.fd,10,msg);
 							}else if (opcode == 10){	//
-								tlmp_warning ("pong msg=%s",msg.c_str());
+								//tlmp_warning ("pong msg=%s",msg.c_str());
 								glocal.nbping = 0;
 							}else{
 								glocal.messages.emplace_back(move(msg));
@@ -623,7 +632,9 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 	if (paused) s.setlisten(fd,false);
 	s.inject(waitfd,nullptr);
 	s.setrawmode (waitfd,true);
-	s.set_idle_timeout(60);
+	// Apache has a default timeout of 60 when proxying websocket connections
+	// We have to wakeup regularly to send ping every idle_delay
+	s.set_idle_timeout(5);
 	s.loop();
 }
 </mod>

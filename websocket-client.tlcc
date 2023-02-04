@@ -190,7 +190,7 @@ static int bo_websocket_receive (CONNECT_HTTP_INFO &con, const void *buf, int le
 				//fprintf (fout,"\n");
 				//fclose (fout);
 				if (opcode == 9){	//
-					tlmp_warning ("ping msg=%s",msg.c_str());
+					//tlmp_warning ("ping msg=%s",msg.c_str());
 					bo_websocket_send(con,10,msg);
 				}else if (opcode == 10){	//
 					tlmp_warning ("pong msg=%s",msg.c_str());
@@ -206,13 +206,20 @@ static int bo_websocket_receive (CONNECT_HTTP_INFO &con, const void *buf, int le
 void HANDLE_WSS::process(
 	bool &endclient,
 	bool &now_running,	// Will be true if the websocket received the confirmation header and is not running.
-	int clientfd)		// Once the websocket is running, we simply copy to this handle.
+	int clientfd,		// Once the websocket is running, we simply copy to this handle.
+	std::string *msg)	// or we copy the message here, if not null
 {
 	glocal HANDLE_WSS *wss = this;
+	glocal msg;
 	glocal now_running;
 	glocal initmsgs;
 	now_running = false;
 	char buf[100*1024];
+	if (clientfd == -1 && msg == nullptr){
+		endclient = true;
+		tlmp_error ("websocket-client: clientfd == -1 and msg == nullptr");
+		return;
+	}
 	int ret = con.receive (buf,sizeof(buf));
 	if (0 && con.ssl != nullptr){
 		int ssl_error = SSL_get_error(con.ssl,ret);
@@ -223,9 +230,9 @@ void HANDLE_WSS::process(
 	if (ret <= 0){
 		debug_printf (D_PROTO,"fill ret=%d %d(%s)\n",ret,errno,strerror(errno));
 		endclient = true;
-	}else if (state == WSS_RUNNING){
+	}else if (clientfd != -1 && state == WSS_RUNNING){
 		//tlmp_warning ("write to clientfd ret=%d",ret);
-		write (clientfd,buf,ret);
+		::write (clientfd,buf,ret);
 	}else{
 		<call streamp_do>(sbuf,buf,ret);
 		<f process>
@@ -268,10 +275,9 @@ void HANDLE_WSS::process(
 				}
 			}else if (glocal.wss->state == WSS_RUNNING){
 				// This is a websocket packet, potentially incomplete
-				tlmp_warning ("running len=%d\n",len);
-				string msg;
-				ret = bo_websocket_receive (glocal.wss->con,buf,len,msg);
-				if (msg.size() > 0) tlmp_warning ("msg=%s\n",msg.c_str());
+				//tlmp_warning ("running len=%d\n",len);
+				ret = bo_websocket_receive (glocal.wss->con,buf,len,*glocal.msg);
+				//if (glocal.msg->size() > 0) tlmp_warning ("msg=%s\n",glocal.msg->c_str());
 			}
 			//printf ("ret=%d len=%d\n",ret,len);
 			return ret;
@@ -280,6 +286,20 @@ void HANDLE_WSS::process(
 	}
 }
 </mod>
+void HANDLE_WSS::process(
+	bool &endclient,
+	bool &now_running,	// Will be true if the websocket received the confirmation header and is not running.
+	int clientfd)		// Once the websocket is running, we simply copy to this handle.
+{
+	process (endclient,now_running,clientfd,nullptr);
+}
+void HANDLE_WSS::process(
+	bool &endclient,
+	bool &now_running,	// Will be true if the websocket received the confirmation header and is not running.
+	std::string &msg)	// Will contain the message received
+{
+	process (endclient,now_running,-1,&msg);
+}
 void HANDLE_WSS::sendheader (PARAM_STRING hostname)
 {
 	string buf;
@@ -301,6 +321,12 @@ void HANDLE_WSS::send (PARAM_STRING msg)
 	//tlmp_warning ("send :%s:",msg.ptr);
 	bo_websocket_send(con,1,msg);
 }
+// Write directly to the socket, no websocket encoding.
+// This is used when we proxy a websocket. We simply copy the data back and forth
+void HANDLE_WSS::write (const void *buf, size_t size) 
+{
+	con.write (buf,size);
+}
 
 /*
 	Add a message to send at connection time.
@@ -309,6 +335,18 @@ void HANDLE_WSS::send (PARAM_STRING msg)
 void HANDLE_WSS::addinitmsg(PARAM_STRING msg)
 {
 	initmsgs.push_back(msg.ptr);
+}
+
+void HANDLE_WSS::setsession(PARAM_STRING sessionid)
+{
+	session = sessionid.ptr;
+}
+
+// This grab the connection info (see the move())
+// CONNECT_HTTP_INFO can't be copied
+void HANDLE_WSS::moveconnectinfo(CONNECT_HTTP_INFO &hcon)
+{
+	con = move(hcon);
 }
 
 <mod>

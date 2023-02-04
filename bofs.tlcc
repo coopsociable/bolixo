@@ -40,6 +40,7 @@
 #include <algorithm>
 #include <set>
 #include <trlitool.h>
+#include "bofs.h"
 #define DEFINE_TBTYPE
 #define DEFINE_TBFTYPE
 #include "bolixo.h"
@@ -313,55 +314,43 @@ static void bofs_logout (CONNECT_HTTP_INFO &hcon, const PARAM_STRING hsessionid)
 }
 </mod>
 
-struct CONTEXT{
-	string email;
-	string user;
-	string password;
-	string sessionid;	// Session ID for the internal protocol
-	string hsessionid;	// Session ID for the https protocol
-	string threshold;	// Date to filter in the history of a directory or files
-	bool preset_session;	// We received the session id from the command line
-				// so logout is not needed.
-	CONNECT_INFO con;
-	CONNECT_INFO con_sess;
-	CONNECT_HTTP_INFO hcon;
-	CONTEXT(){
-		preset_session = false;
+CONTEXT::CONTEXT()
+{
+	preset_session = false;
+}
+CONTEXT::~CONTEXT()
+{
+	if (!preset_session){
+		if (sessionid.size()>0) bofs_logout(con,sessionid);
+		if (hsessionid.size()>0) bofs_logout(hcon,hsessionid);
 	}
-	~CONTEXT(){
-		if (!preset_session){
-			if (sessionid.size()>0) bofs_logout(con,sessionid);
-			if (hsessionid.size()>0) bofs_logout(hcon,hsessionid);
-		}
+}
+int CONTEXT::login()
+{
+	int ret = -1;
+	if (sessionid.size()>0 || hsessionid.size()>0){
+		ret = 0;
+	}else if (is_internal()){
+		ret = bofs_login (con,email,password,sessionid);
+		if (ret == -1) tlmp_error ("bod_login failed\n");
+	}else{
+		ret = bofs_login (hcon,email,password,hsessionid);
+		if (ret == -1) tlmp_error ("htbod_login failed\n");
 	}
-	int login(){
-		int ret = -1;
-		if (sessionid.size()>0 || hsessionid.size()>0){
-			ret = 0;
-		}else if (is_internal()){
-			ret = bofs_login (con,email,password,sessionid);
-			if (ret == -1) tlmp_error ("bod_login failed\n");
-		}else{
-			ret = bofs_login (hcon,email,password,hsessionid);
-			if (ret == -1) tlmp_error ("htbod_login failed\n");
-		}
-		return ret;
+	return ret;
+}
+int CONTEXT::hlogin()
+{
+	int ret = -1;
+	if (hsessionid.size()>0){
+		ret = 0;
+	}else{
+		ret = bofs_login (hcon,email,password,hsessionid);
+		if (ret == -1) tlmp_error ("webapi_login failed\n");
 	}
-	int hlogin(){
-		int ret = -1;
-		if (hsessionid.size()>0){
-			ret = 0;
-		}else{
-			ret = bofs_login (hcon,email,password,hsessionid);
-			if (ret == -1) tlmp_error ("webapi_login failed\n");
-		}
-		return ret;
-	}
-	bool is_internal(){
-		return con.port.size() > 0;
-	}
-	
-};
+	return ret;
+}
+
 #define _TLMP_bofs_listdir
 struct _F_bofs_listdir {
 	#define _F_bofs_listdir_ok(x) void x ok(bool internal_error, bool success, const char *msg, const vector<FILEINFO_receive> &files)
@@ -4192,7 +4181,6 @@ static int bofs_documents (CONTEXT &ctx, int argc, char *argv[])
 	</call>
 	return glocal.ret;
 }
-</mod>
 static void strip_blank (string &s)
 {
 	const char *pt = s.c_str();
@@ -4313,7 +4301,8 @@ int main (int argc, char *argv[])
 			 "\tbofs public ...\n"
 			 "\tbofs rm ...\n"
 			 "\tbofs rmdir ...\n"
-			 "\tbofs undelete dir\n")
+			 "\tbofs undelete dir\n"
+			 "\tbofs vidconf ...\n")
 			);
 		setarg ('u',"user",MSG_U(O_SELECT,"Select one user from .bofs.conf"),glocal.user,false);
 		setarg (' ',"nonstrict",MSG_U(O_NONSTRICT,"Allow SSL connection to self-sign certificate"),nonstrict,false);
@@ -4473,6 +4462,8 @@ int main (int argc, char *argv[])
 					ret = bofs_bolixoapi (glocal.ctx,argc,argv);
 				}else if (strcmp(argv[0],"documents")==0){
 					ret = bofs_documents (glocal.ctx,argc,argv);
+				}else if (strcmp(argv[0],"vidconf")==0){
+					ret = bofs_vidconf (glocal.ctx,argc,argv);
 				}else{
 					tlmp_error (MSG_U(E_IVLDCOMMAND,"Invalid command: %s\n"),argv[0]);
 					usage();

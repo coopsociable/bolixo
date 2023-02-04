@@ -1,0 +1,196 @@
+#include <stdio.h>
+#include <dialog.h>
+#include <tlmplib.h>
+#include <tlmpnet.h>
+#include <helper.h>
+#include <trlitool.h>
+#include <memory>
+#include <openssl/ssl.h>
+#include "bofs.h"
+#include "websocket-client.h"
+#include "bolixo.m"
+
+using namespace std;
+
+using HANDLE_WSS_P = shared_ptr<HANDLE_WSS>;
+
+struct HANDLE_INFO: public ARRAY_OBJ{
+	HANDLE_WSS_P wss=nullptr;
+};
+
+#define _TLMP_vidconf_sock
+struct _F_vidconf_sock{
+	HANDLE_INFO *h = nullptr;
+	void send (PARAM_STRING line);
+	#define _F_vidconf_sock_receive(x) void x receive(const char *line)
+	virtual _F_vidconf_sock_receive( );
+	#define _F_vidconf_sock_init(x) void init(bool &end)
+	virtual _F_vidconf_sock_init( );
+	#define _F_vidconf_sock_idle(x) void idle(bool &end)
+	virtual _F_vidconf_sock_idle( );
+};
+
+void _F_vidconf_sock::init(bool &end)
+{
+}
+void _F_vidconf_sock::idle(bool &end)
+{
+}
+void _F_vidconf_sock::receive(const char *line)
+{
+}
+
+void _F_vidconf_sock::send (PARAM_STRING line)
+{
+	//printf ("send %zu\n",strlen(line.ptr));
+	h->wss->send (line);
+}
+
+static int vidconf_send (_F_vidconf_sock *c, FILE *fin, int nbchunk)
+{
+	int ret = -1;
+	const size_t line_size = 40000;
+	for (int i=0; i<nbchunk; i++){
+		char buf[line_size];
+		int nb;
+		if ((nb=fread(buf,1,line_size,fin))>0){
+			char *base64 = base64_encode(buf,nb);
+			string longline = "append:";
+			// Remove line feed
+			char *pt = base64;
+			while (*pt != '\0'){
+				if (*pt > ' ') longline += *pt;
+				pt++;
+			}
+			free (base64);
+			c->send (longline);
+			ret = 0;
+		}else{
+			break;
+		}
+	}
+	//printf ("send ret = %d\n",ret);
+	return ret;
+}
+
+<mod>
+static void vidconf_sock(_F_vidconf_sock &c, CONTEXT &ctx, const char *docname, int timeout)
+{
+	glocal c;
+	<obj TCPSERVER o>();
+	<f idle>
+		glocal.c.idle(endserver);
+	</f>
+	<f newclient>
+	</f>
+	<f endclient>
+		if (getnbclients() <= 1){
+			endserver = true;
+		}
+	</f>
+	<f receive>
+		HANDLE_INFO *c = (HANDLE_INFO*)info.data;
+		if (!c->wss){
+			endserver = true;
+		}else{
+			bool now_running = false;
+			string msg;
+			c->wss->process(endclient,now_running,msg);
+			if (now_running){
+				glocal.c.init(endserver);
+			}
+			//printf ("now_running=%d msg=%zu\n",now_running,msg.size());
+			if (msg.size() > 0){
+				glocal.c.receive(msg.c_str());
+			}
+		}
+	</f>
+	</obj>
+	int fd;
+	BIO_get_fd(ctx.hcon.bio,&fd);
+	HANDLE_INFO *h = new HANDLE_INFO;
+	c.h = h;
+	h->wss = make_shared<HANDLE_WSS>();
+	h->wss->setsession(ctx.hsessionid);
+	string host = ctx.hcon.host;
+	h->wss->moveconnectinfo(ctx.hcon);
+	h->wss->addinitmsg (string_f("gameid=\"%s\" 100 100 100 100 0 10",docname));
+	h->wss->addinitmsg ("gamesequence=0");
+	h->wss->sendheader (host);
+	o.inject (fd,h);
+	o.setmonitormode(fd,true);
+	o.set_idle_timeout(timeout);
+	o.loop();
+}
+</mod>
+<mod>
+int bofs_vidconf (CONTEXT &ctx, int argc, char *argv[])
+{
+	glocal int ret = -1;
+	glocal ctx;
+	glocal const char *docname = nullptr;
+	glocal const char *file = nullptr;
+
+	glocal.ret = <call tlmpprogram>(argc,argv);
+	<f init>
+		setproginfo ("bofs vidconf",VERSION
+			,MSG_U(I_CMDVIDCONF
+				,"Command line tool to interact with video conference\n"
+				 "\n"
+				 "bofs vidconf command ...\n"
+				 "\n"
+				 "Commands are:\n"
+				 "\trecord\n"
+				 "\tsendvideo\n"
+				)
+			);
+		setarg ('d',"docname",MSG_R(O_DOCNAME),glocal.docname,true);
+		setarg ('f',"filevideo",MSG_U(O_FILEVIDEO,"Video to send to the conference"),glocal.file,false);
+	</f>
+	<f main>
+		int ret = -1;
+		const char *arg = argv[0];
+		if (glocal.ctx.login()!=-1){
+			if (is_eq(arg,"sendvideo")){
+				if (glocal.file == nullptr){
+					tlmp_error (MSG_U(E_NOVIDEOTOSEND,"Option --filevideo missing, nothing to send\n"));
+				}else{
+					glocal FILE *fin = nullptr;
+					if (is_eq(glocal.file,"-")){
+						glocal.fin = stdin;
+					}else{
+						glocal.fin = fopen(glocal.file,"r");
+						if (glocal.fin == nullptr){
+							tlmp_error (MSG_U(E_CANTOPENVIDEO,"Can't open video file %s (%s)\n"),glocal.file,strerror(errno));
+							exit (-1);
+						}
+					}
+					<call vidconf_sock>(glocal.ctx,glocal.docname,1);
+					<f init>
+						if (vidconf_send (this,glocal.fin,10) == -1) end = true;
+					</f>
+					<f idle>
+						if (vidconf_send (this,glocal.fin,10)==-1) end = true;
+					</f>
+					<f receive>
+						//printf ("rec=%s\n",line);
+					</f>
+					</call>
+					if (glocal.fin != stdin) fclose (glocal.fin);
+				}
+			}else if (is_eq(arg,"record")){
+				<call vidconf_sock>(glocal.ctx,glocal.docname,60);
+				<f receive>
+					printf ("line=%s\n",line);
+				</f>
+				</call>
+			}else{
+				usage();
+			}
+		}
+		return ret;
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
