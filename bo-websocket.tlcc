@@ -293,12 +293,13 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 			endserver = true;
 		}else{
 			unsigned diff = time(nullptr) - glocal.lastactivity;
+			debug_printf ("idle diff=%u",diff);
 			if (diff > idle_delay){
 				if (glocal.nbping > 2){
 					tlmp_warning ("endserver nbping > 2");
 					endserver = true;
 				}
-				//tlmp_warning ("idle since=%d diff=%u ping sent nbping=%u gameid=%s",since,diff,glocal.nbping,glocal.gameid.c_str());
+				debug_printf ("idle since=%d diff=%u ping sent nbping=%u gameid=%s",since,diff,glocal.nbping,glocal.gameid.c_str());
 				bo_websocket_send (this,glocal.fd,9,"hello");
 				glocal.nbping++;
 			}
@@ -551,11 +552,11 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 							}
 							//fprintf (fout,"\n");
 							//fclose (fout);
-							if (opcode == 9){	//
-								tlmp_warning ("ping msg=%s",msg.c_str());
+							if (opcode == 9){	// We receive a ping, send a pong
+								debug_printf ("ping msg=%s",msg.c_str());
 								bo_websocket_send(&glocal.TCPSERVER,glocal.fd,10,msg);
-							}else if (opcode == 10){	//
-								//tlmp_warning ("pong msg=%s",msg.c_str());
+							}else if (opcode == 10){	// We receive a pong from a ping we sent
+								debug_printf ("pong msg=%s",msg.c_str());
 								glocal.nbping = 0;
 							}else{
 								glocal.messages.emplace_back(move(msg));
