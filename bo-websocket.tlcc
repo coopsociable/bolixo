@@ -279,24 +279,25 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 	glocal bool end_in_idle=false;	// When something is broken in a connection, but we do not want to hang up
 					// too quickly, we set this to true.
 					// In the idle functag, the connection will end.
+	glocal string clientip;		// Client IP number, for error logs
 	c.fd = fd;
 	<obj TCPSERVER s>();
 	<f newclient>
 	</f>
 	<f endclient>
-		tlmp_warning ("endserver endclient");
+		tlmp_warning ("endserver endclient %s",glocal.clientip.c_str());
 		endserver = true;
 	</f>
 	<f idle>
 		if (glocal.end_in_idle){
-			tlmp_warning ("endserver end_in_idle");
+			tlmp_warning ("endserver end_in_idle: %s",glocal.clientip.c_str());
 			endserver = true;
 		}else{
 			unsigned diff = time(nullptr) - glocal.lastactivity;
 			debug_printf ("idle diff=%u nbping=%d\n",diff,glocal.nbping);
 			if (diff > idle_delay){
 				if (glocal.nbping > 2){
-					tlmp_warning ("endserver nbping > 2");
+					tlmp_warning ("endserver nbping > 2: %s",glocal.clientip.c_str());
 					endserver = true;
 				}
 				debug_printf ("idle since=%d diff=%u ping sent nbping=%u gameid=%s\n",since,diff,glocal.nbping,glocal.gameid.c_str());
@@ -359,7 +360,7 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 					send (&rep,sizeof(rep));
 				}
 			}else{
-				tlmp_error ("Invalid packet size for worker request");
+				tlmp_error ("Invalid packet size for worker request: %s",glocal.clientip.c_str());
 			}
 		}else if (no == glocal.sessionfd){
 			glocal.c.waitnote(glocal.con_sessiond, glocal.session.c_str(),glocal.sequence, glocal.project_notifications
@@ -375,7 +376,7 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 				char buf[100*1024];
 				int ret = read(no,buf,sizeof(buf));
 				if (ret <= 0){
-					tlmp_error ("endserver ret <= 0");
+					tlmp_error ("endserver ret <= 0: %s",glocal.clientip.c_str());
 					endserver = true;
 				}else{
 					glocal.lastactivity = time(nullptr);
@@ -387,13 +388,13 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 						if (len > 4){
 							bool fin = (line[0] &0x80) != 0;
 							if (!fin){
-								tlmp_error ("fin != %d",fin);
+								tlmp_error ("fin != %d: %s",fin,glocal.clientip.c_str());
 								glocal.endserver = true;
 								return 0;
 							}
 							unsigned opcode = line[0] &0xf;
 							if (opcode == 8){	// Close
-								tlmp_error ("endserver opcode 8");
+								tlmp_warning ("endserver opcode 8");
 								glocal.endserver = true;
 							}else{
 								bool mask = (line[1]&0x80)!=0;
@@ -493,6 +494,8 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 					tlmp_warning ("No cookie, ending");
 					glocal.end_in_idle = true;
 				}
+			}else if (is_start_any_ofnc(line,pt,"X-Forwarded-For:")){
+				glocal.clientip = str_skip(pt); 
 			}else if (line[0] == '\0'){
 				if (!glocal.end_in_idle){
 					if (glocal.session.size() == 0){
@@ -521,7 +524,7 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 				if (len > 4){
 					bool fin = (line[0] &0x80) != 0;
 					if (!fin){
-						tlmp_error ("fin != %d",fin);
+						tlmp_error ("fin != %d: %s",fin,glocal.clientip.c_str());
 						glocal.endserver = true;
 						return 0;
 					}
@@ -624,8 +627,8 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 					glocal.c.commands(glocal.messages,glocal.con_bod,glocal.con_sessiond,glocal.session.c_str(),glocal.gameid.c_str(),glocal.sp,endserver);
 					break;
 				}else{
-					tlmp_error ("bo_websocket_game: gameid or sequence not set, ending: messages.size()=%zu message[0]=%s"
-						,glocal.messages.size(),glocal.messages[0].c_str());
+					tlmp_error ("bo_websocket_game: gameid or sequence not set, ending: messages.size()=%zu message[0]=%s ip=%s"
+						,glocal.messages.size(),glocal.messages[0].c_str(),glocal.clientip.c_str());
 					endserver = true;
 					break;
 				}
