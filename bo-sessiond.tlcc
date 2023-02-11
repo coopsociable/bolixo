@@ -51,6 +51,7 @@ struct HANDLE_INFO: public ARRAY_OBJ{
 #include "proto/bo-sessiond_client.protoh"
 #include "proto/bo-sessiond_admin.protoh"
 #define session_log_session_NOTNEED
+#define session_log_sessionv1_NOTNEED
 #define session_log_notify_NOTNEED
 #define session_log_notify_v1_NOTNEED
 #define session_log_notify_v2_NOTNEED
@@ -81,13 +82,12 @@ struct SESSION_INFO{
 	bool admin;
 	vector<VAR> vars;
 	struct {
-		time_t lastvisit;
-		unsigned nbacc;
+		time_t lastvisit = time(nullptr);
+		time_t lastping = (time_t)0;
+		unsigned nbacc = 0;
 	} stats;
 	SESSION_INFO(){
 		userid = (unsigned)-1;
-		stats.lastvisit = time(NULL);
-		stats.nbacc = 0;
 		admin = false;
 		dateformat = 0;
 	}
@@ -107,7 +107,6 @@ struct SESSION_INFO{
 		admin = _admin;
 		dateformat = _dateformat;
 		timezone = _timezone;
-		stats.lastvisit = time(NULL);
 		stats.nbacc=1;
 	}
 };
@@ -268,6 +267,27 @@ int main (int argc, char *argv[])
 		{
 			FILE *fin = fopen ("/tmp/sessions.log","r");
 			if (fin != NULL){
+				glocal function<void(unsigned userid, SESSION_INFO &sess, const vector<VAR_receive> &vars)> freadvars;
+				glocal.freadvars = [&](unsigned userid, SESSION_INFO &sess, const vector<VAR_receive> &vars){
+					for (auto &v:vars){
+						if (glocal.user_vars.count(v.name)!=0){
+							// Move per session variables to per user variables
+							auto &uvars = glocal.userinfos[userid].vars;
+							bool found = false;
+							for (auto &uv:uvars){
+								if (uv.name == v.name){
+									found = true;
+									break;
+								}
+							}
+							if (!found){
+								uvars.push_back(v);
+							}
+						}else{
+							sess.vars.push_back(v);
+						}
+					}
+				};
 				<call session_log>(fin);
 				<f session>
 					SESSION_INFO sess(userid, userid_str, name, email, lang, admin, dateformat,"");
@@ -299,6 +319,15 @@ int main (int argc, char *argv[])
 							sess.vars.push_back(v);
 						}
 					}
+					glocal.sessions[session] = move(sess);
+					
+				</f>
+				<f sessionv2>
+					SESSION_INFO sess(userid, userid_str, name, email, lang, admin, dateformat,timezone);
+					sess.stats.lastvisit = lastvisit;
+					sess.stats.lastping = lastping;
+					sess.stats.nbacc = nbacc;
+					glocal.freadvars(userid,sess,vars);
 					glocal.sessions[session] = move(sess);
 					
 				</f>
@@ -443,10 +472,10 @@ int main (int argc, char *argv[])
 					<call savefile>("/tmp/sessions.log",false);
 					<f dowrite>
 						for (auto const &s:glocal.sessions){
-							session_log_sessionv1(fout,s.first,s.second.userid,s.second.userid_str
+							session_log_sessionv2(fout,s.first,s.second.userid,s.second.userid_str
 								,s.second.name,s.second.email,s.second.lang,s.second.timezone,s.second.admin
 								,s.second.dateformat
-								,s.second.stats.lastvisit,s.second.stats.nbacc,s.second.vars);
+								,s.second.stats.lastvisit,s.second.stats.lastping,s.second.stats.nbacc,s.second.vars);
 						}
 						for (auto const &s:glocal.userinfos){
 							session_log_notify_v4(fout,s.first,s.second.sequence,s.second.notes,s.second.vars);
@@ -465,8 +494,9 @@ int main (int argc, char *argv[])
 						if (pos >end){
 							break;
 						}else if (pos >= offset){
-							DATEASC datetime;
-							fdpass_asctime (it.second.stats.lastvisit,datetime);
+							DATEASC datevisit,dateping;
+							fdpass_asctime (it.second.stats.lastvisit,datevisit);
+							fdpass_asctime (it.second.stats.lastping,dateping);
 							string tmp;
 							if (strncasecmp(it.second.userid_str.c_str(),"http://",7)==0
 								|| strncasecmp(it.second.userid_str.c_str(),"https://",8)==0){
@@ -478,15 +508,15 @@ int main (int argc, char *argv[])
 								}
 								tmp = string_f ("%07u: %s %s-%s %s %s %s %u %u %d %s",pos,it.first.c_str()
 									,status,it.second.userid_str.c_str(),it.second.name.c_str(),it.second.email.c_str()
-									,datetime.buf,it.second.stats.nbacc
+									,datevisit.buf,it.second.stats.nbacc
 									,it.second.userid,it.second.admin,it.second.lang.c_str());
 							}else if (it.second.userid==(unsigned)-1){
 								tmp = string_f ("%07u: %s anonymous %s %u",pos,it.first.c_str()
-									,datetime.buf,it.second.stats.nbacc);
+									,datevisit.buf,it.second.stats.nbacc);
 							}else{
-								tmp = string_f ("%07u: %s %d-%s %s %s %s %u %u %d %s %u %s",pos,it.first.c_str()
+								tmp = string_f ("%07u: %s %d-%s %s %s %s %s %u %u %d %s %u %s",pos,it.first.c_str()
 									,it.second.userid,it.second.userid_str.c_str(),it.second.name.c_str(),it.second.email.c_str()
-									,datetime.buf,it.second.stats.nbacc
+									,datevisit.buf,dateping.buf,it.second.stats.nbacc
 									,it.second.userid,it.second.admin,it.second.lang.c_str()
 									,it.second.dateformat,it.second.timezone.c_str());
 							}
@@ -528,7 +558,8 @@ int main (int argc, char *argv[])
 					for (auto it=glocal.sessions.begin(); it!= glocal.sessions.end(); ){
 						auto next = it;
 						next++;
-						if (it->second.stats.lastvisit < oldtime){
+						if (it->second.stats.lastvisit < oldtime
+							&& it->second.stats.lastping < oldtime){
 							if (it->second.userid == (unsigned)-1){
 								if (anonymous){
 									next = glocal.sessions.erase(it);
@@ -599,7 +630,7 @@ int main (int argc, char *argv[])
 				<f getsessioninfo>
 					auto it = glocal.sessions.find(sessionid);
 					if (it != glocal.sessions.end()){
-						it->second.stats.lastvisit = time(NULL);
+						it->second.stats.lastping = time(nullptr);
 						it->second.stats.nbacc++;
 						rep_getsessioninfo(true,it->second.name,it->second.lang,it->second.dateformat
 							,it->second.admin,it->second.userid,it->second.timezone);
@@ -638,6 +669,48 @@ int main (int argc, char *argv[])
 					}else{
 						vector<VAR> vars;
 						rep_getsessioninfovars(false,"","",0,false,0,vars);
+					}
+				</f>
+				<f getsessioninfovars_v2>
+					auto it = glocal.sessions.find(sessionid);
+					if (it != glocal.sessions.end()){
+						{
+							time_t now = time(nullptr);
+							if (activity){
+								it->second.stats.lastvisit = now;
+								it->second.stats.nbacc++;
+							}else{
+								// bo-websocket is calling this (wih activity == false) whenever it starts a new
+								// session but this is not really a user activity
+								it->second.stats.lastping = now;
+							}
+						}
+						vector<VAR> vars = it->second.vars;
+						auto note = glocal.userinfos.find(it->second.userid);
+						if (note != glocal.userinfos.end()){
+							VAR var;
+							var.name = VAR_NOTIFIES;
+							// We send the sequence number as a variable
+							{
+								SNAMEVAL val;
+								val.sname = "notify_sequence";
+								val.sval = string_f("%u",note->second.sequence);
+								var.vals.push_back(val);
+							}
+							for (auto &n:note->second.notes){
+								SNAMEVAL val;
+								val.sname = n.key;
+								var.vals.push_back(val);
+							}
+							vars.push_back(var);
+							for (auto &v:note->second.vars){
+								vars.push_back(v);
+							}
+						}
+						rep_getsessioninfovars_v2(true,it->second.name,it->second.lang,it->second.dateformat,it->second.admin,it->second.userid,vars);
+					}else{
+						vector<VAR> vars;
+						rep_getsessioninfovars_v2(false,"","",0,false,0,vars);
 					}
 				</f>
 				<f setvar>
@@ -754,6 +827,23 @@ int main (int argc, char *argv[])
 				<f test>
 					rep_test (true);
 				</f>
+				<f ping>
+					bool ret = false;
+					auto it = glocal.sessions.find(sessionid);
+					if (it == glocal.sessions.end()){
+						tlmp_error ("ping invalid session %s",sessionid);
+					}else{
+						ret = true;
+						time_t now = time(nullptr);
+						if (activity){
+							it->second.stats.lastvisit = now;
+							it->second.stats.nbacc++;
+						}else{
+							it->second.stats.lastping = now;
+						}
+					}
+					rep_ping (ret);
+				</f>
 				<f invalid>
 					tlmp_error ("Client: Invalid command: %s\n",line);
 					endclient = true;
@@ -765,7 +855,7 @@ int main (int argc, char *argv[])
 				<f getsessioninfo>
 					auto it = glocal.sessions.find(sessionid);
 					if (it != glocal.sessions.end()){
-						it->second.stats.lastvisit = time(NULL);
+						it->second.stats.lastping = time(nullptr);
 						it->second.stats.nbacc++;
 						rep_getsessioninfo(true,it->second.name.c_str(),it->second.email.c_str(),it->second.lang,it->second.admin,it->second.userid);
 					}else{

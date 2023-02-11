@@ -51,6 +51,7 @@ struct HANDLE_INFO: public ARRAY_OBJ{
 #define bo_websocket_control_rep_test_NEEDED
 #include "proto/bo-websocket_control.protoh"
 #define bo_sessiond_client_getsessioninfo_NOTNEED
+#define bo_sessiond_client_getsessioninfovars_NOTNEED
 #define bo_sessiond_client_delnotify_NOTNEED
 #define bo_sessiond_client_test_NOTNEED
 #define bo_sessiond_client_setvar_NOTNEED
@@ -213,6 +214,19 @@ static void bo_websocket_send (_F_TCPSERVER_V1 *c, int fd, unsigned opcode, PARA
 	memcpy (ptbuf,msg.ptr,lenmsg);
 	c->sendto (fd,buf,lenframe);
 }
+
+<mod>
+// Send a ping to the sessiond server so it knows this session is active
+static void bo_websocket_sessiond_ping (CONNECT_INFO &con, PARAM_STRING session, bool activity)
+{
+	<call bo_sessiond_client_ping>(con,session,activity);
+	<f ok>
+		if (!success) tlmp_error ("bo_sessiond_client_ping: success=false");
+	</f>
+	</call>
+}
+</mod>
+
 #define _TLMP_bo_websocket
 
 struct _F_bo_websocket{
@@ -303,6 +317,7 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 				debug_printf ("idle since=%d diff=%u ping sent nbping=%u gameid=%s\n",since,diff,glocal.nbping,glocal.gameid.c_str());
 				bo_websocket_send (this,glocal.fd,9,"hello");
 				glocal.nbping++;
+				bo_websocket_sessiond_ping (glocal.con_sessiond,glocal.session,false);
 			}
 		}
 	</f>
@@ -436,6 +451,7 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 		}else if (glocal.websocket){
 			//tlmp_warning ("write websocket packet to server linelen=%d",info.linelen);
 			glocal.lastactivity = time(nullptr);
+			bo_websocket_sessiond_ping (glocal.con_sessiond,glocal.session,true);
 			glocal.nbping=0;	// in websocket mode, we pass everything to the remote websocket server
 						// through the waitevent bod connection.
 						// So we just assume any activity is a pong answer
@@ -468,7 +484,7 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 						// This is odd. For some reason, we are receiving tons of those from the same IP
 						// We will keep the session opened and close it in the idle functag.
 					}else{
-						<call bo_sessiond_client_getsessioninfovars>(glocal.con_sessiond,glocal.session);
+						<call bo_sessiond_client_getsessioninfovars_v2>(glocal.con_sessiond,glocal.session,false);
 						<f ok>
 							if (internal_error || !success){
 								tlmp_warning ("Invalid session");
@@ -624,7 +640,10 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 					}
 					glocal.messages.erase (p);
 				}else if (glocal.gameid.size() > 0){
-					glocal.c.commands(glocal.messages,glocal.con_bod,glocal.con_sessiond,glocal.session.c_str(),glocal.gameid.c_str(),glocal.sp,endserver);
+					if (glocal.messages.size() > 0){
+						bo_websocket_sessiond_ping (glocal.con_sessiond,glocal.session,true);
+						glocal.c.commands(glocal.messages,glocal.con_bod,glocal.con_sessiond,glocal.session.c_str(),glocal.gameid.c_str(),glocal.sp,endserver);
+					}
 					break;
 				}else{
 					tlmp_error ("bo_websocket_game: gameid or sequence not set, ending: messages.size()=%zu message[0]=%s ip=%s"

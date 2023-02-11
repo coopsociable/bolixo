@@ -57,6 +57,7 @@ static WEBID ID_ALLCONTACTS("allcontacts");
 using namespace std;
 
 #include "../proto/bod_client.protoch"
+#define bo_sessiond_getsessioninfovars_NOTNEED
 #include "../proto/bo-sessiond_client.protoch"
 
 static const char *newscolor = "#DCDCDC";
@@ -417,7 +418,7 @@ static void trli_getsessioninfo(CONNECT_INFO &con, CONNECT_INFO &con_sess, vecto
 	glocal CONNECT_INFO *con = &con;
 	glocal vector<DOCUMENT_POINTER> *docpointers = &docpointers;
 	tlmpweb_reset_tablegeometry();
-	<call bo_sessiond_client_getsessioninfovars>(con_sess,w_session.c_str());
+	<call bo_sessiond_client_getsessioninfovars_v2>(con_sess,w_session.c_str(),true);
 	<f ok>
 		if (success){
 			userinfo.lang = lang;
@@ -549,8 +550,11 @@ static void trli_getsessioninfo(CONNECT_INFO &con, CONNECT_INFO &con_sess, vecto
 				}
 			}
 			webtab_notify();
-			// Refresh the cookie so it is valid for 4 more days
-			websession_setcookie("session",w_session.c_str(),time(NULL)+4*24*60*60);
+			// Refresh the cookie so it is valid for 100 more days
+			// A user may connect to Bolixo and after a while, do nothing, just watch a long long game
+			// A chess game for example.
+			// The cookie has to be available so a websocket may be established using that cookie.
+			websession_setcookie("session",w_session.c_str(),time(NULL)+100*24*60*60);
 		}else{
 			userinfo.reset();
 			<call bod_client_createsession>(*glocal.con);
