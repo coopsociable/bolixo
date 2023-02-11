@@ -294,9 +294,11 @@ elif [ "$1" = "listsessions" ] ; then # prod: list web sessions (offset)
 		done
 	fi
 elif [ "$1" = "who" ] ; then # accounts: who is connected
+	echo "Last action          Last ping            User"
+	echo "-------------------  -------------------  ---------------------------"
 	$0 listsessions | grep ^000 | grep @ | while read a b c d e f g h
 	do
-		echo $f $g $d
+		echo "$f  $g  $d"
 	done | sort
 elif [ "$1" = "listusers" ] ; then # accounts: list user accounts
 	shift
