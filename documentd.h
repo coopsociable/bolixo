@@ -150,7 +150,8 @@ class GAME{
 	std::map<int,std::string> notification_fds;	// Handles waiting for notifications (with username)
 	bool has_waiting_users = false;		// Does this game display the list of waiting/connected users
 	std::set<std::string> last_waitings;	// Last set of connected users sent.
-	friend void doc_layout (struct _F_doc_layout &c, const char *id_prefix, GAME *game, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, VARVAL &v);
+	friend void doc_layout (struct _F_doc_layout &c, const char *id_prefix, GAME *game, const DOC_CONTEXT &ctx,
+		const DOC_UI_SPECS_receive &sp, const char *doc_suffix, bool scroll, VARVAL &v);
 protected:
 	std::vector<CHATLINE> chat;
 	unsigned revision = 0;
@@ -363,19 +364,26 @@ void button_bar(_F_button_bar &c, GAME *game, bool mobile, bool maywrite, std::s
 
 #define _TLMP_doc_layout
 struct _F_doc_layout{
-	#define _F_doc_layout_styles(x) std::string x styles (const DOC_UI_SPECS_receive &sp)
+	#define _F_doc_layout_styles(x) std::string x styles (const DOC_UI_SPECS_receive &sp, const DOC_CONTEXT &ctx)
 	virtual _F_doc_layout_styles( )=0;
-	#define _F_doc_layout_functions(x) std::string x functions (const DOC_UI_SPECS_receive &sp)
+	#define _F_doc_layout_functions(x) std::string x functions (const DOC_UI_SPECS_receive &sp, const DOC_CONTEXT &ctx, unsigned board_width, unsigned board_height)
 	virtual _F_doc_layout_functions( )=0;
 	#define _F_doc_layout_menu_bar(x) void x menu_bar (class DOC_BUTTON_SPECS &specs, const char *gameid, std::string &lines)
 	virtual _F_doc_layout_menu_bar( );
 	#define _F_doc_layout_menu_status(x) void x menu_status (const char *gameid, std::string &lines)
 	virtual _F_doc_layout_menu_status( );
-	#define _F_doc_layout_content(x) std::string x content (const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, const char *gameid, std::string &script)
+	#define _F_doc_layout_content(x) std::string x content (const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, \
+		const char *gameid, std::string &script, std::string &onevent, unsigned board_width, unsigned board_height, unsigned scroll_thick)
 	virtual _F_doc_layout_content( )=0;
+	#define _F_doc_layout_hscroll(x) std::string x hscroll (const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, \
+		const char *gameid, unsigned board_width, unsigned board_height, unsigned scroll_thick)
+	virtual _F_doc_layout_hscroll( );
+	#define _F_doc_layout_vscroll(x) std::string x vscroll (const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, \
+		const char *gameid, unsigned board_width, unsigned board_height, unsigned scroll_thick)
+	virtual _F_doc_layout_vscroll( );
 };
 
-void doc_layout (_F_doc_layout &c, const char *id_prefix, GAME *game, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, VARVAL &v);
+void doc_layout (_F_doc_layout &c, const char *id_prefix, GAME *game, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, const char *doc_suffix, bool scroll, VARVAL &v);
 
 #include "documentd_req.h"
 

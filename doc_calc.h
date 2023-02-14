@@ -134,7 +134,7 @@ class CALC: public GAME{
 		std::string &error, std::string &status);
 	std::string draw_board (const DOC_CONTEXT &ctx, CALC_PREF &pref, 
 		unsigned board_width, unsigned board_height, unsigned fontsize, unsigned docnum, bool editmode, const CELL_COOR &area, std::string &script);
-	std::string define_functions(const DOC_CONTEXT &ctx, const CALC_PREF &pref, unsigned board_width, unsigned board_height);
+	std::string define_functions(const DOC_CONTEXT &ctx, const CALC_PREF &pref);
 	std::string define_styles(const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp);
 	std::map<std::string,CALC_PREF> prefs;	// Per session state
 	void setfocus(VARVAL &var);

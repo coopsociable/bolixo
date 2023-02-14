@@ -2117,6 +2117,16 @@ void _F_doc_layout::menu_bar(class DOC_BUTTON_SPECS &specs, const char *gameid, 
 void _F_doc_layout::menu_status(const char *gameid, std::string &lines)
 {
 }
+std::string _F_doc_layout::hscroll(const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp,
+	const char *gameid, unsigned board_width, unsigned board_height, unsigned scroll_thick)
+{
+	return ""s;
+}
+std::string _F_doc_layout::vscroll(const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp,
+	const char *gameid, unsigned board_width, unsigned board_height, unsigned scroll_thick)
+{
+	return ""s;
+}
 /*
 	Manage the layout of a document or game
 */
@@ -2127,17 +2137,20 @@ void doc_layout (
 	GAME *game,
 	const DOC_CONTEXT &ctx,
 	const DOC_UI_SPECS_receive &sp,
+	const char *doc_suffix,
+	bool scroll,
   	VARVAL &v)
 {
 	unsigned waiting_users_width = sp.mobile ? 62 : 42;
-	unsigned board_width = sp.content_width - waiting_users_width;	// Space for user list
-	unsigned board_height = sp.content_height;
+	const unsigned scroll_thick = scroll ? (sp.mobile ? 12 : 6) : 0;
+	unsigned board_width = sp.content_width - waiting_users_width - scroll_thick;	// Space for user list and scroll
+	unsigned board_height = sp.content_height-scroll_thick;
 	v.var = VAR_CONTENT;
 	v.val += "<style>\n";
-	v.val += c.styles(sp);
+	v.val += c.styles(sp,ctx);
 	v.val += "</style>\n";
 	v.val += "<script>\n";
-	v.val += c.functions(sp);
+	v.val += c.functions(sp,ctx,board_width,board_height);
 	v.val += "</script>\n";
 	glocal c;
 	<call button_bar>(game,sp.mobile,ctx.maywrite,v.val);
@@ -2149,18 +2162,35 @@ void doc_layout (
 	</f>
 	</call>
 	const char *gameid = game->get_gameid();
-	v.val += string_f("<div class=webtable id=%sdoc_vidconf style='display:flex; flex-flow:row;' >\n",id_prefix);
+	v.val += string_f("<div class=webtable id=%sdoc_%s style='display:flex; flex-flow:row;' >\n",id_prefix,doc_suffix);
+	string script,onevent;
+	string content = c.content (ctx,sp,gameid,script,onevent,board_width,board_height,scroll_thick);
 	v.val += string_f("<div id='text-%s' style='flex:0 0 auto;width:%u;height:%u;border:1px solid black;"
 		" margin-left: auto;'"
-		" tabindex=0 >\n",gameid,board_width,board_height);
-	string script;
-	v.val += c.content (ctx,sp,gameid,script);
+		" %s"
+		" tabindex=0 >\n",gameid,board_width,board_height,onevent.c_str());
+	v.val += move(content);
+	if (scroll){
+		// For now, caller gets minimal scroll bar and have no control over its look
+		v.val += "<div style='background-color:ghostwhite;'>\n";
+		v.val += string_f("<svg width=%u height=%u>\n",board_width,scroll_thick);
+		c.hscroll(ctx,sp,gameid,board_width,board_height,scroll_thick);
+		v.val += "</svg>\n";
+		v.val += "</div>\n";
+		v.val += "</div>\n";
+		v.val += string_f("<div style='flex:0 0 auto; margin-right:auto; background-color: ghostwhite; width:%u;height:%u;'>",scroll_thick,board_height);
+		v.val += "<svg width=100% height=100%>\n";
+		v.val += c.vscroll(ctx,sp,gameid,board_width,board_height,scroll_thick);
+		v.val += "</svg>\n";
+		v.val += "</div>\n";
+	}else{
+		v.val += "</div>\n";
+	}
 	if (script.size() > 0){
 		v.val += "<script>\n";
 		v.val += script;
 		v.val += "</script>\n";
 	}
-	v.val += "</div>\n";
 	game->draw_waiting_users(v.val,waiting_users_width,board_height,"flex:0 0 auto;");
 	v.val += "</div>\n";
 	// Status line

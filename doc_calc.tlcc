@@ -269,7 +269,7 @@ string CALC::draw_board (
 		"\t\t\tif(col < 26){\n"
 		"\t\t\t\ttds[i+1].innerHTML=String.fromCharCode(col+65);\n"
 		"\t\t\t}else{\n"
-		"\t\t\t\ttds[i+1].innerHTML=String.fromCharCode(col/26+65)+String.fromCharCode(col%26+65);\n"
+		"\t\t\t\ttds[i+1].innerHTML=String.fromCharCode(col/26+64)+String.fromCharCode(col%26+65);\n"
 		"\t\t\t}\n"
 		"\t\t}\n"
 		"\t}\n"
@@ -373,9 +373,7 @@ string CALC::draw_board (
 */
 string CALC::define_functions(
 	const DOC_CONTEXT &ctx,
-	const CALC_PREF &pref,
-	unsigned board_width,
-	unsigned board_height)
+	const CALC_PREF &pref)
 {
 	string val;
 	wordproc_set_gamepress(val,"calc_gamepress",false);
@@ -1004,11 +1002,6 @@ void CALC::execstep (
 	string &status)
 {
 	auto &pref = prefs[ctx.session];
-	unsigned waiting_users_width = sp.mobile ? 62 : 42;
-	unsigned board_width = sp.content_width - waiting_users_width;	// Space for user list
-	const unsigned scroll_thick = sp.mobile ? 12 : 6;
-	board_width -= scroll_thick;
-	unsigned board_height = sp.content_height-scroll_thick;
 	string api_error;
 	setactivity();
 	string tmpvar,tmpval;
@@ -1023,18 +1016,17 @@ void CALC::execstep (
 	if (strcmp(var,REQ_PRINT)==0){
 		if (is_any_of(val,"","full")){
 			VARVAL v;
-			v.var = VAR_CONTENT;
-			v.val += "<style>\n";
-			v.val += define_styles(ctx,sp);
-			v.val += "</style>\n";
-			v.val += "<script>\n";
-			v.val += define_functions(ctx,pref,board_width,board_height);
-			v.val += "</script>\n";
-			// Buttons line
+			glocal CALC *doc = this;
 			glocal pref;
 			glocal grid;
-			<call button_bar>(this,sp.mobile,ctx.maywrite,v.val);
-			<f draw>
+			<call doc_layout>(val,this,ctx,sp,"calc",true,v);
+			<f styles>
+				return glocal.doc->define_styles(ctx,sp);
+			</f>
+			<f functions>
+				return glocal.doc->define_functions(ctx,glocal.pref);
+			</f>
+			<f menu_bar>
 				#define BUTTON_NEWDOC	0
 				#define BUTTON_COLSTYLE	1
 				#define BUTTON_INSCOLLINE 2
@@ -1043,7 +1035,7 @@ void CALC::execstep (
 				documentd_bar_button (lines,BUTTON_INSCOLLINE,"+",specs,false,MSG_U(I_INSCOLLINE,"Insert/Delete lines or columns"));
 				documentd_bar_button (lines,BUTTON_COLSTYLE,"F",specs,false,MSG_U(I_FORMATCELL,"Specify format for column cells"));
 			</f>
-			<f status>
+			<f menu_status>
 				lines += string_f("<span id='page-%s'>page 1</span>\n",gameid);
 				lines += string_f("<span id='cell-%s'>%s</span>\n",gameid,glocal.pref.cursor.tostring().c_str());
 				const char *content = "";
@@ -1051,42 +1043,20 @@ void CALC::execstep (
 				if (g != glocal.grid.end()) content = g->second.text.c_str();
 				lines += string_f("<input type=text id='edit-%s' style='width:400;' onkeyup='calc_editpress(event);' value='%s'/>\n"
 					,gameid,documentd_escape_html(content).c_str());
-
+			</f>
+			<f content>
+				onevent = "onkeydown='calc_gamepress(event);return false;'";
+				return glocal.doc->draw_board(ctx,glocal.pref,board_width,board_height,sp.fontsize,ctx.docnum,true,CELL_COOR(),script);
+			</f>
+			<f hscroll>
+				return string_f("<rect id='hscroll-%s' x=%u y=0 rx=3 ry=3 width=%u height=%u fill=lightgray />\n"
+					,gameid,glocal.pref.offset_col*board_width/(4*board_width),board_width/4,scroll_thick);
+			</f>
+			<f vscroll>
+				return string_f("<rect id='vscroll-%s' x=0 y=%u rx=3 ry=3 width=%u height=%u fill=lightgray />\n"
+					,gameid,glocal.pref.offset_line*board_height/(4*board_height),scroll_thick,board_height/4);
 			</f>
 			</call>
-			// Board
-			v.val += string_f("<div class=webtable id=%sdoc_calc style='display:flex; flex-flow:row;' >\n",val);
-			v.val += string_f("<div id='text-%s' style='flex:0 0 auto;width:%u;height:%u;border:1px solid black;"
-				" margin-left: auto;'"
-				" onkeydown='calc_gamepress(event);return false;'"
-				" tabindex=0 >\n",gameid.c_str(),board_width,board_height);
-			string script;
-			v.val += draw_board(ctx,pref,board_width,board_height,sp.fontsize,ctx.docnum,true,CELL_COOR(),script);
-			if (script.size() > 0){
-				v.val += "<script>\n";
-				v.val += script;
-				v.val += "</script>\n";
-			}
-			v.val += "<div style='background-color:ghostwhite;'>\n";
-			v.val += string_f("<svg width=%u height=%u>\n",board_width,scroll_thick);
-			v.val += string_f("<rect id='hscroll-%s' x=%u y=0 rx=3 ry=3 width=%u height=%u fill=lightgray />\n"
-				,gameid.c_str(),pref.offset_col*board_width/(4*board_width),board_width/4,scroll_thick);
-			v.val += "</svg>\n";
-			v.val += "</div>\n";
-			v.val += "</div>\n";
-			v.val += string_f("<div style='flex:0 0 auto; margin-right:auto; background-color: ghostwhite; width:%u;height:%u;'>",scroll_thick,board_height);
-			v.val += "<svg width=100% height=100%>\n";
-			v.val += string_f("<rect id='vscroll-%s' x=0 y=%u rx=3 ry=3 width=%u height=%u fill=lightgray />\n"
-				,gameid.c_str(),pref.offset_line*board_height/(4*board_height),scroll_thick,board_height/4);
-			v.val += "</svg>\n";
-			v.val += "</div>\n";
-			draw_waiting_users(v.val,waiting_users_width,board_height,"flex:0 0 auto;");
-			v.val += "</div>\n";
-			// Status line
-			v.val += "<div id=tab_form>\n";
-			v.val += string_f("<div id=msg-%s style=color:black>&nbsp;</div>\n",gameid.c_str());
-			documentd_chat (v.val,ctx.username,chat,sp.width-20,sp.mobile ? 200 : 100);
-			v.val += "</div>\n";
 			res.emplace_back(move(v));
 		}
 	}else if (strcmp(var,REQ_FOCUS)==0){
@@ -1094,7 +1064,7 @@ void CALC::execstep (
 	}else if (strcmp(var,REQ_FUNCTIONS)==0){
 		VARVAL var;
 		var.var = VAR_DEFSCRIPT;
-		var.val = define_functions (ctx,pref,board_width,board_height);
+		var.val = define_functions (ctx,pref);
 		res.emplace_back(move(var));
 	}else if (strcmp(var,REQ_STYLES)==0){
 		VARVAL var;
