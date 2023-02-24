@@ -1058,7 +1058,15 @@ static void index_show_shortmsg(
 							/-#E_REPLYTOYOU Can't reply to yourself
 						}
 					}else if (glocal.dropmenu == MENU_OPENINTAB){
-						glocal.webtabs.addtab (string_f("2:%s",glocal.fname.c_str()),MSG_U(I_TEXT,"Text"));
+						const char *tabname = MSG_U(I_TEXT,"Text");
+						if (file_is_image(m.file_type)){
+							tabname = MSG_R(I_IMAGE);
+						}else if (file_is_video(m.file_type)){
+							tabname = MSG_U(I_VIDEO,"Video");
+						}else if (file_is_sound(m.file_type)){
+							tabname = MSG_U(I_AUDIO,"Audio");
+						}
+						glocal.webtabs.addtab (string_f("2:%s",glocal.fname.c_str()),tabname);
 					}else if (m.file_type == FILE_PDF){
 						util_sendfile (glocal.con,w_session.c_str(),glocal.fname);
 					}else if (file_is_video(m.file_type) || file_is_sound(m.file_type)){
@@ -1200,7 +1208,7 @@ static void index_show_shortmsg(
 						content = util_img (step_image,glocal.image_width,"",path,m.submit);
 					}else if (file_is_video(m.file_type)){
 						string tmp = util_flipspaces(m.submit);
-						const char *extension = m.file_type == FILE_WEBM ? "webm" : "mp4";
+						const char *extension = tbftype[m.file_type];
 						content = string_f(
 							"<video width=\"%u\" height=\"%u\" controls preload=none >\n"
 							"<source src=\"%s?webstep=%u&image=%s&mod=%s\" type=\"video/%s\">\n"
@@ -1261,6 +1269,20 @@ static void terms_of_use()
 	}else{
 		printhref_raw ("/terms-of-use.html",MSG_R(I_TERMSOFUSE),false);
 	}
+}
+// Present some info about a document in the right tab
+static void index_tab_title(const char *path, const FILEINFO &info)
+{
+	DIV d("",TAB_FORM); d.print();
+	/- <table border=0>
+	vector<string> tb;
+	int n=str_splitline(path,'/',tb);
+	if (n == 6){	
+		htmlprintf ("<tr><td><b>%s</b><td>%s<td>%s\n",MSG_U(I_TALKGROUP,"Group")
+			,tb[2].c_str(),tb[4].c_str());
+	}
+	htmlprintf ("<tr><td><b>%s</b><td>%s\n",MSG_U(I_TALKFROM,"From"),info.owner.c_str());
+	/- </table>
 }
 
 static string gameid;
@@ -2004,7 +2026,7 @@ extern "C" void webmain_real()
 							content = util_img (step,image_width,"",path,m.submit);
 						}else if (file_is_video(m.file_type)){
 							string tmp = util_flipspaces(m.submit);
-							const char *extension = m.file_type == FILE_WEBM ? "webm" : "mp4";
+							const char *extension = tbftype[m.file_type];
 							content = string_f(
 								"<video width=\"%u\" height=\"%u\" controls preload=none >\n"
 								"<source src=\"%s?webstep=%u&image=%s&mod=%s\" type=\"video/%s\">\n"
@@ -2578,22 +2600,32 @@ extern "C" void webmain_real()
 				DIV d("webtable"); d.print();
 				index_doc(glocal.docpointers[SECTION_NONE],section_none);
 			}else if (file_is_image(info.file_type)){
+				index_tab_title(id,info);
 				DIV d("webtable"); d.print();
 				string img = util_img(step_image,"max-height:95%;",id,info.modified);
 				/- <br>
 				htmlout (img);
+			}else if (file_is_video(info.file_type)){
+				index_tab_title(id,info);
+				DIV d("webtable"); d.print();
+				const char *extension = tbftype[info.file_type];
+				string content = string_f(
+					"<video width=\"100%%\" controls preload=none >\n"
+					"<source src=\"%s?webstep=%u&image=%s\" type=\"video/%s\">\n"
+					"Your browser does not support the video tag.\n"
+					"</video>"
+					,tlmpweb_curpage(),step_image,id,extension);
+				htmlout (content);
+			}else if (file_is_sound(info.file_type)){
+				index_tab_title(id,info);
+				DIV d("webtable"); d.print();
+				string content = string_f("<audio controls>\n"
+					"<source src=\"%s?webstep=%u&image=%s\" type=\"audio/%s\">\n"
+					"</audio>"
+					,tlmpweb_curpage(),step_image,id,tbftype[info.file_type]);
+				htmlout (content);
 			}else if (file_is_text(info.file_type)){
-				DIV d("",TAB_FORM); d.print();
-				/- <table border=0>
-				vector<string> tb;
-				int n=str_splitline(id,'/',tb);
-				if (n == 6){	
-					htmlprintf ("<tr><td><b>%s</b><td>%s<td>%s\n",MSG_U(I_TALKGROUP,"Group")
-						,tb[2].c_str(),tb[4].c_str());
-				}
-				htmlprintf ("<tr><td><b>%s</b><td>%s\n",MSG_U(I_TALKFROM,"From"),info.owner.c_str());
-				/- </table>
-				d.end();
+				index_tab_title(id,info);
 				DIV dd("webtable","text"); dd.autoscroll().w(100).bordertop(1,"black").print();
 				<call bod_client_readfile>(glocal.con,w_session.c_str(),id,"");
 				<f ok>

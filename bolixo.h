@@ -93,7 +93,7 @@ const char *tbftype[]={
 	"jpg",	//FILE_IMAGE_JPG,
 	"png",	//FILE_IMAGE_PNG,
 	"gif",	//FILE_IMAGE_GIF,
-	"vid",	//FILE_VIDEO,
+	"mp4",	//FILE_VIDEO,
 	"sud",	//FILE_DOC_SUDOKU
 	"chk",	//FILE_DOC_CHECK
 	"chs",	//FILE_DOC_CHESS
@@ -102,7 +102,7 @@ const char *tbftype[]={
 	"tgz",	//FILE_TGZ
 	"wrd",	//FILE_DOC_WORDPROC
 	"whi",	//FILE_DOC_WHITEBOARD
-	"wbm",	//FILE_WEBM
+	"webm",	//FILE_WEBM
 	"tiff", //FILE_IMAGE_TIFF
 	"pdf",	//FILE_PDF
 	"clc",	//FILE_DOC_CALC
