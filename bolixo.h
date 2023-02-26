@@ -49,6 +49,7 @@ enum FILE_TYPE {
 	FILE_DOC_CALC,
 	FILE_DOC_PHOTOS,
 	FILE_DOC_VIDCONF,
+	FILE_SOUND_WAV,
 	// Do not forget to edit the table tbftype below and tbhttptype in web/util.hcc
 	FILE_TYPE_LAST
 };
@@ -63,7 +64,7 @@ inline bool file_is_text (FILE_TYPE type){
 	return type == FILE_TEXT;
 }
 inline bool file_is_sound (FILE_TYPE type){
-	return is_any_of(type,FILE_SOUND_MP3,FILE_SOUND_OGG);
+	return is_any_of(type,FILE_SOUND_MP3,FILE_SOUND_OGG,FILE_SOUND_WAV);
 }
 inline bool file_is_image (FILE_TYPE type){
 	return is_any_of (type,FILE_IMAGE_JPG,FILE_IMAGE_GIF,FILE_IMAGE_PNG,FILE_IMAGE_TIFF);
@@ -108,7 +109,9 @@ const char *tbftype[]={
 	"clc",	//FILE_DOC_CALC
 	"pho",	//FILE_DOC_PHOTOS
 	"vdc",	//FILE_DOC_VIDCONF
+	"wav",	// FILE_SOUND_WAV
 };
+static_assert(sizeof(tbftype)/sizeof(tbftype[0])==FILE_TYPE_LAST,"tbftype is incomplete");
 #else
 extern const char *tbftype[];
 #endif
