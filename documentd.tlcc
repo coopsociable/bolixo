@@ -499,6 +499,22 @@ static size_t total_unotify_size = 0;
 static unsigned total_requests=0;
 static map<string,GAME_P> *pt_games = nullptr;
 
+/*
+	Send the content of val to all waiting connections.
+	If the list of waiting users has changed, send notifications as well.
+*/ 
+static void documentd_send_notifies(GAME_P game, vector<GAME_P> &embeds, string &val, size_t &notify_size)
+{
+	// Notifications are sent using the waitevent system
+	// Check if the connected users list must be updated.
+	game->update_waiting_users(val);
+	if (val.size() > 0){
+		notify_size += val.size();
+		game->add_notification(val);
+		for (auto e:embeds) e->add_notification(val);
+	}
+}
+
 static bool documentd_playstep (
 	vector<SUBPROGRAM> &programs,
 	map<string,GAME_P> &games,
@@ -530,16 +546,11 @@ static bool documentd_playstep (
 				embeds.push_back(gg.second);
 			}
 		}
+		bool notify_seen = false;
 		for (auto r = res.begin(); r != res.end(); ){
 			if (r->var == VAR_NOTIFY){
-				// Notifications are sent using the waitevent system
-				// Check if the connected users list must be updated.
-				game->update_waiting_users(r->val);
-				notify_size += r->val.size();
-				if (r->val.size() > 0){
-					game->add_notification(r->val);
-					for (auto e:embeds) e->add_notification(r->val);
-				}
+				notify_seen = true;
+				documentd_send_notifies (game,embeds,r->val,notify_size);
 				r = res.erase(r);
 			}else if (r->var == VAR_SCRIPT){
 				script_size += r->val.size();
@@ -567,6 +578,10 @@ static bool documentd_playstep (
 			}else{
 				r++;
 			}
+		}
+		if (!notify_seen){
+			string val;
+			documentd_send_notifies (game,embeds,val,notify_size);
 		}
 		if (protocol_stats) tlmp_warning ("protocol content_size=%zu script_size=%zu notify_size=%zu",content_size,script_size,notify_size);
 		total_content_size += content_size;
