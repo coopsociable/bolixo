@@ -131,6 +131,7 @@ class CALC: public GAME{
 	std::map<unsigned,CALC_COL_FORMAT> col_formats;		// Most columns use standard format
 	void execstep (const char *var, const char *val, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp,
 		VARVAL &script_var, VARVAL &notify_var, std::set<CELL_COOR> &notify_ids, std::vector<VARVAL> &res,
+		std::vector<USERS_NOTIFIES> &unotifies,
 		std::string &error, std::string &status);
 	std::string draw_board (const DOC_CONTEXT &ctx, CALC_PREF &pref, 
 		unsigned board_width, unsigned board_height, unsigned fontsize, unsigned docnum, bool editmode, const CELL_COOR &area, std::string &script);
@@ -166,8 +167,8 @@ public:
 	void resetgame();
 	CALC();
 	const char *getclass() const;
-	void exec (const char *var, const char *val, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
-	void manyexec (const std::vector<VARVAL_receive> &steps, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
+	void exec (const char *var, const char *val, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res, std::vector<USERS_NOTIFIES> &unotifies);
+	void manyexec (const std::vector<VARVAL_receive> &steps, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res,std::vector<USERS_NOTIFIES> &unotifies);
 	void remove_session(const char *session);
 	friend void calc_eval(int argc, char *argv[]);
 };

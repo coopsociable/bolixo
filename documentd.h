@@ -135,6 +135,12 @@ struct DOCUMENT_EMBED{
 	}
 };
 
+// Notification sent to several users (user connections)
+struct USERS_NOTIFIES{
+	std::vector<int> connections;
+	std::string val;
+};
+
 struct DOC_CONTEXT{
 	const char *session = "";
 	const char *username = "";
@@ -147,12 +153,12 @@ class GAME{
 	time_t last_activity = time(nullptr);
 	std::string modified_by;
 	std::vector<GAMENOTE> notifications;	// Script to send to all active users (users with the game opened and displayed)
-	std::map<int,std::string> notification_fds;	// Handles waiting for notifications (with username)
 	bool has_waiting_users = false;		// Does this game display the list of waiting/connected users
 	std::set<std::string> last_waitings;	// Last set of connected users sent.
 	friend void doc_layout (struct _F_doc_layout &c, const char *id_prefix, GAME *game, const DOC_CONTEXT &ctx,
 		const DOC_UI_SPECS_receive &sp, const char *doc_suffix, bool scroll, VARVAL &v);
 protected:
+	std::map<int,std::string> notification_fds;	// Handles waiting for notifications (with username)
 	std::vector<CHATLINE> chat;
 	unsigned revision = 0;
 	std::string gameid;
@@ -274,6 +280,7 @@ public:
 	unsigned get_sequence() const {
 		return sequence;
 	}
+	void add_notification (PARAM_STRING script, const std::vector<USERS_NOTIFIES> &unotifies);
 	void add_notification (PARAM_STRING script);
 	void add_notification_fd(int fd, const char *username);
 	std::set<std::string> get_waiting_users();
@@ -330,8 +337,8 @@ public:
 	virtual void load(DOC_READER &reader, std::string &msg)=0;
 	virtual void resetgame();
 	virtual void testwin(std::vector<VARVAL> &res);
-	virtual void exec (const char *var, const char *val, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res) = 0;
-	virtual void manyexec (const std::vector<VARVAL_receive> &steps, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
+	virtual void exec (const char *var, const char *val, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res, std::vector<USERS_NOTIFIES> &unotifies) = 0;
+	virtual void manyexec (const std::vector<VARVAL_receive> &steps, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res, std::vector<USERS_NOTIFIES> &unotifies);
 	virtual void engine_reply (const char *line, std::string &notify, bool &done);
 	virtual std::set<DOCUMENT_EMBED> get_embed_specs() const;
 	virtual void set_embed_options (const DOCUMENT_EMBED &embed, bool not_square);

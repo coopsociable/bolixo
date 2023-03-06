@@ -2179,6 +2179,174 @@ static void journey_webcam()
 	?>
 }
 </mod>
+<mod>
+static void journey_webrtc()
+{
+	<?
+	<style>
+	video, img {
+		max-width:100%;
+	}
+	</style>
+	</head>
+	<body>
+	alo
+	<p>
+	<video class="selfview" autoplay controls></video>
+	<video class="remoteview" autoplay controls></video>
+	<p>
+	fin
+	<script>
+	const config = {
+		iceServers: [{ urls: "stun:stun.mystunserver.tld" }],
+	};
+
+	//const signaler = new SignalingChannel();
+	const pc = new RTCPeerConnection(config);
+	const constraints = { audio: true, video: true };
+	const selfVideo = document.querySelector("video.selfview");
+	const remoteVideo = document.querySelector("video.remoteview");
+
+	console.log(selfVideo);
+	console.log(remoteVideo);
+	// Open the web socket using a pre opened connection on Bolixo
+	var sequence=0;
+	var gamesequence=0;
+	var notesocket = null;
+	var started = false;
+	function callrefresh(){}
+	function VIDC_updmsg(a,b){}
+	function draw_waiting(u){}
+	var polite = null;
+	function VIDC_setpolite(pol){
+		polite = pol;
+		console.log ('polite='+polite);
+		if (!started){
+			started = true;
+			console.log ('start webrtc');
+			start();
+		}
+	}
+	function noteconnect(){
+		notesocket = new WebSocket((location.protocol=='http:' ? 'ws' : 'wss') + '://' + location.hostname + '/wss');
+		notesocket.onopen = function(e) {
+			console.log ("websocket open");
+			notesocket.send('gameid=/projects/jacques-A/public/test.vdc 1000 1000 1000 1000 0 14');
+			notesocket.send('sequence='+sequence);
+			notesocket.send('gamesequence='+gamesequence);
+			notesocket.send("webrtcstart:");
+		}
+
+		notesocket.onmessage = function(event) {
+			//console.log ('websocket message:'+event.data);
+			eval(event.data);
+		}
+
+		notesocket.onclose = function(event) {
+			if (event.wasClean) {
+				alert(`[close] Connection closed cleanly, code=${event.code} reason=${event.reason}`);
+			} else {
+				console.log ('[close] Connection died');
+			}
+			window.setTimeout(function()
+			{
+				console.log ('reconnect');
+				noteconnect();
+			},2000);
+		}
+		notesocket.onerror = function(error) {
+			alert(`[error] ${error.message}`);
+		}
+	}
+	noteconnect();
+	async function start() {
+		try {
+			const stream = await navigator.mediaDevices.getUserMedia(constraints);
+
+			for (const track of stream.getTracks()) {
+				pc.addTrack(track, stream);
+			}
+			selfVideo.srcObject = stream;
+		} catch (err) {
+			console.error(err);
+		}
+	}
+	pc.ontrack = ({ track, streams }) => {
+		track.onunmute = () => {
+			if (remoteVideo.srcObject) {
+				return;
+			}
+			remoteVideo.srcObject = streams[0];
+		};
+	};
+	let makingOffer = false;
+
+	pc.onnegotiationneeded = async () => {
+		try {
+			makingOffer = true;
+			await pc.setLocalDescription();
+			//signaler.send({ description: pc.localDescription });
+			//console.log (JSON.stringify(pc.localDescription,null,0));
+			console.log ("Send localDescription");
+			notesocket.send('description:'+JSON.stringify(pc.localDescription,null,0));
+		} catch (err) {
+			console.error(err);
+		} finally {
+			makingOffer = false;
+		}
+	};
+	pc.onicecandidate = ({ candidate }) => {
+		console.log ("Send Candidate");
+		//console.log (JSON.stringify(candidate,null,0));
+		notesocket.send ('candidate:'+JSON.stringify(candidate,null,0));
+	};
+
+
+	let ignoreOffer = false;
+
+	async function receiveoffer ({ data: { description, candidate } }) {
+		try {
+			if (description) {
+				const offerCollision = description.type === "offer"
+					&& (makingOffer || pc.signalingState !== "stable");
+
+				ignoreOffer = !polite && offerCollision;
+				if (ignoreOffer) {
+					return;
+				}
+
+				await pc.setRemoteDescription(description);
+				if (description.type === "offer") {
+					await pc.setLocalDescription();
+					notesocket.send ('description:'+JSON.stringify(pc.localDescription,null,0));
+					console.log ('offer send localDescription');
+				}
+			} else if (candidate) {
+				try {
+					await pc.addIceCandidate(candidate);
+				} catch (err) {
+					if (!ignoreOffer) {
+						throw err;
+					}
+				}
+			}
+		} catch (err) {
+			console.error(err);
+		}
+	};
+	function VIDC_setdesc(description){
+		console.log ("receive description");
+		receiveoffer({data: {description: JSON.parse(description), candidate: null}});
+	}
+	function VIDC_setcand(candidate){
+		console.log ("receive candidate");
+		receiveoffer({data: {description: null, candidate: JSON.parse(candidate)}});
+	}
+
+	</script>
+	?>
+}
+</mod>
 extern "C" void webmain()
 {
 	tlmpweb_title ("This is the start of a long long journey");
@@ -2202,6 +2370,7 @@ extern "C" void webmain()
 	//journey_filebutton();	
 	//journey_forminforms();
 	//journey_videostream();
-	journey_webcam();
+	//journey_webcam();
+	journey_webrtc();
 }
 

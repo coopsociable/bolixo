@@ -28,8 +28,31 @@
 #include "documentd.h"
 #include "documentd_menu.h"
 #include "bolixo.m"
+#include <map>
 
 using namespace std;
+
+struct WEBRTC{
+	bool first = false;
+	string description;
+	vector<string> candidates;
+	bool sent = false;
+	void clear(){
+		description.clear();
+		candidates.clear();
+		sent = false;
+	}
+	string send() {
+		string ret;
+		ret = string_f("VIDC_setdesc('%s');\n",documentd_escape(description).c_str());
+		for (auto &c:candidates){
+			ret += string_f("VIDC_setcand('%s');\n",documentd_escape(c).c_str());
+		}
+		sent = true;
+		return ret;
+	}
+};
+	
 
 
 class VIDCONF: public GAME{
@@ -37,6 +60,7 @@ class VIDCONF: public GAME{
 	std::string define_styles(bool mobile);
 	std::string define_functions(bool mobile);
 	std::string draw_board (bool mobile, unsigned docnum, std::string &script);
+	map<string,WEBRTC> webrtcs;
 public:
 	VIDCONF();
 	const char *getclass() const{
@@ -44,7 +68,8 @@ public:
 	}
 	void save(DOC_WRITER &w, bool save_session_info);
 	void load(DOC_READER &r, std::string &msg);
-	void exec (const char *var, const char *val, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res);
+	void exec (const char *var, const char *val, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res
+		, std::vector<USERS_NOTIFIES> &unotifies);
 };
 
 GAME_P make_VIDCONF()
@@ -216,13 +241,16 @@ void VIDCONF::exec (
 	const char *val,
 	const DOC_CONTEXT &ctx,
 	const DOC_UI_SPECS_receive &sp,
-	vector<VARVAL> &res)
+	vector<VARVAL> &res,
+	vector<USERS_NOTIFIES> &unotifies)
 {
 	string error,status,api_error;
 	setactivity();
 	VARVAL notify_var;
 	notify_var.var = VAR_NOTIFY;
 	notify_var.val = string_f("vidconf_cur_gameid='%s';\n",gameid.c_str());
+	size_t notify_init_size = notify_var.val.size();	// Do not send notification if there is only the variable declaration in it
+								// See the end of this function.
 	if (is_eq(var,REQ_PRINT)){
 		if (is_any_of(val,"","full")){
 			VARVAL v;
@@ -274,16 +302,47 @@ void VIDCONF::exec (
 	}else if (is_eq(var,REQ_FOCUS)){
 		// Nothing to do
 	}else if (ctx.maywrite){
+		USERS_NOTIFIES others;	// Messages sent to other users
+		for (auto &n:notification_fds){
+			if (n.second != ctx.username){
+				others.connections.push_back(n.first);
+			}
+		}
+		if (webrtcs.size() == 0) webrtcs[ctx.username].first = true;
+		WEBRTC &webrtc = webrtcs[ctx.username];
 		if (is_eq(var,"append")){
-			notify_var.val += string_f("vidc_add('%s');\n",val);
+			others.val = string_f("vidc_add('%s');\n",val);
+		}else if (is_eq(var,"webrtcstart")){
+			VARVAL var;
+			var.var = VAR_SCRIPT;
+			var.val = string_f("VIDC_setpolite(%s);\n",webrtc.first ? "true" : "false");
+			res.emplace_back(move(var));
+			webrtc.clear();		// Remove all information from previous sessions
+		}else if (is_eq(var,"description")){
+			webrtc.description = val;
+			if (webrtc.sent){
+				// New description
+				others.val = string_f("VIDC_setdesc('%s');\n",documentd_escape(val).c_str());
+			}
+		}else if (is_eq(var,"candidate")){
+			webrtc.candidates.push_back(val);
+			tlmp_warning ("webrtc.sent=%d user=%s candidate=%s",webrtc.sent,ctx.username,val);
+			if (webrtc.sent){
+				// More candidates
+				others.val = string_f("VIDC_setcand('%s');\n",documentd_escape(val).c_str());
+			}else if (is_eq(val,"null")){
+				tlmp_warning ("webrtc.send() -> %s %zu connections",ctx.username,others.connections.size());
+				others.val = webrtc.send();
+			}
 		}else{
 			api_error = MSG_U(E_IVLAPICOMMAND,"Invalid API command");
 		}
+		if (others.val.size() > 0) unotifies.emplace_back(move(others));
 	}else{
 		tlmp_error ("var=%s\n",var);
 		error = MSG_R(E_READONLY);
 	}
-	if (notify_var.val.size() > 0) res.emplace_back(move(notify_var));
+	if (notify_var.val.size() > notify_init_size) res.emplace_back(move(notify_var));
 	if (api_error.size() > 0){
 		VARVAL var;
 		var.var = VAR_ERROR;

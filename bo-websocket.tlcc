@@ -221,7 +221,7 @@ static void bo_websocket_sessiond_ping (CONNECT_INFO &con, PARAM_STRING session,
 {
 	<call bo_sessiond_client_ping>(con,session,activity);
 	<f ok>
-		if (!success) tlmp_error ("bo_sessiond_client_ping: success=false");
+		if (!success) tlmp_error ("bo_sessiond_client_ping: internal_error=%d success=false",internal_error);
 	</f>
 	</call>
 }
@@ -273,6 +273,8 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 	glocal c;
 	glocal con_bod;
 	glocal con_sessiond;
+	glocal CONNECT_INFO con_sessiond_ping = con_sessiond;	// We use a separate connection for ping
+						// because con_sessiond is used for asynchronous waitevent
 	glocal con_waitevent;
 	glocal STREAMP_BUF buf;
 	glocal bool header_seen = false;
@@ -294,6 +296,7 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 					// too quickly, we set this to true.
 					// In the idle functag, the connection will end.
 	glocal string clientip;		// Client IP number, for error logs
+
 	c.fd = fd;
 	<obj TCPSERVER s>();
 	<f newclient>
@@ -317,7 +320,7 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 				debug_printf ("idle since=%d diff=%u ping sent nbping=%u gameid=%s\n",since,diff,glocal.nbping,glocal.gameid.c_str());
 				bo_websocket_send (this,glocal.fd,9,"hello");
 				glocal.nbping++;
-				bo_websocket_sessiond_ping (glocal.con_sessiond,glocal.session,false);
+				bo_websocket_sessiond_ping (glocal.con_sessiond_ping,glocal.session,false);
 			}
 		}
 	</f>
@@ -436,22 +439,29 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 				}
 			}else{
 				bool fail = false;
-				glocal.c.waitevent(glocal.con_waitevent, glocal.session.c_str(),glocal.gameid.c_str(),glocal.gamesequence, glocal.websocket,endserver,fail);
-				if (fail){
-					closeclient (no);
-					glocal.waiteventfd = -1;
-				}else if (!endserver && !glocal.websocket){
-					// We are always calling back bod to wait for more events.
-					// If it failed, there is no point to call again. When the user will realise something is odd
-					// he will request a refresh and connection will be established again.
-					glocal.c.waitevent_call(glocal.con_waitevent, glocal.session.c_str(),glocal.gameid.c_str()
-						,glocal.sp,glocal.gamesequence, endserver);
-				}
+				do{
+					glocal.c.waitevent(glocal.con_waitevent, glocal.session.c_str(),glocal.gameid.c_str(),glocal.gamesequence, glocal.websocket,endserver,fail);
+					if (fail){
+						closeclient (no);
+						glocal.waiteventfd = -1;
+						break;
+					}else if (!endserver && !glocal.websocket){
+						// This code (commented) is obsolete. A single waitevent is needed and then
+						// we get events. bod and documentd only need one call to waitevent to get going.
+						// sessiond (waitnote) does not work like this and should be updated.
+
+						// We are always calling back bod to wait for more events.
+						// If it failed, there is no point to call again. When the user will realise something is odd
+						// he will request a refresh and connection will be established again.
+						//glocal.c.waitevent_call(glocal.con_waitevent, glocal.session.c_str(),glocal.gameid.c_str()
+						//	,glocal.sp,glocal.gamesequence, endserver);
+					}
+				}while (!endserver && !glocal.websocket && glocal.con_waitevent.has_more());
 			}
 		}else if (glocal.websocket){
 			//tlmp_warning ("write websocket packet to server linelen=%d",info.linelen);
 			glocal.lastactivity = time(nullptr);
-			bo_websocket_sessiond_ping (glocal.con_sessiond,glocal.session,true);
+			bo_websocket_sessiond_ping (glocal.con_sessiond_ping,glocal.session,true);
 			glocal.nbping=0;	// in websocket mode, we pass everything to the remote websocket server
 						// through the waitevent bod connection.
 						// So we just assume any activity is a pong answer
@@ -641,7 +651,7 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 					glocal.messages.erase (p);
 				}else if (glocal.gameid.size() > 0){
 					if (glocal.messages.size() > 0){
-						bo_websocket_sessiond_ping (glocal.con_sessiond,glocal.session,true);
+						bo_websocket_sessiond_ping (glocal.con_sessiond_ping,glocal.session,true);
 						glocal.c.commands(glocal.messages,glocal.con_bod,glocal.con_sessiond,glocal.session.c_str(),glocal.gameid.c_str(),glocal.sp,endserver);
 					}
 					break;
@@ -683,6 +693,7 @@ static void bo_websocket_game (int fd, int waitfd, CONNECT_INFO &con_bod, CONNEC
 		<call bo_sessiond_client_waitevent>(con_sessiond);
 		<f ok>
 			if (!success){
+				tlmp_warning ("sessiond waitevent internal_error=%d success=false",internal_error);
 				glocal.endserver = true;
 				return;
 			}
@@ -788,7 +799,7 @@ static void bo_websocket_game (int fd, int waitfd, CONNECT_INFO &con_bod, CONNEC
 				//tlmp_warning ("websocket=%d",websocket);
 				glocal.websocket = websocket;
 			}else{
-				tlmp_warning ("waitevent failed");
+				tlmp_warning ("waitevent failed: internal_error=%d %s",internal_error,msg);
 				glocal.fail = true;
 			}
 		</f>
