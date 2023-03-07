@@ -150,6 +150,107 @@ string VIDCONF::define_functions(bool mobile)
 	lines += "\t\telm.innerHTML=msg;\n";
 	lines += "\t}\n";
 	lines += "}\n";
+	lines +=
+		"var notesocket_cmd='webrtcstart:';\n"
+		"const config = {\n"
+		"\ticeServers: [{ urls: 'stun:'+location.hostname }],\n"
+		"};\n"
+		"const pc = new RTCPeerConnection(config);\n"
+		"const constraints = { audio: true, video: true };\n";
+
+
+	lines +=
+		"var selfVideo = null;\n"
+		"var started = false;\n"
+	 	"var polite = null;\n"
+		"function VIDC_setpolite(pol){\n"
+		"\tpolite = pol;\n"
+		"\tconsole.log ('polite='+polite);\n"
+		"\tif (!started){\n"
+		"\t\tstarted = true;\n"
+		"\t\tconsole.log ('start webrtc');\n"
+		"\t\tstart();\n"
+		"\t}\n"
+		"}\n"
+		"async function start() {\n"
+		"\ttry {\n"
+		"\t\tconst stream = await navigator.mediaDevices.getUserMedia(constraints);\n"
+		"\t\tfor (const track of stream.getTracks()) {\n"
+		"\t\t\t	pc.addTrack(track, stream);\n"
+		"\t\t}\n";
+	lines += string_f("\tselfVideo = document.getElementById('vidc-%s');\n",gameid.c_str());
+	lines +=
+		"\t\tselfVideo.srcObject = stream;\n"
+		"\t} catch (err) {\n"
+		"\t\tconsole.error(err);\n"
+		"\t}\n"
+		"}\n"
+
+		"pc.ontrack = ({ track, streams }) => {\n"
+		"\ttrack.onunmute = () => {\n"
+		"\t\tselfVideo.srcObject = streams[0];\n"
+		"\t};\n"
+		"};\n"
+
+		"let makingOffer = false;\n"
+		"pc.onnegotiationneeded = async () => {\n"
+		"\ttry {\n"
+		"\t\tmakingOffer = true;\n"
+		"\t\tawait pc.setLocalDescription();\n"
+		"\t\tconsole.log ('Send localDescription');\n"
+		"\t\tnotesocket.send('description:'+JSON.stringify(pc.localDescription,null,0));\n"
+		"\t} catch (err) {\n"
+		"\t\tconsole.error(err);\n"
+		"\t} finally {\n"
+		"\t\tmakingOffer = false;\n"
+		"\t}\n"
+		"};\n"
+
+		"pc.onicecandidate = ({ candidate }) => {\n"
+		"\tconsole.log ('Send Candidate');\n"
+		"\t//console.log (JSON.stringify(candidate,null,0));\n"
+		"\tnotesocket.send ('candidate:'+JSON.stringify(candidate,null,0));\n"
+		"};\n"
+
+		"let ignoreOffer = false;\n"
+		"async function receiveoffer ({ data: { description, candidate } }) {\n"
+		"\ttry {\n"
+		"\t\tif (description) {\n"
+		"\t\t\tconst offerCollision = description.type === 'offer'\n"
+		"\t\t\t\t&& (makingOffer || pc.signalingState !== 'stable');\n"
+		"\t\t\t	ignoreOffer = !polite && offerCollision;\n"
+		"\t\t\tif (ignoreOffer) {\n"
+		"\t\t\t\treturn;\n"
+		"\t\t\t}\n"
+		"\t\t\tawait pc.setRemoteDescription(description);\n"
+		"\t\t\tif (description.type === 'offer') {\n"
+		"\t\t\t\tawait pc.setLocalDescription();\n"
+		"\t\t\t\tnotesocket.send ('description:'+JSON.stringify(pc.localDescription,null,0));\n"
+		"\t\t\t\tconsole.log ('offer send localDescription');\n"
+		"\t\t\t}\n"
+		"\t\t} else if (candidate) {\n"
+		"\t\t\ttry {\n"
+		"\t\t\t\tawait pc.addIceCandidate(candidate);\n"
+		"\t\t\t} catch (err) {\n"
+		"\t\t\t\tif (!ignoreOffer) {\n"
+		"\t\t\t\t\tthrow err;\n"
+		"\t\t\t\t}\n"
+		"\t\t\t}\n"
+		"\t\t}\n"
+		"\t} catch (err) {\n"
+		"\t\tconsole.error(err);\n"
+		"\t}\n"
+		"};\n"
+
+		"function VIDC_setdesc(description){\n"
+		"\tconsole.log ('receive description');\n"
+		"\treceiveoffer({data: {description: JSON.parse(description), candidate: null}});\n"
+		"}\n"
+
+		"function VIDC_setcand(candidate){\n"
+		"\tconsole.log ('receive candidate');\n"
+		"\treceiveoffer({data: {description: null, candidate: JSON.parse(candidate)}});\n"
+		"}\n";
 	return lines;
 }
 string VIDCONF::draw_board(
@@ -158,10 +259,11 @@ string VIDCONF::draw_board(
 	string &script)
 {
 	string lines;
-	lines += string_f("<video id='vidc-%s' width=100%% height=100%% controls>\n",gameid.c_str());
+	lines += string_f("<video id='vidc-%s' autoplay width=100%% height=100%%>\n",gameid.c_str());
 	lines += "Your browser does not support the video tag.\n";
 	lines += "</video>\n";
 
+	#if 0
 	script += string_f("const videoTag = document.getElementById('vidc-%s');\n",gameid.c_str());
 	script +=
 		"const myMediaSource = new MediaSource();\n"
@@ -232,6 +334,7 @@ string VIDCONF::draw_board(
 		"\t}, false);\n"
 		"}\n"
 		;
+	#endif
 	return lines;
 }
 
