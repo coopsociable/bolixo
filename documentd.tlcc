@@ -352,9 +352,9 @@ void GAME::add_notification (PARAM_STRING script)
 	vector<USERS_NOTIFIES> unotifies;
 	add_notification(script,unotifies);
 }
-void GAME::add_notification_fd(int fd, const char *username)
+void GAME::add_notification_fd(int fd, const char *username, const char *connectid)
 {
-	notification_fds[fd] = username;
+	notification_fds[fd] = FD_INFO(username,connectid);
 }
 int GAME::del_notification_fd(int fd)
 {
@@ -367,7 +367,7 @@ std::set<string> GAME::get_waiting_users()
 {
 	set<string> ret;
 	for (auto &n:notification_fds){
-		ret.insert (n.second);
+		ret.insert (n.second.username);
 	}
 	return ret;
 }
@@ -1669,6 +1669,7 @@ int main (int argc, char *argv[])
 					ctx.username = username;
 					ctx.maywrite = maywrite;
 					ctx.docnum = docnum;
+					ctx.connectid = connectid;
 					bool success = documentd_playstep (glocal.programs,glocal.games,gameid,steps,ctx,sp,res,msg,unknown);
 					size_t size = 0;
 					for (auto &r:res) size += r.val.size();
@@ -1825,7 +1826,7 @@ int main (int argc, char *argv[])
 						rep_is_modified(true,"",modified,modified_by,g->second->get_revision());
 					}
 				</f>
-				<f waitevent>	// gameid username sequence:u = success:b msg script sequence:u
+				<f waitevent>	// connectid gameid username sequence:u = success:b msg script sequence:u
 					auto g = glocal.games.find(gameid);
 					if (g == glocal.games.end()){
 						rep_waitevent (false,"Invalid gameid","",0);
@@ -1851,7 +1852,7 @@ int main (int argc, char *argv[])
 							rep_waitevent (true,"",rep,sequence);
 						}
 						{
-							game->add_notification_fd(no,username);
+							game->add_notification_fd(no,username,connectid);
 							if (!game->waiting_user(username)){
 								string line;
 								game->update_waiting_users(line);

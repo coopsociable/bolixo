@@ -348,6 +348,7 @@ void VIDCONF::exec (
 	vector<USERS_NOTIFIES> &unotifies)
 {
 	string error,status,api_error;
+	bool clear_status_ok = true;	// We send a clear status line except when processing webrtc request
 	setactivity();
 	VARVAL notify_var;
 	notify_var.var = VAR_NOTIFY;
@@ -407,7 +408,8 @@ void VIDCONF::exec (
 	}else if (ctx.maywrite){
 		USERS_NOTIFIES others;	// Messages sent to other users
 		for (auto &n:notification_fds){
-			if (n.second != ctx.username){
+			//tlmp_warning ("count=%d/%zu n.second.connectid %s ctx.connectid %s",count,notification_fds.size(),n.second.connectid.c_str(),ctx.connectid);
+			if (!is_eq(n.second.connectid,ctx.connectid)){
 				others.connections.push_back(n.first);
 			}
 		}
@@ -416,18 +418,21 @@ void VIDCONF::exec (
 		if (is_eq(var,"append")){
 			others.val = string_f("vidc_add('%s');\n",val);
 		}else if (is_eq(var,"webrtcstart")){
+			clear_status_ok = false;
 			VARVAL var;
 			var.var = VAR_SCRIPT;
 			var.val = string_f("VIDC_setpolite(%s);\n",webrtc.first ? "true" : "false");
 			res.emplace_back(move(var));
 			webrtc.clear();		// Remove all information from previous sessions
 		}else if (is_eq(var,"description")){
+			clear_status_ok = false;
 			webrtc.description = val;
 			if (webrtc.sent){
 				// New description
 				others.val = string_f("VIDC_setdesc('%s');\n",documentd_escape(val).c_str());
 			}
 		}else if (is_eq(var,"candidate")){
+			clear_status_ok = false;
 			webrtc.candidates.push_back(val);
 			tlmp_warning ("webrtc.sent=%d user=%s candidate=%s",webrtc.sent,ctx.username,val);
 			if (webrtc.sent){
@@ -456,7 +461,7 @@ void VIDCONF::exec (
 		update_msg(false,error,"red",res);
 	}else if (status.size() > 0){
 		update_msg(true,status,"red",res);
-	}else{
+	}else if (clear_status_ok){
 		update_msg(false,"&nbsp;","white",res);
 	}
 }

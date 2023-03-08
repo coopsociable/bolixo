@@ -141,11 +141,19 @@ struct USERS_NOTIFIES{
 	std::string val;
 };
 
+// Information about the current user
 struct DOC_CONTEXT{
 	const char *session = "";
 	const char *username = "";
 	bool maywrite = false;
 	unsigned docnum = 0;
+	const char *connectid;
+};
+struct FD_INFO{
+	std::string username;
+	std::string connectid;
+	FD_INFO(const char *_username, const char *_connectid) : username(_username), connectid(_connectid){}
+	FD_INFO(){}
 };
 class GAME{
 	unsigned sequence=1;	// For notifications
@@ -158,7 +166,7 @@ class GAME{
 	friend void doc_layout (struct _F_doc_layout &c, const char *id_prefix, GAME *game, const DOC_CONTEXT &ctx,
 		const DOC_UI_SPECS_receive &sp, const char *doc_suffix, bool scroll, VARVAL &v);
 protected:
-	std::map<int,std::string> notification_fds;	// Handles waiting for notifications (with username)
+	std::map<int,FD_INFO> notification_fds;	// Handles waiting for notifications (with username)
 	std::vector<CHATLINE> chat;
 	unsigned revision = 0;
 	std::string gameid;
@@ -282,7 +290,7 @@ public:
 	}
 	void add_notification (PARAM_STRING script, const std::vector<USERS_NOTIFIES> &unotifies);
 	void add_notification (PARAM_STRING script);
-	void add_notification_fd(int fd, const char *username);
+	void add_notification_fd(int fd, const char *username, const char *connectid);
 	std::set<std::string> get_waiting_users();
 	void update_waiting_users(std::string &lines);
 	bool waiting_user(const char *username);

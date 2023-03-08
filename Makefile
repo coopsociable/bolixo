@@ -32,8 +32,8 @@ compile: $(PROGS)
 bo-webtest: bo-webtest.tlcc proto/webapi.protoh /usr/include/trlitool/trlitool.h
 	cctlcc -Wall $(OPTIONS) bo-webtest.tlcc _dict.o -o bo-webtest $(LIBS) -lssl
 
-bofs: bofs.o verify.o bofs_vidconf.o websocket-client.o
-	cctlcc -Wall $(OPTIONS) bofs.o verify.o bofs_vidconf.o websocket-client.o _dict.o -o bofs $(LIBS) -lssl 
+bofs: bofs.o verify.o bofs_vidconf.o websocket-client.o fs_makeid.o
+	cctlcc -Wall $(OPTIONS) bofs.o verify.o bofs_vidconf.o websocket-client.o fs_makeid.o _dict.o -o bofs $(LIBS) -lssl 
 
 bofs.o: bofs.tlcc bofs.h proto/bod_client.protoh proto/webapi.protoh proto/bolixoapi.protoh proto/webapi.protoh
 	cctlcc -Wall $(OPTIONS) -c bofs.tlcc -o bofs.o
@@ -119,9 +119,9 @@ publishd: publishd.tlcc proto/publishd_control.protoh proto/publishd_client.prot
 publishd-control: publishd-control.tlcc proto/publishd_control.protoh
 	cctlcc -Wall $(OPTIONS) publishd-control.tlcc -o publishd-control $(LIBS)
 
-bo-websocket: bo-websocket.tlcc proto/bod_client.protoh proto/bo-sessiond_client.protoh _dict.o \
+bo-websocket: bo-websocket.tlcc proto/bod_client.protoh proto/bo-sessiond_client.protoh fs_makeid.o _dict.o \
 	proto/bo-websocket_control.protoh
-	cctlcc -Wall $(OPTIONS) bo-websocket.tlcc _dict.o -o bo-websocket $(LIBS) 
+	cctlcc -Wall $(OPTIONS) bo-websocket.tlcc fs_makeid.o _dict.o -o bo-websocket $(LIBS) 
 
 bo-websocket-control: bo-websocket-control.tlcc proto/bo-websocket_control.protoh
 	cctlcc -Wall $(OPTIONS) bo-websocket-control.tlcc -o bo-websocket-control $(LIBS)
