@@ -416,7 +416,7 @@ void documentd_bar_button (std::string &lines, unsigned command, PARAM_STRING tx
 void documentd_bar_button (std::string &lines, unsigned command, PARAM_STRING txt, const class DOC_BUTTON_SPECS &specs, bool highlit);
 void documentd_forcerefresh (std::vector<VARVAL> &res);
 void documentd_setchanges (std::vector<VARVAL> &res);
-void documentd_chat(std::string &lines, PARAM_STRING username, const std::vector<CHATLINE> &content, unsigned width, unsigned height);
+void documentd_chat(std::string &lines, PARAM_STRING username, bool mobile, const std::vector<CHATLINE> &content, unsigned width, unsigned height);
 void documentd_setfocus (VARVAL &script_var, PARAM_STRING id);
 void documentd_parsefields (const char *val, std::vector<VARVAL> &fields);
 unsigned documentd_displaylen (const char *line, unsigned fontsize, float size);

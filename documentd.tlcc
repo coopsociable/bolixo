@@ -249,7 +249,7 @@ static void formatchatline (time_t now, PARAM_STRING line, string &notify)
 /*
 	Create a small one line chat
 */
-void documentd_chat(string &lines, PARAM_STRING username, const vector<CHATLINE> &content, unsigned width, unsigned height)
+void documentd_chat(string &lines, PARAM_STRING username, bool mobile, const vector<CHATLINE> &content, unsigned width, unsigned height)
 {
 	lines += string_f("<div id=chat style='width:%u; height:%u; cursor:default;padding-left:5px;border:1px black solid; overflow: auto;' >"
 		,width,height);
@@ -264,8 +264,13 @@ void documentd_chat(string &lines, PARAM_STRING username, const vector<CHATLINE>
 		"\t\tif (chat.innerHTML != ''){\n"
 		"\t\t\tchat.innerHTML += '<br>\\n';\n"
 		"\t\t}\n"
-		"\t\tvar date = new Date(unixdate*1000);\n"
-		"\t\tchat.innerHTML += date.toLocaleString() + ' ' + line;\n"
+		"\t\tvar date = new Date(unixdate*1000);\n";
+	if (!mobile){
+		lines += "\t\tchat.innerHTML += date.toLocaleString() + ' ' + line;\n";
+	}else{
+		lines += "\t\tchat.innerHTML += line;\n";
+	}
+	lines +=
 		"\t\tchat.scrollTop = chat.scrollHeight;\n"
 		"\t}\n"
 		"}\n"
@@ -2245,7 +2250,7 @@ void doc_layout (
 	// Status line
 	v.val += "<div id=tab_form>\n";
 	v.val += string_f("<div id=msg-%s style=color:black>&nbsp;</div>\n",gameid);
-	documentd_chat (v.val,ctx.username,game->chat,sp.width-20,sp.mobile ? 200 : 100);
+	documentd_chat (v.val,ctx.username,sp.mobile,game->chat,sp.width-20,sp.mobile ? 200 : 100);
 	v.val += "</div>\n";
 }
 </mod>
