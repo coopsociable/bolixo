@@ -238,11 +238,13 @@ struct _F_bo_websocket{
 	#define _F_bo_websocket_commands(name) void name commands(const vector<string> &cmds, CONNECT_INFO &con_bod, CONNECT_INFO &con_sessiond, \
 		PARAM_STRING connectid, PARAM_STRING session, PARAM_STRING gameid, const DOC_UI_SPECS &sp, bool &endserver)
 	virtual _F_bo_websocket_commands( )=0;
-	#define _F_bo_websocket_waitnote(name) void name waitnote(CONNECT_INFO &con_sessiond, const char *session, int &sequence, const set<string> &project_notifications, bool gamewaiting, bool &endserver)
+	#define _F_bo_websocket_waitnote(name) void name waitnote(CONNECT_INFO &con_sessiond, PARAM_STRING session, PARAM_STRING gameid, \
+		int &sequence, const set<string> &project_notifications, bool gamewaiting, bool &endserver)
 	virtual _F_bo_websocket_waitnote( )=0;
 	#define _F_bo_websocket_waitnote_call(name) int name waitnote_call(CONNECT_INFO &con_sessiond, const char *session, int &sequence, bool &endserver)
 	virtual _F_bo_websocket_waitnote_call( )=0;
-	#define _F_bo_websocket_waitevent_call(name) int name waitevent_call(CONNECT_INFO &con_waitevent, PARAM_STRING connectid, PARAM_STRING session, PARAM_STRING gameid, const DOC_UI_SPECS &sp, int &gamesequence, bool &endserver)
+	#define _F_bo_websocket_waitevent_call(name) int name waitevent_call(CONNECT_INFO &con_waitevent, PARAM_STRING connectid, PARAM_STRING session, \
+		PARAM_STRING gameid, const DOC_UI_SPECS &sp, int &gamesequence, bool &endserver)
 	virtual _F_bo_websocket_waitevent_call( )=0;
 	#define _F_bo_websocket_waitevent(name) void name waitevent(CONNECT_INFO &con_waitevent, const char *session, const char *gameid, int &gamesequence, bool &websocket, bool &endserver, bool &fail)
 	virtual _F_bo_websocket_waitevent( )=0;
@@ -382,7 +384,7 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 				tlmp_error ("Invalid packet size for worker request: %s",glocal.clientip.c_str());
 			}
 		}else if (no == glocal.sessionfd){
-			glocal.c.waitnote(glocal.con_sessiond, glocal.session.c_str(),glocal.sequence, glocal.project_notifications
+			glocal.c.waitnote(glocal.con_sessiond, glocal.session,glocal.gameid,glocal.sequence, glocal.project_notifications
 				,glocal.gamesequence!=-1,endserver);
 			// We are always calling back sessiond to wait for more events.
 			if (!glocal.endserver) glocal.c.waitnote_call(glocal.con_sessiond, glocal.session.c_str(),glocal.sequence, endserver);
@@ -687,6 +689,7 @@ static void bo_websocket_game (int fd, int waitfd, CONNECT_INFO &con_bod, CONNEC
 		return ret;
 	</f>
 	<f waitnote>
+		glocal gameid;
 		glocal endserver;
 		glocal sequence;
 		glocal project_notifications;
@@ -698,7 +701,16 @@ static void bo_websocket_game (int fd, int waitfd, CONNECT_INFO &con_bod, CONNEC
 				glocal.endserver = true;
 				return;
 			}
-			//tlmp_warning ("waitnote content=%s",content);
+			// tlmp_warning ("waitnote content=%s gameid=%s",content,glocal.gameid.ptr);
+			const char *pt, *pt2;
+			if (is_start_any_of(content,pt,"Projects:")
+				&& is_start_any_of(glocal.gameid,pt2,"/projects/")
+				&& is_eq(pt,pt2)){
+				// Nothing to do, this is a notification about the document we are currently
+				// viewing.
+				glocal.sequence = sequence;
+				return;
+			}
 			// Any event starting with profile: turn the 3 bars menu orange
 			string buf;
 			if (is_start_any_of(content,NONEED,"profile:")){
@@ -708,7 +720,6 @@ static void bo_websocket_game (int fd, int waitfd, CONNECT_INFO &con_bod, CONNEC
 				buf += "}\n";
 			}
 			// Any event starting with talks or projects turn the main talks and projects tab orange
-			const char *pt;
 			if (is_start_any_of(content,pt,"talks","Projects")){
 				string tmp(content,pt-content);
 				if (tmp != "Projects" || glocal.project_notifications.count(content) > 0){ 
