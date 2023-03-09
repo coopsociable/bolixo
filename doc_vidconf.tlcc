@@ -61,6 +61,12 @@ class VIDCONF: public GAME{
 	std::string define_functions(bool mobile);
 	std::string draw_board (bool mobile, unsigned docnum, std::string &script);
 	map<string,WEBRTC> webrtcs;
+	struct {	// Only one connection may request stats at a time
+			// only used by bofs. At some point, it may be part
+			// of the user interface to help debug issues.
+		string connectid;	// Connection ID having done a getstats
+		int nbreq=0;		// Number of getstats sent (number of connected users)
+	} stats;
 public:
 	VIDCONF();
 	const char *getclass() const{
@@ -250,6 +256,14 @@ string VIDCONF::define_functions(bool mobile)
 		"function VIDC_setcand(candidate){\n"
 		"\tconsole.log ('receive candidate');\n"
 		"\treceiveoffer({data: {description: null, candidate: JSON.parse(candidate)}});\n"
+		"}\n"
+
+		"function VIDC_getstats(){\n"
+		"\tpc.getStats(null).then((stats) => {\n"
+		"\tvar res = '';\n"
+		"\tstats.forEach((rep) => { res += JSON.stringify(rep,null,0)+ '\\r'; });\n"
+		"\tnotesocket.send('stats:'+res);\n"
+		"\t});\n"
 		"}\n";
 	return lines;
 }
@@ -407,12 +421,17 @@ void VIDCONF::exec (
 		// Nothing to do
 	}else if (ctx.maywrite){
 		USERS_NOTIFIES others;	// Messages sent to other users
+		USERS_NOTIFIES wstats;	// Messages sent to the connection having done the getstats request
 		for (auto &n:notification_fds){
 			//tlmp_warning ("count=%d/%zu n.second.connectid %s ctx.connectid %s",count,notification_fds.size(),n.second.connectid.c_str(),ctx.connectid);
 			if (!is_eq(n.second.connectid,ctx.connectid)){
 				others.connections.push_back(n.first);
 			}
+			if (is_eq(n.second.connectid,stats.connectid)){
+				wstats.connections.push_back(n.first);
+			}
 		}
+		if (wstats.connections.size()==0) stats.connectid.clear();	// The connection stats.connectid is gone
 		if (webrtcs.size() == 0) webrtcs[ctx.username].first = true;
 		WEBRTC &webrtc = webrtcs[ctx.username];
 		if (is_eq(var,"append")){
@@ -442,10 +461,33 @@ void VIDCONF::exec (
 				tlmp_warning ("webrtc.send() -> %s %zu connections",ctx.username,others.connections.size());
 				others.val = webrtc.send();
 			}
+		}else if (is_eq(var,"getstats")){
+			// Request stats from all video conference users
+			stats.nbreq = others.connections.size();
+			if (stats.nbreq > 0){
+				stats.connectid = ctx.connectid;
+				others.val = "VIDC_getstats();\n";
+			}else{
+				VARVAL var;
+				var.var = VAR_SCRIPT;
+				var.val = string_f("stats %s\nendstats\n",MSG_U(E_NOUSERSINCONF,"No users in conference"));
+				res.emplace_back(move(var));
+			}	
+		}else if (is_eq(var,"stats")){
+			tlmp_warning ("stats from %s: %s",ctx.username,val);
+			if (wstats.connections.size() > 0){
+				wstats.val = string_f("stats %s %s\n",ctx.username,val);
+				stats.nbreq--;
+				if (stats.nbreq == 0){
+					wstats.val += "endstats\n";
+					stats.connectid.clear();
+				}
+			}
 		}else{
 			api_error = MSG_U(E_IVLAPICOMMAND,"Invalid API command");
 		}
 		if (others.val.size() > 0) unotifies.emplace_back(move(others));
+		if (wstats.val.size() > 0) unotifies.emplace_back(move(wstats));
 	}else{
 		tlmp_error ("var=%s\n",var);
 		error = MSG_R(E_READONLY);

@@ -22,7 +22,7 @@ struct HANDLE_INFO: public ARRAY_OBJ{
 struct _F_vidconf_sock{
 	HANDLE_INFO *h = nullptr;
 	void send (PARAM_STRING line);
-	#define _F_vidconf_sock_receive(x) void x receive(const char *line)
+	#define _F_vidconf_sock_receive(x) void x receive(const char *line, bool &end)
 	virtual _F_vidconf_sock_receive( );
 	#define _F_vidconf_sock_init(x) void init(bool &end)
 	virtual _F_vidconf_sock_init( );
@@ -36,7 +36,7 @@ void _F_vidconf_sock::init(bool &end)
 void _F_vidconf_sock::idle(bool &end)
 {
 }
-void _F_vidconf_sock::receive(const char *line)
+void _F_vidconf_sock::receive(const char *line, bool &end)
 {
 }
 
@@ -101,7 +101,7 @@ static void vidconf_sock(_F_vidconf_sock &c, CONTEXT &ctx, const char *docname, 
 			}
 			//printf ("now_running=%d msg=%zu\n",now_running,msg.size());
 			if (msg.size() > 0){
-				glocal.c.receive(msg.c_str());
+				glocal.c.receive(msg.c_str(),endserver);
 			}
 		}
 	</f>
@@ -140,6 +140,7 @@ int bofs_vidconf (CONTEXT &ctx, int argc, char *argv[])
 				 "bofs vidconf command ...\n"
 				 "\n"
 				 "Commands are:\n"
+				 "\tgetstats\n"
 				 "\trecord\n"
 				 "\tsendvideo\n"
 				)
@@ -182,6 +183,26 @@ int bofs_vidconf (CONTEXT &ctx, int argc, char *argv[])
 				<call vidconf_sock>(glocal.ctx,glocal.docname,60);
 				<f receive>
 					printf ("line=%s\n",line);
+				</f>
+				</call>
+			}else if (is_eq(arg,"getstats")){
+				<call vidconf_sock>(glocal.ctx,glocal.docname,60);
+				<f init>
+					send ("getstats:");
+				</f>
+				<f receive>
+					auto tb = str_cnv2lines (line);
+					for (auto &l:tb){
+						//printf ("line=%s\n",l.c_str());
+						const char *pt;
+						if (is_start_any_of(l,pt,"stats ")){
+							string user;
+							pt = str_copyword(user,pt);
+							auto tb2 = str_splitline (pt,'\r');
+							for (auto &l2:tb2) printf ("%s %s\n",user.c_str(),l2.c_str());
+						}
+						if (l=="endstats") end = true;
+					}
 				</f>
 				</call>
 			}else{
