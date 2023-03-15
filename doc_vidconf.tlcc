@@ -22,7 +22,9 @@
 #include <math.h>
 #include <vector>
 #include <map>
+#include <dialog.h>
 #include <tlmplib.h>
+#include <openssl/hmac.h>
 #include "bolixo.h"
 #include "proto/bod_client.protodef"
 #include "documentd.h"
@@ -58,7 +60,7 @@ struct WEBRTC{
 class VIDCONF: public GAME{
 	std::string message;
 	std::string define_styles(bool mobile);
-	std::string define_functions(bool mobile);
+	std::string define_functions(const DOC_CONTEXT &ctx, bool mobile);
 	std::string draw_board (bool mobile, unsigned docnum, std::string &script);
 	map<string,WEBRTC> webrtcs;
 	struct {	// Only one connection may request stats at a time
@@ -125,8 +127,25 @@ string VIDCONF::define_styles(bool mobile)
 	string lines;
 	return lines;
 }
-string VIDCONF::define_functions(bool mobile)
+static string turn_secret;
+<mod>
+string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile)
 {
+	// The secret for authentication with the TURN server comes from a config file. It is read once as needed
+	static bool turn_secret_done = false;
+	if (!turn_secret_done){
+		turn_secret_done = true;
+		<call loadfile>("/etc/bolixo/vidconf.secret",true);
+		<f oneline>
+			if (line[0] != '0' && line[0] != '#' && turn_secret.size()==0) turn_secret = line;
+			return 0;
+		</f>
+		</call>
+		//tlmp_warning ("turn secret = :%s:",turn_secret.c_str());
+		if (turn_secret.size()==0){
+			tlmp_error ("Empty secret for video conference");
+		}
+	}
 	string lines = 
 		"const b64tobin = (b64Data) => {\n"
 		"\tconst byteCharacters = atob(b64Data);\n"
@@ -156,11 +175,26 @@ string VIDCONF::define_functions(bool mobile)
 	lines += "\t\telm.innerHTML=msg;\n";
 	lines += "\t}\n";
 	lines += "}\n";
+	// The temporary user holds a timestamp, good for 600 seconds.
+	string tempuser = string_f("%ld:%s",time(nullptr)+600,ctx.username);
+	string temppass;
+	{
+		unsigned char res[SHA_DIGEST_LENGTH];
+		unsigned res_len = SHA_DIGEST_LENGTH;
+		temppass = base64_encode((const char *)HMAC(EVP_sha1()
+			,(const unsigned char*) turn_secret.c_str(),turn_secret.size()
+			,(const unsigned char*) tempuser.c_str(),tempuser.size()
+			,res,&res_len),res_len);
+	}
+	// tlmp_warning ("tempuser :%s: temppass :%s:",tempuser.c_str(),temppass.c_str());
 	lines +=
 		"var notesocket_cmd='webrtcstart:';\n"
 		"const config = {\n"
-		"\ticeServers: [{ urls: 'stun:'+location.hostname }],\n"
-		"};\n"
+		"\ticeServers: ["
+		"{urls: 'stun:'+location.hostname + ':3478'},";
+	lines += string_f("{urls: 'turn:'+location.hostname + ':3478', username: '%s',credential: '%s'},",tempuser.c_str(),temppass.c_str());
+	lines +=
+		"]};\n"
 		"const pc = new RTCPeerConnection(config);\n"
 		"const constraints = { audio: true, video: true };\n";
 
@@ -267,6 +301,7 @@ string VIDCONF::define_functions(bool mobile)
 		"}\n";
 	return lines;
 }
+</mod>
 string VIDCONF::draw_board(
 	bool mobile,
 	unsigned docnum,
@@ -378,7 +413,7 @@ void VIDCONF::exec (
 				return glocal.doc->define_styles(sp.mobile);
 			</f>
 			<f functions>
-				return glocal.doc->define_functions(sp.mobile);
+				return glocal.doc->define_functions(ctx,sp.mobile);
 			</f>
 			<f menu_bar>
 				#define BUTTON_CONFIG	0
@@ -394,7 +429,7 @@ void VIDCONF::exec (
 	}else if (is_eq(var,REQ_FUNCTIONS)){
 		VARVAL var;
 		var.var = VAR_DEFSCRIPT;
-		var.val = define_functions (sp.mobile);
+		var.val = define_functions (ctx,sp.mobile);
 		res.emplace_back(move(var));
 	}else if (is_eq(var,REQ_STYLES)){
 		VARVAL var;

@@ -9,6 +9,73 @@
 #include "bofs.h"
 #include "websocket-client.h"
 #include "bolixo.m"
+#include "bolixo.h"
+#define INSTRUMENT_EXTERN
+#include "instrument.h"
+
+#include "proto/bod_client.protodef"
+#define webapi_test_NOTNEED
+#define webapi_login_NOTNEED
+#define webapi_logout_NOTNEED
+#define webapi_addfile_NOTNEED
+#define webapi_addfile_bob_NOTNEED
+#define webapi_appendfile_NOTNEED
+#define webapi_delfile_NOTNEED
+#define webapi_undelete_NOTNEED
+#define webapi_modifyfile_NOTNEED
+#define webapi_modifyfile_bob_NOTNEED
+#define webapi_rename_NOTNEED
+#define webapi_copy_NOTNEED
+#define webapi_readfile_NOTNEED
+#define webapi_readfile_bob_NOTNEED
+#define webapi_readmore_NOTNEED
+#define webapi_mkdir_NOTNEED
+#define webapi_rmdir_NOTNEED
+#define webapi_listdir_NOTNEED
+#define webapi_set_access_NOTNEED
+#define webapi_markview_NOTNEED
+#define webapi_list_inboxes_NOTNEED
+#define webapi_list_msgs_NOTNEED
+#define webapi_sendmsg_NOTNEED
+#define webapi_sendmsg_project_NOTNEED
+#define webapi_replymsg_NOTNEED
+#define webapi_replymsg_project_NOTNEED
+#define webapi_sendattach_NOTNEED
+#define webapi_sendtalk_NOTNEED
+#define webapi_sendtalk_file_NOTNEED
+#define webapi_list_talk_NOTNEED
+#define webapi_list_lists_NOTNEED
+#define webapi_list_groups_NOTNEED
+#define webapi_list_contacts_NOTNEED
+#define webapi_create_group_list_NOTNEED
+#define webapi_create_group_NOTNEED
+#define webapi_delete_group_NOTNEED
+#define webapi_delete_list_NOTNEED
+#define webapi_set_group_NOTNEED
+#define webapi_set_member_NOTNEED
+#define webapi_list_members_NOTNEED
+#define webapi_public_listdir_NOTNEED
+#define webapi_public_readfile_NOTNEED
+#define webapi_public_list_talk_NOTNEED
+#define webapi_systempubkey_NOTNEED
+#define webapi_verifysign_NOTNEED
+#define webapi_getpubkey_NOTNEED
+#define webapi_registernode_NOTNEED
+#define webapi_remotelogin_NOTNEED
+#define webapi_remotepass_NOTNEED
+#define webapi_remote_interest_set_NOTNEED
+#define webapi_remote_interest_unset_NOTNEED
+#define webapi_nodelogin_NOTNEED
+#define webapi_nodepass_NOTNEED
+#define webapi_config_read_NOTNEED
+#define webapi_config_write_NOTNEED
+#define webapi_contact_request_NOTNEED
+#define webapi_contact_manage_NOTNEED
+#define webapi_contact_list_NOTNEED
+#define webapi_contact_remove_NOTNEED
+#define webapi_playstep_NOTNEED
+#define webapi_playstep_more_NOTNEED
+#include "proto/webapi.protoch"
 
 using namespace std;
 
@@ -54,15 +121,14 @@ static int vidconf_send (_F_vidconf_sock *c, FILE *fin, int nbchunk)
 		char buf[line_size];
 		int nb;
 		if ((nb=fread(buf,1,line_size,fin))>0){
-			char *base64 = base64_encode(buf,nb);
+			string base64 = base64_encode(buf,nb);
 			string longline = "append:";
 			// Remove line feed
-			char *pt = base64;
-			while (*pt != '\0'){
+			auto pt = base64.begin();
+			while (pt != base64.end()){
 				if (*pt > ' ') longline += *pt;
 				pt++;
 			}
-			free (base64);
 			c->send (longline);
 			ret = 0;
 		}else{
@@ -151,8 +217,25 @@ int bofs_vidconf (CONTEXT &ctx, int argc, char *argv[])
 	<f main>
 		int ret = -1;
 		const char *arg = argv[0];
-		if (glocal.ctx.login()!=-1){
-			if (is_eq(arg,"sendvideo")){
+		if (glocal.ctx.is_internal()){
+			tlmp_error ("Ne fonctionne pour le protocole interne\n");
+		}else if (glocal.ctx.login()!=-1){
+			glocal bool exist = false;
+			<call webapi_stat>(glocal.ctx.hcon,glocal.ctx.hsessionid,glocal.docname,"");
+			<f ok>
+				if (internal_error){
+					tlmp_error (MSG_R(E_INTERNAL),msg);
+				}else if (!success){
+					tlmp_error (MSG_U(E_CONFERENCEMISSING,"Conference file is missing\n"));
+				}else if (file.file_type != FILE_DOC_VIDCONF){
+					tlmp_error (MSG_U(E_NOTVIDCONF,"The document is not a conference\n"));
+				}else{
+					glocal.exist = true;
+				}
+			</f>
+			</call>
+			if (!glocal.exist){
+			}else if (is_eq(arg,"sendvideo")){
 				if (glocal.file == nullptr){
 					tlmp_error (MSG_U(E_NOVIDEOTOSEND,"Option --filevideo missing, nothing to send\n"));
 				}else{

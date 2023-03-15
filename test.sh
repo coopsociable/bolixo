@@ -1469,6 +1469,7 @@ elif [ "$1" = "lxc0-documentd" ]; then # prod:
 		--restorefile /var/lib/lxc/documentd/documentd.restore \
 		$EXTRALXCPROG \
 		$INCLUDELANGS \
+		-e /etc/bolixo/vidconf.secret \
 		-e /usr/share/fonts/dejavu*/DejaVuSerif.ttf \
 		-e /usr/share/fonts/dejavu*/DejaVuSans.ttf \
 		-e /usr/share/fonts/liberation*/LiberationSans-Regular.ttf \
