@@ -24,6 +24,7 @@
 #include <tlmpnet.h>
 #include <string>
 #include <trlitool.h>
+#include "bolixo.m"
 
 using namespace std;
 
@@ -44,7 +45,8 @@ int main (int argc, char *argv[])
 	glocal.ret = <call tlmpprogram>(argc,argv,"bolixo");
 	<f init>
 		setproginfo ("bo-writed-control",VERSION
-			,"Command line tool to control bo-writed\n"
+			,MSG_U(I_WRITED_CONTROL,
+			"Command line tool to control bo-writed\n"
 			 "\n"
 			 "\tadd_default_interest interest\n"
 			 "\tadd_interest user interest\n"
@@ -69,16 +71,16 @@ int main (int argc, char *argv[])
 			 "\tsyncdb\n"
 			 "\n"
 			 "\tnewacctresend email [ to_stdout ]\n"
-			 "\tsendmail dest subject body\n"
+			 "\tsendmail email-dest subject body\n")
 			);
-		setarg ('p',"control","Unix socket to reach trlid",glocal.control,false);
-		setgrouparg ("deleteoldmsgs options");
-		setarg (' ',"doit","Really delete entries, not just collect statistics",glocal.doit,false);
-		setarg (' ',"keeppublic","Keep public messages for N days",glocal.keeppublic,false);
-		setarg (' ',"keepother","Keep other messages for N days",glocal.keepother,false);
-		setarg (' ',"keeprss","Keep public messages for RSS accounts for N days",glocal.keeprss,false);
-		setarg (' ',"min_msgs","Maintain at least that many messages",glocal.min_msgs,false); 
-		setarg (' ',"min_pub_msgs","Maintain at least that many messages in public folder",glocal.min_pub_msgs,false); 
+		setarg ('p',"control",MSG_U(I_WRITED_SOCK,"Unix socket to reach writed"),glocal.control,false);
+		setgrouparg (MSG_U(I_DELETEOLDMSGOPTS,"deleteoldmsgs options"));
+		setarg (' ',"doit",MSG_U(I_DELETEDOIT,"Really delete entries, not just collect statistics"),glocal.doit,false);
+		setarg (' ',"keeppublic",MSG_U(I_KEEPPUBLIC,"Keep public messages for N days"),glocal.keeppublic,false);
+		setarg (' ',"keepother",MSG_U(I_KEEPOTHER,"Keep other messages for N days"),glocal.keepother,false);
+		setarg (' ',"keeprss",MSG_U(I_KEEPRSS,"Keep public messages for RSS accounts for N days"),glocal.keeprss,false);
+		setarg (' ',"min_msgs",MSG_U(I_MAINTAINMSGS,"Maintain at least that many messages"),glocal.min_msgs,false); 
+		setarg (' ',"min_pub_msgs",MSG_U(I_MAINTAINPUBMSGS,"Maintain at least that many messages in public folder"),glocal.min_pub_msgs,false); 
 	</f>
 	<f main>
 		glocal int ret = -1;
@@ -152,11 +154,15 @@ int main (int argc, char *argv[])
 			</f>
 			</call>
 		}else if (strcmp(argv[0],"sendmail")==0 && argc==4){
-			<call bo_writed_control_sendmail>(con,argv[1],argv[2],argv[3]);
-			<f ok>
-				printf ("success=%d\n",success);
-			</f>
-			</call>
+			if (strchr(argv[1],'@')==nullptr){
+				tlmp_error (MSG_U(E_EMAILNEEDED,"%s is not an email address\n"),argv[1]);
+			}else{
+				<call bo_writed_control_sendmail>(con,argv[1],argv[2],argv[3]);
+				<f ok>
+					printf ("success=%d\n",success);
+				</f>
+				</call>
+			}
 		}else if (strcmp(argv[0],"newacctresend")==0 && (argc==2 || argc==3)){
 			bool to_stdout = false;
 			if (argc == 3){
