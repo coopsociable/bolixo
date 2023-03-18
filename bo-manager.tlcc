@@ -1346,6 +1346,12 @@ static void print_configs (
 						fprintf (fout,"ip route add local 0.0.0.0/0 dev lo table 100\n");
 						fprintf (fout,"echo 0 >/proc/sys/net/ipv4/conf/lo/rp_filter\n");
 					#endif
+					// Add some rules to monitor the turnserver network usage.
+					// Normally, the server is globally available
+					for (auto n:{"udp","tcp"}){
+						fprintf (fout,"iptables -A INPUT -p %s -s 0.0.0.0/0 -d %s --dport 3478 -j ACCEPT\n",n,glocal.public_ip);
+						fprintf (fout,"iptables -A INPUT -p %s -s %s --sport 3478 -d 0.0.0.0/0 -j ACCEPT\n",n,glocal.public_ip);
+					}
 					glocal bool onerule = false;
 					<call loadfile>("/root/sshd.lst",true);
 					<f missing>
