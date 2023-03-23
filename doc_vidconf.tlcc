@@ -34,27 +34,6 @@
 
 using namespace std;
 
-struct WEBRTC{
-	bool first = false;
-	string description;
-	vector<string> candidates;
-	bool sent = false;
-	void clear(){
-		description.clear();
-		candidates.clear();
-		sent = false;
-	}
-	string send() {
-		string ret;
-		ret = string_f("VIDC_setdesc('%s');\n",documentd_escape(description).c_str());
-		for (auto &c:candidates){
-			ret += string_f("VIDC_setcand('%s');\n",documentd_escape(c).c_str());
-		}
-		sent = true;
-		return ret;
-	}
-};
-	
 struct WEBRTC_CON{
 	int fd;
 	string connectid;
@@ -67,7 +46,6 @@ class VIDCONF: public GAME{
 	std::string define_styles(bool mobile);
 	std::string define_functions(const DOC_CONTEXT &ctx, bool mobile);
 	std::string draw_board (bool mobile, unsigned docnum, std::string &script);
-	map<string,WEBRTC> webrtcs;
 	vector<WEBRTC_CON> webrtc_started;	// All connection having sent the "webrtcstart" command;
 	struct {	// Only one connection may request stats at a time
 			// only used by bofs. At some point, it may be part
@@ -564,8 +542,6 @@ void VIDCONF::exec (
 			}
 		}
 		if (wstats.connections.size()==0) stats.connectid.clear();	// The connection stats.connectid is gone
-		if (webrtcs.size() == 0) webrtcs[ctx.username].first = true;
-		WEBRTC &webrtc = webrtcs[ctx.username];
 		if (is_eq(var,"append")){
 			others.val = string_f("vidc_add('%s');\n",val);
 		}else if (is_eq(var,"webrtcstart")){
@@ -613,7 +589,6 @@ void VIDCONF::exec (
 			tlmp_warning ("webrtcstart fd=%d ctx.fd=%d val=%zu",fd,ctx.fd,var.val.size());
 			webrtc_started.emplace_back(fd,ctx.connectid);
 			if (var.val.size() > 0) res.emplace_back(move(var));
-			webrtc.clear();		// Remove all information from previous sessions
 		}else if (is_eq(var,"description")){
 			string peerid;
 			const char *pt = str_copyword(peerid,val);
