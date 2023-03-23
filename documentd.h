@@ -148,6 +148,7 @@ struct DOC_CONTEXT{
 	bool maywrite = false;
 	unsigned docnum = 0;
 	const char *connectid;
+	int fd =  -1;
 };
 struct FD_INFO{
 	std::string username;
@@ -164,7 +165,7 @@ class GAME{
 	bool has_waiting_users = false;		// Does this game display the list of waiting/connected users
 	std::set<std::string> last_waitings;	// Last set of connected users sent.
 	friend void doc_layout (struct _F_doc_layout &c, const char *id_prefix, GAME *game, const DOC_CONTEXT &ctx,
-		const DOC_UI_SPECS_receive &sp, const char *doc_suffix, bool scroll, VARVAL &v);
+		const DOC_UI_SPECS_receive &sp, const char *doc_suffix, bool scroll, bool is_full, VARVAL &v);
 protected:
 	std::map<int,FD_INFO> notification_fds;	// Handles waiting for notifications (with username)
 	std::vector<CHATLINE> chat;
@@ -294,7 +295,7 @@ public:
 	std::set<std::string> get_waiting_users();
 	void update_waiting_users(std::string &lines);
 	bool waiting_user(const char *username);
-	int del_notification_fd(int fd);
+	virtual int del_notification_fd(int fd);
 	const char *locate_event (unsigned &sequence);
 	void setgameid(PARAM_STRING _gameid){
 		gameid = _gameid.ptr;
@@ -398,7 +399,8 @@ struct _F_doc_layout{
 	virtual _F_doc_layout_vscroll( );
 };
 
-void doc_layout (_F_doc_layout &c, const char *id_prefix, GAME *game, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, const char *doc_suffix, bool scroll, VARVAL &v);
+void doc_layout (_F_doc_layout &c, const char *id_prefix, GAME *game, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp
+	, const char *doc_suffix, bool scroll, bool is_full, VARVAL &v);
 
 #include "documentd_req.h"
 
@@ -426,6 +428,7 @@ void documentd_imbeds(GAME *game, std::string &lines, const DOC_UI_SPECS_receive
 void documentd_insert_imbed(PARAM_STRING gameid, VARVAL &notify_var, DOCUMENT_EMBED &imbed, const DOC_UI_SPECS_receive &sp);
 std::string documentd_rel2abs (PARAM_STRING gameid, PARAM_STRING relpath);
 std::string documentd_js_loop_function(const char *board_prefix, const char *prefix);
+void documentd_action_reload(std::vector<VARVAL> &res);
 
 void fflush (DOC_WRITER *);
 char *fgets(char *s, int size, DOC_READER *r);

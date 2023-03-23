@@ -408,8 +408,10 @@ void GAME::draw_waiting_users(string &lines, unsigned width, unsigned height, co
 	lines += string_f("\tvar elm = document.getElementById('users-%s');\n",gameid.c_str());
 	lines += "\tvar txt = '';\n";
 	lines += "\tfor (var i=0; i<users.length; i++){\n";
-	lines += string_f("\t\ttxt += '<img style=\"border-radius: 50%%;\" width=%u src=/index.hc?webstep=5&image=/projects/'+users[i] + '/public/mini-photo.jpg><br>\\n';\n"
-		,width-4);
+	lines += string_f("\t\ttxt += `<div title=\"${users[i]}\" style=\"width:%u;\">"
+		"<img style=\"border-radius: 50%%;\" width=%u src=/index.hc?webstep=5&image=/projects/`+users[i] + '/public/mini-photo.jpg>"
+		"</div><br>\\n';\n"
+		,width-4,width-4);
 	lines += "\t}\n";
 	lines += "\telm.innerHTML = txt;\n";
 	lines += "}\n";
@@ -1675,6 +1677,7 @@ int main (int argc, char *argv[])
 					ctx.maywrite = maywrite;
 					ctx.docnum = docnum;
 					ctx.connectid = connectid;
+					ctx.fd = no;
 					bool success = documentd_playstep (glocal.programs,glocal.games,gameid,steps,ctx,sp,res,msg,unknown);
 					size_t size = 0;
 					for (auto &r:res) size += r.val.size();
@@ -1857,6 +1860,7 @@ int main (int argc, char *argv[])
 							rep_waitevent (true,"",rep,sequence);
 						}
 						{
+							// tlmp_warning ("waitevent no=%d,%d username=%s connectid=%s",glocal.no,no,username,connectid);
 							game->add_notification_fd(no,username,connectid);
 							if (!game->waiting_user(username)){
 								string line;
@@ -2193,6 +2197,7 @@ void doc_layout (
 	const DOC_UI_SPECS_receive &sp,
 	const char *doc_suffix,
 	bool scroll,
+	bool is_full,	// Document full browser tab mode
   	VARVAL &v)
 {
 	unsigned waiting_users_width = sp.mobile ? 62 : 42;
@@ -2207,8 +2212,13 @@ void doc_layout (
 	v.val += c.functions(sp,ctx,board_width,board_height);
 	v.val += "</script>\n";
 	glocal c;
+	glocal is_full;
 	<call button_bar>(game,sp.mobile,ctx.maywrite,v.val);
 	<f draw>
+		if (glocal.is_full){
+			documentd_bar_button (lines,BUTTON_RELOAD,documentd_menu_get_reload(specs),specs,false
+				,MSG_U(I_RELOADPAGE,"Reload browser page"));
+		}
 		glocal.c.menu_bar(specs,gameid,lines);
 	</f>
 	<f status>
@@ -2255,3 +2265,13 @@ void doc_layout (
 }
 </mod>
 
+/*
+	Request a refresh of the web page
+*/
+void documentd_action_reload(vector<VARVAL> &res)
+{
+	VARVAL var;
+	var.var = VAR_SCRIPT;
+	var.val = "callrefresh();\n";
+	res.emplace_back(move(var));
+}

@@ -140,9 +140,10 @@ static int vidconf_send (_F_vidconf_sock *c, FILE *fin, int nbchunk)
 }
 
 <mod>
-static void vidconf_sock(_F_vidconf_sock &c, CONTEXT &ctx, const char *docname, int timeout)
+static void vidconf_sock(_F_vidconf_sock &c, CONTEXT &ctx, const char *docname, int timeout, bool splitlines)
 {
 	glocal c;
+	glocal splitlines;
 	<obj TCPSERVER o>();
 	<f idle>
 		glocal.c.idle(endserver);
@@ -167,7 +168,15 @@ static void vidconf_sock(_F_vidconf_sock &c, CONTEXT &ctx, const char *docname, 
 			}
 			//printf ("now_running=%d msg=%zu\n",now_running,msg.size());
 			if (msg.size() > 0){
-				glocal.c.receive(msg.c_str(),endserver);
+				if (glocal.splitlines){
+					auto tb = str_cnv2lines(msg.c_str());
+					for (auto &l:tb){
+						glocal.c.receive(l.c_str(),endserver);
+						if (endserver) break;
+					}
+				}else{
+					glocal.c.receive(msg.c_str(),endserver);
+				}
 			}
 		}
 	</f>
@@ -190,6 +199,24 @@ static void vidconf_sock(_F_vidconf_sock &c, CONTEXT &ctx, const char *docname, 
 }
 </mod>
 <mod>
+static void vidconf_getjs(CONTEXT &ctx, const char *docname, FILE *fout)
+{
+	glocal fout;
+	<call vidconf_sock>(ctx,docname,60,true);
+	<f init>
+		send ("getjs:");
+	</f>
+	<f receive>
+		if (is_eq(line,"end")){
+			end = true;
+		}else{
+			fprintf (glocal.fout,"%s\n",line);
+		}
+	</f>
+	</call>
+}
+</mod>
+<mod>
 int bofs_vidconf (CONTEXT &ctx, int argc, char *argv[])
 {
 	glocal int ret = -1;
@@ -207,8 +234,14 @@ int bofs_vidconf (CONTEXT &ctx, int argc, char *argv[])
 				 "\n"
 				 "Commands are:\n"
 				 "\tgetstats\n"
+				 "\tlistusers\n"
 				 "\trecord\n"
 				 "\tsendvideo\n"
+				 "\tshow user|connectionid\n"
+				 "\n"
+				 "Test/dev commands:\n"
+				 "\tgetjs\n"
+				 "\twrtctest output-file\n"
 				)
 			);
 		setarg ('d',"docname",MSG_R(O_DOCNAME),glocal.docname,true);
@@ -249,7 +282,7 @@ int bofs_vidconf (CONTEXT &ctx, int argc, char *argv[])
 							exit (-1);
 						}
 					}
-					<call vidconf_sock>(glocal.ctx,glocal.docname,1);
+					<call vidconf_sock>(glocal.ctx,glocal.docname,1,false);
 					<f init>
 						if (vidconf_send (this,glocal.fin,10) == -1) end = true;
 					</f>
@@ -263,13 +296,13 @@ int bofs_vidconf (CONTEXT &ctx, int argc, char *argv[])
 					if (glocal.fin != stdin) fclose (glocal.fin);
 				}
 			}else if (is_eq(arg,"record")){
-				<call vidconf_sock>(glocal.ctx,glocal.docname,60);
+				<call vidconf_sock>(glocal.ctx,glocal.docname,60,false);
 				<f receive>
 					printf ("line=%s\n",line);
 				</f>
 				</call>
 			}else if (is_eq(arg,"getstats")){
-				<call vidconf_sock>(glocal.ctx,glocal.docname,60);
+				<call vidconf_sock>(glocal.ctx,glocal.docname,60,false);
 				<f init>
 					send ("getstats:");
 				</f>
@@ -286,6 +319,51 @@ int bofs_vidconf (CONTEXT &ctx, int argc, char *argv[])
 						}
 						if (l=="endstats") end = true;
 					}
+				</f>
+				</call>
+			}else if (is_eq(arg,"listusers")){
+				<call vidconf_sock>(glocal.ctx,glocal.docname,60,true);
+				<f init>
+					send ("listusers:");
+				</f>
+				<f receive>
+					const char *pt;
+					if (is_start_any_of(line,pt,"user ")){
+						printf ("%s\n",pt);
+					}else if (is_eq(line,"end")){
+						end = true;
+					}
+				</f>
+				</call>
+			}else if (is_eq(arg,"show") && argc == 2){
+				glocal const char *user = argv[1];
+				<call vidconf_sock>(glocal.ctx,glocal.docname,60,true);
+				<f init>
+					send (string_f("show:%s",glocal.user));
+				</f>
+				<f receive>
+					printf ("line=%s\n",line);
+					end = true;
+				</f>
+				</call>
+			}else if (is_eq(arg,"getjs")){
+				// Get the client javascript used to establish a video conference
+				vidconf_getjs (glocal.ctx,glocal.docname,stdout);
+			}else if (is_eq(arg,"wrtctest") && argc == 2){
+				// Generate a javascript file and execute it
+				<call savefile>(argv[1],false);
+				<f dowrite>
+					fprintf (fout,"var location={hostname: 'test1.bolixo.org'};\n");
+					vidconf_getjs (glocal.ctx,glocal.docname,fout);
+					glocal fout;
+					<call loadfile>("scripts/notesocket.js",false);
+					<f oneline>
+						fputs(line,glocal.fout);
+						return 0;
+					</f>
+					</call>
+					fprintf (fout,"noteconnect('ws','test1.bolixo.org','%s','%s');\n",glocal.docname,glocal.ctx.hsessionid.c_str());
+					return 0;
 				</f>
 				</call>
 			}else{

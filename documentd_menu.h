@@ -61,3 +61,6 @@ struct VIDEO_MENU{
 	std::string svg_config;
 	VIDEO_MENU(DOC_BUTTON_SPECS &specs);
 };
+
+#define BUTTON_RELOAD 99
+std::string documentd_menu_get_reload(DOC_BUTTON_SPECS &specs);
