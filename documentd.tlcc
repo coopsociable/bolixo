@@ -377,6 +377,17 @@ std::set<string> GAME::get_waiting_users()
 	return ret;
 }
 static const char *nodename = nullptr;
+
+const char *documentd_getnodename()
+{
+	const char *ret = nodename;
+	const char *pt;
+	if (is_start_any_ofnc(nodename,pt,"http://","https://")){
+		ret = pt;
+	}
+	return ret;
+}
+
 std::string GAME::format_draw_waiting (const std::set<std::string> &waitings)
 {
 	string line;
@@ -408,7 +419,8 @@ void GAME::draw_waiting_users(string &lines, unsigned width, unsigned height, co
 	lines += string_f("\tvar elm = document.getElementById('users-%s');\n",gameid.c_str());
 	lines += "\tvar txt = '';\n";
 	lines += "\tfor (var i=0; i<users.length; i++){\n";
-	lines += string_f("\t\ttxt += `<div title=\"${users[i]}\" style=\"width:%u;\">"
+	// beware of back quote ` in the following 2 lines.
+	lines += string_f("\t\ttxt += `<div title=\"${users[i]}\" style=\"width:%u;\" onclick=gameaction(event,'show:${users[i]}')>"
 		"<img style=\"border-radius: 50%%;\" width=%u src=/index.hc?webstep=5&image=/projects/`+users[i] + '/public/mini-photo.jpg>"
 		"</div><br>\\n';\n"
 		,width-4,width-4);
@@ -1677,7 +1689,6 @@ int main (int argc, char *argv[])
 					ctx.maywrite = maywrite;
 					ctx.docnum = docnum;
 					ctx.connectid = connectid;
-					ctx.fd = no;
 					bool success = documentd_playstep (glocal.programs,glocal.games,gameid,steps,ctx,sp,res,msg,unknown);
 					size_t size = 0;
 					for (auto &r:res) size += r.val.size();

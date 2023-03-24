@@ -148,7 +148,6 @@ struct DOC_CONTEXT{
 	bool maywrite = false;
 	unsigned docnum = 0;
 	const char *connectid;
-	int fd =  -1;
 };
 struct FD_INFO{
 	std::string username;
@@ -404,6 +403,7 @@ void doc_layout (_F_doc_layout &c, const char *id_prefix, GAME *game, const DOC_
 
 #include "documentd_req.h"
 
+const char *documentd_getnodename();
 std::string documentd_escape(PARAM_STRING msg);
 std::string documentd_escape_html(PARAM_STRING msg);
 void documentd_eraselast (std::string &txt);

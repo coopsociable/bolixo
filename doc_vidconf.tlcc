@@ -234,7 +234,11 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile)
 		"\t\tpeerid: peerid,\n"
 		"\t\tmakeoffer: false,\n"
 		"\t\tstream: null,\n"
+		"\t\tignoreOffer: false,\n"
 		"\t\tpc: new RTCPeerConnection(config),\n"
+		"\t};\n"
+		"\tconnect.pc.onconnectionstatechange = (event) => {\n"
+		"\t\tconsole.log('connectionstate='+event.target.connectionState);\n"
 		"\t};\n"
 		// Closure for ontrack
 		"\tfunction clo_ontrack(con){\n"
@@ -287,15 +291,15 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile)
 		"\t}\n"
 		"}\n"
 
-
-		"let ignoreOffer = false;\n"
-		"async function receiveoffer (connect,{ data: { description, candidate } }) {\n"
+		"var tboffer=[];\n"
+		"async function receiveoffer (connect,description,candidate) {\n"
 		"\ttry {\n"
 		"\t\tif (description) {\n"
 		"\t\t\tconst offerCollision = description.type === 'offer'\n"
 		"\t\t\t\t&& (connect.makingOffer || connect.pc.signalingState !== 'stable');\n"
-		"\t\t\t	ignoreOffer = !connect.polite && offerCollision;\n"
-		"\t\t\tif (ignoreOffer) {\n"
+		"\t\t\tconnect.ignoreOffer = !connect.polite && offerCollision;\n"
+		"\t\t\tif (connect.ignoreOffer) {\n"
+		"\t\t\t\tendoffer();\n"
 		"\t\t\t\treturn;\n"
 		"\t\t\t}\n"
 		"\t\t\tawait connect.pc.setRemoteDescription(description);\n"
@@ -308,7 +312,7 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile)
 		"\t\t\ttry {\n"
 		"\t\t\t\tawait connect.pc.addIceCandidate(candidate);\n"
 		"\t\t\t} catch (err) {\n"
-		"\t\t\t\tif (!ignoreOffer) {\n"
+		"\t\t\t\tif (!connect.ignoreOffer) {\n"
 		"\t\t\t\t\tthrow err;\n"
 		"\t\t\t\t}\n"
 		"\t\t\t}\n"
@@ -316,20 +320,38 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile)
 		"\t} catch (err) {\n"
 		"\t\tconsole.error(err);\n"
 		"\t}\n"
-		"};\n"
+		"\tendoffer();\n"
+		"}\n"
+
+		"function endoffer(){\n"
+		"\tconsole.log('receiveoffer done');\n"
+		"\ttboffer.shift();\n"
+		"\tif (tboffer.length > 0){\n"
+		"\t\toff=tboffer[0];\n"
+		"\t\treceiveoffer(off.connect,off.description,off.candidate);\n"
+		"\t}\n"
+		"}\n"
+
+		// Make sure only one receive offer is performed at a time
+		"function pushoffer(connect,description,candidate){\n"
+		"\ttboffer.push({connect:connect,description:description,candidate:candidate});\n"
+		"\tconsole.log('tboffer.length='+tboffer.length);\n"
+		"\tif(tboffer.length == 1) receiveoffer(connect,description,candidate);\n"
+		"}\n"
 
 		"function VIDC_setdesc(peerid,description){\n"
 		"\tconsole.log ('receive description '+peerid);\n"
 		"\tconst connect = findconnect(peerid);\n"
-		"\treceiveoffer(connect,{data: {description: JSON.parse(description), candidate: null}});\n"
+		"\tpushoffer(connect,JSON.parse(description),null);\n"
 		"}\n"
 
 		"function VIDC_setcand(peerid,candidate){\n"
 		"\tconst connect = findconnect(peerid);\n"
 		"\tconsole.log ('receive candidate '+peerid+' connect='+connect);\n"
-		"\treceiveoffer(connect,{data: {description: null, candidate: JSON.parse(candidate)}});\n"
+		"\tpushoffer(connect,null,JSON.parse(candidate));\n"
 		"}\n"
 
+		// This is sent to select which video feed must be used
 		"function VIDC_show(peerid){\n"
 		"\tconst connect = findconnect(peerid);\n"
 		"\tif (connect == null){\n"
@@ -338,10 +360,15 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile)
 		"\t\tconsole.log ('show peer '+peerid+' not connected yet');\n"
 		"\t}else{\n"
 		"\t\tconsole.log ('show '+peerid+' connect='+connect+ ' state='+connect.pc.connectionState);\n"
-		"\t\tselfVideo.srcObject = connect.stream;\n"
+		"\t\tif (selfVideo.srcObject != connect.stream){\n"
+		"\t\t\tselfVideo.srcObject = connect.stream;\n"
+		"\t\t}else{\n"
+		"\t\t\tconsole.log('stream already selected');\n"
+		"\t\t}\n"
 		"\t}\n"
 		"}\n"
 
+		// This is sent to remove a peer connection. The user just close the video conference tab for example.
 		"function VIDC_delcon(peerid){\n"
 		"\tconsole.log('0 connects.length='+connects.length);\n"
 		"\tfor(let i=0; i<connects.length; i++){\n"
@@ -586,7 +613,7 @@ void VIDCONF::exec (
 					break;
 				}
 			}
-			tlmp_warning ("webrtcstart fd=%d ctx.fd=%d val=%zu",fd,ctx.fd,var.val.size());
+			tlmp_warning ("webrtcstart fd=%d val=%zu",fd,var.val.size());
 			webrtc_started.emplace_back(fd,ctx.connectid);
 			if (var.val.size() > 0) res.emplace_back(move(var));
 		}else if (is_eq(var,"description")){
@@ -648,6 +675,13 @@ void VIDCONF::exec (
 		}else if (is_eq(var,"show")){
 			// We accept a user name or a connection id.
 			// This command may be sent by bofs or by a conference user (javascript in browser).
+			// If it is a user name, it may contains a fully qualified user@server.
+			// If server is this server, we only keep the user
+			string user,node;
+			if (splitline(val,'@',user,node) && is_eq(node,documentd_getnodename())){
+				val = user.c_str();
+			}
+tlmp_warning ("show %s",val);
 			USERS_NOTIFIES peers;
 			for (auto &n:notification_fds){
 				if (is_eq(n.second.connectid,val) || is_eq(n.second.username,val)){
@@ -657,6 +691,7 @@ void VIDCONF::exec (
 						for (auto &w:webrtc_started){
 							peers.connections.push_back(w.fd);
 						}
+tlmp_warning ("show 2 %s %s size=%zu",n.second.connectid.c_str(),n.second.username.c_str(),peers.connections.size());
 						break;
 					}
 				}
