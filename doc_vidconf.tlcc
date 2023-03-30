@@ -269,9 +269,9 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile)
 		"\tconnect.pc.onnegotiationneeded = clo_connect(connect);\n"
 
 		"\tconnect.pc.onicecandidate = ({ candidate }) => {\n"
-		"\tconsole.log ('Send Candidate to '+connect.peerid);\n"
-		"\t//console.log (JSON.stringify(candidate,null,0));\n"
-		"\tnotesocket.send ('candidate:'+connect.peerid+' '+JSON.stringify(candidate,null,0));\n"
+		"\t\tconsole.log ('Send Candidate to '+connect.peerid);\n"
+		"\t\t//console.log (JSON.stringify(candidate,null,0));\n"
+		"\t\tnotesocket.send ('candidate:'+connect.peerid+' '+JSON.stringify(candidate,null,0));\n"
 		"\t};\n"
 		"\tconnects.push(connect);\n"
 		"\tfor (const track of selfStream.getTracks()) {\n"
@@ -382,6 +382,16 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile)
 		"\t}\n"
 		"\tconsole.log('0 connects.length='+connects.length);\n"
 		"}\n"
+		// Get the connection states
+		"function VIDC_getstates(){\n"
+		"\tlet res='';\n"
+		"\tfor (let i=0; i<connects.length; i++){\n"
+		"\t\tlet con = connects[i];\n"
+		"\t\tres += con.peerid + '=' + con.pc.connectionState + ' ';"
+		"\t}\n"
+		"\t\tnotesocket.send('states:'+res);\n"
+		"}\n"
+		// Get the stats for all connections
 		"function VIDC_getstats(){\n"
 		"\tvar  proms = [];\n"
 		"\tfor (let i=0; i<connects.length; i++){\n"
@@ -637,6 +647,29 @@ void VIDCONF::exec (
 				peer.val = string_f("VIDC_setcand('%s','%s');\n",ctx.connectid,documentd_escape(pt).c_str());
 				unotifies.emplace_back(move(peer));
 			}
+		}else if (is_eq(var,"getstates")){
+			// Request connection status from all video conference users
+			stats.nbreq = others.connections.size();
+			if (stats.nbreq > 0){
+				stats.connectid = ctx.connectid;
+				others.val = "VIDC_getstates();\n";
+			}else{
+				VARVAL var;
+				var.var = VAR_SCRIPT;
+				var.val = string_f("states %s\nend\n",MSG_U(E_NOUSERSINCONF,"No users in conference"));
+				res.emplace_back(move(var));
+			}	
+			clear_status_ok = false;
+		}else if (is_eq(var,"states")){
+			tlmp_warning ("states from %s: %s",ctx.username,val);
+			if (wstats.connections.size() > 0){
+				wstats.val = string_f("states %s %s %s\n",ctx.username,ctx.connectid,val);
+				stats.nbreq--;
+				if (stats.nbreq == 0){
+					wstats.val += "end\n";
+					stats.connectid.clear();
+				}
+			}
 		}else if (is_eq(var,"getstats")){
 			// Request stats from all video conference users
 			stats.nbreq = others.connections.size();
@@ -646,16 +679,17 @@ void VIDCONF::exec (
 			}else{
 				VARVAL var;
 				var.var = VAR_SCRIPT;
-				var.val = string_f("stats %s\nendstats\n",MSG_U(E_NOUSERSINCONF,"No users in conference"));
+				var.val = string_f("stats %s\nendstats\n",MSG_R(E_NOUSERSINCONF));
 				res.emplace_back(move(var));
 			}	
+			clear_status_ok = false;
 		}else if (is_eq(var,"stats")){
 			tlmp_warning ("stats from %s: %s",ctx.username,val);
 			if (wstats.connections.size() > 0){
 				wstats.val = string_f("stats %s %s\n",ctx.username,val);
 				stats.nbreq--;
 				if (stats.nbreq == 0){
-					wstats.val += "endstats\n";
+					wstats.val += "end\n";
 					stats.connectid.clear();
 				}
 			}
@@ -672,6 +706,7 @@ void VIDCONF::exec (
 			}
 			var.val += "end\n";
 			res.emplace_back(move(var));
+			clear_status_ok = false;
 		}else if (is_eq(var,"show")){
 			// We accept a user name or a connection id.
 			// This command may be sent by bofs or by a conference user (javascript in browser).
@@ -699,7 +734,9 @@ tlmp_warning ("show 2 %s %s size=%zu",n.second.connectid.c_str(),n.second.userna
 			if (peers.connections.size() > 0){
 				unotifies.emplace_back(move(peers));
 			}
+			clear_status_ok = false;
 		}else if (is_eq(var,"getjs")){
+			clear_status_ok = false;
 			// Get the client javascript code
 			VARVAL var;
 			var.var = VAR_SCRIPT;
