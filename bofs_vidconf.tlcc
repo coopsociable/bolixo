@@ -233,6 +233,7 @@ int bofs_vidconf (CONTEXT &ctx, int argc, char *argv[])
 				 "bofs vidconf command ...\n"
 				 "\n"
 				 "Commands are:\n"
+				 "\tgetlogs\n"
 				 "\tgetstates\n"
 				 "\tgetstats\n"
 				 "\tlistusers\n"
@@ -331,6 +332,28 @@ int bofs_vidconf (CONTEXT &ctx, int argc, char *argv[])
 					const char *pt;
 					if (is_start_any_of(line,pt,"states ")){
 						printf ("%s\n",pt);
+					}else if (is_eq(line,"end")){
+						end = true;
+					}
+				</f>
+				</call>
+			}else if (is_eq(arg,"getlogs")){
+				<call vidconf_sock>(glocal.ctx,glocal.docname,60,true);
+				<f init>
+					send ("getlogs:");
+				</f>
+				<f receive>
+					const char *pt;
+					if (is_start_any_of(line,pt,"logs ")){
+						string user,peerid;
+						pt = str_copyword (user,pt);
+						pt = str_copyword (peerid,pt);
+						pt = str_skip(pt);
+						auto tb = str_splitline (pt,'\r');
+						printf ("%s %s\n",peerid.c_str(),user.c_str());
+						for (auto &t:tb){
+							printf ("\t\t%s\n",t.c_str());
+						}
 					}else if (is_eq(line,"end")){
 						end = true;
 					}

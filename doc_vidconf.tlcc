@@ -161,7 +161,10 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile)
 			tlmp_error ("Empty secret for video conference");
 		}
 	}
-	string lines = 
+	string lines;
+	#if 0
+	// old code
+	lines = 
 		"const b64tobin = (b64Data) => {\n"
 		"\tconst byteCharacters = atob(b64Data);\n"
 		"\tconst buf = new ArrayBuffer(byteCharacters.length);\n"
@@ -183,6 +186,7 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile)
 		"\t}\n"
 		"}\n"
 		;
+	#endif
 	lines += "function VIDC_updmsg(color,msg){\n";
 	lines += string_f("\tvar elm = document.getElementById('msg-%s');\n",gameid.c_str());
 	lines += "\tif (elm != null){\n";
@@ -214,6 +218,7 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile)
 
 	lines +=
 		"var connects = [];\n"
+		"var logs='';\n"
 		"function findconnect(peerid){\n"
 		"\tvar ret=null;\n"
 		"\tfor (let i=0; i<connects.length; i++){\n"
@@ -226,20 +231,28 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile)
 		"}\n"
 		"var selfVideo = null;\n"
 		"var selfStream = null;\n"
-	 	"var polite = null;\n"
 		"function VIDC_setpolite(pol,peerid){\n"
 		"\tconsole.log ('polite='+pol+' peerid='+peerid);\n"
 		"\tconst connect = {\n"
 		"\t\tpolite: pol,\n"
 		"\t\tpeerid: peerid,\n"
-		"\t\tmakeoffer: false,\n"
+		"\t\tmakingOffer: false,\n"
+		"\t\tsentdesc: false,\n"
+		"\t\ttboffer:[],\n"
+		"\t\tnbpushdesc: 0,\n"
+		"\t\tnbpushcand: 0,\n"
 		"\t\tstream: null,\n"
 		"\t\tignoreOffer: false,\n"
 		"\t\tpc: new RTCPeerConnection(config),\n"
 		"\t};\n"
 		"\tconnect.pc.onconnectionstatechange = (event) => {\n"
-		"\t\tconsole.log('connectionstate='+event.target.connectionState);\n"
+		"\t\tlogs += connect.peerid + ' connectionstate='+event.target.connectionState + '\\r';\n"
 		"\t};\n"
+
+		"\tconnect.pc.onicegatheringstatechange = (event) => {\n"
+		"\t\tlogs += 'gatheringstatechange ' + connect.peerid + ' state=' + event.target.iceGatheringState + '\\r';\n"
+		"\t};\n"
+
 		// Closure for ontrack
 		"\tfunction clo_ontrack(con){\n"
 		"\t\treturn function ({ track, streams }){\n"
@@ -247,9 +260,11 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile)
 		"\t\t\t\tconsole.log('selfVideo='+selfVideo+' con='+con);\n"
 		"\t\t\t\tselfVideo.srcObject = streams[0];\n"
 		"\t\t\t\tcon.stream = streams[0];\n"
+		"\t\t\t\tlogs += 'onunmute ' + con.peerid + ' type=' + track.kind + '\\r';\n"
 		"\t\t\t};\n"
 		"\t\t};\n"
 		"\t}\n"
+
 		"\tconnect.pc.ontrack = clo_ontrack(connect);\n"
 		// Special closure for the object, see onnegotiontionneeded below
 		"\tfunction clo_connect(con){\n"
@@ -259,8 +274,14 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile)
 		"\t\t\t\tawait con.pc.setLocalDescription();\n"
 		"\t\t\t\tconsole.log ('Send localDescription');\n"
 		"\t\t\t\tnotesocket.send('description:'+con.peerid+' '+JSON.stringify(con.pc.localDescription,null,0));\n"
+		"\t\t\t\tcon.sentdesc = true;\n"
+		"\t\t\t\tlogs += 'send description to ' + con.peerid + ' tboffer.length=' + con.tboffer.length + '\\r';\n"
+		"\t\t\t\tif (con.tboffer.length > 0){\n"
+		"\t\t\t\t\tlet off=con.tboffer[0];\n"
+		"\t\t\t\t\treceiveoffer(off.connect,off.description,off.candidate);\n"
+		"\t\t\t\t}\n"
 		"\t\t\t} catch (err) {\n"
-		"\t\t\t\tconsole.error(err);\n"
+		"\t\t\t\tlogs += 'onnegotiationneeded error ' + err + '\\r';\n"
 		"\t\t\t} finally {\n"
 		"\t\t\t\tcon.makingOffer = false;\n"
 		"\t\t\t}\n"
@@ -268,13 +289,21 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile)
 		"\t}\n"
 		"\tconnect.pc.onnegotiationneeded = clo_connect(connect);\n"
 
-		"\tconnect.pc.onicecandidate = ({ candidate }) => {\n"
-		"\t\tconsole.log ('Send Candidate to '+connect.peerid);\n"
-		"\t\t//console.log (JSON.stringify(candidate,null,0));\n"
-		"\t\tnotesocket.send ('candidate:'+connect.peerid+' '+JSON.stringify(candidate,null,0));\n"
-		"\t};\n"
+		"\tfunction clo_candidate(con){\n"
+		"\t\treturn function ({ candidate }){\n"
+		"\t\t\tif(candidate==null){\n"
+		"\t\t\t\tlogs += 'Send Candidate null to '+con.peerid + '\\r';\n"
+		"\t\t\t}else{\n"
+		"\t\t\t\tlogs += 'Send Candidate to '+con.peerid + '\\r';\n"
+		"\t\t\t}\n"
+		"\t\t\tnotesocket.send ('candidate:'+con.peerid+' '+JSON.stringify(candidate,null,0));\n"
+		"\t\t};\n"
+		"\t}\n"
+		"\tconnect.pc.onicecandidate = clo_candidate(connect);\n"
+
 		"\tconnects.push(connect);\n"
 		"\tfor (const track of selfStream.getTracks()) {\n"
+		"\t\tlogs += 'addTrack ' + connect.peerid + ' kind=' + track.kind + '\\r';\n"
 		"\t\tconnect.pc.addTrack(track, selfStream);\n"
 		"\t}\n"
 		"}\n"
@@ -287,11 +316,10 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile)
 		"\t\tselfVideo.srcObject = selfStream;\n"
 		"\t\tnotesocket.send('webrtcstart:');\n"
 		"\t} catch (err) {\n"
-		"\t\tconsole.error(err);\n"
+		"\t\tlogs += 'start ' + err + '\\r';\n"
 		"\t}\n"
 		"}\n"
 
-		"var tboffer=[];\n"
 		"async function receiveoffer (connect,description,candidate) {\n"
 		"\ttry {\n"
 		"\t\tif (description) {\n"
@@ -299,44 +327,55 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile)
 		"\t\t\t\t&& (connect.makingOffer || connect.pc.signalingState !== 'stable');\n"
 		"\t\t\tconnect.ignoreOffer = !connect.polite && offerCollision;\n"
 		"\t\t\tif (connect.ignoreOffer) {\n"
-		"\t\t\t\tendoffer();\n"
+		"\t\t\t\tlogs += 'ignoreOffer '+connect.peerid+' type='+description.type+'\\r';\n"
+		"\t\t\t\tendoffer(connect);\n"
 		"\t\t\t\treturn;\n"
 		"\t\t\t}\n"
+		"\t\t\tlogs += 'setRemoteDescription '+ connect.peerid + ' type=' + description.type + '\\r';\n"
 		"\t\t\tawait connect.pc.setRemoteDescription(description);\n"
 		"\t\t\tif (description.type === 'offer') {\n"
 		"\t\t\t\tawait connect.pc.setLocalDescription();\n"
 		"\t\t\t\tnotesocket.send ('description:'+connect.peerid+' '+JSON.stringify(connect.pc.localDescription,null,0));\n"
-		"\t\t\t\tconsole.log ('offer send localDescription');\n"
+		"\t\t\t\tlogs += 'offer send description to ' + connect.peerid + ' type=' + connect.pc.localDescription.type + '\\r';\n"
 		"\t\t\t}\n"
-		"\t\t} else if (candidate) {\n"
+		//"\t\t} else if (candidate) {\n"
+		"\t\t} else {\n"
+		"\t\t\tlogs += 'addIceCandidate from ' + connect.peerid + (candidate==null ? ' null' : '') + '\\r';\n"
 		"\t\t\ttry {\n"
 		"\t\t\t\tawait connect.pc.addIceCandidate(candidate);\n"
 		"\t\t\t} catch (err) {\n"
+		"\t\t\t\tlogs += 'addIceCandidate error ' + err + '\\r';\n"
 		"\t\t\t\tif (!connect.ignoreOffer) {\n"
 		"\t\t\t\t\tthrow err;\n"
 		"\t\t\t\t}\n"
 		"\t\t\t}\n"
 		"\t\t}\n"
 		"\t} catch (err) {\n"
-		"\t\tconsole.error(err);\n"
+		"\t\tlogs += 'receiveoffer error ' + err + '\\r';\n"
 		"\t}\n"
-		"\tendoffer();\n"
+		"\tendoffer(connect);\n"
 		"}\n"
 
-		"function endoffer(){\n"
+		"function endoffer(connect){\n"
 		"\tconsole.log('receiveoffer done');\n"
-		"\ttboffer.shift();\n"
-		"\tif (tboffer.length > 0){\n"
-		"\t\toff=tboffer[0];\n"
+		"\tconnect.tboffer.shift();\n"
+		"\tif (connect.tboffer.length > 0){\n"
+		"\t\tlet off=connect.tboffer[0];\n"
 		"\t\treceiveoffer(off.connect,off.description,off.candidate);\n"
 		"\t}\n"
 		"}\n"
 
 		// Make sure only one receive offer is performed at a time
+		// we count null candidate.
 		"function pushoffer(connect,description,candidate){\n"
-		"\ttboffer.push({connect:connect,description:description,candidate:candidate});\n"
-		"\tconsole.log('tboffer.length='+tboffer.length);\n"
-		"\tif(tboffer.length == 1) receiveoffer(connect,description,candidate);\n"
+		"\tconnect.tboffer.push({connect:connect,description:description,candidate:candidate});\n"
+		"\tif (description != null){\n"
+		"\t\t connect.nbpushdesc++;\n"
+		"\t}else{\n"
+		"\t\tconnect.nbpushcand++;\n"
+		"\t}\n"
+		"\tconsole.log('tboffer.length='+connect.tboffer.length);\n"
+		"\tif(connect.sentdesc && connect.tboffer.length == 1) receiveoffer(connect,description,candidate);\n"
 		"}\n"
 
 		"function VIDC_setdesc(peerid,description){\n"
@@ -387,9 +426,20 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile)
 		"\tlet res='';\n"
 		"\tfor (let i=0; i<connects.length; i++){\n"
 		"\t\tlet con = connects[i];\n"
-		"\t\tres += con.peerid + '=' + con.pc.connectionState + ' ';"
+		"\t\tres += con.peerid + '=' + con.pc.connectionState + '=' + con.pc.iceConnectionState + ' ';"
 		"\t}\n"
 		"\t\tnotesocket.send('states:'+res);\n"
+		"}\n"
+		// Get the logs, reset the logs and the push stats
+		"function VIDC_getlogs(){\n"
+		"\tlet tmplogs=logs;\n"
+		"\tfor (let i=0; i<connects.length; i++){\n"
+		"\t\tlet con = connects[i];\n"
+		"\t\ttmplogs += con.peerid + ' tboffer.length='+con.tboffer.length+' nbpushdesc='+con.nbpushdesc+' nbpushcand='+con.nbpushcand+'\\r';\n"
+		"\t\tcon.nbpushdesc = con.nbpushcand = 0;\n"
+		"\t}\n"
+		"\tnotesocket.send('logs:'+tmplogs);\n"
+		"\tlogs='';\n"
 		"}\n"
 		// Get the stats for all connections
 		"function VIDC_getstats(){\n"
@@ -623,13 +673,14 @@ void VIDCONF::exec (
 					break;
 				}
 			}
-			tlmp_warning ("webrtcstart fd=%d val=%zu",fd,var.val.size());
+			// tlmp_warning ("webrtcstart fd=%d val=%zu",fd,var.val.size());
 			webrtc_started.emplace_back(fd,ctx.connectid);
 			if (var.val.size() > 0) res.emplace_back(move(var));
 		}else if (is_eq(var,"description")){
 			string peerid;
 			const char *pt = str_copyword(peerid,val);
 			int fd = findpeer(peerid);
+			// tlmp_warning ("description %s to %s fd=%d user=%s len=%zu",ctx.connectid,peerid.c_str(),fd,ctx.username,strlen(pt));
 			if (fd != -1){
 				USERS_NOTIFIES peer;	// Message sent to the peer
 				peer.connections.push_back(fd);
@@ -640,7 +691,7 @@ void VIDCONF::exec (
 			string peerid;
 			const char *pt = str_copyword(peerid,val);
 			int fd = findpeer(peerid);
-			//tlmp_warning ("peerid=%s fd=%d user=%s candidate=%s",peerid.c_str(),fd,ctx.username,pt);
+			// tlmp_warning ("candidate %s to %s fd=%d user=%s len=%zu",ctx.connectid,peerid.c_str(),fd,ctx.username,strlen(pt));
 			if (fd != -1){
 				USERS_NOTIFIES peer;	// Message sent to the peer
 				peer.connections.push_back(fd);
@@ -661,9 +712,32 @@ void VIDCONF::exec (
 			}	
 			clear_status_ok = false;
 		}else if (is_eq(var,"states")){
-			tlmp_warning ("states from %s: %s",ctx.username,val);
+			// tlmp_warning ("states from %s: %s",ctx.username,val);
 			if (wstats.connections.size() > 0){
 				wstats.val = string_f("states %s %s %s\n",ctx.username,ctx.connectid,val);
+				stats.nbreq--;
+				if (stats.nbreq == 0){
+					wstats.val += "end\n";
+					stats.connectid.clear();
+				}
+			}
+		}else if (is_eq(var,"getlogs")){
+			// Request connection logs from all video conference users
+			stats.nbreq = others.connections.size();
+			if (stats.nbreq > 0){
+				stats.connectid = ctx.connectid;
+				others.val = "VIDC_getlogs();\n";
+			}else{
+				VARVAL var;
+				var.var = VAR_SCRIPT;
+				var.val = string_f("logs %s\nend\n",MSG_R(E_NOUSERSINCONF));
+				res.emplace_back(move(var));
+			}	
+			clear_status_ok = false;
+		}else if (is_eq(var,"logs")){
+			// tlmp_warning ("logs from %s: %s",ctx.username,val);
+			if (wstats.connections.size() > 0){
+				wstats.val = string_f("logs %s %s %s\n",ctx.username,ctx.connectid,val);
 				stats.nbreq--;
 				if (stats.nbreq == 0){
 					wstats.val += "end\n";
@@ -684,7 +758,7 @@ void VIDCONF::exec (
 			}	
 			clear_status_ok = false;
 		}else if (is_eq(var,"stats")){
-			tlmp_warning ("stats from %s: %s",ctx.username,val);
+			// tlmp_warning ("stats from %s: %s",ctx.username,val);
 			if (wstats.connections.size() > 0){
 				wstats.val = string_f("stats %s %s\n",ctx.username,val);
 				stats.nbreq--;
@@ -716,7 +790,6 @@ void VIDCONF::exec (
 			if (splitline(val,'@',user,node) && is_eq(node,documentd_getnodename())){
 				val = user.c_str();
 			}
-tlmp_warning ("show %s",val);
 			USERS_NOTIFIES peers;
 			for (auto &n:notification_fds){
 				if (is_eq(n.second.connectid,val) || is_eq(n.second.username,val)){
@@ -726,7 +799,6 @@ tlmp_warning ("show %s",val);
 						for (auto &w:webrtc_started){
 							peers.connections.push_back(w.fd);
 						}
-tlmp_warning ("show 2 %s %s size=%zu",n.second.connectid.c_str(),n.second.username.c_str(),peers.connections.size());
 						break;
 					}
 				}
