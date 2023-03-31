@@ -1470,13 +1470,6 @@ int main (int argc, char *argv[])
 				}
 			}
 		</f>
-		<f idle>
-			for (auto &g:glocal.games){
-				string line;
-				g.second->update_waiting_users(line);
-				if (line.size() > 0) g.second->add_notification(line);
-			}
-		</f>
 		<f receive>
 			debug_printf (D_PROTO,"receive line: %s\n",line);
 			HANDLE_INFO *c = (HANDLE_INFO*)info.data;
@@ -1983,7 +1976,16 @@ int main (int argc, char *argv[])
 				daemon_init(glocal.pidfile,glocal.user);
 			}
 			open_instrument_file();
-			s.loop();
+			<obj FORKTASK idle>(5);
+			<f main>
+				for (auto &g:glocal.games){
+					string line;
+					g.second->update_waiting_users(line);
+					if (line.size() > 0) g.second->add_notification(line);
+				}
+			</f>
+			</obj>
+			netevent_loop(s,idle);
 			ret = 0;
 		}
 		return ret;
