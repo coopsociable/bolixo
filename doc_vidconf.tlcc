@@ -47,6 +47,7 @@ class VIDCONF: public GAME{
 	std::string define_functions(const DOC_CONTEXT &ctx, bool mobile);
 	std::string draw_board (bool mobile, unsigned docnum, std::string &script);
 	vector<WEBRTC_CON> webrtc_started;	// All connection having sent the "webrtcstart" command;
+	string showing;		// Which user is currently shown
 	struct {	// Only one connection may request stats at a time
 			// only used by bofs. At some point, it may be part
 			// of the user interface to help debug issues.
@@ -217,8 +218,9 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile)
 
 
 	lines +=
-		"var connects = [];\n"
-		"var logs='';\n"
+		"var connects = [];\n"	// List of all peer connections
+		"var logs='';\n"	// Message stored and retrieved by VIDC_getlogs()
+		"var showing='';\n"	// peer currently shown in the video tag
 		"function findconnect(peerid){\n"
 		"\tvar ret=null;\n"
 		"\tfor (let i=0; i<connects.length; i++){\n"
@@ -258,7 +260,7 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile)
 		"\t\treturn function ({ track, streams }){\n"
 		"\t\t\ttrack.onunmute = () => {\n"
 		"\t\t\t\tconsole.log('selfVideo='+selfVideo+' con='+con);\n"
-		"\t\t\t\tselfVideo.srcObject = streams[0];\n"
+		"\t\t\t\tif(con.peerid===showing) selfVideo.srcObject = streams[0];\n"
 		"\t\t\t\tcon.stream = streams[0];\n"
 		"\t\t\t\tlogs += 'onunmute ' + con.peerid + ' type=' + track.kind + '\\r';\n"
 		"\t\t\t};\n"
@@ -392,6 +394,7 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile)
 
 		// This is sent to select which video feed must be used
 		"function VIDC_show(peerid){\n"
+		"\tshowing=peerid;\n"
 		"\tconst connect = findconnect(peerid);\n"
 		"\tif (connect == null){\n"
 		"\t\tconsole.log('show unknown peer');\n"
@@ -657,11 +660,13 @@ void VIDCONF::exec (
 			clear_status_ok = false;
 			VARVAL var;
 			var.var = VAR_SCRIPT;
+			var.val = string_f("VIDC_show('%s');\n",showing.c_str());
 			for (auto &n:webrtc_started){
 				var.val += string_f("VIDC_setpolite(false,'%s');\n",n.connectid.c_str());
 				USERS_NOTIFIES peer;	// Message sent to connect the peer
 				peer.connections.push_back(n.fd);
-				peer.val = string_f("VIDC_setpolite(true,'%s');\n",ctx.connectid);
+				if (webrtc_started.size()==1) peer.val = string_f("VIDC_show('%s');\n",ctx.connectid);
+				peer.val += string_f("VIDC_setpolite(true,'%s');\n",ctx.connectid);
 				unotifies.emplace_back(move(peer));
 			}
 			// We have to locate the notification handle for the current request
@@ -675,6 +680,7 @@ void VIDCONF::exec (
 			}
 			// tlmp_warning ("webrtcstart fd=%d val=%zu",fd,var.val.size());
 			webrtc_started.emplace_back(fd,ctx.connectid);
+			if (webrtc_started.size()==1) showing = ctx.connectid;
 			if (var.val.size() > 0) res.emplace_back(move(var));
 		}else if (is_eq(var,"description")){
 			string peerid;
@@ -795,7 +801,8 @@ void VIDCONF::exec (
 				if (is_eq(n.second.connectid,val) || is_eq(n.second.username,val)){
 					if (find_if(webrtc_started.begin(),webrtc_started.end()
 						,[&ncon=n.second.connectid](auto &w){ return ncon==w.connectid; })!=webrtc_started.end()){
-						peers.val = string_f("VIDC_show('%s');\n",n.second.connectid.c_str());
+						showing = n.second.connectid;
+						peers.val = string_f("VIDC_show('%s');\n",showing.c_str());
 						for (auto &w:webrtc_started){
 							peers.connections.push_back(w.fd);
 						}
