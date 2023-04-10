@@ -37,6 +37,7 @@ using namespace std;
 struct WEBRTC_CON{
 	int fd;
 	string connectid;
+	time_t started=time(nullptr);
 	WEBRTC_CON(int _fd, PARAM_STRING _connectid): fd(_fd), connectid(_connectid.ptr){}
 };
 
@@ -763,11 +764,17 @@ void VIDCONF::exec (
 			stats.nbreq = others.connections.size();
 			if (stats.nbreq > 0){
 				stats.connectid = ctx.connectid;
+				VARVAL var;
+				var.var = VAR_SCRIPT;
+				for (auto &w:webrtc_started){
+					var.val += string_f("statspeerid %s %lu\n",w.connectid.c_str(),w.started);
+				}
+				res.emplace_back(move(var));
 				others.val = "VIDC_getstats();\n";
 			}else{
 				VARVAL var;
 				var.var = VAR_SCRIPT;
-				var.val = string_f("stats %s\nendstats\n",MSG_R(E_NOUSERSINCONF));
+				var.val = string_f("statserror %s\nend\n",MSG_R(E_NOUSERSINCONF));
 				res.emplace_back(move(var));
 			}	
 			clear_status_ok = false;
@@ -787,9 +794,10 @@ void VIDCONF::exec (
 			// Go through all connections (to get the username)
 			// and check if it is a webrtc connection.
 			for (auto &n:notification_fds){
-				if (find_if(webrtc_started.begin(),webrtc_started.end()
-					,[&ncon=n.second.connectid](auto &w){ return ncon==w.connectid; })!=webrtc_started.end()){
-					var.val += string_f("user %s %s\n",n.second.connectid.c_str(),n.second.username.c_str());
+				auto web = find_if(webrtc_started.begin(),webrtc_started.end()
+					,[&ncon=n.second.connectid](auto &w){ return ncon==w.connectid; });
+				if (web != webrtc_started.end()){
+					var.val += string_f("user %s %s %ld\n",n.second.connectid.c_str(),n.second.username.c_str(),web->started);
 				}
 			}
 			var.val += "end\n";

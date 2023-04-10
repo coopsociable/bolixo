@@ -1,15 +1,20 @@
 #include <stdio.h>
+#include <string>
+#include <time.h>
+#include <locale.h>
 #include <dialog.h>
 #include <tlmplib.h>
 #include <tlmpnet.h>
 #include <helper.h>
 #include <trlitool.h>
 #include <memory>
+#include <map>
 #include <openssl/ssl.h>
 #include "bofs.h"
 #include "websocket-client.h"
 #include "bolixo.m"
 #include "bolixo.h"
+#include "json.h"
 #define INSTRUMENT_EXTERN
 #include "instrument.h"
 
@@ -223,7 +228,11 @@ int bofs_vidconf (CONTEXT &ctx, int argc, char *argv[])
 	glocal ctx;
 	glocal const char *docname = nullptr;
 	glocal const char *file = nullptr;
+	glocal bool netusage = false;
+	glocal bool connected = false;
+	glocal bool statsdump = false;
 
+	setlocale(LC_ALL,"");
 	glocal.ret = <call tlmpprogram>(argc,argv);
 	<f init>
 		setproginfo ("bofs vidconf",VERSION
@@ -248,6 +257,10 @@ int bofs_vidconf (CONTEXT &ctx, int argc, char *argv[])
 			);
 		setarg ('d',"docname",MSG_R(O_DOCNAME),glocal.docname,true);
 		setarg ('f',"filevideo",MSG_U(O_FILEVIDEO,"Video to send to the conference"),glocal.file,false);
+		setgrouparg (MSG_U(I_GETSTATS,"getstats options"));
+		setarg (' ',"netusage",MSG_U(I_NETUSAGE,"Network usage statistics"),glocal.netusage,false);
+		setarg (' ',"connected",MSG_U(I_CONNECTED,"Show how each peers are connected"),glocal.connected,false);
+		setarg (' ',"dump",MSG_U(I_STATSDUMP,"Print the complete JSON"),glocal.statsdump,false);
 	</f>
 	<f main>
 		int ret = -1;
@@ -304,6 +317,8 @@ int bofs_vidconf (CONTEXT &ctx, int argc, char *argv[])
 				</f>
 				</call>
 			}else if (is_eq(arg,"getstats")){
+				glocal map<string,map<string,string>> all;	// All parsed stats line, by ID
+				glocal map<string,time_t> peerid2start;		// Get the start time for a peer
 				<call vidconf_sock>(glocal.ctx,glocal.docname,60,false);
 				<f init>
 					send ("getstats:");
@@ -311,18 +326,67 @@ int bofs_vidconf (CONTEXT &ctx, int argc, char *argv[])
 				<f receive>
 					auto tb = str_cnv2lines (line);
 					for (auto &l:tb){
-						//printf ("line=%s\n",l.c_str());
+						// printf ("line=%s\n",l.c_str());
 						const char *pt;
-						if (is_start_any_of(l,pt,"stats ")){
-							string user;
-							pt = str_copyword(user,pt);
+						string peerid;
+						time_t start;
+						if (is_start_any_of(l,pt,"statserror ")){
+							printf ("%s\n",pt);
+						}else if (splitline(l,match("statspeerid"),peerid,start)){
+							//printf ("statspeerid %s %ld\n",peerid.c_str(),start);
+							glocal.peerid2start[peerid] = start;
+						}else if (is_start_any_of(l,pt,"stats ")){
+							glocal string user;
+							pt = str_copyword(glocal.user,pt);
 							auto tb2 = str_splitline (pt,'\r');
-							for (auto &l2:tb2) printf ("%s %s\n",user.c_str(),l2.c_str());
+							for (auto &l2:tb2){
+								glocal string peerid;
+								pt = str_copyword(glocal.peerid,l2.c_str());
+								pt = str_skip(pt);
+								glocal map<string,string> kvals;
+								glocal.kvals["user"] = glocal.user;
+								glocal.kvals["peerid"] = glocal.peerid;
+								<call json_parse>(pt);
+								<f item>
+									glocal.kvals[name] = value;
+								</f>
+								</call>
+								if (glocal.statsdump){
+									printf ("%s %s type=%s %s\n",glocal.user.c_str(),glocal.peerid.c_str(),glocal.kvals["type"].c_str(),pt);
+								}
+								glocal.all[glocal.kvals["id"]] = move(glocal.kvals);
+							}
 						}
 						if (l=="end") end = true;
 					}
 				</f>
 				</call>
+				if (glocal.netusage){
+					// Show how network usage
+				}else if (glocal.connected){
+					// Tells how the various RTCPeerConnections are connected
+					time_t now = time(nullptr);
+					for (auto &a:glocal.all){
+						if (a.second["type"] == "candidate-pair" && a.second["nominated"] == "true"){
+							const string &localid = a.second["localCandidateId"];
+							const string &remoteid = a.second["remoteCandidateId"];
+							const string &peerid = a.second["peerid"];
+							long duration = now-glocal.peerid2start[peerid];
+							long sent = atol(a.second["bytesSent"].c_str());
+							long received = atol(a.second["bytesReceived"].c_str());
+							printf ("user=%s peerid=%s bytesSent=%ld (%.2lf/s) bytesReceived=%ld (%.2lf/s) (%s %s)\n"
+								,a.second["user"].c_str(),peerid.c_str()
+								,sent,(double)sent/duration,received,(double)received/duration
+								,localid.c_str(),remoteid.c_str());
+							auto &local = glocal.all[localid];
+							printf ("\tlocal  address=%s port=%s protocol=%s candidateType=%s\n"
+								,local["ip"].c_str(),local["port"].c_str(),local["protocol"].c_str(),local["candidateType"].c_str());
+							auto &remote = glocal.all[remoteid];
+							printf ("\tremote address=%s port=%s protocol=%s candidateType=%s\n"
+								,remote["ip"].c_str(),remote["port"].c_str(),remote["protocol"].c_str(),remote["candidateType"].c_str());
+						}
+					}
+				}
 			}else if (is_eq(arg,"getstates")){
 				<call vidconf_sock>(glocal.ctx,glocal.docname,60,true);
 				<f init>
@@ -365,9 +429,13 @@ int bofs_vidconf (CONTEXT &ctx, int argc, char *argv[])
 					send ("listusers:");
 				</f>
 				<f receive>
-					const char *pt;
-					if (is_start_any_of(line,pt,"user ")){
-						printf ("%s\n",pt);
+					string peerid,user;
+					time_t start;
+					if (splitline(line,match("user"),peerid,user,start)){
+						struct tm *t = localtime(&start);
+						char datestr[100];
+						strftime(datestr,sizeof(datestr),"%c",t);
+						printf ("%s %-20s %s\n",peerid.c_str(),user.c_str(),datestr);
 					}else if (is_eq(line,"end")){
 						end = true;
 					}

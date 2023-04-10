@@ -32,14 +32,17 @@ compile: $(PROGS)
 bo-webtest: bo-webtest.tlcc proto/webapi.protoh /usr/include/trlitool/trlitool.h
 	cctlcc -Wall $(OPTIONS) bo-webtest.tlcc _dict.o -o bo-webtest $(LIBS) -lssl
 
-bofs: bofs.o verify.o bofs_vidconf.o websocket-client.o fs_makeid.o
-	cctlcc -Wall $(OPTIONS) bofs.o verify.o bofs_vidconf.o websocket-client.o fs_makeid.o _dict.o -o bofs $(LIBS) -lssl 
+bofs: bofs.o verify.o bofs_vidconf.o json.o websocket-client.o fs_makeid.o
+	cctlcc -Wall $(OPTIONS) bofs.o verify.o bofs_vidconf.o json.o websocket-client.o fs_makeid.o _dict.o -o bofs $(LIBS) -lssl 
 
 bofs.o: bofs.tlcc bofs.h proto/bod_client.protoh proto/webapi.protoh proto/bolixoapi.protoh proto/webapi.protoh
 	cctlcc -Wall $(OPTIONS) -c bofs.tlcc -o bofs.o
 
-bofs_vidconf.o: bofs_vidconf.tlcc bofs.h websocket-client.h
+bofs_vidconf.o: bofs_vidconf.tlcc json.h bofs.h websocket-client.h
 	cctlcc -Wall $(OPTIONS) -c bofs_vidconf.tlcc -o bofs_vidconf.o
+
+json.o: json.tlcc json.h
+	cctlcc -Wall $(OPTIONS) -c json.tlcc -o json.o
 
 _dict.o: _dict.cc bolixo.m
 	gcc -Wall -c _dict.cc -o _dict.o

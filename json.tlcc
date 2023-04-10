@@ -1,0 +1,100 @@
+#include <tlmplib.h>
+#include "json.h"
+#include <string>
+#include <vector>
+#include <functional>
+
+using namespace std;
+
+<mod>
+void json_parse (_F_json_parse &c, const char *line)
+{
+	function<void(const vector<string> &parents, const string &var, const string &val)> f;
+	f = [&](const vector<string> &parents, const string &var, const string &val){
+			//for (auto &p:parents) printf ("%s.",p.c_str());
+			//printf ("var=:%s: val=:%s:\n",var.c_str(),val.c_str());
+			string parent;
+			for (auto &p:parents){
+				if (parent.size() > 0) parent += '.';
+				parent += p;
+			}
+			c.item(parent.c_str(),var.c_str(),val.c_str());
+		};
+	// printf ("line=%s\n",line);
+	enum {none,subject,value,vect} state=none;
+	vector<string> parents;
+	string var,val;
+	const char *pt = line;
+	while (*pt != '\0'){
+		if (*pt == '{'){
+			state=subject;
+			var.clear();
+			val.clear();
+			pt++;
+		}else if (*pt == '['){
+			state=subject;
+			parents.push_back(var);
+			pt++;
+		}else if (*pt == '}'){
+			if (parents.size() == 0) break;
+			pt++;
+		}else if (*pt == ']'){
+			parents.pop_back();
+			pt++;
+		}else if (*pt == '"'){
+			const char *start = ++pt;
+			while (*pt != '\0' && *pt != '"') pt++;
+			if (*pt != '"') break;
+			if (state == subject){
+				var = string(start,pt-start);
+			}else if (state == value){
+				val = string(start,pt-start);
+				f(parents,var,val);
+			}else{
+				tlmp_error ("JSON erreur, variable ou valeur: %s\n",start);
+				break;
+			}
+			pt++;
+		}else if (*pt == '-' || isdigit(*pt)){
+			const char *start = pt;
+			if (*pt == '-') pt++;
+			while (isdigit(*pt) || *pt == '.') pt++;
+			if (state == value){
+				val = string(start,pt-start);
+				f(parents,var,val);
+			}else{
+				tlmp_error ("JSON erreur, variable ou valeur: %s\n",start);
+				break;
+			}
+			// for (auto &p:parents) printf ("%s.",p.c_str());
+			// printf ("var=:%s: val=:%s:\n",var.c_str(),val.c_str());
+		}else if (isalpha(*pt)){
+			if (strncmp(pt,"true",4)==0){
+				val = "true";
+				f(parents,var,val);
+				pt+=4;
+			}else if (strncmp(pt,"false",5)==0){
+				val = "false";
+				f(parents,var,val);
+				pt+=5;
+			}else{
+				const char *start = pt;
+				while (isalpha(*pt) || isdigit(*pt) || *pt == '-') pt++;
+				val = string(start,pt-start);
+				//tlmp_error ("JSON alpha: var=%s val=%s pt=%s\n",var.c_str(),val.c_str(),pt);
+			}
+		}else if (*pt == ':'){
+			state=value;
+			pt++;
+		}else if (*pt == ','){
+			state = subject;
+			var.clear();
+			val.clear();
+			pt++;
+		}else{
+			tlmp_error ("JSON erreur: %s\n",pt);
+			break;
+		}
+	}
+}
+</mod>
