@@ -290,7 +290,7 @@ public:
 	}
 	void add_notification (PARAM_STRING script, const std::vector<USERS_NOTIFIES> &unotifies);
 	void add_notification (PARAM_STRING script);
-	void add_notification_fd(int fd, const char *username, const char *connectid);
+	virtual void add_notification_fd(int fd, const char *username, const char *connectid);
 	std::set<std::string> get_waiting_users();
 	void update_waiting_users(std::string &lines);
 	bool waiting_user(const char *username);

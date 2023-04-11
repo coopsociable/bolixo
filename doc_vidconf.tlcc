@@ -33,12 +33,26 @@
 #include <map>
 
 using namespace std;
-
+// Information on user connection. This is the connection used to send notifications
 struct WEBRTC_CON{
 	int fd;
 	string connectid;
 	time_t started=time(nullptr);
 	WEBRTC_CON(int _fd, PARAM_STRING _connectid): fd(_fd), connectid(_connectid.ptr){}
+};
+// This is a copy of old connections. When add_notification_fd is called, we can re-install
+// the WEBRTC_CON entry in webrtc_started.
+// This is needed when we restart documentd. The webrtc connections continue to exist
+// and this is the way the new documentd instance learn about the old connections.
+// This is useful because documentd is really on the side while a conference is running.
+// But if documentd is restarted (after an update) and loose the connections, some
+// actions in the conference will stop working. New users joining won't show to the already connected ones.
+struct WEBRTC_OLDCON{
+	string connectid;
+	time_t started;
+	WEBRTC_OLDCON(PARAM_STRING _connectid, time_t _started): connectid(_connectid.ptr){
+		started = _started;
+	}
 };
 
 
@@ -48,6 +62,7 @@ class VIDCONF: public GAME{
 	std::string define_functions(const DOC_CONTEXT &ctx, bool mobile);
 	std::string draw_board (bool mobile, unsigned docnum, std::string &script);
 	vector<WEBRTC_CON> webrtc_started;	// All connection having sent the "webrtcstart" command;
+	vector<WEBRTC_OLDCON> old_webrtcs;	// Old webrtc connections
 	string showing;		// Which user is currently shown
 	struct {	// Only one connection may request stats at a time
 			// only used by bofs. At some point, it may be part
@@ -56,6 +71,7 @@ class VIDCONF: public GAME{
 		int nbreq=0;		// Number of getstats sent (number of connected users)
 	} stats;
 	int del_notification_fd(int fd);
+	void add_notification_fd(int fd, const char *username, const char *connectid);
 	int findpeer(PARAM_STRING connectid) const;
 public:
 	VIDCONF();
@@ -100,6 +116,10 @@ void VIDCONF::save(DOC_WRITER &w, bool save_session_info)
 	vector<VIDCONF_CHAT> schat;
 	documentd_copychat (schat,chat);
 	documentd_vidconf_chat(&w,schat);
+	if (save_session_info){
+		for (auto &o:old_webrtcs) documentd_vidconf_oldcon(&w,o.connectid,o.started);
+		for (auto &o:webrtc_started) documentd_vidconf_oldcon(&w,o.connectid,o.started);
+	}
 }
 <mod>
 void VIDCONF::load(DOC_READER &r, std::string &msg)
@@ -107,6 +127,7 @@ void VIDCONF::load(DOC_READER &r, std::string &msg)
 	glocal revision;
 	glocal msg;
 	glocal chat;
+	glocal old_webrtcs;
 	chat.clear();
 	<call documentd_vidconf>(&r);
 	<f header>
@@ -114,6 +135,9 @@ void VIDCONF::load(DOC_READER &r, std::string &msg)
 	</f>
 	<f chat>
 		for (auto l:lines) glocal.chat.emplace_back(l.time,l.line);
+	</f>
+	<f oldcon>
+		glocal.old_webrtcs.emplace_back(connectid,started);
 	</f>
 	<f invalid>
 		glocal.msg = "Invalid format for vidconf file";
@@ -127,6 +151,8 @@ int VIDCONF::del_notification_fd(int fd)
 	string deleted_id;
 	for (auto p=webrtc_started.begin(); p != webrtc_started.end(); p++){
 		if (p->fd == fd){
+			old_webrtcs.emplace_back(p->connectid,p->started);
+			if (old_webrtcs.size() > 100) old_webrtcs.erase(old_webrtcs.begin());
 			deleted_id = p->connectid;
 			webrtc_started.erase(p);
 			break;
@@ -137,6 +163,17 @@ int VIDCONF::del_notification_fd(int fd)
 		add_notification(string_f("VIDC_delcon('%s');\n",deleted_id.c_str()));
 	}
 	return ret;
+}
+void VIDCONF::add_notification_fd(int fd, const char *username, const char *connectid)
+{
+	GAME::add_notification_fd(fd,username,connectid);
+	for (auto &o:old_webrtcs){
+		if (is_eq(connectid,o.connectid)){
+			auto &p = webrtc_started.emplace_back(fd,connectid);
+			p.started = o.started;
+			break;
+		}
+	}
 }
 
 string VIDCONF::define_styles(bool mobile)
