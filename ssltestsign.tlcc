@@ -112,28 +112,6 @@ static int verify(
 	}
 	return ret;
 }
-static void get_private_key (EVP_PKEY *pkey, PARAM_STRING passphrase, string &private_key)
-{
-	BIO *bio = BIO_new(BIO_s_mem());
-	PEM_write_bio_PrivateKey(bio, pkey,EVP_aes_192_cbc(), (unsigned char*)passphrase.ptr,strlen(passphrase.ptr), 0, 0);
-	char line[1000];
-	while(BIO_gets(bio,line,sizeof(line))>0){
-		//printf ("line=%s\n",line);
-		private_key += line;
-	}
-	BIO_free_all(bio);
-}
-static void get_public_key (EVP_PKEY *pkey, string &public_key)
-{
-	BIO *bio = BIO_new(BIO_s_mem());
-	PEM_write_bio_PUBKEY(bio, pkey);
-	char line[1000];
-	while(BIO_gets(bio,line,sizeof(line))>0){
-		//printf ("line=%s\n",line);
-		public_key += line;
-	}
-	BIO_free_all(bio);
-}
 #ifndef OPENSSL_VERSION_MAJOR
 	#define OLDRSA
 #endif
@@ -221,6 +199,28 @@ static RSA *generate(unsigned nbbits, string &private_key, string &public_key, P
 	return rsa;
 }
 #else
+static void get_private_key (EVP_PKEY *pkey, PARAM_STRING passphrase, string &private_key)
+{
+	BIO *bio = BIO_new(BIO_s_mem());
+	PEM_write_bio_PrivateKey(bio, pkey,EVP_aes_192_cbc(), (unsigned char*)passphrase.ptr,strlen(passphrase.ptr), 0, 0);
+	char line[1000];
+	while(BIO_gets(bio,line,sizeof(line))>0){
+		//printf ("line=%s\n",line);
+		private_key += line;
+	}
+	BIO_free_all(bio);
+}
+static void get_public_key (EVP_PKEY *pkey, string &public_key)
+{
+	BIO *bio = BIO_new(BIO_s_mem());
+	PEM_write_bio_PUBKEY(bio, pkey);
+	char line[1000];
+	while(BIO_gets(bio,line,sizeof(line))>0){
+		//printf ("line=%s\n",line);
+		public_key += line;
+	}
+	BIO_free_all(bio);
+}
 static void generate_new(unsigned nbbits, string &private_key, string &public_key, PARAM_STRING passphrase, bool write_files)
 {
 	private_key.clear();
