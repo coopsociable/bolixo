@@ -134,6 +134,9 @@ static void get_public_key (EVP_PKEY *pkey, string &public_key)
 	}
 	BIO_free_all(bio);
 }
+#ifndef OPENSSL_VERSION_MAJOR
+	#define OLDRSA
+#endif
 #ifdef OLDRSA
 static RSA *generate(unsigned nbbits, string &private_key, string &public_key, PARAM_STRING passphrase, bool write_files)
 {
@@ -217,7 +220,7 @@ static RSA *generate(unsigned nbbits, string &private_key, string &public_key, P
 	}
 	return rsa;
 }
-#endif
+#else
 static void generate_new(unsigned nbbits, string &private_key, string &public_key, PARAM_STRING passphrase, bool write_files)
 {
 	private_key.clear();
@@ -254,6 +257,7 @@ static void generate_new(unsigned nbbits, string &private_key, string &public_ke
 	EVP_PKEY_CTX_free(ctx);
 	EVP_PKEY_free(retkey);
 }
+#endif
 
 static EVP_PKEY *testsign_load_private (PARAM_STRING p, PARAM_STRING passphrase)
 {
@@ -320,10 +324,14 @@ int main (int argc, char *argv[])
 			{
 				EVP_PKEY *privkey = testsign_load_private(private_key,passphrase); 
 				if (privkey != NULL){
-					printf ("privkey.size=%d bits=%d\n",EVP_PKEY_get_size(privkey),EVP_PKEY_get_bits(privkey));
+					#ifndef OLDRSA
+						printf ("privkey.size=%d bits=%d\n",EVP_PKEY_get_size(privkey),EVP_PKEY_get_bits(privkey));
+					#endif
 					EVP_PKEY *pubkey = testsign_load_public(public_key); 
 					if (pubkey != NULL){
-						printf ("pubkey.size=%d bits=%d\n",EVP_PKEY_get_size(pubkey),EVP_PKEY_get_bits(pubkey));
+						#ifndef OLDRSA
+							printf ("pubkey.size=%d bits=%d\n",EVP_PKEY_get_size(pubkey),EVP_PKEY_get_bits(pubkey));
+						#endif
 						unsigned char *sig;
 						size_t sig_len;
 						if (sign (glocal.message,privkey,sig,sig_len)!=-1){
