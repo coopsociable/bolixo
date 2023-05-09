@@ -1073,7 +1073,15 @@ elif [ "$1" = "test-sequence" ] ; then # S: Reloads database (big,medium,real,no
 		shift
 	done
 	if [ "$CMP" = 1 -o "$CMPSANE" = 1 ] ; then
-		# The compare system for the test sequence is confused if the timestamp
+		if ./bofs -u preprod/jacquesg ls https://preprod.bolixo.org/projects/jacquesg >/dev/null
+		then
+			echo Valid certificate for preprod.bolixo.org
+		else
+			echo Invalid certificate valid for preprod.bolixo.org
+			echo "Can't continue"
+			exit 1
+		fi
+		# The "compare system" for the test sequence is confused if the timestamp
 		# span over 2 minutes. So we have to start the test early
 		date
 		while true

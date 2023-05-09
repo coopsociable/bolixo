@@ -363,7 +363,7 @@ proto/rssd_control.protoh: proto/rssd_control.proto
 
 
 ssltestsign: ssltestsign.tlcc
-	cctlcc $(OPTIONS) ssltestsign.tlcc -o ssltestsign -lstdc++ -lcrypto
+	cctlcc $(OPTIONS) $(OLDRSA) ssltestsign.tlcc -o ssltestsign -lstdc++ -lcrypto
 	
 fs_makeid.o: fs_makeid.tlcc filesystem.h
 	cctlcc -Wall $(OPTIONS) -c fs_makeid.tlcc -o fs_makeid.o

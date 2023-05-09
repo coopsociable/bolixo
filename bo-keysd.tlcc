@@ -56,6 +56,7 @@ struct HANDLE_INFO: public ARRAY_OBJ{
 };
 #include "proto/bo-keysd_control.protoh"
 
+#ifdef OLDRSA
 static int keysd_generate(string &private_key, string &public_key, PARAM_STRING passphrase)
 {
 	int ret = -1;
@@ -98,6 +99,62 @@ static int keysd_generate(string &private_key, string &public_key, PARAM_STRING 
 	}
 	return ret;
 }
+#else
+static int keysd_generate(string &private_key, string &public_key, PARAM_STRING passphrase)
+{
+	int ret = -1;
+	private_key.clear();
+	public_key.clear();
+	ENGINE *e = nullptr;
+	EVP_PKEY_CTX *ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_RSA,e);
+	if (ctx == nullptr){
+		tlmp_error ("ctx=%p\n",ctx);
+	}else{
+		// Generate key
+		int rc = EVP_PKEY_keygen_init (ctx);
+		if (rc != 1){
+			tlmp_error ("keygen_init rc=%d\n",rc);
+		}else{
+			rc = EVP_PKEY_CTX_set_rsa_keygen_bits(ctx, 2048);
+			if (rc != 1){
+				tlmp_error ("keygen_bits rc=%d\n",rc);
+			}else{
+				EVP_PKEY *retkey=nullptr;
+				rc = EVP_PKEY_generate(ctx,&retkey);
+				if (rc != 1){
+					tlmp_error ("generate rc=%d\n",rc);
+				}else{
+					{
+						BIO *bio = BIO_new(BIO_s_mem());
+						PEM_write_bio_PrivateKey(bio, retkey,EVP_aes_192_cbc(), (unsigned char*)passphrase.ptr,strlen(passphrase.ptr), 0, 0);
+						char line[1000];
+						while(BIO_gets(bio,line,sizeof(line))>0){
+							private_key += line;
+						}
+						BIO_free_all(bio);
+					}
+					{
+						BIO *bio = BIO_new(BIO_s_mem());
+						PEM_write_bio_PUBKEY(bio, retkey);
+						char line[1000];
+						while(BIO_gets(bio,line,sizeof(line))>0){
+							//printf ("line=%s\n",line);
+							public_key += line;
+						}
+						BIO_free_all(bio);
+					}
+					//printf ("retkey.size=%d bits=%d\n",EVP_PKEY_get_size(retkey),EVP_PKEY_get_bits(retkey));
+					//printf ("private_key=%s\npublic_key=%s\n",private_key.c_str(),public_key.c_str());
+					ret = 0;
+				}
+				EVP_PKEY_free(retkey);
+			}
+		}
+		EVP_PKEY_CTX_free(ctx);
+	}
+	return ret;
+}
+#endif
 <mod>
 static void bo_keysd_doone (
 	_F_TCPSERVER_V1 &c,

@@ -112,7 +112,30 @@ static int verify(
 	}
 	return ret;
 }
-static RSA *generate(string &private_key, string &public_key, PARAM_STRING passphrase, bool write_files)
+static void get_private_key (EVP_PKEY *pkey, PARAM_STRING passphrase, string &private_key)
+{
+	BIO *bio = BIO_new(BIO_s_mem());
+	PEM_write_bio_PrivateKey(bio, pkey,EVP_aes_192_cbc(), (unsigned char*)passphrase.ptr,strlen(passphrase.ptr), 0, 0);
+	char line[1000];
+	while(BIO_gets(bio,line,sizeof(line))>0){
+		//printf ("line=%s\n",line);
+		private_key += line;
+	}
+	BIO_free_all(bio);
+}
+static void get_public_key (EVP_PKEY *pkey, string &public_key)
+{
+	BIO *bio = BIO_new(BIO_s_mem());
+	PEM_write_bio_PUBKEY(bio, pkey);
+	char line[1000];
+	while(BIO_gets(bio,line,sizeof(line))>0){
+		//printf ("line=%s\n",line);
+		public_key += line;
+	}
+	BIO_free_all(bio);
+}
+#ifdef OLDRSA
+static RSA *generate(unsigned nbbits, string &private_key, string &public_key, PARAM_STRING passphrase, bool write_files)
 {
 	private_key.clear();
 	public_key.clear();
@@ -126,7 +149,7 @@ static RSA *generate(string &private_key, string &public_key, PARAM_STRING passp
 	ASSERT(rc == 1);
 
 	// Generate key
-	rc = RSA_generate_key_ex(rsa, 2048, bn.get(), NULL);
+	rc = RSA_generate_key_ex(rsa, nbbits, bn.get(), NULL);
 	ASSERT(rc == 1);
 
 	// Convert RSA to PKEY
@@ -194,6 +217,43 @@ static RSA *generate(string &private_key, string &public_key, PARAM_STRING passp
 	}
 	return rsa;
 }
+#endif
+static void generate_new(unsigned nbbits, string &private_key, string &public_key, PARAM_STRING passphrase, bool write_files)
+{
+	private_key.clear();
+	public_key.clear();
+	ENGINE *e = nullptr;
+	EVP_PKEY_CTX *ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_RSA,e);
+	if (ctx == nullptr){
+		fprintf (stderr,"ctx=%p\n",ctx);
+		exit (-1);
+	}
+
+	int rc;
+	#if 0
+		// Does not work for RSA
+		rc = EVP_PKEY_paramgen_init (ctx);
+		printf ("paramgen_init rc=%d\n",rc);
+
+		const OSSL_PARAM *params = EVP_PKEY_CTX_gettable_params(ctx);
+		printf ("params=%p\n",params);
+	#endif
+	// Generate key
+	rc = EVP_PKEY_keygen_init (ctx);
+	printf ("keygen_init rc=%d\n",rc);
+	rc = EVP_PKEY_CTX_set_rsa_keygen_bits(ctx, nbbits);
+	printf ("keygen_bits rc=%d\n",rc);
+
+	EVP_PKEY *retkey=nullptr;
+	rc = EVP_PKEY_generate(ctx,&retkey);
+	printf ("generate rc=%d\n",rc);
+	get_private_key(retkey,passphrase,private_key);
+	get_public_key(retkey,public_key);
+	//printf ("retkey.size=%d bits=%d\n",EVP_PKEY_get_size(retkey),EVP_PKEY_get_bits(retkey));
+	//printf ("private_key=%s\npublic_key=%s\n",private_key.c_str(),public_key.c_str());
+	EVP_PKEY_CTX_free(ctx);
+	EVP_PKEY_free(retkey);
+}
 
 static EVP_PKEY *testsign_load_private (PARAM_STRING p, PARAM_STRING passphrase)
 {
@@ -215,6 +275,7 @@ int main (int argc, char *argv[])
 	glocal int ret = -1;
 	glocal unsigned nbverify = 1;
 	glocal unsigned nbgen = 1;
+	glocal unsigned nbbits = 2048;
 	glocal const char *message =
 		"This is a message that goes like this\n"
 		"This is a message that goes like this\n"
@@ -235,25 +296,34 @@ int main (int argc, char *argv[])
 		setproginfo ("testsign",VERSION,"...");
 		setarg (' ',"nbverify","Number of sign/verifies",glocal.nbverify,false);
 		setarg (' ',"nbgen","Number of key generation",glocal.nbgen,false);
+		setarg (' ',"nbbits","Size in bits of the generated key",glocal.nbbits,false);
 	</f>
 	<f main_noarg>
 		string modified_message = string(glocal.message) + "something";
 		const char *passphrase = "this is secret";
 		int ret = -1;
+		#ifdef OLDRSA
 		RSA *rsa = NULL;
+		#endif
 		string private_key,public_key;
 		for (unsigned i=0; i<glocal.nbgen; i++){
-			rsa = generate(private_key,public_key,passphrase,false);
-			if (i <glocal.nbgen-1) RSA_free (rsa);
+			#ifdef OLDRSA
+				rsa = generate(glocal.nbbits,private_key,public_key,passphrase,false);
+				if (i <glocal.nbgen-1) RSA_free (rsa);
+			#else
+				generate_new(glocal.nbbits,private_key,public_key,passphrase,false);
+			#endif
 		}
 		printf ("private=\n%s\npublic\n%s\n",private_key.c_str(),public_key.c_str());
 			
-		if (rsa != NULL){
+		{
 			{
 				EVP_PKEY *privkey = testsign_load_private(private_key,passphrase); 
 				if (privkey != NULL){
+					printf ("privkey.size=%d bits=%d\n",EVP_PKEY_get_size(privkey),EVP_PKEY_get_bits(privkey));
 					EVP_PKEY *pubkey = testsign_load_public(public_key); 
 					if (pubkey != NULL){
+						printf ("pubkey.size=%d bits=%d\n",EVP_PKEY_get_size(pubkey),EVP_PKEY_get_bits(pubkey));
 						unsigned char *sig;
 						size_t sig_len;
 						if (sign (glocal.message,privkey,sig,sig_len)!=-1){
@@ -275,6 +345,7 @@ int main (int argc, char *argv[])
 					EVP_PKEY_free (privkey);
 				}
 			}
+			#ifdef OLDRSA
 			EVP_PKEY *pkey = EVP_PKEY_new(); 
 			if (pkey != NULL){
 				EVP_PKEY_assign_RSA(pkey, rsa); 
@@ -300,6 +371,7 @@ int main (int argc, char *argv[])
 			}else{
 				RSA_free (rsa);
 			}
+			#endif
 		}
 		return ret;
 	</f>
