@@ -902,9 +902,9 @@ static int bod_nodelogin(
 	const char *nodename,
 	string &session)
 {
-	glocal string *session = &session;
-	glocal CONNECT_HTTP_INFO *hcon = &hcon;
-	glocal CONNECT_INFO *con = &con;
+	glocal session;
+	glocal hcon;
+	glocal con;
 	glocal int ret = -1;
 	if (nonstrict) hcon.setnonstrictmode();
 	<call webapi_nodelogin> (hcon,nodename);
@@ -914,14 +914,14 @@ static int bod_nodelogin(
 			tlmp_error ("nodelogin: internal_error=%d success=%d msg=%s session=%s\n",internal_error,success,msg,session);
 		}else{
 			glocal string sign;
-			*glocal.session = session;
-			<call bo_writed_client_systemsign>(*glocal.con,session);
+			glocal.session = session;
+			<call bo_writed_client_systemsign>(glocal.con,session);
 			<f ok>
 				glocal.sign = sign;
 			</f>
 			</call>
 			// tlmp_error ("session=%s sign=%s\n",session,glocal.sign.c_str());
-			<call webapi_nodepass> (*glocal.hcon,session,glocal.sign);
+			<call webapi_nodepass> (glocal.hcon,session,glocal.sign);
 			<f ok>
 				if (!success){
 					tlmp_error ("nodepass: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
@@ -2308,7 +2308,7 @@ static int bod_main (
 					end = true;
 				</f>
 				<f fail>
-					glocal.lines.emplace_back(string_f("fail: %s\n",strerror(errno)));
+					glocal.lines.emplace_back(string_f("tcpconnect fail: %s",strerror(errno)));
 				</f>
 				<f end>
 				</f>

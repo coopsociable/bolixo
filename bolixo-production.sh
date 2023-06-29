@@ -651,8 +651,8 @@ elif [ "$1" = "loadfail" ] ; then # prod: Switch web access (normal,backup,split
 			NB1=`blackhole-control connectload | fgrep "$S1" | (read a b c d e; echo $d)` 
 			NB2=`blackhole-control connectload | fgrep "$S2" | (read a b c d e; echo $d)` 
 			NB3=`blackhole-control connectload | fgrep "$S3" | (read a b c d e; echo $d)` 
-			NB3=`blackhole-control connectload | fgrep "$S4" | (read a b c d e; echo $d)` 
-			if [ "$NB1" = 0 -a "$NB2" = 0 -a "$NB3" = 0 ] ; then
+			NB4=`blackhole-control connectload | fgrep "$S4" | (read a b c d e; echo $d)` 
+			if [ "$NB1" = 0 -a "$NB2" = 0 -a "$NB3" = 0 -a $NB4 = 0 ] ; then
 				echo
 				break
 			else
@@ -662,6 +662,7 @@ elif [ "$1" = "loadfail" ] ; then # prod: Switch web access (normal,backup,split
 					echo $NB1 $S1
 					echo $NB2 $S2
 					echo $NB3 $S3
+					echo $NB4 $S4
 					COUNT=0
 				fi
 				echo -n .
