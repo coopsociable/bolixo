@@ -59,8 +59,8 @@ struct WEBRTC_OLDCON{
 class VIDCONF: public GAME{
 	std::string message;
 	std::string define_styles(bool mobile);
-	std::string define_functions(const DOC_CONTEXT &ctx, bool mobile);
-	std::string draw_board (bool mobile, unsigned docnum, std::string &script);
+	std::string define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned board_width, unsigned board_height);
+	std::string draw_board (bool mobile, unsigned docnum, unsigned width, unsigned height, std::string &script);
 	vector<WEBRTC_CON> webrtc_started;	// All connection having sent the "webrtcstart" command;
 	vector<WEBRTC_OLDCON> old_webrtcs;	// Old webrtc connections
 	string showing;		// Which user is currently shown
@@ -179,11 +179,32 @@ void VIDCONF::add_notification_fd(int fd, const char *username, const char *conn
 string VIDCONF::define_styles(bool mobile)
 {
 	string lines;
+	lines =
+		".grid{\n"
+		"\tdisplay: grid;\n"
+		"\tbackground-color: white;\n"
+		"\tpadding: 0px;\n"
+		"\toverflow: auto;\n"
+		"}\n"
+		".grid-item {\n"
+		"\tbackground-color: white;\n"
+		"\tborder: 1px solid black;\n"
+		"\tpadding: 1px;\n"
+		"\tfont-size: 30px;\n"
+		"\ttext-align: center;\n"
+		"}\n"
+		".grid-main {\n"
+		"\tbackground-color: white;\n"
+		"\tborder: 1px solid rgba(0, 0, 0, 0.8);\n"
+		"\tpadding: 2px;\n"
+		"\tfont-size: 30px;\n"
+		"\ttext-align: center;\n"
+		"}\n";
 	return lines;
 }
 static string turn_secret;
 <mod>
-string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile)
+string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned board_width, unsigned board_height)
 {
 	// The secret for authentication with the TURN server comes from a config file. It is read once as needed
 	static bool turn_secret_done = false;
@@ -246,6 +267,7 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile)
 	}
 	// tlmp_warning ("tempuser :%s: temppass :%s:",tempuser.c_str(),temppass.c_str());
 	lines +=
+		"var gridmode=true;\n"
 		"const config = {\n"
 		"\ticeServers: ["
 		"{urls: 'stun:'+location.hostname + ':3478'},";
@@ -300,7 +322,6 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile)
 		"\t\treturn function ({ track, streams }){\n"
 		"\t\t\ttrack.onunmute = () => {\n"
 		"\t\t\t\tconsole.log('selfVideo='+selfVideo+' con='+con);\n"
-		"\t\t\t\tif(con.peerid===showing) selfVideo.srcObject = streams[0];\n"
 		"\t\t\t\tcon.stream = streams[0];\n"
 		"\t\t\t\tif(track.kind==='audio'){\n"
 		"\t\t\t\t\tlet newStream = new MediaStream( [ track ] );\n"
@@ -308,6 +329,7 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile)
 		"\t\t\t\t\tcon.audio.connect(audioctx.destination);\n"
 		"\t\t\t\t}\n"
 		"\t\t\t\tlogs += 'onunmute ' + con.peerid + ' kind=' + track.kind + '\\r';\n"
+		"\t\t\t\tVIDC_update();\n"
 		"\t\t\t};\n"
 		"\t\t};\n"
 		"\t}\n"
@@ -356,11 +378,8 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile)
 		"}\n"
 		"async function start() {\n"
 		"\ttry {\n"
-		"\t\tselfStream = await navigator.mediaDevices.getUserMedia(constraints);\n";
-		//"\t\tselfStream = await navigator.mediaDevices.getDisplayMedia();\n";
-	lines += string_f("\t\tselfVideo = document.getElementById('vidc-%s');\n",gameid.c_str());
-	lines +=
-		"\t\tselfVideo.srcObject = selfStream;\n"
+		"\t\tselfStream = await navigator.mediaDevices.getUserMedia(constraints);\n"
+		"\t\tVIDC_showgrid();\n"
 		"\t\tnotesocket.send('webrtcstart:');\n"
 		"\t} catch (err) {\n"
 		"\t\tlogs += 'start ' + err + '\\r';\n"
@@ -385,7 +404,6 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile)
 		"\t\t\t\tnotesocket.send ('description:'+connect.peerid+' '+JSON.stringify(connect.pc.localDescription,null,0));\n"
 		"\t\t\t\tlogs += 'offer send description to ' + connect.peerid + ' type=' + connect.pc.localDescription.type + '\\r';\n"
 		"\t\t\t}\n"
-		//"\t\t} else if (candidate) {\n"
 		"\t\t} else {\n"
 		"\t\t\tlogs += 'addIceCandidate from ' + connect.peerid + (candidate==null ? ' null' : '') + '\\r';\n"
 		"\t\t\ttry {\n"
@@ -425,6 +443,72 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile)
 		"\tif(connect.sentdesc && connect.tboffer.length == 1) receiveoffer(connect,description,candidate);\n"
 		"}\n"
 
+		// Redraw the grid holding all guests
+		"function VIDC_showgrid(){\n"
+		"\tgridmode=true;\n"
+		"\tvar grid = document.getElementById('confgrid');\n";
+		lines += string_f("\tvar cellw=%u;\n",board_width-10);
+		lines += string_f("\tvar cellh=%u;\n",board_height-10);
+		lines += 
+		"\tvar style='auto';\n"
+		"\tvar w=100;\n"
+		"\tif(connects.length == 0){\n"
+		"\t\tw=100;\n"
+		"\t}else if (connects.length > 3){\n"
+		"\t\tstyle='auto auto auto';\n"
+		"\t\tw=33;\n"
+		"\t\tcellw /= 3;\n"
+		"\t\tcellh = 3*cellw/4;\n"
+		"\t}else if (connects.length > 0){\n"
+		"\t\tstyle='auto auto';\n"
+		"\t\tw=50;\n"
+		"\t\tcellw /= 2;\n"
+		"\t\tcellh = 3*cellw/4;\n"
+		"\t}\n"
+		"\tgrid.style.gridTemplateColumns = style;\n"
+		"\tvar txt = '';\n"
+		"\tfor (var i=0; i<connects.length+1; i++){\n"
+		"\t\ttxt += `<div class='grid-item' style='width:${cellw}px;height:${cellh}px;'><video style='width:${cellw}px;height:${cellh}px;' class='mini-video' id='guest${i}' autoplay></video></div>\n`;\n"
+		"\t}\n"
+		"\tgrid.innerHTML = txt;\n"
+		"\tfor (var i=0; i<connects.length+1; i++){\n"
+		"\t\tvar vid = document.getElementById(`guest${i}`);\n"
+		"\t\tif(i==0){\n"
+		"\t\t\tvid.srcObject = selfStream;\n"
+		"\t\t}else{\n"
+		"\t\t\tvid.srcObject = connects[i-1].stream;\n"
+		"\t\t}\n"
+		"\t}\n"
+		"}\n"
+		// Redraw the screen holding the active guest
+		"function VIDC_showmain(){\n"
+		"\tgridmode=false;\n";
+		lines += string_f("\tvar cellw=%u;\n",board_width-10);
+		lines += string_f("\tvar cellh=%u;\n",board_height-10);
+		lines +=
+		"\tvar grid = document.getElementById('confgrid');\n"
+		"\tgrid.style.gridTemplateColumns = 'auto';\n";
+		lines += string_f("\tvar txt = `<div class='grid-main'><video id='vidc-%s' style='width:${cellw}px; height:${cellh}px;' class='main-video' autoplay></video></div>\n`;\n",gameid.c_str());
+		lines += "\tgrid.innerHTML = txt;\n";
+		lines += string_f("\tselfVideo = document.getElementById('vidc-%s');\n",gameid.c_str());
+		lines +=
+		"\tvar con = findconnect (showing);\n"
+		"\tif (con != null){\n"
+		"\t\tselfVideo.srcObject = con.stream;\n"
+		"\t}else{\n"
+		"\t\tselfVideo.srcObject = selfStream;\n"
+		"\t}\n"
+		"}\n"
+
+		// Redraw either the grid or the active guest
+		"function VIDC_update(){\n"
+		"\tif(gridmode){\n"
+		"\t\tVIDC_showgrid();\n"
+		"\t}else{\n"
+		"\t\tVIDC_showmain();\n"
+		"\t}\n"
+		"}\n"
+
 		"function VIDC_setdesc(peerid,description){\n"
 		"\tconsole.log ('receive description '+peerid);\n"
 		"\tconst connect = findconnect(peerid);\n"
@@ -461,13 +545,13 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile)
 		"\tfor(let i=0; i<connects.length; i++){\n"
 		"\t\tconst con = connects[i];\n"
 		"\t\tif(con.peerid === peerid){\n"
-		"\t\t\tif(selfVideo.srcObject === con.stream) selfVideo.srcObject = selfStream;\n"
 		"\t\t\tcon.audio.disconnect();\n"
 		"\t\t\tcon.pc.close();\n"
 		"\t\t\tconnects.splice(i,1);\n"
 		"\t\t\tbreak;\n"
 		"\t\t}\n"
 		"\t}\n"
+		"\tVIDC_update();\n"
 		"\tconsole.log('0 connects.length='+connects.length);\n"
 		"}\n"
 		// Get the connection states
@@ -516,12 +600,18 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile)
 string VIDCONF::draw_board(
 	bool mobile,
 	unsigned docnum,
+	unsigned width,
+	unsigned height,
 	string &script)
 {
 	string lines;
+	lines += string_f("<div id='confgrid' class='grid' style='width:%upx; height:%upx;'>\n",width,height);
+	#if 0
 	lines += string_f("<video id='vidc-%s' autoplay width=100%% height=100%%>\n",gameid.c_str());
-	lines += "Your browser does not support the video tag.\n";
-	lines += "</video>\n";
+	lines += "Your browser does not support the video tag.\n"
+		"</video>\n";
+	#endif
+	lines += "</div>\n";
 
 	#if 0
 	script += string_f("const videoTag = document.getElementById('vidc-%s');\n",gameid.c_str());
@@ -624,15 +714,19 @@ void VIDCONF::exec (
 				return glocal.doc->define_styles(sp.mobile);
 			</f>
 			<f functions>
-				return glocal.doc->define_functions(ctx,sp.mobile);
+				return glocal.doc->define_functions(ctx,sp.mobile,board_width,board_height);
 			</f>
 			<f menu_bar>
 				#define BUTTON_CONFIG	0
+				#define BUTTON_SHOWGRID	1
+				#define BUTTON_SHOWMAIN	2
 				VIDEO_MENU menu(specs);
 				documentd_bar_button (lines,BUTTON_CONFIG,menu.svg_config,specs,false,"");
+				documentd_bar_button (lines,BUTTON_SHOWGRID,menu.svg_showgrid,specs,false,MSG_U(I_SHOWGUESTS,"Show all participants"));
+				documentd_bar_button (lines,BUTTON_SHOWMAIN,menu.svg_showmain,specs,false,MSG_U(_SHOWACTIVEGUES,"Show active participant"));
 			</f>
 			<f content>
-				return glocal.doc->draw_board(sp.mobile,ctx.docnum,script);
+				return glocal.doc->draw_board(sp.mobile,ctx.docnum,board_width,board_height,script);
 			</f>
 			</call>
 			res.emplace_back(move(v));
@@ -640,7 +734,7 @@ void VIDCONF::exec (
 	}else if (is_eq(var,REQ_FUNCTIONS)){
 		VARVAL var;
 		var.var = VAR_DEFSCRIPT;
-		var.val = define_functions (ctx,sp.mobile);
+		var.val = define_functions (ctx,sp.mobile,1000,1000);
 		res.emplace_back(move(var));
 	}else if (is_eq(var,REQ_STYLES)){
 		VARVAL var;
@@ -652,7 +746,7 @@ void VIDCONF::exec (
 		VARVAL var,var_script;
 		var.var = VAR_CONTENT;
 		var_script.var = VAR_DEFSCRIPT;
-		var.val = draw_board(sp.mobile,ctx.docnum,var_script.val);
+		var.val = draw_board(sp.mobile,ctx.docnum,1000,1000,var_script.val);
 		res.emplace_back(move(var));
 		res.emplace_back(move(var_script));
 	}else if (is_eq(var,REQ_CHAT)){
@@ -872,14 +966,23 @@ void VIDCONF::exec (
 			// Get the client javascript code
 			VARVAL var;
 			var.var = VAR_SCRIPT;
-			var.val = define_functions(ctx,false);
+			var.val = define_functions(ctx,false,1000,1000);
 			var.val += "end\n";
 			res.emplace_back(move(var));
 		}else if (is_eq(var,"newgame")){
+			VARVAL var;
+			var.var = VAR_SCRIPT;
 			int uval = atoi(val);
 			if (uval == BUTTON_RELOAD){
 				documentd_action_reload(res);
 			}else if (uval == BUTTON_CONFIG){
+			}else if (uval == BUTTON_SHOWGRID){
+				var.val = "VIDC_showgrid();\n";
+			}else if (uval == BUTTON_SHOWMAIN){
+				var.val = "VIDC_showmain();\n";
+			}
+			if (var.val.size() > 0){
+				res.emplace_back(move(var));
 			}
 		}else{
 			api_error = MSG_U(E_IVLAPICOMMAND,"Invalid API command");

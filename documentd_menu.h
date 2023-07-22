@@ -59,6 +59,8 @@ struct PHOTOS_MENU{
 };
 struct VIDEO_MENU{
 	std::string svg_config;
+	std::string svg_showgrid;
+	std::string svg_showmain;
 	VIDEO_MENU(DOC_BUTTON_SPECS &specs);
 };
 
