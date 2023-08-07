@@ -61,6 +61,9 @@ struct VIDEO_MENU{
 	std::string svg_config;
 	std::string svg_showgrid;
 	std::string svg_showmain;
+	std::string svg_showme;
+	std::string svg_muteme;
+	std::string svg_hideme;
 	VIDEO_MENU(DOC_BUTTON_SPECS &specs);
 };
 

@@ -193,6 +193,12 @@ string VIDCONF::define_styles(bool mobile)
 		"\tfont-size: 30px;\n"
 		"\ttext-align: center;\n"
 		"}\n"
+		".grid-item-me {\n"
+		"\tposition: absolute;\n"
+		//"\tborder: 1px solid black;\n"
+		"\tz-index: 10;\n"
+		"}\n"
+
 		".grid-main {\n"
 		"\tbackground-color: white;\n"
 		"\tborder: 1px solid rgba(0, 0, 0, 0.8);\n"
@@ -291,6 +297,7 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 		"\t}\n"
 		"\treturn ret;\n"
 		"}\n"
+		"var VIDC_showme_on = true;\n"
 		"var selfVideo = null;\n"
 		"var selfStream = null;\n"
 		"var audioctx = new AudioContext();\n"
@@ -444,23 +451,59 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 		"\tif(connect.sentdesc && connect.tboffer.length == 1) receiveoffer(connect,description,candidate);\n"
 		"}\n"
 
+		// Draw the current user video tag if enabled
+		"function VIDC_showme(){\n"
+		"var ret = '';\n"
+		"\tif(VIDC_showme_on){\n";
+		lines += string_f("\t\tvar vidw=%u;\n",(board_width-10)/4);
+		lines += string_f("\t\tvar vidh=%u;\n",(board_height-10)/3);
+		lines += string_f("\t\tvar left=%u-vidw;\n",board_width-10);
+		lines += string_f("\t\tvar top=%u-vidh;\n",board_height-10);
+		lines +=
+		"\t\tret = `<div class='grid-item-me' style='width:${vidw}px;height:${vidh}px;top:${top};left:${left};'>\n"
+		"\t\t<video style='width:${vidw}px;height:${vidh}px;' class='mini-video' id='guest-me' autoplay muted></video></div>\n`;\n"
+		"\t}\n"
+		"\treturn ret;\n"
+		"}\n"
+		// Assign selfStream to the current user video tag
+		"function VIDC_assignme(){\n"
+		"\tif(VIDC_showme_on || connects.length == 0){\n"
+		"\t\tvar vid = document.getElementById(`guest-me`);\n"
+		"\t\tvid.srcObject = selfStream;\n"
+		"\t}\n"
+		"}\n"
+		// Show only the current user, no one connected yet
+		"function VIDC_show_only_me(){\n"
+		"\tvar grid = document.getElementById('confgrid');\n";
+		lines += string_f("\tvar cellw=%u;\n",board_width-10);
+		lines += string_f("\tvar cellh=%u;\n",board_height-10);
+		lines += 
+		"\tvar txt = `<div class='grid-item' style='width:${cellw}px;height:${cellh}px;'><video style='width:${cellw}px;height:${cellh}px;' class='mini-video' id='guest-me' autoplay muted></video></div>\n`;\n"
+		"\tgrid.innerHTML = txt;\n"
+		"\tVIDC_assignme();\n"
+		"}\n"
+
 		// Redraw the grid holding all guests
 		"function VIDC_showgrid(){\n"
 		"\tgridmode=true;\n"
+		"\tif (connects.length == 0){\n"
+		"\t\tVIDC_show_only_me();\n"
+		"\t\treturn;\n"
+		"\t}\n"
 		"\tvar grid = document.getElementById('confgrid');\n";
 		lines += string_f("\tvar cellw=%u;\n",board_width-10);
 		lines += string_f("\tvar cellh=%u;\n",board_height-10);
 		lines += 
 		"\tvar style='auto';\n"
 		"\tvar w=100;\n"
-		"\tif(connects.length == 0){\n"
+		"\tif(connects.length == 1){\n"
 		"\t\tw=100;\n"
-		"\t}else if (connects.length > 3){\n"
+		"\t}else if (connects.length > 4){\n"
 		"\t\tstyle='auto auto auto';\n"
 		"\t\tw=33;\n"
 		"\t\tcellw /= 3;\n"
 		"\t\tcellh = 3*cellw/4;\n"
-		"\t}else if (connects.length > 0){\n"
+		"\t}else{\n"
 		"\t\tstyle='auto auto';\n"
 		"\t\tw=50;\n"
 		"\t\tcellw /= 2;\n"
@@ -468,37 +511,37 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 		"\t}\n"
 		"\tgrid.style.gridTemplateColumns = style;\n"
 		"\tvar txt = '';\n"
-		"\tfor (var i=0; i<connects.length+1; i++){\n"
+		"\tfor (var i=0; i<connects.length; i++){\n"
 		"\t\ttxt += `<div class='grid-item' style='width:${cellw}px;height:${cellh}px;'><video style='width:${cellw}px;height:${cellh}px;' class='mini-video' id='guest${i}' autoplay muted></video></div>\n`;\n"
 		"\t}\n"
+		"\ttxt += VIDC_showme();\n"
 		"\tgrid.innerHTML = txt;\n"
-		"\tfor (var i=0; i<connects.length+1; i++){\n"
+		"\tfor (var i=0; i<connects.length; i++){\n"
 		"\t\tvar vid = document.getElementById(`guest${i}`);\n"
-		"\t\tif(i==0){\n"
-		"\t\t\tvid.srcObject = selfStream;\n"
-		"\t\t}else{\n"
-		"\t\t\tvid.srcObject = connects[i-1].stream;\n"
-		"\t\t}\n"
+		"\t\tvid.srcObject = connects[i].stream;\n"
 		"\t}\n"
+		"\tVIDC_assignme();\n"
 		"}\n"
 		// Redraw the screen holding the active guest
 		"function VIDC_showmain(){\n"
-		"\tgridmode=false;\n";
+		"\tgridmode=false;\n"
+		"\tif (connects.length == 0){\n"
+		"\t\tVIDC_show_only_me();\n"
+		"\t\treturn;\n"
+		"\t}\n";
 		lines += string_f("\tvar cellw=%u;\n",board_width-10);
 		lines += string_f("\tvar cellh=%u;\n",board_height-10);
 		lines +=
 		"\tvar grid = document.getElementById('confgrid');\n"
 		"\tgrid.style.gridTemplateColumns = 'auto';\n";
-		lines += string_f("\tvar txt = `<div class='grid-main'><video id='vidc-%s' style='width:${cellw}px; height:${cellh}px;' class='main-video' autoplay muted></video></div>\n`;\n",gameid.c_str());
-		lines += "\tgrid.innerHTML = txt;\n";
-		lines += string_f("\tselfVideo = document.getElementById('vidc-%s');\n",gameid.c_str());
+		lines += "\tvar txt = `<div class='grid-main'><video id='guestmain' style='width:${cellw}px; height:${cellh}px;' class='main-video' autoplay muted></video></div>\n`;\n";
+		lines += "\tgrid.innerHTML = txt + VIDC_showme();\n";
 		lines +=
 		"\tvar con = findconnect (showing);\n"
-		"\tif (con != null){\n"
-		"\t\tselfVideo.srcObject = con.stream;\n"
-		"\t}else{\n"
-		"\t\tselfVideo.srcObject = selfStream;\n"
-		"\t}\n"
+		"\tif (con == null) con = connects[0];\n"
+		"\tvar vid = document.getElementById(`guestmain`);\n"
+		"\tvid.srcObject = con.stream;\n"
+		"\tVIDC_assignme();\n"
 		"}\n"
 
 		// Redraw either the grid or the active guest
@@ -524,7 +567,6 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 
 		// This is sent to select which video feed must be used
 		"function VIDC_show(peerid){\n"
-		"\tshowing=peerid;\n"
 		"\tconst connect = findconnect(peerid);\n"
 		"\tif (connect == null){\n"
 		"\t\tconsole.log('show unknown peer');\n"
@@ -532,8 +574,9 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 		"\t\tconsole.log ('show peer '+peerid+' not connected yet');\n"
 		"\t}else{\n"
 		"\t\tconsole.log ('show '+peerid+' connect='+connect+ ' state='+connect.pc.connectionState);\n"
-		"\t\tif (selfVideo.srcObject != connect.stream){\n"
-		"\t\t\tselfVideo.srcObject = connect.stream;\n"
+		"\t\tif (peerid !== showing){\n"
+		"\t\t\tshowing=peerid;\n"
+		"\t\t\tif (!gridmode) VIDC_showmain();\n"
 		"\t\t}else{\n"
 		"\t\t\tconsole.log('stream already selected');\n"
 		"\t\t}\n"
@@ -606,12 +649,14 @@ string VIDCONF::draw_board(
 	string &script)
 {
 	string lines;
+	lines += "<div style='position: relative;'>\n";
 	lines += string_f("<div id='confgrid' class='grid' style='width:%upx; height:%upx;'>\n",width,height);
 	#if 0
 	lines += string_f("<video id='vidc-%s' autoplay width=100%% height=100%%>\n",gameid.c_str());
 	lines += "Your browser does not support the video tag.\n"
 		"</video>\n";
 	#endif
+	lines += "</div>\n";
 	lines += "</div>\n";
 
 	#if 0
@@ -688,7 +733,14 @@ string VIDCONF::draw_board(
 	#endif
 	return lines;
 }
-
+/*
+	Generate the JS code to update the background of a button based on the state of a JS variable
+*/
+static void vidconf_update_button (string &script, const char *variable, unsigned button_id)
+{
+	script += string_f("document.getElementById('button%u').style.background=%s ? 'lightblue' : 'lightgray';\n"
+		,button_id,variable);
+}
 <mod>
 void VIDCONF::exec (
 	const char *var,
@@ -718,13 +770,20 @@ void VIDCONF::exec (
 				return glocal.doc->define_functions(ctx,sp.mobile,board_width,board_height);
 			</f>
 			<f menu_bar>
+				VIDEO_MENU menu(specs);
 				#define BUTTON_CONFIG	0
 				#define BUTTON_SHOWGRID	1
 				#define BUTTON_SHOWMAIN	2
-				VIDEO_MENU menu(specs);
+				#define BUTTON_SHOWME	3
+				#define BUTTON_MUTEME	4
+				#define BUTTON_HIDEME	5
 				documentd_bar_button (lines,BUTTON_CONFIG,menu.svg_config,specs,false,"");
-				documentd_bar_button (lines,BUTTON_SHOWGRID,menu.svg_showgrid,specs,false,MSG_U(I_SHOWGUESTS,"Show all participants"));
+				// gridmode and camera view are active by default
+				documentd_bar_button (lines,BUTTON_SHOWGRID,menu.svg_showgrid,specs,true,MSG_U(I_SHOWGUESTS,"Show all participants"));
 				documentd_bar_button (lines,BUTTON_SHOWMAIN,menu.svg_showmain,specs,false,MSG_U(_SHOWACTIVEGUES,"Show active participant"));
+				documentd_bar_button (lines,BUTTON_SHOWME,menu.svg_showme,specs,true,MSG_U(_SHOWME,"Display the user camera view"));
+				documentd_bar_button (lines,BUTTON_MUTEME,menu.svg_muteme,specs,false,MSG_U(_MUTEME,"Mute the microphone"));
+				documentd_bar_button (lines,BUTTON_HIDEME,menu.svg_hideme,specs,false,MSG_U(_HIDEME,"Turn off the camera"));
 			</f>
 			<f content>
 				return glocal.doc->draw_board(sp.mobile,ctx.docnum,board_width,board_height,script);
@@ -979,8 +1038,32 @@ void VIDCONF::exec (
 			}else if (uval == BUTTON_CONFIG){
 			}else if (uval == BUTTON_SHOWGRID){
 				var.val = "VIDC_showgrid();\n";
+				vidconf_update_button(var.val,"gridmode",BUTTON_SHOWGRID);
+				vidconf_update_button(var.val,"!gridmode",BUTTON_SHOWMAIN);
 			}else if (uval == BUTTON_SHOWMAIN){
 				var.val = "VIDC_showmain();\n";
+				vidconf_update_button(var.val,"gridmode",BUTTON_SHOWGRID);
+				vidconf_update_button(var.val,"!gridmode",BUTTON_SHOWMAIN);
+			}else if (uval == BUTTON_SHOWME){
+				var.val = "VIDC_showme_on = !VIDC_showme_on;\n"
+					"VIDC_update();\n";
+				vidconf_update_button(var.val,"VIDC_showme_on",BUTTON_SHOWME);
+			}else if (uval == BUTTON_MUTEME){
+				var.val = "for (const track of selfStream.getTracks()) {\n"
+					"\tif (track.kind === 'audio'){\n"
+					"\t\ttrack.enabled = !track.enabled;\n";
+				vidconf_update_button(var.val,"!track.enabled",BUTTON_MUTEME);
+				var.val +=
+					"\t}\n"
+					"}\n";
+			}else if (uval == BUTTON_HIDEME){
+				var.val = "for (const track of selfStream.getTracks()) {\n"
+					"\tif (track.kind === 'video'){\n"
+					"\t\ttrack.enabled = !track.enabled;\n";
+				vidconf_update_button(var.val,"!track.enabled",BUTTON_HIDEME);
+				var.val +=
+					"\t}\n"
+					"}\n";
 			}
 			if (var.val.size() > 0){
 				res.emplace_back(move(var));
