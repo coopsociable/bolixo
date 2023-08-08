@@ -277,7 +277,7 @@ protected:
 		lines += "}\n";
 	}
 	void appendchat(PARAM_STRING line, std::string &notify);
-	void appendchat(PARAM_STRING line, std::string &notify, std::vector<VARVAL> &res);
+	void appendchat(PARAM_STRING line, std::string &notify, std::vector<VARVAL> &res, const DOC_CONTEXT &ctx);
 	std::string format_draw_waiting (const std::set<std::string> &waitings);
 	void draw_waiting_users(std::string &lines, unsigned width, unsigned height, const char *style);
 	virtual void update_msg(bool to_all,	PARAM_STRING msg, const char *color, std::vector<VARVAL> &res);
