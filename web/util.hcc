@@ -1298,8 +1298,17 @@ static size_t utf8_codepoint_size(uint8_t text)
 	Format a short message, remove the signature
 	Escapes < and >
 	Supports ? for URL
+
+	if validate is true, does some validation. Errors are reported in errmsg.
 */
-string util_format_shortmsg (PARAM_STRING msg, unsigned nblines, size_t size, unsigned image_width)
+string util_format_shortmsg (
+	PARAM_STRING msg,
+	unsigned nblines,
+	size_t size,
+	unsigned image_width,
+	bool validate,
+	CONNECT_INFO &con,
+	string &errmsg)
 {
 	const char *txt = msg.ptr;
 	string ret;
@@ -1380,12 +1389,15 @@ string util_format_shortmsg (PARAM_STRING msg, unsigned nblines, size_t size, un
 				txt--;
 			}else if (is_start_any_of(txt,pt,"_DOC=")){
 				txt = pt;
-				while (*txt > ' ' && is_not_in(*txt,'"','>',',')) txt++;
+				while (*txt > ' ' && is_not_in(*txt,'"','\'','<','>',',','=','&')) txt++;
 				string tmp(pt,txt-pt);
 				string dot;
 				util_remove_dot (tmp,dot);
 				if (tmp.size() == 0){
 					ret += "_DOC=";
+					if (validate){
+						errmsg = MSG_U(E_NODOCSPECIFIED,"Tag _DOC, no document specified");
+					}
 				}else{
 					const char *name = strrchr(tmp.c_str(),'/');
 					if (name == nullptr){
@@ -1396,6 +1408,15 @@ string util_format_shortmsg (PARAM_STRING msg, unsigned nblines, size_t size, un
 					ret += string_f("<span style=color:blue;cursor:pointer onclick=subformsubmit(event,\"%s?webstep=%d&webtab_add=2:%s~%s\")>%s</span>\n"
 						,tlmpweb_curpage(),step_projects,tmp.c_str(),name,tmp.c_str());
 					ret += dot;
+					if (validate){
+						FILEINFO info;
+						ENTRY_TYPE type = util_entrytype(con,string_f("/projects/%s",tmp.c_str()),info);
+						if (type == ENTRY_DIR){
+							errmsg = string_f(MSG_U(E_ISDIR,"Tag _DOC: %s is a folder\n"),tmp.c_str());
+						}else if (is_not_in(type,ENTRY_FILE,ENTRY_DOCUMENT)){
+							errmsg = string_f(MSG_U(E_NOTFOUND,"Tag _DOC: document %s does not exist\n"),tmp.c_str());
+						}
+					}
 				}
 				txt--;
 			}else if (is_start_any_of(txt,pt,"_USER=")){
@@ -1440,6 +1461,12 @@ string util_format_shortmsg (PARAM_STRING msg, unsigned nblines, size_t size, un
 		ret += "...";
 	}
 	return ret;
+}
+string util_format_shortmsg (PARAM_STRING msg, unsigned nblines, size_t size, unsigned image_width)
+{
+	string errmsg;
+	CONNECT_INFO con;
+	return util_format_shortmsg (msg,nblines,size,image_width,false,con,errmsg);
 }
 string util_format_shortmsg (PARAM_STRING txt, unsigned image_width)
 {
