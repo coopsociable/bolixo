@@ -2418,6 +2418,184 @@ static void journey_manyvideos()
 	///- for (int i=0; i<10; i++) printf ("<div class='grid-item'><video id='guest%d' autoplay src='http://test1.bolixo.org//frag_bunny.mp4'></video></div>\n",i);
 }
 </mod>
+<mod>
+static void journey_selectinput()
+{
+	<?
+	<html>
+	<style>
+		.popup {
+			display: inline-block;
+		}
+		.popup-content {
+			display: block;
+			position: absolute;
+			background-color: #f1f1f1;
+			box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+			z-index: 1;
+		}\n"
+
+	</style>
+	<body>
+	<video class="selfview" autoplay controls></video>
+	<p>
+	<input type=submit class=button value='Config' onclick='vidc_showform();'>
+	<script>
+	function draw_x(){
+	?>
+		unsigned width = 20;
+		unsigned start = 7;
+		unsigned end   = 15;
+		unsigned len   = 8;
+		unsigned stroke= 1;
+		if (tlmpweb_ismobile()){
+			width = 60;
+			start = 10;
+			end   = 50;
+			len   = 40;
+			stroke= 3;
+		}
+		htmlprintf (	
+			"\treturn \"<div>"
+			"<svg width=%u height=%u>"
+			"<a href='#' onclick=popup_unshow() onmouseover=changefill('svg1','#D0D0D0') onmouseout=changefill('svg1','#F1F1F1')>"
+			"<rect id=svg1 x=2 y=2 rx=2 ry=2 width=%u height=%u fill=#f1f1f1 />"
+			"<path stroke=black stroke-width=%u d='M%u,%u l%u,%u M%u,%u l%u,-%u'/>"
+			"</a>"
+			"</svg>"
+			"</div>\";\n"
+			,width,width
+			,width-2,width-2
+			,stroke,start,start,len,len,start,end,len,len);
+	<?
+	}
+
+	function changefill(a,b){}
+	function popup_unshow(){
+		const id = 'vidconf_popup';
+		var div = document.getElementById(id);
+		if (div != null){
+			document.body.removeChild(div);
+		}
+	}
+	function vidc_showform(){
+		const id = 'vidconf_popup';
+		var div = document.getElementById(id);
+		if (div != null){
+			document.body.removeChild(div);
+		}else{
+			const txt = "<div class=popup>\n"
+			+ "<div class='popup-content'>\n"
+			+ "<div style='display:flex;flex-flow:row;'>\n"
+			+ "<div style='flex:0 1 auto; margin-left:10px; margin-right:10px; margin-top:5px; margin-bottom:0px;'>\n"
+			+ "<label>Video input:</label>\n"
+			+ "<select id='videoinput'>\n"
+			+ "</select>\n"
+			+ "<p>\n"
+			+ "<label>Audio input:</label>\n"
+			+ "<select id='audioinput'>\n"
+			+ "</select>\n"
+			+ "<p>\n"
+			+ "<label>Audio output:</label>\n"
+			+ "<select id='audiooutput'>\n"
+			+ "</select>\n"
+			+ "</div>\n"
+			+ draw_x()
+			+ "</div>\n"
+			+ "</div>\n"
+			+ "</div>\n";
+			div = document.createElement('div');
+			div.setAttribute('id',id);
+			div.innerHTML = txt;
+			document.body.appendChild(div);
+			console.log (txt);
+			var videoinput = document.querySelector('#videoinput');
+			var audioinput = document.querySelector('#audioinput');
+			var audiooutput = document.querySelector('#audiooutput');
+			audioinput.onchange = vidc_updatesources;
+			videoinput.onchange = vidc_updatesources;
+			navigator.mediaDevices.enumerateDevices().then(vidc_gotDevices).catch(vidc_handleError);
+		}
+	}
+	function vidc_handleError(error) {
+		console.log('navigator.MediaDevices.getUserMedia error: ', error.message, error.name);
+	}
+	const selfVideo = document.querySelector("video.selfview");
+	var audioSource = localStorage.getItem('vidc_audioSource');
+	var videoSource = localStorage.getItem('vidc_videoSource');
+	var audioOutput = localStorage.getItem('vidc_audioOutput');
+	async function vidc_start(constraints) {
+		try {
+			const stream = await navigator.mediaDevices.getUserMedia(constraints);
+			selfVideo.srcObject = stream;
+		} catch (err) {
+			console.error(err);
+		}
+	}
+	const def_constraints = { audio: true, video: true };
+	function vidc_gotDevices(deviceInfos) {
+		var videoinput = document.querySelector('#videoinput');
+		var audioinput = document.querySelector('#audioinput');
+		var audiooutput = document.querySelector('#audiooutput');
+		const selectors = [audioinput, audiooutput, videoinput];
+		const values = [audioSource,audioOutput,videoSource];
+		selectors.forEach(select => {
+			while (select.firstChild) {
+				select.removeChild(select.firstChild);
+			}
+		});
+		for (let i = 0; i !== deviceInfos.length; ++i) {
+			const deviceInfo = deviceInfos[i];
+			const option = document.createElement('option');
+			option.value = deviceInfo.deviceId;
+			//console.log (`kind=${deviceInfo.kind} label=${deviceInfo.label} value=${deviceInfo.deviceId}`);
+			if (deviceInfo.kind === 'audioinput') {
+				option.text = deviceInfo.label || `microphone ${audioInputSelect.length + 1}`;
+				audioinput.appendChild(option);
+			} else if (deviceInfo.kind === 'audiooutput') {
+				option.text = deviceInfo.label || `speaker ${audioOutputSelect.length + 1}`;
+				audiooutput.appendChild(option);
+			} else if (deviceInfo.kind === 'videoinput') {
+				option.text = deviceInfo.label || `camera ${videoSelect.length + 1}`;
+				videoinput.appendChild(option);
+			} else {
+				console.log('Some other kind of source/device: ', deviceInfo);
+			}
+		}
+		selectors.forEach((select, selectorIndex) => {
+			if (Array.prototype.slice.call(select.childNodes).some(n => n.value === values[selectorIndex])) {
+				console.log (`select.value=${select.value}`);
+				select.value = values[selectorIndex];
+				console.log (`select.value=${select.value}`);
+			}
+		});
+	}
+	function vidc_setupsources() {
+		console.log ('get audio='+audioSource+' video='+videoSource);
+		const constraints = {
+			audio: {deviceId: audioSource ? {exact: audioSource} : undefined},
+			video: {deviceId: videoSource ? {exact: videoSource} : undefined}
+		};
+		vidc_start(constraints);
+	}
+	function vidc_updatesources() {
+		audioSource = audioinput.value;
+		videoSource = videoinput.value;
+		localStorage.setItem('vidc_audioSource',audioSource);
+		localStorage.setItem('vidc_videoSource',videoSource);
+		vidc_setupsources();
+	}
+
+	//audiooutput.onchange = changeAudioDestination;
+
+	vidc_setupsources();
+	</script>
+	
+	</body>
+	</html>
+	?>
+}
+</mod>
 extern "C" void webmain()
 {
 	tlmpweb_title ("This is the start of a long long journey");
@@ -2443,6 +2621,7 @@ extern "C" void webmain()
 	//journey_videostream();
 	//journey_webcam();
 	//journey_webrtc();
-	journey_manyvideos();
+	//journey_manyvideos();
+	journey_selectinput();
 }
 
