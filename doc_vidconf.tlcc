@@ -359,13 +359,27 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 		"\t\tconnect.pc.addTrack(track, selfStream);\n"
 		"\t}\n"
 		"}\n"
-		"async function start() {\n"
+		"var start_sent=false;\n"
+		"async function vidc_start(constraints) {\n"
 		"\ttry {\n"
 		"\t\tselfStream = await navigator.mediaDevices.getUserMedia(constraints);\n"
 		"\t\tVIDC_showgrid();\n"
-		"\t\tnotesocket.send('webrtcstart:');\n"
+		"\t\tif (!start_sent){\n"
+		"\t\t\tnotesocket.send('webrtcstart:');\n"
+		"\t\t\tstart_sent=true;\n"
+		"\t\t}\n"
+		"\t\tfor (const connect of connects){\n"
+		"\t\t\tfor (const sender of connect.pc.getSenders()){\n"
+		"\t\t\t\tfor (const track of selfStream.getTracks()) {\n"
+		"\t\t\t\t\tif(sender.track.kind===track.kind){\n"
+		"\t\t\t\t\t\tsender.replaceTrack(track);\n"
+		"\t\t\t\t\t\tlogs += 'replaceTrack ' + connect.peerid + ' sender.track.kind=' + sender.track.kind + ' ' + sender.track.id + ' kind=' + track.kind + ' ' + track.id + '\\r';\n"
+		"\t\t\t\t\t}\n"
+		"\t\t\t\t}\n"
+		"\t\t\t}\n"
+		"\t\t}\n"
 		"\t} catch (err) {\n"
-		"\t\tlogs += 'start ' + err + '\\r';\n"
+		"\t\tlogs += 'vidc_start ' + err + '\\r';\n"
 		"\t}\n"
 		"}\n"
 
@@ -610,9 +624,166 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 		"\t\t}\n"
 		"\t\tnotesocket.send('stats:'+res);\n"
 		"\t});\n"
+		"}\n";
+
+
+		// Manage the popup dialog to configure the sources and output devices of the conference
+		// draw a little X to close the dialog
+		unsigned width = 20;
+		unsigned start = 7;
+		unsigned end   = 15;
+		unsigned len   = 8;
+		unsigned stroke= 1;
+		if (mobile){
+			width = 60;
+			start = 10;
+			end   = 50;
+			len   = 40;
+			stroke= 3;
+		}
+		lines += string_f (	
+			"function vidc_draw_x(){\n"
+			"\treturn \"<div>"
+			"<svg width=%u height=%u>"
+			"<a href='#' onclick=vidc_delform() onmouseover=changefill('svg1','#D0D0D0') onmouseout=changefill('svg1','#F1F1F1')>"
+			"<rect id=svg1 x=2 y=2 rx=2 ry=2 width=%u height=%u fill=#f1f1f1 />"
+			"<path stroke=black stroke-width=%u d='M%u,%u l%u,%u M%u,%u l%u,-%u'/>"
+			"</a>"
+			"</svg>"
+			"</div>\";\n"
+			"}\n"
+			,width,width
+			,width-2,width-2
+			,stroke,start,start,len,len,start,end,len,len);
+		// Present the popup dialog
+	lines +=
+		"\tconst vidc_id = 'vidconf_popup';\n"
+		"function vidc_delform(){\n"
+		"\tvar div = document.getElementById(vidc_id);\n"
+		"\tif (div != null){\n"
+		"\t\tdocument.body.removeChild(div);\n"
+		"\t}\n"
+		"}\n"
+		"function vidc_showform(){\n"
+		"\tvar div = document.getElementById(vidc_id);\n"
+		"\tif (div != null){\n"
+		"\t\tdocument.body.removeChild(div);\n"
+		"\t}else{\n"
+		"\t\tconst txt = '<div class=popup>\\n'\n"
+		"\t\t+ '<div id=vidc_x2 class=\"popup-content\">\\n'\n"
+		"\t\t+ '<div style=\"display:flex;flex-flow:row;\">\\n'\n"
+		"\t\t+ '<div style=\"flex:0 1 auto; margin-left:10px; margin-right:10px; margin-top:5px; margin-bottom:0px;\">\\n'\n";
+	lines += string_f(
+		"\t\t+ '<label>%s</label>\\n'\n"
+		"\t\t+ '<select id=\"videoinput\">\\n'\n"
+		"\t\t+ '</select>\\n'\n"
+		"\t\t+ '<p>\\n'\n"
+		"\t\t+ '<label>%s</label>\\n'\n"
+		"\t\t+ '<select id=\"audioinput\">\\n'\n"
+		"\t\t+ '</select>\\n'\n"
+		"\t\t+ '<p>\\n'\n"
+		"\t\t+ '<label>%s</label>\\n'\n"
+		"\t\t+ '<select id=\"audiooutput\">\\n'\n"
+		"\t\t+ '</select>\\n'\n"
+		"\t\t+ '</div>\\n'\n"
+		"\t\t+ vidc_draw_x()\n"
+		"\t\t+ '</div>\\n'\n"
+		"\t\t+ '</div>\\n'\n"
+		"\t\t+ '</div>\\n'\n"
+		,MSG_U(I_VIDEOINPUT,"Video input device"),MSG_U(I_AUDIOINPUT,"Audio input device"),MSG_U(I_AUDIOOUTPUT,"Audio output device"));
+	lines +=
+		"\t\tdiv = document.createElement(\'div\');\n"
+		"\t\tdiv.setAttribute(\'id\',vidc_id);\n"
+		"\t\tdiv.setAttribute(\'class\',\'popup\');\n"
+		"\t\tdiv.innerHTML = txt;\n"
+		"\t\tdocument.body.appendChild(div);\n"
+		"\t\tlet x2=document.getElementById('vidc_x2');\n"
+		"\t\tx2.style.top=action_mousey+20;\n"	// Position just lower of the button
+		"\t\tx2.style.left=action_mousex;\n"	// that triggered this dialog
+		"\t\tx2.classList.toggle('show');\n"
+		//"\t\tconsole.log (txt);\n"
+		"\t\tvar videoinput = document.querySelector('#videoinput');\n"
+		"\t\tvar audioinput = document.querySelector('#audioinput');\n"
+		"\t\tvar audiooutput = document.querySelector('#audiooutput');\n"
+		"\t\taudioinput.onchange = vidc_updatesources;\n"
+		"\t\tvideoinput.onchange = vidc_updatesources;\n"
+		"\t\taudiooutput.onchange = vidc_updateoutput;\n"
+		"\t\tnavigator.mediaDevices.enumerateDevices().then(vidc_gotDevices).catch(vidc_handleError);\n"
+		"\t}\n"
+		"}\n"
+		"function vidc_handleError(error) {\n"
+		"\tconsole.log('navigator.MediaDevices.getUserMedia error: ', error.message, error.name);\n"
+		"}\n"
+		// Read the setup saved in the browser
+		"var audioSource = localStorage.getItem('vidc_audioSource');\n"
+		"var videoSource = localStorage.getItem('vidc_videoSource');\n"
+		"var audioOutput = localStorage.getItem('vidc_audioOutput');\n"
+		"function vidc_setaudiooutput(){\n"
+		"\tlogs += 'set audio output to ' + audioOutput + '\\r';\n"
+		"\tif (audioctx.setSinkId !== undefined && audioOutput != null && audioOutput !== 'default') audioctx.setSinkId(audioOutput);\n"
+		"}\n"
+		"vidc_setaudiooutput();\n"
+		// Populate the 'select' field in the popup device configuration dialog
+		"function vidc_gotDevices(deviceInfos) {\n"
+		"\tvar videoinput = document.querySelector('#videoinput');\n"
+		"\tvar audioinput = document.querySelector('#audioinput');\n"
+		"\tvar audiooutput = document.querySelector('#audiooutput');\n"
+		"\tconst selectors = [audioinput, audiooutput, videoinput];\n"
+		"\tconst values = [audioSource,audioOutput,videoSource];\n"
+		"\tselectors.forEach(select => {\n"
+		"\t\twhile (select.firstChild) {\n"
+		"\t\t\tselect.removeChild(select.firstChild);\n"
+		"\t\t}\n"
+		"\t});\n"
+		"\tfor (let i = 0; i !== deviceInfos.length; ++i) {\n"
+		"\t\tconst deviceInfo = deviceInfos[i];\n"
+		"\t\tconst option = document.createElement('option');\n"
+		"\t\toption.value = deviceInfo.deviceId;\n"
+		"\t\tif (deviceInfo.kind === 'audioinput') {\n"
+		"\t\t\toption.text = deviceInfo.label || `microphone ${audioInputSelect.length + 1}`;\n"
+		"\t\t\taudioinput.appendChild(option);\n"
+		"\t\t} else if (deviceInfo.kind === 'audiooutput') {\n"
+		// There is no way to set the sinkid of AudioContext back to default. So we hide this option
+		"\t\t\tif(option.value !== 'default'){\n"
+		"\t\t\t\toption.text = deviceInfo.label || `speaker ${audioOutputSelect.length + 1}`;\n"
+		"\t\t\t\taudiooutput.appendChild(option);\n"
+		"\t\t\t}\n"
+		"\t\t} else if (deviceInfo.kind === 'videoinput') {\n"
+		"\t\t\toption.text = deviceInfo.label || `camera ${videoSelect.length + 1}`;\n"
+		"\t\t\tvideoinput.appendChild(option);\n"
+		"\t\t} else {\n"
+		"\t\t\tconsole.log('Some other kind of source/device: ', deviceInfo);\n"
+		"\t\t}\n"
+		"\t}\n"
+		"\tselectors.forEach((select, selectorIndex) => {\n"
+		"\t\tif (Array.prototype.slice.call(select.childNodes).some(n => n.value === values[selectorIndex])) {\n"
+		"\t\t\tselect.value = values[selectorIndex];\n"
+		"\t\t}\n"
+		"\t});\n"
+		"}\n"
+		"function vidc_setupsources() {\n"
+		"\tconsole.log ('get audio='+audioSource+' video='+videoSource);\n"
+		"\tconst constraints = {\n"
+		"\t\taudio: {deviceId: audioSource ? {exact: audioSource} : undefined},\n"
+		"\t\tvideo: {deviceId: videoSource ? {exact: videoSource} : undefined}\n"
+		"\t};\n"
+		"\tvidc_start(constraints);\n"
+		"}\n"
+		"function vidc_updatesources() {\n"
+		"\taudioSource = audioinput.value;\n"
+		"\tvideoSource = videoinput.value;\n"
+		"\tlocalStorage.setItem('vidc_audioSource',audioSource);\n"
+		"\tlocalStorage.setItem('vidc_videoSource',videoSource);\n"
+		"\tvidc_setupsources();\n"
+		"}\n"
+		"function vidc_updateoutput() {\n"
+		"\taudioOutput = audiooutput.value;\n"
+		"\tlocalStorage.setItem('vidc_audioOutput',audioOutput);\n"
+		"\tvidc_setaudiooutput();\n"
 		"}\n"
 		// Tell web/index.hcc to call the start() function when notesocket is ready
-		"var notesocket_call=start;\n";
+		"var notesocket_call=vidc_setupsources;\n";
+
 	return lines;
 }
 </mod>
@@ -752,7 +923,7 @@ void VIDCONF::exec (
 				#define BUTTON_SHOWME	3
 				#define BUTTON_MUTEME	4
 				#define BUTTON_HIDEME	5
-				documentd_bar_button (lines,BUTTON_CONFIG,menu.svg_config,specs,false,"");
+				documentd_bar_button (lines,BUTTON_CONFIG,menu.svg_config,specs,false,MSG_U(I_DEVICESELECT,"Audio/video devices selection"));
 				// gridmode and camera view are active by default
 				documentd_bar_button (lines,BUTTON_SHOWGRID,menu.svg_showgrid,specs,true,MSG_U(I_SHOWGUESTS,"Show all participants"));
 				documentd_bar_button (lines,BUTTON_SHOWMAIN,menu.svg_showmain,specs,false,MSG_U(_SHOWACTIVEGUES,"Show active participant"));
@@ -1012,6 +1183,7 @@ void VIDCONF::exec (
 			if (uval == BUTTON_RELOAD){
 				documentd_action_reload(res);
 			}else if (uval == BUTTON_CONFIG){
+				var.val = "vidc_showform();\n";
 			}else if (uval == BUTTON_SHOWGRID){
 				var.val = "VIDC_showgrid();\n";
 				vidconf_update_button(var.val,"gridmode",BUTTON_SHOWGRID);
