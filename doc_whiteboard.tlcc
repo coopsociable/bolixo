@@ -75,6 +75,7 @@ enum BOX_TYPE{
 	BOX_SOLID,	// Solid line
 	BOX_DASH,	// Dash line
 	BOX_DOT,	// Dot line
+	BOX_HIDDEN,	// No box
 	BOX_LAST,	// Last item in the list + 1
 };
 
@@ -306,14 +307,19 @@ struct WHITEBOARD_ELM{
 	}
 	void redraw(VARVAL &var, unsigned browser_fontsize, unsigned default_textsize){
 		const char *stroke_color = tbcolor[selmode];
+		auto tmp_box_type = box_type;
+		if (tmp_box_type == BOX_HIDDEN){
+			tmp_box_type = BOX_SOLID;
+			if (selmode == SEL_NONE) stroke_color = "none";
+		}
 		unsigned w_2 = width/2;
 		unsigned h_2 = height/2;
 		if (type == TYPE_ELLIPSE){
-			var.val += string_f("replace_ellipse('%u',%u,%u,%u,%u,'%s',%u);\n",id,x,y,w_2,h_2,stroke_color,box_type);
+			var.val += string_f("replace_ellipse('%u',%u,%u,%u,%u,'%s',%u);\n",id,x,y,w_2,h_2,stroke_color,tmp_box_type);
 		}else if (type == TYPE_RECT){
-			var.val += string_f("replace_rect('%u',%d,%d,%u,%u,'%s',%u);\n",id,(int)x-w_2,(int)y-h_2,width,height,stroke_color,box_type);
+			var.val += string_f("replace_rect('%u',%d,%d,%u,%u,'%s',%u);\n",id,(int)x-w_2,(int)y-h_2,width,height,stroke_color,tmp_box_type);
 		}else if (type == TYPE_LINE){
-			var.val += string_f("replace_typeline('e%u',%u,%u,%u,%u,'%s',%u);\n",id,x,y,x1,y1,stroke_color,box_type);
+			var.val += string_f("replace_typeline('e%u',%u,%u,%u,%u,'%s',%u);\n",id,x,y,x1,y1,stroke_color,tmp_box_type);
 		}else if (type == TYPE_TEXT){
 			var.val += string_f("replace_typetext('e%u',%u,%u,'%s');\n",id,getadjx(),y,stroke_color);
 		}else{
@@ -1357,10 +1363,15 @@ string WHITEBOARD::draw_board (
 	<f element>
 		if (firstseen){
 			const char *color = tbcolor[elm.selmode];
+			auto box_type = elm.box_type;
+			if (box_type == BOX_HIDDEN){
+				box_type = BOX_SOLID;
+				if (elm.selmode == SEL_NONE) color = "none";
+			}
 			static const char *tbdash[]={
 				""," stroke-dasharray='5,5'"," stroke-dasharray='2,5'"
 			};
-			const char *dasharray = tbdash[elm.box_type];
+			const char *dasharray = tbdash[box_type];
 			switch(elm.type){
 			case TYPE_ELLIPSE:
 				glocal.val += string_f("<ellipse id='e%u' cx=%u cy=%u rx=%u ry=%u stroke='%s' stroke-width=2 fill='none'%s />\n"
@@ -2164,7 +2175,11 @@ void WHITEBOARD::execstep (
 				}else{
 					for (auto s:selects){
 						s->box_type = (BOX_TYPE)((unsigned)s->box_type+1);
-						if (s->box_type == BOX_LAST) s->box_type = BOX_SOLID;
+						// If there is an image (or embed) assigned to this item, BOX_HIDDEN
+						// may be selected. The item will still be visible (and easily selectable)
+						// If there is no image, then BOX_HIDDEN can't be selected.
+						BOX_TYPE last = s->is_image() || s->is_imbed() ? BOX_LAST : BOX_HIDDEN;
+						if (s->box_type == last) s->box_type = BOX_SOLID;
 						notify_ids.insert (s->id);
 					}
 				}
@@ -2397,7 +2412,10 @@ void WHITEBOARD::execstep (
 								e.second.selmode = tbmode[sel];
 							}
 						}else if (strcmp(var,"boxtype")==0){
-							if (sel < 3){
+							// BOX_HIDDEN is only available when there is an image or embed
+							unsigned limit = 3;
+							if (e.second.is_image() || e.second.is_imbed()) limit = 4;
+							if (sel < limit){
 								e.second.box_type = (BOX_TYPE)sel;
 							}
 						}else if (strcmp(var,"textpos")==0){
