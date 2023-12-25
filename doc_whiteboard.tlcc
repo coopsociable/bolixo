@@ -1409,8 +1409,8 @@ string WHITEBOARD::draw_board (
 				break;
 			case TYPE_TEXT:
 				// The width is used to position the text, and the bullet, but the bullet is always 8 large
-				glocal.val += string_f("<circle id='e%u' stroke='%s' fill='black' cx=%u cy=%u r=%u />\n"
-					,elm.id,color,elm.getadjx(),elm.y,8/2);
+				glocal.val += string_f("<circle id='e%u' stroke='%s' fill='%s' cx=%u cy=%u r=%u />\n"
+					,elm.id,color,color,elm.getadjx(),elm.y,8/2);
 			}
 			unsigned textx,texty;
 			unsigned fontsize = elm.compute_fontsize(glocal.fontsize,glocal.textsize);
@@ -1567,7 +1567,7 @@ string WHITEBOARD::define_functions(
 	val += "\t\te.setAttribute('cy',y);\n"; 
 	val += "\t\te.setAttribute('r',4);\n"; 
 	val += "\t\te.style.stroke=color;\n"; 
-	val += "\t\te.style.fill='black';\n"; 
+	val += "\t\te.style.fill=color;\n"; 
 	val += "\t});\n";
 	val += "}\n";
 
@@ -2333,7 +2333,7 @@ void WHITEBOARD::execstep (
 			string label,text,type;
 			unsigned x,y,width,height;
 			if(splitlineq(val,label,text,type,x,y,width,height)){
-				if (!is_any_of(type,"ellipse","rect","line","handline")){
+				if (!is_any_of(type,"ellipse","rect","line","handline","text")){
 					api_error = MSG_U(E_ADDELMTYPE,"addelm: Invalid element type");
 				}else if (width == 0 || height == 0){
 					api_error = MSG_U(E_ADDELMSIZE,"addelm: Invalid dimension");
@@ -2456,6 +2456,31 @@ void WHITEBOARD::execstep (
 				}
 			}
 			setmodified(ctx.username);
+		}else if (is_eq(var,"textsize")){
+			unsigned new_textsize = 0;
+			if (splitline(val,new_textsize)){
+				textsize = new_textsize;
+				for (auto &e:elms) notify_ids.insert(e.first);
+			}
+		}else if (is_eq(var,"bullettype")){
+			int type;
+			string label;
+			if (splitline(val,label,enums(type,{0,3}))){
+				bool found = false;
+				for (auto &e:elms){
+					if (e.second.label==label){
+						// This is a hack. We store the type in box_type
+						// Value 3 means HIDDEN.
+						e.second.box_type = (BOX_TYPE)type;
+						notify_ids.insert(e.first);
+						found = true;
+						break;
+					}
+				}
+				if (!found) api_error = string_f(MSG_R(E_LABELOPER),var,label.c_str());
+			}else{
+				api_error = string_f(MSG_U(E_APIOPER,"%s: invalid type"),var);
+			}
 		}
 	}else{
 		error = MSG_R(E_READONLYDOC);

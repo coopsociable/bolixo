@@ -27,6 +27,17 @@ addelm(){
 resetsel(){
 	$BOFS documents --noscripts --playstep --docname $DOCNAME --step "resetselect=3"
 }
+# Set the base text size of all caption.
+# Number >= 0 (default is 10)
+textsize(){
+	$BOFS documents --noscripts --playstep --docname $DOCNAME --step "textsize=$1"
+}
+# Set the color of the bullet for text
+# label value
+# The value 0 means black, and 3 means hidden
+bullettype(){
+	$BOFS documents --noscripts --playstep --docname $DOCNAME --step "bullettype=$1 $2"
+}
 # Select one element: label 0|1|2
 # 0 normal selection
 # 1 parent selection
@@ -39,6 +50,8 @@ selectline(){
 	$BOFS documents --noscripts --playstep --docname $DOCNAME --step "selectline=$1"
 }
 # Select the box type for one element
+# label
+# type: 0=solid, 1=dash, 2=dotted, 3=hidden
 boxtype(){
 	$BOFS documents --noscripts --playstep --docname $DOCNAME --step "boxtype=$1 $2"
 }
@@ -46,9 +59,36 @@ boxtype(){
 textpos(){
 	$BOFS documents --noscripts --playstep --docname $DOCNAME --step "textpos=$1 $2"
 }
+# Assign an image to selected elements
+# The image is either a URL or a path inside the project
+assignimg(){
+	$BOFS documents --noscripts --playstep --docname $DOCNAME --step "image=url:$1"
+}
 # Delete one element using its label
 labeldelete(){
 	$BOFS documents --noscripts --playstep --docname $DOCNAME --step "labeldelete=$1"
+}
+# Move selected elements: newx newy
+move(){
+	$BOFS documents --noscripts --playstep --docname $DOCNAME --step "mousemove=$1,$2,false,false"
+}
+# Resize selected elements: direction,mode
+# direction: 1 to grow, -1 to shrink
+# mode: 0 to resize on all axis
+#       1 to resize vertically
+#       2 to resize horizontally 
+resize(){
+	shiftkey=false
+	controlkey=false
+	if [ "$2" = 1 ] ; then
+		shiftkey=true
+	elif [ "$2" = 2 ] ; then
+		controlkey=true
+	elif [ "$2" != 0 ] ; then
+		echo resize, invalide mode
+		exit 1
+	fi
+	$BOFS documents --noscripts --playstep --docname $DOCNAME --step "wheel=$1,$shiftkey,$controlkey"
 }
 docdump(){
 	$BOFS documents --noscripts --playstep --docname $DOCNAME --step "dump="
