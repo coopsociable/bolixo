@@ -562,12 +562,12 @@ elif [ "$1" = "cmplxclog" ] ;then # S: Compares the lxc writed log with the refe
 	diff -c data/normuuid.log /tmp/normuuid.log
 elif [ "$1" = "bolixod-control" ] ; then # A: Talks to bolixod
 	shift
-	$BOLIXOPATH/bolixod-control --control $BOLIXOD_SOCK $*
+	$BOLIXOPATH/bolixod-control --control $BOLIXOD_SOCK "$@"
 elif [ "$1" = "bolixod-controls" ] ; then # A: Talks to all bolixod
 	shift
 	for sock in $BOLIXOD_SOCKS
 	do
-		$BOLIXOPATH/bolixod-control --control $sock $*
+		$BOLIXOPATH/bolixod-control --control $sock "$@"
 	done
 elif [ "$1" = "bo-websocket-control" ] ; then # A: Talks to bo-websocket
 	shift
