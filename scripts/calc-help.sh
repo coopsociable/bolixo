@@ -12,8 +12,7 @@ if [ -x ./bofs ] ; then
 fi
 # Create a white board
 createdocument(){
-	echo boBOCALC >/tmp/test.sheet
-	$BOFS cp /tmp/test.sheet bo:/$DOCNAME
+	echo boBOCALC |	$BOFS cat --pipeto ht:/$DOCNAME
 }
 # Erase all elements from the document
 resetdocument(){

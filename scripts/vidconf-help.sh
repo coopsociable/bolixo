@@ -12,8 +12,7 @@ if [ -x ./bofs ] ; then
 fi
 # Create a white board
 createdocument(){
-	echo boBOVIDC >/tmp/test.vdc
-	$BOFS cp /tmp/test.vdc bo:/$DOCNAME
+	echo boBOVIDC | $BOFS cat --pipeto ht:/$DOCNAME
 }
 # append base64_video_chunk
 append(){

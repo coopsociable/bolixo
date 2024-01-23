@@ -12,8 +12,7 @@ if [ -x ./bofs ] ; then
 fi
 # Create a white board
 createdocument(){
-	echo boBOWORD >/tmp/test.doc
-	$BOFS cp /tmp/test.doc bo:/$DOCNAME
+	echo boBOWORD | $BOFS cat --pipeto ht:/$DOCNAME
 }
 # Erase all elements from the document
 resetdocument(){
