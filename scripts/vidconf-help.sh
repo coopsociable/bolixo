@@ -10,7 +10,7 @@ BOFS=/usr/bin/bofs
 if [ -x ./bofs ] ; then
 	BOFS=./bofs
 fi
-# Create a white board
+# Create a video conference
 createdocument(){
 	echo boBOVIDC | $BOFS cat --pipeto ht:/$DOCNAME
 }

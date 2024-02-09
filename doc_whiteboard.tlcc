@@ -511,6 +511,7 @@ class WHITEBOARD: public GAME{
 		unsigned board_width, unsigned board_height, unsigned fontsize, unsigned docnum, bool editmode, string &script);
 	std::string define_functions(const DOC_CONTEXT &ctx, const WHITEBOARD_PREF &pref, unsigned board_width, unsigned board_height);
 	std::string define_styles(const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp);
+	bool label_oper(PARAM_STRING label, set<unsigned> &notify_ids, function<void(WHITEBOARD_ELM&)>);
 public:
 	friend void walkboard(class _F_walkboard &c, WHITEBOARD *board);
 	void save(DOC_WRITER &w, bool);
@@ -1690,6 +1691,22 @@ void WHITEBOARD::move_lower_bullets(WHITEBOARD_ELM &be_del, unsigned fontsize, s
 	}
 }
 
+bool WHITEBOARD::label_oper (
+	PARAM_STRING label,
+	set<unsigned> &notify_ids,
+	function<void(WHITEBOARD_ELM &)> f)
+{
+	bool found = false;
+	for (auto &e:elms){
+		if (e.second.label==label){
+			f(e.second);
+			notify_ids.insert(e.first);
+			found = true;
+			break;
+		}
+	}
+	return found;
+}
 <mod>
 void WHITEBOARD::execstep (
 	const char *var,
@@ -2387,7 +2404,7 @@ void WHITEBOARD::execstep (
 					for (auto s:selects) notify_ids.insert(s->id);
 				}
 			}
-		}else if (strcmp(var,"labeldelete")==0){
+		}else if (is_eq(var,"labeldelete")){
 			// val format: label
 			bool found = false;
 			for (auto &e:elms){
@@ -2398,39 +2415,52 @@ void WHITEBOARD::execstep (
 				}
 			}
 			if (!found) api_error = string_f(MSG_U(E_LABELDELETE,"labeldelete: element %s not found"),val);
+		}else if (is_eq(var,"settext")){
+			// val format: label text
+			string label,text;
+			if (splitlineq(val,' ',label,text)){
+				bool found = label_oper(label,notify_ids,[&text](auto &e){
+					e.txt = text;
+					});
+				if (!found) api_error = string_f(MSG_U(E_LABELOPER,"%s: label %s not found"),"settext",label.c_str());
+			}
+		}else if (is_eq(var,"settextsize")){
+			// val format: label size
+			string label;
+			int size;
+			if (splitlineq(val,' ',label,size)){
+				bool found = label_oper(label,notify_ids,[size](auto &e){
+					e.textsize = size;
+					});
+				if (!found) api_error = string_f(MSG_R(E_LABELOPER),"settextsize",label.c_str());
+			}
 		}else if (is_any_of(var,"labelselect","boxtype","textpos")){
 			// val format: label 0|1|2
 			string label;
 			unsigned sel;
 			if (splitline(val,' ',label,sel)){
-				bool found = false;
-				for (auto &e:elms){
-					if (e.second.label==label){
-						if (strcmp(var,"labelselect")==0){
-							if (sel < 3){
-								static WHITEBOARD_SELMODE tbmode[]={SEL_SELECTED,SEL_STAR, SEL_IMBED};
-								e.second.selmode = tbmode[sel];
-							}
-						}else if (strcmp(var,"boxtype")==0){
-							// BOX_HIDDEN is only available when there is an image or embed
-							unsigned limit = 3;
-							if (e.second.is_image() || e.second.is_imbed()) limit = 4;
-							if (sel < limit){
-								e.second.box_type = (BOX_TYPE)sel;
-							}
-						}else if (strcmp(var,"textpos")==0){
-							if (sel < 5){
-								e.second.textpos = (WHITEBOARD_TEXTPOS)sel;
-							}
+				bool found = label_oper(label,notify_ids,[var,sel](auto &e){
+					if (is_eq(var,"labelselect")){
+						if (sel < 3){
+							static WHITEBOARD_SELMODE tbmode[]={SEL_SELECTED,SEL_STAR, SEL_IMBED};
+							e.selmode = tbmode[sel];
 						}
-						notify_ids.insert(e.first);
-						found = true;
-						break;
+					}else if (is_eq(var,"boxtype")){
+						// BOX_HIDDEN is only available when there is an image or embed
+						unsigned limit = 3;
+						if (e.is_image() || e.is_imbed()) limit = 4;
+						if (sel < limit){
+							e.box_type = (BOX_TYPE)sel;
+						}
+					}else if (is_eq(var,"textpos")){
+						if (sel < 5){
+							e.textpos = (WHITEBOARD_TEXTPOS)sel;
+						}
 					}
-				}	
-				if (!found) api_error = string_f(MSG_U(E_LABELOPER,"%s: label %s not found"),var,label.c_str());
+				});
+				if (!found) api_error = string_f(MSG_R(E_LABELOPER),var,label.c_str());
 			}
-		}else if (strcmp(var,"resetgame")==0){
+		}else if (is_eq(var,"resetgame")){
 			// val == 0: reset everything
 			if (is_any_of(val,"","0")){
 				resetgame();
@@ -2466,17 +2496,11 @@ void WHITEBOARD::execstep (
 			int type;
 			string label;
 			if (splitline(val,label,enums(type,{0,3}))){
-				bool found = false;
-				for (auto &e:elms){
-					if (e.second.label==label){
-						// This is a hack. We store the type in box_type
-						// Value 3 means HIDDEN.
-						e.second.box_type = (BOX_TYPE)type;
-						notify_ids.insert(e.first);
-						found = true;
-						break;
-					}
-				}
+				bool found = label_oper(label,notify_ids,[type](auto &e){
+					// This is a hack. We store the type in box_type
+					// Value 3 means HIDDEN.
+					e.box_type = (BOX_TYPE)type;
+				});
 				if (!found) api_error = string_f(MSG_R(E_LABELOPER),var,label.c_str());
 			}else{
 				api_error = string_f(MSG_U(E_APIOPER,"%s: invalid type"),var);

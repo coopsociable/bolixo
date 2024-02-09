@@ -10,7 +10,7 @@ BOFS=/usr/bin/bofs
 if [ -x ./bofs ] ; then
 	BOFS=./bofs
 fi
-# Create a white board
+# Create a text document
 createdocument(){
 	echo boBOWORD | $BOFS cat --pipeto ht:/$DOCNAME
 }

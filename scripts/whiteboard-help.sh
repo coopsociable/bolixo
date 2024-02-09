@@ -31,6 +31,18 @@ resetsel(){
 textsize(){
 	$BOFS documents --noscripts --playstep --docname $DOCNAME --step "textsize=$1"
 }
+# Set the caption of an object
+# label
+# new text (generally quoted)
+settext(){
+	$BOFS documents --noscripts --playstep --docname $DOCNAME --step "settext=$1 '$2'"
+}
+# Set the relative size of an object
+# label
+# size (may be negative since it is added to the base text size)
+settextsize(){
+	$BOFS documents --noscripts --playstep --docname $DOCNAME --step "settextsize=$1 '$2'"
+}
 # Set the color of the bullet for text
 # label value
 # The value 0 means black, and 3 means hidden
