@@ -12,7 +12,7 @@ if [ -x ./bofs ] ; then
 fi
 # Create a white board
 createdocument(){
-	echo boBOWHIT |	$BOFS cat --pipeto bt:/$DOCNAME
+	echo boBOWHIT |	$BOFS cat --pipeto ht:/$DOCNAME
 }
 # Erase all elements from the document
 resetdocument(){
