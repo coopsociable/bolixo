@@ -126,6 +126,7 @@ class CHESS: public GAME{
 	std::string define_styles(bool mobile);
 	std::string define_functions(bool reverse, bool mobile);
 	std::string draw_board (bool reverse, bool mobile, unsigned docnum, bool editmode, std::string &script);
+	void refreshboard(VARVAL &notify_var);
 public:
 	CHESS();
 	const char *getclass() const{
@@ -1281,6 +1282,34 @@ inline auto lim8(unsigned &val)
 	return limits(val,0u,7u);
 }
 
+/*
+	Send all the javascript to users refreshing the content of all cells
+	Normally used by resetgame.
+*/
+void CHESS::refreshboard(VARVAL &notify_var)
+{
+	notify_var.val += "chs_loop_board(function(svg){\n";
+	notify_var.val += "\tvar elms = svg.getElementsByTagName('text');\n";
+	unsigned item = 0;
+	for (unsigned i=0; i<8; i++){
+		for (unsigned j=0; j<8; j++){
+			char cell = grid[i][j];
+			notify_var.val += string_f("\tshowpiece(elms[%u],\"%c\");\n",item,cell);
+			item++;
+		}
+	}
+	// Clear all circle/markers
+	notify_var.val += "\tvar elms = svg.getElementsByTagName('circle');\n";
+	notify_var.val += "\tfor (var i=0; i<elms.length; i++){\n";
+	notify_var.val += "\t\telms[i].style.fill='none';\n";
+	notify_var.val += "\t\telms[i].style.stroke='none';\n";
+	notify_var.val += "\t}\n";
+	notify_var.val += "\t});\n";
+
+	update_player_bg (notify_var,0,"lightblue");
+	update_player_bg (notify_var,1,"white");
+}
+
 void CHESS::exec (
 	const char *var,
 	const char *val,
@@ -1289,7 +1318,7 @@ void CHESS::exec (
 	vector<VARVAL> &res,
 	std::vector<USERS_NOTIFIES> &unotifies)
 {
-	string error,status;
+	string error,status,api_error;
 	setactivity();
 	VARVAL notify_var;
 	notify_var.var = VAR_NOTIFY;
@@ -1648,33 +1677,10 @@ void CHESS::exec (
 			}
 		}else if (strcmp(var,"resetgame")==0){
 			resetgame();
-			notify_var.val += "chs_loop_board(function(svg){\n";
-			notify_var.val += "\tvar elms = svg.getElementsByTagName('text');\n";
-			unsigned item = 0;
-			for (unsigned i=0; i<8; i++){
-				for (unsigned j=0; j<8; j++){
-					char cell = grid[i][j];
-					notify_var.val += string_f("\tshowpiece(elms[%u],\"%c\");\n",item,cell);
-					item++;
-				}
-			}
-			// Clear all circle/markers
-			notify_var.val += "\tvar elms = svg.getElementsByTagName('circle');\n";
-			notify_var.val += "\tfor (var i=0; i<elms.length; i++){\n";
-			notify_var.val += "\t\telms[i].style.fill='none';\n";
-			notify_var.val += "\t\telms[i].style.stroke='none';\n";
-			notify_var.val += "\t}\n";
-			notify_var.val += "\t});\n";
-
-			update_player_bg (notify_var,0,"lightblue");
-			update_player_bg (notify_var,1,"white");
-			// tlmp_warning ("val.size=%lu",notify_var.val.size());
+			refreshboard(notify_var);
 			setmodified(ctx.username);
 			robot_request(res);
 			documentd_setchanges(res);
-			VARVAL var;
-			var.var = VAR_CONTENT;
-			res.emplace_back(var);
 		}else if (strcmp(var,"config")==0){
 			vector<VARVAL> fields;
 			documentd_parsefields(val,fields);
@@ -1737,26 +1743,26 @@ void CHESS::exec (
 				update_players(notify_var.val);
 				robot_request(res);
 			}
-		}else if (strcmp(var,"loadline")==0){
+		}else if (is_eq(var,"loadline")){
 			// For automated tests purpose
 			// val=line:line_content
-			unsigned line = atoi(val);
-			if (line < 8){
-				const char *pt = strchr(val,':');
-				if (pt != nullptr){
-					pt++;
-					unsigned col = 0;
-					while (*pt != '\0' && col < 8){
-						char cell = *pt++;
-						if (cell == '_') cell = ' ';
-						grid[line][col] = cell;
-						col++;
-					}
+			unsigned line;
+			string content;
+			if (splitline(val,':',lim8(line),content) && content.size()==8){
+				unsigned col = 0;
+				for (auto cell:content){
+					if (cell == '_') cell = ' ';
+					grid[line][col] = cell;
+					col++;
 				}
+				refreshboard(notify_var);
+			}else{
+				api_error = string_f(MSG_U(E_IVLDCMDARGS,"Command %s: invalid parameters"),"loadline");
 			}
-		}else if (strcmp(var,"clear")==0){
+		}else if (is_eq(var,"clear")){
 			for (auto &g:grid) for (auto &gg:g) gg=' ';
-		}else if (strcmp(var,"checkmove")==0){
+			refreshboard(notify_var);
+		}else if (is_eq(var,"checkmove")){
 			// For automated tests purpose
 			// It is permisive. It will find who is playing by lookup at the from_line,from_col cell.
 			// This helps create test sequences.
@@ -1794,7 +1800,22 @@ void CHESS::exec (
 					player->reset_sel();
 				}
 			}
-		}else if (strcmp(var,"dump")==0){
+		}else if (is_eq(var,"setplayer")){
+			unsigned player_num,en_passant_line,en_passant_col;
+			bool king_moved,left_rook_moved,right_rook_moved;
+			if (splitline(val,limits(player_num,1u,2u)
+				,king_moved,left_rook_moved,right_rook_moved
+				,en_passant_line,en_passant_col)){
+				auto &p = player_num == 1 ? player1 : player2;
+				p.king_moved = king_moved;
+				p.left_rook_moved = left_rook_moved;
+				p.right_rook_moved = right_rook_moved;
+				p.en_passant.line = en_passant_line;
+				p.en_passant.col = en_passant_col;
+			}else{
+				api_error = string_f(MSG_R(E_IVLDCMDARGS),"setplayer");
+			}
+		}else if (is_eq(var,"dump")){
 			VARVAL var;
 			var.var = "grid";
 			unsigned line = 0;
@@ -1815,6 +1836,12 @@ void CHESS::exec (
 		}
 	}else{
 		error = MSG_R(E_READONLY);
+	}
+	if (api_error.size() > 0){
+		VARVAL var;
+		var.var = VAR_ERROR;
+		var.val = move(api_error);
+		res.emplace_back(move(var));
 	}
 	if (notify_var.val.size() > 0) res.emplace_back(move(notify_var));
 	if (error.size() > 0){
