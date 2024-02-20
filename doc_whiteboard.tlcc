@@ -419,12 +419,13 @@ struct WHITEBOARD_PREF{
 	unsigned viewbox_y = 0;
 };
 
+#define DEFAULT_TEXT_SIZE 15;
 class WHITEBOARD: public GAME{
 	map<unsigned,WHITEBOARD_ELM> elms;
 	vector<unsigned> baseelms;
 	map<string,WHITEBOARD_PREF> prefs;	// Per session state
 	unsigned alloc_id=0;
-	unsigned textsize=10;			// default textsize x 10 (so 10 is 1em).
+	unsigned textsize=DEFAULT_TEXT_SIZE;	// default textsize x 10 (so 10 is 1em).
 	unsigned gridcell=0;			// Grid unit (0 = no grid)
 	void resetsel(WHITEBOARD_SELMODE, set<unsigned> &ids);
 	void redraw(const set<unsigned> &ids, VARVAL &var, unsigned fontsize);
@@ -507,7 +508,7 @@ class WHITEBOARD: public GAME{
 		VARVAL &notify_var, set<unsigned> &notify_ids);
 	void sortsubelms(set<unsigned> &notify_ids);
 	void setfocus(VARVAL &var);
-	std::string draw_board (unsigned vx, unsigned vy, unsigned width, unsigned height,
+	std::string draw_board (unsigned vx, unsigned vy, unsigned svg_height,
 		unsigned board_width, unsigned board_height, unsigned fontsize, unsigned docnum, bool editmode, string &script);
 	std::string define_functions(const DOC_CONTEXT &ctx, const WHITEBOARD_PREF &pref, unsigned board_width, unsigned board_height);
 	std::string define_styles(const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp);
@@ -977,6 +978,7 @@ void WHITEBOARD::resetgame()
 	elms.clear();
 	baseelms.clear();
 	alloc_id = 0;
+	textsize = DEFAULT_TEXT_SIZE;
 }
 const char *WHITEBOARD::getclass() const
 {
@@ -984,7 +986,7 @@ const char *WHITEBOARD::getclass() const
 }
 
 /*
-	Locate an element base on coordinates
+	Locate an element based on coordinates
 */
 <mod>
 WHITEBOARD_ELM *WHITEBOARD::locate (unsigned x, unsigned y, unsigned fontsize)
@@ -1277,8 +1279,7 @@ static string whiteboard_converturl(PARAM_STRING gameid, PARAM_STRING url)
 string WHITEBOARD::draw_board (
 	unsigned vx,		// Viewbox specs
 	unsigned vy,
-	unsigned width,
-	unsigned height,
+	unsigned svg_height,
 	unsigned board_width,
 	unsigned board_height,
 	unsigned fontsize,
@@ -1327,12 +1328,15 @@ string WHITEBOARD::draw_board (
 			,docnum,docnum);
 	}
 
+	// Same computation as define_function()
+	unsigned svg_width = board_width*svg_height/board_height;
+	// tlmp_warning ("draw %u %u %u %u\n",vx,vy,width,height);
 	glocal.val += string_f("<svg id='board-%s,%u' viewbox='%u %u %u %u'"
 		" style='cursor:default;'"
 		" width=100%% height=100%%"
 		" %s"
 		" >\n"
-		,gameid.c_str(),docnum,vx,vy,width,height
+		,gameid.c_str(),docnum,vx,vy,svg_width,svg_height
 		,onfuncs.c_str());
 	// Draw the grid. The grid is drawn as 2 SVG paths.
 	// By default, the lines are white. When we turn the two paths on, we get the finest grid
@@ -1348,7 +1352,7 @@ string WHITEBOARD::draw_board (
 		for (unsigned i=0; i<2; i++){
 			string p = string_f("<path id=\"grid%u-%s,%u\" stroke=%s stroke-width=1 fill=none d='M %u 0"
 				,i,gameid.c_str(),docnum,tbcol[i],i*20);
-			unsigned width4=width*4;
+			unsigned width4=svg_height*4;
 			for (unsigned pos=0; pos < width4; pos += 40){
 				p += string_f(" v %u m 40 0 v -%u m 40 0",width4,width4);
 			}
@@ -1443,7 +1447,12 @@ string WHITEBOARD::define_functions(
 	unsigned board_height)
 {
 	string val;
-
+	// We have to respect the ratio of the board to specify
+	// the width of the svg viewport
+	// Same computation is done in draw_board
+	// We consider that the height of the board always match SVG_BOARD_HEIGHT.
+	// Only the width is computed.
+	unsigned svg_board_width = board_width*SVG_BOARD_HEIGHT/board_height;
 	// Clicking on the board
 	val += "var mbuttons=[0,0,0];\n";
 	val += "var clickedWhen=0;\n";
@@ -1453,7 +1462,7 @@ string WHITEBOARD::define_functions(
 	val += "\tmbuttons[event.which-1] = 1;\n";
 	val += "\tvar elm = document.getElementById('board-'+gameid+','+docnum);\n";
 	val += "\tvar rect = elm.getBoundingClientRect();\n";
-	val += string_f("\tvar x = (event.clientX-rect.left)*%u/width + vboxx;\n",SVG_BOARD_WIDTH);
+	val += string_f("\tvar x = (event.clientX-rect.left)*%u/width + vboxx;\n",svg_board_width);
 	val += string_f("\tvar y = (event.clientY-rect.top)*%u/height + vboxy;\n",SVG_BOARD_HEIGHT);
 	val += "\tgameaction(event,'select:'+x+','+y+ ','+event.which+','+event.shiftKey+','+event.ctrlKey);\n";
 	val += "\tevent.stopPropagation();\n";
@@ -1481,7 +1490,7 @@ string WHITEBOARD::define_functions(
 	val += "\tif(mbuttons[0] == 1 && d.getTime()-clickedWhen > 200){\n";
 	val += "\t\tvar elm = document.getElementById('board-'+gameid+','+docnum);\n";
 	val += "\t\tvar rect = elm.getBoundingClientRect();\n";
-	val += string_f("\tvar x = (event.clientX-rect.left)*%u/width + vboxx;\n",SVG_BOARD_WIDTH);
+	val += string_f("\tvar x = (event.clientX-rect.left)*%u/width + vboxx;\n",svg_board_width);
 	val += string_f("\tvar y = (event.clientY-rect.top)*%u/height + vboxy;\n",SVG_BOARD_HEIGHT);
 	val += "\t\tgameaction(event,'mousemove:'+x+','+y+','+event.shiftKey+','+event.ctrlKey);\n";
 	val += "\t}\n";
@@ -1504,11 +1513,11 @@ string WHITEBOARD::define_functions(
 
 	val += "function whi_setviewbox(x, y){\n";
 	val += string_f("\tvar e=document.getElementById('board-%s,%u');\n",gameid.c_str(),ctx.docnum);
-	val += string_f("\te.setAttribute('viewBox',' ' + x + ' ' + y + ' %u %u');\n",SVG_BOARD_WIDTH,SVG_BOARD_HEIGHT);
+	val += string_f("\te.setAttribute('viewBox',' ' + x + ' ' + y + ' %u %u');\n",svg_board_width,SVG_BOARD_HEIGHT);
 	val += string_f("\tvar e=document.getElementById('vscroll-%s');\n",gameid.c_str());
 	val += string_f("\te.setAttribute('y',y*%u/%u);\n",board_height,4*SVG_BOARD_HEIGHT);
 	val += string_f("\tvar e=document.getElementById('hscroll-%s');\n",gameid.c_str());
-	val += string_f("\te.setAttribute('x',x*%u/%u);\n",board_width,4*SVG_BOARD_WIDTH);
+	val += string_f("\te.setAttribute('x',x*%u/%u);\n",board_width,4*svg_board_width);
 	val += "}\n";
 
 	val += "function replace_foreign(id, x, y, w,h,color,boxtype){\n";
@@ -1719,12 +1728,6 @@ void WHITEBOARD::execstep (
 	std::vector<VARVAL> &res)
 {
 	auto &pref = prefs[ctx.session];
-	unsigned waiting_users_width = sp.mobile ? 62 : 42;
-	unsigned board_width = sp.content_width - waiting_users_width;	// Space for user list
-	const unsigned scroll_thick = sp.mobile ? 12 : 6;
-	if (sp.content_height < board_width) board_width = sp.content_height;
-	board_width -= scroll_thick;
-	unsigned board_height = board_width;
 	string error,status,api_error;
 	setactivity();
 	string tmpvar,tmpval;
@@ -1737,35 +1740,19 @@ void WHITEBOARD::execstep (
 	}
 	if (strcmp(var,REQ_PRINT)==0){
 		if (is_any_of(val,"","full")){
-			VARVAL v;
-			v.var = VAR_CONTENT;
-			documentd_imbeds (this,v.val,sp);
-			v.val += "<style>\n";
-			v.val += define_styles(ctx,sp);
-			v.val += "</style>\n";
-			v.val += "<script>\n";
-			v.val += define_functions(ctx,pref,board_width,board_height);
-			// Copy a template in a foreignobject
-			v.val += "function show_template(doc,tid,pid) {\n";
-			v.val += "\tvar temp = document.getElementById(tid);\n";
-			v.val += "\tvar clon = temp.content.cloneNode(true);\n";
-			v.val += "\tvar parent = doc.getElementById(pid);\n";
-			v.val += "console.log ('show_template '+temp+' '+parent);\n";
-			v.val += "\tparent.appendChild(clon);\n";
-			v.val += "}\n";
-			// Add an IMG tag to a foreignobject
-			v.val += "function show_image(doc,url,radius,pid) {\n";
-			v.val += "\tvar img = document.createElement('img');\n";
-			v.val += "\timg.style.borderRadius = radius;\n";
-			v.val += "\timg.src = url;\n";
-			v.val += "\timg.style.width='100%';\n";
-			v.val += "\tvar parent = doc.getElementById(pid);\n";
-			v.val += "\tparent.appendChild(img);\n";
-			v.val += "}\n";
-			v.val += "</script>\n";
 			glocal pref;
-			<call button_bar>(this,sp.mobile,ctx.maywrite,v.val);
-			<f draw>
+			glocal ctx;
+			glocal sp;
+			glocal WHITEBOARD *doc = this;
+			VARVAL v;
+			<call doc_layout>(val,this,ctx,sp,"whiteboard",true,is_eq(val,"full"),v);
+			<f styles>
+				return glocal.doc->define_styles(glocal.ctx,glocal.sp);
+			</f>
+			<f functions>
+				return glocal.doc->define_functions(glocal.ctx,glocal.pref,board_width,board_height);
+			</f>
+			<f menu_bar>
 				#define BUTTON_NEWDOC	0
 				#define BUTTON_TEXT	1
 				#define BUTTON_ELLIPSE	2
@@ -1814,46 +1801,28 @@ void WHITEBOARD::execstep (
 				documentd_bar_button (lines,BUTTON_DELITEMS,menu.svg_delitems,specs,false,MSG_U(I_DELITEMS,"Delete selected elements"));
 				//documentd_bar_button (lines,BUTTON_UNDO,menu.svg_undo,specs,false,MSG_U(I_UNDOEDIT,"Undo the last modification"));
 			</f>
+			<f content>
+				string val;
+				onevent = "onkeydown='whi_gamepress(event);return false;'";
+				documentd_imbeds (glocal.doc,val,glocal.sp);
+				val += glocal.doc->draw_board(glocal.pref.viewbox_x,glocal.pref.viewbox_y,SVG_BOARD_HEIGHT,board_width,board_height,sp.fontsize,ctx.docnum,true,script);
+				return val;
+			</f>
+			<f hscroll>
+				return string_f("<rect id='hscroll-%s' x=%u y=0 rx=3 ry=3 width=%u height=%u fill=lightgray />\n"
+					,gameid,glocal.pref.viewbox_x*board_width/(4*SVG_BOARD_WIDTH),board_width/4,scroll_thick);
+			</f>
+			<f vscroll>
+				return string_f("<rect id='vscroll-%s' x=0 y=%u rx=3 ry=3 width=%u height=%u fill=lightgray />\n"
+					,gameid,glocal.pref.viewbox_y*board_height/(4*SVG_BOARD_HEIGHT),scroll_thick,board_height/4);
+			</f>
 			</call>
-			// Board
-			v.val += string_f("<div class=webtable id=%sdoc_whiteboard style='display:flex; flex-flow:row;' >\n",val);
-			v.val += string_f("<div id='text-%s' style='flex:0 0 auto;width:%u;height:%u;border:1px solid black;"
-				" margin-left: auto;'"
-				" onkeydown='whi_gamepress(event);return false;'"
-				" tabindex=0 >\n",gameid.c_str(),board_width,board_height);
-			string script;
-			v.val += draw_board(pref.viewbox_x,pref.viewbox_y,SVG_BOARD_WIDTH,SVG_BOARD_HEIGHT,board_width,board_height,sp.fontsize,ctx.docnum,true,script);
-			if (script.size() > 0){
-				v.val += "<script>\n";
-				v.val += script;
-				v.val += "</script>\n";
-			}
-			v.val += "<div style='background-color:ghostwhite;'>\n";
-			v.val += string_f("<svg width=%u height=%u>\n",board_width,scroll_thick);
-			v.val += string_f("<rect id='hscroll-%s' x=%u y=0 rx=3 ry=3 width=%u height=%u fill=lightgray />\n"
-				,gameid.c_str(),pref.viewbox_x*board_width/(4*SVG_BOARD_WIDTH),board_width/4,scroll_thick);
-			v.val += "</svg>\n";
-			v.val += "</div>\n";
-			v.val += "</div>\n";
-			v.val += string_f("<div style='flex:0 0 auto; margin-right:auto; background-color: ghostwhite; width:%u;height:%u;'>",scroll_thick,board_height);
-			v.val += "<svg width=100% height=100%>\n";
-			v.val += string_f("<rect id='vscroll-%s' x=0 y=%u rx=3 ry=3 width=%u height=%u fill=lightgray />\n"
-				,gameid.c_str(),pref.viewbox_y*board_height/(4*SVG_BOARD_HEIGHT),scroll_thick,board_height/4);
-			v.val += "</svg>\n";
-			v.val += "</div>\n";
-			draw_waiting_users(v.val,waiting_users_width,board_height,"flex:0 0 auto;");
-			v.val += "</div>\n";
-			// Status line
-			v.val += "<div id=tab_form>\n";
-			v.val += string_f("<div id=msg-%s style=color:black>&nbsp;</div>\n",gameid.c_str());
-			documentd_chat (v.val,ctx.username,sp.mobile,chat,sp.width-20,sp.mobile ? 200 : 100);
-			v.val += "</div>\n";
 			res.emplace_back(move(v));
 		}
 	}else if (strcmp(var,REQ_FUNCTIONS)==0){
 		VARVAL var;
 		var.var = VAR_DEFSCRIPT;
-		var.val = define_functions (ctx,pref,board_width,board_height);
+		var.val = define_functions (ctx,pref,1000,1000);
 		res.emplace_back(move(var));
 	}else if (strcmp(var,REQ_STYLES)==0){
 		VARVAL var;
@@ -1869,7 +1838,7 @@ void WHITEBOARD::execstep (
 				VARVAL var,var_script;
 				var.var = VAR_CONTENT;
 				var_script.var = VAR_DEFSCRIPT;
-				var.val = draw_board (col*SVG_BOARD_WIDTH,row*SVG_BOARD_HEIGHT,SVG_BOARD_WIDTH,SVG_BOARD_HEIGHT
+				var.val = draw_board (col*SVG_BOARD_WIDTH,row*SVG_BOARD_HEIGHT,SVG_BOARD_HEIGHT
 					,sp.content_width,sp.content_height,sp.fontsize,ctx.docnum,false,var_script.val);
 				res.emplace_back(move(var));
 				res.emplace_back(move(var_script));
@@ -2036,7 +2005,7 @@ void WHITEBOARD::execstep (
 					resetsel(SEL_SELECTED,notify_ids);
 				}
 				auto e = locate (x,y,sp.fontsize);
-				//tlmp_warning ("select: val=%s x=%u y=%u e=%p",val,x,y,e);
+				// tlmp_warning ("select: val=%s x=%u y=%u e=%p",val,x,y,e);
 				if (e != nullptr){
 					if (pref.selecting){
 						if (button == 2){
@@ -2155,7 +2124,9 @@ void WHITEBOARD::execstep (
 		}else if (strcmp(var,"newgame")==0){
 			int uval = atoi(val);
 			auto oldpref = pref;
-			if (uval == BUTTON_NEWDOC){
+			if (uval == BUTTON_RELOAD){
+				documentd_action_reload(res);
+			}else if (uval == BUTTON_NEWDOC){
 				VARVAL var;
 				var.var = VAR_DIALOG;
 				var.val = DIALOG_WHITEBOARD_NEW;
@@ -2170,6 +2141,7 @@ void WHITEBOARD::execstep (
 				const unsigned default_size= type == TYPE_TEXT ? 8 : 50;
 				const unsigned x=50 + pref.viewbox_x;
 				const unsigned y=50 + pref.viewbox_y;
+				// tlmp_warning ("place x=%u y=%u box_x=%d box_y=%d\n",x,y,pref.viewbox_x,pref.viewbox_y);
 				place_newelm(type,x,y,default_size,default_size,star_elms,imbed_elms,notify_var,notify_ids);
 				setmodified(ctx.username);
 				pref.selecting = true;

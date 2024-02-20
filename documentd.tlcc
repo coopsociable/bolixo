@@ -2217,8 +2217,20 @@ void doc_layout (
 {
 	unsigned waiting_users_width = sp.mobile ? 62 : 42;
 	const unsigned scroll_thick = scroll ? (sp.mobile ? 12 : 6) : 0;
-	unsigned board_width = sp.content_width - waiting_users_width - scroll_thick;	// Space for user list and scroll
-	unsigned board_height = sp.content_height-scroll_thick;
+	unsigned board_width;	// Space for user list and scroll
+	unsigned board_height;
+	// Some document requires a square area. doc_layout must received this square boolean.
+	// So far no document using doc_layout requires this.
+	bool square = false;
+	if (!square){
+		board_width = sp.content_width - waiting_users_width - scroll_thick;	// Space for user list and scroll
+		board_height = sp.content_height-scroll_thick;
+	}else{
+		board_width = sp.content_width - waiting_users_width;  // Space for user list
+		if (sp.content_height < board_width) board_width = sp.content_height;
+		board_width -= scroll_thick;
+		board_height = board_width;
+	}
 	v.var = VAR_CONTENT;
 	v.val += "<style>\n";
 	v.val += c.styles(sp,ctx);
@@ -2253,7 +2265,7 @@ void doc_layout (
 		// For now, caller gets minimal scroll bar and have no control over its look
 		v.val += "<div style='background-color:ghostwhite;'>\n";
 		v.val += string_f("<svg width=%u height=%u>\n",board_width,scroll_thick);
-		c.hscroll(ctx,sp,gameid,board_width,board_height,scroll_thick);
+		v.val += c.hscroll(ctx,sp,gameid,board_width,board_height,scroll_thick);
 		v.val += "</svg>\n";
 		v.val += "</div>\n";
 		v.val += "</div>\n";
