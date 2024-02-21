@@ -1112,7 +1112,7 @@ string WORDPROC::formatline(unsigned noline, const DOC_UI_SPECS_receive &sp, str
 					,para_width,para_width);
 			}	
 			ret += "</div>\n";
-			script += string_f("show_template('temp%u','parent%u');\n",docnum,noline);
+			script += string_f("word_show_template('temp%u','parent%u');\n",docnum,noline);
 			format = false;
 		}
 				
@@ -1793,6 +1793,13 @@ string WORDPROC::define_functions(const DOC_CONTEXT &ctx, const WORD_USERPREF &p
 {
 	string val;
 	val += documentd_js_loop_function("text","word");
+	// Copy a template
+	val += "function word_show_template(tid,pid) {\n";
+	val += "\tvar temp = document.getElementById(tid);\n";
+	val += "\tvar clon = temp.content.cloneNode(true);\n";
+	val += "\tvar parent = document.getElementById(pid);\n";
+	val += "\tparent.appendChild(clon);\n";
+	val += "}\n";
 	// Function called when the user click
 	val += "function word_gameselect(gameid,docnum,event){\n";
 	val += "\tvar elm = document.getElementById('text-'+gameid+','+docnum);\n";
@@ -2098,13 +2105,6 @@ void WORDPROC::execstep (
 
 			// event.location==1 tells if this is the left shift/alt key or right. We are not using it now
 			v.val += "<script>\n";
-			// Copy a template
-			v.val += "function show_template(tid,pid) {\n";
-			v.val += "\tvar temp = document.getElementById(tid);\n";
-			v.val += "\tvar clon = temp.content.cloneNode(true);\n";
-			v.val += "\tvar parent = document.getElementById(pid);\n";
-			v.val += "\tparent.appendChild(clon);\n";
-			v.val += "}\n";
 
 			// Function find the last visible line on screen
 			v.val += "function getlastline(){\n";

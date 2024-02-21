@@ -1401,7 +1401,7 @@ string WHITEBOARD::draw_board (
 						glocal.val += string_f("<img width=100%% src=%s>\n",paramurl.c_str());
 					}
 					glocal.val += "</foreignobject>\n";
-					if (elm.is_imbed()) glocal.script += string_f("show_template(document,'temp%u','f%u');\n",docnum,elm.id);
+					if (elm.is_imbed()) glocal.script += string_f("whi_show_template(document,'temp%u','f%u');\n",docnum,elm.id);
 				}
 				break;
 			case TYPE_LINE:
@@ -1661,6 +1661,24 @@ string WHITEBOARD::define_functions(
 	val += "\t\telm.innerHTML=msg;\n";
 	val += "\t}\n";
 	val += "}\n";
+
+	// Copy a template in a foreignobject
+	val += "function whi_show_template(doc,tid,pid) {\n"
+		"\tvar temp = document.getElementById(tid);\n"
+		"\tvar clon = temp.content.cloneNode(true);\n"
+		"\tvar parent = doc.getElementById(pid);\n"
+		"console.log ('whi_show_template '+temp+' '+parent);\n"
+		"\tparent.appendChild(clon);\n"
+		"}\n";
+	// Add an IMG tag to a foreignobject
+	val += "function whi_show_image(doc,url,radius,pid) {\n"
+		"\tvar img = document.createElement('img');\n"
+		"\timg.style.borderRadius = radius;\n"
+		"\timg.src = url;\n"
+		"\timg.style.width='100%';\n"
+		"\tvar parent = doc.getElementById(pid);\n"
+		"\tparent.appendChild(img);\n"
+		"}\n";
 	
 	return val;
 }
@@ -1750,7 +1768,8 @@ void WHITEBOARD::execstep (
 				return glocal.doc->define_styles(glocal.ctx,glocal.sp);
 			</f>
 			<f functions>
-				return glocal.doc->define_functions(glocal.ctx,glocal.pref,board_width,board_height);
+				string ret = glocal.doc->define_functions(glocal.ctx,glocal.pref,board_width,board_height);
+				return ret;
 			</f>
 			<f menu_bar>
 				#define BUTTON_NEWDOC	0
@@ -2273,7 +2292,7 @@ void WHITEBOARD::execstep (
 				s->imageurl = url;
 				notify_ids.insert(s->id);	// Make sure the foreignObject is positionned
 				notify_var.val += "whi_loop_board(function(svg){\n";
-				notify_var.val += string_f("\tshow_image(svg,'%s','%s','f%u');\n"
+				notify_var.val += string_f("\twhi_show_image(svg,'%s','%s','f%u');\n"
 					,paramurl.c_str(),s->type == TYPE_ELLIPSE ? "50%" : "5px",s->id);
 				notify_var.val += "\t});\n";
 			}
@@ -2313,7 +2332,7 @@ void WHITEBOARD::execstep (
 				s->embed = imbed;
 				notify_ids.insert(s->id);	// Make sure the foreignObject is positionned
 				notify_var.val += "whi_loop_board(function(svg){\n";
-				notify_var.val += string_f("\tshow_template(svg,'temp%u','f%u');\n",imbed.docnum,s->id);
+				notify_var.val += string_f("\twhi_show_template(svg,'temp%u','f%u');\n",imbed.docnum,s->id);
 				notify_var.val += "\t});\n";
 			}
 		// The other actions are Used to script modification of the document
