@@ -1171,6 +1171,12 @@ void WHITEBOARD::delete_elm (unsigned id, VARVAL &notify_var)
 		static const char *tbtag[]={"ellipse","rect","line","path","circle"};
 		notify_var.val += string_f("removeelm('e%u','%s');\n",id,tbtag[pt->second.type]);
 		notify_var.val += string_f("removeelm('t%u','text');\n",id);
+		if (pt->second.is_imbed() || pt->second.is_image()){
+			notify_var.val += string_f("removeelm('f%u','foreignObject');\n",id);
+			if (pt->second.is_imbed()){
+				notify_var.val += string_f("removetemplate('temp%u');\n",pt->second.embed.docnum);
+			}
+		}
 		elms.erase(pt);
 		// Remove from baseelms if there
 		auto pt = find(baseelms.begin(),baseelms.end(),id);
@@ -1656,8 +1662,18 @@ string WHITEBOARD::define_functions(
 	// Remove an element
 	val += "function removeelm(id,tag){\n";
 	val += "\twhi_loop(tag,id,function(e){\n";
+	//val += "console.log(`removeelm tag=${tag} e=${e}`);\n";
 	val += "\t\te.parentNode.removeChild(e);\n";
 	val += "\t});\n";
+	val += "}\n";
+	// Remove a template. Templates are global
+	val += "function removetemplate(id){\n";
+	val += "\tvar e = document.getElementById(id);\n";
+	val += "\tif (e != null){\n";
+	val += "\t\te.parentNode.removeChild(e);\n";
+	val += "\t}else{\n";
+	val += "\t\tconsole.log('removetemplate: not found '+id);\n";
+	val += "\t}\n";
 	val += "}\n";
 
 	// Update the message field
