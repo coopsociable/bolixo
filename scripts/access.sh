@@ -468,6 +468,32 @@ elif [ "$1" = "doc-whiteboard-2many" ] ; then # test: tests many 2 many  on the 
 elif [ "$1" = "doc-whiteboard" ] ; then # test: many tests on the whiteboard document
 	$0 doc-whiteboard-3elms
 	$0 doc-whiteboard-2many
+elif [ "$1" = "doc-whiteboard-imbed" ] ; then # test: setup a white board with imbeds
+	DOCNAME=/projects/jacques-A/public/imbed.white
+	. scripts/whiteboard-help.sh
+	createdocument
+	resetdocument
+	if [ "$2" = "1" -o "$2" = "" ] ; then
+		addelm elm1 "Chess game" rect 320 400 600 600
+		textpos elm1 1
+		#assigndoc test.white A1
+		assigndoc test.chess
+		resetsel
+	fi
+	if [ "$2" = "2" -o "$2" = "" ] ; then
+		addelm elm2 "Video" rect 930 400 600 600
+		textpos elm2 1
+		assigndoc test.white A1
+		#assigndoc test.pho
+		resetsel
+	fi
+	if [ "$2" = "3" -o "$2" = "" ] ; then
+		addelm elm3 "Table" rect 600 800 600 100
+		textpos elm3 1
+		assigndoc test.chess
+		#assigndoc noname.clc a1:d4
+		resetsel
+	fi
 elif [ "$1" = "doc-calc" ] ; then # test: many test on spreadsheet document
 	DOCNAME=/projects/jacques-A/public/test.sheet
 	. scripts/calc-help.sh

@@ -868,6 +868,18 @@ std::string documentd_imbed (
 	}
 	return ret;
 }
+static GAME_P documentd_findsubgame(const char *gameid, const string &document)
+{
+	GAME_P ret;
+	string docpath = documentd_rel2abs(gameid,document);
+	if (docpath.size() > 0){
+		auto p = pt_games->find(docpath);
+		if (p != pt_games->end()){
+			ret = p->second;
+		}
+	}
+	return ret;
+}
 /*
 	Get all the scripts, styles and templates to support document embedding in this document
 */
@@ -878,6 +890,8 @@ void documentd_imbeds (
 {
 	set<string> type_seens;		// Document types already processed
 	auto tb = game->get_embed_specs();
+	type_seens.insert(game->getclass());	// A document may imbed another document of the same
+						// type, so no need to source the styles and scripts
 	for (auto &t:tb){
 		string docpath = documentd_rel2abs(game->get_gameid(),t.document);
 		auto p = pt_games->find(docpath);
@@ -918,21 +932,43 @@ void documentd_imbeds (
 	Insert a new imbedded document into a document currently displayed.
 	We are using this function when a user is adding a new document.
 */
+<mod>
 void documentd_insert_imbed(
-	PARAM_STRING gameid,
+	GAME *game,
 	VARVAL &notify_var,
 	DOCUMENT_EMBED &imbed,
 	const DOC_UI_SPECS_receive &sp)
 {
+	// We have to know if another document of the same type is currently imbedded.
+	// Potentially, the parent document is imbedding a sub-document of the same type.
+	const char *gameid = game->get_gameid();
+	bool found = false;
+	auto newsub = documentd_findsubgame(gameid,imbed.document);
+	if (is_eq(game->getclass(),newsub->getclass())){
+		found = true;
+	}else{
+		auto tb = game->get_embed_specs();
+		for (auto &t:tb){
+			auto sub = documentd_findsubgame(gameid,t.document);
+			if (is_eq(sub->getclass(),newsub->getclass())){
+				found = true;
+				break;
+			}
+		}
+	}
 	string script;
-	documentd_imbed (gameid,imbed.document,REQ_FUNCTIONS,"",imbed.docnum,sp,script);
-	notify_var.val += script;
-	string content = documentd_imbed (gameid,imbed.document,REQ_STYLES,"",imbed.docnum,sp,script);
-	notify_var.val += "document.body.innerHTML+=`";
-	notify_var.val += "<style>\n";
-	notify_var.val += content;
-	notify_var.val += "</style>`;\n";
-	content = documentd_imbed (gameid,imbed.document,REQ_REGION,imbed.region,imbed.docnum,sp,script);
+	tlmp_warning ("insert_imbed process functions and styles: %s %s found=%d\n",gameid,imbed.document.c_str(),found);
+	if (!found){
+		documentd_imbed (gameid,imbed.document,REQ_FUNCTIONS,"",imbed.docnum,sp,script);
+		notify_var.val += script;
+		string content = documentd_imbed (gameid,imbed.document,REQ_STYLES,"",imbed.docnum,sp,script);
+		notify_var.val += "document.body.innerHTML+=`";
+		notify_var.val += "<style>\n";
+		notify_var.val += content;
+		notify_var.val += "</style>`;\n";
+		script.clear();
+	}
+	string content = documentd_imbed (gameid,imbed.document,REQ_REGION,imbed.region,imbed.docnum,sp,script);
 	// First we add the sub-document template definition, then the scripts
 	notify_var.val += "document.body.innerHTML+=`";
 	notify_var.val += string_f("<template id='temp%u'>\n",imbed.docnum);
@@ -941,6 +977,7 @@ void documentd_insert_imbed(
 	notify_var.val += script;
 	if (content.find("not-square")!=string::npos) imbed.not_square = true;
 }
+</mod>
 /*
 	Generate the function to loop inside all javascript object, then search for an id and apply a function
 */
@@ -1111,6 +1148,12 @@ int SUBPROGRAM::sendmore()
 void subprogram_exec (PARAM_STRING gameid, const char *cmd)
 {
 }
+void documentd_init_specs (DOC_UI_SPECS_receive &sp)
+{
+	sp.width = sp.height = sp.content_width = sp.content_height = 1000;
+	sp.mobile = false;
+	sp.fontsize = 14;
+}
 
 static void documentd_chess_move(vector<SUBPROGRAM> &programs, map<string,GAME_P> &games, const char *gameid, PARAM_STRING move)
 {
@@ -1120,9 +1163,7 @@ static void documentd_chess_move(vector<SUBPROGRAM> &programs, map<string,GAME_P
 		&& isalpha(move.ptr[2])
 		&& isdigit(move.ptr[3])){
 		DOC_UI_SPECS_receive sp;
-		sp.width = sp.height = sp.content_width = sp.content_height = 1000;
-		sp.mobile = false;
-		sp.fontsize = 14;
+		documentd_init_specs (sp);
 		vector<VARVAL> res;
 		unsigned col1 = move.ptr[0] - 'a';
 		unsigned line1 = 8-(move.ptr[1] - '0');
@@ -1150,9 +1191,7 @@ static void documentd_chess_move(vector<SUBPROGRAM> &programs, map<string,GAME_P
 static void documentd_chess_print (const char *user, map<string,GAME_P> &games, const char *gameid)
 {
 	DOC_UI_SPECS_receive sp;
-	sp.width = sp.height = sp.content_width = sp.content_height = 1000;
-	sp.mobile = false;
-	sp.fontsize = 14;
+	documentd_init_specs (sp);
 	vector<VARVAL> res;
 	string msg;
 	bool unknown;
@@ -1408,6 +1447,7 @@ int main (int argc, char *argv[])
 							if (msg.size() == 0){
 								DOC_CONTEXT ctx;
 								DOC_UI_SPECS_receive sp;
+								documentd_init_specs (sp);
 								vector<VARVAL> res;
 								vector<VARVAL_receive> steps;
 								VARVAL_receive rec;

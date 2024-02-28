@@ -425,10 +425,11 @@ unsigned documentd_displaylen (const char *line, unsigned fontsize, float size);
 const char *documentd_getflag(const char *flag);
 std::string documentd_imbed (PARAM_STRING gameid, PARAM_STRING document, PARAM_STRING command, PARAM_STRING option, unsigned docnum, const DOC_UI_SPECS_receive &sp, std::string &script);
 void documentd_imbeds(GAME *game, std::string &lines, const DOC_UI_SPECS_receive &sp);
-void documentd_insert_imbed(PARAM_STRING gameid, VARVAL &notify_var, DOCUMENT_EMBED &imbed, const DOC_UI_SPECS_receive &sp);
+void documentd_insert_imbed(GAME *game, VARVAL &notify_var, DOCUMENT_EMBED &imbed, const DOC_UI_SPECS_receive &sp);
 std::string documentd_rel2abs (PARAM_STRING gameid, PARAM_STRING relpath);
 std::string documentd_js_loop_function(const char *board_prefix, const char *prefix);
 void documentd_action_reload(std::vector<VARVAL> &res);
+void documentd_init_specs (DOC_UI_SPECS_receive &sp);
 
 void fflush (DOC_WRITER *);
 char *fgets(char *s, int size, DOC_READER *r);

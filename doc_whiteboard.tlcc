@@ -1025,7 +1025,8 @@ static void addsvgelement(
 	const char *elmtype,
 	const char *color,
 	unsigned stroke_width,
-	PARAM_STRING id)
+	PARAM_STRING id,
+	WHITEBOARD_ELM *parent)
 {
 	var.val += "whi_loop_board(function(svg){\n";
 	var.val += string_f("\tvar newElement = document.createElementNS('http://www.w3.org/2000/svg', '%s');\n",elmtype);
@@ -1036,6 +1037,12 @@ static void addsvgelement(
 	}else if (stroke_width != 0){
 		var.val += "\tnewElement.style.fill = 'none';\n";
 		var.val += string_f("\tnewElement.style.strokeWidth = '%u';\n",stroke_width);
+	}
+	if (parent != nullptr){
+		var.val += string_f("\tnewElement.setAttribute('x',%u);\n",parent->x);
+		var.val += string_f("\tnewElement.setAttribute('y',%u);\n",parent->y);
+		var.val += string_f("\tnewElement.setAttribute('width',%u);\n",parent->width);
+		var.val += string_f("\tnewElement.setAttribute('height',%u);\n",parent->height);
 	}
 	var.val += "\tsvg.appendChild(newElement);\n";
 	var.val += "\t});\n";
@@ -1082,7 +1089,7 @@ void WHITEBOARD::changeline (
 							auto base = find(baseelms.begin(),baseelms.end(),child->id);
 							if (base != baseelms.end()) baseelms.erase(base);
 							has_parent.insert(child->id);
-							addsvgelement(notify_var,gameid,"g","black",2,string_f("l%u,%u",elm.id,child->id));
+							addsvgelement(notify_var,gameid,"g","black",2,string_f("l%u,%u",elm.id,child->id),nullptr);
 						}
 					}
 				}else{
@@ -1234,10 +1241,10 @@ unsigned WHITEBOARD::place_newelm(
 		id = add_text(imbed_elms,x,y,width);
 		svgtype = "circle";
 	}
-	addsvgelement(notify_var,gameid,svgtype,"red",stroke_width,string_f("e%u",id));
-	addsvgelement(notify_var,gameid,"text","red",1,string_f("t%u",id));
+	addsvgelement(notify_var,gameid,svgtype,"red",stroke_width,string_f("e%u",id),nullptr);
+	addsvgelement(notify_var,gameid,"text","red",1,string_f("t%u",id),nullptr);
 	if (addline){
-		for (auto p:star_elms) addsvgelement(notify_var,gameid,"g","black",stroke_width,string_f("l%u,%u",p->id,id));
+		for (auto p:star_elms) addsvgelement(notify_var,gameid,"g","black",stroke_width,string_f("l%u,%u",p->id,id),nullptr);
 	}
 	notify_ids.insert(id);
 	return id;
@@ -1317,7 +1324,6 @@ string WHITEBOARD::draw_board (
 		,docnum
 		,board_width,board_height
 		,docnum);
-	script += "if (typeof whi_lst == 'undefined') var whi_lst=[];\n";
 	script += string_f("whi_lst.push(whi_%u);\n",docnum);
 	string onfuncs;
 	if (editmode){
@@ -1520,9 +1526,10 @@ string WHITEBOARD::define_functions(
 	val += string_f("\te.setAttribute('x',x*%u/%u);\n",board_width,4*svg_board_width);
 	val += "}\n";
 
-	val += "function replace_foreign(id, x, y, w,h,color,boxtype){\n";
-	val += "\twhi_loop('foreignObject','f'+id,function(e){\n";
-	val += "\t\tconsole.log ('fct foreign id='+id);\n";
+	val += "function replace_foreign(id, x, y, w,h){\n";
+	val += "\tconsole.log (`replace_foreign id=${id} whi_lst.length=${whi_lst.length}`);\n";
+	val += "\twhi_loop('foreignObject','f'+id,function(e,chs){\n";
+	val += "\t\tconsole.log (`fct foreign gameid=${chs.gameid} docnum=${chs.docnum} id=${id} x=${x} y=${y} width=${w} height=${h}`);\n";
 	val += "\t\te.setAttribute('x',x);\n"; 
 	val += "\t\te.setAttribute('y',y);\n"; 
 	val += "\t\te.setAttribute('width',w);\n"; 
@@ -1667,7 +1674,7 @@ string WHITEBOARD::define_functions(
 		"\tvar temp = document.getElementById(tid);\n"
 		"\tvar clon = temp.content.cloneNode(true);\n"
 		"\tvar parent = doc.getElementById(pid);\n"
-		"console.log ('whi_show_template '+temp+' '+parent);\n"
+		"console.log ('whi_show_template tid='+tid+'='+temp+' pid='+pid+'='+parent);\n"
 		"\tparent.appendChild(clon);\n"
 		"}\n";
 	// Add an IMG tag to a foreignobject
@@ -2287,7 +2294,7 @@ void WHITEBOARD::execstep (
 			string paramurl = whiteboard_converturl (gameid,url);
 			for (auto s:selects){
 				if (!s->is_image()){
-					addsvgelement(notify_var,gameid,"foreignObject",nullptr,0,string_f("f%u",s->id));
+					addsvgelement(notify_var,gameid,"foreignObject",nullptr,0,string_f("f%u",s->id),s);
 				}
 				s->imageurl = url;
 				notify_ids.insert(s->id);	// Make sure the foreignObject is positionned
@@ -2323,11 +2330,12 @@ void WHITEBOARD::execstep (
 				}
 			}
 			if (imbed.docnum == (unsigned short)-1) imbed.docnum = docnum+1;
-			documentd_insert_imbed (gameid,notify_var,imbed,sp);
+			documentd_insert_imbed (this,notify_var,imbed,sp);
 			auto selects = findselected(SEL_SELECTED);
+			notify_var.val += string_f("whi_cur_gameid='%s';\n",gameid.c_str());
 			for (auto s:selects){
 				if (!s->is_imbed()){
-					addsvgelement(notify_var,gameid,"foreignObject",nullptr,0,string_f("f%u",s->id));
+					addsvgelement(notify_var,gameid,"foreignObject",nullptr,0,string_f("f%u",s->id),s);
 				}
 				s->embed = imbed;
 				notify_ids.insert(s->id);	// Make sure the foreignObject is positionned
@@ -2460,6 +2468,8 @@ void WHITEBOARD::execstep (
 				notify_var.val += "\t\tsvg.removeChild(svg.lastChild);\n";
 				notify_var.val += "\t}\n";
 				notify_var.val += "});\n";
+				notify_var.val += "whi_lst = [];\n";
+				notify_var.val += "whi_lst.push(whi_0);\n";
 			}else{
 				unsigned endx = pref.viewbox_x + SVG_BOARD_WIDTH;
 				unsigned endy = pref.viewbox_y + SVG_BOARD_HEIGHT;

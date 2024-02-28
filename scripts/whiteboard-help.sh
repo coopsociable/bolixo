@@ -10,9 +10,9 @@ BOFS=/usr/bin/bofs
 if [ -x ./bofs ] ; then
 	BOFS=./bofs
 fi
-# Create a white board
+# Create a white board if it does not exist
 createdocument(){
-	echo boBOWHIT |	$BOFS cat --pipeto ht:/$DOCNAME
+	$BOFS ls ht:/$DOCNAME >/dev/null 2>/dev/null ||	echo boBOWHIT |	$BOFS cat --pipeto ht:/$DOCNAME
 }
 # Erase all elements from the document
 resetdocument(){
@@ -74,6 +74,11 @@ textpos(){
 # The image is either a URL or a path inside the project
 assignimg(){
 	$BOFS documents --noscripts --playstep --docname $DOCNAME --step "image=url:$1"
+}
+# Assign an document (or portion of a document) to selected elements
+# The region is a string known by the document
+assigndoc(){
+	$BOFS documents --noscripts --playstep --docname $DOCNAME --step "imbed=docid:$1"$'\n'"region:$2"
 }
 # Delete one element using its label
 labeldelete(){
