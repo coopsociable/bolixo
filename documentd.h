@@ -2,6 +2,7 @@
 #define DOCUMENTD_H
 
 #include <set>
+#include <vector>
 #include <memory>
 
 #define CLASS_CHESS	"CHES"
@@ -348,7 +349,7 @@ public:
 	virtual void exec (const char *var, const char *val, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res, std::vector<USERS_NOTIFIES> &unotifies) = 0;
 	virtual void manyexec (const std::vector<VARVAL_receive> &steps, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res, std::vector<USERS_NOTIFIES> &unotifies);
 	virtual void engine_reply (const char *line, std::string &notify, bool &done);
-	virtual std::set<DOCUMENT_EMBED> get_embed_specs() const;
+	virtual std::vector<DOCUMENT_EMBED> get_embed_specs() const;
 	virtual void set_embed_options (const DOCUMENT_EMBED &embed, bool not_square);
 	virtual void remove_session(const char *session);
 	virtual ~GAME();
@@ -427,7 +428,7 @@ std::string documentd_imbed (PARAM_STRING gameid, PARAM_STRING document, PARAM_S
 void documentd_imbeds(GAME *game, std::string &lines, const DOC_UI_SPECS_receive &sp);
 void documentd_insert_imbed(GAME *game, VARVAL &notify_var, DOCUMENT_EMBED &imbed, const DOC_UI_SPECS_receive &sp);
 std::string documentd_rel2abs (PARAM_STRING gameid, PARAM_STRING relpath);
-std::string documentd_js_loop_function(const char *board_prefix, const char *prefix);
+std::string documentd_js_loop_function(const char *board_prefix, const char *prefix, int docnum);
 void documentd_action_reload(std::vector<VARVAL> &res);
 void documentd_init_specs (DOC_UI_SPECS_receive &sp);
 

@@ -47,7 +47,7 @@ class PHOTOS: public GAME{
 	vector<IMAGE> images;
 	unsigned main_image=0;	// Image currently displayed
 	std::string define_styles(bool mobile);
-	std::string define_functions();
+	std::string define_functions(const DOC_CONTEXT &ctx);
 	std::string draw_main_image (bool mobile, unsigned docnum, bool editmode, std::string &script);
 	std::string draw_main_caption (bool mobile, unsigned docnum, std::string &script);
 	std::string draw_small_images (bool mobile, unsigned docnum, bool editmode, unsigned height, std::string &script);
@@ -136,13 +136,13 @@ string PHOTOS::define_styles(bool mobile)
 	lines += "}\n";
 	return lines;
 }
-string PHOTOS::define_functions()
+string PHOTOS::define_functions(const DOC_CONTEXT &ctx)
 {
 	string lines;
 	wordproc_set_gamepress(lines,"photos_gamepress",true);
-	lines += documentd_js_loop_function("main","photos");
-	lines += documentd_js_loop_function("caption","caption");
-	lines += documentd_js_loop_function("mini","mini");
+	lines += documentd_js_loop_function("main","photos",ctx.docnum);
+	lines += documentd_js_loop_function("caption","caption",1);
+	lines += documentd_js_loop_function("mini","mini",1);
 	// Update the message field
 	lines += "function PHOT_updmsg(color,msg){\n";
 	lines += string_f("\tvar elm = document.getElementById('msg-%s');\n",gameid.c_str());
@@ -194,7 +194,7 @@ string PHOTOS::draw_main_image(
 		,docnum
 		,gameid.c_str(),docnum
 		,docnum);
-	script += string_f("photos_lst.push(pho_%u);\n",docnum);
+	script += string_f("doc_lst.push(pho_%u);\n",docnum);
 	string src;
 	if (images.size() > main_image){
 		src=string_f("src=%s",photos_converturl(gameid,images[main_image].image).c_str());
@@ -219,7 +219,7 @@ string PHOTOS::draw_main_caption(
 		"};\n"
 		,docnum
 		,gameid.c_str(),docnum);
-	script += string_f("caption_lst.push(pho_caption_%u);\n",docnum);
+	script += string_f("doc_lst.push(pho_caption_%u);\n",docnum);
 	lines += string_f("<div id='caption-%s,%u' style='height:100%%; overflow:auto; padding:5px; text-align:center;' >\n",gameid.c_str(),docnum);
 	if (images.size() > main_image){
 		auto tb = str_cnv2lines(images[main_image].caption);
@@ -249,7 +249,7 @@ string PHOTOS::draw_small_images(
 		,docnum
 		,gameid.c_str(),docnum
 		,docnum);
-	script += string_f("mini_lst.push(pho_mini_%u);\n",docnum);
+	script += string_f("doc_lst.push(pho_mini_%u);\n",docnum);
 	string onfuncs;
 	if (editmode){
 		onfuncs = string_f(" onmousedown='pho_mini_%u.gameselect(event);'",docnum);
@@ -379,9 +379,7 @@ void PHOTOS::exec (
 	setactivity();
 	VARVAL notify_var;
 	notify_var.var = VAR_NOTIFY;
-	notify_var.val += string_f("photos_cur_gameid='%s';\n",gameid.c_str());
-	notify_var.val += string_f("mini_cur_gameid='%s';\n",gameid.c_str());
-	notify_var.val += string_f("caption_cur_gameid='%s';\n",gameid.c_str());
+	notify_var.val += string_f("doc_cur_gameid='%s';\n",gameid.c_str());
 	size_t base_notify_size = notify_var.val.size();
 	VARVAL script_var;
 	script_var.var = VAR_SCRIPT;
@@ -412,7 +410,7 @@ void PHOTOS::exec (
 		</call>
 		// Main image
 		v.val += "<script>\n";
-		v.val += define_functions();
+		v.val += define_functions(ctx);
 		v.val += "</script>\n";
 		v.val += string_f("<div class=webtable id=%sdoc_photos style='display:flex; flex-flow:row;' >\n",val);
 		v.val += "<div style='display:flex; flex-flow:column;' >\n";
@@ -451,7 +449,7 @@ void PHOTOS::exec (
 	}else if (is_eq(var,REQ_FUNCTIONS)){
 		VARVAL var;
 		var.var = VAR_DEFSCRIPT;
-		var.val = define_functions ();
+		var.val = define_functions (ctx);
 		res.emplace_back(move(var));
 	}else if (is_eq(var,REQ_STYLES)){
 		VARVAL var;

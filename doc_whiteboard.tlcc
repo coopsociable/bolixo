@@ -524,17 +524,16 @@ public:
 	void manyexec (const vector<VARVAL_receive> &steps, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, vector<VARVAL> &res, std::vector<USERS_NOTIFIES> &unotifies);
 	void remove_session (const char *session);
 	void set_embed_options (const DOCUMENT_EMBED &embed, bool not_square);
-	set<DOCUMENT_EMBED> get_embed_specs() const;
+	vector<DOCUMENT_EMBED> get_embed_specs() const;
 	void move_lower_bullets(WHITEBOARD_ELM &be_del, unsigned fontsize, set<unsigned> &notify_ids);
 };
-set<DOCUMENT_EMBED> WHITEBOARD::get_embed_specs() const
+vector<DOCUMENT_EMBED> WHITEBOARD::get_embed_specs() const
 {
-	set<DOCUMENT_EMBED> ret;
+	vector<DOCUMENT_EMBED> ret;
 	for (auto &e:elms){
 		auto &ee = e.second;
-		const char *doc = ee.get_document();
-		if (doc[0] != '\0'){
-			ret.insert(ee.embed);
+		if (ee.is_imbed()){
+			ret.push_back(ee.embed);
 		}
 	}
 	return ret;
@@ -1174,7 +1173,10 @@ void WHITEBOARD::delete_elm (unsigned id, VARVAL &notify_var)
 		if (pt->second.is_imbed() || pt->second.is_image()){
 			notify_var.val += string_f("removeelm('f%u','foreignObject');\n",id);
 			if (pt->second.is_imbed()){
-				notify_var.val += string_f("removetemplate('temp%u');\n",pt->second.embed.docnum);
+				auto &embed = pt->second.embed;
+				notify_var.val += string_f("removetemplate('temp%u');\n",embed.docnum);
+				string sub_gameid = documentd_rel2abs(gameid,embed.document);
+				notify_var.val += string_f("whi_remove('%s',%d);\n",sub_gameid.c_str(),embed.docnum);
 			}
 		}
 		elms.erase(pt);
@@ -1306,7 +1308,7 @@ string WHITEBOARD::draw_board (
 	glocal script;
 	glocal gameid;
 		
-	script += string_f("whi_cur_gameid='%s';\n",gameid.c_str());
+	script += string_f("doc_cur_gameid='%s';\n",gameid.c_str());
 	// Generate JS objects
 	script += string_f(
 		"var whi_%u={\n"
@@ -1330,7 +1332,7 @@ string WHITEBOARD::draw_board (
 		,docnum
 		,board_width,board_height
 		,docnum);
-	script += string_f("whi_lst.push(whi_%u);\n",docnum);
+	script += string_f("doc_lst.push(whi_%u);\n",docnum);
 	string onfuncs;
 	if (editmode){
 		onfuncs = string_f(" onmousedown='whi_%u.gameselect(event);'"
@@ -1510,7 +1512,7 @@ string WHITEBOARD::define_functions(
 	val += "\tevent.preventDefault();\n";
 	val += "}\n";
 
-	val += documentd_js_loop_function("board","whi");
+	val += documentd_js_loop_function("board","whi",ctx.docnum);
 
 	// Updating an object 
 	val += "function setboxtype(e,boxtype){\n";
@@ -1533,7 +1535,7 @@ string WHITEBOARD::define_functions(
 	val += "}\n";
 
 	val += "function replace_foreign(id, x, y, w,h){\n";
-	val += "\tconsole.log (`replace_foreign id=${id} whi_lst.length=${whi_lst.length}`);\n";
+	val += "\tconsole.log (`replace_foreign id=${id} doc_lst.length=${doc_lst.length}`);\n";
 	val += "\twhi_loop('foreignObject','f'+id,function(e,chs){\n";
 	val += "\t\tconsole.log (`fct foreign gameid=${chs.gameid} docnum=${chs.docnum} id=${id} x=${x} y=${y} width=${w} height=${h}`);\n";
 	val += "\t\te.setAttribute('x',x);\n"; 
@@ -1785,6 +1787,7 @@ void WHITEBOARD::execstep (
 			glocal ctx;
 			glocal sp;
 			glocal WHITEBOARD *doc = this;
+			// tlmp_warning ("REQ_PRINT sp %u %u\n",sp.content_width,sp.content_height);
 			VARVAL v;
 			<call doc_layout>(val,this,ctx,sp,"whiteboard",true,is_eq(val,"full"),v);
 			<f styles>
@@ -1873,6 +1876,10 @@ void WHITEBOARD::execstep (
 		res.emplace_back(move(var));
 	}else if (strcmp(var,REQ_REGION)==0){
 		// For embedding
+		// tlmp_warning ("REQ_REGION sp %u %u\n",sp.content_width,sp.content_height);
+		DOC_UI_SPECS_receive mysp;
+		mysp.content_width = 1000;
+		mysp.content_height = 1000;
 		if (strlen(val)==2 && isalpha(val[0]) && isdigit(val[1])){
 			unsigned col = toupper(val[0])-'A';
 			unsigned row = val[1] - '1';
@@ -1881,7 +1888,7 @@ void WHITEBOARD::execstep (
 				var.var = VAR_CONTENT;
 				var_script.var = VAR_DEFSCRIPT;
 				var.val = draw_board (col*SVG_BOARD_WIDTH,row*SVG_BOARD_HEIGHT,SVG_BOARD_HEIGHT
-					,sp.content_width,sp.content_height,sp.fontsize,ctx.docnum,false,var_script.val);
+					,mysp.content_width,mysp.content_height,sp.fontsize,ctx.docnum,false,var_script.val);
 				res.emplace_back(move(var));
 				res.emplace_back(move(var_script));
 			}
@@ -2331,33 +2338,36 @@ void WHITEBOARD::execstep (
 				}
 			}
 			// Allocate a document number. Note that the document may exist several time (same doc, same region)
+			// We assign a different docnum for the same document so all views are updated when
+			// the sub-document changes.
 			unsigned docnum = 0;
-			imbed.docnum = (unsigned short)-1;
 			for (auto &e:elms){
 				auto &ee = e.second;
 				if (ee.is_imbed()){
 					unsigned num = ee.get_docnum();
-					if (imbed.document == ee.get_document() && imbed.region == ee.get_region()){
-						imbed.docnum = num;
-						break;
-					}else{
-						if (num > docnum) docnum = num;
-					}
+					if (num > docnum) docnum = num;
 				}
 			}
-			if (imbed.docnum == (unsigned short)-1) imbed.docnum = docnum+1;
-			documentd_insert_imbed (this,notify_var,imbed,sp);
 			auto selects = findselected(SEL_SELECTED);
-			notify_var.val += string_f("whi_cur_gameid='%s';\n",gameid.c_str());
-			for (auto s:selects){
-				if (!s->is_imbed()){
-					addsvgelement(notify_var,gameid,"foreignObject",nullptr,0,string_f("f%u",s->id),s);
+			if (selects.size() == 0){
+				api_error = MSG_R(E_NONODE);
+			}else{
+				for (auto s:selects){
+					imbed.docnum = ++docnum;
+					DOC_UI_SPECS_receive elm_sp;
+					elm_sp.content_width = s->width;
+					elm_sp.content_height = s->height; 
+					documentd_insert_imbed (this,notify_var,imbed,elm_sp);
+					notify_var.val += string_f("doc_cur_gameid='%s';\n",gameid.c_str());
+					if (!s->is_imbed()){
+						addsvgelement(notify_var,gameid,"foreignObject",nullptr,0,string_f("f%u",s->id),s);
+					}
+					s->embed = imbed;
+					notify_ids.insert(s->id);	// Make sure the foreignObject is positionned
+					notify_var.val += "whi_loop_board(function(svg){\n";
+					notify_var.val += string_f("\twhi_show_template(svg,'temp%u','f%u');\n",imbed.docnum,s->id);
+					notify_var.val += "\t});\n";
 				}
-				s->embed = imbed;
-				notify_ids.insert(s->id);	// Make sure the foreignObject is positionned
-				notify_var.val += "whi_loop_board(function(svg){\n";
-				notify_var.val += string_f("\twhi_show_template(svg,'temp%u','f%u');\n",imbed.docnum,s->id);
-				notify_var.val += "\t});\n";
 			}
 		// The other actions are Used to script modification of the document
 		}else if (strcmp(var,"addelm")==0){
@@ -2478,14 +2488,10 @@ void WHITEBOARD::execstep (
 		}else if (is_eq(var,"resetgame")){
 			// val == 0: reset everything
 			if (is_any_of(val,"","0")){
+				while (elms.size() > 0){
+					delete_elm(elms.begin()->second.id,notify_var);
+				}
 				resetgame();
-				notify_var.val += "whi_loop_board(function(svg){\n";
-				notify_var.val += "\twhile (svg.firstChild) {\n";
-				notify_var.val += "\t\tsvg.removeChild(svg.lastChild);\n";
-				notify_var.val += "\t}\n";
-				notify_var.val += "});\n";
-				notify_var.val += "whi_lst = [];\n";
-				notify_var.val += "whi_lst.push(whi_0);\n";
 			}else{
 				unsigned endx = pref.viewbox_x + SVG_BOARD_WIDTH;
 				unsigned endy = pref.viewbox_y + SVG_BOARD_HEIGHT;
@@ -2548,7 +2554,7 @@ void WHITEBOARD::manyexec (
 	vector<VARVAL> &res,
 	std::vector<USERS_NOTIFIES> &unotifies)
 {
-	string cur_whi = string_f("whi_cur_gameid='%s';\n",gameid.c_str());
+	string cur_whi = string_f("doc_cur_gameid='%s';\n",gameid.c_str());
 	VARVAL script_var;
 	script_var.var = VAR_SCRIPT;
 	script_var.val = cur_whi;

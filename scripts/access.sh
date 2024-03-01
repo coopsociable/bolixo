@@ -473,27 +473,74 @@ elif [ "$1" = "doc-whiteboard-imbed" ] ; then # test: setup a white board with i
 	. scripts/whiteboard-help.sh
 	createdocument
 	resetdocument
-	if [ "$2" = "1" -o "$2" = "" ] ; then
-		addelm elm1 "Chess game" rect 320 400 600 600
-		textpos elm1 1
-		#assigndoc test.white A1
-		assigndoc test.chess
-		resetsel
-	fi
-	if [ "$2" = "2" -o "$2" = "" ] ; then
-		addelm elm2 "Video" rect 930 400 600 600
-		textpos elm2 1
-		assigndoc test.white A1
-		#assigndoc test.pho
-		resetsel
-	fi
-	if [ "$2" = "3" -o "$2" = "" ] ; then
-		addelm elm3 "Table" rect 600 800 600 100
-		textpos elm3 1
-		assigndoc test.chess
-		#assigndoc noname.clc a1:d4
-		resetsel
-	fi
+	shift
+	while [ "$1" != "" ]
+	do
+		if [ "$1" = "1c" ] ; then
+			addelm elm1 "Chess game 1" rect 320 330 600 600
+			textpos elm1 1
+			assigndoc test.chess
+			resetsel
+		fi
+		if [ "$1" = "1w" ] ; then
+			addelm elm1 "Whiteboard" rect 320 330 600 600
+			textpos elm1 1
+			assigndoc test.white A1
+			resetsel
+		fi
+		if [ "$1" = "1p" ] ; then
+			addelm elm1 "Gallery" rect 320 330 600 600
+			textpos elm1 1
+			assigndoc test.pho main
+			resetsel
+		fi
+		if [ "$1" = "2c" ] ; then
+			addelm elm2 "Chess game 2" rect 930 330 600 600
+			textpos elm2 1
+			assigndoc test.chess
+			resetsel
+		fi
+		if [ "$1" = "2ww" ] ; then
+			addelm elm2 "Chess game 2" rect 630 330 300 300
+			addelm elm22 "Chess game 22" rect 1000 330 300 300
+			textpos elm2 1
+			textpos elm22 1
+			assigndoc test.white A1
+			resetsel
+		fi
+		if [ "$1" = "2w" ] ; then
+			addelm elm2 "Whiteboard 2" rect 930 330 600 600
+			textpos elm2 1
+			assigndoc test.white A1
+			resetsel
+		fi
+		if [ "$1" = "3" ] ; then
+			addelm elm3 "Whiteboard 3" rect 1540 330 600 600
+			textpos elm3 1
+			assigndoc test.white A1
+			resetsel
+		fi
+		if [ "$1" = "4c" ] ; then
+			addelm elm4 "Table" rect 600 800 300 300
+			textpos elm4 1
+			assigndoc test.chess
+			#assigndoc noname.clc a1:d4
+			resetsel
+		fi
+		if [ "$1" = "4p" ] ; then
+			addelm elm4 "Photos" rect 600 800 600 100
+			textpos elm4 1
+			assigndoc test.pho mini
+			resetsel
+		fi
+		if [ "$1" = "4t" ] ; then
+			addelm elm4 "Table" rect 600 800 600 100
+			textpos elm4 1
+			assigndoc noname.clc a1:d4
+			resetsel
+		fi
+		shift
+	done
 elif [ "$1" = "doc-calc" ] ; then # test: many test on spreadsheet document
 	DOCNAME=/projects/jacques-A/public/test.sheet
 	. scripts/calc-help.sh

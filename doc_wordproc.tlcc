@@ -198,7 +198,7 @@ public:
 	void resetgame();
 	void exec (const char *var, const char *val, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res, std::vector<USERS_NOTIFIES> &unotifies);
 	void manyexec (const std::vector<VARVAL_receive> &steps, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, std::vector<VARVAL> &res, std::vector<USERS_NOTIFIES> &unotifies);
-	set<DOCUMENT_EMBED> get_embed_specs() const;
+	vector<DOCUMENT_EMBED> get_embed_specs() const;
 	void set_embed_options (const DOCUMENT_EMBED &embed, bool not_square);
 };
 
@@ -1707,13 +1707,13 @@ void wordproc_kbd (const char *val, MOD_KBD &mod, std::string &var, std::string 
 	newval = val;
 	// tlmp_warning ("kbd: var=%s val=%s lastline=%u",var,val,lastline);
 }
-set<DOCUMENT_EMBED> WORDPROC::get_embed_specs() const
+vector<DOCUMENT_EMBED> WORDPROC::get_embed_specs() const
 {
-	set<DOCUMENT_EMBED> ret;
+	vector<DOCUMENT_EMBED> ret;
 	for (auto &l:lines){
 		const char *doc = l.get_document();
 		if (doc[0] != '\0'){
-			ret.insert(l.imbed);
+			ret.push_back(l.imbed);
 		}
 	}
 	return ret;
@@ -1750,7 +1750,7 @@ string WORDPROC::draw_text (
 		,docnum
 		,gameid.c_str(),docnum,pref.offset
 		,docnum);
-	scripts += string_f("word_lst.push(word_%u);\n",docnum);
+	scripts += string_f("doc_lst.push(word_%u);\n",docnum);
 	string onfuncs;
 	if (editmode){
 		onfuncs = string_f(" onkeydown='word_gamepress(event);return false;'"
@@ -1791,7 +1791,7 @@ string WORDPROC::draw_text (
 string WORDPROC::define_functions(const DOC_CONTEXT &ctx, const WORD_USERPREF &pref, unsigned width, unsigned height)
 {
 	string val;
-	val += documentd_js_loop_function("text","word");
+	val += documentd_js_loop_function("text","word",ctx.docnum);
 	// Copy a template
 	val += "function word_show_template(tid,pid) {\n";
 	val += "\tvar temp = document.getElementById(tid);\n";

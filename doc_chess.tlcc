@@ -124,7 +124,7 @@ class CHESS: public GAME{
 	void update_players(std::string &notify);
 	void appendmove2chat(const char *username,bool is_human,char oldcell, char newcell, PARAM_STRING chessmove, std::string &notify);
 	std::string define_styles(bool mobile);
-	std::string define_functions(bool reverse, bool mobile);
+	std::string define_functions(const DOC_CONTEXT &ctx, bool reverse, bool mobile);
 	std::string draw_board (bool reverse, bool mobile, unsigned docnum, bool editmode, std::string &script);
 	void refreshboard(VARVAL &notify_var);
 public:
@@ -1045,14 +1045,14 @@ string CHESS::define_styles(bool mobile)
 	lines += "}\n";
 	return lines;
 }
-string CHESS::define_functions(bool reverse, bool mobile)
+string CHESS::define_functions(const DOC_CONTEXT &ctx, bool reverse, bool mobile)
 {
 	const unsigned w8 = SVG_CHESS_GRID_WIDTH/8;
 	const unsigned w8_2 = w8/2;
 	unsigned font_base = chess_font_base();
 
 	string lines;
-	lines = documentd_js_loop_function("grid","chs");
+	lines = documentd_js_loop_function("grid","chs",ctx.docnum);
 
 	lines += "function chs_gameplace(gameid,docnum,event){\n";
 	lines += "\tvar elm = document.getElementById('grid-'+gameid+','+docnum);\n";
@@ -1193,7 +1193,7 @@ string CHESS::draw_board(
 		,docnum
 		,gameid.c_str(),docnum
 		,docnum);
-	script += string_f("chs_lst.push(chs_%u);\n",docnum);
+	script += string_f("doc_lst.push(chs_%u);\n",docnum);
 	string onmouse;
 	if (editmode) onmouse = string_f("onmousedown='chs_%u.gameplace(event); return false;'",docnum);
 	lines += string_f("<svg id='grid-%s,%u' width=100%% height=100%% viewbox='0 0 %u %u'"
@@ -1321,7 +1321,7 @@ void CHESS::exec (
 	setactivity();
 	VARVAL notify_var;
 	notify_var.var = VAR_NOTIFY;
-	notify_var.val = string_f("chs_cur_gameid='%s';\n",gameid.c_str());
+	notify_var.val = string_f("doc_cur_gameid='%s';\n",gameid.c_str());
 	if (ctx.maywrite){
 		bool robot = strcmp(ctx.username,CHESS_ROBOT)==0;
 		if (player1.name.size() == 0 && player2.name != ctx.username){
@@ -1371,7 +1371,7 @@ void CHESS::exec (
 			lines += define_styles(sp.mobile);
 			lines += "</style>\n";
 			lines += "<script>\n";
-			lines += define_functions(reverse,sp.mobile);
+			lines += define_functions(ctx,reverse,sp.mobile);
 			lines += "</script>\n";
 			
 			// We center the players, knowing the content_width;
@@ -1460,7 +1460,7 @@ void CHESS::exec (
 	}else if (strcmp(var,REQ_FUNCTIONS)==0){
 		VARVAL var;
 		var.var = VAR_DEFSCRIPT;
-		var.val = define_functions (false,sp.mobile);
+		var.val = define_functions (ctx,false,sp.mobile);
 		res.emplace_back(move(var));
 	}else if (strcmp(var,REQ_STYLES)==0){
 		VARVAL var;

@@ -519,9 +519,9 @@ set<string> GAME::get_embed_list() const
 void GAME::set_embed_options (const DOCUMENT_EMBED &embed, bool not_square)
 {
 }
-set<DOCUMENT_EMBED> GAME::get_embed_specs() const
+vector<DOCUMENT_EMBED> GAME::get_embed_specs() const
 {
-	set<DOCUMENT_EMBED> ret;
+	vector<DOCUMENT_EMBED> ret;
 	return ret;
 }
 void GAME::remove_session(const char *)
@@ -944,6 +944,10 @@ void documentd_insert_imbed(
 	const char *gameid = game->get_gameid();
 	bool found = false;
 	auto newsub = documentd_findsubgame(gameid,imbed.document);
+	if (newsub == nullptr){
+		tlmp_error ("documentd_insert_imbed: unknown document %s\n",imbed.document.c_str());
+		return;
+	}
 	if (is_eq(game->getclass(),newsub->getclass())){
 		found = true;
 	}else{
@@ -981,18 +985,21 @@ void documentd_insert_imbed(
 /*
 	Generate the function to loop inside all javascript object, then search for an id and apply a function
 */
-string documentd_js_loop_function(const char *board_prefix, const char *prefix)
+string documentd_js_loop_function(const char *board_prefix, const char *prefix, int docnum)
 {
 	string lines;
-	lines += string_f("if (typeof %s_lst == 'undefined') var %s_lst=[];\n",prefix,prefix);
-	lines += string_f("var %s_cur_gameid='';\n",prefix);
+	if (docnum == 0){
+		lines += "var doc_lst=[];\n";
+		lines += "var doc_cur_gameid='';\n";
+	}
 
 	lines += string_f("function %s_loop_board(fct){\n",prefix);
 	//val += "\tconsole.log('whi_lst.length='+whi_lst.length);\n";
-	lines += string_f("\tfor(var i=0; i<%s_lst.length; i++){\n",prefix);
-	lines += string_f("\t\tvar whi = %s_lst[i];\n",prefix);
-	lines += string_f("\t\tif (whi.gameid==%s_cur_gameid){\n",prefix);
+	lines += "\tfor(var i=0; i<doc_lst.length; i++){\n";
+	lines += "\t\tvar whi = doc_lst[i];\n";
+	lines += "\t\tif (whi.gameid==doc_cur_gameid){\n";
 	lines += string_f("\t\t\tvar svg=document.getElementById('%s-'+whi.gameid+','+whi.docnum);\n",board_prefix);
+lines += "console.log(`loop_board i=${i} svg=${svg}`);\n";
 	lines += "\t\t\tif (svg != null) fct(svg,whi);\n";
 	lines += "\t\t\tvar tpls=document.getElementsByTagName('template');\n";
 	lines += "\t\t\tfor (var j=0; j<tpls.length; j++){\n";
@@ -1020,9 +1027,9 @@ string documentd_js_loop_function(const char *board_prefix, const char *prefix)
 	// We apply the previous function (loop_findid) to each.
 	lines += string_f("function %s_loop(tag,id,fct){\n",prefix);
 	//lines += "\tconsole.log('whi_lst.length='+whi_lst.length+' tag='+tag+' id='+id);\n";
-	lines += string_f("\tfor(var i=0; i<%s_lst.length; i++){\n",prefix);
-	lines += string_f("\t\tvar chs = %s_lst[i];\n",prefix);
-	lines += string_f("\t\tif (chs.gameid==%s_cur_gameid){\n",prefix);
+	lines += "\tfor(var i=0; i<doc_lst.length; i++){\n";
+	lines += "\t\tvar chs = doc_lst[i];\n";
+	lines += "\t\tif (chs.gameid==doc_cur_gameid){\n";
 	lines += string_f("\t\t\tvar svg=document.getElementById('%s-'+chs.gameid+','+chs.docnum);\n",board_prefix);
 	lines += string_f("\t\t\t%s_loop_findid(svg,tag,id,chs,fct);\n",prefix);
 	lines += "\t\t\tvar tpls=document.getElementsByTagName('template');\n";
@@ -1033,6 +1040,17 @@ string documentd_js_loop_function(const char *board_prefix, const char *prefix)
 	lines += "\t\t}\n";
 	lines += "\t}\n";
 	lines += "}\n";
+
+	// Remove a reference to a document in the list
+	lines += string_f("function %s_remove(gameid,docnum){\n",prefix);
+	lines += "\tvar new_lst=[];\n";
+	lines += "\tfor (var i=0; i<doc_lst.length; i++){\n";
+	lines += "\t\tvar whi = doc_lst[i];\n";
+	lines += "\t\tif(whi.gameid !== gameid || whi.docnum !== docnum) new_lst.push(whi);\n";
+	lines += "\t}\n";
+	lines += "\tdoc_lst = new_lst;\n";
+	lines += "}\n";
+	
 	return lines;
 }
 
