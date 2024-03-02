@@ -1136,7 +1136,7 @@ void WHITEBOARD::changeline(int direction, string &error, VARVAL &notify_var, se
 /*
 	Delete one element.
 	Remove all arrows related to this element (from and to).
-	subelms becoming orphans (not connect to any parent) are add to baseelms.
+	subelms becoming orphans (not connect to any parent) are added to baseelms.
 */
 <mod>
 void WHITEBOARD::delete_elm (unsigned id, VARVAL &notify_var)
@@ -1144,7 +1144,8 @@ void WHITEBOARD::delete_elm (unsigned id, VARVAL &notify_var)
 	glocal id;
 	glocal notify_var;
 	glocal bool subelm_done = false;
-	glocal set<unsigned> has_parent;
+	glocal set<unsigned> has_parent;	// While delete this id
+						// we collect the list of all id having a parent
 	<call walkboard>(this);
 	<f element>
 		if (elm.id == glocal.id){
@@ -1158,11 +1159,15 @@ void WHITEBOARD::delete_elm (unsigned id, VARVAL &notify_var)
 			}
 			if (parent != nullptr){
 				glocal.notify_var.val += string_f("removeelm('l%u,%u','g');\n",parent->id,elm.id);
-				auto pt = find_if (parent->subelms.begin(),parent->subelms.end(),[elm](auto &selm){return elm.id==selm.id;});
-				parent->subelms.erase(pt);
+				auto pt = find_if (parent->subelms.begin(),parent->subelms.end(),[&elm](auto &selm){return elm.id==selm.id;});
+				// tlmp_warning ("delete_elm pt=%d\n",pt != parent->subelms.end());
+				if (pt != parent->subelms.end()) parent->subelms.erase(pt);
 			}
 		}
-		for (auto s:elm.subelms) glocal.has_parent.insert(s.id);
+		for (auto s:elm.subelms){
+			// tlmp_warning ("has_parent delete id=%d elm.id=%d -> s.id=%d\n",glocal.id,elm.id,s.id);
+			glocal.has_parent.insert(s.id);
+		}
 	</f>
 	</call>
 	auto pt = elms.find(id);
@@ -1191,6 +1196,8 @@ void WHITEBOARD::delete_elm (unsigned id, VARVAL &notify_var)
 			baseelms.push_back(e.first);
 		}
 	}
+	set<unsigned> tmp;
+	sortsubelms (tmp);
 }
 </mod>
 static void whiteboard_update_button (string &script, bool oldstate, bool newstate, unsigned button_id)
