@@ -1541,6 +1541,13 @@ string WHITEBOARD::define_functions(
 	val += string_f("\te.setAttribute('x',x*%u/%u);\n",board_width,4*svg_board_width);
 	val += "}\n";
 
+	// Remove all children from a parent
+	val += "function whi_remove_children(parent){\n"
+		"\twhile (parent.firstChild) {\n"
+		"\t\tparent.removeChild(parent.lastChild);\n"
+		"\t}\n"
+		"}\n";
+
 	val += "function replace_foreign(id, x, y, w,h){\n";
 	val += "\tconsole.log (`replace_foreign id=${id} doc_lst.length=${doc_lst.length}`);\n";
 	val += "\twhi_loop('foreignObject','f'+id,function(e,chs){\n";
@@ -1617,9 +1624,7 @@ string WHITEBOARD::define_functions(
 	// line between a parent and sub-element
 	val += "function replace_line(id, x, y, angle, len, color,arrow){\n";
 	val += "\twhi_loop('g',id,function(e){\n";
-	val += "\t\twhile (e.firstChild) {\n";
-	val += "\t\t\te.removeChild(e.lastChild);\n";
-	val += "\t\t}\n";
+	val += "\t\twhi_remove_children(e);\n";
 	val += "\t\te.style.stroke = color;\n";
 	val += "\t\te.style.fill = color;\n";
 	val += "\t\te.style.strokeWidth = '1';\n";
@@ -1694,12 +1699,14 @@ string WHITEBOARD::define_functions(
 	val += "\t}\n";
 	val += "}\n";
 
+
 	// Copy a template in a foreignobject
 	val += "function whi_show_template(doc,tid,pid) {\n"
 		"\tvar temp = document.getElementById(tid);\n"
 		"\tvar clon = temp.content.cloneNode(true);\n"
 		"\tvar parent = doc.getElementById(pid);\n"
 		"console.log ('whi_show_template tid='+tid+'='+temp+' pid='+pid+'='+parent);\n"
+		"\twhi_remove_children(parent);\n"
 		"\tparent.appendChild(clon);\n"
 		"}\n";
 	// Add an IMG tag to a foreignobject
@@ -1709,6 +1716,7 @@ string WHITEBOARD::define_functions(
 		"\timg.src = url;\n"
 		"\timg.style.width='100%';\n"
 		"\tvar parent = doc.getElementById(pid);\n"
+		"\twhi_remove_children(parent);\n"
 		"\tparent.appendChild(img);\n"
 		"}\n";
 	
