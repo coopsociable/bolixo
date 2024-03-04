@@ -163,6 +163,14 @@ struct WHITEBOARD_ELM{
 	string imageurl;
 
 
+	void clear_imbed(){
+		embed.document.clear();
+		embed.region.clear();
+		embed.docnum = 0;
+	}
+	void clear_image(){
+		imageurl.clear();
+	}
 	bool is_imbed() const {
 		return embed.document.size() > 0;
 	}
@@ -2331,7 +2339,9 @@ void WHITEBOARD::execstep (
 			auto selects = findselected(SEL_SELECTED);
 			string paramurl = whiteboard_converturl (gameid,url);
 			for (auto s:selects){
-				if (!s->is_image()){
+				if (s->is_imbed()){
+					s->clear_imbed();
+				}else if (!s->is_image()){
 					addsvgelement(notify_var,gameid,"foreignObject",nullptr,0,string_f("f%u",s->id),s);
 				}
 				s->imageurl = url;
@@ -2374,7 +2384,9 @@ void WHITEBOARD::execstep (
 					elm_sp.content_height = s->height; 
 					documentd_insert_imbed (this,notify_var,imbed,elm_sp);
 					notify_var.val += string_f("doc_cur_gameid='%s';\n",gameid.c_str());
-					if (!s->is_imbed()){
+					if (s->is_image()){
+						s->clear_image();
+					}else if (!s->is_imbed()){
 						addsvgelement(notify_var,gameid,"foreignObject",nullptr,0,string_f("f%u",s->id),s);
 					}
 					s->embed = imbed;
