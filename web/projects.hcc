@@ -638,18 +638,23 @@ static void projects_dialogs (
 				glocal.error = MSG_R(E_INVITEYOURSELF);
 			}
 		}else if (is_eq(glocal.dialog_name,DIALOG_IMBED)){
-			string subdoc = projects_makepath (prjdir,curdir,w_field1.c_str());
-			<call bod_client_stat> (glocal.con,glocal.session,subdoc,"");
-			<f ok>
-				if (!success){
-					glocal.error = string_f(MSG_U(E_DOCNOTEXIST,"document %s does not exist"),w_field1.c_str());
-				}else if (!file_is_doc(file.file_type)){
-					glocal.error = string_f(MSG_U(E_NOTADOCUMENT,"File %s is not a document or game. Can't link/embed"),w_field1.c_str());
-				}
-			</f>
-			</call>
+			// empty document is ok. It means we want to remove the imbeding.
+			// Same thing for DIALOG_IMAGE
+			if (!w_field1.empty()){
+				string subdoc = projects_makepath (prjdir,curdir,w_field1.c_str());
+				<call bod_client_stat> (glocal.con,glocal.session,subdoc,"");
+				<f ok>
+					if (!success){
+						glocal.error = string_f(MSG_U(E_DOCNOTEXIST,"document %s does not exist"),w_field1.c_str());
+					}else if (!file_is_doc(file.file_type)){
+						glocal.error = string_f(MSG_U(E_NOTADOCUMENT,"File %s is not a document or game. Can't link/embed"),w_field1.c_str());
+					}
+				</f>
+				</call>
+			}
 		}else if (is_eq(glocal.dialog_name,DIALOG_IMAGE)){
-			if (!is_start_any_ofnc(w_field1.c_str(),NONEED,"http://","https://")){
+			if (!w_field1.empty()
+				&& !is_start_any_ofnc(w_field1.c_str(),NONEED,"http://","https://")){
 				string subdoc = projects_makepath (prjdir,curdir,w_field1.c_str());
 				<call bod_client_stat> (glocal.con,glocal.session,subdoc,"");
 				<f ok>

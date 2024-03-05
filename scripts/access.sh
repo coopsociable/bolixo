@@ -468,11 +468,14 @@ elif [ "$1" = "doc-whiteboard-2many" ] ; then # test: tests many 2 many  on the 
 elif [ "$1" = "doc-whiteboard" ] ; then # test: many tests on the whiteboard document
 	$0 doc-whiteboard-3elms
 	$0 doc-whiteboard-2many
-elif [ "$1" = "doc-whiteboard-imbed" ] ; then # test: setup a white board with imbeds
+elif [ "$1" = "doc-whiteboard-imbed-reset" ] ; then # test: reset the white board
 	DOCNAME=/projects/jacques-A/public/imbed.white
 	. scripts/whiteboard-help.sh
 	createdocument
 	resetdocument
+elif [ "$1" = "doc-whiteboard-imbed-fill" ] ; then # test: create images and embed documents in a white board
+	DOCNAME=/projects/jacques-A/public/imbed.white
+	. scripts/whiteboard-help.sh
 	shift
 	while [ "$1" != "" ]
 	do
@@ -492,6 +495,12 @@ elif [ "$1" = "doc-whiteboard-imbed" ] ; then # test: setup a white board with i
 			addelm elm1 "Gallery" rect 320 330 600 600
 			textpos elm1 1
 			assigndoc test.pho main
+			resetsel
+		fi
+		if [ "$1" = "1u" ] ; then
+			addelm elm1 "web" rect 320 330 600 600
+			textpos elm1 1
+			assignimg http://test1.bolixo.org/bolixo-arch.jpg
 			resetsel
 		fi
 		if [ "$1" = "2c" ] ; then
@@ -541,6 +550,29 @@ elif [ "$1" = "doc-whiteboard-imbed" ] ; then # test: setup a white board with i
 		fi
 		shift
 	done
+elif [ "$1" = "doc-whiteboard-imbed-clear" ] ; then # test: un assign image and embeds in white board
+	DOCNAME=/projects/jacques-A/public/imbed.white
+	. scripts/whiteboard-help.sh
+	for label in elm1 elm2 elm3 elm4
+	do
+		labelselect $label 0
+	done
+	if [ "$2" = "doc" ] ; then
+		assigndoc "" ""
+	elif [ "$2" = "img" ] ; then
+		assignimg "" ""
+	else
+		echo either doc or img
+	fi
+	resetsel
+elif [ "$1" = "doc-whiteboard-imbed" ] ; then # test: setup a white board with imbeds
+	$0 doc-whiteboard-imbed-reset
+	shift
+	$0 doc-whiteboard-imbed-fill $*
+elif [ "$1" = "doc-whiteboard-imbed-dump" ] ; then # test: dump whiteboard
+	DOCNAME=/projects/jacques-A/public/imbed.white
+	. scripts/whiteboard-help.sh
+	docdump
 elif [ "$1" = "doc-calc" ] ; then # test: many test on spreadsheet document
 	DOCNAME=/projects/jacques-A/public/test.sheet
 	. scripts/calc-help.sh

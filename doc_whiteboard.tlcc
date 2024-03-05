@@ -186,6 +186,9 @@ struct WHITEBOARD_ELM{
 	bool is_image() const {
 		return imageurl.size() > 0;
 	}
+	const char *get_image() const{
+		return imageurl.c_str();
+	}
 	void resize(int val, unsigned gridcell, bool horizontal_only, bool vertical_only){
 		if (type == TYPE_TEXT){
 			// Resizing a bullet text simply change its indentation
@@ -521,6 +524,8 @@ class WHITEBOARD: public GAME{
 	std::string define_functions(const DOC_CONTEXT &ctx, const WHITEBOARD_PREF &pref, unsigned board_width, unsigned board_height);
 	std::string define_styles(const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp);
 	bool label_oper(PARAM_STRING label, set<unsigned> &notify_ids, function<void(WHITEBOARD_ELM&)>);
+	void remove_foreign (WHITEBOARD_ELM &elm, VARVAL &notify_var);
+	void remove_assign(const vector<WHITEBOARD_ELM *> &selects, set<unsigned> &notify_ids, VARVAL &notify_var);
 public:
 	friend void walkboard(class _F_walkboard &c, WHITEBOARD *board);
 	void save(DOC_WRITER &w, bool);
@@ -1142,6 +1147,20 @@ void WHITEBOARD::changeline(int direction, string &error, VARVAL &notify_var, se
 	}
 }
 /*
+	Generate javascript to remove all traces of image or embed document
+	associated with one whiteboard element.
+*/
+void WHITEBOARD::remove_foreign (WHITEBOARD_ELM &elm, VARVAL &notify_var)
+{
+	notify_var.val += string_f("removeelm('f%u','foreignObject');\n",elm.id);
+	if (elm.is_imbed()){
+		auto &embed = elm.embed;
+		notify_var.val += string_f("removetemplate('temp%u');\n",embed.docnum);
+		string sub_gameid = documentd_rel2abs(gameid,embed.document);
+		notify_var.val += string_f("whi_remove('%s',%d);\n",sub_gameid.c_str(),embed.docnum);
+	}
+}
+/*
 	Delete one element.
 	Remove all arrows related to this element (from and to).
 	subelms becoming orphans (not connect to any parent) are added to baseelms.
@@ -1184,13 +1203,7 @@ void WHITEBOARD::delete_elm (unsigned id, VARVAL &notify_var)
 		notify_var.val += string_f("removeelm('e%u','%s');\n",id,tbtag[pt->second.type]);
 		notify_var.val += string_f("removeelm('t%u','text');\n",id);
 		if (pt->second.is_imbed() || pt->second.is_image()){
-			notify_var.val += string_f("removeelm('f%u','foreignObject');\n",id);
-			if (pt->second.is_imbed()){
-				auto &embed = pt->second.embed;
-				notify_var.val += string_f("removetemplate('temp%u');\n",embed.docnum);
-				string sub_gameid = documentd_rel2abs(gameid,embed.document);
-				notify_var.val += string_f("whi_remove('%s',%d);\n",sub_gameid.c_str(),embed.docnum);
-			}
+			remove_foreign (pt->second,notify_var);
 		}
 		elms.erase(pt);
 		// Remove from baseelms if there
@@ -1782,6 +1795,21 @@ bool WHITEBOARD::label_oper (
 	}
 	return found;
 }
+/*
+	Remove images and documents associated for all element in selects.
+*/
+void WHITEBOARD::remove_assign(const vector<WHITEBOARD_ELM *> &selects, set<unsigned> &notify_ids, VARVAL &notify_var)
+{
+	for (auto s:selects){
+		if (s->is_image() || s->is_imbed()){
+			notify_ids.insert(s->id);
+			remove_foreign(*s,notify_var);
+			if (s->box_type == BOX_HIDDEN) s->box_type = BOX_SOLID;
+			s->clear_image();
+			s->clear_imbed();
+		}
+	}
+}
 <mod>
 void WHITEBOARD::execstep (
 	const char *var,
@@ -1940,8 +1968,10 @@ void WHITEBOARD::execstep (
 		var.var = "elements";
 		for (auto &s:elms){
 			var.val += string_f("\nelement: id=%u label=%s txt=%s type=%u selmode=%u boxtype=%u x=%u y=%u x1=%u y1=%u width=%u height=%u"
+				 " imageurl=%s document=%s region=%s docnum=%u"
 				,s.first,s.second.label.c_str(),s.second.txt.c_str(),s.second.type,s.second.selmode,s.second.box_type
-				,s.second.x,s.second.y,s.second.x1,s.second.y1,s.second.width,s.second.height);
+				,s.second.x,s.second.y,s.second.x1,s.second.y1,s.second.width,s.second.height
+				,s.second.get_image(),s.second.get_document(),s.second.get_region(),s.second.get_docnum());
 			if (s.second.subelms.size() > 0){
 				var.val += "\n\tsubelms[]=";
 				for (auto &sub:s.second.subelms) var.val += string_f(" id=%d,arrow=%u",sub.id,sub.arrow);
@@ -2337,19 +2367,36 @@ void WHITEBOARD::execstep (
 			string url;
 			for (auto &f:fields) if (f.var == "url") url = f.val;
 			auto selects = findselected(SEL_SELECTED);
-			string paramurl = whiteboard_converturl (gameid,url);
-			for (auto s:selects){
-				if (s->is_imbed()){
-					s->clear_imbed();
-				}else if (!s->is_image()){
-					addsvgelement(notify_var,gameid,"foreignObject",nullptr,0,string_f("f%u",s->id),s);
+			if (selects.size() == 0){
+				api_error = MSG_R(E_NONODE);
+			}else if (url.empty()){
+				// remove_assign below will remove any image or imbed
+				// If a user click on the BUTTON_IMAGE with a selected imbed
+				// he will get an empty dialog. If he clicks on submit
+				// this will removing the imbed.
+				// If the select object is not an image nor an imbed, remove_assign has no effects.
+				size_t count = 0;
+				for (auto s:selects) if (s->is_imbed()) count++;
+				if (count != 0){
+					error = "some imbed";
+				}else{
+					remove_assign(selects,notify_ids,notify_var);
 				}
-				s->imageurl = url;
-				notify_ids.insert(s->id);	// Make sure the foreignObject is positionned
-				notify_var.val += "whi_loop_board(function(svg){\n";
-				notify_var.val += string_f("\twhi_show_image(svg,'%s','%s','f%u');\n"
-					,paramurl.c_str(),s->type == TYPE_ELLIPSE ? "50%" : "5px",s->id);
-				notify_var.val += "\t});\n";
+			}else{
+				string paramurl = whiteboard_converturl (gameid,url);
+				for (auto s:selects){
+					if (s->is_imbed()){
+						s->clear_imbed();
+					}else if (!s->is_image()){
+						addsvgelement(notify_var,gameid,"foreignObject",nullptr,0,string_f("f%u",s->id),s);
+					}
+					s->imageurl = url;
+					notify_ids.insert(s->id);	// Make sure the foreignObject is positionned
+					notify_var.val += "whi_loop_board(function(svg){\n";
+					notify_var.val += string_f("\twhi_show_image(svg,'%s','%s','f%u');\n"
+						,paramurl.c_str(),s->type == TYPE_ELLIPSE ? "50%" : "5px",s->id);
+					notify_var.val += "\t});\n";
+				}
 			}
 		}else if (strcmp(var,"imbed")==0){
 			vector<VARVAL> fields;
@@ -2362,21 +2409,23 @@ void WHITEBOARD::execstep (
 					imbed.region = f.val;
 				}
 			}
-			// Allocate a document number. Note that the document may exist several time (same doc, same region)
-			// We assign a different docnum for the same document so all views are updated when
-			// the sub-document changes.
-			unsigned docnum = 0;
-			for (auto &e:elms){
-				auto &ee = e.second;
-				if (ee.is_imbed()){
-					unsigned num = ee.get_docnum();
-					if (num > docnum) docnum = num;
-				}
-			}
 			auto selects = findselected(SEL_SELECTED);
 			if (selects.size() == 0){
 				api_error = MSG_R(E_NONODE);
+			}else if (imbed.document.empty()){
+				remove_assign(selects,notify_ids,notify_var);
 			}else{
+				// Allocate a document number. Note that the document may exist several time (same doc, same region)
+				// We assign a different docnum for the same document so all views are updated when
+				// the sub-document changes.
+				unsigned docnum = 0;
+				for (auto &e:elms){
+					auto &ee = e.second;
+					if (ee.is_imbed()){
+						unsigned num = ee.get_docnum();
+						if (num > docnum) docnum = num;
+					}
+				}
 				for (auto s:selects){
 					imbed.docnum = ++docnum;
 					DOC_UI_SPECS_receive elm_sp;
