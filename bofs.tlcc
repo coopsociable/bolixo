@@ -78,7 +78,7 @@ using namespace std;
 #define bod_client_remote_interest_set_NOTNEED
 #define bod_client_remote_interest_unset_NOTNEED
 #define bod_client_set_members_NOTNEED
-
+#define bod_client_waitevent_ASYNC
 #include "proto/bod_client.protoch"
 
 #define webapi_test_NOTNEED
@@ -4160,10 +4160,12 @@ static int bofs_documents (CONTEXT &ctx, int argc, char *argv[])
 				tlmp_error (MSG_R(E_NODOCNAME));
 			}else{
 				glocal bool end = false;
+				DOC_UI_SPECS sp;
+				int ret = bod_client_waitevent_SEND(glocal.ctx.con,glocal.connectid,glocal.ctx.sessionid,glocal.docname,sp,glocal.sequence);
+				if (ret == -1) glocal.end = true;
 				while (!glocal.end){
-					printf (MSG_U(I_WAITINGEVENT,"Waiting for event...\n"));
-					DOC_UI_SPECS sp;
-					<call bod_client_waitevent>(glocal.ctx.con,glocal.connectid,glocal.ctx.sessionid,glocal.docname,sp,glocal.sequence);
+					printf ("%s",MSG_U(I_WAITINGEVENT,"Waiting for event...\n"));
+					<call bod_client_waitevent>(glocal.ctx.con);
 					<f ok>
 						if (!success){
 							bofs_error ("document",internal_error,MSG_U(E_WAITEVENT,"Error while doing waitevent msg=%s\n"),msg);
@@ -4172,6 +4174,7 @@ static int bofs_documents (CONTEXT &ctx, int argc, char *argv[])
 							printf ("sequence=%u\n",sequence);
 							if (!glocal.noscripts){
 								printf ("len=%zu\n%s\n",strlen(script),script);
+								fflush (stdout);
 							}
 							glocal.sequence = sequence;
 							if (glocal.waitone) glocal.end = true;
