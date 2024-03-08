@@ -32,6 +32,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <signal.h>
 #include <tlmplib.h>
 #include <tlmpnet.h>
 #include <string>
@@ -4028,6 +4029,22 @@ static void bofs_printvar (bool novarname, PARAM_STRING var, PARAM_STRING val)
 	}
 }
 
+static const char *sequencefile = nullptr;
+static unsigned sequencenum=0;
+<mod>
+static void fctsig(int)
+{
+	<call savefile>(sequencefile,false);
+	<f dowrite>
+		fprintf (fout,"%u\n",sequencenum);
+		return 0;
+	</f>
+	</call>
+	fprintf (stderr,MSG_U(I_SEQUENCESAVED,"Sequence number %u saved in file %s\n"),sequencenum,sequencefile);
+	exit (-1);
+}
+</mod>
+
 <mod>
 static int bofs_documents (CONTEXT &ctx, int argc, char *argv[])
 {
@@ -4037,7 +4054,6 @@ static int bofs_documents (CONTEXT &ctx, int argc, char *argv[])
 	glocal bool playstep = false;
 	glocal bool waitevent = false;
 	glocal bool waitone = false;
-	glocal unsigned sequence = 0;
 	glocal vector<string> steps;
 	glocal const char *docname = nullptr;
 	glocal bool noscripts = false;
@@ -4057,7 +4073,8 @@ static int bofs_documents (CONTEXT &ctx, int argc, char *argv[])
 		setarg ('w',"waitevent",MSG_U(O_WAITEVENT,"Wait for a document notifications"),glocal.waitevent,false);
 		setarg ('s',"step",MSG_U(O_STEP,"Command (command=value) to send to document"),glocal.steps,false);
 		setarg ('d',"docname",MSG_U(O_DOCNAME,"Document name"),glocal.docname,false);
-		setarg (' ',"sequence",MSG_U(O_SEQUENCE,"Sequence number for waitevent"),glocal.sequence,false);
+		setarg (' ',"sequence",MSG_U(O_SEQUENCE,"Sequence number for waitevent"),sequencenum,false);
+		setarg (' ',"sequencefile",MSG_U(O_SEQUENCEFILE,"File holding the last sequence number"),sequencefile,false);
 		setarg (' ',"noscripts",MSG_U(O_NOSCRIPTS,"Do not print output for notify,script and refresh"),glocal.noscripts,false);
 		setarg (' ',"novarname",MSG_U(O_NOVARNAME,"Do not print the variable name, only content"),glocal.novarname,false);
 		setarg (' ',"waitone",MSG_U(O_WAITONE,"Wait for the first event and quit (with --waitevent)"),glocal.waitone,false);
@@ -4161,7 +4178,16 @@ static int bofs_documents (CONTEXT &ctx, int argc, char *argv[])
 			}else{
 				glocal bool end = false;
 				DOC_UI_SPECS sp;
-				int ret = bod_client_waitevent_SEND(glocal.ctx.con,glocal.connectid,glocal.ctx.sessionid,glocal.docname,sp,glocal.sequence);
+				if (sequencefile != nullptr){
+					<call loadfile>(sequencefile,true);
+					<f oneline>
+						sequencenum = atoi(line);
+						return 0;
+					</f>
+					</call>
+					signal(SIGINT,fctsig);
+				}
+				int ret = bod_client_waitevent_SEND(glocal.ctx.con,glocal.connectid,glocal.ctx.sessionid,glocal.docname,sp,sequencenum);
 				if (ret == -1) glocal.end = true;
 				while (!glocal.end){
 					printf ("%s",MSG_U(I_WAITINGEVENT,"Waiting for event...\n"));
@@ -4176,7 +4202,7 @@ static int bofs_documents (CONTEXT &ctx, int argc, char *argv[])
 								printf ("len=%zu\n%s\n",strlen(script),script);
 								fflush (stdout);
 							}
-							glocal.sequence = sequence;
+							sequencenum = sequence;
 							if (glocal.waitone) glocal.end = true;
 							glocal.ret = 0;
 						}

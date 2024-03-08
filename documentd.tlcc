@@ -991,6 +991,36 @@ string documentd_js_loop_function(const char *board_prefix, const char *prefix, 
 	if (docnum == 0){
 		lines += "var doc_lst=[];\n";
 		lines += "var doc_cur_gameid='';\n";
+		lines += "function gen_loop_findid(svg,tag,id,chs,fct){\n"
+			"\tif (svg != null){\n"
+			"\t\tvar elms=svg.getElementsByTagName(tag);\n"
+			"\t\tvar e_found = null;\n"
+			"\t\tvar min_depth = 1000;\n"
+			// We have to find the element closer to the parent.
+			// With embeded/linked document, we may have several elements
+			// with the same id.
+			"\t\tfor (var j=0; j<elms.length; j++){\n"
+			"\t\t\tvar e=elms[j];\n"
+			"\t\t\tif (e.id === id){\n"
+			"\t\t\t\tvar elm = e;\n"
+			"\t\t\t\tvar cur_depth = 0;\n"
+			"\t\t\t\twhile(elm.parentNode != null){\n"
+			"\t\t\t\t\tif(elm.id === svg.id){\n"
+			//"\t\t\t\t\t\tconsole.log(`findid j=${j} cur_depth=${cur_depth} min_depth=${min_depth} id=${id}`);\n"
+			"\t\t\t\t\t\tif(cur_depth < min_depth){\n"
+			"\t\t\t\t\t\t\te_found = e;\n"
+			"\t\t\t\t\t\t\tmin_depth = cur_depth;\n"
+			"\t\t\t\t\t\t}\n"
+			"\t\t\t\t\t\tbreak;\n"
+			"\t\t\t\t\t}\n"
+			"\t\t\t\t\tcur_depth++;\n"
+			"\t\t\t\t\telm = elm.parentNode;\n"
+			"\t\t\t\t}\n"
+			"\t\t\t}\n"
+			"\t\t}\n"
+			"\t\tif (e_found != null) fct(e_found,chs);\n"
+			"\t}\n"
+			"}\n";
 	}
 
 	lines += string_f("function %s_loop_board(fct){\n",prefix);
@@ -1010,17 +1040,6 @@ string documentd_js_loop_function(const char *board_prefix, const char *prefix, 
 	lines += "\t}\n";
 	lines += "};\n";
 
-	lines += string_f("function %s_loop_findid(svg,tag,id,chs,fct){\n",prefix);
-	lines += "\tif (svg != null){\n";
-	lines += "\t\tvar elms=svg.getElementsByTagName(tag);\n";
-	lines += "\t\tfor (var j=0; j<elms.length; j++){\n";
-	lines += "\t\t\tvar e=elms[j];\n";
-	lines += "\t\t\tif (e.id == id){\n";
-	lines += "\t\t\t\tfct(e,chs);\n";
-	lines += "\t\t\t}\n";
-	lines += "\t\t}\n";
-	lines += "\t}\n";
-	lines += "}\n";
 
 	// We loop in the list of registered document (whi_lst[])
 	// Then for each document, we try to locate it in the DOM and in templates
@@ -1030,12 +1049,13 @@ string documentd_js_loop_function(const char *board_prefix, const char *prefix, 
 	lines += "\tfor(var i=0; i<doc_lst.length; i++){\n";
 	lines += "\t\tvar chs = doc_lst[i];\n";
 	lines += "\t\tif (chs.gameid==doc_cur_gameid){\n";
+	//lines += "\t\t\tconsole.log(`whi_loop gameid=${chs.gameid} docnum=${chs.docnum}`);\n";
 	lines += string_f("\t\t\tvar svg=document.getElementById('%s-'+chs.gameid+','+chs.docnum);\n",board_prefix);
-	lines += string_f("\t\t\t%s_loop_findid(svg,tag,id,chs,fct);\n",prefix);
+	lines += "\t\t\tgen_loop_findid(svg,tag,id,chs,fct);\n";
 	lines += "\t\t\tvar tpls=document.getElementsByTagName('template');\n";
 	lines += "\t\t\tfor (var j=0; j<tpls.length; j++){\n";
 	lines += string_f("\t\t\t\tvar svg = tpls[j].content.getElementById('%s-'+chs.gameid+','+chs.docnum);\n",board_prefix);
-	lines += string_f("\t\t\t\t%s_loop_findid(svg,tag,id,chs,fct);\n",prefix);
+	lines += "\t\t\t\tgen_loop_findid(svg,tag,id,chs,fct);\n";
 	lines += "\t\t\t}\n";
 	lines += "\t\t}\n";
 	lines += "\t}\n";
