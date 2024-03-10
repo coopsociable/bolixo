@@ -479,74 +479,68 @@ elif [ "$1" = "doc-whiteboard-imbed-fill" ] ; then # test: create images and emb
 	shift
 	while [ "$1" != "" ]
 	do
-		if [ "$1" = "1c" ] ; then
+		if [ "$1" = "reset" ] ; then
+			$0 doc-whiteboard-imbed-reset
+		elif [ "$1" = "1c" ] ; then
 			addelm elm1 "Chess game 1" rect 320 330 600 600
 			textpos elm1 1
 			assigndoc test.chess
 			resetsel
-		fi
-		if [ "$1" = "1w" ] ; then
+		elif [ "$1" = "1w" ] ; then
 			addelm elm1 "Whiteboard" rect 320 330 600 600
 			textpos elm1 1
 			assigndoc test.white A1
 			resetsel
-		fi
-		if [ "$1" = "1p" ] ; then
+		elif [ "$1" = "1p" ] ; then
 			addelm elm1 "Gallery" rect 320 330 600 600
 			textpos elm1 1
 			assigndoc test.pho main
 			resetsel
-		fi
-		if [ "$1" = "1u" ] ; then
+		elif [ "$1" = "1u" ] ; then
 			addelm elm1 "web" rect 320 330 600 600
 			textpos elm1 1
 			assignimg http://test1.bolixo.org/bolixo-arch.jpg
 			resetsel
-		fi
-		if [ "$1" = "2c" ] ; then
+		elif [ "$1" = "2c" ] ; then
 			addelm elm2 "Chess game 2" rect 930 330 600 600
 			textpos elm2 1
 			assigndoc test.chess
 			resetsel
-		fi
-		if [ "$1" = "2ww" ] ; then
+		elif [ "$1" = "2ww" ] ; then
 			addelm elm2 "Chess game 2" rect 630 330 300 300
 			addelm elm22 "Chess game 22" rect 1000 330 300 300
 			textpos elm2 1
 			textpos elm22 1
 			assigndoc test.white A1
 			resetsel
-		fi
-		if [ "$1" = "2w" ] ; then
+		elif [ "$1" = "2w" ] ; then
 			addelm elm2 "Whiteboard 2" rect 930 330 600 600
 			textpos elm2 1
 			assigndoc test.white A1
 			resetsel
-		fi
-		if [ "$1" = "3" ] ; then
+		elif [ "$1" = "3" ] ; then
 			addelm elm3 "Whiteboard 3" rect 1540 330 600 600
 			textpos elm3 1
 			assigndoc test.white A1
 			resetsel
-		fi
-		if [ "$1" = "4c" ] ; then
+		elif [ "$1" = "4c" ] ; then
 			addelm elm4 "Table" rect 600 800 300 300
 			textpos elm4 1
 			assigndoc test.chess
 			#assigndoc noname.clc a1:d4
 			resetsel
-		fi
-		if [ "$1" = "4p" ] ; then
+		elif [ "$1" = "4p" ] ; then
 			addelm elm4 "Photos" rect 600 800 600 100
 			textpos elm4 1
 			assigndoc test.pho mini
 			resetsel
-		fi
-		if [ "$1" = "4t" ] ; then
+		elif [ "$1" = "4t" ] ; then
 			addelm elm4 "Table" rect 600 800 600 100
 			textpos elm4 1
 			assigndoc noname.clc a1:d4
 			resetsel
+		else
+			echo Invalid option $1
 		fi
 		shift
 	done

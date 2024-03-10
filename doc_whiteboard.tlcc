@@ -1496,9 +1496,9 @@ string WHITEBOARD::define_functions(
 	// Only the width is computed.
 	unsigned svg_board_width = board_width*SVG_BOARD_HEIGHT/board_height;
 	// Clicking on the board
-	val += "var mbuttons=[0,0,0];\n";
-	val += "var clickedWhen=0;\n";
-	val += "function whi_gameselect(gameid,docnum,vboxx,vboxy,width,height,event){\n";
+	val += "window.mbuttons=[0,0,0];\n";
+	val += "window.clickedWhen=0;\n";
+	val += "window.whi_gameselect = function(gameid,docnum,vboxx,vboxy,width,height,event){\n";
 	val += "\tvar d = new Date();\n";
 	val += "\tclickedWhen = d.getTime();\n";
 	val += "\tmbuttons[event.which-1] = 1;\n";
@@ -1516,24 +1516,24 @@ string WHITEBOARD::define_functions(
 	val += "}\n";
 
 	// Mouse wheel
-	val += "function whi_gamewheel(event){\n";
-	val += "\tif (event.deltaY < 0){\n";
-	val += "\t\tgameaction(event,'wheel:1,'+event.shiftKey+','+event.ctrlKey);\n";
-	val += "\t}else{\n";
-	val += "\t\tgameaction(event,'wheel:-1,'+event.shiftKey+','+event.ctrlKey);\n";
-	val += "\t}\n";
-	val += "\tevent.stopPropagation();\n";
-	val += "}\n";
+	val += "window.whi_gamewheel = function(event){\n"
+		"\tif (event.deltaY < 0){\n"
+		"\t\tgameaction(event,'wheel:1,'+event.shiftKey+','+event.ctrlKey);\n"
+		"\t}else{\n"
+		"\t\tgameaction(event,'wheel:-1,'+event.shiftKey+','+event.ctrlKey);\n"
+		"\t}\n"
+		"\tevent.stopPropagation();\n"
+		"}\n";
 
 	// Moving an object, wait some time after the click to perform the move (200ms).
 	// So when a user just select an object, it does not move.
-	val += "function whi_gamemove(gameid,docnum,vboxx,vboxy,width,height,event){\n";
+	val += "window.whi_gamemove = function(gameid,docnum,vboxx,vboxy,width,height,event){\n";
 	val += "\tvar d = new Date();\n";
 	val += "\tif(mbuttons[0] == 1 && d.getTime()-clickedWhen > 200){\n";
 	val += "\t\tvar elm = document.getElementById('board-'+gameid+','+docnum);\n";
 	val += "\t\tvar rect = elm.getBoundingClientRect();\n";
-	val += string_f("\tvar x = (event.clientX-rect.left)*%u/width + vboxx;\n",svg_board_width);
-	val += string_f("\tvar y = (event.clientY-rect.top)*%u/height + vboxy;\n",SVG_BOARD_HEIGHT);
+	val += string_f("\t\tvar x = (event.clientX-rect.left)*%u/width + vboxx;\n",svg_board_width);
+	val += string_f("\t\tvar y = (event.clientY-rect.top)*%u/height + vboxy;\n",SVG_BOARD_HEIGHT);
 	val += "\t\tgameaction(event,'mousemove:'+x+','+y+','+event.shiftKey+','+event.ctrlKey);\n";
 	val += "\t}\n";
 	val += "\tevent.stopPropagation();\n";
@@ -1543,17 +1543,17 @@ string WHITEBOARD::define_functions(
 	val += documentd_js_loop_function("board","whi",ctx.docnum);
 
 	// Updating an object 
-	val += "function setboxtype(e,boxtype){\n";
-	val += "\tif(boxtype==0){\n";
-	val += "\t\te.removeAttribute('stroke-dasharray');\n";
-	val += "\t}else if(boxtype==1){\n";
-	val += "\t\te.setAttribute('stroke-dasharray','5,5');\n";
-	val += "\t}else if(boxtype==2){\n";
-	val += "\t\te.setAttribute('stroke-dasharray','2,5');\n";
-	val += "\t}\n";
-	val += "}\n";
+	val += "window.setboxtype = function(e,boxtype){\n"
+		"\tif(boxtype==0){\n"
+		"\t\te.removeAttribute('stroke-dasharray');\n"
+		"\t}else if(boxtype==1){\n"
+		"\t\te.setAttribute('stroke-dasharray','5,5');\n"
+		"\t}else if(boxtype==2){\n"
+		"\t\te.setAttribute('stroke-dasharray','2,5');\n"
+		"\t}\n"
+		"}\n";
 
-	val += "function whi_setviewbox(x, y){\n";
+	val += "window.whi_setviewbox = function(x, y){\n";
 	val += string_f("\tvar e=document.getElementById('board-%s,%u');\n",gameid.c_str(),ctx.docnum);
 	val += string_f("\te.setAttribute('viewBox',' ' + x + ' ' + y + ' %u %u');\n",svg_board_width,SVG_BOARD_HEIGHT);
 	val += string_f("\tvar e=document.getElementById('vscroll-%s');\n",gameid.c_str());
@@ -1563,156 +1563,156 @@ string WHITEBOARD::define_functions(
 	val += "}\n";
 
 	// Remove all children from a parent
-	val += "function whi_remove_children(parent){\n"
+	val += "window.whi_remove_children = function(parent){\n"
 		"\twhile (parent.firstChild) {\n"
 		"\t\tparent.removeChild(parent.lastChild);\n"
 		"\t}\n"
 		"}\n";
 
-	val += "function replace_foreign(id, x, y, w,h){\n";
-	//val += "\tconsole.log (`replace_foreign id=${id} doc_lst.length=${doc_lst.length}`);\n";
-	val += "\twhi_loop('foreignObject','f'+id,function(e,chs){\n";
-	//val += "\t\tconsole.log (`fct foreign gameid=${chs.gameid} docnum=${chs.docnum} id=${id} x=${x} y=${y} width=${w} height=${h}`);\n";
-	val += "\t\te.setAttribute('x',x);\n"; 
-	val += "\t\te.setAttribute('y',y);\n"; 
-	val += "\t\te.setAttribute('width',w);\n"; 
-	val += "\t\te.setAttribute('height',h);\n"; 
-	val += "\t});\n";
-	val += "}\n";
+	val += "window.replace_foreign = function(id, x, y, w,h){\n"
+		// "\tconsole.log (`replace_foreign id=${id} doc_lst.length=${doc_lst.length}`);\n"
+		"\twhi_loop('foreignObject','f'+id,function(e,chs){\n"
+		// "\t\tconsole.log (`fct foreign gameid=${chs.gameid} docnum=${chs.docnum} id=${id} x=${x} y=${y} width=${w} height=${h}`);\n"
+		"\t\te.setAttribute('x',x);\n"
+		"\t\te.setAttribute('y',y);\n"
+		"\t\te.setAttribute('width',w);\n"
+		"\t\te.setAttribute('height',h);\n"
+		"\t});\n"
+		"}\n";
 
-	val += "function replace_ellipse(id, x, y, rx,ry,color,boxtype){\n";
-	val += "\twhi_loop('ellipse','e'+id,function(e){\n";
-	//val += "\t\tconsole.log ('fct ellipse id='+id);\n";
-	val += "\t\te.setAttribute('cx',x);\n"; 
-	val += "\t\te.setAttribute('cy',y);\n"; 
-	val += "\t\te.setAttribute('rx',rx);\n"; 
-	val += "\t\te.setAttribute('ry',ry);\n"; 
-	val += "\t\te.style.stroke=color;\n"; 
-	val += "\t\tsetboxtype(e,boxtype);\n";
-	val += "\t});\n";
-	// Move the foreignobject (HTML associated with the ellipse
-	val += "\treplace_foreign(id,x-rx,y-ry,rx*2,ry*2);\n";
-	val += "}\n";
+	val += "window.replace_ellipse = function(id, x, y, rx,ry,color,boxtype){\n"
+		"\twhi_loop('ellipse','e'+id,function(e){\n"
+		// "\t\tconsole.log ('fct ellipse id='+id);\n"
+		"\t\te.setAttribute('cx',x);\n" 
+		"\t\te.setAttribute('cy',y);\n" 
+		"\t\te.setAttribute('rx',rx);\n" 
+		"\t\te.setAttribute('ry',ry);\n" 
+		"\t\te.style.stroke=color;\n" 
+		"\t\tsetboxtype(e,boxtype);\n"
+		"\t});\n"
+		// Move the foreignobject (HTML associated with the ellipse
+		"\treplace_foreign(id,x-rx,y-ry,rx*2,ry*2);\n"
+		"}\n";
 
-	val += "function replace_rect(id, x, y, w,h, color,boxtype){\n";
-	val += "\twhi_loop('rect','e'+id,function(e){\n";
-	//val += "\t\tconsole.log ('fct rect id='+id);\n";
-	val += "\t\te.setAttribute('x',x);\n"; 
-	val += "\t\te.setAttribute('y',y);\n"; 
-	val += "\t\te.setAttribute('rx',5);\n"; 
-	val += "\t\te.setAttribute('ry',5);\n"; 
-	val += "\t\te.setAttribute('width',w);\n"; 
-	val += "\t\te.setAttribute('height',h);\n"; 
-	val += "\t\te.style.stroke=color;\n";
-	val += "\t\tsetboxtype(e,boxtype);\n";
-	val += "\t});\n";
-	// Move the foreignobject (HTML associated with the rect
-	val += "\treplace_foreign(id,x,y,w,h);\n";
-	val += "}\n";
+	val += "window.replace_rect = function(id, x, y, w,h, color,boxtype){\n"
+		"\twhi_loop('rect','e'+id,function(e){\n"
+		// "\t\tconsole.log ('fct rect id='+id);\n"
+		"\t\te.setAttribute('x',x);\n"
+		"\t\te.setAttribute('y',y);\n"
+		"\t\te.setAttribute('rx',5);\n"
+		"\t\te.setAttribute('ry',5);\n" 
+		"\t\te.setAttribute('width',w);\n"
+		"\t\te.setAttribute('height',h);\n"
+		"\t\te.style.stroke=color;\n"
+		"\t\tsetboxtype(e,boxtype);\n"
+		"\t});\n"
+		// Move the foreignobject (HTML associated with the rect
+		"\treplace_foreign(id,x,y,w,h);\n"
+		"}\n";
 
-	val += "function replace_typeline(id, x1, y1, x2, y2, color,boxtype){\n";
-	val += "\twhi_loop('line',id,function(e){\n";
-	val += "\t\te.setAttribute('x1',x1);\n"; 
-	val += "\t\te.setAttribute('y1',y1);\n"; 
-	val += "\t\te.setAttribute('x2',x2);\n"; 
-	val += "\t\te.setAttribute('y2',y2);\n"; 
-	val += "\t\te.style.stroke=color;\n"; 
-	val += "\t\tsetboxtype(e,boxtype);\n";
-	val += "\t});\n";
-	val += "}\n";
+	val += "window.replace_typeline = function(id, x1, y1, x2, y2, color,boxtype){\n"
+		"\twhi_loop('line',id,function(e){\n"
+		"\t\te.setAttribute('x1',x1);\n" 
+		"\t\te.setAttribute('y1',y1);\n" 
+		"\t\te.setAttribute('x2',x2);\n"
+		"\t\te.setAttribute('y2',y2);\n"
+		"\t\te.style.stroke=color;\n"
+		"\t\tsetboxtype(e,boxtype);\n"
+		"\t});\n"
+		"}\n";
 
-	val += "function replace_typetext(id, x, y, color){\n";
-	val += "\twhi_loop('circle',id,function(e){\n";
-	val += "\t\te.setAttribute('cx',x);\n"; 
-	val += "\t\te.setAttribute('cy',y);\n"; 
-	val += "\t\te.setAttribute('r',4);\n"; 
-	val += "\t\te.style.stroke=color;\n"; 
-	val += "\t\te.style.fill=color;\n"; 
-	val += "\t});\n";
-	val += "}\n";
+	val += "window.replace_typetext = function(id, x, y, color){\n"
+		"\twhi_loop('circle',id,function(e){\n"
+		"\t\te.setAttribute('cx',x);\n"
+		"\t\te.setAttribute('cy',y);\n"
+		"\t\te.setAttribute('r',4);\n"
+		"\t\te.style.stroke=color;\n"
+		"\t\te.style.fill=color;\n"
+		"\t});\n"
+		"}\n";
 
-	val += "function replace_text(id, x, y, size,color, txt){\n";
-	val += "\twhi_loop('text',id,function(e){\n";
-	val += "\t\te.setAttribute('x',x);\n"; 
-	val += "\t\te.setAttribute('y',y);\n"; 
-	val += "\t\te.style.stroke=color;\n"; 
-	val += "\t\te.style.fill=color;\n"; 
-	val += "\t\te.style.fontSize=size;\n"; 
-	val += "\t\te.innerHTML=txt;\n"; 
-	val += "\t});\n";
-	val += "}\n";
+	val += "window.replace_text = function(id, x, y, size,color, txt){\n"
+		"\twhi_loop('text',id,function(e){\n"
+		"\t\te.setAttribute('x',x);\n"
+		"\t\te.setAttribute('y',y);\n"
+		"\t\te.style.stroke=color;\n"
+		"\t\te.style.fill=color;\n"
+		"\t\te.style.fontSize=size;\n"
+		"\t\te.innerHTML=txt;\n"
+		"\t});\n"
+		"}\n";
 
 	// line between a parent and sub-element
-	val += "function replace_line(id, x, y, angle, len, color,arrow){\n";
-	val += "\twhi_loop('g',id,function(e){\n";
-	val += "\t\twhi_remove_children(e);\n";
-	val += "\t\te.style.stroke = color;\n";
-	val += "\t\te.style.fill = color;\n";
-	val += "\t\te.style.strokeWidth = '1';\n";
-	val += "\t\tvar newElement = document.createElementNS('http://www.w3.org/2000/svg', 'path');\n";
-	val += "\t\te.appendChild(newElement);\n";
-	val += "\t\tlen-=10;\n";
-	val += "\t\tif(arrow==1){\n";
-	// ARROW_END
-	val += "\t\t\tnewElement.setAttribute('d','M0,0 l'+(len-10)+',0 l-2,-5 l10,5 l-10,5 l2,-5');\n"; 
-	val += "\t\t}else if(arrow==2){\n";
-	// ARROW_START
-	val += "\t\t\tnewElement.setAttribute('d','M0,0 l10,-5 l-2,5 l2,5 l-10,-5 l'+len+',0');\n"; 
-	val += "\t\t}else if(arrow==3){\n";
-	// ARROW_BOTH
-	val += "\t\t\tnewElement.setAttribute('d','M0,0 l10,-5 l-2,5 l2,5 l-10,-5 l'+(len-10)+',0 l-2,-5 l10,5 l-10,5 l2,-5');\n"; 
-	val += "\t\t}else if(arrow==4){\n";
-	// ARROW_RETURN
-	val += "\t\t\tnewElement.setAttribute('d','M0,0 l'+(len-10)+',0 l-2,-5 l10,5 l-10,5 l2,-5');\n"; 
-	val += "\t\t\tvar path2 = document.createElementNS('http://www.w3.org/2000/svg', 'path');\n";
-	val += "\t\t\te.appendChild(path2);\n";
-	val += "\t\t\tpath2.style.fill = 'none';\n";
-	val += "\t\t\tvar lenq=len-10;\n";
-	val += "\t\t\tpath2.setAttribute('d','M'+lenq+',-7 q-'+(lenq/2)+',-20,-'+(lenq-10)+',0');\n"; 
-	val += "\t\t\tvar subg = document.createElementNS('http://www.w3.org/2000/svg', 'g');\n";
-	val += "\t\t\te.appendChild(subg);\n";
-	val += "\t\t\tsubg.setAttribute('transform','rotate(-15,0,0)');\n";
-	val += "\t\t\tvar path3 = document.createElementNS('http://www.w3.org/2000/svg', 'path');\n";
-	val += "\t\t\tpath3.setAttribute('d','M10,-5 l2,-5 l-10,5 l10,5 l-2,-5');\n";
-	val += "\t\t\tsubg.appendChild(path3);\n";
-	val += "\t\t}else if(arrow==5){\n";
-	// ARROW_LINE
-	val += "\t\t\tnewElement.setAttribute('d','M0,0 l'+len+',0');\n"; 
-	val += "\t\t}else if(arrow==6){\n";
-	// ARROW_DASHLINE
-	val += "\t\t\tnewElement.setAttribute('d','M0,0 l'+len+',0');\n"; 
-	val += "\t\t\tnewElement.setAttribute('stroke-dasharray','5,5');\n"; 
-	val += "\t\t}else if(arrow==7){\n";
-	// ARROW_DOTLINE
-	val += "\t\t\tnewElement.setAttribute('d','M0,0 l'+len+',0');\n"; 
-	val += "\t\t\tnewElement.setAttribute('stroke-dasharray','2,4');\n"; 
+	val += "window.replace_line = function(id, x, y, angle, len, color,arrow){\n"
+		"\twhi_loop('g',id,function(e){\n"
+		"\t\twhi_remove_children(e);\n"
+		"\t\te.style.stroke = color;\n"
+		"\t\te.style.fill = color;\n"
+		"\t\te.style.strokeWidth = '1';\n"
+		"\t\tvar newElement = document.createElementNS('http://www.w3.org/2000/svg', 'path');\n"
+		"\t\te.appendChild(newElement);\n"
+		"\t\tlen-=10;\n"
+		"\t\tif(arrow==1){\n"
+		// ARROW_END
+		"\t\t\tnewElement.setAttribute('d','M0,0 l'+(len-10)+',0 l-2,-5 l10,5 l-10,5 l2,-5');\n"
+		"\t\t}else if(arrow==2){\n"
+		// ARROW_START
+		"\t\t\tnewElement.setAttribute('d','M0,0 l10,-5 l-2,5 l2,5 l-10,-5 l'+len+',0');\n"
+		"\t\t}else if(arrow==3){\n"
+		// ARROW_BOTH
+		"\t\t\tnewElement.setAttribute('d','M0,0 l10,-5 l-2,5 l2,5 l-10,-5 l'+(len-10)+',0 l-2,-5 l10,5 l-10,5 l2,-5');\n"
+		"\t\t}else if(arrow==4){\n"
+		// ARROW_RETURN
+		"\t\t\tnewElement.setAttribute('d','M0,0 l'+(len-10)+',0 l-2,-5 l10,5 l-10,5 l2,-5');\n"
+		"\t\t\tvar path2 = document.createElementNS('http://www.w3.org/2000/svg', 'path');\n"
+		"\t\t\te.appendChild(path2);\n"
+		"\t\t\tpath2.style.fill = 'none';\n"
+		"\t\t\tvar lenq=len-10;\n"
+		"\t\t\tpath2.setAttribute('d','M'+lenq+',-7 q-'+(lenq/2)+',-20,-'+(lenq-10)+',0');\n"
+		"\t\t\tvar subg = document.createElementNS('http://www.w3.org/2000/svg', 'g');\n"
+		"\t\t\te.appendChild(subg);\n"
+		"\t\t\tsubg.setAttribute('transform','rotate(-15,0,0)');\n"
+		"\t\t\tvar path3 = document.createElementNS('http://www.w3.org/2000/svg', 'path');\n"
+		"\t\t\tpath3.setAttribute('d','M10,-5 l2,-5 l-10,5 l10,5 l-2,-5');\n"
+		"\t\t\tsubg.appendChild(path3);\n"
+		"\t\t}else if(arrow==5){\n"
+		// ARROW_LINE
+		"\t\t\tnewElement.setAttribute('d','M0,0 l'+len+',0');\n"
+		"\t\t}else if(arrow==6){\n"
+		// ARROW_DASHLINE
+		"\t\t\tnewElement.setAttribute('d','M0,0 l'+len+',0');\n"
+		"\t\t\tnewElement.setAttribute('stroke-dasharray','5,5');\n"
+		"\t\t}else if(arrow==7){\n"
+		// ARROW_DOTLINE
+		"\t\t\tnewElement.setAttribute('d','M0,0 l'+len+',0');\n"
+		"\t\t\tnewElement.setAttribute('stroke-dasharray','2,4');\n"
 
-	val += "\t\t}\n";
-	val += "\t\te.setAttribute('transform','translate('+x+','+y+') rotate('+angle+',0,0) translate(5,0)');\n"; 
-	val += "\t});\n";
-	val += "}\n";
+		"\t\t}\n"
+		"\t\te.setAttribute('transform','translate('+x+','+y+') rotate('+angle+',0,0) translate(5,0)');\n"
+		"\t});\n"
+		"}\n";
 
 	wordproc_set_gamepress(val,"whi_gamepress",true);
 
 	// Remove an element
-	val += "function removeelm(id,tag){\n";
-	val += "\twhi_loop(tag,id,function(e){\n";
-	//val += "console.log(`removeelm tag=${tag} e=${e}`);\n";
-	val += "\t\te.parentNode.removeChild(e);\n";
-	val += "\t});\n";
-	val += "}\n";
+	val += "window.removeelm = function(id,tag){\n"
+		"\twhi_loop(tag,id,function(e){\n"
+		// "console.log(`removeelm tag=${tag} e=${e}`);\n"
+		"\t\te.parentNode.removeChild(e);\n"
+		"\t});\n"
+		"}\n";
 	// Remove a template. Templates are global
-	val += "function removetemplate(id){\n";
-	val += "\tvar e = document.getElementById(id);\n";
-	val += "\tif (e != null){\n";
-	val += "\t\te.parentNode.removeChild(e);\n";
-	val += "\t}else{\n";
-	val += "\t\tconsole.log('removetemplate: not found '+id);\n";
-	val += "\t}\n";
-	val += "}\n";
+	val += "window.removetemplate = function(id){\n"
+		"\tvar e = document.getElementById(id);\n"
+		"\tif (e != null){\n"
+		"\t\te.parentNode.removeChild(e);\n"
+		"\t}else{\n"
+		"\t\tconsole.log('removetemplate: not found '+id);\n"
+		"\t}\n"
+		"}\n";
 
 	// Update the message field
-	val += "function WHIT_updmsg(color,msg){\n";
+	val += "window.WHIT_updmsg = function(color,msg){\n";
 	val += string_f("\tvar elm = document.getElementById('msg-%s');\n",gameid.c_str());
 	val += "\tif (elm != null){\n";
 	val += "\t\telm.style.color=color;\n";
@@ -1722,7 +1722,7 @@ string WHITEBOARD::define_functions(
 
 
 	// Copy a template in a foreignobject
-	val += "function whi_show_template(doc,tid,pid) {\n"
+	val += "window.whi_show_template = function(doc,tid,pid) {\n"
 		"\tvar temp = document.getElementById(tid);\n"
 		"\tvar clon = temp.content.cloneNode(true);\n"
 		"\tvar parent = doc.getElementById(pid);\n"
@@ -1731,7 +1731,7 @@ string WHITEBOARD::define_functions(
 		"\tparent.appendChild(clon);\n"
 		"}\n";
 	// Add an IMG tag to a foreignobject
-	val += "function whi_show_image(doc,url,radius,pid) {\n"
+	val += "window.whi_show_image = function(doc,url,radius,pid) {\n"
 		"\tvar img = document.createElement('img');\n"
 		"\timg.style.borderRadius = radius;\n"
 		"\timg.src = url;\n"

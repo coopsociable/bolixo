@@ -1588,7 +1588,7 @@ void WORDPROC::exec (
 */
 void wordproc_set_gamepress(string &lines, const char *funcname, bool dummies)
 {
-	lines += string_f("function %s(event){\n",funcname);
+	lines += string_f("window.%s = function(event){\n",funcname);
 	lines += "\tconsole.log ('press key='+event.key+' '+' code='+event.code+' '+event.altKey+' '+event.ctrlKey+' '+event.shiftKey);\n";
 	lines += "\tgamekey=event.key;\n";
 	lines += "\tgamecode=event.code;\n";
@@ -1596,20 +1596,15 @@ void wordproc_set_gamepress(string &lines, const char *funcname, bool dummies)
 	lines += "\tctrlKey=event.ctrlKey;\n";
 	lines += "\tshiftKey=event.shiftKey;\n";
 	//v.val += "\tif (gamecode.substring(0,3)!='Key' && gamekey != 'Dead' && gamekey != 'Process'){\n";
-	lines += "\tgameaction(event,'kbd:'+gamecode + ' ' + gamekey+' '+altKey+' '+ctrlKey+' '+shiftKey+' '+getlastline()+' '+getlastcol());\n";
+	if (dummies){
+		lines += "\tgameaction(event,'kbd:'+gamecode + ' ' + gamekey+' '+altKey+' '+ctrlKey+' '+shiftKey+' 0 0');\n";
+	}else{
+		lines += "\tgameaction(event,'kbd:'+gamecode + ' ' + gamekey+' '+altKey+' '+ctrlKey+' '+shiftKey+' '+getlastline()+' '+getlastcol());\n";
+	}
 	//v.val += "\t}\n";
 	lines += "\tevent.stopPropagation();\n";
 	lines += "\treturn false;\n";
 	lines += "}\n";
-	if (dummies){
-		// Define some dummy function meaningless for the caller
-		lines += "function getlastline(){\n";
-		lines += "\treturn 0;\n";
-		lines += "}\n";
-		lines += "function getlastcol(){\n";
-		lines += "\treturn 0;\n";
-		lines += "}\n";
-	}
 }
 
 /*
@@ -1793,27 +1788,27 @@ string WORDPROC::define_functions(const DOC_CONTEXT &ctx, const WORD_USERPREF &p
 	string val;
 	val += documentd_js_loop_function("text","word",ctx.docnum);
 	// Copy a template
-	val += "function word_show_template(tid,pid) {\n";
-	val += "\tvar temp = document.getElementById(tid);\n";
-	val += "\tvar clon = temp.content.cloneNode(true);\n";
-	val += "\tvar parent = document.getElementById(pid);\n";
-	val += "\tparent.appendChild(clon);\n";
-	val += "}\n";
+	val += "window.word_show_template = function(tid,pid) {\n"
+		"\tvar temp = document.getElementById(tid);\n"
+		"\tvar clon = temp.content.cloneNode(true);\n"
+		"\tvar parent = document.getElementById(pid);\n"
+		"\tparent.appendChild(clon);\n"
+		"}\n";
 	// Function called when the user click
-	val += "function word_gameselect(gameid,docnum,event){\n";
-	val += "\tvar elm = document.getElementById('text-'+gameid+','+docnum);\n";
-	val += "\tvar elms = elm.getElementsByClassName('oneline');\n";
-	val += "\tfor (var i=0; i<elms.length; i++){\n";
-	val += "\t\tvar para= elms[i];\n";
-	val += "\t\tvar rect = para.getBoundingClientRect();\n";
-	val += "\t\tif (event.clientY >= rect.top && event.clientY < rect.bottom){\n";
-	val += "\t\t\tvar divs=para.getElementsByTagName('div');\n";
-	val += "\t\t\tvar r=divs[divs.length-1].getBoundingClientRect();\n";
-	val += "\t\t\tgameaction(event,'select:'+i+' '+Math.floor(event.clientX-r.left)+' '+Math.floor(event.clientY-r.top)+' '+getlastline());\n";
-	val += "\t\t\tbreak;\n";
-	val += "\t\t}\n";
-	val += "\t}\n";
-	val += "}\n";
+	val += "window.word_gameselect = function(gameid,docnum,event){\n"
+		"\tvar elm = document.getElementById('text-'+gameid+','+docnum);\n"
+		"\tvar elms = elm.getElementsByClassName('oneline');\n"
+		"\tfor (var i=0; i<elms.length; i++){\n"
+		"\t\tvar para= elms[i];\n"
+		"\t\tvar rect = para.getBoundingClientRect();\n"
+		"\t\tif (event.clientY >= rect.top && event.clientY < rect.bottom){\n"
+		"\t\t\tvar divs=para.getElementsByTagName('div');\n"
+		"\t\t\tvar r=divs[divs.length-1].getBoundingClientRect();\n"
+		"\t\t\tgameaction(event,'select:'+i+' '+Math.floor(event.clientX-r.left)+' '+Math.floor(event.clientY-r.top)+' '+getlastline());\n"
+		"\t\t\tbreak;\n"
+		"\t\t}\n"
+		"\t}\n"
+		"}\n";
 	// Function called when the user uses the keyboard
 	val += "var gamekey=null;\n";
 	val += "var gamecode=null;\n";
@@ -1822,27 +1817,27 @@ string WORDPROC::define_functions(const DOC_CONTEXT &ctx, const WORD_USERPREF &p
 	val += "var shiftKey=null;\n";
 
 	wordproc_set_gamepress(val,"word_gamepress",false);
-	val += "function word_funcinput(event){\n";
-	val += "\tif (event.data == null) gamekey=event.data;\n";
-	val += "\tgameaction(event,'kbd:'+gamecode + ' ' + gamekey+' '+altKey+' '+ctrlKey+' '+shiftKey+' '+getlastline()+' '+getlastcol());\n";
-	val += "\tconsole.log('kbd:'+gamecode + ' ' + gamekey+' '+altKey+' '+ctrlKey+' '+shiftKey+' '+getlastline());\n";
-	val += "\tevent.stopPropagation();\n";
-	val += "\treturn false;\n";
-	val += "}\n";
-	val += "function gamefalse(event){\n";
-	//v.val += "\tconsole.log ('gamefalse type='+event.type+' data='+event.data);\n";
-	val += "\tevent.stopPropagation();\n";
-	val += "\treturn false;\n";
-	val += "}\n";
+	val += "window.word_funcinput = function(event){\n"
+		"\tif (event.data == null) gamekey=event.data;\n"
+		"\tgameaction(event,'kbd:'+gamecode + ' ' + gamekey+' '+altKey+' '+ctrlKey+' '+shiftKey+' '+getlastline()+' '+getlastcol());\n"
+		"\tconsole.log('kbd:'+gamecode + ' ' + gamekey+' '+altKey+' '+ctrlKey+' '+shiftKey+' '+getlastline());\n"
+		"\tevent.stopPropagation();\n"
+		"\treturn false;\n"
+		"}\n";
+	val += "window.gamefalse = function(event){\n"
+		// "\tconsole.log ('gamefalse type='+event.type+' data='+event.data);\n"
+		"\tevent.stopPropagation();\n"
+		"\treturn false;\n"
+		"}\n";
 	// function called when the user uses the mouse wheel
-	val += "function word_gamewheel(event){\n";
-	//v.val += "\tconsole.log('deltaX='+event.deltaX+' deltaY='+event.deltaY);\n";
-	val += "\tif (event.deltaY < 0){\n";
-	val += "\t\tgameaction(event,'voffset:-1');\n";
-	val += "\t}else{\n";
-	val += "\t\tgameaction(event,'voffset:1');\n";
-	val += "\t}\n";
-	val += "}\n";
+	val += "window.word_gamewheel = function(event){\n"
+		// "\tconsole.log('deltaX='+event.deltaX+' deltaY='+event.deltaY);\n"
+		"\tif (event.deltaY < 0){\n"
+		"\t\tgameaction(event,'voffset:-1');\n"
+		"\t}else{\n"
+		"\t\tgameaction(event,'voffset:1');\n"
+		"\t}\n"
+		"}\n";
 	return val;
 }
 const unsigned MAX_TAB_LEVEL=8;
@@ -2096,7 +2091,6 @@ void WORDPROC::execstep (
 			v.var = VAR_CONTENT;
 
 			//string imbed_scripts,imbed_styles;
-			documentd_imbeds (this,v.val,sp);
 
 			v.val += "<style>\n";
 			v.val += define_styles(ctx,sp);
@@ -2106,7 +2100,7 @@ void WORDPROC::execstep (
 			v.val += "<script>\n";
 
 			// Function find the last visible line on screen
-			v.val += "function getlastline(){\n";
+			v.val += "window.getlastline = function(){\n";
 			v.val += string_f("\tvar elm = document.getElementById('text-%s,%u');\n",gameid.c_str(),ctx.docnum);
 			v.val += "\tvar rect = elm.getBoundingClientRect();\n";
 			v.val += "\tvar elms = elm.getElementsByClassName('oneline');\n";
@@ -2121,11 +2115,12 @@ void WORDPROC::execstep (
 			v.val += "\treturn 0;\n";
 			v.val += "}\n";
 			// Dummy, for columns
-			v.val += "function getlastcol(){\n";
+			v.val += "window.getlastcol = function(){\n";
 			v.val += "\treturn 0;\n";
 			v.val += "}\n";
 			v.val += define_functions(ctx,pref,sp.content_width,sp.content_height);
 			v.val += "</script>\n";
+			documentd_imbeds (this,v.val,sp);
 			// Buttons line
 			if (!document_only){
 				<call button_bar>(this,sp.mobile,ctx.maywrite,v.val);
