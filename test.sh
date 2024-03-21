@@ -833,6 +833,7 @@ elif [ "$1" = "createdb" ] ; then # db: Create databases
 	do
 		echo "insert into updates (name) values ('$name');" | $0 users
 	done
+	$0 load-timezones
 elif [ "$1" = "createdb-patch1" ]; then # db: add nodes table to db files
 	ENGINE=myisam
 	mysql -uroot -S $SOCKN $DBNAME <<-EOF

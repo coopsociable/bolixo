@@ -3653,6 +3653,7 @@ static int bofs_bolixoapi (CONTEXT &ctx, int argc, char *argv[])
 	glocal bool publish_photo = false;
 	glocal bool publish_mini_photo = false;
 	glocal bool publish_bolixosite = false;
+	glocal const char *owner = "";
 
 	glocal.ret = <call tlmpprogram>(argc,argv);
 	<f init>
@@ -3695,12 +3696,14 @@ static int bofs_bolixoapi (CONTEXT &ctx, int argc, char *argv[])
 		setarg (' ',"email",MSG_U(O_EMAIL,"Email"),glocal.email,false);
 		setarg (' ',"phone",MSG_U(O_PHONE,"Phone"),glocal.phone,false);
 		setarg (' ',"fax",MSG_U(O_FAX,"Fax"),glocal.fax,false);
-		setarg (' ',"bolixosite",MSG_U(O_BOLIXOSITE,"Bolixo site"),glocal.bolixosite,false);
 		setarg (' ',"website",MSG_U(O_WEBSITE,"Web site"),glocal.website,false);
 		setarg (' ',"interest",MSG_U(O_INTEREST,"Interests"),glocal.interest,false);
 		setarg (' ',"photo",MSG_U(O_PHOTO,"Path of the large photo of the user"),glocal.photo,false);
 		setarg (' ',"mini_photo",MSG_U(O_MINIPHOTO,"Path of the small photo of the user"),glocal.mini_photo,false);
 		setarg (' ',"user",MSG_U(O_USER,"User ID"),glocal.user,false);
+		setgrouparg (MSG_U(O_OTHEROPT,"Other options"));
+		setarg (' ',"bolixosite",MSG_U(O_BOLIXOSITE,"Bolixo site"),glocal.bolixosite,false);
+		setarg ('O',"owner",MSG_R(O_OWNER),glocal.owner,false);
 	</f>
 	<f main>
 		glocal int ret = 0;
@@ -3949,7 +3952,7 @@ static int bofs_bolixoapi (CONTEXT &ctx, int argc, char *argv[])
 					info.photo = glocal.publish_photo;
 					info.mini_photo = glocal.publish_mini_photo;
 				}
-				<call bod_client_info_write>(glocal.ctx->con,glocal.ctx->sessionid,"",info);
+				<call bod_client_info_write>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner,info);
 				<f ok>
 					if (!success){
 						glocal.ret = -1;
@@ -3962,15 +3965,28 @@ static int bofs_bolixoapi (CONTEXT &ctx, int argc, char *argv[])
 			if (glocal.ctx->login()==-1){
 				tlmp_error ("Local login failed, can't continue\n");
 			}else{
-				<call bod_client_info_read>(glocal.ctx->con,glocal.ctx->sessionid,"");
+				<call bod_client_info_read>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner);
 				<f ok>
 					if (!success){
 						glocal.ret = -1;
 						tlmp_error ("inforead: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
 					}else{
+						printf ("publish=%d\n",info.publish);
 						printf ("fullname=%s\n",info.fullname);
 						printf ("address1=%s\n",info.address1);
 						printf ("address2=%s\n",info.address2);
+						printf ("city=%s\n",info.city);
+						printf ("state=%s\n",info.state);
+						printf ("country=%s\n",info.country);
+						printf ("zipcode=%s\n",info.zipcode);
+						printf ("email=%s\n",info.email);
+						printf ("phone=%s\n",info.phone);
+						printf ("fax=%s\n",info.fax);
+						printf ("bolixo_site_visible=%d\n",info.bosite_visible);
+						printf ("website=%s\n",info.website);
+						printf ("interest=%s\n",info.interest);
+						printf ("publish photo=%d\n",info.photo);
+						printf ("publish mini-photo=%d\n",info.mini_photo);
 					}
 				</f>
 				</call>

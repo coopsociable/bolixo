@@ -334,17 +334,22 @@ static unsigned bo_writed_get_group_owner (CONNECT_INFO &con, const char *sessio
 {
 	bool is_admin;
 	glocal unsigned userid = trli_getsessionuser (con,sessionid,is_admin,username,msg);
-	if (is_admin && owner[0] != '\0'){
-		<call sql_query>("select userid from id2name where name='%s'",owner);
-		<f onerow>
-			glocal.userid = atoi(row[0]);
-		</f>
-		<f empty>
+	if (glocal.userid != 0 && owner[0] != '\0'){
+		if (is_admin){
+			<call sql_query>("select userid from id2name where name='%s'",owner);
+			<f onerow>
+				glocal.userid = atoi(row[0]);
+			</f>
+			<f empty>
+				glocal.userid = 0;
+			</f>
+			</call>
+			username = owner;
+			if (glocal.userid == 0) msg = MSG_R(E_UNKNOWNUSER);
+		}else{
 			glocal.userid = 0;
-		</f>
-		</call>
-		username = owner;
-		if (glocal.userid == 0) msg = MSG_R(E_UNKNOWNUSER);
+			msg = MSG_U(E_ONLYADMIN,"Only administrator may impersonate another user");
+		}
 	}
 	return glocal.userid;
 }
@@ -4743,7 +4748,7 @@ static int bod_main (
 			<f info_read>	// sessionid user owner = success:b msg info:U{USERPUBLICINFO}
 				glocal USERPUBLICINFO info;
 				glocal string msg;
-				unsigned userid = bo_writed_get_group_owner (glocal.con_sess, sessionid, "", glocal.msg);
+				unsigned userid = bo_writed_get_group_owner (glocal.con_sess, sessionid, owner, glocal.msg);
 				if (userid != 0){
 					<call sql_query>("select publish,bosite_visible,fullname,address1,address2"
 						",city,zipcode,state,country,email,phone,fax,website,interest"
@@ -4779,7 +4784,7 @@ static int bod_main (
 			<f info_write>	// sessionid user owner info:U{USERPUBLICINFO} = success:b msg
 				glocal string msg;
 				string username;
-				unsigned userid = bo_writed_get_group_owner (glocal.con_sess, sessionid, "", username,glocal.msg);
+				unsigned userid = bo_writed_get_group_owner (glocal.con_sess, sessionid, owner, username,glocal.msg);
 				if (userid != 0){
 					<call bo_writed_client_info_write>(glocal.con,sessionid,owner,info);
 					<f ok>
