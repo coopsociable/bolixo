@@ -132,6 +132,7 @@ int main (int argc, char *argv[])
 			 "prepare-restart server ...\n"
 			 "restart server ...\n"
 			 "start server ...\n"
+			 "stop server ...\n"
 			 "update  server ...\n"
 			 "update-restart  server ...\n"
 			 "version server ...\n"
@@ -145,18 +146,25 @@ int main (int argc, char *argv[])
 	<f main>
 		int ret = -1;
 		glocal const char *cmd = argv[0];
-		if (is_any_of(glocal.cmd,"start","restart","prepare-restart")){
+		if (is_any_of(glocal.cmd,"stop","start","restart","prepare-restart")){
 			<call procserver>(argc-1,argv+1);
 			<f doone>
 				banner (server);
-				string cmd = string_f("scp %s root@%s:/root/keysd.pass",path_pass,server);
-				printf ("cmd=%s\n",cmd.c_str());
-				if (system(cmd.c_str())==0){
-					if (strcmp(glocal.cmd,"prepare-restart")!=0){
-						if (strcmp(glocal.cmd,"restart")==0){	
+				int ret = 0;
+				if (!is_eq(glocal.cmd,"stop")){
+					string cmd = string_f("scp %s root@%s:/root/keysd.pass",path_pass,server);
+					printf ("cmd=%s\n",cmd.c_str());
+					ret = system(cmd.c_str());
+				}
+				if (ret == 0){
+					if (!is_eq(glocal.cmd,"prepare-restart")){
+						string cmd;
+						if (is_eq(glocal.cmd,"restart")){	
 							cmd = string_f("ssh root@%s bo restart most",server);
-						}else if (strcmp(glocal.cmd,"start")==0){
+						}else if (is_eq(glocal.cmd,"start")){
 							cmd = string_f("ssh root@%s /root/bolixostart.sh",server);
+						}else if (is_eq(glocal.cmd,"stop")){
+							cmd = string_f("ssh root@%s /root/bolixostop.sh",server);
 						}
 						printf ("cmd=%s\n",cmd.c_str());
 						if (system(cmd.c_str())!=0){
