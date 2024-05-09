@@ -1316,6 +1316,37 @@ static const char *util_name_from_path(const string &doc)
 	}
 	return name;
 }
+// Present a video in a span
+static string util_span_video(const string &url, unsigned image_width)
+{
+	string ret;
+	ret += util_open_span(url);
+	ret += string_f ("<video width=%u controls preload=none>\n"
+		"<source src=\"%s\" type=\"video/mp4\">\n"
+		"Your browser does not support the video tag.\n"
+		"</video>\n"
+		,image_width,url.c_str());
+	ret += "</span>";
+	return ret;
+}
+// Validate that a document exist and has the proper type
+static void util_validate_doc (
+	CONNECT_INFO &con,
+	const string &doc,
+	string &errmsg,			// Will contain the error message if any
+	bool (*check)(FILE_TYPE file_type),
+	const char *filenottype)	// Error message
+{
+	FILEINFO info;
+	ENTRY_TYPE type = util_entrytype(con,string_f("/projects/%s",doc.c_str()),info);
+	if (type == ENTRY_DIR){
+		errmsg = string_f(MSG_U(E_ISDIR,"Tag %s: %s is a folder\n"),"_IMG",doc.c_str());
+	}else if (is_not_in(type,ENTRY_FILE,ENTRY_DOCUMENT)){
+		errmsg = string_f(MSG_U(E_NOTFOUND,"Tag %s: document %s does not exist\n"),"_IMG",doc.c_str());
+	}else if (!check(info.file_type)){
+		errmsg = string_f(filenottype,doc.c_str());
+	}
+}
 
 /*
 	Format a short message, remove the signature
@@ -1378,15 +1409,7 @@ string util_format_shortmsg (
 						ret += util_clickable_img(url,image_width);
 						ret += dot;
 						if (validate){
-							FILEINFO info;
-							ENTRY_TYPE type = util_entrytype(con,string_f("/projects/%s",doc.c_str()),info);
-							if (type == ENTRY_DIR){
-								errmsg = string_f(MSG_U(E_ISDIR,"Tag %s: %s is a folder\n"),"_IMG",doc.c_str());
-							}else if (is_not_in(type,ENTRY_FILE,ENTRY_DOCUMENT)){
-								errmsg = string_f(MSG_U(E_NOTFOUND,"Tag %s: document %s does not exist\n"),"_IMG",doc.c_str());
-							}else if (!file_is_image(info.file_type)){
-								errmsg = string_f(MSG_R(E_FILENOTIMAGE),doc.c_str());
-							}
+							util_validate_doc(con,doc,errmsg,file_is_image,MSG_R(E_FILENOTIMAGE));
 						}
 					}
 				}
@@ -1395,15 +1418,21 @@ string util_format_shortmsg (
 				txt = pt;
 				if (util_is_url(txt,pt,url)){
 					txt = pt;
-					ret += util_open_span(url);
-					ret += string_f ("<video width=%u controls preload=none>\n"
-						"<source src=\"%s\" type=\"video/mp4\">\n"
-						"Your browser does not support the video tag.\n"
-						"</video>\n"
-						,image_width,url.c_str());
-					ret += "</span>";
+					ret += util_span_video(url,image_width);
 				}else{
-					ret += "_VIDEO=";
+					string doc,dot;
+					txt = util_copy_locallink(txt,doc,dot);
+					if (doc.size()==0){
+						ret += "_VIDEO=";
+					}else{
+						url = string_f("%s?webstep=%d&image=/projects/%s"
+							,tlmpweb_curpage(),step_image,doc.c_str());
+						ret += util_span_video(url,image_width);
+						ret += dot;
+						if (validate){
+							util_validate_doc(con,doc,errmsg,file_is_video,MSG_U(E_FILENOTVIDEO,"File %s is not a video"));
+						}
+					}
 				}
 				txt--;
 			}else if (is_start_any_of(txt,pt,"_IFRAME=")){
