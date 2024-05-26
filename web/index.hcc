@@ -1057,6 +1057,13 @@ static void index_show_shortmsg(
 						}else{
 							/-#E_REPLYTOYOU Can't reply to yourself
 						}
+					}else if (glocal.dropmenu == MENU_EDITITEM){
+						if (m.file_type != FILE_TEXT){
+							/-#E_CANTEDIT Can't edit this message
+						}else{
+							tlmpweb_forcevar(w_recipients2,m.recipients);
+							tlmpweb_forcevar(w_content,m.content);
+						}
 					}else if (glocal.dropmenu == MENU_OPENINTAB){
 						const char *tabname = MSG_U(I_TEXT,"Text");
 						if (file_is_image(m.file_type)){
@@ -1090,6 +1097,7 @@ static void index_show_shortmsg(
 		index_setpastemenu(this,glocal.path);
 		adddrop_opt (MENU_DELETE,MSG_R(M_DELETE));
 		adddrop_opt (MENU_UNDELETE,MSG_R(M_UNDELETE));
+		adddrop_opt (MENU_EDITITEM,MSG_U(M_EDIT,"Edit"));
 		adddrop_opt (MENU_DOWNLOAD,MSG_R(M_DOWNLOAD));
 		adddrop_opt (MENU_OPENINTAB,MSG_U(M_OPENINTAB,"Open in tab"));
 		index_msgs_style(*this);
@@ -1152,6 +1160,11 @@ static void index_show_shortmsg(
 						}else{
 							glocal.webtable.setdrop_enable(MENU_REPLY);
 						}
+					}
+					if (m.file_type == FILE_TEXT){
+							glocal.webtable.setdrop_enable(MENU_EDITITEM);
+					}else{
+							glocal.webtable.setdrop_disable(MENU_EDITITEM);
 					}
 					const char *style = line_styles[line_style];
 					line_style++;
@@ -2491,6 +2504,14 @@ extern "C" void webmain_real()
 						const unsigned hspace=3;
 						glocal vector<string> contacts;
 						index_list_contacts(glocal.con,glocal.contacts);
+						if (w_recipients2.size() > 0){
+							if (w_recipients.size() > 0){
+								string tmp = string_f("%s %s",w_recipients.c_str(),w_recipients2.c_str());
+								tlmpweb_forcevar(w_recipients,tmp);
+							}else{
+								tlmpweb_forcevar(w_recipients,w_recipients2.c_str());
+							}
+						}
 						if (glocal.private_inbox){
 							DIV dd; dd.w(100).flexfixe().vmargins(vspace,0).print();
 							DIV ddd; ddd.dispflex().flowrow().print();
@@ -2498,14 +2519,6 @@ extern "C" void webmain_real()
 							/-#F_RECIPIENTS Recipients
 							dddd.end();
 							dddd.flexgrow().print();
-							if (w_recipients2.size() > 0){
-								if (w_recipients.size() > 0){
-									string tmp = string_f("%s %s",w_recipients.c_str(),w_recipients2.c_str());
-									tlmpweb_forcevar(w_recipients,tmp);
-								}else{
-									tlmpweb_forcevar(w_recipients,w_recipients2.c_str());
-								}
-							}
 							field_string(w_recipients,"style=width:100%",glocal.contacts);
 						}
 						{
