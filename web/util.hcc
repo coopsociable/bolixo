@@ -1787,31 +1787,39 @@ static void public_display_full (
 	PARAM_STRING interest,
 	PARAM_STRING bg)	// Background-image paramater for the body
 {
-	glocal CONNECT_INFO *con = &con;
-	glocal _F_public_page *c = &c;
+	glocal con;
+	glocal c;
 	glocal const char *user = user.ptr;
-	glocal const vector<FILEINFO> *files = &files;
+	glocal files;
 	glocal const char *website = website.ptr;
 	glocal const char *interest = interest.ptr;
-	<call vframe4>(vframe_topleft_width,vframe_top_height,30);
-	<f top>
-		public_top(glocal.user,glocal.interest);
-	</f>
-	<f top_left>
-		DIV d; d.w(100).vmargins(0,20).print();
-		public_top_left (*glocal.c,glocal.website);
-	</f>
-	<f left>
-		public_messages(*glocal.c,*glocal.con,glocal.user);
-	</f>
-	<f body>
-		DIV d("webtable","pubbody"); d.w(100).autoscroll().print();
-		webtable_request_scroll("pubbody");
-		{
+	if (w_file.isset()){
+		BOB_TYPE content;
+		if (glocal.c.readfile(w_file.c_str(),content)!=-1){
+			string hidden;
+			form_gethidden(hidden);
+			htmlprintf ("<a href=%s?%s><img src=/back.png></a><br>\n",tlmpweb_curpage(),hidden.c_str());
+			glocal.c.sendhtml(content);
+		}
+	}else{
+		<call vframe4>(vframe_topleft_width,vframe_top_height,30);
+		<f top>
+			public_top(glocal.user,glocal.interest);
+		</f>
+		<f top_left>
+			DIV d; d.w(100).vmargins(0,20).print();
+			public_top_left (glocal.c,glocal.website);
+		</f>
+		<f left>
+			public_messages(glocal.c,glocal.con,glocal.user);
+		</f>
+		<f body>
+			DIV d("webtable","pubbody"); d.w(100).autoscroll().print();
+			webtable_request_scroll("pubbody");
 			bool guide = false;
 			bool index_html = false;
 			bool index_txt = false;
-			for (auto &f:*glocal.files){
+			for (auto &f:glocal.files){
 				if (f.name == "guide.tpl"){
 					guide = true;
 					break;
@@ -1823,17 +1831,9 @@ static void public_display_full (
 					break;
 				}
 			}
-			if (w_file.isset()){
+			if (guide){
 				BOB_TYPE content;
-				if (glocal.c->readfile(w_file.c_str(),content)!=-1){
-					string hidden;
-					form_gethidden(hidden);
-					htmlprintf ("<a href=%s?%s><img src=/back.png></a><br>\n",tlmpweb_curpage(),hidden.c_str());
-					glocal.c->sendhtml(content);
-				}
-			}else if (guide){
-				BOB_TYPE content;
-				if (glocal.c->readfile("guide.tpl",content)!=-1){
+				if (glocal.c.readfile("guide.tpl",content)!=-1){
 					string tmp((const char *)content.getbuffer(),content.getsize());
 					const char *txt = tmp.c_str();
 					while (*txt != '\0'){
@@ -1842,39 +1842,39 @@ static void public_display_full (
 						while (*txt > ' ') name += *txt++;
 						if (name.size() > 0){
 							BOB_TYPE ct2;
-							if (glocal.c->readfile(name,ct2)!=-1){
-								glocal.c->sendhtml(ct2);
+							if (glocal.c.readfile(name,ct2)!=-1){
+								glocal.c.sendhtml(ct2);
 							}
 						}
 					}
 				}
 			}else if (index_html){
 				BOB_TYPE content;
-				if (glocal.c->readfile("index.html",content)!=-1){
-					glocal.c->sendhtml(content);
+				if (glocal.c.readfile("index.html",content)!=-1){
+					glocal.c.sendhtml(content);
 				}
 			}else if (index_txt){
 				BOB_TYPE content;
-				if (glocal.c->readfile("index.txt",content)!=-1){
-					glocal.c->sendhtml(content);
+				if (glocal.c.readfile("index.txt",content)!=-1){
+					glocal.c.sendhtml(content);
 				}
 			}else{
-				for (auto &f:*glocal.files){
+				for (auto &f:glocal.files){
 					if (file_is_image(f.file_type)){
-						htmlprintf ("<img width=100%% src=%s>\n",glocal.c->projecturl(f.name,f.modified,true).c_str());
+						htmlprintf ("<img width=100%% src=%s>\n",glocal.c.projecturl(f.name,f.modified,true).c_str());
 					}else if (file_is_video(f.file_type)){
 					}else if (file_is_sound(f.file_type)){
 					}else if (file_is_text(f.file_type)){
 						BOB_TYPE content;
-						if (glocal.c->readfile(f.name,content)!=-1){
-							glocal.c->sendhtml(content);
+						if (glocal.c.readfile(f.name,content)!=-1){
+							glocal.c.sendhtml(content);
 						}
 					}
 				}
 			}
-		}
-	</f>
-	</call>
+		</f>
+		</call>
+	}
 }
 </mod>
 /*
