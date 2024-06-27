@@ -132,6 +132,7 @@ string w_session;
 #define bo_sessiond_client_setvar_NOTNEED
 #include "../proto/bo-sessiond_client.protoch"
 W_UNSIGNED w_robot ("robot");
+W_UNSIGNED w_showmsg ("showmsg");
 static W_SSTRING w_file("file");
 static float small_size=0.9;
 static unsigned draw_tab_height()
@@ -1768,15 +1769,16 @@ bool util_getnonstrict()
 }
 static void public_top(const char *user, const char *interest)
 {
-	htmlprintf ("<table border=0 width=100%%><tr><td align=center><div style=font-size:%sem>%s@%s</div>\n"
-		,tlmpweb_ismobile() ? "1" : "1.5"
+	bool mobile = tlmpweb_ismobile();
+	htmlprintf ("<table border=0 width=100%%><tr><td align=center><span style='font-size:%sem;'>%s@%s</span>\n"
+		,mobile ? "0.4" : "1.5"
 		,user,util_getnodename());
-	htmlprintf ("<td align=right><a href=%s><img src=/bolixo.png></a>\n",dirserver.c_str());
-	htmlprintf ("<tr><td>%s\n",util_format_shortmsg(interest,100).c_str());
+	if (!mobile){
+		htmlprintf ("<td align=right><a href=%s><img src=/bolixo.png></a>\n",dirserver.c_str());
+		htmlprintf ("<tr><td>%s\n",util_format_shortmsg(interest,100).c_str());
+	}
 	htmlout ("</table>\n");
 }
-const unsigned vframe_topleft_width=20;
-const unsigned vframe_top_height=12;
 <mod>
 static void public_display_full (
 	_F_public_page &c,
@@ -1793,28 +1795,71 @@ static void public_display_full (
 	glocal files;
 	glocal const char *website = website.ptr;
 	glocal const char *interest = interest.ptr;
+	glocal bool mobile = tlmpweb_ismobile();
 	if (w_file.isset()){
 		BOB_TYPE content;
 		if (glocal.c.readfile(w_file.c_str(),content)!=-1){
+			DIV f; f.id(TAB_FORM).bg("#a0a0a0").paddings(5,5).vpaddings(5,5).vmargins(5,0).print();
 			string hidden;
 			form_gethidden(hidden);
-			htmlprintf ("<a href=%s?%s><img src=/back.png></a><br>\n",tlmpweb_curpage(),hidden.c_str());
+			//htmlprintf ("<a style='font-size:1.5em;' href=%s?%s><img src=/back.png style='width:40px;'>page principale</a>\n",tlmpweb_curpage(),hidden.c_str());
+			htmlprintf ("<a  href=%s?%s><span style='font-size:%sem;'>page principale</span></a>\n"
+				,tlmpweb_curpage(),hidden.c_str()
+				,glocal.mobile ? "0.5" : "1.5");
+			f.end();
+			DIV d("webtable","pagebody"); d.w(100).autoscroll().print();
 			glocal.c.sendhtml(content);
 		}
 	}else{
-		<call vframe4>(vframe_topleft_width,vframe_top_height,30);
+		unsigned vframe_topleft_width=20;
+		unsigned vframe_top_height=12;
+		glocal bool display_messages = true;
+		glocal bool display_content = true;
+		int leftwidth=30;
+		if (glocal.mobile){
+			vframe_topleft_width=0;
+			vframe_top_height=6;
+			if (w_showmsg.isset()){
+				leftwidth=100;
+				glocal.display_content = false;
+			}else{
+				leftwidth=0;
+				glocal.display_messages = false;
+			}
+		}
+		<call vframe4>(vframe_topleft_width,vframe_top_height,leftwidth);
 		<f top>
 			public_top(glocal.user,glocal.interest);
 		</f>
 		<f top_left>
-			DIV d; d.w(100).vmargins(0,20).print();
-			public_top_left (glocal.c,glocal.website);
+			if (!glocal.mobile){
+				DIV d; d.w(100).vmargins(0,20).print();
+				public_top_left (glocal.c,glocal.website);
+			}
 		</f>
 		<f left>
-			public_messages(glocal.c,glocal.con,glocal.user);
+			if (glocal.display_messages){
+				if (glocal.mobile){
+					DIV f; f.id(TAB_FORM).bg("#a0a0a0").paddings(5,5).vpaddings(5,5).vmargins(5,0).print();
+					string hidden;
+					form_gethidden(hidden);
+					htmlprintf ("<a href=%s?%s>Content <img src=/new.png height=50></a><br>\n"
+						,tlmpweb_curpage(),hidden.c_str());
+				}
+				FORM_HIDDEN showmsg(w_showmsg);
+				public_messages(glocal.c,glocal.con,glocal.user);
+			}
 		</f>
 		<f body>
+			if (!glocal.display_content) return;
 			DIV d("webtable","pubbody"); d.w(100).autoscroll().print();
+			if (glocal.mobile){
+				DIV f; f.id(TAB_FORM).bg("#a0a0a0").paddings(5,5).vpaddings(5,5).vmargins(5,0).print();
+				string hidden;
+				form_gethidden(hidden);
+				htmlprintf ("<a href=%s?%s&showmsg=1><img src=/back.png height=50> Messages</a><br>\n"
+					,tlmpweb_curpage(),hidden.c_str());
+			}
 			webtable_request_scroll("pubbody");
 			bool guide = false;
 			bool index_html = false;
@@ -1890,21 +1935,27 @@ static void public_display_base(
 	PARAM_STRING bg_top,	// Backgroup-image for the who top
 	PARAM_STRING bg_body)	// Background-image paramater for the body
 {
-	glocal CONNECT_INFO *con = &con;
-	glocal _F_public_page *c = &c;
+	glocal con;
+	glocal c;
 	glocal const char *user = user.ptr;
 	glocal const char *website = website.ptr;
 	glocal const char *interest = interest.ptr;
+	unsigned vframe_topleft_width=20;
+	unsigned vframe_top_height=12;
+	if (tlmpweb_ismobile()){
+		vframe_topleft_width=0;
+		vframe_top_height=6;
+	}
 	<call vframe3>(vframe_topleft_width,vframe_top_height,bg_top,bg_body);
 	<f top>
 		public_top(glocal.user,glocal.interest);
 	</f>
 	<f top_left>
-		public_top_left (*glocal.c,glocal.website);
+		public_top_left (glocal.c,glocal.website);
 	</f>
 	<f body>
 		DIV d("subtabs","base_messages"); d.w(tlmpweb_ismobile() ? 100: 50).marginauto().print();
-		public_messages(*glocal.c,*glocal.con,glocal.user);
+		public_messages(glocal.c,glocal.con,glocal.user);
 	</f>
 	</call>
 }
