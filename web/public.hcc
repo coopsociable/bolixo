@@ -31,10 +31,12 @@
 #include "util.h"
 #include "../instrument.h"
 #include "../proto/bod_client.protoch"
+#include "../proto/bo-sessiond_client.protoch"
 
 static W_SSTRING w_image ("image");
 extern W_SSTRING w_file;
 extern W_UNSIGNED w_showmsg;
+extern string w_session;
 
 extern "C" void tlmp_initmod()
 {
@@ -42,13 +44,54 @@ extern "C" void tlmp_initmod()
 }
 
 <mod>
+static int trli_getsessioninfo(CONNECT_INFO &con_sess)
+{
+	glocal int ret = -1;
+	tlmpweb_reset_tablegeometry();
+	<call bo_sessiond_client_getsessioninfovars_v2>(con_sess,w_session.c_str(),true);
+	<f ok>
+		if (success){
+			for (auto &var:vars){
+				if (strcmp(var.name,"geometry")==0){
+					// We receive 4 values: id,height,width,scroll_top
+					WEBID id;
+					unsigned height=0,width=0,scroll_top=0;
+					for (auto &v:var.vals){
+						if (strcmp(v.sname,"id")==0){
+							id.set(v.sval);
+						}else if (strcmp(v.sname,"height")==0){
+							height = atoi(v.sval);
+						}else if (strcmp(v.sname,"width")==0){
+							width = atoi(v.sval);
+						}else if (strcmp(v.sname,"scroll_top")==0){
+							scroll_top = atoi(v.sval);
+						}else if (strcmp(v.sname,"scroll_left")==0){
+							tlmpweb_settablegeometry(id,height,width,scroll_top,atoi(v.sval));
+						}
+					}
+					break;
+				}
+			}
+			glocal.ret = 0;
+		}else{
+			tlmp_error ("Invalid session %s\n",w_session.c_str());
+		}
+	</f>
+	</call>
+	return glocal.ret;
+}
+</mod>
+<mod>
 static void webmain_real()
 {
 	glocal string document;
 	glocal string user;
 	glocal CONNECT_INFO con;
+	glocal CONNECT_INFO con_sess;
 	glocal.con.port = "/dev/bod.sock";
 	glocal.con.secret = util_readsecret();
+	glocal.con_sess.port = "/dev/sessiond.sock";
+	glocal.con_sess.secret = glocal.con.secret;
 	<call loadfile>("/etc/bolixonode.conf",true);
 	<f oneline>
 		if (strncmp(line,"node=",5)==0){
@@ -102,8 +145,57 @@ static void webmain_real()
 			/-#I_DIRECTORY Bolixo.org directory
 			/- </a>
 		}else{
+			const char *ptsession = tlmpweb_getcookie("session");
+			while (true){
+				if (ptsession == nullptr){
+					<call bod_client_createsession>(glocal.con);
+					<f ok>
+						w_session = sessionid;
+						websession_setcookie("session",sessionid,time(NULL)+48*60*60);
+					</f>
+					</call>
+					break;
+				}else{
+					w_session=ptsession;
+					if (trli_getsessioninfo(glocal.con_sess) != -1){
+						break;
+					}
+					w_session.clear();
+					ptsession=nullptr;
+				}
+			}
+			//tlmp_error ("session=%s\n",w_session.c_str());
+			if (w_session.empty()) return;
 			webtable_ctrloutput();
 			<obj WEBCONTEXT obj>();
+			<f savetablegeometry>
+				VAR var;
+				var.name = "geometry";
+				for (auto &v:tb){
+					SNAMEVAL val;
+					val.sname = "id";
+					val.sval = v.id.c_str();
+					var.vals.push_back(move(val));
+					val.sname = "height";
+					val.sval = string_f("%u",v.height);
+					var.vals.push_back(move(val));
+					val.sname = "width";
+					val.sval = string_f("%u",v.width);
+					var.vals.push_back(move(val));
+					val.sname = "scroll_top";
+					val.sval = string_f("%u",v.scroll_top);
+					var.vals.push_back(move(val));
+					val.sname = "scroll_left";
+					val.sval = string_f("%u",v.scroll_left);
+					var.vals.push_back(move(val));
+				}
+				add_to_instrument ("setvar savetablegeometry");
+				<call bo_sessiond_client_setvar>(glocal.con_sess,w_session.c_str(),var);
+				<f ok>
+					if (!success) tlmp_error ("Can't set variable geometry: %s\n",msg);
+				</f>
+				</call>
+			</f>
 			</obj>
 			<call public_page>();
 			<f list_talk>
