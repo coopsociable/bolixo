@@ -702,15 +702,15 @@ elif [ "$1" = "infowrite" ] ; then # test: publish info to directory server
 	echo Create mini-photo.jpg and photo.jpg for all users
 	for letter in A B C Z
 	do
-		if [ -x /usr/bin/convert ]; then
-			convert -font helvetica -size 40x40 xc:white -pointsize 37 -draw "text 5,32 '$letter'" /tmp/mini-photo.jpg
+		if [ -x /usr/bin/magick ]; then
+			magick -font helvetica -size 40x40 xc:white -pointsize 37 -draw "text 5,32 '$letter'" /tmp/mini-photo.jpg
 			./bofs -u jacques-$letter cp /tmp/mini-photo.jpg bo://projects/jacques-$letter/public/mini-photo.jpg
-			convert -font helvetica -size 100x100 xc:white \
+			magick -font helvetica -size 100x100 xc:white \
                                 -stroke black -fill blue -draw "roundrectangle 5,5 95,95 10,10" \
 				-pointsize 50 -stroke black -fill red -draw "text 35,65 $letter" /tmp/photo.jpg
 			./bofs -u jacques-$letter cp /tmp/photo.jpg bo://projects/jacques-$letter/public/photo.jpg
 		else
-			echo no convert utility, install ImangeMagick
+			echo no magick utility, install ImangeMagick
 		fi
 	done
 	for ((i=0; i<3; i++))
