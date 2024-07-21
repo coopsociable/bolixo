@@ -193,12 +193,17 @@ static int test_loop (
 {
 	glocal last_error;
 	glocal int ret = 0;
-	glocal vector<string> *out = &out;
+	glocal out;
+	glocal function<void()> seterror;
 	out.clear();
-	glocal.ret = test_system (out);
 	long long start = fdpass_getnow();
 	long long last_now = start;
 	last_error = (time_t)0;
+	glocal.seterror = [&](){
+		last_error = time(nullptr);
+		glocal.ret = -1;
+		};
+	if (test_system (out)==-1) glocal.seterror();
 	for (auto &s:socks){
 		if (debug){
 			long long now = fdpass_getnow();
@@ -209,21 +214,16 @@ static int test_loop (
 				,diff_now/1000000,diff_now%1000000));
 			last_now = now;
 		}
-		glocal function<void()> seterror;
 		glocal const char *path = s.c_str();
 		CONNECT_INFO con;
 		con.port = glocal.path;
-		glocal.seterror = [&](){
-			last_error = time(nullptr);
-			glocal.ret = -1;
-			};
 		//out.push_back(string_f("Try to connect to %s",glocal.path));
 		if (strstr(glocal.path,"-sessiond")!=NULL){
 			if (strstr(glocal.path,"-admin")!=NULL){
 				con.secret = secrets.bod;
 				<call bo_sessiond_client_test>(con);
 				<f ok>
-					glocal.out->push_back(string_f("%s%s: internal_error=%d success=%d"
+					glocal.out.push_back(string_f("%s%s: internal_error=%d success=%d"
 						,success ? ok_marker : err_marker
 						,glocal.path,internal_error,success));
 					if (!success) glocal.seterror();
@@ -239,7 +239,7 @@ static int test_loop (
 					glocal.seterror();
 					marker = err_marker;
 				}
-				glocal.out->emplace_back(string_f("%s%s: internal_error=%d sessiond=%d db=%d fsok=%d msg=%s"
+				glocal.out.emplace_back(string_f("%s%s: internal_error=%d sessiond=%d db=%d fsok=%d msg=%s"
 					,marker,glocal.path,internal_error,sessiond,db,fsok,msg));
 			</f>
 			</call>
@@ -259,7 +259,7 @@ static int test_loop (
 					glocal.seterror();
 					marker = err_marker;
 				}
-				glocal.out->emplace_back(string_f("%s%s: internal_error=%d dbfiles=%d fsok=%d"
+				glocal.out.emplace_back(string_f("%s%s: internal_error=%d dbfiles=%d fsok=%d"
 					,marker,glocal.path,internal_error,dbfiles,fsok));
 			</f>
 			</call>
@@ -273,7 +273,7 @@ static int test_loop (
 					glocal.seterror();
 					marker = err_marker;
 				}
-				glocal.out->emplace_back(string_f("%s%s: internal_error=%d success=%d"
+				glocal.out.emplace_back(string_f("%s%s: internal_error=%d success=%d"
 					,marker,glocal.path,internal_error,success));
 			</f>
 			</call>
@@ -298,7 +298,7 @@ static int test_loop (
 					marker = err_marker;
 					msg = "passphrase NOT set";
 				}
-				glocal.out->emplace_back(string_f("%s%s: internal_error=%d %s "
+				glocal.out.emplace_back(string_f("%s%s: internal_error=%d %s "
 					,marker,glocal.path,internal_error,msg));
 			</f>
 			</call>
@@ -308,7 +308,7 @@ static int test_loop (
 				<call bod_admin_test>(con);
 				<f ok>
 					if (internal_error){
-						glocal.out->push_back(string_f("%sCan't talk to bod server: %s"
+						glocal.out.push_back(string_f("%sCan't talk to bod server: %s"
 							,err_marker,glocal.path));
 						glocal.seterror();
 					}else{
@@ -328,7 +328,7 @@ static int test_loop (
 							glocal.seterror();
 							ok = false;
 						}
-						glocal.out->push_back(string_f("%s%s: internal_error1=%d writed=%d bdfiles1=%d"
+						glocal.out.push_back(string_f("%s%s: internal_error1=%d writed=%d bdfiles1=%d"
 							" bdfiles2=%d bdusers=%d sessiond1=%d sessiond2=%d keysd=%d fsok=%d"
 							" publish_dbfiles=%d publish_fsok=%d docd=%d adm_sess=%u"
 							,ok ? ok_marker : err_marker
@@ -347,31 +347,31 @@ static int test_loop (
 			</f>
 			<f oneline>
 				if (strcmp(line,"ok")==0){
-					glocal.out->push_back (string_f("%s%s: ok seen",ok_marker,glocal.path));
+					glocal.out.push_back (string_f("%s%s: ok seen",ok_marker,glocal.path));
 					glocal.okseen = true;
 				}
 			</f>
 			<f fail>
-				glocal.out->push_back (string_f("%s%s: can't connect",err_marker,glocal.path));
+				glocal.out.push_back (string_f("%s%s: can't connect",err_marker,glocal.path));
 				glocal.seterror();
 			</f>
 			<f end>
 			</f>
 			</call>
 			if (!glocal.okseen){
-				glocal.out->push_back(string_f("%s%s: Ok not seen",err_marker,glocal.path));
+				glocal.out.push_back(string_f("%s%s: Ok not seen",err_marker,glocal.path));
 				glocal.seterror();
 			}
 		}else if (strstr(glocal.path,"websocket-")!=nullptr){
 			<call bo_websocket_control_test>(con);
 			<f ok>
 				if (internal_error || !ok){
-					glocal.out->push_back(string_f("%s%s: test failed",err_marker,glocal.path));
+					glocal.out.push_back(string_f("%s%s: test failed",err_marker,glocal.path));
 					glocal.seterror();
 				}else if (paused){
-					glocal.out->push_back(string_f("%s%s: test failed, workers=%u paused=%d",err_marker,glocal.path,workers,paused));
+					glocal.out.push_back(string_f("%s%s: test failed, workers=%u paused=%d",err_marker,glocal.path,workers,paused));
 				}else{
-					glocal.out->push_back (string_f("%s%s: test ok, workers=%u, paused=%d",ok_marker,glocal.path,workers,paused));
+					glocal.out.push_back (string_f("%s%s: test ok, workers=%u, paused=%d",ok_marker,glocal.path,workers,paused));
 				}
 			</f>
 			</call>
@@ -383,7 +383,7 @@ static int test_loop (
 				glocal.ret = -1;
 			}
 			if (out.size() == size){
-				glocal.out->push_back(string_f("%sDon't know how to handle this socket; %s",err_marker,glocal.path));
+				glocal.out.push_back(string_f("%sDon't know how to handle this socket; %s",err_marker,glocal.path));
 			}
 		}
 	}

@@ -1007,6 +1007,9 @@ elif [ "$1" = "test-monitor" ] ; then # T: Tests all bods
 elif [ "$1" = "test-monitor-status" ] ; then # T: bo-mon status
 	export LXCSOCK=off
 	$0 bo-mon-control status
+elif [ "$1" = "test-monitor-resetmsg" ] ; then # T: bo-mon reset error message
+	export LXCSOCK=off
+	$0 bo-mon-control resetmsg
 elif [ "$1" = "test-monitor-setquiettime" ] ; then # T: bo-mon setquiettime
 	if [ "$#" != 2 ] ; then
 		echo "test-monitor-setquiettime time (seconds)"
@@ -1014,6 +1017,9 @@ elif [ "$1" = "test-monitor-setquiettime" ] ; then # T: bo-mon setquiettime
 	fi
 	export LXCSOCK=off
 	$0 bo-mon-control setquiettime $2
+elif [ "$1" = "resetmsg" ] ; then # A: reset syslog et bo-mon error message
+	$0 syslog-reset
+	$0 test-monitor-resetmsg
 elif [ "$1" = "bo-mon-control" ] ; then # A: Talks to bo-mon
 	shift
 	$BOLIXOPATH/bo-mon-control -p $BO_MON_SOCK $*
