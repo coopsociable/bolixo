@@ -1004,6 +1004,16 @@ elif [ "$1" = "test-monitor" ] ; then # T: Tests all bods
 	else
 		echo fail
 	fi
+elif [ "$1" = "test-monitor-status" ] ; then # T: bo-mon status
+	export LXCSOCK=off
+	$0 bo-mon-control status
+elif [ "$1" = "test-monitor-setquiettime" ] ; then # T: bo-mon setquiettime
+	if [ "$#" != 2 ] ; then
+		echo "test-monitor-setquiettime time (seconds)"
+		exit 1
+	fi
+	export LXCSOCK=off
+	$0 bo-mon-control setquiettime $2
 elif [ "$1" = "bo-mon-control" ] ; then # A: Talks to bo-mon
 	shift
 	$BOLIXOPATH/bo-mon-control -p $BO_MON_SOCK $*

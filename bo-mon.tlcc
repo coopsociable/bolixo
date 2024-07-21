@@ -188,14 +188,17 @@ static int test_loop (
 	const vector<string> &socks,
 	const SECRETS &secrets,
 	bool debug,
-	vector<string> &out)
+	vector<string> &out,
+	time_t &last_error)
 {
+	glocal last_error;
 	glocal int ret = 0;
 	glocal vector<string> *out = &out;
 	out.clear();
 	glocal.ret = test_system (out);
 	long long start = fdpass_getnow();
 	long long last_now = start;
+	last_error = (time_t)0;
 	for (auto &s:socks){
 		if (debug){
 			long long now = fdpass_getnow();
@@ -206,9 +209,14 @@ static int test_loop (
 				,diff_now/1000000,diff_now%1000000));
 			last_now = now;
 		}
+		glocal function<void()> seterror;
 		glocal const char *path = s.c_str();
 		CONNECT_INFO con;
 		con.port = glocal.path;
+		glocal.seterror = [&](){
+			last_error = time(nullptr);
+			glocal.ret = -1;
+			};
 		//out.push_back(string_f("Try to connect to %s",glocal.path));
 		if (strstr(glocal.path,"-sessiond")!=NULL){
 			if (strstr(glocal.path,"-admin")!=NULL){
@@ -218,7 +226,7 @@ static int test_loop (
 					glocal.out->push_back(string_f("%s%s: internal_error=%d success=%d"
 						,success ? ok_marker : err_marker
 						,glocal.path,internal_error,success));
-					if (!success) glocal.ret = -1;
+					if (!success) glocal.seterror();
 				</f>
 				</call>
 			}
@@ -228,7 +236,7 @@ static int test_loop (
 			<f ok>
 				const char *marker = ok_marker;
 				if (internal_error || !sessiond || !db || !fsok){
-					glocal.ret = -1;
+					glocal.seterror();
 					marker = err_marker;
 				}
 				glocal.out->emplace_back(string_f("%s%s: internal_error=%d sessiond=%d db=%d fsok=%d msg=%s"
@@ -248,7 +256,7 @@ static int test_loop (
 			<f ok>
 				const char *marker = ok_marker;
 				if (internal_error || !dbfiles || !fsok){
-					glocal.ret = -1;
+					glocal.seterror();
 					marker = err_marker;
 				}
 				glocal.out->emplace_back(string_f("%s%s: internal_error=%d dbfiles=%d fsok=%d"
@@ -262,7 +270,7 @@ static int test_loop (
 			<f ok>
 				const char *marker = ok_marker;
 				if (internal_error || !success){
-					glocal.ret = -1;
+					glocal.seterror();
 					marker = err_marker;
 				}
 				glocal.out->emplace_back(string_f("%s%s: internal_error=%d success=%d"
@@ -283,10 +291,10 @@ static int test_loop (
 					}
 				}
 				if (internal_error){
-					glocal.ret = -1;
+					glocal.seterror();
 					marker = err_marker;
 				}else if (!found){
-					glocal.ret = -1;
+					glocal.seterror();
 					marker = err_marker;
 					msg = "passphrase NOT set";
 				}
@@ -302,7 +310,7 @@ static int test_loop (
 					if (internal_error){
 						glocal.out->push_back(string_f("%sCan't talk to bod server: %s"
 							,err_marker,glocal.path));
-						glocal.ret = -1;
+						glocal.seterror();
 					}else{
 						bool ok = true;
 						if (!writed
@@ -317,7 +325,7 @@ static int test_loop (
 							|| !publish_fsok
 							|| !documentd
 							|| admin_sess_valid!=2){
-							glocal.ret = -1;
+							glocal.seterror();
 							ok = false;
 						}
 						glocal.out->push_back(string_f("%s%s: internal_error1=%d writed=%d bdfiles1=%d"
@@ -345,20 +353,21 @@ static int test_loop (
 			</f>
 			<f fail>
 				glocal.out->push_back (string_f("%s%s: can't connect",err_marker,glocal.path));
-				glocal.ret = -1;
+				glocal.seterror();
 			</f>
 			<f end>
 			</f>
 			</call>
 			if (!glocal.okseen){
 				glocal.out->push_back(string_f("%s%s: Ok not seen",err_marker,glocal.path));
-				glocal.ret = -1;
+				glocal.seterror();
 			}
 		}else if (strstr(glocal.path,"websocket-")!=nullptr){
 			<call bo_websocket_control_test>(con);
 			<f ok>
 				if (internal_error || !ok){
 					glocal.out->push_back(string_f("%s%s: test failed",err_marker,glocal.path));
+					glocal.seterror();
 				}else if (paused){
 					glocal.out->push_back(string_f("%s%s: test failed, workers=%u paused=%d",err_marker,glocal.path,workers,paused));
 				}else{
@@ -368,7 +377,9 @@ static int test_loop (
 			</call>
 		}else{
 			auto size = out.size();
-			if (trlitool_mon(glocal.path,out)==-1){
+			time_t last;
+			if (trlitool_mon(glocal.path,out,last)==-1){
+				if (last > glocal.last_error) glocal.last_error = last;
 				glocal.ret = -1;
 			}
 			if (out.size() == size){
@@ -436,6 +447,7 @@ int main (int argc, char *argv[])
 	glocal const char *user = "trli";
 	glocal int sleepdelay=5;	// Wake up every N seconds
 	glocal int testdelay = 30;	// Executes test every 30 seconds
+	glocal int quiettime = 60*60;	// Wait that amount of time before sending an alert
 	glocal const char *pidfile = "/var/run/trli-mon.pid";
 	glocal.ret = <call tlmpprogram>(argc,argv,"bolixo");
 	<f init>
@@ -457,6 +469,7 @@ int main (int argc, char *argv[])
 		setarg (' ',"wakeup","Wakeup every N seconds",glocal.sleepdelay,false);
 		setarg (' ',"mailserver","Mail relay to use",glocal.mailserver,false);
 		setarg (' ',"mailport","TCP port of the relay (or unix socket)",glocal.mailport,false);
+		setarg (' ',"quiettime","Minimum delay before sendming a new mail alert",glocal.quiettime,false);
 	</f>
 	<f showerror>
 		if (glocal.daemon){
@@ -487,7 +500,8 @@ int main (int argc, char *argv[])
 			tlmp_error ("No socket found in directory %s\n",glocal.sock_dir);
 		}else if (!glocal.daemon){
 			vector<string> out;
-			glocal.ret = test_loop (glocal.socks,glocal.secrets,false,out);
+			time_t last_error;
+			glocal.ret = test_loop (glocal.socks,glocal.secrets,false,out,last_error);
 			if (glocal.verbose) for (auto &x:out) printf ("%s\n",x.c_str());
 		}else{
 			glocal unsigned long nbtest = 0;
@@ -495,11 +509,13 @@ int main (int argc, char *argv[])
 			glocal bool allok = true;
 			glocal vector<string> testout;
 			glocal bool new_allok = true;		// Reception of current test
+			glocal time_t new_last_error = (time_t)0;
 			glocal vector<string> new_testout;
 			glocal pid_t new_testpid = (pid_t)-1;
-			glocal bool messagesent = false;
 			glocal time_t lastmsg = (time_t)0;
 			glocal time_t lasttest = time(NULL);
+			glocal time_t start_time = time(nullptr);	// Avoid sending email for old errors
+									// since syslog send the last_error timestamp
 			<obj TCPSERVER o>(string_f("unix:%s",glocal.control),5);
 			<f newclient>
 				HANDLE_INFO *n = new HANDLE_INFO;
@@ -511,8 +527,9 @@ int main (int argc, char *argv[])
 				if (n->type == TYPE_PIPE){
 					glocal.allok = glocal.new_allok;
 					glocal.testout = glocal.new_testout;
-					if (!glocal.allok && !glocal.messagesent){
-						glocal.messagesent = true;
+					if (!glocal.allok
+						&& glocal.new_last_error > glocal.start_time
+						&& glocal.new_last_error > glocal.lastmsg+glocal.quiettime){
 						glocal.lastmsg = time(NULL);
 						if (glocal.command != NULL){
 							<call walkpopen>(glocal.command,10);
@@ -550,9 +567,14 @@ int main (int argc, char *argv[])
 						DATEASC date;
 						date.buf[0] = '\0';
 						if (glocal.lastmsg != (time_t)0) fdpass_asctime(glocal.lastmsg,date);
-						tb.push_back(string_f("alarm sent %d %s",glocal.messagesent,date.buf));
+						tb.push_back(string_f("alarm sent %s",date.buf));
 				                fdpass_asctime (glocal.lasttest,date);
 						tb.push_back(string_f("last test %s",date.buf));
+				                fdpass_asctime (glocal.new_last_error,date);
+						tb.push_back(string_f("last error %s",date.buf));
+				                fdpass_asctime (glocal.start_time,date);
+						tb.push_back(string_f("start time %s",date.buf));
+						tb.push_back(string_f("quiet time %d",glocal.quiettime));
 						for (auto &x:glocal.testout) tb.push_back(x);
 						rep_status(tb);
 					</f>
@@ -567,7 +589,8 @@ int main (int argc, char *argv[])
 					</f>
 					<f test>
 						vector<string> out;
-						if (test_loop(glocal.socks,glocal.secrets,debug,out)==-1){
+						time_t last_error;
+						if (test_loop(glocal.socks,glocal.secrets,debug,out,last_error)==-1){
 							rep_test (false,out);
 						}else{
 							rep_test (true,out);
@@ -575,13 +598,14 @@ int main (int argc, char *argv[])
 					</f>
 					<f testmail>
 						vector<string> out;
-						int ok = test_loop(glocal.socks,glocal.secrets,false,out);
+						time_t last_error;
+						int ok = test_loop(glocal.socks,glocal.secrets,false,out,last_error);
 						out.insert (out.begin(),string_f("ok=%d",ok == -1 ? 0 : 1));
 						int ret = trli_mon_sendmail (glocal.mailserver,glocal.mailport,glocal.admins_conf,"test email monitoring",out);
 						rep_testmail (ret == -1 ? false:true);
 					</f>
 					<f resetmsg>
-						glocal.messagesent = false;
+						glocal.lastmsg = (time_t)0;
 					</f>
 					<f debug>
 						if (on){
@@ -592,6 +616,9 @@ int main (int argc, char *argv[])
 					</f>
 					<f debugfile>
 						debug_setfdebug (filename);
+					</f>
+					<f setquiettime>
+						glocal.quiettime = quiettime;
 					</f>
 					<f invalid>
 						endclient = true;
@@ -619,8 +646,10 @@ int main (int argc, char *argv[])
 							if (pid == (pid_t)0){
 								close (tb[0]);
 								vector<string> out;
-								int ok = test_loop(glocal.socks,glocal.secrets,false,out);
+								time_t last_error;
+								int ok = test_loop(glocal.socks,glocal.secrets,false,out,last_error);
 								trli_mon_sendline (tb[1],string_f("ok=%d",ok));
+								trli_mon_sendline (tb[1],string_f("last=%ld",last_error));
 								for (auto l:out) trli_mon_sendline(tb[1],l);
 								_exit (0);
 							}else if (pid == (pid_t)-1){
@@ -642,6 +671,8 @@ int main (int argc, char *argv[])
 					if (strncmp(line,"ok=",3)==0){
 						int ok = atoi(line+3);
 						glocal.new_allok = ok == -1 ? false : true;
+					}else if (strncmp(line,"last=",5)==0){
+						glocal.new_last_error = atoi(line+5);
 					}else{
 						glocal.new_testout.push_back(line);
 					}
