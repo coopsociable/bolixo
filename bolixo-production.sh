@@ -516,6 +516,8 @@ elif [ "$1" = "syslog-tail" ] ; then # syslog: Shows the last syslog lines
 	trli-syslog-control tail
 elif [ "$1" = "syslog-logs" ] ; then # syslog: Shows the syslog lines
 	trli-syslog-control logs
+elif [ "$1" = "syslog-logerrs" ] ; then # syslog: Shows the syslog error lines
+	trli-syslog-control logerrs
 elif [ "$1" = "writed-sendmail" ] ; then # S: writed will send a mail
 	. /etc/bolixo/admins.conf
 	bo-writed-control -p /var/lib/lxc/writed/rootfs/var/run/blackhole/bo-writed-0.sock sendmail $ADMIN1 "This is title" "This is the body"

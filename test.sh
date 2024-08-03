@@ -1928,6 +1928,8 @@ elif [ "$1" = "syslog-tail" ] ; then # syslog: show end of syslog
 	/usr/sbin/trli-syslog-control tail
 elif [ "$1" = "syslog-logs" ] ; then # syslog: show syslogs
 	/usr/sbin/trli-syslog-control logs
+elif [ "$1" = "syslog-logerrs" ] ; then # syslog: show syslogs errors
+	/usr/sbin/trli-syslog-control logerrs
 elif [ "$1" = "syslog-status" ] ; then # syslog: show syslog status
 	/usr/sbin/trli-syslog-control status
 elif [ "$1" = "syslog-reset" ] ; then # syslog: show syslog reseterrors
