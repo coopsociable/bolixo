@@ -431,28 +431,16 @@ static int rssd_parseurl (PARAM_STRING purl, string &baseurl, string &hostname, 
 }
 
 static string url1,url2,state;
-static bool signal_seen = false;
-static unsigned signal_count = 0;
-
-static void fct_alarm(int)
-{
-	signal_seen = true;
-	signal_count++;
-	tlmp_error ("Alarm state=%s url1=%s url2=%s\n",state.c_str(),url1.c_str(),url2.c_str());
-	alarm (10);
-}
+static unsigned failures = 0;
 
 <mod>
 static int rssd_getrss(PARAM_STRING url, string &rss)
 {
-	glocal string *rss = &rss;
+	glocal rss;
 	glocal int ret = -1;
 	glocal string newlocation = url.ptr;
 
-	signal_seen = false;
 	url1 = glocal.newlocation;
-	signal (SIGALRM,fct_alarm);
-	alarm (10);
 	while (glocal.newlocation.size() > 0){
 		state = "connecting";
 		url2 = glocal.newlocation;	// For alarm
@@ -460,6 +448,7 @@ static int rssd_getrss(PARAM_STRING url, string &rss)
 		glocal CONNECT_HTTP_INFO con;
 		glocal unsigned received = 0;
 		glocal bool header_seen = false;
+		glocal.con.set_timeout(10);
 		string baseurl,hostname,file;
 		if (rssd_parseurl(glocal.newlocation,baseurl,hostname,file)==-1) return -1;
 		glocal.newlocation.clear();
@@ -470,13 +459,13 @@ static int rssd_getrss(PARAM_STRING url, string &rss)
 		buf += string_f ("Content-Type: text/html; charset=UTF-8\r\n\r\n");
 		glocal.con.send (buf.c_str());
 		debug_printf (D_HEADER,"%s-----\n",buf.c_str());
-		if (signal_seen) break;
 		state = "reading";
 		<call streamp>();
 		<f fill>
 			int ret = glocal.con.receive (buf,size);
-			if (signal_seen){
-				tlmp_error ("signal seen\n");
+			if (glocal.con.was_timeout()){
+				failures++;
+				tlmp_error ("rssd timeout: %s\n",glocal.newlocation.c_str());
 				ret = -1;
 				end = true;
 			}else if (ret <= 0){
@@ -492,7 +481,7 @@ static int rssd_getrss(PARAM_STRING url, string &rss)
 			const char *line = (const char *)buf;
 			debug_printf (D_GETRSS,"header_seen=%d process len=%u\n",glocal.header_seen,len);
 			if (glocal.header_seen){
-				(*glocal.rss) += string(line,len);
+				glocal.rss += string(line,len);
 				//if (strcasecmp(line,"</rss>")==0){
 				//		glocal.ret = 0;
 				//		end = true;
@@ -536,7 +525,6 @@ static int rssd_getrss(PARAM_STRING url, string &rss)
 		}
 		glocal.ret = 0;
 	}
-	alarm (0);
 	return glocal.ret;
 }
 </mod>
@@ -980,7 +968,7 @@ int main (int argc, char *argv[])
 				}
 			}
 			printf (MSG_U(I_PROCESSED,"Processed %u accounts: new messages %u, old messages %u, failures %u\n")
-				,nbproc,stats.newmsgs,stats.keepmsgs,signal_count);
+				,nbproc,stats.newmsgs,stats.keepmsgs,failures);
 		}else if (glocal.testmode){
 			for (int i=0; i<argc; i++){
 				const char *arg = argv[i];
