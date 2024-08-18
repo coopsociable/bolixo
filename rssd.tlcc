@@ -430,7 +430,6 @@ static int rssd_parseurl (PARAM_STRING purl, string &baseurl, string &hostname, 
 	return ret;
 }
 
-static string url1,url2,state;
 static unsigned failures = 0;
 
 <mod>
@@ -440,10 +439,7 @@ static int rssd_getrss(PARAM_STRING url, string &rss)
 	glocal int ret = -1;
 	glocal string newlocation = url.ptr;
 
-	url1 = glocal.newlocation;
 	while (glocal.newlocation.size() > 0){
-		state = "connecting";
-		url2 = glocal.newlocation;	// For alarm
 		glocal bool relocated = false;
 		glocal CONNECT_HTTP_INFO con;
 		glocal unsigned received = 0;
@@ -459,7 +455,6 @@ static int rssd_getrss(PARAM_STRING url, string &rss)
 		buf += string_f ("Content-Type: text/html; charset=UTF-8\r\n\r\n");
 		glocal.con.send (buf.c_str());
 		debug_printf (D_HEADER,"%s-----\n",buf.c_str());
-		state = "reading";
 		<call streamp>();
 		<f fill>
 			int ret = glocal.con.receive (buf,size);
@@ -504,6 +499,7 @@ static int rssd_getrss(PARAM_STRING url, string &rss)
 						&& rssd_compare(tmp,CONST_STR("Location:"),glocal.newlocation)){
 						printf (MSG_U(I_RELOCATED,"relocated: %s\n"),glocal.newlocation.c_str());
 						debug_printf (D_GETRSS,"new location found: %s\n",glocal.newlocation.c_str());
+						end = true;
 					}
 					if (tmp == "\r" && !glocal.header_seen){
 						glocal.header_seen = true;
