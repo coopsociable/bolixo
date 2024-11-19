@@ -36,6 +36,7 @@
 #include "xmlflat.h"
 #include "bolixo.h"
 #include "bolixo.m"
+#define INSTRUMENT_DONOTOPEN
 #include "instrument.h"
 #include <helper.h>
 
@@ -893,6 +894,7 @@ int main (int argc, char *argv[])
 	glocal const char *pidfile = "/var/run/rssd.pid";
 	glocal const char *printfield = NULL;
 	glocal const char *account = NULL;
+	glocal bool instrument = false;
 
 	static const char *tbdic[]={"bolixo",NULL};
 	glocal.ret = <call tlmpprogram>(argc,argv,tbdic);
@@ -922,6 +924,7 @@ int main (int argc, char *argv[])
 		setarg (' ',"process","Process some websites",glocal.process,false);
 		setarg (' ',"printconf","Print configuration",glocal.printconf,false);
 		setarg (' ',"force_account","Send all messages to this account",force_account,false);
+		setarg (' ',"instrument","Turn on instrumentation on lxc0 calls",glocal.instrument,false);
 	</f>
 	<f showerror>
 		if (glocal.daemon){
@@ -940,6 +943,7 @@ int main (int argc, char *argv[])
 	<f main>
 		// Test mode.
 		int ret = -1;
+		if (glocal.instrument) toggle_instrument_file (true);
 		if (!glocal.testmode && !glocal.process){
 			usage();
 		}else if (glocal.process){
@@ -1149,6 +1153,9 @@ int main (int argc, char *argv[])
 					<f test>
 						glocal bool bod = false;
 						rep_test (glocal.bod);
+					</f>
+					<f instrument>
+						toggle_instrument_file(on);
 					</f>
 					<f invalid>
 						tlmp_error ("Invalid command: %s\n",line);
