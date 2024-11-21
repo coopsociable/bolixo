@@ -50,6 +50,7 @@
 #include "filesystem.h"
 #include "documentd_req.h"
 #include <helper.h>
+#define INSTRUMENT_DONOTOPEN
 #include "instrument.h"
 
 static DEBUG_KEY D_SIGN("sign","Signature validation");
@@ -4336,6 +4337,7 @@ int main (int argc, char *argv[])
 	glocal const char *pubsite = NULL;
 	glocal const char *pubuser = NULL;
 	glocal bool listusers = false;
+	glocal bool instrument = false;
 	glocal.ret = <call tlmpprogram>(argc,argv,"bolixo");
 	<f init>
 		setproginfo ("bofs",VERSION
@@ -4368,6 +4370,7 @@ int main (int argc, char *argv[])
 		setarg (' ',"login",MSG_U(O_LOGIN,"Just do a login and print the session id"),glocal.login,false);
 		setarg (' ',"logout",MSG_U(O_LOGOUT,"Logout the supplied session id"),glocal.logout,false);
 		setarg (' ',"session",MSG_U(O_SESSION,"Session id obtained from --login"),glocal.session,false);
+		setarg (' ',"instrument",MSG_U(O_INSTRUMENT,"Turn on instrumentation on lxc0 calls"),glocal.instrument,false);
 		setgrouparg (MSG_U(O_PUBKEYCACHE,"Public key cache"));
 		setarg (' ',"clearpubcache",MSG_U(O_CLEARPUBCACHE,"Erase parts of the public key cache"),glocal.clearpubcache,false);
 		setarg (' ',"listpubcache",MSG_U(O_LISTPUBCACHE,"List parts of the public key cache"),glocal.listpubcache,false);
@@ -4473,6 +4476,7 @@ int main (int argc, char *argv[])
 		int ret = -1;
 		glocal CONTEXT ctx;
 		if (testmode) load_normalize_uuids(glocal.uuidfile);
+		if (glocal.instrument) toggle_instrument_file (true);
 		bofs_loadconf(glocal.ctx,glocal.user);
 		if (glocal.printcred){
 			printf ("export WEBTEST_EMAIL=%s\nexport WEBTEST_PASSWORD=%s\n",glocal.ctx.email.c_str(),glocal.ctx.password.c_str());
