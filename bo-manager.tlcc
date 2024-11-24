@@ -1385,11 +1385,12 @@ static void print_configs (
 				<f dowrite>
 					fprintf (fout,"#!/bin/sh\n");
 					fprintf (fout,"echo udpproxy\n");
-					fprintf (fout,"/usr/sbin/udpproxy --daemon --udp2tcp --udpport 53 --udphost %s --tcphost %s --tcpport 8053 --bindaddr %s\n"
-						,horizon_ip,horizon_ip,dnsproxy_ip);
-					fprintf (fout,"/usr/sbin/udpproxy --daemon --control %s/udpproxy-out.sock"
+					fprintf (fout,"/usr/sbin/udpproxy --daemon --control %s/udpproxy.sock --user %s"
+						" --udp2tcp --udpport 53 --udphost %s --tcphost %s --tcpport 8053 --bindaddr %s\n"
+						,sock_dir,trli_user,horizon_ip,horizon_ip,dnsproxy_ip);
+					fprintf (fout,"/usr/sbin/udpproxy --daemon --control %s/udpproxy-out.sock --user %s"
 						" --pidfile /var/run/udpproxy-out.pid --tcp2udp --tcphost %s --tcpport 8053 --udpport 53"
-						,sock_dir,dnsproxy_ip);
+						,sock_dir,trli_user,dnsproxy_ip);
 					glocal FILE *fout = fout;
 					<call loadfile>("/etc/resolv.conf",true);
 					<f oneline>
@@ -2421,6 +2422,8 @@ static void print_configs (
 				<call savefile>(mon_sh,false);
 				<f dowrite>
 					fprintf (fout,"#!/bin/sh\n");
+					fprintf (fout,"ln -sf %s/udpproxy.sock %s/B-udpproxy.sock\n",sock_dir,sock_tests_dir);
+					fprintf (fout,"ln -sf %s/udpproxy-out.sock %s/B-udpproxy-out.sock\n",sock_dir,sock_tests_dir);
 					fprintf (fout,"%s/bo-mon --daemon --control %s/bo-mon.sock --sock_dir %s"
 						" --bod-secret %s --bolixod-secret %s --publishd-secret %s --documentd-secret %s --user %s --alarmcmd %s\n"
 						,project_path,sock_dir,sock_tests_dir

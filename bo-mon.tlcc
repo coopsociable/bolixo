@@ -375,6 +375,30 @@ static int test_loop (
 				}
 			</f>
 			</call>
+		}else if (strstr(glocal.path,"udpproxy")!=nullptr){
+			glocal int nbreq = 0;
+			glocal bool ok = false;
+			<call tcpconnect>("unix:",glocal.path,5);
+			<f init>
+				sendf ("status\n");
+			</f>
+			<f oneline>
+				const char *pt = nullptr;
+				if (strcmp(line,"Ok")==0){
+					glocal.out.push_back (string_f("%s%s: test ok, nbreq=%d",ok_marker,glocal.path,glocal.nbreq));
+					glocal.ok = true;
+					end = true;
+				}else if (is_start_any_of(line,pt,"nbreq=")){
+					glocal.nbreq = atoi(pt);
+				}
+			</f>
+			<f end>
+			</f>
+			</call>
+			if (!glocal.ok){
+				glocal.out.push_back(string_f("%s%s: test failed, nbreq=%d",err_marker,glocal.path,glocal.nbreq));
+				glocal.seterror();
+			}
 		}else{
 			auto size = out.size();
 			time_t last;
