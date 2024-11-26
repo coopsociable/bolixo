@@ -27,6 +27,7 @@
 #include <tlmpnet.h>
 #include <string>
 #include <trlitool.h>
+#include <helper.h>
 #include "instrument.h"
 
 using namespace std;
@@ -155,7 +156,6 @@ int main (int argc, char *argv[])
 	glocal const char *file = "/index.hc";
 	glocal int nbproc = 1;
 	glocal int nbrep=1;
-	glocal bool keepcookie = false;
 	glocal bool reuseconnection = false;
 	glocal bool verbose = false;
 	glocal bool stats = false;
@@ -174,7 +174,6 @@ int main (int argc, char *argv[])
 		setgrouparg ("Tuning");
 		setarg ('n',"nbrep","Number of iteration",glocal.nbrep,false);
 		setarg ('N',"nbproc","Process number",glocal.nbproc,false);
-		setarg ('k',"keepsession","Keep the session cookie from next request",glocal.keepcookie,false);
 		setarg ('r',"reusecon","Reuse HTTP connection",glocal.reuseconnection, false);
 		setarg ('e',"endless","Runs forever and print stats",glocal.endless,false);
 		setgrouparg ("Misc.");
@@ -235,6 +234,7 @@ int main (int argc, char *argv[])
 			tlmp_error ("Invalid host url: %s\n",glocal.host);
 			exit(-1);
 		}
+		bool anonymous = glocal.email[0] == '\0' || is_eq(glocal.email,"anon");
 		for (int p=0; p<glocal.nbproc; p++){
 			int tbfd[2];
 			if (pipe(tbfd)==-1){
@@ -249,7 +249,7 @@ int main (int argc, char *argv[])
 					glocal int i;
 					glocal int fdout = tbfd[1];
 					close (tbfd[0]);
-					if (glocal.email[0] != '\0'){
+					if (!anonymous){
 						<call webapi_login>(glocal.con,glocal.email,glocal.passwd);
 						<f ok>
 							if (!success){

@@ -122,6 +122,10 @@ webtest(){
 		-T)
 			page="$page?test=1"
 			;;
+		-anon)
+			USEEN=1
+			OPTS="$OPTS -E anon  -P foo"
+			;;
 		*)
 			OPTS="$OPTS $1"
 			;;
