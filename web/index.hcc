@@ -871,6 +871,9 @@ void index_setpastemenu (_F_webtable *c, PARAM_STRING path)
 	if (disable) c->setdrop_disable(MENU_PASTE);
 }
 <mod>
+/*
+	Record the document as the last copied item. It can be used later for a paste command.
+*/
 void index_setcopyitem(CONNECT_INFO &con_sess, PARAM_STRING path, PARAM_STRING modified, PARAM_STRING name)
 {
 	VAR var;
@@ -896,6 +899,22 @@ void index_setcopyitem(CONNECT_INFO &con_sess, PARAM_STRING path, PARAM_STRING m
 	fcopy.path = path.ptr;
 	fcopy.date = modified.ptr;
 	fcopy.name = name.ptr;
+}
+</mod>
+<mod>
+/*
+	Does like index_setcopyitem() above, but also fills the system clipboard with the text content.
+*/
+void index_setcopyitem(CONNECT_INFO &con, CONNECT_INFO &con_sess, PARAM_STRING path, PARAM_STRING modified, PARAM_STRING name)
+{
+	index_setcopyitem(con_sess,path,modified,name);
+	<call bod_client_readfile>(con,w_session.c_str(),path,modified);
+	<f ok>
+		if (info.file_type == FILE_TEXT){
+			index_set_clipboard (content);
+		}
+	</f>
+	</call>
 }
 </mod>
 
@@ -1032,12 +1051,12 @@ static void index_show_shortmsg(
 							if (!success){
 								htmlprintf (MSG_R(E_CANTDELETEENTRY),msg);
 							}else{
-								index_setcopyitem(glocal.con_sess,glocal.fname,glocal.eventdate,glocal.suggested_name);
+								index_setcopyitem(glocal.con,glocal.con_sess,glocal.fname,glocal.eventdate,glocal.suggested_name);
 							}
 						</f>
 						</call>
 					}else if (glocal.dropmenu == MENU_COPY){
-						index_setcopyitem(glocal.con_sess,glocal.fname,glocal.eventdate,glocal.suggested_name);
+						index_setcopyitem(glocal.con,glocal.con_sess,glocal.fname,glocal.eventdate,glocal.suggested_name);
 					}else if (glocal.dropmenu == MENU_DOWNLOAD){
 						index_download (glocal.con,m.file_type,glocal.fname);
 					}else if (glocal.dropmenu == MENU_REPLY){
@@ -1936,7 +1955,7 @@ extern "C" void webmain_real()
 							}else{
 								msg_name = string_f("/msgs/%s/short-inbox/public/%s",m.from,m.uuid);
 							}
-							index_setcopyitem(glocal.con_sess,msg_name,"",suggested_name);
+							index_setcopyitem(glocal.con,glocal.con_sess,msg_name,"",suggested_name);
 						}else if (glocal.dropmenu == MENU_REPLY){
 							if (userinfo.name != m.from){
 								tlmpweb_forcevar(w_recipients,m.from);
