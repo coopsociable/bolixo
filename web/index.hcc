@@ -1333,6 +1333,16 @@ void index_set_clipboard (PARAM_STRING txt)
 {
 	clipboard = txt.ptr;
 }
+/*
+	Escape quotes (' and `) and backslashes in a string.
+	This is used to encode string as javascript statements.
+*/
+string javascript_escape(PARAM_STRING msg)
+{
+	return copystring (msg,[](auto &c, auto pt){
+			if (is_any_of(*pt,'\'','\\','`')) c.insert ('\\');
+		});
+}
 
 <mod>
 extern "C" void webmain_real()
@@ -1830,7 +1840,7 @@ extern "C" void webmain_real()
 		}
 		if (clipboard.size() > 0){
 			/- <script>
-			htmlprintf ("navigator.clipboard.writeText('%s');\n",clipboard.c_str());
+			htmlprintf ("navigator.clipboard.writeText(`%s`);\n",javascript_escape(clipboard).c_str());
 			/- </script>
 		}
 	</f>
