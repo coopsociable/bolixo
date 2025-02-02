@@ -122,7 +122,7 @@ elif [ "$1" = "checks" ]; then # A: Sanity checks blackhole
 	else
 		echo "*** Blackhole not available"
 	fi
-	if horizon-control status 2>/dev/null| fgrep unix:/var/run/blackhole/horizon-master.sock | grep -q MASTER
+	if horizon-control status 2>/dev/null| grep -F unix:/var/run/blackhole/horizon-master.sock | grep -q MASTER
 	then
 		echo horizon connected
 	else
@@ -650,10 +650,10 @@ elif [ "$1" = "loadfail" ] ; then # prod: Switch web access (normal,backup,split
 		COUNT=0
 		while true
 		do
-			NB1=`blackhole-control connectload | fgrep "$S1" | (read a b c d e; echo $d)` 
-			NB2=`blackhole-control connectload | fgrep "$S2" | (read a b c d e; echo $d)` 
-			NB3=`blackhole-control connectload | fgrep "$S3" | (read a b c d e; echo $d)` 
-			NB4=`blackhole-control connectload | fgrep "$S4" | (read a b c d e; echo $d)` 
+			NB1=`blackhole-control connectload | grep -F "$S1" | (read a b c d e; echo $d)` 
+			NB2=`blackhole-control connectload | grep -F "$S2" | (read a b c d e; echo $d)` 
+			NB3=`blackhole-control connectload | grep -F "$S3" | (read a b c d e; echo $d)` 
+			NB4=`blackhole-control connectload | grep -F "$S4" | (read a b c d e; echo $d)` 
 			if [ "$NB1" = 0 -a "$NB2" = 0 -a "$NB3" = 0 -a $NB4 = 0 ] ; then
 				echo
 				break

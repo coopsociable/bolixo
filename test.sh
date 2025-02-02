@@ -338,7 +338,7 @@ elif [ "$1" = "checks" ]; then # A: Sanity checks
 	else
 		echo "*** Blackhole not available"
 	fi
-	if horizon-control -p /tmp/horizon.sock status 2>/dev/null| fgrep unix:/tmp/horizon-master.sock | grep -q MASTER
+	if horizon-control -p /tmp/horizon.sock status 2>/dev/null| grep -F unix:/tmp/horizon-master.sock | grep -q MASTER
 	then
 		echo horizon connected
 	else
