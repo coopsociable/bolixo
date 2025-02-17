@@ -239,7 +239,7 @@ static void publishd_doone (
 				glocal set<string> nodes;
 				if (glocal.todo.groupname == "public"){
 					// tlmp_error ("sendmessage userid=%u dirid=%u fileid=%u modified=%s\n",userid,dirid,fileid,modified);
-					<call sql_query>("select public_view from config where userid=%u",glocal.todo.userid);
+					<call sql_query>(glocal.sq,"select public_view from config where userid=%u",glocal.todo.userid);
 					<f onerow>
 						bool public_view = atoi(row[0]);
 						if (public_view){
@@ -254,7 +254,7 @@ static void publishd_doone (
 					</call>
 				}
 				// Now check if the group has remote members
-				<call sql_query>("select id2name.name from groups"
+				<call sql_query>(glocal.sq,"select id2name.name from groups"
 					" join group_members on group_members.groupid = groups.id"
 					" join id2name on id2name.userid=group_members.userid"
 					" where groups.ownerid=%u and groups.name='%s'"
@@ -495,6 +495,8 @@ int main (int argc, char *argv[])
 		query_setdefaultdb (glocal.data_dbserv,glocal.data_dbname,glocal.data_dbuser,passwd);
 		query_getdefaultdb()->showerrormode(true);
 		// Connection for the sub-process
+		// This NSQL object will only connect at first use, in publisd_doone, after the fork.
+		// So all children will have their own database connection.
 		NSQL sub_sq (glocal.data_dbserv,glocal.data_dbname,glocal.data_dbuser,passwd);
 		sub_sq.showerrormode(true);
 		glocal.sub_sq = &sub_sq;
@@ -519,9 +521,9 @@ int main (int argc, char *argv[])
 			}
 		</f>
 		<f receive>
-			debug_printf (D_PROTO,"receive line: %s\n",line);
 			HANDLE_INFO *c = (HANDLE_INFO*)info.data;
 			static const char *tbtype[]={"none","control request","client request", "worker request"};
+			debug_printf (D_PROTO,"receive line-%s: %s\n",tbtype[c->type],line);
 			ERROR_PREFIX prefix ("%s: ",tbtype[c->type]);
 			if (c->type == TYPE_CONTROL){
 				<call publishd_control>(this,c->req,line, info.linelen,endserver, endclient, no,c);
