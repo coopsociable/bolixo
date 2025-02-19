@@ -37,7 +37,7 @@
 
 using namespace std;
 
-enum CONNECT_TYPE { TYPE_NONE, TYPE_CONTROL, TYPE_PIPE, TYPE_IDLE };
+enum CONNECT_TYPE { TYPE_NONE, TYPE_CONTROL, TYPE_PIPE };
 
 struct HANDLE_INFO: public ARRAY_OBJ{
 	CONNECT_TYPE type;
@@ -650,7 +650,24 @@ int main (int argc, char *argv[])
 						endclient = true;
 					</f>
 					</call>
-				}else if (c->type == TYPE_IDLE){
+				}else if (c->type == TYPE_PIPE){
+					if (strncmp(line,"ok=",3)==0){
+						int ok = atoi(line+3);
+						glocal.new_allok = ok == -1 ? false : true;
+					}else if (strncmp(line,"last=",5)==0){
+						glocal.new_last_error = atoi(line+5);
+					}else{
+						glocal.new_testout.push_back(line);
+					}
+				}
+			</f>
+			</obj>
+			if (o.is_ok()){
+				glocal o;
+				o.setrawmode(true);
+				daemon_init (glocal.pidfile,glocal.user);
+				<obj FORKTASK idle>(glocal.sleepdelay);
+				<f main>
 					time_t now = time(NULL);
 					if (glocal.teston && (now-glocal.lasttest) >= glocal.testdelay){
 						if (glocal.new_testpid != (pid_t)-1){
@@ -687,49 +704,15 @@ int main (int argc, char *argv[])
 								HANDLE_INFO *n = new HANDLE_INFO;
 								n->type = TYPE_PIPE;
 								n->pid = pid;
-								inject (tb[0],n);
-								setrawmode(tb[0],false);
+								glocal.o.inject (tb[0],n);
+								glocal.o.setrawmode(tb[0],false);
 								glocal.new_testpid = pid;
 							}
 						}
 					}
-				}else if (c->type == TYPE_PIPE){
-					if (strncmp(line,"ok=",3)==0){
-						int ok = atoi(line+3);
-						glocal.new_allok = ok == -1 ? false : true;
-					}else if (strncmp(line,"last=",5)==0){
-						glocal.new_last_error = atoi(line+5);
-					}else{
-						glocal.new_testout.push_back(line);
-					}
-				}
-			</f>
-			</obj>
-			if (o.is_ok()){
-				o.setrawmode(true);
-				daemon_init (glocal.pidfile,glocal.user);
-				int tb[2];
-				if (pipe(tb)==-1){
-					tlmp_error ("can't setup pipe (%s)\n",strerror(errno));
-				}else{
-					pid_t pid = fork();
-					if (pid == (pid_t)0){
-						close (tb[0]);
-						while (1){
-							sleep(glocal.sleepdelay);
-							if (write (tb[1]," ",1) != 1) break;
-						}
-						_exit (0);
-					}else if (pid == (pid_t)-1){
-						tlmp_error ("Can't fork (%s)\n",strerror(errno));
-					}else{
-						close (tb[1]);
-						HANDLE_INFO *n = new HANDLE_INFO;
-						n->type = TYPE_IDLE;
-						o.inject (tb[0],n);
-						o.loop();
-					}
-				}
+				</f>
+				</obj>
+				netevent_loop(o,idle);
 			}
 		}
 		return glocal.ret;
