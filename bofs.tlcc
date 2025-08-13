@@ -2204,7 +2204,7 @@ static int bofs_send_talk (
 	if (textcontent != NULL){
 		content.setbuffer (textcontent,strlen(textcontent),false);
 	}else if (filecontent != NULL){
-		glocal.fcontent = fopen (filecontent,"r");
+		glocal.fcontent = strcmp(filecontent,"-")== 0 ? stdin : fopen (filecontent,"r");
 		if (glocal.fcontent == NULL){
 			tlmp_error (MSG_U(E_FILECONTENT,"msgs: Can't open filecontent %s (%s)\n"),filecontent,strerror(errno));
 		}else{
@@ -2262,7 +2262,7 @@ static int bofs_send_talk (
 			</call>
 		}
 	}
-	if (glocal.fcontent != NULL) fclose (glocal.fcontent);
+	if (glocal.fcontent != NULL && glocal.fcontent != stdin) fclose (glocal.fcontent);
 	return glocal.ret;
 }
 </mod>
@@ -2722,7 +2722,7 @@ static int bofs_msgs (CONTEXT &ctx, int argc, char *argv[])
 			}
 		}else if (glocal.newmsg){
 			if (glocal.content == NULL && glocal.filecontent == NULL){
-				bofs_error ("msgs",false,"Missing content");
+				bofs_error ("msgs",false,MSG_R(E_CONTENT));
 			}else{
 				glocal string buf;
 				if (glocal.filecontent != NULL){
