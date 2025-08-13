@@ -1363,8 +1363,10 @@ string util_format_shortmsg (
 	unsigned image_width,
 	bool validate,
 	CONNECT_INFO &con,
-	string &errmsg)
+	string &errmsg,
+	bool &truncated)	// If true, the message was not all formatted/displayed
 {
+	truncated = false;
 	const char *txt = msg.ptr;
 	string ret;
 	ret.reserve(nblines > 0 ? nblines*100 : 1000);
@@ -1523,20 +1525,40 @@ string util_format_shortmsg (
 		txt++;
 	}
 	if (*txt != '\0' || (size != 0 && size != strlen(msg.ptr))){
-		if (ret.size() > 0 && ret[ret.size()-1] != '\n') ret += "<br>\n";
-		ret += "...";
+		truncated = true;
+		//if (ret.size() > 0 && ret[ret.size()-1] != '\n') ret += "<br>\n";
+		//ret += "...";
 	}
 	return ret;
 }
-string util_format_shortmsg (PARAM_STRING msg, unsigned nblines, size_t size, unsigned image_width)
+string util_format_shortmsg (
+	PARAM_STRING msg,
+	unsigned nblines,
+	size_t size,
+	unsigned image_width,
+	bool validate,
+	CONNECT_INFO &con,
+	string &errmsg)
+{
+	bool truncated;
+	return util_format_shortmsg (msg,nblines,size,image_width,validate,con,errmsg,truncated);
+}
+
+string util_format_shortmsg (PARAM_STRING msg, unsigned nblines, size_t size, unsigned image_width, bool &truncated)
 {
 	string errmsg;
 	CONNECT_INFO con;
-	return util_format_shortmsg (msg,nblines,size,image_width,false,con,errmsg);
+	return util_format_shortmsg (msg,nblines,size,image_width,false,con,errmsg,truncated);
+}
+string util_format_shortmsg (PARAM_STRING msg, unsigned nblines, size_t size, unsigned image_width)
+{
+	bool truncated;
+	return util_format_shortmsg (msg,nblines,size,image_width,truncated);
 }
 string util_format_shortmsg (PARAM_STRING txt, unsigned image_width)
 {
-	return util_format_shortmsg (txt,0,0,image_width);
+	bool truncated;
+	return util_format_shortmsg (txt,0,0,image_width,truncated);
 }
 
 // Send an HTML document. Does some remaping of relative URLs. Prevent scripting as well.

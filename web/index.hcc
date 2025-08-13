@@ -992,6 +992,24 @@ static void index_talk_delnotify (CONNECT_INFO &con_sess, PARAM_STRING prefix, P
 		/- </script>
 	}
 }
+/*
+	Modify a text message and append a link "...more" or "...less" to let the user
+	expand or contract the message.
+*/
+static void append_more_less(PARAM_STRING uuid, bool truncated, string &content)
+{
+	const char *msg = nullptr;
+	if (truncated){
+		msg = MSG_U(I_DOT_MORE,"... more");
+	}else if (find(fulltext.begin(),fulltext.end(),uuid.ptr) != fulltext.end()){
+		msg = MSG_U(I_DOT_LESS,"... less");
+	}else{
+		return;
+	}
+	const char *br =  (false && content.size() > 0 && content[content.size()-1] != '\n') ? "<br>\n" : "";
+	content += string_f("%s<a href=%s?fullt=%s>%s</a>\n",br,tlmpweb_curpage(),uuid.ptr,msg);
+}
+
 
 <mod>
 static void index_show_shortmsg(
@@ -1221,15 +1239,17 @@ static void index_show_shortmsg(
 					}else if (file_is_image(m.file_type)){
 						glocal.webtable.setclickopt (true,"",string_f("webtab_add=2:%s~%s",path.c_str(),MSG_U(I_IMAGE,"Image")));
 					}else if (file_is_text(m.file_type)){
-						glocal.webtable.setclickopt (true,"",string_f("fullt=%s",m.uuid));
+						if (!is_mobile) glocal.webtable.setclickopt (true,"",string_f("fullt=%s",m.uuid));
 						//glocal.webtable.setclickopt (true,"",string_f("webtab_add=2:%s~%s",path.c_str(),MSG_R(I_TEXT)));
 					}else if (m.file_type == FILE_PDF){
 						glocal.webtable.setclickopt (true,"viewintab","");
 					}
 					string content;
 					if (m.content[0] != '\0'){
+						bool truncated;
 						content = string_f("<div class=smsg>%s</div>",util_format_shortmsg (m.content
-							,0,m.size,glocal.image_width).c_str());
+							,0,m.size,glocal.image_width,truncated).c_str());
+						append_more_less (m.uuid,truncated,content);
 					}else if (file_is_sound(m.file_type)){
 						string tmp = util_flipspaces(m.submit);
 						content = string_f("<audio controls>\n"
@@ -2072,7 +2092,9 @@ extern "C" void webmain_real()
 						}
 						string content;
 						if (m.content[0] != '\0'){
-							content = string_f("<div class=smsg>%s</div>",util_format_shortmsg (m.content,0,m.size,image_width).c_str());
+							bool truncated;
+							content = string_f("<div class=smsg>%s</div>",util_format_shortmsg (m.content,0,m.size,image_width,truncated).c_str());
+							append_more_less (m.uuid,truncated,content);
 						}else if (file_is_sound(m.file_type)){
 							string tmp = util_flipspaces(m.submit);
 							content = string_f("<audio controls>\n"
@@ -2117,7 +2139,7 @@ extern "C" void webmain_real()
 							}else if (file_is_image(m.file_type)){
 								glocal.webtable.setclickopt (true,func,"800,800");
 							}else{
-								glocal.webtable.setclickopt (true,"",string_f("fullt=%s",m.uuid));
+								if (!is_mobile) glocal.webtable.setclickopt (true,"",string_f("fullt=%s",m.uuid));
 							}
 							glocal.webtable.setrow (style,glocal.rownum,"\t%s\a",content.c_str());
 						}
