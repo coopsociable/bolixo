@@ -32,12 +32,19 @@ using namespace std;
 struct _F_procserver{
 	string home;
 	string server;
+	int ret = 0;
 	void saveversion(PARAM_STRING version);
 	string getversion() const;
+	void fail();
 	#define _F_procserver_doone(x) void x doone(const char *server, const char *path_pass, bool &end)
 	virtual _F_procserver_doone( )=0;
 };
 
+
+void _F_procserver::fail()
+{
+	ret = -1;
+}
 
 <mod>
 void _F_procserver::saveversion (PARAM_STRING version)
@@ -74,7 +81,7 @@ static const char *gethome()
 	return home;
 }
 <mod>
-static void procserver(_F_procserver &c, int argc, char **argv)
+static int procserver(_F_procserver &c, int argc, char **argv)
 {
 	glocal bool end = false;
 	glocal c;
@@ -110,6 +117,7 @@ static void procserver(_F_procserver &c, int argc, char **argv)
 			}
 		}
 	}
+	return c.ret;
 }
 </mod>
 
@@ -147,7 +155,7 @@ int main (int argc, char *argv[])
 		int ret = -1;
 		glocal const char *cmd = argv[0];
 		if (is_any_of(glocal.cmd,"stop","start","restart","prepare-restart")){
-			<call procserver>(argc-1,argv+1);
+			ret = <call procserver>(argc-1,argv+1);
 			<f doone>
 				banner (server);
 				int ret = 0;
@@ -168,16 +176,18 @@ int main (int argc, char *argv[])
 						}
 						printf ("cmd=%s\n",cmd.c_str());
 						if (system(cmd.c_str())!=0){
+							fail();
 							end = true;
 						}
 					}
 				}else{
+					fail();
 					end = true;
 				}
 			</f>
 			</call>
 		}else if (is_any_of(glocal.cmd,"update","update-restart")){
-			<call procserver>(argc-1,argv+1);
+			ret = <call procserver>(argc-1,argv+1);
 			<f doone>
 				banner(server);
 				vector<string> cmds;
@@ -187,6 +197,7 @@ int main (int argc, char *argv[])
 				for (auto &cmd:cmds){
 					printf ("cmd=%s\n",cmd.c_str());
 					if (system(cmd.c_str())!=0){
+						fail();
 						end = true;
 						break;
 					}
@@ -206,15 +217,18 @@ int main (int argc, char *argv[])
 							cmd = string_f("ssh root@%s bo restart most",server);
 							printf ("cmd=%s\n",cmd.c_str());
 							if (system(cmd.c_str())!=0){
+								fail();
 								end = true;
 							}
+						}else{
+							fail();
 						}
 					}
 				}
 			</f>
 			</call>
 		}else if (strcmp(glocal.cmd,"version")==0){
-			<call procserver>(argc-1,argv+1);
+			ret = <call procserver>(argc-1,argv+1);
 			<f doone>
 				banner(server);
 				<call walkpopen>(string_f("ssh root@%s rpm -q bolixo",server),10);
@@ -223,11 +237,16 @@ int main (int argc, char *argv[])
 					glocal.procserver.saveversion (line);
 					return 0;
 				</f>
+				<f oneerr>
+					tlmp_error ("%s: %s\n",command,line);
+					glocal.procserver.fail();
+					return 0;
+				</f>
 				</call>
 			</f>
 			</call>
 		}else if (strcmp(glocal.cmd,"listversion")==0){
-			<call procserver>(argc-1,argv+1);
+			ret = <call procserver>(argc-1,argv+1);
 			<f doone>
 				printf ("%s: %s\n",server,getversion().c_str());
 			</f>
@@ -251,7 +270,7 @@ int main (int argc, char *argv[])
 				<f missing>
 				</f>
 				</call>
-				<call procserver>(argc-1,argv+1);
+				ret = <call procserver>(argc-1,argv+1);
 				<f doone>
 					glocal server;
 					if (glocal.printexpdate){
@@ -264,7 +283,7 @@ int main (int argc, char *argv[])
 					}else if (glocal.getexpdate){
 						glocal bool this_server = false;	// The server may hold several certificates
 											// alpha.bolixo.org also manages bolixo.org
-						<call walkpopen>(string_f("ssh root@%s bo certificates",server),10);
+						int ret = <call walkpopen>(string_f("ssh root@%s bo certificates",server),10);
 						<f oneline>
 							const char *pt;
 							line = str_skip(line);
@@ -279,7 +298,13 @@ int main (int argc, char *argv[])
 							}
 							return 0;
 						</f>
+						<f oneerr>
+							tlmp_error ("%s: %s\n",command,line);
+							//glocal.procserver.fail();
+							return 0;
+						</f>
 						</call>
+						if (ret < 0) fail();
 					}else if (glocal.renew){
 						vector<string> tb;
 						tb.push_back(server);
@@ -287,12 +312,18 @@ int main (int argc, char *argv[])
 						if (is_eq(server,"alpha.bolixo.org")) tb.push_back("bolixo.org");
 						for (auto &s:tb){
 							printf ("----------------- %s\n",s.c_str());
-							<call walkpopen>(string_f("ssh root@%s bo certificate-renew doit %s",server,s.c_str()),10);
+							int ret = <call walkpopen>(string_f("ssh root@%s bo certificate-renew doit %s",server,s.c_str()),10);
 							<f oneline>
 								printf ("%s\n",line);
 								return 0;
 							</f>
+							<f oneerr>
+								tlmp_error ("%s; %s\n",command,line);
+								//glocal.procserver.fail();
+								return 0;
+							</f>
 							</call>
+							if (ret < 0) fail();
 						}
 					}
 				</f>
