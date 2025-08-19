@@ -2,6 +2,13 @@
 #define EXTERN extern
 #endif
 
+EXTERN DOC_ID section_lxc0;
+EXTERN DOC_ID section_protocheck;
+EXTERN DOC_ID section_keysd;
+EXTERN DOC_ID section_remote_accounts;
+EXTERN DOC_ID section_bosqlduser;
+EXTERN DOC_ID section_bosqlddata;
+
 void jump2app (int step, PARAM_STRING webtab_add);
 void jump2app (int step, int tab);
 void jump_config_account();
