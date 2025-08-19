@@ -15,8 +15,10 @@ void json_parse (_F_json_parse &c, const char *line)
 			//printf ("var=:%s: val=:%s:\n",var.c_str(),val.c_str());
 			string parent;
 			for (auto &p:parents){
-				if (parent.size() > 0) parent += '.';
-				parent += p;
+				if (p.size() > 0){
+					if (parent.size() > 0) parent += '.';
+					parent += p;
+				}
 			}
 			c.item(parent.c_str(),var.c_str(),val.c_str());
 		};
@@ -28,22 +30,29 @@ void json_parse (_F_json_parse &c, const char *line)
 	while (*pt != '\0'){
 		if (*pt == '{'){
 			state=subject;
+			parents.push_back(var);
 			var.clear();
 			val.clear();
 			pt++;
 		}else if (*pt == '['){
 			state=subject;
 			parents.push_back(var);
+			var.clear();
+			val.clear();
 			pt++;
 		}else if (*pt == '}'){
 			if (parents.size() == 0) break;
+			parents.pop_back();
 			pt++;
 		}else if (*pt == ']'){
 			parents.pop_back();
 			pt++;
 		}else if (*pt == '"'){
 			const char *start = ++pt;
-			while (*pt != '\0' && *pt != '"') pt++;
+			while (*pt != '\0' && *pt != '"'){
+				if (*pt == '\\' && *(pt+1) == '"') pt++;
+				pt++;
+			}
 			if (*pt != '"') break;
 			if (state == subject){
 				var = string(start,pt-start);
@@ -91,6 +100,8 @@ void json_parse (_F_json_parse &c, const char *line)
 			var.clear();
 			val.clear();
 			pt++;
+		}else if (isspace(*pt)){
+			pt = str_skip(pt);
 		}else{
 			tlmp_error ("JSON erreur: %s\n",pt);
 			break;

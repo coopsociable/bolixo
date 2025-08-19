@@ -10,7 +10,8 @@ PROGS=_dict.o bod bod-client bod-control bo-writed bo-writed-control bo-sessiond
       bo-mon bo-mon-control utils/eximexec utils/helpspell publishd publishd-control bo-webtest \
       documentd documentd-control rssd rssd-control deleteitems utils/cacheurl utils/email-log \
       utils/show-notifies utils/business-card waitevent utils/bo-remote-manage utils/bolixo-update \
-      utils/dnsrequest bo-websocket bo-websocket-control utils/logssl utils/bolixo-arch
+      utils/dnsrequest bo-websocket bo-websocket-control utils/logssl utils/bolixo-arch \
+      number5
 #bo-log bo-log-control \
 DOCS=
 OPTIONS=$(DINSTRUMENT) -funsigned-char -O2 -Wall -g -DVERSION=\"$(PACKAGE_REV)\" -I/usr/include/tlmp -I/usr/include/trlitool
@@ -373,6 +374,9 @@ filesystem.o: filesystem.tlcc filesystem.h proto/bod_client.protoh
 
 verify.o: verify.tlcc filesystem.h
 	cctlcc -Wall $(OPTIONS) -c verify.tlcc -o verify.o
+
+number5: number5.tlcc json.h json.o
+	cctlcc -Wall $(OPTIONS) number5.tlcc json.o -o number5 -lstdc++
 
 clean:
 	rm -f $(PROGS) *.o *.os proto/*.protoh proto/*.protoch proto/*.protodef web/*.hc web/*.os web/genbackground
