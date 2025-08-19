@@ -10,9 +10,9 @@ PROGS=_dict.o bod bod-client bod-control bo-writed bo-writed-control bo-sessiond
       bo-mon bo-mon-control utils/eximexec utils/helpspell publishd publishd-control bo-webtest \
       documentd documentd-control rssd rssd-control deleteitems utils/cacheurl utils/email-log \
       utils/show-notifies utils/business-card waitevent utils/bo-remote-manage utils/bolixo-update \
-      utils/dnsrequest bo-websocket bo-websocket-control utils/logssl utils/bolixo-arch \
-      number5
-#bo-log bo-log-control \
+      utils/dnsrequest bo-websocket bo-websocket-control utils/logssl utils/bolixo-arch 
+
+# bo-log bo-log-control \
 DOCS=
 OPTIONS=$(DINSTRUMENT) -funsigned-char -O2 -Wall -g -DVERSION=\"$(PACKAGE_REV)\" -I/usr/include/tlmp -I/usr/include/trlitool
 LIBS=/usr/lib64/trlitool/trlitool.a -ltlmp -lstdc++ -lcrypto
