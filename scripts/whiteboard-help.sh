@@ -119,3 +119,8 @@ connect(){
 		--step "resetselect=3"
 }
 
+# Output the HTML
+print(){
+	$BOFS documents --noscripts --novarname --playstep --v_width 900 --v_height 900 --docname $DOCNAME \
+		--step "print=doconly"
+}

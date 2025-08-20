@@ -165,7 +165,7 @@ class GAME{
 	bool has_waiting_users = false;		// Does this game display the list of waiting/connected users
 	std::set<std::string> last_waitings;	// Last set of connected users sent.
 	friend void doc_layout (struct _F_doc_layout &c, const char *id_prefix, GAME *game, const DOC_CONTEXT &ctx,
-		const DOC_UI_SPECS_receive &sp, const char *doc_suffix, bool scroll, bool is_full, VARVAL &v);
+		const DOC_UI_SPECS_receive &sp, const char *doc_suffix, const class LAYOUT_OPTS &opts, VARVAL &v);
 protected:
 	std::map<int,FD_INFO> notification_fds;	// Handles waiting for notifications (with username)
 	std::vector<CHATLINE> chat;
@@ -367,6 +367,59 @@ GAME_P make_CALC();
 GAME_P make_PHOTOS();
 GAME_P make_VIDCONF();
 
+class LAYOUT_OPTS{
+	enum opts{
+		CONTENT_OPT_SCROLL=1,	// Display scrollbars
+		CONTENT_OPT_CHAT=2,	// Display the chat
+		CONTENT_OPT_USERS=4,	// Display the users currently connected
+		CONTENT_OPT_MENUBAR=8,	// Display the menubar
+		CONTENT_OPT_FULLTAB=16,	// The document use the full browser tab
+		CONTENT_OPT_BORDER=32,	// Solid border around the content
+		CONTENT_OPT_CENTER=64	// Content is centered horizontally
+	};
+	int mask=0;
+public:
+	LAYOUT_OPTS & scroll(){
+		mask |= CONTENT_OPT_SCROLL;
+		return *this;
+	}
+	LAYOUT_OPTS & chat(){
+		mask |= CONTENT_OPT_CHAT;
+		return *this;
+	}
+	LAYOUT_OPTS & users(){
+		mask |= CONTENT_OPT_USERS;
+		return *this;
+	}
+	LAYOUT_OPTS & menubar(){
+		mask |= CONTENT_OPT_MENUBAR;
+		return *this;
+	}
+	LAYOUT_OPTS & fulltab(){
+		mask |= CONTENT_OPT_FULLTAB;
+		return *this;
+	}
+	LAYOUT_OPTS & border(){
+		mask |= CONTENT_OPT_BORDER;
+		return *this;
+	}
+	LAYOUT_OPTS & center(){
+		mask |= CONTENT_OPT_CENTER;
+		return *this;
+	}
+	LAYOUT_OPTS & all(){
+		mask |= CONTENT_OPT_SCROLL|CONTENT_OPT_CHAT|CONTENT_OPT_USERS|CONTENT_OPT_MENUBAR|CONTENT_OPT_BORDER;
+		return *this;
+	}
+	bool is_scroll() const { return mask & CONTENT_OPT_SCROLL;}
+	bool is_chat() const { return mask & CONTENT_OPT_CHAT;}
+	bool is_users() const { return mask & CONTENT_OPT_USERS;}
+	bool is_menubar() const { return mask & CONTENT_OPT_MENUBAR;}
+	bool is_fulltab() const { return mask & CONTENT_OPT_FULLTAB;}
+	bool is_border() const { return mask & CONTENT_OPT_BORDER;}
+	bool is_center() const { return mask & CONTENT_OPT_CENTER;}
+	int getmask() const { return mask; }
+};
 
 #define _TLMP_button_bar
 struct _F_button_bar{
@@ -400,7 +453,7 @@ struct _F_doc_layout{
 };
 
 void doc_layout (_F_doc_layout &c, const char *id_prefix, GAME *game, const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp
-	, const char *doc_suffix, bool scroll, bool is_full, VARVAL &v);
+	, const char *doc_suffix, const LAYOUT_OPTS &opts, VARVAL &v);
 
 #include "documentd_req.h"
 

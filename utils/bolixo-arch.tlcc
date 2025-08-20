@@ -49,6 +49,7 @@ int main (int argc, char *argv[])
 	glocal.excludes.emplace_back("./bo-webtest.tlcc");
 	glocal.excludes.emplace_back("./waitevent.tlcc");
 	glocal.excludes.emplace_back("./bofs.tlcc");
+	glocal.excludes.emplace_back("./bofs_vidconf.tlcc");
 	glocal.excludes.emplace_back("./bod-client.tlcc");
 	glocal.excludes.emplace_back("./testwebsock.tlcc");
 	glocal.excludes.emplace_back("./websocket-client.tlcc");
@@ -209,6 +210,9 @@ int main (int argc, char *argv[])
 		}
 		map<string,map<string,bool>> relations;	// Record the relation one component
 		for (auto &c:glocal.compcalls){
+			if (glocal.fname2comp.find(c.first) == glocal.fname2comp.end()){
+				tlmp_error ("Component %s not found in glocal.fname2comp\n",c.first.c_str());
+			}
 			auto &component = glocal.fname2comp[c.first];
 			auto &relation = relations[component];
 			for (auto &call:c.second){
@@ -263,7 +267,7 @@ int main (int argc, char *argv[])
 				"addelm s-documentd  documentd  rect 150 830 250 300\n"
 				"textpos s-documentd 1\n"
 				"labelselect s-documentd 2\n"
-				"addelm documentd  documentd  ellipse 125 60 100 50\n"
+				"addelm documentd  documentd  ellipse 125 60 150 50\n"
 				"addelm qqwing  qqwing        ellipse 60 230 100 50\n"
 				"addelm stockfish  stockfish  ellipse 190 230 100 50\n"
 				"resetsel\n"
@@ -284,28 +288,30 @@ int main (int argc, char *argv[])
 				"addelm i-webapi webapi ellipse 75 40 100 50\n" 
 				"resetsel\n"
 
-				"addelm bddata bd-data rect     350 930 50 75\n"
-				"textpos bddata 2\n"
+				"addelm dbdata db-data rect     350 930 50 75\n"
+				"textpos dbdata 2\n"
 				"addelm files files rect        450 930 50 75\n"
 				"textpos files 2\n"
-				"addelm bdusers bd-users rect   700 930 50 75\n"
-				"textpos bdusers 2\n"
-				//"addelm bdbolixo bd-bolixo rect 950 950 50 75\n"
+				"addelm dbusers db-users rect   700 930 50 75\n"
+				"textpos dbusers 2\n"
+				//"addelm dbbolixo db-bolixo rect 950 950 50 75\n"
 
 				"connect exim internet 1\n"
 				"connect internet webssl 1\n"
 				"connect bod-2 bod-11 7\n"
-				"connect bods bddata 1\n"
-				"connect writed bddata 1\n"
-				"connect writed bdusers 1\n"
-				"connect keysd bdusers 1\n"
-				//"connect bolixod bdbolixo 1\n"
+				"connect bods dbdata 1\n"
+				"connect writed dbdata 1\n"
+				"connect writed dbusers 1\n"
+				"connect keysd dbusers 1\n"
+				"connect publishd dbdata 1\n"
+				//"connect bolixod dbbolixo 1\n"
 				"connect documentd qqwing 1\n"
 				"connect documentd stockfish 1\n"
 				"connect webssl public 1\n"
 				"connect webssl webapi 1\n"
 				"connect webssl index 1\n"
 				"connect webssl websocket 1\n"
+				"# End of static rules\n"
 				;
 			printf ("%s",script);
 			// Find out which component have access to /var/lib/bolixo
@@ -317,11 +323,11 @@ int main (int argc, char *argv[])
 				if (strcmp(dirname,"bods")==0) dirname = "bod";
 				string bolixo_dir = string_f("/var/lib/lxc/%s/rootfs/var/lib/bolixo",dirname);
 				if (file_type(bolixo_dir.c_str())==1){
-					printf ("connect %s   files 1\n",glocal.component);
+					printf ("connect %s   files 1 # step-file\n",glocal.component);
 				}
 				string smtp_sock = string_f("/var/lib/lxc/%s/rootfs/dev/smtp.sock",dirname);
 				if (file_type(smtp_sock.c_str())==5){
-					printf ("connect %s   exim 1\n",glocal.component);
+					printf ("connect %s   exim 1 # step-smtp\n",glocal.component);
 				}
 				if (!is_any_of(relation.first,"bolixod","bods","publishd")){
 					// Some components have internet access to reach webapi, so the are presented
@@ -329,7 +335,7 @@ int main (int argc, char *argv[])
 					<call loadfile>(string_f("/var/lib/lxc/%s/config",dirname),true);
 					<f oneline>
 						if (is_start_any_of(line,NONEED,"lxc.net.0.ipv4.gateway=")){
-							printf ("connect %s internet 1\n",glocal.component);
+							printf ("connect %s internet 1 # step-internet\n",glocal.component);
 						}
 						return 0;
 					</f>
@@ -342,18 +348,19 @@ int main (int argc, char *argv[])
 			}
 			for (auto &relation:relations){
 				for (auto &rel:relation.second){
-					const char *from = relation.first.c_str();
-					const char *to = rel.first.c_str();
+					auto &from = relation.first;
+					auto to = rel.first;
 					if (!is_any_of(from,"bo-mon","bolixo","bolixoapi","bolixod","rssd")){
-						if (strcmp(to,"webapi")==0){
+						if (to == "webapi"){
 							if (is_any_of(from,"bods","publishd")) to = "i-webapi";
 						}
-						if (strcmp(from,to)!=0){
-							printf ("connect %s %s %d\n",from,to,rel.second ? 1 : 1);
+						if (from != to){
+							printf ("connect %s %s %d # step-rest\n",from.c_str(),to.c_str(),rel.second ? 1 : 1);
 						}
 					}
 				}
 			}
+			printf ("print >/tmp/bolixo-arch.html\n");
 		}
 		return ret;
 	</f>

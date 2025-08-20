@@ -21,6 +21,10 @@
 #include "techdoc.h"
 #include "steps.h"
 
+static void blackhole_link()
+{
+	document_clickable_link ("https://solucorp.bolixo.org/projects/blackhole","blackhole");
+}
 <mod>
 void bolixo_techdoc (DOCUMENT_POINTER &docpointer, DOC_ID &jump, const char *username, bool display_full, bool index)
 {
@@ -71,12 +75,12 @@ void bolixo_techdoc (DOCUMENT_POINTER &docpointer, DOC_ID &jump, const char *use
 				<p>
 				While Bolixo services are normally insalled on a single physical server, it is possible to spread the services
 				on multiple servers. This is all transparent for the services. The
-				/- document_clickable_link ("https://solucorp.bolixo.org/projects/blackhole","blackhole");
+				/- blackhole_link();
 				system connects all those services together, on whatever physical server they run. A simple configuration file
 				tells where each service is run and from there, the blackhole configuration is produced.
 			</->
 			<- section("Digital signature");>
-				All content created by users is digitally signed. Every user has a personnal 2048 bit key. Content is signed using the private key
+				All content created by users is digitally signed. Every user has a personnal 2048 bits key. Content is signed using the private key
 				and other servers may validate the content using the user public key. The micro-service
 				/- tlmpdoc_link(section_keysd,"keysd");
 				manage all the user keys.
@@ -110,10 +114,14 @@ void bolixo_techdoc (DOCUMENT_POINTER &docpointer, DOC_ID &jump, const char *use
 							pretty much any action a normal user can do on server B.
 						</ul>
 					</dd>
+					<p>
+				<dt>They are created on the fly
+					<dd>Remote accounts are created as needed, whenever a server receives a message from another server.
+					</dd>
 				</dl>
 				<p>
 				Remote accounts allow user content to be copied to other servers. One important side
-				effect is that most user operations on a server are local. When a user looks at his news feed, it
+				effect is that most user operations on a server are local. When a user lookups his news feed, it
 				is a local activity.
 			</->
 			<- section("Messages");>
@@ -174,7 +182,8 @@ void bolixo_techdoc (DOCUMENT_POINTER &docpointer, DOC_ID &jump, const char *use
 		</->
 		<- section("Architecture");>
 			Bolixo is made of components running in LXC containers. The containers are called LXC0s. Here is a diagram presenting the relation
-			between Bolixo components:
+			between Bolixo components. In the diagram, rectangles represent a LXC0 container. Ellipses represent a program. In general, containers
+			are running a single program. To simplify the view containers running a single program are just rectangles (no ellipse inside).
 			<p>
 			<center>
 			/- document_clickable_img ("/bolixo-arch.jpg","40%",1);
@@ -210,7 +219,9 @@ void bolixo_techdoc (DOCUMENT_POINTER &docpointer, DOC_ID &jump, const char *use
 					LXC0 is assigned an IP number (192.168.122.X), iptables rules prevent connection between members of the 192.168.122 network.
 					They usually lack an IP gateway. They can't reach the Internet and the Internet can't connect to them.
 					<p>
-					Bolixo components usually use unix socket to communicate. The <em>blackhole</em> installs some unix sockets
+					Bolixo components usually use unix socket to communicate. The
+					/- blackhole_link();
+					installs some unix sockets
 					in a component at startup time. For example, in every component, blackhole installs the unix socket /dev/log, allowing
 					the component to log messages. Bolixo has its own logging system, running outside components.
 					The blackhole have connection rules for each component and will establish the proper
@@ -234,9 +245,9 @@ void bolixo_techdoc (DOCUMENT_POINTER &docpointer, DOC_ID &jump, const char *use
 					Exim is used to send various notifications to end users.
 				</->
 				<- section("keysd: private and public key management",section_keysd);>
-					Each Bolixo user has a 2048 private key. This key is used to sign messages created by the user. It is also used for
+					Each Bolixo user has a 2048 bits private key. This key is used to sign messages created by the user. It is also used for
 					/- tlmpdoc_link (section_remote_accounts,"remote login.");
-					Also, every Bolixo server has a 2048 private key used for communication/authentification between Bolixo servers.
+					Also, every Bolixo server has a 2048 bits private key used for communication/authentification between Bolixo servers.
 					<p>
 					The private keys are located in the
 					/- tlmpdoc_link(section_bosqlduser,"user database.");
@@ -249,7 +260,7 @@ void bolixo_techdoc (DOCUMENT_POINTER &docpointer, DOC_ID &jump, const char *use
 				</->
 				<- section("publishd: push information to other Bolixo servers");>
 					Publishd receives messages from <em>writed</em> and copy those messages to relevant Bolixo servers. It is used for public messages and for group messages.
-					When one Bolixo user express interest in the public message of another Bolixo user, located on a different server, a remote interest interest request is made.
+					When one Bolixo user express interest in the public message of another Bolixo user, located on a different server, a remote interest request is made.
 					When user A on server1 expresses interest in user B on server2, a request is made. When user C on server1 does the same, no request is done. Said differently
 					publishd on server2 will copy a message once for all users on server1.
 				</->
@@ -262,21 +273,14 @@ void bolixo_techdoc (DOCUMENT_POINTER &docpointer, DOC_ID &jump, const char *use
 					<p>
 					<ul>
 					<li>index: This is driving the Bolixo user interface.
-					<li>public: This is presenting public page.
+					<li>public: This is presenting public pages.
 					<li>webapi: This is converting the Bolixo web protocol into Bolixo internal protocol.
 					<li>bo-websocket: This is handling websocket connections.
 					</ul>
 					<p>
-					The web and web-fail pair are used for failover when services are restarted. By default, all traffic goes to the web component. When we wish to restart
-					the web components (including webssl), the following steps are executed.
-					<p>
-					<ul>
-					<li>The <em>fail</em> components are restarted (web-fail and webssl-fail).
-					<li>Preference is switched from web,webssl to web-fail,webssl-fail.
-					<li>We wait until all connections have ended on web,webssl.
-					<li>We restart web and webssl.
-					<li>We switch back preference to web and webssl.
-					</ul>
+					The web and web-fail pair are used for failover when services are restarted. See the
+					/- tlmpdoc_link(section_bolixo_production_restart,"bolixo-production restart");
+					command for a better understanding of the web-fail and webssl-fail components.
 				</->
 				<- section("webssl and webssl-fail: ssl processing and static content");>
 					Webssl handles SSL certificates and static content (mostly images for documentation and UI).
@@ -330,6 +334,92 @@ void bolixo_techdoc (DOCUMENT_POINTER &docpointer, DOC_ID &jump, const char *use
 			<- section("Programming language");>
 			</->
 			<- section("File system");>
+			</->
+		</->
+		<- section("Operations");>
+			<- section("bolixo-production",section_bolixo_production);>
+				Operations on Bolixo components are done using the bolixo-production command line tool. This is a long
+				name, so a shorter name is installed: just bo. The bolixo-production (and bo) command supports tab completion.
+				Further, just typing the bo command without argument produces a help screen. There are many sections. We will
+				see the main commands here.
+				<p>
+				<- section("Production");>
+					You will use many of those commands.
+					<- section("status");>
+					</->
+					<- section("restart",section_bolixo_production_restart); >
+						This is the way you restart Bolixo components. Some sub-commands are used to restart
+						a group of components (such as <em>most</em> explained below). All components may be restarted at
+						any time without much impact for end users. There are two solutions to achieve this: one is managed by
+						the web component and the other, allows you to restart the web component.
+						<p>
+						The solution to restart most components in Bolixo lies in the web component. It is a gate system called trli-stop.
+						Whenever a request is received in the web component (by index, public, or webapi), a permission request
+						is sent to trli-stop. trli-stop simply replies yes. The connection to trli-stop remains open until the request
+						is complete. When we need to restart some bolixo component, we tell trli-stop to stop. Immediatly, trli-stop
+						stops replying to permission requests. So all new activities in the web components will pile at the gate. trli-stop
+						knows about all the other requests it has granted, but still in process (in flight). trli-stop waits until
+						all in flight process are completed (the connections to trli-stop are dropped). At this point, trli-stop knows
+						that all internal Bolixo components are idle. They may be restarted without problems.
+						<p>
+						The bo-websocket service inside the web component has its own way to handle the gating. Bolixo-production
+						uses both trli-stop and bo-websocket to ensure the internal components are idle. So to restart a component, you
+						just type:
+						<- pre()>
+						bo restart writed
+						</->
+						Here are the list of sub-commands used with restart:
+						<p>
+						<dl>
+						<dt>internals
+							<dd>Restart everything except the databases, webs and exim</dd>
+							<p>
+						<dt>most
+							<dd>This is the sub-command you will use after a bolixo update. It restarts internals and webs</dd>
+							<p>
+						<dt>sqls
+							<dd>Restart all databases. You seldom need to do that.</dd>
+							<p>
+						<dt>bod, documentd, protocheck, publishd, sessiond, writed
+							<dd>Those components may be restarted separatly. Other components will reconnect on the fly.
+							Restarting those components may be done any time. You seldom need to restart those separately.
+							</dd>
+							<p>
+						<dt>keysd
+							<dd>Keysd manage the user private keys. You can restart this component like any other, except for
+							one important thing. Keysd requires a passphrase to decrypt the 2048 bits keys read from the database.
+							When you restart, you must provide the passphrase. There are two ways to provide the passphrase:
+							<ul>
+							<li>You can write it down in the file /root/keysd.pass. The file
+							/root/keysd.pass will be securely deleted (using the shred command) during the restart process.
+							<li>You provide it interactivly.
+							</ul>
+							<p>
+						<dt>webs
+							<dd>
+							By default, all traffic goes to the web and webssl components. When we wish to restart
+							web and webssl, the following steps are executed.
+							<p>
+							<ul>
+							<li>Normally, web and webssl are receiving all requests. web-fail and webssl-fail are idle.
+							<li>Web-fail and webssl-fail are restarted.
+							<li>Priority is switched from web,webssl to web-fail,webssl-fail.
+							<li>We wait until all connections have ended on web,webssl.
+							<li>We restart web and webssl.
+							<li>We switch back priority to web and webssl.
+							</ul>
+							<p>
+							The
+							/- blackhole_link();
+							system acts as a load balancer for the web,webssl and web-fail/webssl-fail services.
+							<p>
+							Using this strategy, we can upgrade/restart the web and webssl services at any time without disrupting user activities.
+							</dd>
+						</dl>
+					</->
+				</->
+				<- section ("Syslog");>
+				</->
 			</->
 		</->
 	</f>
