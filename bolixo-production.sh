@@ -582,12 +582,28 @@ elif [ "$1" = "enable" ] ; then # accounts: Enable one user account
 	/usr/lib/bolixo-test.sh bo-writed-control enable $1 
 elif [ "$1" = "status" ] ; then # prod: Status of one service
 	shift
-	while [ "$1" != "" ]
-	do
-		echo ============== $1 ============
-		/var/lib/lxc/$1/status.sh
-		shift
-	done
+	if [ "$1" = "" ] ; then
+		echo -n "List of Bolixo components: "
+		for dir in /var/lib/lxc/*
+		do
+			if [ -x $dir/status.sh ] ; then
+				echo -n `basename $dir` " "
+			fi
+		done
+		echo
+	else
+		while [ "$1" != "" ]
+		do
+			echo ============== $1 ============
+			script=/var/lib/lxc/$1/status.sh
+			if [ ! -x $script ] ; then
+				echo $1 is not a bolixo component
+			else
+				/var/lib/lxc/$1/status.sh
+			fi
+			shift
+		done
+	fi
 elif [ "$1" = "checkupdates" ] ; then # prod: Check all containers are up to date
 	for lxc in bod writed sessiond keysd bolixod protocheck exim web webadm webssl bosqlddata bosqlduser bosqldbolixo
 	do
