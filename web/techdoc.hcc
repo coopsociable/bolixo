@@ -331,12 +331,20 @@ void bolixo_techdoc (DOCUMENT_POINTER &docpointer, DOC_ID &jump, const char *use
 				<- section("bosqlddata: content database",section_bosqlddata);>
 				</->
 			</->
+			<- section("Bolixo monitor",section_bo_mon);>
+			</->
+			<- section("Bolixo logging system");>
+			</->
 			<- section("Programming language");>
+			</->
+			<- section("Instrumentation",section_instrumentation);>
 			</->
 			<- section("File system");>
 			</->
 		</->
 		<- section("Operations");>
+			This document is not a Bolixo administration guide. But the information provided here is useful to understand how Bolixo works.
+			<p>
 			<- section("bolixo-production",section_bolixo_production);>
 				Operations on Bolixo components are done using the bolixo-production command line tool. This is a long
 				name, so a shorter name is installed: just bo. The bolixo-production (and bo) command supports tab completion.
@@ -344,8 +352,72 @@ void bolixo_techdoc (DOCUMENT_POINTER &docpointer, DOC_ID &jump, const char *use
 				see the main commands here.
 				<p>
 				<- section("Production");>
-					You will use many of those commands.
+					You will use mostly those commands.
 					<- section("status");>
+						Using the following command, you can get a summary of the state of one component. The <em>bo status</em>
+						without argument prints the list of available Bolixo components.
+						<- pre();>
+						bo status documentd
+						</->
+						You get the following output for the documentd component. This information is useful for developper. Instrumentation
+						may be turned on and off for any components. See the section
+						/- tlmpdoc_link(section_instrumentation,"Instrumentation");
+						for more details.
+						<- pre();>
+						Version SVN_4645
+						instrument: disable
+						protocolstats: 0
+						chessmaxskill: 3
+						bytes sent: requests=0 content=0 script=0 unotify=0 notify=0
+						nbwaiting: 0
+						handles: 0
+						subprograms: 1
+						subprogram CHES: nbsend=4 nbrec=26 gameid= command=/usr/bin/stockfish
+						</->
+
+					</->
+					<- section("test-system");>
+						This produces a complete report of the Bolixo components. Components with an issue are starting with an arrow ->.
+						Here is a sample report. Most components have a test API. Components are free to implement the test request and provide
+						all kind of results. In general, a component will perform a test request on all the other components it talks to. The
+						/- tlmpdoc_link(section_bo_mon,"Bolixo monitor");
+						runs these tests every 30 seconds. On the line starting with a *, we see the <em>bod</em> component test. Internal_error1=0 means communication
+						with bod was successful. Writed=1 means the test request sent to <em>writed</em> was successful.
+						<p>
+						There are many lines for the <em>bod</em> component because several bod processes are running and they are all tested. The blackhole is
+						load balancing bod requests. But in this case, the blackhole system has one test rule per bod process. Theses rules are only usable by the
+						monitor system. This bypasses the load balancer.
+						<- pre();>
+						success = 0
+						   SwapFree ok=1 freekb=245424
+						   loadavg ok=1 0.18 0.30 0.48 2/6028 1272784
+						   diskfree ok=1 f_blocks=120203246 f_bfree=23965689 space=91.421848
+						   /var/run/tests/A-keysd-localhost.sock: internal_error=0  
+						   /var/run/tests/A-sessiond-localhost-admin-9200.sock: internal_error=0 success=1
+						 * /var/run/tests/B-bod-localhost-admin-9000.sock: internal_error1=0 writed=1 bdfiles1=1 bdfiles2=1 bdusers=1 sessiond1=1 sessiond2=1 keysd=1 fsok=1 publish_dbfiles=1 publish_fsok=1 docd=1 adm_sess=2
+						   /var/run/tests/B-bod-localhost-admin-9001.sock: internal_error1=0 writed=1 bdfiles1=1 bdfiles2=1 bdusers=1 sessiond1=1 sessiond2=1 keysd=1 fsok=1 publish_dbfiles=1 publish_fsok=1 docd=1 adm_sess=2
+						   /var/run/tests/B-bod-localhost-admin-9002.sock: internal_error1=0 writed=1 bdfiles1=1 bdfiles2=1 bdusers=1 sessiond1=1 sessiond2=1 keysd=1 fsok=1 publish_dbfiles=1 publish_fsok=1 docd=1 adm_sess=2
+						   /var/run/tests/B-bod-localhost-admin-9003.sock: internal_error1=0 writed=1 bdfiles1=1 bdfiles2=1 bdusers=1 sessiond1=1 sessiond2=1 keysd=1 fsok=1 publish_dbfiles=1 publish_fsok=1 docd=1 adm_sess=2
+						   /var/run/tests/B-bod-localhost-admin-9004.sock: internal_error1=0 writed=1 bdfiles1=1 bdfiles2=1 bdusers=1 sessiond1=1 sessiond2=1 keysd=1 fsok=1 publish_dbfiles=1 publish_fsok=1 docd=1 adm_sess=2
+						   /var/run/tests/B-bod-localhost-admin-9005.sock: internal_error1=0 writed=1 bdfiles1=1 bdfiles2=1 bdusers=1 sessiond1=1 sessiond2=1 keysd=1 fsok=1 publish_dbfiles=1 publish_fsok=1 docd=1 adm_sess=2
+						   /var/run/tests/B-bod-localhost-admin-9006.sock: internal_error1=0 writed=1 bdfiles1=1 bdfiles2=1 bdusers=1 sessiond1=1 sessiond2=1 keysd=1 fsok=1 publish_dbfiles=1 publish_fsok=1 docd=1 adm_sess=2
+						   /var/run/tests/B-bod-localhost-admin-9007.sock: internal_error1=0 writed=1 bdfiles1=1 bdfiles2=1 bdusers=1 sessiond1=1 sessiond2=1 keysd=1 fsok=1 publish_dbfiles=1 publish_fsok=1 docd=1 adm_sess=2
+						   /var/run/tests/B-bod-localhost-admin-9008.sock: internal_error1=0 writed=1 bdfiles1=1 bdfiles2=1 bdusers=1 sessiond1=1 sessiond2=1 keysd=1 fsok=1 publish_dbfiles=1 publish_fsok=1 docd=1 adm_sess=2
+						   /var/run/tests/B-bod-localhost-admin-9009.sock: internal_error1=0 writed=1 bdfiles1=1 bdfiles2=1 bdusers=1 sessiond1=1 sessiond2=1 keysd=1 fsok=1 publish_dbfiles=1 publish_fsok=1 docd=1 adm_sess=2
+						   /var/run/tests/B-bod-localhost-admin-9010.sock: internal_error1=0 writed=1 bdfiles1=1 bdfiles2=1 bdusers=1 sessiond1=1 sessiond2=1 keysd=1 fsok=1 publish_dbfiles=1 publish_fsok=1 docd=1 adm_sess=2
+						   /var/run/tests/B-documentd-localhost-client.sock: internal_error=0 success=1
+						   /var/run/tests/B-publishd-localhost-client.sock: internal_error=0 dbfiles=1 fsok=1
+						   /var/run/tests/B-udpproxy-out.sock: test ok, nbreq=247021
+						   /var/run/tests/B-udpproxy.sock: test ok, nbreq=247021
+						   /var/run/tests/C-exim-localhost.sock: error=0 220 bolixo.org ESMTP Exim 4.98 Thu, 21 Aug 2025 20:08:40 -0400
+						   /var/run/tests/D-web-fail-stop-localhost.sock: run=1
+						   /var/run/tests/D-web-stop-localhost.sock: run=1
+						-> /var/run/tests/E-syslog-localhost.sock: errors=1 last=2025/08/20-19:53:55
+						   /var/run/tests/F-web-80-localhost.sock: ok seen
+						   /var/run/tests/F-web-fail-80-localhost.sock: ok seen
+						   /var/run/tests/F-websocket-fail-localhost.sock: test ok, workers=0, paused=0
+						   /var/run/tests/F-websocket-localhost.sock: test ok, workers=0, paused=0
+						</->
 					</->
 					<- section("restart",section_bolixo_production_restart); >
 						This is the way you restart Bolixo components. Some sub-commands are used to restart
@@ -355,15 +427,16 @@ void bolixo_techdoc (DOCUMENT_POINTER &docpointer, DOC_ID &jump, const char *use
 						<p>
 						The solution to restart most components in Bolixo lies in the web component. It is a gate system called trli-stop.
 						Whenever a request is received in the web component (by index, public, or webapi), a permission request
-						is sent to trli-stop. trli-stop simply replies yes. The connection to trli-stop remains open until the request
-						is complete. When we need to restart some bolixo component, we tell trli-stop to stop. Immediatly, trli-stop
+						is sent to trli-stop. trli-stop simply replies yes. Once the component receives its <em>yes</em> confirmation,
+						it continue processing the web request. The connection to trli-stop remains open until the request
+						is complete. When we need to restart some bolixo components, we tell trli-stop to stop. Immediatly, trli-stop
 						stops replying to permission requests. So all new activities in the web components will pile at the gate. trli-stop
-						knows about all the other requests it has granted, but still in process (in flight). trli-stop waits until
-						all in flight process are completed (the connections to trli-stop are dropped). At this point, trli-stop knows
+						knows about all the other requests it has granted permission (yes) to complete, but still in process (in flight).
+						trli-stop waits until all in flight processes are completed (the connections to trli-stop are dropped). At this point, trli-stop knows
 						that all internal Bolixo components are idle. They may be restarted without problems.
 						<p>
 						The bo-websocket service inside the web component has its own way to handle the gating. Bolixo-production
-						uses both trli-stop and bo-websocket to ensure the internal components are idle. So to restart a component, you
+						uses both trli-stop and bo-websocket to ensure the internal components are idle. So to restart the writed component, you
 						just type:
 						<- pre()>
 						bo restart writed
@@ -388,7 +461,7 @@ void bolixo_techdoc (DOCUMENT_POINTER &docpointer, DOC_ID &jump, const char *use
 						<dt>keysd
 							<dd>Keysd manage the user private keys. You can restart this component like any other, except for
 							one important thing. Keysd requires a passphrase to decrypt the 2048 bits keys read from the database.
-							When you restart, you must provide the passphrase. There are two ways to provide the passphrase:
+							When you restarti keysd, you must provide the passphrase. There are two ways to provide the passphrase:
 							<ul>
 							<li>You can write it down in the file /root/keysd.pass. The file
 							/root/keysd.pass will be securely deleted (using the shred command) during the restart process.
@@ -397,8 +470,7 @@ void bolixo_techdoc (DOCUMENT_POINTER &docpointer, DOC_ID &jump, const char *use
 							<p>
 						<dt>webs
 							<dd>
-							By default, all traffic goes to the web and webssl components. When we wish to restart
-							web and webssl, the following steps are executed.
+							When we restart web and webssl, the following steps are executed.
 							<p>
 							<ul>
 							<li>Normally, web and webssl are receiving all requests. web-fail and webssl-fail are idle.
@@ -406,7 +478,7 @@ void bolixo_techdoc (DOCUMENT_POINTER &docpointer, DOC_ID &jump, const char *use
 							<li>Priority is switched from web,webssl to web-fail,webssl-fail.
 							<li>We wait until all connections have ended on web,webssl.
 							<li>We restart web and webssl.
-							<li>We switch back priority to web and webssl.
+							<li>We switch back priority back to web and webssl.
 							</ul>
 							<p>
 							The
@@ -417,8 +489,83 @@ void bolixo_techdoc (DOCUMENT_POINTER &docpointer, DOC_ID &jump, const char *use
 							</dd>
 						</dl>
 					</->
+					<- section ("update-script"); >
+						When installing a new version of the Bolixo package, there is no immediate effects on the running components: they are
+						running in LXC0 containers, so are isolated from the rest of the system. But before running the command:
+						<- pre();>
+						bo restart most
+						</->
+						to activate the new version, some tasks may have to be done. For example, some change must be done to the database model
+						to support new feature. How do you know what must be done before running the new version ? This is what update-script
+						is about. The Bolixo package deliver the file <pre>/usr/share/bolixo/update-script</pre>. This file contains all the updates
+						needed for all Bolixo version. The file looks like this:
+						<- pre();>
+						----recipients-move-dirs_content recipients field moved from table files to dirs_content
+						bo calltest createdb-patch9
+						----onlylocal new option for bod
+						bo config
+						</->
+						Lines starting with ---- are keys. Only the first word after ---- is the key. The rest of the line
+						is a comment. Other lines are commands needed to update the system. The database
+						/- tlmpdoc_link(section_bosqlduser,"bosqlduser");
+						contains a table named <em>updates</em>. The table contains the keys of all updates already applied.
+						The update-script command will find the missing updates, apply them and update the database.
+						<p>
+						In the sample above, we see that for the update named recipients-move-dirs_content, the command
+						<- pre();>
+						bo calltest createdb-patch9
+						</->
+						muse be executed. For te update onlylocal, the command
+						<- pre();>
+						bo config
+						</->
+						must be executed. See the section
+						/- tlmpdoc_link(section_bo_config,"config");
+						for more details about this command.
+						<p>
+						There are two options for the command update-script. The first simply test and report what must
+						be done. The second executes it and update the database.
+						<- pre();>
+						bo update-script --test
+						bo update-script --doit
+						</->
+						A typical update sequence for Bolixo goes like this:
+						<- pre();>
+						Update the bolixo package
+						bo update-script --doit
+						Copy the passphrase for keysd in /root/keysd.pass
+						bo restart most
+						</->
+					</->
 				</->
 				<- section ("Syslog");>
+					Bolixo has its own logging system. You can access it using some bo commands. Here they are.
+					<p>
+					<dl>
+					<dt>syslog-clear
+						<dd>Clear all messages in syslog.</dd>
+					<p>
+					<dt>syslog-logerrs
+						<dd>Shows only error lines.</dd>
+					<p>
+					<dt>syslog-logs
+						<dd>Shows all lines: errors and warnings</dd>
+					<p>
+					<dt>syslog-reset
+						<dd>Reset errors in syslog. The error messages are kept, but the status
+						screen report zero errors. This is used by the monitoring system. You generally
+						use this when you have reviewed the errors.
+						</dd>
+					<p>
+					<dt>syslog-status
+						<dd>Status of the syslog daemon.</dd>
+					<p>
+					<dt>syslog-tail
+						<dd>Shows the last lines.</dd>
+					<p>
+					</dl>
+				</->
+				<- section ("config",section_bo_config);>
 				</->
 			</->
 		</->

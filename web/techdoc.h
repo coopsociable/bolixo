@@ -10,6 +10,9 @@ EXTERN DOC_ID section_bosqlduser;
 EXTERN DOC_ID section_bosqlddata;
 EXTERN DOC_ID section_bolixo_production;
 EXTERN DOC_ID section_bolixo_production_restart;
+EXTERN DOC_ID section_bo_mon;
+EXTERN DOC_ID section_instrumentation;
+EXTERN DOC_ID section_bo_config;
 
 void jump2app (int step, PARAM_STRING webtab_add);
 void jump2app (int step, int tab);
