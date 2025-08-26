@@ -7,14 +7,14 @@ all: webtabs.os util.os document.os document_fr.os index.os bolixoapi.os webapi.
 FLAGS=-Wall -Wno-unused-function
 
 index.hc: index.os /usr/lib64/trlitool/trlitool.pic.a util.os webtabs.os document.os document_fr.os \
-	techdoc.os config.os mail.os projects.os ../proto/webapi.protoh ../proto/bolixoapi.protoh \
+	techdoc.os webapi.proto.os config.os mail.os projects.os ../proto/webapi.protoh ../proto/bolixoapi.protoh \
 	/usr/include/tlmp/tlmpweb.h /usr/include/tlmp/tlmpweb.p
 	@echo $@
 	@g++ $(OPTIONS) -g -shared -Wl,-soname,test.so.1 -o \
-		$@ $< ../_dict.os util.os webtabs.os techdoc.os document.os document_fr.os \
+		$@ $< ../_dict.os util.os webtabs.os techdoc.os webapi.proto.os document.os document_fr.os \
 		config.os mail.os projects.os /usr/lib/tlmp/lib/tlmpdoc.so /usr/lib64/trlitool/trlitool.pic.a /usr/lib/tlmp/lib/tlmpwebsql.so -lcrypto
 
-%.hc: %.os /usr/lib64/trlitool/trlitool.pic.a util.os webtabs.os techdoc.os document.os document_fr.os \
+%.hc: %.os /usr/lib64/trlitool/trlitool.pic.a util.os webtabs.os techdoc.os document.os document_fr.os webapi.proto.os \
 	../proto/webapi.protoh ../proto/bolixoapi.protoh \
 	/usr/include/tlmp/tlmpweb.h /usr/include/tlmp/tlmpweb.p
 	@echo $@
@@ -23,6 +23,12 @@ index.hc: index.os /usr/lib64/trlitool/trlitool.pic.a util.os webtabs.os documen
 		/usr/lib/tlmp/lib/tlmpdoc.so /usr/lib/tlmp/lib/tlmpwebsql.so -lcrypto
 
 document.os: document.hcc ../documentd_menu.h
+
+webapi.proto.hcc: ../proto/webapi.proto ../proto/webapi.proto.doc ../proto/bod_client.proto
+	unset LANG; build-protocol --name webapi \
+		--include techdoc.h --printdoc ../proto/webapi.proto --refdocs ../proto/bod_client.proto --tlmpdoc >webapi.proto.hcc
+	
+
 
 %.os: %.hcc /usr/include/tlmp/tlmpweb.h /usr/include/tlmp/tlmpweb.p \
 	 /usr/include/tlmp/tlmpdoc.h /usr/include/tlmp/tlmpdoc.p
@@ -48,7 +54,7 @@ install: all
 
 
 clean:
-	rm -f *.hc *.o *.os genbackground
+	rm -f *.hc *.o *.os genbackground webapi.proto.hcc
 
 util.os: util.hcc util.h /usr/include/tlmp/tlmpweb.h /usr/include/tlmp/tlmpweb.p
 	@echo tlmpwebcc $< $@

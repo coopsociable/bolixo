@@ -13,6 +13,11 @@ EXTERN DOC_ID section_bolixo_production_restart;
 EXTERN DOC_ID section_bo_mon;
 EXTERN DOC_ID section_instrumentation;
 EXTERN DOC_ID section_bo_config;
+EXTERN DOC_ID section_enum_FILE_TYPE;
+EXTERN DOC_ID section_enum_ENTRY_TYPE;
+EXTERN DOC_ID section_enum_VIEWED_STATUS;
+EXTERN DOC_ID section_enum_CONTACT_STATUS;
+EXTERN DOC_ID section_enum_ERR_CODE;
 
 void jump2app (int step, PARAM_STRING webtab_add);
 void jump2app (int step, int tab);
