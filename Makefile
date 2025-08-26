@@ -379,7 +379,8 @@ number5: number5.tlcc json.h json.o
 	cctlcc -Wall $(OPTIONS) number5.tlcc json.o -o number5 -lstdc++
 
 clean:
-	rm -f $(PROGS) *.o *.os proto/*.protoh proto/*.protoch proto/*.protodef web/*.hc web/*.os web/genbackground
+	rm -f $(PROGS) *.o *.os proto/*.protoh proto/*.protoch proto/*.protodef web/*.hc web/*.os web/genbackground \
+		web/webapi.proto.hcc
 
 
 install: msg.eng msg.fr
