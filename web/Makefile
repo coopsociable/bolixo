@@ -19,7 +19,7 @@ index.hc: index.os /usr/lib64/trlitool/trlitool.pic.a util.os webtabs.os documen
 	/usr/include/tlmp/tlmpweb.h /usr/include/tlmp/tlmpweb.p
 	@echo $@
 	@g++ $(OPTIONS) -g -shared -Wl,-soname,test.so.1 -o \
-		$@ $< ../_dict.os /usr/lib64/trlitool/trlitool.pic.a util.os techdoc.os document.os document_fr.os \
+		$@ $< ../_dict.os /usr/lib64/trlitool/trlitool.pic.a util.os techdoc.os webapi.proto.os document.os document_fr.os \
 		/usr/lib/tlmp/lib/tlmpdoc.so /usr/lib/tlmp/lib/tlmpwebsql.so -lcrypto
 
 document.os: document.hcc ../documentd_menu.h
