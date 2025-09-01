@@ -137,8 +137,9 @@ utils/bolixo-arch: utils/bolixo-arch.tlcc
 	cctlcc $(OPTIONS) utils/bolixo-arch.tlcc -o utils/bolixo-arch -lstdc++
 
 # Generate the graph showing relation between various containers in Bolixo.
+# Set DOCNAME="--document other_bolixo_document"
 gen-bolixo-arch: utils/bolixo-arch
-	utils/bolixo-arch --genscript >/tmp/script.sh && sh /tmp/script.sh
+	utils/bolixo-arch --genscript ${DOCNAME} >/tmp/script.sh && sh /tmp/script.sh
 
 utils/business-card: utils/business-card.tlcc
 	cctlcc -Wall utils/business-card.tlcc -o utils/business-card -lstdc++
