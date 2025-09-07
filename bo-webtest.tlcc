@@ -105,15 +105,16 @@ static void sendheader (CONNECT_HTTP_INFO &con, bool reuseconnection, const stri
 	}else if (strncmp(hostname,"https://",8)==0){
 		hostname += 8;
 	}
-	if (reuseconnection){
-		buf = string_f ("GET %s HTTP/1.1\r\nhost: %s\r\nUser-Agent: bo-webtest\r\n",file,hostname);
-	}else{
-		buf = string_f ("GET %s HTTP/1.0\r\nhost: %s\r\nUser-Agent: bo-webtest\r\n",file,hostname);
-	}
+	buf = string_f ("GET %s HTTP/%s\r\n"
+		"host: %s\r\n"
+		"User-Agent: bo-webtest\r\n"
+		,file,(reuseconnection ? "1.1" : "1.0"),hostname);
 	if (session.size() > 0){
 		buf += string_f ("cookie: session=%s;\r\n",session.c_str());
 	}
-	buf += string_f ("Content-Type: text/html; charset=UTF-8\r\n\r\n");
+	buf += "Content-Type: text/html; charset=UTF-8\r\n"
+		"Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\n"
+		"\r\n";
 	con.send (buf.c_str());
 	debug_printf (D_HEADER,"%s-----\n",buf.c_str());
 }
