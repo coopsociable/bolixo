@@ -186,3 +186,5 @@ void util_setnonstrict(bool mode);
 bool util_getnonstrict();
 void util_set_experimental();
 bool util_experimental();
+void util_init_tbcon(std::vector<CONNECT_INFO> &tbcon, int max_handles, PARAM_STRING port);
+int util_copy_con_info(std::vector<CONNECT_INFO> &tbcon, int handle, CONNECT_INFO &con, PARAM_STRING port);

@@ -32,21 +32,39 @@ extern "C" void tlmp_initmod()
 {
 	translat_load ("bolixo");
 }
+static vector<CONNECT_INFO> tbcon;
+static vector<CONNECT_INFO> tbcon_pub;
+static vector<CONNECT_INFO> tbcon_sess;
+extern "C" void webmain_init()
+{
+	const int max_conhandles=50;
+	util_init_tbcon (tbcon,max_conhandles,"/dev/bod.sock");
+	util_init_tbcon (tbcon_pub,max_conhandles,"/dev/bod-pubkey.sock");
+	util_init_tbcon (tbcon_sess,max_conhandles,"/dev/sessiond.sock");
+	#if 0
+	int fd1=0;
+	for (auto t:{&tbcon,&tbcon_pub,&tbcon_sess}){
+		for (auto &con:*t){
+			if (con.fd == -1) fd1++;
+		}
+	}
+	if (fd1 > 0) tlmp_warning ("fd1=%d\n",fd1);
+	#endif
+}
 
 <mod>
-static void webmain_real()
+static void webmain_real(int handle)
 {
 	glocal CONNECT_INFO con;
 	glocal CONNECT_INFO con_pubkey;
 	glocal CONNECT_INFO con_sess;
-	glocal.con.port = "/dev/bod.sock";
-	glocal.con_pubkey.port = "/dev/bod-pubkey.sock";
-	glocal.con_sess.port = "/dev/sessiond.sock";
+
+	util_copy_con_info (tbcon,handle,glocal.con,"/dev/bod.sock");
+	util_copy_con_info (tbcon_pub,handle,glocal.con_pubkey,"/dev/bod-pubkey.sock");
+	util_copy_con_info (tbcon_sess,handle,glocal.con_sess,"/dev/sessiond.sock");
+
 	bool endserver,endclient;
 	REQUEST_JSON_INFO req;
-	glocal.con.secret = util_readsecret();
-	glocal.con_pubkey.secret = glocal.con.secret;
-	glocal.con_sess.secret = glocal.con.secret;
 	const char *json = tlmpweb_getpost();
 	tlmpweb_flushheader();
 	<call webapi>(NULL, req, json, strlen(json), endserver, endclient);
@@ -721,20 +739,28 @@ static void webmain_real()
 }
 </mod>
 <mod>
-extern "C" void webmain()
+extern "C" void webmain(int handle)
 {
+	glocal handle;
+	#ifdef INSTRUMENT
+		toggle_instrument_file (false);
+		toggle_instrument_file (true);
+	#endif
 	<call tcpconnect>("unix:","/tmp/stop.sock",1);
 	<f init>
 	</f>
 	<f oneline>
-		webmain_real();
+		webmain_real(glocal.handle);
 		end=true;
 	</f>
 	<f fail>
-		webmain_real();
+		webmain_real(glocal.handle);
 	</f>
 	<f end>
 	</f>
 	</call>
+	#ifdef INSTRUMENT
+		toggle_instrument_file (false);
+	#endif
 }
 </mod>

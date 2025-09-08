@@ -1364,8 +1364,17 @@ string javascript_escape(PARAM_STRING msg)
 		});
 }
 
+static vector<CONNECT_INFO> tbcon;
+static vector<CONNECT_INFO> tbcon_sess;
+extern "C" void webmain_init()
+{
+	const int max_conhandles=50;
+	util_init_tbcon(tbcon,max_conhandles,"/dev/bod.sock");
+	util_init_tbcon(tbcon_sess,max_conhandles,"/dev/sessiond.sock");
+}
+
 <mod>
-extern "C" void webmain_real()
+extern "C" void webmain_real(int handle)
 {
 	glocal bool displayjs=false;	// Display notification JS scripts in console
 	glocal bool use_gamesequence = true;	// Used for testing while we are moving from game notification by sessiond
@@ -1374,11 +1383,13 @@ extern "C" void webmain_real()
 	glocal bool account_confirmed = false;
 	glocal CONNECT_INFO con;
 	glocal CONNECT_INFO con_sess;
-	glocal.con.port = "/dev/bod.sock";
-	glocal.con_sess.port = "/dev/sessiond.sock";
 	glocal vector<DOCUMENT_POINTER> docpointers;
-	glocal.con.secret = util_readsecret();
-	glocal.con_sess.secret = glocal.con.secret;
+	glocal const char *agent = getenv ("HTTP_USER_AGENT");
+	glocal bool webtest = glocal.agent != nullptr && is_eq(glocal.agent,"bo-webtest");
+
+	util_copy_con_info(tbcon,handle,glocal.con,"/dev/bod.sock");
+	util_copy_con_info(tbcon_sess,handle,glocal.con_sess,"/dev/sessiond.sock");
+
 	for (unsigned i=0; i<SECTION_NBSECTIONS; i++) glocal.docpointers.push_back(DOCUMENT_POINTER());
 	if (tlmpweb_isrobot()) w_robot = 1;
 	<call loadfile>("/etc/bolixonode.conf",true);
@@ -1435,9 +1446,8 @@ extern "C" void webmain_real()
 		</call>
 	}
 	{
-		glocal const char *agent = getenv ("HTTP_USER_AGENT");
 		glocal bool mobile = is_mobile;
-		if (glocal.agent == NULL || strcmp(glocal.agent,"bo-webtest")!=0){
+		if (!glocal.webtest){
 			<call savefile>("/tmp/agent.log",true);
 			<f dowrite>
 				string ip = tlmpweb_getip();
@@ -1750,7 +1760,7 @@ extern "C" void webmain_real()
 	websteps_setdefaultstep(currents["websteps"]);
 	<call websteps>();
 	<f setstep>
-		if (tlmpweb_isrobot() || w_robot==1){
+		if (w_robot==1 && !glocal.webtest){
 			step = step_doc;
 		}else if (w_session.empty() && step > 2){
 			step = 1;
@@ -2846,14 +2856,17 @@ extern "C" void tlmp_initmod()
 }
 
 <mod>
-extern "C" void webmain()
+extern "C" void webmain(int handle)
 {
+	glocal handle;
 	if (w_test == 1){
 		htmlout ("<html>\n<body>\nok\n</body>\n</html>\n");
 		return;
 	}
 	long long start = fdpass_getnow();
 	#ifdef INSTRUMENT
+		toggle_instrument_file (false);
+		toggle_instrument_file (true);
 		fprintf (f_instrument,"%Ld --------\n",start);
 	#endif
 	{ // The tlcc TLMP converter has a problem with a <call just after a #endif.
@@ -2861,11 +2874,11 @@ extern "C" void webmain()
 	<f init>
 	</f>
 	<f oneline>
-		webmain_real();
+		webmain_real(glocal.handle);
 		end=true;
 	</f>
 	<f fail>
-		webmain_real();
+		webmain_real(glocal.handle);
 	</f>
 	<f end>
 	</f>
@@ -2887,6 +2900,9 @@ extern "C" void webmain()
 		return 0;
 	</f>
 	</call>
+	#ifdef INSTRUMENT
+		toggle_instrument_file (false);
+	#endif
 }
 </mod>
 

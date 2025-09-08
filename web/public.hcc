@@ -81,17 +81,26 @@ static int trli_getsessioninfo(CONNECT_INFO &con_sess)
 	return glocal.ret;
 }
 </mod>
+static vector<CONNECT_INFO> tbcon;
+static vector<CONNECT_INFO> tbcon_sess;
+extern "C" void webmain_init()
+{
+	const int max_conhandles=50;
+	util_init_tbcon(tbcon,max_conhandles,"/dev/bod.sock");
+	util_init_tbcon(tbcon_sess,max_conhandles,"/dev/sessiond.sock");
+}
+
 <mod>
-static void webmain_real()
+static void webmain_real(int handle)
 {
 	glocal string document;
 	glocal string user;
 	glocal CONNECT_INFO con;
 	glocal CONNECT_INFO con_sess;
-	glocal.con.port = "/dev/bod.sock";
-	glocal.con.secret = util_readsecret();
-	glocal.con_sess.port = "/dev/sessiond.sock";
-	glocal.con_sess.secret = glocal.con.secret;
+
+	util_copy_con_info(tbcon,handle,glocal.con,"/dev/bod.sock");
+	util_copy_con_info(tbcon_sess,handle,glocal.con_sess,"/dev/sessiond.sock");
+
 	<call loadfile>("/etc/bolixonode.conf",true);
 	<f oneline>
 		if (strncmp(line,"node=",5)==0){
@@ -299,18 +308,23 @@ static void webmain_real()
 }
 </mod>
 <mod>
-extern "C" void webmain()
+extern "C" void webmain(int handle)
 {
+	glocal handle;
+	#ifdef INSTRUMENT
+		toggle_instrument_file (false);
+		toggle_instrument_file (true);
+	#endif
 	long long start = fdpass_getnow();
 	<call tcpconnect>("unix:","/tmp/stop.sock",1);
 	<f init>
 	</f>
 	<f oneline>
-		webmain_real();
+		webmain_real(glocal.handle);
 		end=true;
 	</f>
 	<f fail>
-		webmain_real();
+		webmain_real(glocal.handle);
 	</f>
 	<f end>
 	</f>
@@ -325,6 +339,9 @@ extern "C" void webmain()
 		return 0;
 	</f>
 	</call>
+	#ifdef INSTRUMENT
+		toggle_instrument_file (false);
+	#endif
 }
 </mod>
 

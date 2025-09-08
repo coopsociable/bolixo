@@ -27,6 +27,7 @@
 #include <tlmp/translat.h>
 #include <tlmplib.h>
 #include <tlmpnet.h>
+#include "util.h"
 
 string util_readsecret();
 
@@ -35,12 +36,18 @@ extern "C" void tlmp_initmod()
 	translat_load ("bolixo");
 }
 
+static vector<CONNECT_INFO> tbcon;
+extern "C" void webmain_init()
+{
+	const int max_conhandles=50;
+	util_init_tbcon(tbcon,max_conhandles,"/dev/bolixod.sock");
+}
 <mod>
-static void webmain_real()
+static void webmain_real(int handle)
 {
 	glocal CONNECT_INFO con;
-	glocal.con.port = "/dev/bolixod.sock";
-	glocal.con.secret = util_readsecret();
+	util_copy_con_info(tbcon,handle,glocal.con,"/dev/bolixod.sock");
+
 	bool endserver,endclient;
 	REQUEST_JSON_INFO req;
 	const char *json = tlmpweb_getpost();
@@ -140,20 +147,28 @@ static void webmain_real()
 }
 </mod>
 <mod>
-extern "C" void webmain()
+extern "C" void webmain(int handle)
 {
+	glocal handle;
+	#ifdef INSTRUMENT
+		toggle_instrument_file (false);
+		toggle_instrument_file (true);
+	#endif
 	<call tcpconnect>("unix:","/tmp/stop.sock",1);
 	<f init>
 	</f>
 	<f oneline>
-		webmain_real();
+		webmain_real(glocal.handle);
 		end=true;
 	</f>
 	<f fail>
-		webmain_real();
+		webmain_real(glocal.handle);
 	</f>
 	<f end>
 	</f>
 	</call>
+	#ifdef INSTRUMENT
+		toggle_instrument_file (false);
+	#endif
 }
 </mod>

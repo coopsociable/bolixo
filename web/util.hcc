@@ -2291,3 +2291,49 @@ void util_markview (CONNECT_INFO &con, PARAM_STRING fname)
 	</call>
 }
 </mod>
+
+/*
+	Initialise a bunch of CONNECT_INFO and perform the connection.
+	This is used for connection caching in the various hc pages.
+	This is used when the page is running using FastCGI
+*/
+void util_init_tbcon(std::vector<CONNECT_INFO> &tbcon, int max_handles, PARAM_STRING port)
+{
+	tbcon.reserve(max_handles);
+	for (int i=0; i<max_handles; i++) tbcon.emplace_back();
+	string secret = util_readsecret();
+	for (auto &con: tbcon){
+		con.port = port.ptr;
+		con.secret = secret;
+		con.reconnect();
+	}
+}
+/*
+	Initliase a CONNECT_INFO using tbcon.
+	Handle is either -1 (when running as CGI) or a logical handle passed by tlmpweb in FastCGI mode.
+	In all cases, con will be initialised. It will have a connected handle or not.
+*/
+int util_copy_con_info(std::vector<CONNECT_INFO> &tbcon, int handle, CONNECT_INFO &con, PARAM_STRING port)
+{
+	int ret = -1;
+	if (tbcon.size() == 0){
+		// The applicatin is in CGI mode, so tbcon was never initialised
+		con.port = port.ptr;
+		con.secret = util_readsecret();
+	}else{
+		if (handle >= 0 && (size_t)handle < tbcon.size()){
+			auto &c = tbcon[handle];
+			con = move(c);
+			//con.fd = c.fd;
+			ret = 0;
+		}else{
+			auto &c = tbcon[0];
+			con.secret = c.secret;
+			con.port = c.port;
+		}
+		// We close the unused file handle (they are kept alive in the parent)
+		// So they can't be used erroneously
+		for (auto &c:tbcon) c.close();
+	}
+	return ret;
+}

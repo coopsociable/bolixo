@@ -1987,12 +1987,24 @@ static void print_configs (
 					const char *ip = ip_web;
 					for (auto w:tb){
 						glocal w;
+						glocal bool usecgi = file_exist(string_f("/var/lib/lxc/%s/usecgi",w).c_str());
+						if (glocal.usecgi) tlmp_warning ("Attention: using mode CGI for service %s\n",w);
 						mkdir (string_f("/var/lib/lxc/%s",w).c_str(),0755);
 						<call savefile>(string_f("/var/lib/lxc/%s/%s.init",w,w),false);
 						<f dowrite>
 							fprintf (fout,"/usr/sbin/httpd --daemon\n");
 							fprintf (fout,"%s/trli-stop --daemon --user %s --control /tmp/trli-stop.sock --pidfile /tmp/trli-stop.pid\n",sbin_path,"apache");
 							fprintf (fout,"%s/bo-websocket --daemon --user %s --user-control %s\n",project_path,"apache",trli_user);
+							if (!glocal.usecgi){
+								fprintf (fout,"/var/www/cgi-bin/tlmpweb --daemon --fastcgi /dev/index.sock"
+									" --control /var/run/control-index.sock"
+									" --pidfile /var/run/index.pid"
+									" -h /var/www/html/index.hc\n");
+								fprintf (fout,"/var/www/cgi-bin/tlmpweb --daemon --fastcgi /dev/webapi.sock"
+									" --control /var/run/control-webapi.sock"
+									" --pidfile /var/run/webapi.pid"
+									" -h /var/www/html/webapi.hc\n");
+							}
 							return 0;
 						</f>
 						</call>
@@ -2030,6 +2042,21 @@ static void print_configs (
 									,ip_preprod3,name);
 								fprintf (fout,"echo %s bolixo.org >>/var/lib/lxc/%s/rootfs/etc/hosts\n"
 									,ip_preprod,name);
+							}
+							if (!glocal.usecgi){
+								fprintf (fout,"cat <<-EOF >>/var/lib/lxc/%s/rootfs/etc/httpd/conf.d/tlmpweb.conf\n",glocal.w);
+								fputs (	"<filesMatch \"^index\\.hc$\">\n"
+									"SetHandler  \"proxy:unix:/dev/index.sock|fcgi://localhost/index.hc\"\n"
+									"</filesMatch>\n"
+									"<Proxy \"fcgi://localhost/index.hc\" max=20>\n"
+									"</Proxy>\n"
+									"<filesMatch \"^webapi\\.hc$\">\n"
+									"SetHandler  \"proxy:unix:/dev/webapi.sock|fcgi://localhost/wehapi.hc\"\n"
+									"</filesMatch>\n"
+									"<Proxy \"fcgi://localhost/webapi.hc\" max=20>\n"
+									"</Proxy>\n"
+									"EOF\n"
+									,fout);
 							}
 							fprintf (fout,"echo AddOutputFilterByType DEFLATE text/html >/var/lib/lxc/%s/rootfs/etc/httpd/conf.d/deflate.conf\n",name);
 							fprintf (fout,"cat <<-EOF >/var/lib/lxc/%s/rootfs/etc/httpd/conf.d/cgitimeout.conf\n",name);
