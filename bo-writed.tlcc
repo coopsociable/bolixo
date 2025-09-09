@@ -138,7 +138,7 @@ static bool bo_writed_lex_check(const char *groupname, string &msg, const char s
 		if (*pt <= ' '){
 			ret = false;
 			break;
-		}else if (is_any_of(*pt,special,'@','#',',',';','"','\'','*','?','%','`')){
+		}else if (is_any_of(*pt,special,'@','#',',',';','"','\'','*','?','&','%','`','<','>')){
 			ret = false;
 			break;
 		}
@@ -625,7 +625,7 @@ static int bo_writed_check_recipients(
 			</call>
 		}
 		if (userids.size() != recipients.size()){
-			msg = MSG_U(E_BADDEST,"Some recipient(s) invalid:");
+			msg = MSG_U(E_BADDEST,"Some recipient(s) not in your contacts:");
 			for (auto r:recipients){
 				bool found = false;
 				for (auto &i:userids){
@@ -634,7 +634,11 @@ static int bo_writed_check_recipients(
 						break;
 					}
 				}
-				if (!found) msg += string(" ") + r;
+				// We add the invalid recipients in the error message
+				// only if they using valid characters. This message will probably
+				// be printer as is in the UI.
+				string tmp;
+				if (!found && bo_writed_group_check(r,tmp)) msg += string(" ") + r;
 			}
 		}else{
 			ret = 0;
