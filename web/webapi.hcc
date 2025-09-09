@@ -20,6 +20,7 @@
 #include <tlmpweb.h>
 #include "trlitool.h"
 #include "../bolixo.h"
+#define INSTRUMENT_DONOTOPEN
 #include "../instrument.h"
 #include "../proto/bod_client.protoch"
 #include "../proto/webapi.protoh"
@@ -41,15 +42,19 @@ extern "C" void webmain_init()
 	util_init_tbcon (tbcon,max_conhandles,"/dev/bod.sock");
 	util_init_tbcon (tbcon_pub,max_conhandles,"/dev/bod-pubkey.sock");
 	util_init_tbcon (tbcon_sess,max_conhandles,"/dev/sessiond.sock");
-	#if 0
-	int fd1=0;
-	for (auto t:{&tbcon,&tbcon_pub,&tbcon_sess}){
-		for (auto &con:*t){
-			if (con.fd == -1) fd1++;
-		}
+}
+static bool instrument = false;
+extern "C" void webmain_getprops(vector<WEB_PROPERTY> &tb)
+{
+	tb.emplace_back("instrument",instrument);
+}
+extern "C" int webmain_setprop(const WEB_PROPERTY &prop)
+{
+	int ret = -1;
+	if (prop.name == "instrument"){
+		ret = prop.apply(instrument);
 	}
-	if (fd1 > 0) tlmp_warning ("fd1=%d\n",fd1);
-	#endif
+	return ret;
 }
 
 <mod>
@@ -743,8 +748,9 @@ extern "C" void webmain(int handle)
 {
 	glocal handle;
 	#ifdef INSTRUMENT
-		toggle_instrument_file (false);
-		toggle_instrument_file (true);
+		if (instrument){
+			toggle_instrument_file (true);
+		}
 	#endif
 	<call tcpconnect>("unix:","/tmp/stop.sock",1);
 	<f init>

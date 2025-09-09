@@ -37,6 +37,7 @@
 #include "../bolixo.m"
 #include <tlmp/translat.h>
 #include "document.h"
+#define INSTRUMENT_DONOTOPEN
 #include "../instrument.h"
 #include "webtabs.h"
 #include "w_var.h"
@@ -1373,10 +1374,36 @@ extern "C" void webmain_init()
 	util_init_tbcon(tbcon_sess,max_conhandles,"/dev/sessiond.sock");
 }
 
+static bool instrument = false;
+static bool duration = false;
+static bool displayjs = false;	// Display notification JS scripts in console
+static bool force_mobile = false;	// Pretend that we are serving a cell phone
+
+extern "C" void webmain_getprops(vector<WEB_PROPERTY> &tb)
+{
+	tb.emplace_back("displayjs",displayjs);
+	tb.emplace_back("duration",duration);
+	tb.emplace_back("instrument",instrument);
+	tb.emplace_back("force_mobile",force_mobile);
+}
+extern "C" int webmain_setprop(const WEB_PROPERTY &prop)
+{
+	int ret = -1;
+	if (prop.name == "instrument"){
+		ret = prop.apply(instrument);
+	}else if (prop.name == "displayjs"){
+		ret = prop.apply(displayjs);
+	}else if (prop.name == "duration"){
+		ret = prop.apply(duration);
+	}else if (prop.name == "force_mobile"){
+		ret = prop.apply(force_mobile);
+	}
+	return ret;
+}
+
 <mod>
 extern "C" void webmain_real(int handle)
 {
-	glocal bool displayjs=false;	// Display notification JS scripts in console
 	glocal bool use_gamesequence = true;	// Used for testing while we are moving from game notification by sessiond
 						// to bo-websocket doing a waitevent with bod -> documentd
 	glocal unsigned waitevent_delay=0;
@@ -1390,6 +1417,7 @@ extern "C" void webmain_real(int handle)
 	util_copy_con_info(tbcon,handle,glocal.con,"/dev/bod.sock");
 	util_copy_con_info(tbcon_sess,handle,glocal.con_sess,"/dev/sessiond.sock");
 
+	if (force_mobile) tlmpweb_forcemobile();
 	for (unsigned i=0; i<SECTION_NBSECTIONS; i++) glocal.docpointers.push_back(DOCUMENT_POINTER());
 	if (tlmpweb_isrobot()) w_robot = 1;
 	<call loadfile>("/etc/bolixonode.conf",true);
@@ -1405,12 +1433,10 @@ extern "C" void webmain_real(int handle)
 			glocal.waitevent_delay=atoi(pt);
 		}else if (strcmp(line,"private_site")==0){
 			private_site = true;
-		}else if (strcmp(line,"mobile")==0){
-			tlmpweb_forcemobile();
 		}else if (strcmp(line,"nonstrict")==0){
 			util_setnonstrict(true);
 		}else if (strcmp(line,"displayjs")==0){
-			glocal.displayjs=true;
+			displayjs=true;
 		}else if (strcmp(line,"docgeometry")==0){
 			projects_show_docgeometry(true);
 		}else if (strcmp(line,"nogamesequence")==0){
@@ -1833,7 +1859,7 @@ extern "C" void webmain_real(int handle)
 			/-  }
 
 			/-  notesocket.onmessage = function(event) {
-			if (glocal.displayjs){
+			if (displayjs){
 				/-   console.log (event.data);
 			}
 			/-   eval(event.data);
@@ -2863,11 +2889,12 @@ extern "C" void webmain(int handle)
 		htmlout ("<html>\n<body>\nok\n</body>\n</html>\n");
 		return;
 	}
-	long long start = fdpass_getnow();
+	long long start = duration ? fdpass_getnow() : 0;
 	#ifdef INSTRUMENT
-		toggle_instrument_file (false);
-		toggle_instrument_file (true);
-		fprintf (f_instrument,"%Ld --------\n",start);
+		if (instrument){
+			toggle_instrument_file (true);
+			fprintf (f_instrument,"%Ld --------\n",start);
+		}
 	#endif
 	{ // The tlcc TLMP converter has a problem with a <call just after a #endif.
 	<call tcpconnect>("unix:","/tmp/stop.sock",1);
@@ -2884,22 +2911,24 @@ extern "C" void webmain(int handle)
 	</f>
 	</call>
 	}
-	long long end = fdpass_getnow();
-	glocal long long diff = end - start;
-	<call savefile>("/tmp/duration",true);
-	<f dowrite>
-		struct rusage u;
-		if (getrusage(RUSAGE_SELF,&u)==-1){
-			fprintf (fout,"syscall getrusage failed: %s\n",strerror(errno));
-		}
-		fprintf (fout,"%Ld.%06Ld [%lu.%06lu,%lu.%06lu] %s?%s\n"
-			,glocal.diff/1000000,glocal.diff%1000000
-			,u.ru_utime.tv_sec,u.ru_utime.tv_usec
-			,u.ru_stime.tv_sec,u.ru_stime.tv_usec
-			,tlmpweb_curpage(),getenv ("QUERY_STRING"));
-		return 0;
-	</f>
-	</call>
+	if (duration){
+		long long end = fdpass_getnow();
+		glocal long long diff = end - start;
+		<call savefile>("/tmp/duration",true);
+		<f dowrite>
+			struct rusage u;
+			if (getrusage(RUSAGE_SELF,&u)==-1){
+				fprintf (fout,"syscall getrusage failed: %s\n",strerror(errno));
+			}
+			fprintf (fout,"%Ld.%06Ld [%lu.%06lu,%lu.%06lu] %s?%s\n"
+				,glocal.diff/1000000,glocal.diff%1000000
+				,u.ru_utime.tv_sec,u.ru_utime.tv_usec
+				,u.ru_stime.tv_sec,u.ru_stime.tv_usec
+				,tlmpweb_curpage(),getenv ("QUERY_STRING"));
+			return 0;
+		</f>
+		</call>
+	}
 	#ifdef INSTRUMENT
 		toggle_instrument_file (false);
 	#endif
