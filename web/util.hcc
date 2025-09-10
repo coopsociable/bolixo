@@ -2307,6 +2307,13 @@ void util_init_tbcon(std::vector<CONNECT_INFO> &tbcon, int max_handles, PARAM_ST
 		con.secret = secret;
 		con.reconnect();
 	}
+	// To allow automatic reconnect, we create an extra connection and send it to tlmpweb
+	CONNECT_INFO con;
+	con.port = port.ptr;
+	con.secret = secret;
+	con.reconnect();
+	tlmpweb_register_socket(con.fd);
+	con.fd = -1;	// Make sure CONNECT_INFO destructor do not close it.
 }
 /*
 	Initliase a CONNECT_INFO using tbcon.
