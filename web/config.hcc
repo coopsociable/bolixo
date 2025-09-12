@@ -48,13 +48,17 @@ static W_SSTRING w_upload2("upload2");
 static W_SSTRING w_s_user("s_user");
 static W_SSTRING w_s_name("s_name");
 static W_SSTRING w_s_city("s_city");
-static void index_field (_F_form *c, bool newline,unsigned colspan, const char *title, W_SSTRING &var, unsigned size)
+static void index_field (_F_form *c, bool newline,unsigned colspan, const char *title, W_SSTRING &var, unsigned size, unsigned maxlength)
 {
 	if (newline) htmlout ("<tr>");
 	htmlprintf ("<td>%s<td colspan=%u>\n",title,colspan);
 	char tmp[100];
-	snprintf (tmp,sizeof(tmp),"size=%u",size);
+	snprintf (tmp,sizeof(tmp),"size=%u maxlength=%u",size,maxlength);
 	c->field_string (var,tmp);
+}
+static void index_field (_F_form *c, bool newline,unsigned colspan, const char *title, W_SSTRING &var, unsigned size)
+{
+	index_field (c,newline,colspan,title,var,size,size);
 }
 static void index_field (_F_form *c, bool newline, const char *title, W_SSTRING &var)
 {
@@ -1328,15 +1332,15 @@ void profile(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER>
 				DIV dd; dd.border(1,"lightgray").print();
 				/- <table border=0>
 				index_field (this,true,3,MSG_U(F_FULLNAME,"Name and surname"),w_name,40);
-				index_field (this,true,3,MSG_U(F_ADDRESS1,"Address"),w_address1,40);
-				index_field (this,true,3,MSG_U(F_ADDRESS2,"Address"),w_address2,40);
-				index_field (this,true,MSG_U(F_CITY,"City"),w_city);
-				index_field (this,false,MSG_U(F_STATE,"State"),w_state);
-				index_field (this,true,MSG_U(F_COUNTRY,"Country"),w_country);
-				index_field (this,false,MSG_U(F_ZIPCODE,"ZIP code"),w_zipcode);
-				index_field (this,true,MSG_U(F_EMAIL,"Email"),w_email);
-				index_field (this,true,MSG_U(F_PHONE,"Phone"),w_phone);
-				index_field (this,false,MSG_U(F_FAX,"Fax"),w_fax);
+				index_field (this,true,3,MSG_U(F_ADDRESS1,"Address"),w_address1,40,100);
+				index_field (this,true,3,MSG_U(F_ADDRESS2,"Address"),w_address2,40,100);
+				index_field (this,true,1,MSG_U(F_CITY,"City"),w_city,25,50);
+				index_field (this,false,1,MSG_U(F_STATE,"State"),w_state,25,40);
+				index_field (this,true,1,MSG_U(F_COUNTRY,"Country"),w_country,25,40);
+				index_field (this,false,1,MSG_U(F_ZIPCODE,"ZIP code"),w_zipcode,20);
+				index_field (this,true,1,MSG_U(F_EMAIL,"Email"),w_email,25,100);
+				index_field (this,true,1,MSG_U(F_PHONE,"Phone"),w_phone,25,40);
+				index_field (this,false,1,MSG_U(F_FAX,"Fax"),w_fax,25,40);
 				/- <tr><td>
 				/-#F_PUBLISHSOME Publish
 				/- <td colspan=3>
@@ -1348,11 +1352,11 @@ void profile(CONNECT_INFO &con, CONNECT_INFO &con_sess, vector<DOCUMENT_POINTER>
 				/-&nbsp;&nbsp;
 				field_checkbox (w_miniphoto,"");
 				/-#F_YOURMINIPHOTO Your mini photo
-				index_field (this,true,MSG_U(F_WEBSITE,"Web site"),w_website);
+				index_field (this,true,1,MSG_U(F_WEBSITE,"Web site"),w_website,25,100);
 				/- <tr><td>
 				/-#F_INTERESTS Interests
 				/- <td colspan=3>
-				field_textarea (w_interest,8,70,"");
+				field_textarea (w_interest,8,70,"maxlength=1000");
 				/- </table>
 				}
 				/- <tr><td><br>
