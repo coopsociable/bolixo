@@ -57,6 +57,16 @@ static bool f(const char *s)
 {
 	return s[0] != '\0';
 }
+string bo_escape(PARAM_STRING msg)
+{
+	return copystring (msg,[](auto &c, auto pt){
+			if (*pt == '<'){
+				c.replace(1,"&lt;");
+			}else if (*pt == '>'){
+				c.replace(1,"&gt;");
+			}
+		});
+}
 static void bolixo_script()
 {
 	<?
@@ -444,7 +454,7 @@ static void webmain_real(int handle)
 						const char *nodename;
 						if (is_start_any_ofnc(u.nodename,nodename,"https://","http://")){
 							DIV d("col0"); d.margins(5,5).borderradius(5).border(1,"gray").print();
-							htmlprintf ("%s@%s<br>%s<br>\n",u.user,nodename,u.fullname);
+							htmlprintf ("%s@%s<br>%s<br>\n",u.user,nodename,bo_escape(u.fullname).c_str());
 							if (u.photo_modified[0] != '\0'){
 								string tmp = util_flipspaces(u.photo_modified);
 								htmlprintf ("<img width=100 src=%s?webstep=2&user=%s&node=%s&file=photo.jpg&mod=%s>\n"
@@ -461,14 +471,14 @@ static void webmain_real(int handle)
 						DIV d("col1"); d.margins(2,2).paddings(4,4).borderradius(5);
 						if (f(u.address1)  || f(u.address2) || f(u.city) || f(u.state) || f(u.country) || f(u.zipcode)){
 							d.bg("lightblue").border(1,"gray").print();
-							htmlprintf ("%s<br>\n",u.address1);
-							htmlprintf ("%s<br>\n",u.address2);
-							htmlprintf ("%s%s %s<br>\n",u.city
+							htmlprintf ("%s<br>\n",bo_escape(u.address1).c_str());
+							htmlprintf ("%s<br>\n",bo_escape(u.address2).c_str());
+							htmlprintf ("%s%s %s<br>\n",bo_escape(u.city).c_str()
 								,u.city[0] !='\0' && u.state[0] != '\0' ? "," : ""
-								,u.state);
-							htmlprintf ("%s%s %s<br>\n",u.country
+								,bo_escape(u.state).c_str());
+							htmlprintf ("%s%s %s<br>\n",bo_escape(u.country).c_str()
 								,u.country[0] !='\0' && u.zipcode[0] != '\0' ? "," : ""
-								,u.zipcode);
+								,bo_escape(u.zipcode).c_str());
 						}else{
 							d.print();
 						}
@@ -479,16 +489,16 @@ static void webmain_real(int handle)
 							if (is_mobile) htmlout ("<tr><td valign=top>\n");
 							d.bg("lightblue").border(1,"gray").print();
 							/- <table border=0>
-							if (f(u.email)) htmlprintf ("<tr><td>%s<td>%s\n",MSG_R(F_EMAIL),u.email);
-							if (f(u.phone)) htmlprintf ("<tr><td>%s<td>%s\n",MSG_R(F_PHONE),u.phone);
-							if (f(u.fax))   htmlprintf ("<tr><td>%s<td>%s\n",MSG_R(F_FAX),u.fax);
+							if (f(u.email)) htmlprintf ("<tr><td>%s<td>%s\n",MSG_R(F_EMAIL),bo_escape(u.email).c_str());
+							if (f(u.phone)) htmlprintf ("<tr><td>%s<td>%s\n",MSG_R(F_PHONE),bo_escape(u.phone).c_str());
+							if (f(u.fax))   htmlprintf ("<tr><td>%s<td>%s\n",MSG_R(F_FAX),bo_escape(u.fax).c_str());
 							if (f(u.bolixosite)){
 								htmlprintf ("<tr><td>%s<td>",MSG_U(F_BOLIXOSITE,"Bolixo site"));
-								util_print_span (u.bolixosite);
+								util_print_span (bo_escape(u.bolixosite).c_str());
 							}
 							if (f(u.website)){
 								htmlprintf ("<tr><td>%s<td>",MSG_R(F_WEBSITE));
-								util_print_span (u.website);
+								util_print_span (bo_escape(u.website).c_str());
 							}
 							/- </table>
 						}else{
