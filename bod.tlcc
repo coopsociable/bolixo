@@ -1174,7 +1174,7 @@ struct REMPROJECT{
 	Perform a remote set_member
 */
 <mod>
-static void bod_remote_set_member(
+static bool bod_remote_set_member(
 	CONNECT_INFO &con,
 	const char *sessionid,
 	PARAM_STRING caller,	// User who created this request
@@ -1186,8 +1186,10 @@ static void bod_remote_set_member(
 	PARAM_STRING access,
 	PARAM_STRING role,
 	const char *nodename,	// Our nodename
-	const vector<REMPROJECT> &remprojects)	// Projects to manage on the remote server
+	const vector<REMPROJECT> &remprojects,	// Projects to manage on the remote server
+	string &msg)
 {
+	glocal msg;
 	glocal bool success = true;
 	CONNECT_HTTP_INFO hcon;
 	bod_inithcon(hcon,server);
@@ -1201,6 +1203,7 @@ static void bod_remote_set_member(
 					if (!success){
 						tlmp_error ("remote_set_member create_group: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
 						glocal.success = false;
+						glocal.msg = msg;
 					}
 				</f>
 				</call>
@@ -1213,6 +1216,7 @@ static void bod_remote_set_member(
 						if (!success){
 							tlmp_error ("remote_set_member create_project: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
 							glocal.success = false;
+							glocal.msg = msg;
 						}
 					</f>
 					</call>
@@ -1223,6 +1227,7 @@ static void bod_remote_set_member(
 							if (!success){
 								tlmp_error ("remote_set_member set_group: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
 								glocal.success = false;
+								glocal.msg = msg;
 							}
 						</f>
 						</call>
@@ -1232,7 +1237,11 @@ static void bod_remote_set_member(
 		}
 		<call webapi_set_member> (hcon,session,groupname,user,access,role,"");
 		<f ok>
-			if (!success) tlmp_error ("remote_set_member: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
+			if (!success){
+				tlmp_error ("remote_set_member: internal_error=%d success=%d msg=%s\n",internal_error,success,msg);
+				glocal.success = false;
+				glocal.msg = msg;
+			}
 		</f>
 		</call>
 		if (delete_group){
@@ -1263,6 +1272,7 @@ static void bod_remote_set_member(
 		}
 		bod_remotelogout(hcon,session);
 	}
+	return glocal.success;
 }
 </mod>
 /*
@@ -3312,6 +3322,8 @@ static int bod_main (
 				REPLYMSG(rep_set_group,glocal.msg);
 			</f>
 			<f set_member>	// sessionid groupname user access owner = success:b msg
+				// We are adding "user" as a member of the "groupname" owned by the user associated with the sessionid
+				// If the request is performed by the admin, then admin can work on behalf of user "owner".
 				glocal bool success = false;
 				glocal string msg;
 				string username;
@@ -3323,6 +3335,11 @@ static int bod_main (
 					// tlmp_warning ("set_member groupname=%s username=%s user=%s access=%s role=%s",groupname,username.c_str(),user,access,role);
 					glocal map<string,set<string>> servers;	// Record per remote server accounts
 					bod_get_remote_user (glocal.servers,userid,groupname,glocal.nodename);
+for (auto &s:glocal.servers){
+	for (auto &ss:s.second){
+		tlmp_warning ("username=%s user=%s first=%s second=%s\n",username.c_str(),user,s.first.c_str(),ss.c_str());
+	}
+}
 					<call bo_writed_client_set_member>(glocal.con,sessionid,groupname,user,access,role,owner);
 					<f ok>
 						//tlmp_warning ("writed set_member success=%d msg=%s",success,msg);
@@ -3365,8 +3382,8 @@ static int bod_main (
 									</f>
 									</call>
 								}
-								bod_remote_set_member (glocal.con,sessionid,username,groupname,create_group,delete_group
-									,remote_user,server,access,role,glocal.nodename,glocal.remprojects);
+								glocal.success = bod_remote_set_member (glocal.con,sessionid,username,groupname,create_group,delete_group
+									,remote_user,server,access,role,glocal.nodename,glocal.remprojects,glocal.msg);
 							}
 						}
 					}

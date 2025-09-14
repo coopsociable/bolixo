@@ -722,13 +722,13 @@ elif [ "$1" = "infowrite" ] ; then # test: publish info to directory server
 		echo "#### test $i OPTPHOTO=$OPTPHOTO"
 		./bofs -u $USER bolixoapi \
 			--publish \
-			--fullname	"$USER $i fullname" \
-			--city		"$USER $i city" \
-			--state		"$USER $i state" \
-			--country	"$USER $i country" \
+			--fullname	"$USER $i $2 fullname" \
+			--city		"$USER $i $2 city" \
+			--state		"$USER $i $2 state" \
+			--country	"$USER $i $2 country" \
 			--publish_bosite \
-			--website	"$USER $i website" \
-			--interest	"$USER $i interest so far" \
+			--website	"$USER $i $2 website" \
+			--interest	"$USER $i $2 interest so far" \
 			$OPTPHOTO infowrite
 		echo "select * from users where name='$USER';" | ./test.sh bolixo
 		ls /var/lib/bolixod/test1.bolixo.org/$USER-*
