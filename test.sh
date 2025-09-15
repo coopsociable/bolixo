@@ -45,7 +45,7 @@ if [ "$LXCSOCK" == "on" ] ; then
 	PUBLISHD_SOCK=/var/lib/lxc/publishd/rootfs/var/run/blackhole/publishd.sock
 	DOCUMENTD_SOCK=/var/lib/lxc/documentd/rootfs/var/run/blackhole/documentd.sock
 	WEBSOCKET_SOCK=/var/lib/lxc/web/rootfs/var/run/websocket-control.sock
-	BOD_SOCK=/var/lib/lxc/bod/rootfs/var/run/blackhole/bod-2.sock
+	BOD_SOCK=/var/lib/lxc/bod/rootfs/var/run/blackhole/bod-9.sock
 	BOD_SOCKS=/var/lib/lxc/bod/rootfs/var/run/blackhole/bod-*.sock
 	WRITED_SOCK=/var/lib/lxc/writed/rootfs/var/run/blackhole/bo-writed-0.sock
 	SESSIOND_SOCK=/var/lib/lxc/sessiond/rootfs/var/run/blackhole/bo-sessiond.sock

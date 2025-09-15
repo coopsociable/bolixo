@@ -285,7 +285,7 @@ static unsigned trli_getsessionuser (CONNECT_INFO &con, const char *sessionid, b
 		<call bo_sessiond_client_getsessioninfo>(con,sessionid);
 		<f ok>
 			// Node session are invalid here
-			if (success && userid != (unsigned)-1){
+			if (success && userid != (unsigned)-1 && userid != (unsigned)-2){
 				glocal.userid = userid;
 				glocal.is_admin = admin;
 				glocal.name = name;
@@ -2181,6 +2181,7 @@ static int bod_main (
 	glocal string unixportclient = string_f("unix:/tmp/bod-client-%s.sock",portstr);
 	glocal string unixportadmin = string_f("unix:/tmp/bod-admin-%s.sock",portstr);
 	glocal unsigned maxaccts = maxaccts;
+	glocal int nbconnections = 0;	// How many active client connections
 	glocal string admin_sessionid;
 	glocal string instrument_file = string_f("/tmp/instrument-%s.log",portstr);
 	glocal unsigned slowplaystep = 0;
@@ -2214,6 +2215,7 @@ static int bod_main (
 			n->req.secret = fdpass_findsecret (*glocal.client_secrets,addr);
 			if (n->req.secret.size() > 0){
 				n->type = TYPE_CLIENT;
+				glocal.nbconnections++;
 			}else{
 				n->req.secret = fdpass_findsecret (*glocal.admin_secrets,addr);
 				if (n->req.secret.size() > 0){
@@ -2233,6 +2235,7 @@ static int bod_main (
 		}else if (is_any_of (c->type,TYPE_DOCUMENTD,TYPE_WEBSOCKET)){
 			closeclient (c->no);
 		}
+		if (c->type == TYPE_CLIENT) glocal.nbconnections--;
 	</f>
 	<f receive>
 		HANDLE_INFO *c = (HANDLE_INFO*)info.data;
@@ -2257,6 +2260,7 @@ static int bod_main (
 				tb.push_back(string_f("nodename: %s",glocal.nodename));
 				tb.push_back(string_f("maxaccts: %u",glocal.maxaccts));
 				tb.push_back(string_f("keepmsgs: %u",keepdays));
+				tb.push_back(string_f ("nbconnections=%d",glocal.nbconnections));
 				tb.push_back(string_f ("nbrequest_admin=%lu",glocal.nbrequest_admin));
 				tb.push_back(string_f ("nbrequest_client=%lu",glocal.nbrequest_client));
 				tb.push_back(string_f("filehandle %u",fs_getnbhandle()));
@@ -2352,19 +2356,51 @@ static int bod_main (
 				REPLYMSG(rep_publishemail,glocal.msg);
 			</f>
 			<f nodelogin>	// node = success:b msg session
-				CONNECT_HTTP_INFO hcon;
-				hcon.init (node);
-				string session;
-				bool success = false;
-				if (nonstrict) hcon.setnonstrictmode();
-				<call webapi_registernode>(hcon,glocal.nodename);
-				<f ok>
-				</f>
-				</call>
-				if (bod_nodelogin(hcon,glocal.con,glocal.nodename,session)!=-1){
-					success = true;
+				glocal bool success = false;
+				glocal string msg;
+				glocal string session;
+				if (is_eq(node,glocal.nodename)){
+					// Perform a nodelogin to ourself. For testing
+					string pubkey;
+					if (bod_getpubkey(node,pubkey)==-1){
+						glocal.msg = "Can't get public key";
+					}else{
+						<call bo_writed_client_registernode>(glocal.con,node,pubkey);
+						<f ok>
+						</f>
+						</call>
+						<call bo_writed_client_nodelogin>(glocal.con,node);
+						<f ok>
+							glocal.session = session;
+							<call bo_writed_client_systemsign>(glocal.con,session);
+							<f ok>
+								<call bo_writed_client_nodepass>(glocal.con,glocal.session,sign);
+								<f ok>
+									glocal.success = success;
+									glocal.msg = msg;
+								</f>
+								</call>
+							</f>
+							</call>
+						</f>
+						</call>
+						if (!glocal.success){
+							glocal.session.clear();
+						}
+					}
+				}else{
+					CONNECT_HTTP_INFO hcon;
+					hcon.init (node);
+					if (nonstrict) hcon.setnonstrictmode();
+					<call webapi_registernode>(hcon,glocal.nodename);
+					<f ok>
+					</f>
+					</call>
+					if (bod_nodelogin(hcon,glocal.con,glocal.nodename,glocal.session)!=-1){
+						glocal.success = true;
+					}
 				}
-				rep_nodelogin (success,"",session);
+				rep_nodelogin (glocal.success,glocal.msg,glocal.session);
 			</f>
 			<f nodelogout>	// node session = success:b msg
 				CONNECT_HTTP_INFO hcon;
@@ -3335,11 +3371,13 @@ static int bod_main (
 					// tlmp_warning ("set_member groupname=%s username=%s user=%s access=%s role=%s",groupname,username.c_str(),user,access,role);
 					glocal map<string,set<string>> servers;	// Record per remote server accounts
 					bod_get_remote_user (glocal.servers,userid,groupname,glocal.nodename);
-for (auto &s:glocal.servers){
-	for (auto &ss:s.second){
-		tlmp_warning ("username=%s user=%s first=%s second=%s\n",username.c_str(),user,s.first.c_str(),ss.c_str());
-	}
-}
+					if (0){
+						for (auto &s:glocal.servers){
+							for (auto &ss:s.second){
+								tlmp_warning ("username=%s user=%s first=%s second=%s\n",username.c_str(),user,s.first.c_str(),ss.c_str());
+							}
+						}
+					}					
 					<call bo_writed_client_set_member>(glocal.con,sessionid,groupname,user,access,role,owner);
 					<f ok>
 						//tlmp_warning ("writed set_member success=%d msg=%s",success,msg);
