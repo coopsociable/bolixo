@@ -75,8 +75,10 @@ static void webmain_real(int handle)
 	bool endserver,endclient;
 	REQUEST_JSON_INFO req;
 	const char *json = tlmpweb_getpost();
+	const char *command = tlmpweb_getargpath();
+	tlmpweb_doctype("application/json");
 	tlmpweb_flushheader();
-	<call webapi>(NULL, req, json, strlen(json), endserver, endclient);
+	<call webapi>(NULL, req, command, json, strlen(json), endserver, endclient);
 	<f test>
 		rep_test (true,"ok");
 	</f>
@@ -741,8 +743,79 @@ static void webmain_real(int handle)
 			rep_playstep_more (true,"",glocal.res,glocal.more);
 		}
 	</f>
+	<f interest_set>
+		glocal string msg;
+		<call bod_client_interest_set>(glocal.con,sessionid,user,owner);
+		<f ok>
+			if (!success){
+				glocal.msg = msg;
+			}
+		</f>
+		</call>
+		if (glocal.msg.size() > 0){
+			rep_interest_set(false,glocal.msg);
+		}else{
+			rep_interest_set(true,glocal.msg);
+		}
+	</f>
+	<f interest_unset>
+		glocal string msg;
+		<call bod_client_interest_unset>(glocal.con,sessionid,user,owner);
+		<f ok>
+			if (!success){
+				glocal.msg = msg;
+			}
+		</f>
+		</call>
+		if (glocal.msg.size() > 0){
+			rep_interest_unset(false,glocal.msg);
+		}else{
+			rep_interest_unset(true,glocal.msg);
+		}
+	</f>
+	<f interest_list>
+		glocal string msg;
+		glocal vector<INTUSER> users;
+		<call bod_client_interest_list>(glocal.con,sessionid,owner);
+		<f ok>
+			if (!success){
+				glocal.msg = msg;
+			}else{
+				for (auto &u:users) glocal.users.push_back(u);	
+			}
+		</f>
+		</call>
+		if (glocal.msg.size() > 0){
+			rep_interest_list(false,glocal.msg,glocal.users);
+		}else{
+			rep_interest_list(true,glocal.msg,glocal.users);
+		}
+	</f>
+	<f interest_check>
+		glocal vector<MAINMSG> messages;
+		glocal unsigned total = 0;
+		glocal unsigned nbnew = 0;
+		glocal string msg;
+		<call bod_client_interest_check>(glocal.con,sessionid,owner,fulltext,offset,nb,firstseen);
+		<f ok>
+			if (!success){
+				glocal.msg = msg;
+			}else{
+				glocal.total = total;
+				glocal.nbnew = nbnew;
+				for (auto &m:messages) glocal.messages.push_back(m);
+			}
+		</f>
+		</call>
+		if (glocal.msg.size() > 0){
+			rep_interest_check(false,glocal.msg,glocal.messages,0,0);
+		}else{
+			rep_interest_check(true,glocal.msg,glocal.messages,glocal.total,glocal.nbnew);
+		}
+	</f>
 	<f invalid>
-		tlmp_warning ("webapi: invalid request");
+		htmlout ("{\"success\":0,\"msg\":\"webapi: invalid request\"}\r\n");
+		tlmp_warning ("webapi: invalid request %s",line);
 	</f>
 	</call>
 }

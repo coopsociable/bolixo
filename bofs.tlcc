@@ -3178,7 +3178,14 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 					</f>
 					</call>
 				}else{
-					notdone();	// interest_set
+					<call webapi_interest_set>(glocal.ctx->hcon,glocal.ctx->hsessionid,glocal.interest_user,glocal.owner);
+					<f ok>
+						if (!success){
+							bofs_error ("interest_set",internal_error,msg);
+							glocal.ret = -1;
+						}
+					</f>
+					</call>
 				}
 			}
 		}else if (glocal.interest_unset){
@@ -3196,7 +3203,14 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 					</f>
 					</call>
 				}else{
-					notdone();	// interest_unset
+					<call webapi_interest_unset>(glocal.ctx->hcon,glocal.ctx->hsessionid,glocal.interest_user,glocal.owner);
+					<f ok>
+						if (!success){
+							bofs_error ("interest_unset",internal_error,msg);
+							glocal.ret = -1;
+						}
+					</f>
+					</call>
 				}
 			}
 		}else if (glocal.interest_list){
@@ -3215,7 +3229,18 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 					</f>
 					</call>
 				}else{
-					notdone();	// interest_list
+					<call webapi_interest_list>(glocal.ctx->hcon,glocal.ctx->hsessionid,glocal.owner);
+					<f ok>
+						if (!success){
+							bofs_error ("interest_list",internal_error,msg);
+							glocal.ret = -1;
+						}else{
+							for (auto u:users){
+								printf ("%s %s %d\n",u.name,normalize_date(u.since),u.visible);
+							}
+						}
+					</f>
+					</call>
 				}
 			}
 		}else if (glocal.interest_check){
@@ -3224,40 +3249,77 @@ static int bofs_misc (CONTEXT &ctx, int argc, char *argv[])
 				glocal unsigned offset=0;
 				glocal unsigned chunk=20;
 				while (!glocal.stop){
-					<call bod_client_interest_check>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner
-						,glocal.fulltext,glocal.offset,glocal.chunk,glocal.firstseen);
-					<f ok>
-						if (!success){
-							bofs_error ("interest_check",internal_error,msg);
-							glocal.stop = true;
-						}else{
-							vector<MAINMSG_receive> copy;
-							bofs_copysort (messages,copy);
-							if (nbnew > 0) printf (MSG_R(I_HIDDENNEWMESSAGES),nbnew);
-							for (auto &m:copy){
-								int linelen = 0;
-								if (m.content[0] != '\0'){
-									const char *eol = strchr(m.content,'\n');
-									if (eol != NULL){
-										linelen=(eol-m.content);
-									}else{
-										linelen = strlen(m.content);
+					if (glocal.ctx->is_internal()){
+						<call bod_client_interest_check>(glocal.ctx->con,glocal.ctx->sessionid,glocal.owner
+							,glocal.fulltext,glocal.offset,glocal.chunk,glocal.firstseen);
+						<f ok>
+							if (!success){
+								bofs_error ("interest_check",internal_error,msg);
+								glocal.stop = true;
+							}else{
+								vector<MAINMSG_receive> copy;
+								bofs_copysort (messages,copy);
+								if (nbnew > 0) printf (MSG_R(I_HIDDENNEWMESSAGES),nbnew);
+								for (auto &m:copy){
+									int linelen = 0;
+									if (m.content[0] != '\0'){
+										const char *eol = strchr(m.content,'\n');
+										if (eol != NULL){
+											linelen=(eol-m.content);
+										}else{
+											linelen = strlen(m.content);
+										}
+									}
+									printf ("%s %-10s %-30s %-20s %7u %*.*s\n",tbftype[m.file_type],m.from
+										,normalize_uuid(m.uuid).c_str()
+										,normalize_date(m.submit),normalize_size(m.size)
+										,linelen,linelen,m.content);
+									if (find(glocal.fulltext.begin(),glocal.fulltext.end(),m.uuid)
+										!= glocal.fulltext.end()){
+										printf ("%s\n",m.content);
 									}
 								}
-								printf ("%s %-10s %-30s %-20s %7u %*.*s\n",tbftype[m.file_type],m.from
-									,normalize_uuid(m.uuid).c_str()
-									,normalize_date(m.submit),normalize_size(m.size)
-									,linelen,linelen,m.content);
-								if (find(glocal.fulltext.begin(),glocal.fulltext.end(),m.uuid)
-									!= glocal.fulltext.end()){
-									printf ("%s\n",m.content);
-								}
+								glocal.stop = messages.size() < glocal.chunk;
+								glocal.offset += glocal.chunk;
 							}
-							glocal.stop = messages.size() < glocal.chunk;
-							glocal.offset += glocal.chunk;
-						}
-					</f>
-					</call>
+						</f>
+						</call>
+					}else{
+						<call webapi_interest_check>(glocal.ctx->hcon,glocal.ctx->hsessionid,glocal.owner
+							,glocal.fulltext,glocal.offset,glocal.chunk,glocal.firstseen);
+						<f ok>
+							if (!success){
+								bofs_error ("interest_check",internal_error,msg);
+								glocal.stop = true;
+							}else{
+								vector<MAINMSG_receive> copy;
+								bofs_copysort (messages,copy);
+								if (nbnew > 0) printf (MSG_R(I_HIDDENNEWMESSAGES),nbnew);
+								for (auto &m:copy){
+									int linelen = 0;
+									if (m.content[0] != '\0'){
+										const char *eol = strchr(m.content,'\n');
+										if (eol != NULL){
+											linelen=(eol-m.content);
+										}else{
+											linelen = strlen(m.content);
+										}
+									}
+									printf ("%s %-10s %-30s %-20s %7u %*.*s\n",tbftype[m.file_type],m.from
+										,normalize_uuid(m.uuid).c_str()
+										,normalize_date(m.submit),normalize_size(m.size)
+										,linelen,linelen,m.content);
+									if (find(glocal.fulltext.begin(),glocal.fulltext.end(),m.uuid)
+										!= glocal.fulltext.end()){
+										printf ("%s\n",m.content);
+									}
+								}
+								glocal.stop = messages.size() < glocal.chunk;
+								glocal.offset += glocal.chunk;
+							}
+						</f>
+						</call>
+					}
 				}
 			}
 		}else if (glocal.showconfig){
