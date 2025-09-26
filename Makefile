@@ -33,7 +33,7 @@ compile: $(PROGS)
 bo-webtest: bo-webtest.tlcc proto/webapi.protoh /usr/include/trlitool/trlitool.h
 	cctlcc -Wall $(OPTIONS) bo-webtest.tlcc _dict.o -o bo-webtest $(LIBS) -lssl
 
-bofs: bofs.o verify.o bofs_vidconf.o json.o websocket-client.o fs_makeid.o
+bofs: bofs.o verify.o bofs_vidconf.o json.o websocket-client.o fs_makeid.o /usr/include/trlitool/trlitool.h
 	cctlcc -Wall $(OPTIONS) bofs.o verify.o bofs_vidconf.o json.o websocket-client.o fs_makeid.o _dict.o -o bofs $(LIBS) -lssl 
 
 bofs.o: bofs.tlcc bofs.h proto/bod_client.protoh proto/webapi.protoh proto/bolixoapi.protoh proto/webapi.protoh
@@ -287,7 +287,7 @@ proto/bo-keysd_control.protoh: proto/bo-keysd_control.proto
 		--protoch proto/bo-keysd_control.protoch proto/bo-keysd_control.proto >proto/bo-keysd_control.protoh
 
 proto/webapi.protoh: proto/webapi.proto
-	build-protocol $(INSTRUMENT) --request_obj REQUEST_JSON --request_info_obj REQUEST_JSON_INFO \
+	build-protocol $(INSTRUMENT) --argpath --request_obj REQUEST_JSON --request_info_obj REQUEST_JSON_INFO \
 		--connect_info_obj CONNECT_HTTP_INFO --name webapi \
 		--protoch proto/webapi.protoch proto/webapi.proto >proto/webapi.protoh
 
