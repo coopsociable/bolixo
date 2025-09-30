@@ -2323,14 +2323,18 @@ static void print_configs (
 					<call savefile>("/var/lib/lxc/protocheck/protocheck.init",false);
 					<f dowrite>
 						for (unsigned i=0; i<glocal.p->workers; i++){
+							string error_opt;
+							if (!glocal.devmode){
+								error_opt = string_f("--errorfile /tmp/error-%u.log",i);
+							}
 							fprintf (fout,"%s/protocheck-2factors"
 								" --control %s/protocheck-2factors-%u.sock --user %s --pidfile %s/protocheck-%u.pid --daemon"
 								" --follow_mode --unlocked --bind %s --port unix:/tmp/proto-%u.sock"
-								" --http %s/http_check.conf --errorfile /tmp/error-%u.log\n"
+								" --http %s/http_check.conf %s\n"
 								,blackhole_path
 								,lxcsock_dir,i,"apache",pid_dir,i
 								,ip_proto,glocal.p->port+i
-								,config_dir,i);
+								,config_dir,error_opt.c_str());
 						}
 						fprintf (fout,"%s/protocheck-2factors"
 							" --control %s/protocheck-2factors-learn.sock --user %s --pidfile %s/protocheck-learn.pid --daemon"
