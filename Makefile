@@ -457,6 +457,7 @@ install: msg.eng msg.fr
 	install -m644 web/email-outline.svg $(RPM_BUILD_ROOT)/var/www/html/email-outline.svg
 	install -m644 web/conditions-d-utilisation.html $(RPM_BUILD_ROOT)/var/www/html/conditions-d-utilisation.html
 	install -m644 web/terms-of-use.html $(RPM_BUILD_ROOT)/var/www/html/terms-of-use.html
+	install -m644 web/webapi.openapi.yaml $(RPM_BUILD_ROOT)/var/www/html/webapi.openapi.yaml
 	install -m644 data/http_check.conf $(RPM_BUILD_ROOT)/etc/bolixo/http_check.conf
 	install -m755 bolixoserv.sysv $(RPM_BUILD_ROOT)/etc/init.d/bolixoserv
 	install -m755 bolixod $(RPM_BUILD_ROOT)/usr/sbin/bolixod
