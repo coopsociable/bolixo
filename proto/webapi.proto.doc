@@ -1,5 +1,5 @@
-function:  test It is used to validate the heath of the server.
-prm success: Will contain true if every is fine.
+function:  test It is used to validate the health of the server.
+prm success: Will contain true if everything is fine.
 prm msg: Normally empty, contains some error message.
 
 function: login support for normal end user login.
@@ -8,7 +8,10 @@ prm email: User email
 	fully qualified
 prm password: password not hashed
 prm success: true means the login was successful.
-prm sessionid: This is the string you will use in this API below.
+prm sessionid: This is the string you will use in the rest of the API.
+
+function: logout End the session
+prm sessionid: Session ID
 
 function: addfile Add a file to a project 
 prm name: Fully qualified file name path
@@ -19,3 +22,109 @@ prm name: Fully qualified file name path
 prm content: Binary content
 prm more: The content is not complete, appendfile will be called
 prm handle: This handle will be used with appendfile so it appends to the proper content
+
+
+
+#appendfile sessionid handle content:o more:b = success:b msg
+#delfile sessionid name = success:b msg
+#undelete sessionid dirname = success:b msg
+#modifyfile sessionid name content = success:b msg
+#modifyfile_bob sessionid name content:o more:b owner = success:b handle msg
+#rename sessionid oldname newname = success:b msg
+#copy sessionid srcname srcdate dstname = success:b msg
+#readfile sessionid name threshold = success:b msg content info:U{READINFO}
+#readfile_bob sessionid name threshold nomore:b = success:b msg content:o info:U{READINFO} handle more:b
+#readmore sessionid handle = success:b msg content:o more:b
+#mkdir sessionid name = success:b msg
+#rmdir sessionid name = success:b  msg
+#listdir sessionid name threshold history:b offset:u nb:u = success:b msg files:U{FILEINFO}v
+#stat sessionid name threshold = success:b msg file:U{FILEINFO}
+#set_access sessionid name username listowner listname listmode owner = success:b msg
+#markview sessionid name = success:b msg
+
+
+#list_inboxes sessionid owner showroles:b list_own_projects:b = success:b msg inboxes:U{INBOX}v
+#list_msgs sessionid owner project deleted:b offset:u nb:u = success:b msg messages:U{MESSAGE}v
+#sendmsg sessionid owner recipients:v title content = success:b msg msgid
+#sendmsg_project sessionid owner manager project role title content = success:b msg msgid
+#replymsg sessionid owner msgid recipients:v title content = success:b msg replyid
+#replymsg_project sessionid owner manager project role msgid title content = success:b msg replyid
+#sendattach sessionid owner msgid content:o more:b = success:b msg handle
+
+#sendtalk sessionid owner to:v groupname groupowner content:o more:b name sign createdby = success:b msg handle
+#sendtalk_file sessionid owner to:v groupname groupowner filename filedate = success:b msg
+#list_talk sessionid owner groupname groupowner fulltext:v offset:u nb:u firstseen = success:b msg messages:U{SHORTMSG}v deletes:b total:u nbnew:u
+
+#list_lists sessionid owner = success:b msg lists:U{LIST}v
+#list_groups sessionid owner only_owner:b = success:b msg groups:U{GROUP}v
+#list_contacts sessionid owner = success:b msg members:v
+#create_group_list sessionid listname owner = success:b msg
+#create_group sessionid groupname owner = success:b msg
+#delete_group sessionid groupname owner = success:b msg
+#delete_list sessionid listname owner = success:b msg
+#set_group sessionid listname groupname defaultaccess owner = success:b msg
+#set_member sessionid groupname user access role owner = success:b msg
+#list_members sessionid owner listname = success:b msg members:v
+
+#public_listdir username dirpath offset:u nb:u = success:b msg files:U{FILEINFO}v
+#public_readfile username filepath offset:u = success:b msg content:o more:b size:u
+#public_list_talk username offset:u nb:u = success:b msg messages:U{SHORTMSG}v
+
+#systempubkey = pubkey
+#verifysign nickname msg = status:e{ERR_CODE} msg
+#getpubkey nickname = success:b pubkey
+#registernode nodename = success:b msg
+## logout is the same for remote and local
+#remotelogin user = success:b msg sessionid
+#remotepass sessionid user sign = success:b msg
+#remote_interest_set sessionid user = success:b msg
+#remote_interest_unset sessionid user = success:b msg
+#nodelogin nodename = success:b msg session
+#nodepass session sign = success:b msg
+
+function: interest_set Subscribe to public messages of a user
+prm sessionid:
+prm user: user account
+prm owner: (for admin request) operation done on behalf of this user
+prm success: 
+prm msg: Error message
+
+function: interest_unset Unsubscribe from a user public messages
+prm sessionid: Session ID
+prm user: user account
+prm owner: (for admin request) operation done on behalf of this user
+prm success: 
+prm msg: Error message
+
+function: interest_list Return the interest list (accounts) of the user
+prm sessionid:
+prm owner:
+prm success:
+prm msg:
+prm users: List of user accounts you subscribed.
+	See INTUSER definition.
+
+function: interest_check Get the latest public messages
+prm sessionid:
+prm owner:
+prm fulltext: Request the complete message for those message IDs 
+prm offset: Skip the first 'offset' message from the list.
+prm nb: Report at most 'nb' messages
+prm firstseen: Message ID of the last message you saw
+prm success:
+prm msg:
+prm messages: List of message. See MAINMSG for details.
+prm total: Number of messages available
+prm nbnew: Number of messages the user have not seen
+
+#config_read sessionid owner = success:b msg config:U{CONFIG}
+#config_write sessionid owner config:U{CONFIG} = success:b msg
+
+#contact_request sessionid owner user intro = success:b msg
+#contact_manage  sessionid owner user status:e{CONTACT_STATUS} = success:b msg
+#contact_list sessionid owner to_me:b contact offset:u nb:u = success:b msg contacts:U{CONTACT}v
+#contact_remove sessionid owner user = success:b msg
+
+#playstep sessionid owner path docnum:u steps:U{VARVAL}v uispecs:U{DOC_UI_SPECS} = success:b msg res:U{VARVAL}v more:b handle
+#playstep_more sessionid owner path handle = success:b msg res:U{VARVAL}v more:b
+
