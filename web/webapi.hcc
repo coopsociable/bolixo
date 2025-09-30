@@ -48,15 +48,20 @@ extern "C" void webmain_init()
 	util_init_tbcon (tbcon_sess,max_conhandles,"/dev/sessiond.sock");
 }
 static bool instrument = false;
+static bool showjson = false;	// Display the json received in the logs
+
 extern "C" void webmain_getprops(vector<WEB_PROPERTY> &tb)
 {
 	tb.emplace_back("instrument",instrument);
+	tb.emplace_back("showjson",showjson);
 }
 extern "C" int webmain_setprop(const WEB_PROPERTY &prop)
 {
 	int ret = -1;
 	if (prop.name == "instrument"){
 		ret = prop.apply(instrument);
+	}else if (prop.name == "showjson"){
+		ret = prop.apply(showjson);
 	}
 	return ret;
 }
@@ -78,6 +83,7 @@ static void webmain_real(int handle)
 	const char *command = tlmpweb_getargpath();
 	tlmpweb_doctype("application/json");
 	tlmpweb_flushheader();
+	if (showjson) tlmp_warning ("json=%s command=%s\n",json,command);
 	<call webapi>(NULL, req, command, json, strlen(json), endserver, endclient);
 	<f test>
 		rep_test (true,"ok");
