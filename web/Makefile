@@ -2,7 +2,7 @@ DINSTRUMENT:=$(shell test -f ../../instrument && echo -DINSTRUMENT)
 OPTIONS=$(DINSTRUMENT) -funsigned-char -O2 -Wall -g -DVERSION=\"$(PACKAGE_REV)\" -I/usr/include/tlmp -I/usr/include/trlitool
 all: webtabs.os util.os document.os document_fr.os index.os bolixoapi.os webapi.os public.os journey.os bolixo.os  \
 	config.os mail.os projects.os index.hc webapi.hc public.hc journey.hc bolixoapi.hc bolixo.hc \
-	techdoc.os
+	techdoc.os webapi.openapi.yaml
 .suffixes: .hcc .hc 
 FLAGS=-Wall -Wno-unused-function
 
@@ -26,9 +26,13 @@ document.os: document.hcc ../documentd_menu.h
 
 webapi.proto.hcc: ../proto/webapi.proto ../proto/webapi.proto.doc ../proto/bod_client.proto
 	unset LANG; build-protocol --name webapi \
-		--include techdoc.h --printdoc ../proto/webapi.proto --refdocs ../proto/bod_client.proto --tlmpdoc >webapi.proto.hcc
+		--include techdoc.h --printdoc ../proto/webapi.proto --refdocs ../proto/bod_client.proto --tlmpdoc >webapi.proto.tmp
+	@mv -f webapi.proto.tmp webapi.proto.hcc
 	
-
+webapi.openapi.yaml: ../proto/webapi.proto ../proto/webapi.proto.doc ../proto/bod_client.proto
+	unset LANG; build-protocol --openapi --apiname BolixoWebapi --name webapi \
+                --printdoc ../proto/webapi.proto --refdocs ../proto/bod_client.proto >webapi.openapi.tmp
+	@mv -f webapi.openapi.tmp webapi.openapi.yaml
 
 %.os: %.hcc /usr/include/tlmp/tlmpweb.h /usr/include/tlmp/tlmpweb.p \
 	 /usr/include/tlmp/tlmpdoc.h /usr/include/tlmp/tlmpdoc.p
@@ -48,13 +52,13 @@ install: all
 	@mkdir -p $(RPM_BUILD_ROOT)/var/www/html/images-doc
 	@rm -f $(RPM_BUILD_ROOT)/var/www/html/images-doc/*
 	@cp images-doc/*.jpg $(RPM_BUILD_ROOT)/var/www/html/images-doc/.
-	@cp *.jpg *.png *.svg *.hc *.html robots.txt favicon.ico $(RPM_BUILD_ROOT)/var/www/html/.
+	@cp *.jpg *.png *.svg *.hc *.html *.yaml robots.txt favicon.ico $(RPM_BUILD_ROOT)/var/www/html/.
 	@cp tlmplibs $(RPM_BUILD_ROOT)/var/www/html/.tlmplibs
 	@cp conditions-d-utilisation.html  terms-of-use.html $(RPM_BUILD_ROOT)/var/www/html/.
 
 
 clean:
-	rm -f *.hc *.o *.os genbackground webapi.proto.hcc
+	rm -f *.hc *.o *.os genbackground webapi.proto.hcc webapi.openapi.yaml *.tmp
 
 util.os: util.hcc util.h /usr/include/tlmp/tlmpweb.h /usr/include/tlmp/tlmpweb.p
 	@echo tlmpwebcc $< $@

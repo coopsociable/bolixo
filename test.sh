@@ -1727,6 +1727,7 @@ elif [ "$1" = "lxc0-webssl" ]; then # prod:
 			-e /var/www/html/conditions-d-utilisation.html \
 			-e /var/www/html/email-outline.svg \
 			-e /var/www/html/email-open-outline.svg \
+			-e /var/www/html/webapi.openapi.yaml \
 			-e /usr/libexec/httpd-ssl-pass-dialog \
 			-i /usr/sbin/trli-init \
 			-l $LOG \
