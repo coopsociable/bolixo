@@ -43,7 +43,14 @@ prm handle: This handle will be used with appendfile so it appends to the proper
 #markview sessionid name = success:b msg
 
 
-#list_inboxes sessionid owner showroles:b list_own_projects:b = success:b msg inboxes:U{INBOX}v
+function: list_inboxes Get all the inboxes for this user. private and group
+prm sessionid:
+prm owner:
+prm showroles:
+prm list_own_projects:
+prm success:
+prm inboxes: Array of INBOX objects
+
 #list_msgs sessionid owner project deleted:b offset:u nb:u = success:b msg messages:U{MESSAGE}v
 #sendmsg sessionid owner recipients:v title content = success:b msg msgid
 #sendmsg_project sessionid owner manager project role title content = success:b msg msgid
@@ -53,10 +60,35 @@ prm handle: This handle will be used with appendfile so it appends to the proper
 
 #sendtalk sessionid owner to:v groupname groupowner content:o more:b name sign createdby = success:b msg handle
 #sendtalk_file sessionid owner to:v groupname groupowner filename filedate = success:b msg
-#list_talk sessionid owner groupname groupowner fulltext:v offset:u nb:u firstseen = success:b msg messages:U{SHORTMSG}v deletes:b total:u nbnew:u
+function: list_talk Get some messages from a group or inbox
+prm sessionid:
+prm owner:
+prm groupname: Group name or 'inbox'
+prm groupowner: Group owner
+prm fulltext: Array of message UUIDs. For those message, the server returns the full text instead of the truncated version
+prm offset: Offset of the first message.
+prm nb: Maximum number of messages returned.
+prm firstseen: UUID of the most recent message presented to the user
+prm success:
+prm msg:
+prm messages: Array of SHORTMSG
+prm deletes:
+prm total: Number of message available on the server for this group
+prm nbnew: Number of message newer than 'firstseen'
 
 #list_lists sessionid owner = success:b msg lists:U{LIST}v
-#list_groups sessionid owner only_owner:b = success:b msg groups:U{GROUP}v
+function: list_groups
+prm sessionid:
+prm owner:
+prm only_owner: Only 
+prm success:
+prm msg:
+prm groups: Array of groups. See the GROUP definition.
+	Note that groups 'inbox' and 'anonymous' are special.
+	The group inbox represent the private inbox of the user.
+	As such, it should be handled differently.
+	The group anonymous is not implemented yet and should be ignored.
+
 #list_contacts sessionid owner = success:b msg members:v
 #create_group_list sessionid listname owner = success:b msg
 #create_group sessionid groupname owner = success:b msg

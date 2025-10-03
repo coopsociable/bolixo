@@ -24,12 +24,12 @@ index.hc: index.os /usr/lib64/trlitool/trlitool.pic.a util.os webtabs.os documen
 
 document.os: document.hcc ../documentd_menu.h
 
-webapi.proto.hcc: ../proto/webapi.proto ../proto/webapi.proto.doc ../proto/bod_client.proto
+webapi.proto.hcc: ../proto/webapi.proto ../proto/webapi.proto.doc ../proto/bod_client.proto ../proto/bod_client.proto.doc
 	unset LANG; build-protocol --name webapi \
 		--include techdoc.h --printdoc ../proto/webapi.proto --refdocs ../proto/bod_client.proto --tlmpdoc >webapi.proto.tmp
 	@mv -f webapi.proto.tmp webapi.proto.hcc
 	
-webapi.openapi.yaml: ../proto/webapi.proto ../proto/webapi.proto.doc ../proto/bod_client.proto
+webapi.openapi.yaml: ../proto/webapi.proto ../proto/webapi.proto.doc ../proto/bod_client.proto ../proto/bod_client.proto.doc
 	unset LANG; build-protocol --openapi --apiname BolixoWebapi --name webapi \
                 --printdoc ../proto/webapi.proto --refdocs ../proto/bod_client.proto >webapi.openapi.tmp
 	@mv -f webapi.openapi.tmp webapi.openapi.yaml
