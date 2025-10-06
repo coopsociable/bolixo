@@ -518,6 +518,11 @@ elif [ "$1" = "doc-whiteboard-imbed-fill" ] ; then # test: create images and emb
 			textpos elm2 1
 			assigndoc test.white A1
 			resetsel
+		elif [ "$1" = "2v" ] ; then
+			addelm elm2 "video conf 2" rect 930 330 600 600
+			textpos elm2 1
+			assigndoc test.vdc A1
+			resetsel
 		elif [ "$1" = "3" ] ; then
 			addelm elm3 "Whiteboard 3" rect 1540 330 600 600
 			textpos elm3 1

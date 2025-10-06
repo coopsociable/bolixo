@@ -1882,11 +1882,15 @@ elif [ "$1" = "webtest-direct-static" ] ; then # P:
 	webtest /static.html http://$IP $*
 elif [ "$1" = "webssltest" ] ; then # P: (bk)
 	shift
-	if [ "$1" = "bk" ] ; then
+	HOST=$THISNODE
+	if [ "$1" = "host" ] ; then
+		HOST=$2
+		shift; shift
+	elif [ "$1" = "bk" ] ; then
 		IP=192.168.4.2:9080
 		shift
 	fi
-	webtest /index.hc $THISNODE $*
+	webtest /index.hc $HOST $*
 elif [ "$1" = "webssltest-static" ] ; then # P:
 	shift
 	webtest /static.html $THISNODE $*

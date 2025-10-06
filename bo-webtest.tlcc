@@ -103,7 +103,7 @@ using namespace std;
 static DEBUG_KEY D_HEADER("header","Print request header");
 static DEBUG_KEY D_PROTO("proto","HTTP protocol");
 
-static void sendheader (CONNECT_HTTP_INFO &con, bool reuseconnection, const string &session, const char *file, const char *hostname)
+static void sendheader (CONNECT_HTTP_INFO &con, bool reuseconnection, bool http2, const string &session, const char *file, const char *hostname)
 {
 	string buf;
 	if (strncmp(hostname,"http://",7)==0){
@@ -111,10 +111,11 @@ static void sendheader (CONNECT_HTTP_INFO &con, bool reuseconnection, const stri
 	}else if (strncmp(hostname,"https://",8)==0){
 		hostname += 8;
 	}
+	const char *http_reuse = http2 ? "2.0" : "1.1";
 	buf = string_f ("GET %s HTTP/%s\r\n"
 		"host: %s\r\n"
 		"User-Agent: bo-webtest\r\n"
-		,file,(reuseconnection ? "1.1" : "1.0"),hostname);
+		,file,(reuseconnection ? http_reuse : "1.0"),hostname);
 	if (session.size() > 0){
 		buf += string_f ("cookie: session=%s;\r\n",session.c_str());
 	}
@@ -164,6 +165,7 @@ int main (int argc, char *argv[])
 	glocal int nbproc = 1;
 	glocal int nbrep=1;
 	glocal bool reuseconnection = false;
+	glocal bool http2 = false;
 	glocal bool verbose = false;
 	glocal bool stats = false;
 	glocal bool endless = false;
@@ -182,6 +184,7 @@ int main (int argc, char *argv[])
 		setarg ('n',"nbrep","Number of iteration",glocal.nbrep,false);
 		setarg ('N',"nbproc","Process number",glocal.nbproc,false);
 		setarg ('r',"reusecon","Reuse HTTP connection",glocal.reuseconnection, false);
+		setarg ('H',"http2","Use HTTP/2",glocal.http2,false);
 		setarg ('e',"endless","Runs forever and print stats",glocal.endless,false);
 		setgrouparg ("Misc.");
 		setarg ('f',"file","File to request from web server",glocal.file,false);
@@ -272,7 +275,7 @@ int main (int argc, char *argv[])
 						glocal int starti = glocal.i;	// For reusecon
 						glocal unsigned received = 0;
 						if (!glocal.reuseconnection) glocal.con.reconnect();
-						sendheader (glocal.con,glocal.reuseconnection,glocal.session,glocal.file,glocal.host);
+						sendheader (glocal.con,glocal.reuseconnection,glocal.http2,glocal.session,glocal.file,glocal.host);
 						<call streamp>();
 						<f fill>
 							int ret = glocal.con.receive (buf,size);
@@ -311,7 +314,7 @@ int main (int argc, char *argv[])
 											write (glocal.fdout,tmp.c_str(),tmp.size());
 										}
 										if (glocal.endless || glocal.i < glocal.nbrep){
-											sendheader (glocal.con,glocal.reuseconnection,glocal.session,glocal.file,glocal.host);
+											sendheader (glocal.con,glocal.reuseconnection,glocal.http2,glocal.session,glocal.file,glocal.host);
 										}else{
 											glocal.i--;	// So the count is good, as the for loop will increment it
 											end = true;
