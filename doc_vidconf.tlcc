@@ -228,7 +228,7 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 		}
 	}
 	string lines;
-	lines += "function VIDC_updmsg(color,msg){\n";
+	lines += "window.VIDC_updmsg = function(color,msg){\n";
 	lines += string_f("\tvar elm = document.getElementById('msg-%s');\n",gameid.c_str());
 	lines += "\tif (elm != null){\n";
 	lines += "\t\telm.style.color=color;\n";
@@ -262,7 +262,7 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 		"var connects = [];\n"	// List of all peer connections
 		"var logs='';\n"	// Message stored and retrieved by VIDC_getlogs()
 		"var showing='';\n"	// peer currently shown in the video tag
-		"function findconnect(peerid){\n"
+		"window.findconnect = function(peerid){\n"
 		"\tvar ret=null;\n"
 		"\tfor (let i=0; i<connects.length; i++){\n"
 		"\t\tif(connects[i].peerid === peerid){\n"
@@ -276,7 +276,7 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 		"var selfVideo = null;\n"
 		"var selfStream = null;\n"
 		"var audioctx = new AudioContext();\n"
-		"function VIDC_setpolite(pol,peerid){\n"
+		"window.VIDC_setpolite = function(pol,peerid){\n"
 		"\tconsole.log ('polite='+pol+' peerid='+peerid);\n"
 		"\tconst connect = {\n"
 		"\t\tpolite: pol,\n"
@@ -300,7 +300,7 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 		"\t};\n"
 
 		// Closure for ontrack
-		"\tfunction clo_ontrack(con){\n"
+		"\twindow.clo_ontrack = function(con){\n"
 		"\t\treturn function ({ track, streams }){\n"
 		"\t\t\ttrack.onunmute = () => {\n"
 		"\t\t\t\tconsole.log('selfVideo='+selfVideo+' con='+con);\n"
@@ -319,7 +319,7 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 
 		"\tconnect.pc.ontrack = clo_ontrack(connect);\n"
 		// Special closure for the object, see onnegotiontionneeded below
-		"\tfunction clo_connect(con){\n"
+		"\twindow.clo_connect = function (con){\n"
 		"\t\treturn async function(){\n"
 		"\t\t\ttry {\n"
 		"\t\t\t\tcon.makingOffer = true;\n"
@@ -341,7 +341,7 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 		"\t}\n"
 		"\tconnect.pc.onnegotiationneeded = clo_connect(connect);\n"
 
-		"\tfunction clo_candidate(con){\n"
+		"\twindow.clo_candidate = function(con){\n"
 		"\t\treturn function ({ candidate }){\n"
 		"\t\t\tif(candidate==null){\n"
 		"\t\t\t\tlogs += 'Send Candidate null to '+con.peerid + '\\r';\n"
@@ -360,7 +360,7 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 		"\t}\n"
 		"}\n"
 		"var start_sent=false;\n"
-		"async function vidc_start(constraints) {\n"
+		"window.vidc_start = async function(constraints) {\n"
 		"\ttry {\n"
 		"\t\tselfStream = await navigator.mediaDevices.getUserMedia(constraints);\n"
 		"\t\tVIDC_showgrid();\n"
@@ -383,7 +383,7 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 		"\t}\n"
 		"}\n"
 
-		"async function receiveoffer (connect,description,candidate) {\n"
+		"window.receiveoffer = async function (connect,description,candidate) {\n"
 		"\ttry {\n"
 		"\t\tif (description) {\n"
 		"\t\t\tconst offerCollision = description.type === 'offer'\n"
@@ -418,7 +418,7 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 		"\tendoffer(connect);\n"
 		"}\n"
 
-		"function endoffer(connect){\n"
+		"window.endoffer = function (connect){\n"
 		"\tconsole.log('receiveoffer done');\n"
 		"\tconnect.tboffer.shift();\n"
 		"\tif (connect.tboffer.length > 0){\n"
@@ -429,7 +429,7 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 
 		// Make sure only one receive offer is performed at a time
 		// we count null candidate.
-		"function pushoffer(connect,description,candidate){\n"
+		"window.pushoffer = function (connect,description,candidate){\n"
 		"\tconnect.tboffer.push({connect:connect,description:description,candidate:candidate});\n"
 		"\tif (description != null){\n"
 		"\t\t connect.nbpushdesc++;\n"
@@ -441,7 +441,7 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 		"}\n"
 
 		// Draw the current user video tag if enabled
-		"function VIDC_showme(){\n"
+		"window.VIDC_showme = function(){\n"
 		"var ret = '';\n"
 		"\tif(VIDC_showme_on){\n";
 		lines += string_f("\t\tvar vidw=%u;\n",(board_width-10)/4);
@@ -455,14 +455,14 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 		"\treturn ret;\n"
 		"}\n"
 		// Assign selfStream to the current user video tag
-		"function VIDC_assignme(){\n"
+		"window.VIDC_assignme = function(){\n"
 		"\tif(VIDC_showme_on || connects.length == 0){\n"
 		"\t\tvar vid = document.getElementById(`guest-me`);\n"
 		"\t\tvid.srcObject = selfStream;\n"
 		"\t}\n"
 		"}\n"
 		// Show only the current user, no one connected yet
-		"function VIDC_show_only_me(){\n"
+		"window.VIDC_show_only_me = function(){\n"
 		"\tvar grid = document.getElementById('confgrid');\n";
 		lines += string_f("\tvar cellw=%u;\n",board_width-10);
 		lines += string_f("\tvar cellh=%u;\n",board_height-10);
@@ -473,7 +473,7 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 		"}\n"
 
 		// Redraw the grid holding all guests
-		"function VIDC_showgrid(){\n"
+		"window.VIDC_showgrid = function(){\n"
 		"\tgridmode=true;\n"
 		"\tif (connects.length == 0){\n"
 		"\t\tVIDC_show_only_me();\n"
@@ -512,7 +512,7 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 		"\tVIDC_assignme();\n"
 		"}\n"
 		// Redraw the screen holding the active guest
-		"function VIDC_showmain(){\n"
+		"window.VIDC_showmain = function(){\n"
 		"\tgridmode=false;\n"
 		"\tif (connects.length == 0){\n"
 		"\t\tVIDC_show_only_me();\n"
@@ -534,7 +534,7 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 		"}\n"
 
 		// Redraw either the grid or the active guest
-		"function VIDC_update(){\n"
+		"window.VIDC_update = function(){\n"
 		"\tif(gridmode){\n"
 		"\t\tVIDC_showgrid();\n"
 		"\t}else{\n"
@@ -542,20 +542,20 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 		"\t}\n"
 		"}\n"
 
-		"function VIDC_setdesc(peerid,description){\n"
+		"window.VIDC_setdesc = function(peerid,description){\n"
 		"\tconsole.log ('receive description '+peerid);\n"
 		"\tconst connect = findconnect(peerid);\n"
 		"\tpushoffer(connect,JSON.parse(description),null);\n"
 		"}\n"
 
-		"function VIDC_setcand(peerid,candidate){\n"
+		"window.VIDC_setcand = function(peerid,candidate){\n"
 		"\tconst connect = findconnect(peerid);\n"
 		"\tconsole.log ('receive candidate '+peerid+' connect='+connect);\n"
 		"\tpushoffer(connect,null,JSON.parse(candidate));\n"
 		"}\n"
 
 		// This is sent to select which video feed must be used
-		"function VIDC_show(peerid){\n"
+		"window.VIDC_show = function(peerid){\n"
 		"\tconst connect = findconnect(peerid);\n"
 		"\tif (connect == null){\n"
 		"\t\tconsole.log('show unknown peer');\n"
@@ -573,7 +573,7 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 		"}\n"
 
 		// This is sent to remove a peer connection. The user just close the video conference tab for example.
-		"function VIDC_delcon(peerid){\n"
+		"window.VIDC_delcon = function(peerid){\n"
 		"\tconsole.log('0 connects.length='+connects.length);\n"
 		"\tfor(let i=0; i<connects.length; i++){\n"
 		"\t\tconst con = connects[i];\n"
@@ -588,7 +588,7 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 		"\tconsole.log('0 connects.length='+connects.length);\n"
 		"}\n"
 		// Get the connection states
-		"function VIDC_getstates(){\n"
+		"window.VIDC_getstates = function(){\n"
 		"\tlet res='';\n"
 		"\tfor (let i=0; i<connects.length; i++){\n"
 		"\t\tlet con = connects[i];\n"
@@ -597,7 +597,7 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 		"\tnotesocket.send('states:'+res);\n"
 		"}\n"
 		// Get the logs, reset the logs and the push stats
-		"function VIDC_getlogs(){\n"
+		"window.VIDC_getlogs = function(){\n"
 		"\tlet tmplogs=logs;\n"
 		"\tfor (let i=0; i<connects.length; i++){\n"
 		"\t\tlet con = connects[i];\n"
@@ -608,7 +608,7 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 		"\tlogs='';\n"
 		"}\n"
 		// Get the stats for all connections
-		"function VIDC_getstats(){\n"
+		"window.VIDC_getstats = function(){\n"
 		"\tvar  proms = [];\n"
 		"\tfor (let i=0; i<connects.length; i++){\n"
 		"\t\tproms.push(connects[i].pc.getStats(null));\n"
@@ -642,7 +642,7 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 			stroke= 3;
 		}
 		lines += string_f (	
-			"function vidc_draw_x(){\n"
+			"window.vidc_draw_x = function(){\n"
 			"\treturn \"<div>"
 			"<svg width=%u height=%u>"
 			"<a href='#' onclick=vidc_delform() onmouseover=changefill('svg1','#D0D0D0') onmouseout=changefill('svg1','#F1F1F1')>"
@@ -658,13 +658,13 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 		// Present the popup dialog
 	lines +=
 		"\tconst vidc_id = 'vidconf_popup';\n"
-		"function vidc_delform(){\n"
+		"window.vidc_delform = function(){\n"
 		"\tvar div = document.getElementById(vidc_id);\n"
 		"\tif (div != null){\n"
 		"\t\tdocument.body.removeChild(div);\n"
 		"\t}\n"
 		"}\n"
-		"function vidc_showform(){\n"
+		"window.vidc_showform = function (){\n"
 		"\tvar div = document.getElementById(vidc_id);\n"
 		"\tif (div != null){\n"
 		"\t\tdocument.body.removeChild(div);\n"
@@ -711,20 +711,20 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 		"\t\tnavigator.mediaDevices.enumerateDevices().then(vidc_gotDevices).catch(vidc_handleError);\n"
 		"\t}\n"
 		"}\n"
-		"function vidc_handleError(error) {\n"
+		"window.vidc_handleError = function (error) {\n"
 		"\tconsole.log('navigator.MediaDevices.getUserMedia error: ', error.message, error.name);\n"
 		"}\n"
 		// Read the setup saved in the browser
 		"var audioSource = localStorage.getItem('vidc_audioSource');\n"
 		"var videoSource = localStorage.getItem('vidc_videoSource');\n"
 		"var audioOutput = localStorage.getItem('vidc_audioOutput');\n"
-		"function vidc_setaudiooutput(){\n"
+		"window.vidc_setaudiooutput = function(){\n"
 		"\tlogs += 'set audio output to ' + audioOutput + '\\r';\n"
 		"\tif (audioctx.setSinkId !== undefined && audioOutput != null && audioOutput !== 'default') audioctx.setSinkId(audioOutput);\n"
 		"}\n"
 		"vidc_setaudiooutput();\n"
 		// Populate the 'select' field in the popup device configuration dialog
-		"function vidc_gotDevices(deviceInfos) {\n"
+		"window.vidc_gotDevices = function (deviceInfos) {\n"
 		"\tvar videoinput = document.querySelector('#videoinput');\n"
 		"\tvar audioinput = document.querySelector('#audioinput');\n"
 		"\tvar audiooutput = document.querySelector('#audiooutput');\n"
@@ -761,7 +761,7 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 		"\t\t}\n"
 		"\t});\n"
 		"}\n"
-		"function vidc_setupsources() {\n"
+		"window.vidc_setupsources = function() {\n"
 		"\tconsole.log ('get audio='+audioSource+' video='+videoSource);\n"
 		"\tconst constraints = {\n"
 		"\t\taudio: {deviceId: audioSource ? {exact: audioSource} : undefined},\n"
@@ -769,20 +769,18 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 		"\t};\n"
 		"\tvidc_start(constraints);\n"
 		"}\n"
-		"function vidc_updatesources() {\n"
+		"window.vidc_updatesources = function() {\n"
 		"\taudioSource = audioinput.value;\n"
 		"\tvideoSource = videoinput.value;\n"
 		"\tlocalStorage.setItem('vidc_audioSource',audioSource);\n"
 		"\tlocalStorage.setItem('vidc_videoSource',videoSource);\n"
 		"\tvidc_setupsources();\n"
 		"}\n"
-		"function vidc_updateoutput() {\n"
+		"window.vidc_updateoutput = function() {\n"
 		"\taudioOutput = audiooutput.value;\n"
 		"\tlocalStorage.setItem('vidc_audioOutput',audioOutput);\n"
 		"\tvidc_setaudiooutput();\n"
-		"}\n"
-		// Tell web/index.hcc to call the start() function when notesocket is ready
-		"var notesocket_call=vidc_setupsources;\n";
+		"}\n";
 
 	return lines;
 }
@@ -805,6 +803,8 @@ string VIDCONF::draw_board(
 	lines += "</div>\n";
 	lines += "</div>\n";
 
+	// Tell web/index.hcc to call the start() function when notesocket is ready
+	script += "window.notesocket_call=vidc_setupsources;\n";
 	#if 0
 	script += string_f("const videoTag = document.getElementById('vidc-%s');\n",gameid.c_str());
 	script +=
