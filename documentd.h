@@ -292,11 +292,12 @@ public:
 	}
 	void add_notification (PARAM_STRING script, const std::vector<USERS_NOTIFIES> &unotifies);
 	void add_notification (PARAM_STRING script);
-	virtual void add_notification_fd(const std::map<std::string, GAME_P> &games, int fd, const char *username, const char *connectid);
-	std::set<std::string> get_waiting_users();
+	virtual void add_notification_fd(int fd, const char *username, const char *connectid);
+	void get_waiting_users(std::set<std::string> &ret);
 	void update_waiting_users(std::string &lines);
 	bool waiting_user(const char *username);
-	virtual int del_notification_fd(const std::map<std::string, GAME_P> &games, int fd);
+	virtual int del_notification_fd(int fd);
+	void sync_embed_notification_fd (PARAM_STRING embed, bool remove);
 	const char *locate_event (unsigned &sequence);
 	void setgameid(PARAM_STRING _gameid){
 		gameid = _gameid.ptr;

@@ -501,6 +501,11 @@ elif [ "$1" = "doc-whiteboard-imbed-fill" ] ; then # test: create images and emb
 			textpos elm1 1
 			assignimg http://test1.bolixo.org/bolixo-arch.jpg
 			resetsel
+		elif [ "$1" = "1v" ] ; then # large video conference
+			addelm elm1 "video conf 1" rect 600 500 1000 950
+			textpos elm1 1
+			assigndoc test.vdc A1
+			resetsel
 		elif [ "$1" = "2c" ] ; then
 			addelm elm2 "Chess game 2" rect 930 330 600 600
 			textpos elm2 1

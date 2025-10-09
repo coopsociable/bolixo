@@ -360,36 +360,59 @@ void GAME::add_notification (PARAM_STRING script)
 	vector<USERS_NOTIFIES> unotifies;
 	add_notification(script,unotifies);
 }
-void GAME::add_notification_fd(const map<string,GAME_P> &games, int fd, const char *username, const char *connectid)
+static const map<string,GAME_P> *pt_games = nullptr;
+
+void GAME::add_notification_fd(int fd, const char *username, const char *connectid)
 {
 	notification_fds[fd] = FD_INFO(username,connectid);
 	// Notify embeded documents, same in del_notification_fd().
 	auto list = get_embed_list();
 	for (auto &e:list){
-		auto g = games.find(e);
-		if (g != games.end()) g->second->add_notification_fd(games,fd,username,connectid);
+		auto g = pt_games->find(e);
+		if (g != pt_games->end()) g->second->add_notification_fd(fd,username,connectid);
 	}
 }
-int GAME::del_notification_fd(const map<string,GAME_P> &games, int fd)
+int GAME::del_notification_fd(int fd)
 {
 	int ret = notification_fds.erase(fd) > 0 ? 0 : -1;
 	auto list = get_embed_list();
 	for (auto &e:list){
-		auto g = games.find(e);
-		if (g != games.end()) g->second->del_notification_fd(games,fd);
+		auto g = pt_games->find(e);
+		if (g != pt_games->end()) g->second->del_notification_fd(fd);
 	}
 	return ret;
 }
+
+// Make sure an embed document has all (or none) the notification_fds of his parent
+void GAME::sync_embed_notification_fd(PARAM_STRING embed, bool remove)
+{
+	auto g = pt_games->find(embed.ptr);
+	if (g != pt_games->end()){
+		for (auto &n:notification_fds){
+			if (remove){
+				g->second->del_notification_fd(n.first);
+			}else{
+				g->second->add_notification_fd(n.first,n.second.username.c_str(),n.second.connectid.c_str());
+			}	
+		}
+	}else{
+		tlmp_warning ("embed document not found: %s\n",embed.ptr);
+	}
+}
+
 /*
 	Returnt the list of users waiting for event (for that game/document)
 */
-std::set<string> GAME::get_waiting_users()
+void GAME::get_waiting_users(set<string> &ret)
 {
-	set<string> ret;
 	for (auto &n:notification_fds){
 		ret.insert (n.second.username);
 	}
-	return ret;
+	auto embs = get_embed_list();
+	for (auto &e: embs){
+		auto g = pt_games->find(e);
+		if (g != pt_games->end()) g->second->get_waiting_users(ret);
+	}
 }
 static const char *nodename = nullptr;
 
@@ -442,7 +465,9 @@ void GAME::draw_waiting_users(string &lines, unsigned width, unsigned height, co
 	lines += "\t}\n";
 	lines += "\telm.innerHTML = txt;\n";
 	lines += "}\n";
-	lines += format_draw_waiting(get_waiting_users());
+	set<string> waitings;
+	get_waiting_users(waitings);
+	lines += format_draw_waiting(waitings);
 	lines += "</script>\n";
 	has_waiting_users = true;
 }
@@ -459,7 +484,8 @@ bool GAME::waiting_user(const char *username)
 void GAME::update_waiting_users(string &lines)
 {
 	if (has_waiting_users){
-		auto waitings = get_waiting_users();
+		set<string> waitings;
+		get_waiting_users(waitings);
 		if (waitings != last_waitings){
 			// tlmp_warning ("waiting != last_waitings");
 			lines += format_draw_waiting(waitings);
@@ -520,13 +546,9 @@ void GAME::engine_reply(const char *line, string &notify, bool &done)
 set<string> GAME::get_embed_list() const
 {
 	set<string> ret;
-	auto tb = str_splitline (gameid,'/');
-	if (tb.size() >= 4){
-		string docprj = string_f("/%s/%s/%s/",tb[1].c_str(),tb[2].c_str(),tb[3].c_str());
-		auto embs = get_embed_specs();
-		for (auto &e:embs){
-			ret.insert(docprj+e.document);
-		}
+	auto embs = get_embed_specs();
+	for (auto &e:embs){
+		ret.insert(documentd_rel2abs(gameid,e.document));
 	}
 	return ret;
 }
@@ -546,13 +568,12 @@ static size_t total_content_size = 0;
 static size_t total_script_size = 0;
 static size_t total_unotify_size = 0;
 static unsigned total_requests=0;
-static map<string,GAME_P> *pt_games = nullptr;
 
 /*
 	Send the content of val to all waiting connections.
 	If the list of waiting users has changed, send notifications as well.
 */ 
-static void documentd_send_notifies(GAME_P game, vector<GAME_P> &embeds, string &val, const vector<USERS_NOTIFIES> &unotifies, size_t &notify_size)
+static void documentd_send_notifies(GAME_P game, string &val, const vector<USERS_NOTIFIES> &unotifies, size_t &notify_size)
 {
 	// Notifications are sent using the waitevent system
 	// Check if the connected users list must be updated.
@@ -560,7 +581,6 @@ static void documentd_send_notifies(GAME_P game, vector<GAME_P> &embeds, string 
 	if (val.size() > 0 || unotifies.size() >0){
 		notify_size += val.size();
 		game->add_notification(val,unotifies);
-		for (auto e:embeds) e->add_notification(val,unotifies);
 	}
 }
 
@@ -577,7 +597,6 @@ static bool documentd_playstep (
 {
 	bool success = false;
 	unknown = false;
-	pt_games = &games;
 	// The first step may contain the gameid on which these steps apply.
 	// the "var" contains either gameid,werb or just verb
 	string tmp_gameid,tmp_var;
@@ -602,6 +621,10 @@ static bool documentd_playstep (
 		size_t content_size = 0;
 		size_t notify_size = 0;
 		size_t script_size = 0;
+		#if 0
+		// Old stuff. Now add_notification_fd() talks to embed document, so each one
+		// knows which client to notify.
+
 		// Find games embeding this part of this game
 		vector<GAME_P> embeds;
 		for (auto &gg:games){
@@ -610,11 +633,12 @@ static bool documentd_playstep (
 				embeds.push_back(gg.second);
 			}
 		}
+		#endif
 		bool notify_seen = false;
 		for (auto r = res.begin(); r != res.end(); ){
 			if (r->var == VAR_NOTIFY){
 				notify_seen = true;
-				documentd_send_notifies (game,embeds,r->val,unotifies,notify_size);
+				documentd_send_notifies (game,r->val,unotifies,notify_size);
 				r = res.erase(r);
 			}else if (r->var == VAR_SCRIPT){
 				script_size += r->val.size();
@@ -645,7 +669,7 @@ static bool documentd_playstep (
 		}
 		if (!notify_seen){
 			string val;
-			documentd_send_notifies (game,embeds,val,unotifies,notify_size);
+			documentd_send_notifies (game,val,unotifies,notify_size);
 		}
 		if (protocol_stats) tlmp_warning ("protocol content_size=%zu script_size=%zu notify_size=%zu",content_size,script_size,notify_size);
 		total_content_size += content_size;
@@ -656,7 +680,6 @@ static bool documentd_playstep (
 		msg = "Unknown game id";
 		unknown = true;
 	}
-	pt_games = nullptr;
 	return success;
 }
 
@@ -843,9 +866,11 @@ string documentd_rel2abs (PARAM_STRING gameid, PARAM_STRING relpath)
 			ret += relpath.ptr;
 		}else{
 			for (unsigned i=4; i<tb.size()-1; i++){
-				ret += string_f("/%s",tb[i].c_str());
+				ret += '/';
+				ret += tb[i];
 			}
-			ret += string_f("/%s",relpath.ptr);
+			ret += '/';
+			ret += relpath.ptr;
 		}
 	}
 	//tlmp_warning ("gameid=%s relpath=%s ret=%s\n",gameid.ptr,relpath.ptr,ret.c_str());
@@ -1546,6 +1571,7 @@ int main (int argc, char *argv[])
 		glocal map<string,vector<VARVAL>> handles;	// Handles used for playstep_more
 		fdpass_readsecrets (glocal.client_secretfile,glocal.client_secrets);
 		signal (SIGCHLD,SIG_IGN);
+		pt_games = &glocal.games;	// The notification system must inform embedded objects
 		documentd_start_engines(glocal.programs);
 		<obj TCPSERVER s>(glocal.clientport,5);
 		<f newclient>
@@ -1563,7 +1589,7 @@ int main (int argc, char *argv[])
 			// Is this client waiting for a notification ?
 			bool found = false;
 			for (auto g:glocal.games){
-				if (g.second->del_notification_fd(glocal.games,no)!=-1){
+				if (g.second->del_notification_fd(no)!=-1){
 					found = true;
 					break;
 				}
@@ -1973,7 +1999,7 @@ int main (int argc, char *argv[])
 						}
 						{
 							// tlmp_warning ("waitevent no=%d,%d username=%s connectid=%s",glocal.no,no,username,connectid);
-							game->add_notification_fd(glocal.games,no,username,connectid);
+							game->add_notification_fd(no,username,connectid);
 							if (!game->waiting_user(username)){
 								string line;
 								game->update_waiting_users(line);
