@@ -70,8 +70,8 @@ class VIDCONF: public GAME{
 		string connectid;	// Connection ID having done a getstats
 		int nbreq=0;		// Number of getstats sent (number of connected users)
 	} stats;
-	int del_notification_fd(int fd);
-	void add_notification_fd(int fd, const char *username, const char *connectid);
+	int del_notification_fd(const map<string,GAME_P> &games, int fd);
+	void add_notification_fd(const map<string,GAME_P> &games, int fd, const char *username, const char *connectid);
 	int findpeer(PARAM_STRING connectid) const;
 public:
 	VIDCONF();
@@ -146,7 +146,7 @@ void VIDCONF::load(DOC_READER &r, std::string &msg)
 }
 </mod>
 
-int VIDCONF::del_notification_fd(int fd)
+int VIDCONF::del_notification_fd(const map<string,GAME_P> &games, int fd)
 {
 	string deleted_id;
 	for (auto p=webrtc_started.begin(); p != webrtc_started.end(); p++){
@@ -158,15 +158,15 @@ int VIDCONF::del_notification_fd(int fd)
 			break;
 		}
 	}
-	int ret = GAME::del_notification_fd(fd);
+	int ret = GAME::del_notification_fd(games,fd);
 	if (deleted_id.size() > 0){
 		add_notification(string_f("VIDC_delcon('%s');\n",deleted_id.c_str()));
 	}
 	return ret;
 }
-void VIDCONF::add_notification_fd(int fd, const char *username, const char *connectid)
+void VIDCONF::add_notification_fd(const map<string,GAME_P> &games, int fd, const char *username, const char *connectid)
 {
-	GAME::add_notification_fd(fd,username,connectid);
+	GAME::add_notification_fd(games,fd,username,connectid);
 	for (auto &o:old_webrtcs){
 		if (is_eq(connectid,o.connectid)){
 			auto &p = webrtc_started.emplace_back(fd,connectid);
@@ -228,6 +228,9 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 		}
 	}
 	string lines;
+	lines += "window.VIDC_send = function(msg){\n"
+		"\tnotesocket.send(VIDC_gameid+','+msg);\n"
+		"}\n";
 	lines += "window.VIDC_updmsg = function(color,msg){\n";
 	lines += string_f("\tvar elm = document.getElementById('msg-%s');\n",gameid.c_str());
 	lines += "\tif (elm != null){\n";
@@ -259,14 +262,14 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 
 
 	lines +=
-		"var connects = [];\n"	// List of all peer connections
-		"var logs='';\n"	// Message stored and retrieved by VIDC_getlogs()
-		"var showing='';\n"	// peer currently shown in the video tag
-		"window.findconnect = function(peerid){\n"
+		"window.VIDC_connects = [];\n"	// List of all peer connections
+		"window.VIDC_logs='';\n"	// Message stored and retrieved by VIDC_getlogs()
+		"window.VIDC_showing='';\n"	// peer currently shown in the video tag
+		"window.VIDC_findconnect = function(peerid){\n"
 		"\tvar ret=null;\n"
-		"\tfor (let i=0; i<connects.length; i++){\n"
-		"\t\tif(connects[i].peerid === peerid){\n"
-		"\t\t\tret=connects[i];\n"
+		"\tfor (let i=0; i<VIDC_connects.length; i++){\n"
+		"\t\tif(VIDC_connects[i].peerid === peerid){\n"
+		"\t\t\tret=VIDC_connects[i];\n"
 		"\t\t\tbreak;\n"
 		"\t\t}\n"
 		"\t}\n"
@@ -292,15 +295,15 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 		"\t\tpc: new RTCPeerConnection(config),\n"
 		"\t};\n"
 		"\tconnect.pc.onconnectionstatechange = (event) => {\n"
-		"\t\tlogs += connect.peerid + ' connectionstate='+event.target.connectionState + '\\r';\n"
+		"\t\tVIDC_logs += connect.peerid + ' connectionstate='+event.target.connectionState + '\\r';\n"
 		"\t};\n"
 
 		"\tconnect.pc.onicegatheringstatechange = (event) => {\n"
-		"\t\tlogs += 'gatheringstatechange ' + connect.peerid + ' state=' + event.target.iceGatheringState + '\\r';\n"
+		"\t\tVIDC_logs += 'gatheringstatechange ' + connect.peerid + ' state=' + event.target.iceGatheringState + '\\r';\n"
 		"\t};\n"
 
 		// Closure for ontrack
-		"\twindow.clo_ontrack = function(con){\n"
+		"\tfunction clo_ontrack (con){\n"
 		"\t\treturn function ({ track, streams }){\n"
 		"\t\t\ttrack.onunmute = () => {\n"
 		"\t\t\t\tconsole.log('selfVideo='+selfVideo+' con='+con);\n"
@@ -312,28 +315,28 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 		"\t\t\t\t\tcon.stream = streams[0];\n"
 		"\t\t\t\t\tVIDC_update();\n"
 		"\t\t\t\t}\n"
-		"\t\t\t\tlogs += 'onunmute ' + con.peerid + ' kind=' + track.kind + '\\r';\n"
+		"\t\t\t\tVIDC_logs += 'onunmute ' + con.peerid + ' kind=' + track.kind + '\\r';\n"
 		"\t\t\t};\n"
 		"\t\t};\n"
 		"\t}\n"
 
 		"\tconnect.pc.ontrack = clo_ontrack(connect);\n"
 		// Special closure for the object, see onnegotiontionneeded below
-		"\twindow.clo_connect = function (con){\n"
+		"\tfunction clo_connect (con){\n"
 		"\t\treturn async function(){\n"
 		"\t\t\ttry {\n"
 		"\t\t\t\tcon.makingOffer = true;\n"
 		"\t\t\t\tawait con.pc.setLocalDescription();\n"
 		"\t\t\t\tconsole.log ('Send localDescription');\n"
-		"\t\t\t\tnotesocket.send('description:'+con.peerid+' '+JSON.stringify(con.pc.localDescription,null,0));\n"
+		"\t\t\t\tVIDC_send('description:'+con.peerid+' '+JSON.stringify(con.pc.localDescription,null,0));\n"
 		"\t\t\t\tcon.sentdesc = true;\n"
-		"\t\t\t\tlogs += 'send description to ' + con.peerid + ' tboffer.length=' + con.tboffer.length + '\\r';\n"
+		"\t\t\t\tVIDC_logs += 'send description to ' + con.peerid + ' tboffer.length=' + con.tboffer.length + '\\r';\n"
 		"\t\t\t\tif (con.tboffer.length > 0){\n"
 		"\t\t\t\t\tlet off=con.tboffer[0];\n"
 		"\t\t\t\t\treceiveoffer(off.connect,off.description,off.candidate);\n"
 		"\t\t\t\t}\n"
 		"\t\t\t} catch (err) {\n"
-		"\t\t\t\tlogs += 'onnegotiationneeded error ' + err + '\\r';\n"
+		"\t\t\t\tVIDC_logs += 'onnegotiationneeded error ' + err + '\\r';\n"
 		"\t\t\t} finally {\n"
 		"\t\t\t\tcon.makingOffer = false;\n"
 		"\t\t\t}\n"
@@ -341,21 +344,21 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 		"\t}\n"
 		"\tconnect.pc.onnegotiationneeded = clo_connect(connect);\n"
 
-		"\twindow.clo_candidate = function(con){\n"
+		"\tfunction clo_candidate (con){\n"
 		"\t\treturn function ({ candidate }){\n"
 		"\t\t\tif(candidate==null){\n"
-		"\t\t\t\tlogs += 'Send Candidate null to '+con.peerid + '\\r';\n"
+		"\t\t\t\tVIDC_logs += 'Send Candidate null to '+con.peerid + '\\r';\n"
 		"\t\t\t}else{\n"
-		"\t\t\t\tlogs += 'Send Candidate to '+con.peerid + '\\r';\n"
+		"\t\t\t\tVIDC_logs += 'Send Candidate to '+con.peerid + '\\r';\n"
 		"\t\t\t}\n"
-		"\t\t\tnotesocket.send ('candidate:'+con.peerid+' '+JSON.stringify(candidate,null,0));\n"
+		"\t\t\tVIDC_send ('candidate:'+con.peerid+' '+JSON.stringify(candidate,null,0));\n"
 		"\t\t};\n"
 		"\t}\n"
 		"\tconnect.pc.onicecandidate = clo_candidate(connect);\n"
 
-		"\tconnects.push(connect);\n"
+		"\tVIDC_connects.push(connect);\n"
 		"\tfor (const track of selfStream.getTracks()) {\n"
-		"\t\tlogs += 'addTrack ' + connect.peerid + ' kind=' + track.kind + '\\r';\n"
+		"\t\tVIDC_logs += 'addTrack ' + connect.peerid + ' kind=' + track.kind + '\\r';\n"
 		"\t\tconnect.pc.addTrack(track, selfStream);\n"
 		"\t}\n"
 		"}\n"
@@ -365,21 +368,21 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 		"\t\tselfStream = await navigator.mediaDevices.getUserMedia(constraints);\n"
 		"\t\tVIDC_showgrid();\n"
 		"\t\tif (!start_sent){\n"
-		"\t\t\tnotesocket.send('webrtcstart:');\n"
+		"\t\t\tVIDC_send('webrtcstart:');\n"
 		"\t\t\tstart_sent=true;\n"
 		"\t\t}\n"
-		"\t\tfor (const connect of connects){\n"
+		"\t\tfor (const connect of VIDC_connects){\n"
 		"\t\t\tfor (const sender of connect.pc.getSenders()){\n"
 		"\t\t\t\tfor (const track of selfStream.getTracks()) {\n"
 		"\t\t\t\t\tif(sender.track.kind===track.kind){\n"
 		"\t\t\t\t\t\tsender.replaceTrack(track);\n"
-		"\t\t\t\t\t\tlogs += 'replaceTrack ' + connect.peerid + ' sender.track.kind=' + sender.track.kind + ' ' + sender.track.id + ' kind=' + track.kind + ' ' + track.id + '\\r';\n"
+		"\t\t\t\t\t\tVIDC_logs += 'replaceTrack ' + connect.peerid + ' sender.track.kind=' + sender.track.kind + ' ' + sender.track.id + ' kind=' + track.kind + ' ' + track.id + '\\r';\n"
 		"\t\t\t\t\t}\n"
 		"\t\t\t\t}\n"
 		"\t\t\t}\n"
 		"\t\t}\n"
 		"\t} catch (err) {\n"
-		"\t\tlogs += 'vidc_start ' + err + '\\r';\n"
+		"\t\tVIDC_logs += 'vidc_start ' + err + '\\r';\n"
 		"\t}\n"
 		"}\n"
 
@@ -390,30 +393,30 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 		"\t\t\t\t&& (connect.makingOffer || connect.pc.signalingState !== 'stable');\n"
 		"\t\t\tconnect.ignoreOffer = !connect.polite && offerCollision;\n"
 		"\t\t\tif (connect.ignoreOffer) {\n"
-		"\t\t\t\tlogs += 'ignoreOffer '+connect.peerid+' type='+description.type+'\\r';\n"
+		"\t\t\t\tVIDC_logs += 'ignoreOffer '+connect.peerid+' type='+description.type+'\\r';\n"
 		"\t\t\t\tendoffer(connect);\n"
 		"\t\t\t\treturn;\n"
 		"\t\t\t}\n"
-		"\t\t\tlogs += 'setRemoteDescription '+ connect.peerid + ' type=' + description.type + '\\r';\n"
+		"\t\t\tVIDC_logs += 'setRemoteDescription '+ connect.peerid + ' type=' + description.type + '\\r';\n"
 		"\t\t\tawait connect.pc.setRemoteDescription(description);\n"
 		"\t\t\tif (description.type === 'offer') {\n"
 		"\t\t\t\tawait connect.pc.setLocalDescription();\n"
-		"\t\t\t\tnotesocket.send ('description:'+connect.peerid+' '+JSON.stringify(connect.pc.localDescription,null,0));\n"
-		"\t\t\t\tlogs += 'offer send description to ' + connect.peerid + ' type=' + connect.pc.localDescription.type + '\\r';\n"
+		"\t\t\t\tVIDC_send ('description:'+connect.peerid+' '+JSON.stringify(connect.pc.localDescription,null,0));\n"
+		"\t\t\t\tVIDC_logs += 'offer send description to ' + connect.peerid + ' type=' + connect.pc.localDescription.type + '\\r';\n"
 		"\t\t\t}\n"
 		"\t\t} else {\n"
-		"\t\t\tlogs += 'addIceCandidate from ' + connect.peerid + (candidate==null ? ' null' : '') + '\\r';\n"
+		"\t\t\tVIDC_logs += 'addIceCandidate from ' + connect.peerid + (candidate==null ? ' null' : '') + '\\r';\n"
 		"\t\t\ttry {\n"
 		"\t\t\t\tawait connect.pc.addIceCandidate(candidate);\n"
 		"\t\t\t} catch (err) {\n"
-		"\t\t\t\tlogs += 'addIceCandidate error ' + err + '\\r';\n"
+		"\t\t\t\tVIDC_logs += 'addIceCandidate error ' + err + '\\r';\n"
 		"\t\t\t\tif (!connect.ignoreOffer) {\n"
 		"\t\t\t\t\tthrow err;\n"
 		"\t\t\t\t}\n"
 		"\t\t\t}\n"
 		"\t\t}\n"
 		"\t} catch (err) {\n"
-		"\t\tlogs += 'receiveoffer error ' + err + '\\r';\n"
+		"\t\tVIDC_logs += 'receiveoffer error ' + err + '\\r';\n"
 		"\t}\n"
 		"\tendoffer(connect);\n"
 		"}\n"
@@ -442,7 +445,7 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 
 		// Draw the current user video tag if enabled
 		"window.VIDC_showme = function(){\n"
-		"var ret = '';\n"
+		"\tvar ret = '';\n"
 		"\tif(VIDC_showme_on){\n";
 		lines += string_f("\t\tvar vidw=%u;\n",(board_width-10)/4);
 		lines += string_f("\t\tvar vidh=%u;\n",(board_height-10)/3);
@@ -450,13 +453,13 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 		lines += string_f("\t\tvar top=%u-vidh;\n",board_height-10);
 		lines +=
 		"\t\tret = `<div class='grid-item-me' style='width:${vidw}px;height:${vidh}px;top:${top};left:${left};'>\n"
-		"\t\t<video style='width:${vidw}px;height:${vidh}px;' class='mini-video' id='guest-me' autoplay muted></video></div>\n`;\n"
+		"\t\t<video style='width:${vidw}px;height:${vidh}px;' class='mini-video' id='guest-me' autoplay muted></video></div>`;\n"
 		"\t}\n"
 		"\treturn ret;\n"
 		"}\n"
 		// Assign selfStream to the current user video tag
 		"window.VIDC_assignme = function(){\n"
-		"\tif(VIDC_showme_on || connects.length == 0){\n"
+		"\tif(VIDC_showme_on || VIDC_connects.length == 0){\n"
 		"\t\tvar vid = document.getElementById(`guest-me`);\n"
 		"\t\tvid.srcObject = selfStream;\n"
 		"\t}\n"
@@ -467,7 +470,7 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 		lines += string_f("\tvar cellw=%u;\n",board_width-10);
 		lines += string_f("\tvar cellh=%u;\n",board_height-10);
 		lines += 
-		"\tvar txt = `<div class='grid-item' style='width:${cellw}px;height:${cellh}px;'><video style='width:${cellw}px;height:${cellh}px;' class='mini-video' id='guest-me' autoplay muted></video></div>\n`;\n"
+		"\tvar txt = `<div class='grid-item' style='width:${cellw}px;height:${cellh}px;'><video style='width:${cellw}px;height:${cellh}px;' class='mini-video' id='guest-me' autoplay muted></video></div>`;\n"
 		"\tgrid.innerHTML = txt;\n"
 		"\tVIDC_assignme();\n"
 		"}\n"
@@ -475,7 +478,7 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 		// Redraw the grid holding all guests
 		"window.VIDC_showgrid = function(){\n"
 		"\tgridmode=true;\n"
-		"\tif (connects.length == 0){\n"
+		"\tif (VIDC_connects.length == 0){\n"
 		"\t\tVIDC_show_only_me();\n"
 		"\t\treturn;\n"
 		"\t}\n"
@@ -485,9 +488,9 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 		lines += 
 		"\tvar style='auto';\n"
 		"\tvar w=100;\n"
-		"\tif(connects.length == 1){\n"
+		"\tif(VIDC_connects.length == 1){\n"
 		"\t\tw=100;\n"
-		"\t}else if (connects.length > 4){\n"
+		"\t}else if (VIDC_connects.length > 4){\n"
 		"\t\tstyle='auto auto auto';\n"
 		"\t\tw=33;\n"
 		"\t\tcellw /= 3;\n"
@@ -500,21 +503,21 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 		"\t}\n"
 		"\tgrid.style.gridTemplateColumns = style;\n"
 		"\tvar txt = '';\n"
-		"\tfor (var i=0; i<connects.length; i++){\n"
-		"\t\ttxt += `<div class='grid-item' style='width:${cellw}px;height:${cellh}px;'><video style='width:${cellw}px;height:${cellh}px;' class='mini-video' id='guest${i}' autoplay muted></video></div>\n`;\n"
+		"\tfor (var i=0; i<VIDC_connects.length; i++){\n"
+		"\t\ttxt += `<div class='grid-item' style='width:${cellw}px;height:${cellh}px;'><video style='width:${cellw}px;height:${cellh}px;' class='mini-video' id='guest${i}' autoplay muted></video></div>`;\n"
 		"\t}\n"
 		"\ttxt += VIDC_showme();\n"
 		"\tgrid.innerHTML = txt;\n"
-		"\tfor (var i=0; i<connects.length; i++){\n"
+		"\tfor (var i=0; i<VIDC_connects.length; i++){\n"
 		"\t\tvar vid = document.getElementById(`guest${i}`);\n"
-		"\t\tvid.srcObject = connects[i].stream;\n"
+		"\t\tvid.srcObject = VIDC_connects[i].stream;\n"
 		"\t}\n"
 		"\tVIDC_assignme();\n"
 		"}\n"
 		// Redraw the screen holding the active guest
 		"window.VIDC_showmain = function(){\n"
 		"\tgridmode=false;\n"
-		"\tif (connects.length == 0){\n"
+		"\tif (VIDC_connects.length == 0){\n"
 		"\t\tVIDC_show_only_me();\n"
 		"\t\treturn;\n"
 		"\t}\n";
@@ -523,11 +526,11 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 		lines +=
 		"\tvar grid = document.getElementById('confgrid');\n"
 		"\tgrid.style.gridTemplateColumns = 'auto';\n";
-		lines += "\tvar txt = `<div class='grid-main'><video id='guestmain' style='width:${cellw}px; height:${cellh}px;' class='main-video' autoplay muted></video></div>\n`;\n";
+		lines += "\tvar txt = `<div class='grid-main'><video id='guestmain' style='width:${cellw}px; height:${cellh}px;' class='main-video' autoplay muted></video></div>`;\n";
 		lines += "\tgrid.innerHTML = txt + VIDC_showme();\n";
 		lines +=
-		"\tvar con = findconnect (showing);\n"
-		"\tif (con == null) con = connects[0];\n"
+		"\tvar con = VIDC_findconnect (VIDC_showing);\n"
+		"\tif (con == null) con = VIDC_connects[0];\n"
 		"\tvar vid = document.getElementById(`guestmain`);\n"
 		"\tvid.srcObject = con.stream;\n"
 		"\tVIDC_assignme();\n"
@@ -544,27 +547,27 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 
 		"window.VIDC_setdesc = function(peerid,description){\n"
 		"\tconsole.log ('receive description '+peerid);\n"
-		"\tconst connect = findconnect(peerid);\n"
+		"\tconst connect = VIDC_findconnect(peerid);\n"
 		"\tpushoffer(connect,JSON.parse(description),null);\n"
 		"}\n"
 
 		"window.VIDC_setcand = function(peerid,candidate){\n"
-		"\tconst connect = findconnect(peerid);\n"
+		"\tconst connect = VIDC_findconnect(peerid);\n"
 		"\tconsole.log ('receive candidate '+peerid+' connect='+connect);\n"
 		"\tpushoffer(connect,null,JSON.parse(candidate));\n"
 		"}\n"
 
 		// This is sent to select which video feed must be used
 		"window.VIDC_show = function(peerid){\n"
-		"\tconst connect = findconnect(peerid);\n"
+		"\tconst connect = VIDC_findconnect(peerid);\n"
 		"\tif (connect == null){\n"
 		"\t\tconsole.log('show unknown peer');\n"
 		"\t}else if (connect.pc.connectionState !== 'connected'){\n"
 		"\t\tconsole.log ('show peer '+peerid+' not connected yet');\n"
 		"\t}else{\n"
 		"\t\tconsole.log ('show '+peerid+' connect='+connect+ ' state='+connect.pc.connectionState);\n"
-		"\t\tif (peerid !== showing){\n"
-		"\t\t\tshowing=peerid;\n"
+		"\t\tif (peerid !== VIDC_showing){\n"
+		"\t\t\tVIDC_showing=peerid;\n"
 		"\t\t\tif (!gridmode) VIDC_showmain();\n"
 		"\t\t}else{\n"
 		"\t\t\tconsole.log('stream already selected');\n"
@@ -574,55 +577,55 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 
 		// This is sent to remove a peer connection. The user just close the video conference tab for example.
 		"window.VIDC_delcon = function(peerid){\n"
-		"\tconsole.log('0 connects.length='+connects.length);\n"
-		"\tfor(let i=0; i<connects.length; i++){\n"
-		"\t\tconst con = connects[i];\n"
+		"\tconsole.log('0 connects.length='+VIDC_connects.length);\n"
+		"\tfor(let i=0; i<VIDC_connects.length; i++){\n"
+		"\t\tconst con = VIDC_connects[i];\n"
 		"\t\tif(con.peerid === peerid){\n"
 		"\t\t\tcon.audio.disconnect();\n"
 		"\t\t\tcon.pc.close();\n"
-		"\t\t\tconnects.splice(i,1);\n"
+		"\t\t\tVIDC_connects.splice(i,1);\n"
 		"\t\t\tbreak;\n"
 		"\t\t}\n"
 		"\t}\n"
 		"\tVIDC_update();\n"
-		"\tconsole.log('0 connects.length='+connects.length);\n"
+		"\tconsole.log('0 connects.length='+VIDC_connects.length);\n"
 		"}\n"
 		// Get the connection states
 		"window.VIDC_getstates = function(){\n"
 		"\tlet res='';\n"
-		"\tfor (let i=0; i<connects.length; i++){\n"
-		"\t\tlet con = connects[i];\n"
+		"\tfor (let i=0; i<VIDC_connects.length; i++){\n"
+		"\t\tlet con = VIDC_connects[i];\n"
 		"\t\tres += con.peerid + '=' + con.pc.connectionState + '=' + con.pc.iceConnectionState + ' ';\n"
 		"\t}\n"
-		"\tnotesocket.send('states:'+res);\n"
+		"\tVIDC_send('states:'+res);\n"
 		"}\n"
 		// Get the logs, reset the logs and the push stats
 		"window.VIDC_getlogs = function(){\n"
-		"\tlet tmplogs=logs;\n"
-		"\tfor (let i=0; i<connects.length; i++){\n"
-		"\t\tlet con = connects[i];\n"
+		"\tlet tmplogs=VIDC_logs;\n"
+		"\tfor (let i=0; i<VIDC_connects.length; i++){\n"
+		"\t\tlet con = VIDC_connects[i];\n"
 		"\t\ttmplogs += con.peerid + ' tboffer.length='+con.tboffer.length+' nbpushdesc='+con.nbpushdesc+' nbpushcand='+con.nbpushcand+'\\r';\n"
 		"\t\tcon.nbpushdesc = con.nbpushcand = 0;\n"
 		"\t}\n"
-		"\tnotesocket.send('logs:'+tmplogs);\n"
-		"\tlogs='';\n"
+		"\tVIDC_send('logs:'+tmplogs);\n"
+		"\tVIDC_logs='';\n"
 		"}\n"
 		// Get the stats for all connections
 		"window.VIDC_getstats = function(){\n"
 		"\tvar  proms = [];\n"
-		"\tfor (let i=0; i<connects.length; i++){\n"
-		"\t\tproms.push(connects[i].pc.getStats(null));\n"
+		"\tfor (let i=0; i<VIDC_connects.length; i++){\n"
+		"\t\tproms.push(VIDC_connects[i].pc.getStats(null));\n"
 		"\t}\n"
 		"\tPromise.all(proms).then((tbstats) => {\n"
 		"\t\tconsole.log ('tbstats.length='+tbstats.length);\n"
 		"\t\tvar res = '';\n"
 		"\t\tfor (let i=0; i<tbstats.length; i++){\n"
-		"\t\t\tconst peerid = connects[i].peerid;\n"
+		"\t\t\tconst peerid = VIDC_connects[i].peerid;\n"
 		"\t\t\ttbstats[i].forEach((rep) => {\n"
 		"\t\t\t\tres += peerid + ' ' + JSON.stringify(rep,null,0)+ '\\r';\n"
 		"\t\t\t});\n"
 		"\t\t}\n"
-		"\t\tnotesocket.send('stats:'+res);\n"
+		"\t\tVIDC_send('stats:'+res);\n"
 		"\t});\n"
 		"}\n";
 
@@ -719,7 +722,7 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 		"var videoSource = localStorage.getItem('vidc_videoSource');\n"
 		"var audioOutput = localStorage.getItem('vidc_audioOutput');\n"
 		"window.vidc_setaudiooutput = function(){\n"
-		"\tlogs += 'set audio output to ' + audioOutput + '\\r';\n"
+		"\tVIDC_logs += 'set audio output to ' + audioOutput + '\\r';\n"
 		"\tif (audioctx.setSinkId !== undefined && audioOutput != null && audioOutput !== 'default') audioctx.setSinkId(audioOutput);\n"
 		"}\n"
 		"vidc_setaudiooutput();\n"
@@ -804,6 +807,7 @@ string VIDCONF::draw_board(
 	lines += "</div>\n";
 
 	// Tell web/index.hcc to call the start() function when notesocket is ready
+	script += string_f("window.VIDC_gameid='%s';\n",get_gameid());
 	script += "window.notesocket_call=vidc_setupsources;\n";
 	#if 0
 	script += string_f("const videoTag = document.getElementById('vidc-%s');\n",gameid.c_str());
@@ -1176,6 +1180,13 @@ void VIDCONF::exec (
 			VARVAL var;
 			var.var = VAR_SCRIPT;
 			var.val = define_functions(ctx,false,1000,1000);
+			var.val += "end\n";
+			res.emplace_back(move(var));
+		}else if (is_eq(var,"getwebrtc")){
+			VARVAL var;
+			var.var = VAR_SCRIPT;
+			for (auto &w: webrtc_started) var.val += string_f("webrtc fd=%d con=%s\n",w.fd,w.connectid.c_str());
+			for (auto &w: old_webrtcs) var.val += string_f("old webrtc con=%s\n",w.connectid.c_str());
 			var.val += "end\n";
 			res.emplace_back(move(var));
 		}else if (is_eq(var,"newgame")){

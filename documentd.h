@@ -156,6 +156,7 @@ struct FD_INFO{
 	FD_INFO(const char *_username, const char *_connectid) : username(_username), connectid(_connectid){}
 	FD_INFO(){}
 };
+using GAME_P = std::shared_ptr<class GAME>;
 class GAME{
 	unsigned sequence=1;	// For notifications
 	time_t modified = (time_t)0;
@@ -291,11 +292,11 @@ public:
 	}
 	void add_notification (PARAM_STRING script, const std::vector<USERS_NOTIFIES> &unotifies);
 	void add_notification (PARAM_STRING script);
-	virtual void add_notification_fd(int fd, const char *username, const char *connectid);
+	virtual void add_notification_fd(const std::map<std::string, GAME_P> &games, int fd, const char *username, const char *connectid);
 	std::set<std::string> get_waiting_users();
 	void update_waiting_users(std::string &lines);
 	bool waiting_user(const char *username);
-	virtual int del_notification_fd(int fd);
+	virtual int del_notification_fd(const std::map<std::string, GAME_P> &games, int fd);
 	const char *locate_event (unsigned &sequence);
 	void setgameid(PARAM_STRING _gameid){
 		gameid = _gameid.ptr;
@@ -355,7 +356,6 @@ public:
 	virtual ~GAME();
 };
 
-using GAME_P = std::shared_ptr<GAME>;
 
 GAME_P make_TICTACTO();
 GAME_P make_SUDOKU();

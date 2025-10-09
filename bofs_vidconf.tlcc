@@ -209,12 +209,13 @@ static void vidconf_sock(_F_vidconf_sock &c, CONTEXT &ctx, const char *docname, 
 }
 </mod>
 <mod>
-static void vidconf_getjs(CONTEXT &ctx, const char *docname, FILE *fout)
+static void vidconf_get_something(CONTEXT &ctx, const char *docname, const char *command, FILE *fout)
 {
 	glocal fout;
+	glocal command;
 	<call vidconf_sock>(ctx,docname,60,true);
 	<f init>
-		send ("getjs:");
+		send (string_f("%s:",glocal.command));
 	</f>
 	<f receive>
 		if (is_eq(line,"end")){
@@ -464,13 +465,16 @@ int bofs_vidconf (CONTEXT &ctx, int argc, char *argv[])
 				</call>
 			}else if (is_eq(arg,"getjs")){
 				// Get the client javascript used to establish a video conference
-				vidconf_getjs (glocal.ctx,glocal.docname,stdout);
+				vidconf_get_something (glocal.ctx,glocal.docname,"getjs",stdout);
+			}else if (is_eq(arg,"getwebrtc")){
+				// Get internet connection information
+				vidconf_get_something (glocal.ctx,glocal.docname,"getwebrtc",stdout);
 			}else if (is_eq(arg,"wrtctest") && argc == 2){
 				// Generate a javascript file and execute it
 				<call savefile>(argv[1],false);
 				<f dowrite>
 					fprintf (fout,"var location={hostname: 'test1.bolixo.org'};\n");
-					vidconf_getjs (glocal.ctx,glocal.docname,fout);
+					vidconf_get_something (glocal.ctx,glocal.docname,"getjs",fout);
 					glocal fout;
 					<call loadfile>("scripts/notesocket.js",false);
 					<f oneline>

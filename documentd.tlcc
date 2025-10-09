@@ -360,13 +360,25 @@ void GAME::add_notification (PARAM_STRING script)
 	vector<USERS_NOTIFIES> unotifies;
 	add_notification(script,unotifies);
 }
-void GAME::add_notification_fd(int fd, const char *username, const char *connectid)
+void GAME::add_notification_fd(const map<string,GAME_P> &games, int fd, const char *username, const char *connectid)
 {
 	notification_fds[fd] = FD_INFO(username,connectid);
+	// Notify embeded documents, same in del_notification_fd().
+	auto list = get_embed_list();
+	for (auto &e:list){
+		auto g = games.find(e);
+		if (g != games.end()) g->second->add_notification_fd(games,fd,username,connectid);
+	}
 }
-int GAME::del_notification_fd(int fd)
+int GAME::del_notification_fd(const map<string,GAME_P> &games, int fd)
 {
-	return notification_fds.erase(fd) > 0 ? 0 : -1;
+	int ret = notification_fds.erase(fd) > 0 ? 0 : -1;
+	auto list = get_embed_list();
+	for (auto &e:list){
+		auto g = games.find(e);
+		if (g != games.end()) g->second->del_notification_fd(games,fd);
+	}
+	return ret;
 }
 /*
 	Returnt the list of users waiting for event (for that game/document)
@@ -566,12 +578,26 @@ static bool documentd_playstep (
 	bool success = false;
 	unknown = false;
 	pt_games = &games;
+	// The first step may contain the gameid on which these steps apply.
+	// the "var" contains either gameid,werb or just verb
+	string tmp_gameid,tmp_var;
+	vector<VARVAL_receive> tmp_steps;
+	const vector<VARVAL_receive> *ptsteps = &steps;
+	if (splitline(steps[0].var,',',tmp_gameid,tmp_var)){
+		gameid = tmp_gameid.c_str();
+		tmp_steps = steps;
+		for (auto &s: tmp_steps){
+			const char *pt = strchr(s.var,',');
+			if (pt != nullptr) s.var = pt+1;
+		}
+		ptsteps = &tmp_steps;
+	}
 	auto g = games.find(gameid);
 	if (g != games.end()){
 		success = true;
 		GAME_P game = g->second;
 		vector<USERS_NOTIFIES> unotifies;
-		game->manyexec(steps,ctx,sp,res,unotifies);
+		game->manyexec(*ptsteps,ctx,sp,res,unotifies);
 		game->testwin(res);
 		size_t content_size = 0;
 		size_t notify_size = 0;
@@ -1537,7 +1563,7 @@ int main (int argc, char *argv[])
 			// Is this client waiting for a notification ?
 			bool found = false;
 			for (auto g:glocal.games){
-				if (g.second->del_notification_fd(no)!=-1){
+				if (g.second->del_notification_fd(glocal.games,no)!=-1){
 					found = true;
 					break;
 				}
@@ -1947,7 +1973,7 @@ int main (int argc, char *argv[])
 						}
 						{
 							// tlmp_warning ("waitevent no=%d,%d username=%s connectid=%s",glocal.no,no,username,connectid);
-							game->add_notification_fd(no,username,connectid);
+							game->add_notification_fd(glocal.games,no,username,connectid);
 							if (!game->waiting_user(username)){
 								string line;
 								game->update_waiting_users(line);
