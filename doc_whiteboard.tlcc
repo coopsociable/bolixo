@@ -1205,6 +1205,14 @@ void WHITEBOARD::delete_elm (unsigned id, VARVAL &notify_var)
 		if (pt->second.is_imbed() || pt->second.is_image()){
 			remove_foreign (pt->second,notify_var);
 		}
+		if (pt->second.is_imbed()){
+			// If the document is embeeded only once, we have to disconnect the notification_fds
+			auto tb = get_embed_specs();
+			auto &document = pt->second.embed.document;
+			if (count_if(tb.begin(),tb.end(),[&document](auto &s){ return s.document == document; }) == 1){
+				sync_embed_notification_fd(documentd_rel2abs(gameid,document),true);
+			}
+		}
 		elms.erase(pt);
 		// Remove from baseelms if there
 		auto pt = find(baseelms.begin(),baseelms.end(),id);
@@ -2456,7 +2464,7 @@ void WHITEBOARD::execstep (
 				sync_embed_notification_fd(documentd_rel2abs(gameid,imbed.document),false);
 			}
 		// The other actions are Used to script modification of the document
-		}else if (strcmp(var,"addelm")==0){
+		}else if (is_eq(var,"addelm")){
 			// val format: label "text" type x y width height
 			string label,text,type;
 			unsigned x,y,width,height;
@@ -2574,8 +2582,6 @@ void WHITEBOARD::execstep (
 		}else if (is_eq(var,"resetgame")){
 			// val == 0: reset everything
 			if (is_any_of(val,"","0")){
-				auto tb = get_embed_list();
-				for (auto &e:tb) sync_embed_notification_fd(e,true);
 				while (elms.size() > 0){
 					delete_elm(elms.begin()->second.id,notify_var);
 				}

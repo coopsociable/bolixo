@@ -528,7 +528,7 @@ elif [ "$1" = "doc-whiteboard-imbed-fill" ] ; then # test: create images and emb
 			textpos elm2 1
 			assigndoc test.vdc A1
 			resetsel
-		elif [ "$1" = "3" ] ; then
+		elif [ "$1" = "3w" ] ; then
 			addelm elm3 "Whiteboard 3" rect 1540 330 600 600
 			textpos elm3 1
 			assigndoc test.white A1
@@ -573,10 +573,54 @@ elif [ "$1" = "doc-whiteboard-imbed" ] ; then # test: setup a white board with i
 	$0 doc-whiteboard-imbed-reset
 	shift
 	$0 doc-whiteboard-imbed-fill $*
+elif [ "$1" = "doc-whiteboard-imbed-delete" ] ; then # test: delete one element
+	if [ "$#" != 2 ] ; then
+		echo label missing >&2
+		exit 1
+	fi
+	DOCNAME=/projects/jacques-A/public/imbed.white
+	. scripts/whiteboard-help.sh
+	labeldelete $2	
 elif [ "$1" = "doc-whiteboard-imbed-dump" ] ; then # test: dump whiteboard
 	DOCNAME=/projects/jacques-A/public/imbed.white
 	. scripts/whiteboard-help.sh
 	docdump
+elif [ "$1" = "doc-whiteboard-imbed-nbwait" ] ; then # test: whiteboard imbed nbwait
+	# Create imbed.white and imbed test.white twice
+	check_nbwait(){
+		for doc in test.white imbed.white
+		do
+			/var/lib/lxc/documentd/status.sh | grep $doc | (read a b c d e f g h; echo $b $g)
+		done
+	}
+	# Make sure imbed.white is created
+	echo === Create documents imbed.white and test.white
+	(
+		DOCNAME=/projects/jacques-A/public/test.white
+		. scripts/whiteboard-help.sh
+		createdocument
+	)
+	$0 doc-whiteboard-imbed 
+	check_nbwait
+	echo === Make sure to have someone waiting for these documents
+	bofs -u jacques-B documents -w -d /projects/jacques-A/public/test.white >/dev/null &
+	PID1=$!
+	bofs -u jacques-B documents -w -d /projects/jacques-A/public/imbed.white >/dev/null &
+	PID2=$!
+	sleep 1
+	check_nbwait
+	echo === 2 test.white are linked in imbed.white
+	$0 doc-whiteboard-imbed 1w 2w
+	check_nbwait
+	echo === delete the first test.white
+	$0 doc-whiteboard-imbed-delete elm1
+	check_nbwait 
+	echo === delete the second test.white
+	$0 doc-whiteboard-imbed-delete elm2
+	check_nbwait
+	echo === kill $PID1 $PID2
+	kill $PID1 $PID2
+	check_nbwait
 elif [ "$1" = "doc-calc" ] ; then # test: many test on spreadsheet document
 	DOCNAME=/projects/jacques-A/public/test.sheet
 	. scripts/calc-help.sh
