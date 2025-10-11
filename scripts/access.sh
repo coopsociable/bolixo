@@ -618,7 +618,7 @@ elif [ "$1" = "doc-whiteboard-imbed-nbwait" ] ; then # test: whiteboard imbed nb
 	echo === delete the second test.white
 	$0 doc-whiteboard-imbed-delete elm2
 	check_nbwait
-	echo === kill $PID1 $PID2
+	echo === kill bofs processes
 	kill $PID1 $PID2
 	check_nbwait
 elif [ "$1" = "doc-calc" ] ; then # test: many test on spreadsheet document
