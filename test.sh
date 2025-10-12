@@ -2012,6 +2012,9 @@ elif [ "$1" = "test_firstlines" ]; then # A: test the bod_firstlines function
 		echo "hello how are you this morning. I was hoping to see you later today, but if it can't be, well, tomorrow is fine." >>$TESTFILE
 	done
 	./bod --mysecret toto --nodename toto --dbuser toto test_firstlines `cat $TESTFILE`
+elif [ "$1" = "deleteoldgames" ]; then # prod: Erase/save old games in documentd
+	shift
+	$0 documentd-control "$@" deleteoldgames
 else
 	echo test.sh command ...
 fi
