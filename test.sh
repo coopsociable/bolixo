@@ -296,7 +296,13 @@ cmpsequence(){
 		$0 syslog-clear
 		echo test=$test
 		./scripts/access.sh $test $OPT >$CMPDIR/$test.out 2>$CMPDIR/$test.err
-		$0 syslog-logs >$CMPDIR/$test.log
+		# Remove the dates from the log lines
+		($0 syslog-logs | sed s'/>/ /' | \
+			while read a b c d e
+			do
+				echo "$a> $e"
+			done
+		)>$CMPDIR/$test.log
 		if [ "$STOP" != "" ] ; then
 			$0 test-system
 			echo == $test.out
