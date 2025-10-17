@@ -261,7 +261,7 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 	}
 	// tlmp_warning ("tempuser :%s: temppass :%s:",tempuser.c_str(),temppass.c_str());
 	lines +=
-		"var gridmode=true;\n"
+		"window.gridmode=true;\n"
 		"const config = {\n"
 		"\ticeServers: ["
 		"{urls: 'stun:'+location.hostname + ':3478'},";
@@ -285,10 +285,10 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 		"\t}\n"
 		"\treturn ret;\n"
 		"}\n"
-		"var VIDC_showme_on = true;\n"
-		"var selfVideo = null;\n"
-		"var selfStream = null;\n"
-		"var audioctx = new AudioContext();\n"
+		"window.VIDC_showme_on = true;\n"
+		"window.selfVideo = null;\n"
+		"window.selfStream = null;\n"
+		"window.audioctx = new AudioContext();\n"
 		"window.VIDC_setpolite = function(pol,peerid){\n"
 		"\tconsole.log ('polite='+pol+' peerid='+peerid);\n"
 		"\tconst connect = {\n"
@@ -366,20 +366,20 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 		"\t}\n"
 		"\tconnect.pc.onicecandidate = clo_candidate(connect);\n"
 
-		"\tVIDC_connects.push(connect);\n"
+		"\twindow.VIDC_connects.push(connect);\n"
 		"\tfor (const track of selfStream.getTracks()) {\n"
 		"\t\tVIDC_logs += 'addTrack ' + connect.peerid + ' kind=' + track.kind + '\\r';\n"
 		"\t\tconnect.pc.addTrack(track, selfStream);\n"
 		"\t}\n"
 		"}\n"
-		"var start_sent=false;\n"
+		"window.start_sent=false;\n"
 		"window.vidc_start = async function(constraints) {\n"
 		"\ttry {\n"
 		"\t\tselfStream = await navigator.mediaDevices.getUserMedia(constraints);\n"
 		"\t\tVIDC_showgrid();\n"
-		"\t\tif (!start_sent){\n"
+		"\t\tif (!window.start_sent){\n"
 		"\t\t\tVIDC_send('webrtcstart:');\n"
-		"\t\t\tstart_sent=true;\n"
+		"\t\t\twindow.start_sent=true;\n"
 		"\t\t}\n"
 		"\t\tfor (const connect of VIDC_connects){\n"
 		"\t\t\tfor (const sender of connect.pc.getSenders()){\n"
@@ -456,13 +456,14 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 		// Draw the current user video tag if enabled
 		"window.VIDC_showme = function(){\n"
 		"\tvar ret = '';\n"
-		"\tif(VIDC_showme_on){\n";
-		lines += string_f("\t\tvar vidw=%u;\n",(board_width-10)/4);
-		lines += string_f("\t\tvar vidh=%u;\n",(board_height-10)/3);
-		lines += string_f("\t\tvar left=%u-vidw;\n",board_width-10);
-		lines += string_f("\t\tvar top=%u-vidh;\n",board_height-10);
+		"\tif(VIDC_showme_on){\n"
+		"\t\tvar grid = document.getElementById('confgrid');\n"
+		"\t\tvar vidw=grid.clientWidth/4;\n"
+		"\t\tvar vidh=grid.clientHeight/3;\n"
+		"\t\tvar left=grid.clientWidth-vidw;\n"
+		"\t\tvar top=grid.clientHeight-vidh;\n";
 		lines +=
-		"\t\tret = `<div class='grid-item-me' style='width:${vidw}px;height:${vidh}px;top:${top};left:${left};'>\n"
+		"\t\tret = `<div class='grid-item-me' style='width:${vidw}px;height:${vidh}px;top:${top};left:${left};border: 2px solid yellow;'>\n"
 		"\t\t<video style='width:${vidw}px;height:${vidh}px;' class='mini-video' id='guest-me' autoplay muted></video></div>`;\n"
 		"\t}\n"
 		"\treturn ret;\n"
@@ -476,10 +477,9 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 		"}\n"
 		// Show only the current user, no one connected yet
 		"window.VIDC_show_only_me = function(){\n"
-		"\tvar grid = document.getElementById('confgrid');\n";
-		lines += string_f("\tvar cellw=%u;\n",board_width-10);
-		lines += string_f("\tvar cellh=%u;\n",board_height-10);
-		lines += 
+		"\tvar grid = document.getElementById('confgrid');\n"
+		"\tvar cellw=grid.clientWidth;\n"
+		"\tvar cellh=grid.clientHeight;\n"
 		"\tvar txt = `<div class='grid-item' style='width:${cellw}px;height:${cellh}px;'><video style='width:${cellw}px;height:${cellh}px;' class='mini-video' id='guest-me' autoplay muted></video></div>`;\n"
 		"\tgrid.innerHTML = txt;\n"
 		"\tVIDC_assignme();\n"
@@ -492,9 +492,9 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 		"\t\tVIDC_show_only_me();\n"
 		"\t\treturn;\n"
 		"\t}\n"
-		"\tvar grid = document.getElementById('confgrid');\n";
-		lines += string_f("\tvar cellw=%u;\n",board_width-10);
-		lines += string_f("\tvar cellh=%u;\n",board_height-10);
+		"\tvar grid = document.getElementById('confgrid');\n"
+		"\tvar cellw=grid.clientWidth;\n"
+		"\tvar cellh=grid.clientHeight;\n";
 		lines += 
 		"\tvar style='auto';\n"
 		"\tvar w=100;\n"
@@ -531,10 +531,10 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 		"\t\tVIDC_show_only_me();\n"
 		"\t\treturn;\n"
 		"\t}\n";
-		lines += string_f("\tvar cellw=%u;\n",board_width-10);
-		lines += string_f("\tvar cellh=%u;\n",board_height-10);
 		lines +=
 		"\tvar grid = document.getElementById('confgrid');\n"
+		"\tvar cellw=grid.clientWidth;\n"
+		"\tvar cellh=grid.clientHeight;\n"
 		"\tgrid.style.gridTemplateColumns = 'auto';\n";
 		lines += "\tvar txt = `<div class='grid-main'><video id='guestmain' style='width:${cellw}px; height:${cellh}px;' class='main-video' autoplay muted></video></div>`;\n";
 		lines += "\tgrid.innerHTML = txt + VIDC_showme();\n";
@@ -587,12 +587,14 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 
 		// This is sent to remove a peer connection. The user just close the video conference tab for example.
 		"window.VIDC_delcon = function(peerid){\n"
+		"\tVIDC_logs += 'VIDC_delcon ' + peerid + ' connects.length=' + VIDC_connects.length + '\\r';\n"
 		"\tconsole.log('0 connects.length='+VIDC_connects.length);\n"
 		"\tfor(let i=0; i<VIDC_connects.length; i++){\n"
 		"\t\tconst con = VIDC_connects[i];\n"
 		"\t\tif(con.peerid === peerid){\n"
 		"\t\t\tcon.audio.disconnect();\n"
 		"\t\t\tcon.pc.close();\n"
+		"\t\t\tVIDC_logs += 'delcon found\\r';\n"
 		"\t\t\tVIDC_connects.splice(i,1);\n"
 		"\t\t\tbreak;\n"
 		"\t\t}\n"
@@ -793,6 +795,10 @@ string VIDCONF::define_functions(const DOC_CONTEXT &ctx, bool mobile, unsigned b
 		"\taudioOutput = audiooutput.value;\n"
 		"\tlocalStorage.setItem('vidc_audioOutput',audioOutput);\n"
 		"\tvidc_setaudiooutput();\n"
+		"}\n"
+		"window.vidc_initsources = function() {\n"
+		"\twindow.VIDC_connects = [];\n"
+		"\tvidc_setupsources();\n"
 		"}\n";
 
 	return lines;
@@ -806,8 +812,8 @@ string VIDCONF::draw_board(
 	string &script)
 {
 	string lines;
-	lines += "<div style='position: relative;'>\n";
-	lines += string_f("<div id='confgrid' class='grid' style='width:%upx; height:%upx;'>\n",width,height);
+	lines += "<div style='position: relative; width: 100%; height: 100%;'>\n";
+	lines += "<div id='confgrid' class='grid' style='width:100%; height:100%; border:2px solid blue;'>\n";
 	#if 0
 	lines += string_f("<video id='vidc-%s' autoplay width=100%% height=100%%>\n",gameid.c_str());
 	lines += "Your browser does not support the video tag.\n"
@@ -818,7 +824,7 @@ string VIDCONF::draw_board(
 
 	// Tell web/index.hcc to call the start() function when notesocket is ready
 	script += string_f("window.VIDC_gameid='%s';\n",get_gameid());
-	script += "window.notesocket_call=vidc_setupsources;\n";
+	script += "window.notesocket_call=vidc_initsources;\n";
 	#if 0
 	script += string_f("const videoTag = document.getElementById('vidc-%s');\n",gameid.c_str());
 	script +=
@@ -968,7 +974,7 @@ void VIDCONF::exec (
 		VARVAL var,var_script;
 		var.var = VAR_CONTENT;
 		var_script.var = VAR_DEFSCRIPT;
-		var.val = draw_board(sp.mobile,ctx.docnum,1000,1000,var_script.val);
+		var.val = draw_board(sp.mobile,ctx.docnum,sp.width,sp.height,var_script.val);
 		res.emplace_back(move(var));
 		res.emplace_back(move(var_script));
 	}else if (is_eq(var,REQ_CHAT)){

@@ -474,6 +474,11 @@ elif [ "$1" = "doc-whiteboard-imbed-reset" ] ; then # test: reset the white boar
 	createdocument
 	resetdocument
 elif [ "$1" = "doc-whiteboard-imbed-fill" ] ; then # test: create images and embed documents in a white board
+	(
+		DOCNAME=/projects/jacques-A/public/test.vdc
+		. scripts/vidconf-help.sh
+		createdocument
+	)
 	DOCNAME=/projects/jacques-A/public/imbed.white
 	. scripts/whiteboard-help.sh
 	shift
@@ -621,6 +626,47 @@ elif [ "$1" = "doc-whiteboard-imbed-nbwait" ] ; then # test: whiteboard imbed nb
 	echo === kill bofs processes
 	kill $PID1 $PID2
 	check_nbwait
+elif [ "$1" = "doc-whiteboard-imbed-ivld" ] ; then # test: whiteboard imbed various security tests
+	USER=jacques-A
+	DOCNAME=/projects/$USER/public/imbed.white
+	. scripts/whiteboard-help.sh
+	echo === First remove/save all documents from documentd
+	./test.sh deleteoldgames --idle-time 1
+	embeddocument(){
+		labelselect elm1 0
+		assigndoc $1 A1
+	}
+	createdocument
+	resetdocument
+	echo "=== add elm1 into imbed.white"
+	addelm elm1 "Whiteboard" rect 320 330 600 600
+	textpos elm1 1
+	docdump
+	echo "=== Try adding an invalid (do not exist) document test.bad"
+	embeddocument test.bad
+	docdump
+	echo "=== Try adding a document from another project /projects/other/public/test.bad"
+	embeddocument /projects/other/public/test.bad 
+	docdump
+	echo "=== Try to operate on test.bad"
+	$BOFS documents --noscripts --playstep --docname $DOCNAME --step "/projects/$USER/public/test.bad,labeldelete=elm1"
+	docdump
+	echo "=== Try to operate on a valid document (test.white) but not linked in imbed.white"
+	$BOFS documents --noscripts --playstep --docname $DOCNAME --step "/projects/$USER/public/test.white,labeldelete=elm1"
+	docdump
+	echo "=== Embed test.white in imbed.white"
+	embeddocument test.white
+	docdump
+	echo "=== Erase element elm1 from embedded test.white"
+	# no elm1 in test.white, but there is one in imbed.white. This must fail
+	$BOFS documents --noscripts --playstep --docname $DOCNAME --step "/projects/$USER/public/test.white,labeldelete=elm1"
+	docdump
+	echo "=== Valid operation on embedded test.white: add element test1"
+	$BOFS documents --noscripts --playstep --docname $DOCNAME --step "/projects/$USER/public/test.white,addelm=test1 test rect 320 330 400 300"
+	$BOFS documents --noscripts --playstep --docname $DOCNAME --step "/projects/$USER/public/test.white,dump="
+	echo "=== Valid operation on embedded test.white: remove element test1"
+	$BOFS documents --noscripts --playstep --docname $DOCNAME --step "/projects/$USER/public/test.white,labeldelete=test1"
+	$BOFS documents --noscripts --playstep --docname $DOCNAME --step "/projects/$USER/public/test.white,dump="
 elif [ "$1" = "doc-calc" ] ; then # test: many test on spreadsheet document
 	DOCNAME=/projects/jacques-A/public/test.sheet
 	. scripts/calc-help.sh

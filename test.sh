@@ -1155,7 +1155,7 @@ elif [ "$1" = "test-sendmail" ] ;then # prod: ask writed to send one email
 elif [ "$1" = "cmp-sequence" ] ; then # S: Execute QA tests
 	cmpsequence "$2" cleartest1 directory createsubdir projects msgs ivldsession public remote-contact remote-interest contact-utf8 notifications \
 		remote-sendlarge cp-admin badnames setaccess remote-member delete-group remote-group remote-contact-fail infowrite doc-chess doc-whiteboard doc-word \
-		doc-photos doc-whiteboard-imbed-nbwait
+		doc-photos doc-whiteboard-imbed-nbwait doc-whiteboard-imbed-ivld
 elif [ "$1" = "cmpsane-sequence" ] ; then # S: Execute QA tests keeping everything sane
 	cmpsequence "$2" cleartest1 directory createsubdir projects msgs  public remote-contact remote-interest contact-utf8 notifications \
 		remote-sendlarge cp-admin setaccess remote-member remote-group infowrite
