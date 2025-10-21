@@ -1381,6 +1381,7 @@ static bool instrument = false;
 static bool duration = false;
 static bool displayjs = false;	// Display notification JS scripts in console
 static bool force_mobile = false;	// Pretend that we are serving a cell phone
+static bool fixsize_delay = false;	// The javascript fixsize() is delayed so we see its effect
 extern bool debug_agent;
 
 extern "C" void webmain_getprops(vector<WEB_PROPERTY> &tb)
@@ -1389,6 +1390,7 @@ extern "C" void webmain_getprops(vector<WEB_PROPERTY> &tb)
 	tb.emplace_back("duration",duration);
 	tb.emplace_back("instrument",instrument);
 	tb.emplace_back("force_mobile",force_mobile);
+	tb.emplace_back("fixsize_delay",fixsize_delay);
 	tb.emplace_back("debug_agent",debug_agent);
 }
 extern "C" int webmain_setprop(const WEB_PROPERTY &prop)
@@ -1402,6 +1404,8 @@ extern "C" int webmain_setprop(const WEB_PROPERTY &prop)
 		ret = prop.apply(duration);
 	}else if (prop.name == "force_mobile"){
 		ret = prop.apply(force_mobile);
+	}else if (prop.name == "fixsize_delay"){
+		ret = prop.apply(fixsize_delay);
 	}else if (prop.name == "debug_agent"){
 		ret = prop.apply(debug_agent);
 	}
@@ -1818,7 +1822,7 @@ extern "C" void webmain_real(int handle)
 		}
 		/- </div>
 		/- </div>
-		util_endscript(string_f("webstep=%u&subtab=%u%s",getcurstep(),webtabs_get_subtab(),getextraargs()));
+		util_endscript(fixsize_delay,string_f("webstep=%u&subtab=%u%s",getcurstep(),webtabs_get_subtab(),getextraargs()));
 		{
 			// Save the position in the document
 			bool one_changed = false;

@@ -141,7 +141,7 @@ void index_setgameid(PARAM_STRING gameid);
 void index_set_clipboard(PARAM_STRING clip);
 void util_delnotify(CONNECT_INFO &con_sess, PARAM_STRING id);
 void util_delnotify(CONNECT_INFO &con_sess, PARAM_STRING prefix, PARAM_STRING id);
-void util_endscript(PARAM_STRING urlparam);
+void util_endscript(bool fixsize_delay, PARAM_STRING urlparam);
 string util_clickable_img (PARAM_STRING url, unsigned image_width);
 void util_clickable_img (PARAM_STRING url, const char *image_width, unsigned border);
 void util_print_span(PARAM_STRING url);
