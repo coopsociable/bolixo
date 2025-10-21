@@ -10,6 +10,7 @@
 #define REQ_REGION	"region"
 #define REQ_LISTREGION	"listregion"
 #define REQ_CHAT	"chat"
+#define REQ_MENU	"menu"
 
 // Results produced by documents
 #define VAR_CONTENT	"content"	// HTML content to display

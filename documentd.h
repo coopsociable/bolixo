@@ -376,7 +376,10 @@ class LAYOUT_OPTS{
 		CONTENT_OPT_MENUBAR=8,	// Display the menubar
 		CONTENT_OPT_FULLTAB=16,	// The document use the full browser tab
 		CONTENT_OPT_BORDER=32,	// Solid border around the content
-		CONTENT_OPT_CENTER=64	// Content is centered horizontally
+		CONTENT_OPT_CENTER=64,	// Content is centered horizontally
+		CONTENT_OPT_ONLYMENU=128,	// Print only the menu bar
+		CONTENT_OPT_MAYEMBED=256	// This document may imbed other document
+						// So a special button is added to the menu
 	};
 	int mask=0;
 public:
@@ -408,6 +411,14 @@ public:
 		mask |= CONTENT_OPT_CENTER;
 		return *this;
 	}
+	LAYOUT_OPTS & onlymenu(){
+		mask |= CONTENT_OPT_ONLYMENU;
+		return *this;
+	}
+	LAYOUT_OPTS & mayembed(){
+		mask |= CONTENT_OPT_MAYEMBED;
+		return *this;
+	}
 	LAYOUT_OPTS & all(){
 		mask |= CONTENT_OPT_SCROLL|CONTENT_OPT_CHAT|CONTENT_OPT_USERS|CONTENT_OPT_MENUBAR|CONTENT_OPT_BORDER;
 		return *this;
@@ -419,6 +430,8 @@ public:
 	bool is_fulltab() const { return mask & CONTENT_OPT_FULLTAB;}
 	bool is_border() const { return mask & CONTENT_OPT_BORDER;}
 	bool is_center() const { return mask & CONTENT_OPT_CENTER;}
+	bool is_onlymenu() const { return mask & CONTENT_OPT_ONLYMENU;}
+	bool has_embed() const { return mask & CONTENT_OPT_MAYEMBED;}
 	int getmask() const { return mask; }
 };
 

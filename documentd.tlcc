@@ -248,16 +248,17 @@ static void formatchatline (time_t now, PARAM_STRING line, string &notify)
 		notify += string_f("appendchat(%ld,'<b>%s</b>: %s');\n",now,documentd_escape_html(user).c_str(),documentd_escape_html(pt).c_str());
 	}
 }
+#define DOC_BG_COLOR "lightgray"
 /*
 	Create a small one line chat
 */
 void documentd_chat(string &lines, PARAM_STRING username, bool mobile, const vector<CHATLINE> &content, unsigned width, unsigned height)
 {
-	lines += string_f("<div id=chat style='width:%u; height:%u; cursor:default;padding-left:5px;border:1px black solid; overflow: auto;' >"
-		,width,height);
+	lines += string_f("<div id=chat style='width:%u; height:%u; cursor:default;padding-left:5px;border:1px %s solid; background-color:white; overflow: auto;' >"
+		,width,height,DOC_BG_COLOR);
 	lines += "</div>\n";;
 	lines += string_f("<input id=inputchat type=text style=width:%u; onkeypress=funcchat(event); placeholder='%s' />\n"
-		,width,MSG_U(I_CHAT,"Chat"));
+		,width+5+1,MSG_U(I_CHAT,"Chat"));
 	lines +=
 		"<script>\n"
 		"function appendchat(unixdate,line){\n"
@@ -2321,19 +2322,19 @@ void button_bar (_F_button_bar &c, GAME *game, bool mobile, bool maywrite, strin
 		string st_lines;
 		c.status (gameid,st_lines);
 		if (st_lines.empty()){
-			lines += "<div id=tab_form style='margin-top:5; margin-bottom:5; background-color: lightgray;'>\n";
+			lines += string_f("<div id=tab_form style='padding-top:5; padding-bottom:5; background-color: %s;'>\n",DOC_BG_COLOR);
 			lines += move(but_lines);
 		}else{
 			lines += "<div id=tab_form style='display:flex; flex-flow:column;'>\n";
-			lines += "<div style='flex:0 0 auto; width:100%;margin-top:5; background-color: lightgray;'>\n";
+			lines += string_f("<div style='flex:0 0 auto; width:100%%;padding-top:5; background-color: %s;'>\n",DOC_BG_COLOR);
 			lines += move(but_lines);
 			lines += "</div>\n";
-			lines += "<div style='flex:0 0 auto; margin-bottom:5;'>\n";
+			lines += "<div style='flex:0 0 auto; padding-bottom:5;'>\n";
 			lines += move(st_lines);
 			lines += "</div>\n";
 		}
 	}else{
-		lines += "<div id=tab_form style='margin-top:5; margin-bottom:5; background-color: lightgray;'>\n";
+		lines += "<div id=tab_form style='padding-top:5; padding-bottom:5; background-color: lightgray;'>\n";
 		lines += MSG_U(M_READONLY,"Read only");
 	}
 	lines += "</div>\n";
@@ -2407,6 +2408,7 @@ void doc_layout (
 	v.val += "</script>\n";
 	glocal c;
 	glocal bool is_full = opts.is_fulltab();
+	v.val += string_f("<div style='background-color: %s;' >\n",DOC_BG_COLOR);
 	if (opts.is_menubar()){
 		<call button_bar>(game,sp.mobile,ctx.maywrite,v.val);
 		<f draw>
@@ -2425,14 +2427,15 @@ void doc_layout (
 	v.val += string_f("<div class=webtable id=%sdoc_%s style='display:flex; flex-flow:row;' >\n",id_prefix,doc_suffix);
 	string script,onevent;
 	string content = c.content (ctx,sp,gameid,script,onevent,board_width,board_height,scroll_thick);
-	string border = opts.is_border() ? "border:1px solid black;" : "";
+	string border = opts.is_border() ? string_f("border:1px solid %s;",DOC_BG_COLOR) : "";
 	string center = opts.is_center() ? "margin-right: auto;" : "";
-	v.val += string_f("<div class='document' id='text-%s' style='flex:0 0 auto;width:%u;height:%u;%s"
-		" margin-left: auto; %s'"
+	string scroll = opts.is_scroll() ? "overflow-x:scroll; overflow-y:scroll;" :"";
+	v.val += string_f("<div class='document' id='text-%s' style='flex:0 0 auto;width:%u;height:%u;background-color:white;%s"
+		" margin-left: auto; %s%s'"
 		" %s"
-		" tabindex=0 >\n",gameid,board_width,board_height,border.c_str(),center.c_str(),onevent.c_str());
+		" tabindex=0 >\n",gameid,board_width,board_height,border.c_str(),center.c_str(),scroll.c_str(),onevent.c_str());
 	v.val += move(content);
-	if (opts.is_scroll()){
+	if (0 && opts.is_scroll()){
 		// For now, caller gets minimal scroll bar and have no control over its look
 		v.val += "<div style='background-color:ghostwhite;'>\n";
 		v.val += string_f("<svg width=%u height=%u>\n",board_width,scroll_thick);
@@ -2448,9 +2451,16 @@ void doc_layout (
 	}else{
 		v.val += "</div>\n";
 	}
-	if (script.size() > 0){
+	if (script.size() > 0 || opts.is_scroll()){
 		v.val += "<script>\n";
 		v.val += script;
+		if (opts.is_scroll()){
+			v.val += string_f("var s = document.getElementById('text-%s');\n",game->get_gameid());
+			v.val += "s.scrollTop = 200;\n";
+			v.val += "s.scrollHeight = 100;\n";
+			v.val += "s.scrollLeft = 300;\n";
+			v.val += "s.scrollWidth = 100;\n";
+		}
 		v.val += "</script>\n";
 	}
 	if (opts.is_users()) game->draw_waiting_users(v.val,waiting_users_width,board_height,"flex:0 0 auto;");
@@ -2462,6 +2472,7 @@ void doc_layout (
 		documentd_chat (v.val,ctx.username,sp.mobile,game->chat,sp.width-20,sp.mobile ? 200 : 100);
 		v.val += "</div>\n";
 	}
+	v.val += "</div>\n";
 }
 </mod>
 
