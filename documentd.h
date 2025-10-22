@@ -378,8 +378,10 @@ class LAYOUT_OPTS{
 		CONTENT_OPT_BORDER=32,	// Solid border around the content
 		CONTENT_OPT_CENTER=64,	// Content is centered horizontally
 		CONTENT_OPT_ONLYMENU=128,	// Print only the menu bar
-		CONTENT_OPT_MAYEMBED=256	// This document may imbed other document
+		CONTENT_OPT_MAYEMBED=256,	// This document may imbed other document
 						// So a special button is added to the menu
+		CONTENT_OPT_SANDWICH=512	// The content area contains multiple DIV
+						// on top of each other.
 	};
 	int mask=0;
 public:
@@ -419,6 +421,10 @@ public:
 		mask |= CONTENT_OPT_MAYEMBED;
 		return *this;
 	}
+	LAYOUT_OPTS & sandwich(){
+		mask |= CONTENT_OPT_SANDWICH;
+		return *this;
+	}
 	LAYOUT_OPTS & all(){
 		mask |= CONTENT_OPT_CHAT|CONTENT_OPT_USERS|CONTENT_OPT_MENUBAR|CONTENT_OPT_BORDER;
 		return *this;
@@ -432,6 +438,7 @@ public:
 	bool is_center() const { return mask & CONTENT_OPT_CENTER;}
 	bool is_onlymenu() const { return mask & CONTENT_OPT_ONLYMENU;}
 	bool has_embed() const { return mask & CONTENT_OPT_MAYEMBED;}
+	bool is_sandwich() const { return mask & CONTENT_OPT_SANDWICH;}
 	int getmask() const { return mask; }
 };
 
@@ -456,7 +463,7 @@ struct _F_doc_layout{
 	#define _F_doc_layout_menu_status(x) void x menu_status (const char *gameid, std::string &lines)
 	virtual _F_doc_layout_menu_status( );
 	#define _F_doc_layout_content(x) std::string x content (const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, \
-		const char *gameid, std::string &script, std::string &onevent, unsigned board_width, unsigned board_height, unsigned scroll_thick)
+		const char *gameid, std::string &script, std::string &onevent, unsigned board_width, unsigned &board_height, unsigned scroll_thick)
 	virtual _F_doc_layout_content( )=0;
 	#define _F_doc_layout_hscroll(x) std::string x hscroll (const DOC_CONTEXT &ctx, const DOC_UI_SPECS_receive &sp, \
 		const char *gameid, unsigned board_width, unsigned board_height, unsigned scroll_thick)

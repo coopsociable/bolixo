@@ -370,11 +370,9 @@ void PHOTOS::exec (
 	vector<VARVAL> &res,
 	vector<USERS_NOTIFIES> &unotifies)
 {
-	const unsigned mini_height = sp.mobile ? 150 : 100;	// Size of the mini photos
-	const unsigned caption_height = sp.mobile ? 100 : 50;	// Size of the caption text
+	glocal unsigned mini_height = sp.mobile ? 150 : 100;	// Size of the mini photos
 	unsigned waiting_users_width = sp.mobile ? 62 : 42;
 	unsigned board_width = sp.content_width - waiting_users_width;	// Space for user list
-	unsigned board_height = sp.content_height;
 	string error,status,api_error;
 	setactivity();
 	VARVAL notify_var;
@@ -394,57 +392,47 @@ void PHOTOS::exec (
 		val = tmpval.c_str();		
 	}
 	if (is_eq(var,REQ_PRINT)){
+		glocal ctx;
+		glocal sp;
+		glocal PHOTOS *doc = this;
+		LAYOUT_OPTS opts;
+		opts.all();
+		opts.sandwich();
 		VARVAL v;
-		v.var = VAR_CONTENT;
-		v.val += "<style>\n";
-		v.val += define_styles(sp.mobile);
-		v.val += "</style>\n";
-		<call button_bar>(this,sp.mobile,ctx.maywrite,v.val);
-		<f draw>
+		<call doc_layout>(val,this,ctx,sp,"photos",opts,v);
+		<f styles>
+			return glocal.doc->define_styles(glocal.sp.mobile);
+		</f>
+		<f functions>
+			return glocal.doc->define_functions(glocal.ctx);
+		</f>
+		<f menu_bar>
 			#define BUTTON_CONFIG	0
 			#define BUTTON_TXTEDIT	1
 			PHOTOS_MENU menu(specs);
 			documentd_bar_button (lines,BUTTON_CONFIG,menu.svg_config,specs,false,MSG_U(I_DEFINEIMAGES,"Specify images to display"));
 			documentd_bar_button (lines,BUTTON_TXTEDIT,menu.svg_txtedit,specs,false,MSG_U(I_TXTEDIT,"Edit image caption"));
 		</f>
+		<f content>
+			const unsigned mini_height = glocal.mini_height;
+			const unsigned caption_height = glocal.sp.mobile ? 100 : 50;	// Size of the caption text
+			board_height -= caption_height+mini_height;
+			string ret = glocal.doc->draw_main_image(glocal.sp.mobile,glocal.ctx.docnum,glocal.ctx.maywrite,script);
+			ret += "</div>\n";
+			ret += string_f("<div id='caption-%s' style='flex:0 0 auto;width:%u;height:%u;border:1px solid black;"
+				" margin-left: auto;'"
+				" tabindex=0 >\n",gameid,board_width,caption_height);
+			ret += glocal.doc->draw_main_caption(glocal.sp.mobile,glocal.ctx.docnum,script);
+			ret += "</div>\n";
+			ret += string_f("<div id='mini-%s' style='flex:0 0 auto;width:%u;height:%u;border:1px solid black;"
+				" margin-left: auto;'"
+				" onkeydown='photos_gamepress(event);return false;'"
+				" tabindex=0 >\n",gameid,board_width,mini_height);
+			ret += glocal.doc->draw_small_images(glocal.sp.mobile,glocal.ctx.docnum,glocal.ctx.maywrite,mini_height,script);
+			//ret += "</div>\n";
+			return ret;
+		</f>
 		</call>
-		// Main image
-		v.val += "<script>\n";
-		v.val += define_functions(ctx);
-		v.val += "</script>\n";
-		v.val += string_f("<div class=webtable id=%sdoc_photos style='display:flex; flex-flow:row;' >\n",val);
-		v.val += "<div style='display:flex; flex-flow:column;' >\n";
-		v.val += string_f("<div id='text-%s' style='flex:0 0 auto;width:%u;height:%u;border:1px solid black;"
-			" margin-left: auto;'"
-			" onkeydown='photos_gamepress(event);return false;'"
-			" tabindex=0 >\n",gameid.c_str(),board_width,board_height-mini_height-caption_height);
-		string script;
-		v.val += draw_main_image(sp.mobile,ctx.docnum,ctx.maywrite,script);
-		v.val += "</div>\n";
-		v.val += string_f("<div id='caption-%s' style='flex:0 0 auto;width:%u;height:%u;border:1px solid black;"
-			" margin-left: auto;'"
-			" tabindex=0 >\n",gameid.c_str(),board_width,caption_height);
-		v.val += draw_main_caption(sp.mobile,ctx.docnum,script);
-		v.val += "</div>\n";
-		v.val += string_f("<div id='mini-%s' style='flex:0 0 auto;width:%u;height:%u;border:1px solid black;"
-			" margin-left: auto;'"
-			" onkeydown='photos_gamepress(event);return false;'"
-			" tabindex=0 >\n",gameid.c_str(),board_width,mini_height);
-		v.val += draw_small_images(sp.mobile,ctx.docnum,ctx.maywrite,mini_height,script);
-		v.val += "</div>\n";
-		if (script.size() > 0){
-			v.val += "<script>\n";
-			v.val += script;
-			v.val += "</script>\n";
-		}
-		v.val += "</div>\n";
-		draw_waiting_users(v.val,waiting_users_width,board_height,"flex:0 0 auto;");
-		v.val += "</div>\n";
-		// Status line
-		v.val += "<div id=tab_form>\n";
-		v.val += string_f("<div id=msg-%s style=color:black>&nbsp;</div>\n",gameid.c_str());
-		documentd_chat (v.val,ctx.username,sp.mobile,chat,sp.width-20,sp.mobile ? 200 : 100);
-		v.val += "</div>\n";
 		res.emplace_back(move(v));
 	}else if (is_eq(var,REQ_FUNCTIONS)){
 		VARVAL var;
@@ -466,7 +454,7 @@ void PHOTOS::exec (
 		}else if (is_eq(val,"caption")){
 			var.val = draw_main_caption(sp.mobile,ctx.docnum,var_script.val);
 		}else if (is_eq(val,"mini")){
-			var.val = draw_small_images(sp.mobile,ctx.docnum,false,mini_height,var_script.val);
+			var.val = draw_small_images(sp.mobile,ctx.docnum,false,glocal.mini_height,var_script.val);
 		}else if (is_any_of(val,"","all")){
 			var.val += "<div style='display:flex; flex-flow:column;' >\n";
 			var.val += string_f("<div id='text-%s' style='flex:0 0 auto;width:100%%;height:60%%;border:1px solid black;"
@@ -483,7 +471,7 @@ void PHOTOS::exec (
 				" margin-left: auto;'"
 				" onkeydown='photos_gamepress(event);return false;'"
 				" tabindex=0 >\n",gameid.c_str());
-			var.val += draw_small_images(sp.mobile,ctx.docnum,ctx.maywrite,mini_height,var_script.val);
+			var.val += draw_small_images(sp.mobile,ctx.docnum,ctx.maywrite,glocal.mini_height,var_script.val);
 			var.val += "</div>\n";
 			var.val += "</div>\n";
 		}
@@ -540,7 +528,7 @@ void PHOTOS::exec (
 						if (main_image > 0) main_image--;	
 					}
 				}else{
-					unsigned new_main_image = dx/(mini_height-4);
+					unsigned new_main_image = dx/(glocal.mini_height-4);
 					if (new_main_image < images.size()) main_image = new_main_image;
 				}
 				updateif (old,updimages,notify_var);
@@ -670,7 +658,7 @@ void PHOTOS::exec (
 	}else{
 		error = MSG_R(E_READONLY);
 	}
-	update_mini_images(updimages,mini_height,notify_var);
+	update_mini_images(updimages,glocal.mini_height,notify_var);
 	if (notify_var.val.size() > base_notify_size) res.emplace_back(move(notify_var));
 	if (script_var.val.size() > 0) res.emplace_back(move(script_var));
 	if (api_error.size() > 0){

@@ -2372,7 +2372,7 @@ void doc_layout (
   	VARVAL &v)
 {
 	unsigned waiting_users_width = sp.mobile ? 62 : 42;
-	const unsigned scroll_thick = opts.is_scroll() ? (sp.mobile ? 12 : 6) : 0;
+	const unsigned scroll_thick = 0;	//opts.is_scroll() ? (sp.mobile ? 12 : 46) : 0;
 	unsigned board_width;	// Space for user list and scroll
 	unsigned board_height;
 	// Some document requires a square area. doc_layout must receive this square boolean.
@@ -2425,15 +2425,19 @@ void doc_layout (
 	}
 	const char *gameid = game->get_gameid();
 	v.val += string_f("<div class=webtable id=%sdoc_%s style='display:flex; flex-flow:row;' >\n",id_prefix,doc_suffix);
+	if (opts.is_sandwich()){
+		v.val += "<div style='display:flex; flex-flow:column;' >\n";
+	}
 	string script,onevent;
-	string content = c.content (ctx,sp,gameid,script,onevent,board_width,board_height,scroll_thick);
+	auto content_height = board_height;
+	string content = c.content (ctx,sp,gameid,script,onevent,board_width,content_height,scroll_thick);
 	string border = opts.is_border() ? string_f("border:1px solid %s;",DOC_BG_COLOR) : "";
 	string center = opts.is_center() ? "margin-right: auto;" : "";
 	string scroll = opts.is_scroll() ? "overflow-x:scroll; overflow-y:scroll;" :"";
 	v.val += string_f("<div class='document' id='text-%s' style='flex:0 0 auto;width:%u;height:%u;background-color:white;%s"
 		" margin-left: auto; %s%s'"
 		" %s"
-		" tabindex=0 >\n",gameid,board_width,board_height,border.c_str(),center.c_str(),scroll.c_str(),onevent.c_str());
+		" tabindex=0 >\n",gameid,board_width,content_height,border.c_str(),center.c_str(),scroll.c_str(),onevent.c_str());
 	v.val += move(content);
 	if (0 && opts.is_scroll()){
 		// For now, caller gets minimal scroll bar and have no control over its look
@@ -2449,6 +2453,9 @@ void doc_layout (
 		v.val += "</svg>\n";
 		v.val += "</div>\n";
 	}else{
+		v.val += "</div>\n";
+	}
+	if (opts.is_sandwich()){
 		v.val += "</div>\n";
 	}
 	if (script.size() > 0 || opts.is_scroll()){
