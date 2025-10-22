@@ -50,6 +50,8 @@ struct WORDPROC_MENU{
 };
 struct CALC_MENU{
 	std::string svg_clear;
+	std::string svg_plus;
+	std::string svg_format;
 	CALC_MENU(DOC_BUTTON_SPECS &specs);
 };
 struct PHOTOS_MENU{
