@@ -7,19 +7,19 @@ all: webtabs.os util.os document.os document_fr.os index.os bolixoapi.os webapi.
 FLAGS=-Wall -Wno-unused-function
 
 index.hc: index.os /usr/lib64/trlitool/trlitool.pic.a util.os webtabs.os document.os document_fr.os \
-	techdoc.os webapi.proto.os config.os mail.os projects.os ../proto/webapi.protoh ../proto/bolixoapi.protoh \
+	techdoc.os webapi.proto.os webapi.demo.os config.os mail.os projects.os ../proto/webapi.protoh ../proto/bolixoapi.protoh \
 	/usr/include/tlmp/tlmpweb.h /usr/include/tlmp/tlmpweb.p
 	@echo $@
 	@g++ $(OPTIONS) -g -shared -Wl,-soname,test.so.1 -o \
-		$@ $< ../_dict.os util.os webtabs.os techdoc.os webapi.proto.os document.os document_fr.os \
+		$@ $< ../_dict.os util.os webtabs.os techdoc.os webapi.proto.os webapi.demo.os document.os document_fr.os \
 		config.os mail.os projects.os /usr/lib/tlmp/lib/tlmpdoc.so /usr/lib64/trlitool/trlitool.pic.a /usr/lib/tlmp/lib/tlmpwebsql.so -lcrypto
 
-%.hc: %.os /usr/lib64/trlitool/trlitool.pic.a util.os webtabs.os techdoc.os document.os document_fr.os webapi.proto.os \
+%.hc: %.os /usr/lib64/trlitool/trlitool.pic.a util.os webtabs.os techdoc.os document.os document_fr.os webapi.proto.os webapi.demo.os \
 	../proto/webapi.protoh ../proto/bolixoapi.protoh \
 	/usr/include/tlmp/tlmpweb.h /usr/include/tlmp/tlmpweb.p
 	@echo $@
 	@g++ $(OPTIONS) -g -shared -Wl,-soname,test.so.1 -o \
-		$@ $< ../_dict.os /usr/lib64/trlitool/trlitool.pic.a util.os techdoc.os webapi.proto.os document.os document_fr.os \
+		$@ $< ../_dict.os /usr/lib64/trlitool/trlitool.pic.a util.os techdoc.os webapi.proto.os webapi.demo.os document.os document_fr.os \
 		/usr/lib/tlmp/lib/tlmpdoc.so /usr/lib/tlmp/lib/tlmpwebsql.so -lcrypto
 
 document.os: document.hcc ../documentd_menu.h
@@ -29,6 +29,22 @@ webapi.proto.hcc: ../proto/webapi.proto ../proto/webapi.proto.doc ../proto/bod_c
 		--include techdoc.h --printdoc ../proto/webapi.proto --refdocs ../proto/bod_client.proto --tlmpdoc >webapi.proto.tmp
 	@mv -f webapi.proto.tmp webapi.proto.hcc
 	
+webapi.demo.hcc: demo.js
+	@echo convert demo.js to webapi.demo.hcc
+	@echo "#include <tlmpweb.h>" >webapi.demo.hcc
+	@echo "#include <tlmpdoc.h>" >>webapi.demo.hcc
+	@echo "#include \"techdoc.h\"" >>webapi.demo.hcc
+	@echo "<mod>" >>webapi.demo.hcc
+	@echo "void document_demo_js()" >>webapi.demo.hcc
+	@echo "{" >>webapi.demo.hcc
+	@echo "<- section(\"demo.js\");>" >>webapi.demo.hcc
+	@echo "<- pre();>" >>webapi.demo.hcc
+	@sed 's/</\&lt;/g' demo.js | sed 's/>/\&gt;/g' >>webapi.demo.hcc
+	@echo "</->" >>webapi.demo.hcc
+	@echo "</->" >>webapi.demo.hcc
+	@echo "}" >>webapi.demo.hcc
+	@echo "</mod>" >>webapi.demo.hcc
+
 webapi.openapi.yaml: ../proto/webapi.proto ../proto/webapi.proto.doc ../proto/bod_client.proto ../proto/bod_client.proto.doc
 	unset LANG; build-protocol --openapi --apiname BolixoWebapi --name webapi \
                 --printdoc ../proto/webapi.proto --refdocs ../proto/bod_client.proto >webapi.openapi.tmp
@@ -52,13 +68,13 @@ install: all
 	@mkdir -p $(RPM_BUILD_ROOT)/var/www/html/images-doc
 	@rm -f $(RPM_BUILD_ROOT)/var/www/html/images-doc/*
 	@cp images-doc/*.jpg $(RPM_BUILD_ROOT)/var/www/html/images-doc/.
-	@cp *.jpg *.png *.svg *.hc *.html *.yaml robots.txt favicon.ico $(RPM_BUILD_ROOT)/var/www/html/.
+	@cp *.jpg *.png *.svg *.hc *.html *.yaml demo.js robots.txt favicon.ico $(RPM_BUILD_ROOT)/var/www/html/.
 	@cp tlmplibs $(RPM_BUILD_ROOT)/var/www/html/.tlmplibs
 	@cp conditions-d-utilisation.html  terms-of-use.html $(RPM_BUILD_ROOT)/var/www/html/.
 
 
 clean:
-	rm -f *.hc *.o *.os genbackground webapi.proto.hcc webapi.openapi.yaml *.tmp
+	rm -f *.hc *.o *.os genbackground webapi.proto.hcc webapi.openapi.yaml webapi.demo.hcc *.tmp
 
 util.os: util.hcc util.h /usr/include/tlmp/tlmpweb.h /usr/include/tlmp/tlmpweb.p
 	@echo tlmpwebcc $< $@

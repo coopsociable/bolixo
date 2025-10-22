@@ -124,6 +124,7 @@ make install
 /var/www/html/email-outline.svg
 /var/www/html/images-doc/*
 /var/www/html/webapi.openapi.yaml
+/var/www/html/demo.js
 /usr/lib/bolixo-test.sh
 /usr/sbin/bolixo-production
 /usr/sbin/bo
