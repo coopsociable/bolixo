@@ -381,7 +381,7 @@ number5: number5.tlcc json.h json.o
 
 clean:
 	rm -f $(PROGS) *.o *.os proto/*.protoh proto/*.protoch proto/*.protodef web/*.hc web/*.os web/genbackground \
-		web/webapi.proto.hcc
+		web/webapi.proto.hcc web/webapi.demo.hcc
 
 
 install: msg.eng msg.fr
