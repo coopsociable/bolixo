@@ -613,7 +613,7 @@ elif [ "$1" = "checkupdates" ] ; then # prod: Check all containers are up to dat
 	done
 elif [ "$1" = "update" ] ; then # prod: Update all bolixo related packages using dnf
 	shift
-	exec dnf update  --disablerepo "*" --enablerepo bolixo "$@"
+	exec dnf update  --disablerepo "*" --enablerepo bolixo --refresh "$@"
 elif [ "$1" = "loadfail" ] ; then # prod: Switch web access (normal,backup,split)
 	if [ "$THISSERVER" = "" ] ;then
 		THISSERVER=localhost
