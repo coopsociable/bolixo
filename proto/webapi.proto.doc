@@ -25,7 +25,14 @@ prm handle: This handle will be used with appendfile so it appends to the proper
 
 
 
-#appendfile sessionid handle content:o more:b = success:b msg
+function: appendfile Send extra chunks of a file or message.
+prm sessionid:
+prm  handle: Handle received by sendtalk and addfile_bob calls.
+prm content: Binary content
+prm more: Is there more chunks to send ?
+prm success:
+prm msg:
+
 #delfile sessionid name = success:b msg
 #undelete sessionid dirname = success:b msg
 #modifyfile sessionid name content = success:b msg
@@ -58,8 +65,27 @@ prm inboxes: Array of INBOX objects
 #replymsg_project sessionid owner manager project role msgid title content = success:b msg replyid
 #sendattach sessionid owner msgid content:o more:b = success:b msg handle
 
-#sendtalk sessionid owner to:v groupname groupowner content:o more:b name sign createdby = success:b msg handle
+function: sendtalk Send a short message to a group (or private message)
+prm sessionid:
+prm owner:
+prm to: Extra recipients list
+prm groupname: Target group. For private message, this is 'inbox'.
+prm groupowner: Target group owner. For private message, this is the owner of the 'inbox'.
+prm content:
+prm more: If the content exceed 40k, it must be broken in chunks and appendfile must
+	be used with the handle received with this call.
+prm name: Optional name of the message. Usually empty.
+	The 3 parameters (name,sign,createdby) are used
+	when a message is copied to a remote server. For a new
+	message, the parameters are empty.
+prm sign: Digital signature of the message (empty for a new message)
+prm createdby: Original author of the message (empty for a new message)
+prm success:
+prm msg:
+prm handle: Handle used for appendfile call if needed (large content).
+
 #sendtalk_file sessionid owner to:v groupname groupowner filename filedate = success:b msg
+
 function: list_talk Get some messages from a group or inbox
 prm sessionid:
 prm owner:
