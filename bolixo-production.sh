@@ -611,6 +611,9 @@ elif [ "$1" = "checkupdates" ] ; then # prod: Check all containers are up to dat
 			trli-cmp --name $lxc /var/lib/lxc/$lxc/$lxc.files
 		fi
 	done
+elif [ "$1" = "update" ] ; then # prod: Update all bolixo related packages using dnf
+	shift
+	exec dnf update  --disablerepo "*" --enablerepo bolixo "$@"
 elif [ "$1" = "loadfail" ] ; then # prod: Switch web access (normal,backup,split)
 	if [ "$THISSERVER" = "" ] ;then
 		THISSERVER=localhost
