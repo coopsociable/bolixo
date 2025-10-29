@@ -169,8 +169,6 @@ fi
 
 %post
 
-chkconfig --add bolixoserv
-
 %postun
 
 %pre
