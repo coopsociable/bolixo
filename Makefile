@@ -28,7 +28,7 @@ msg:
 		bolixo.dic bolixo.m EF *.cc *.tlcc web/*.tlcc web/*.hcc utils/*.tlcc
 
 compile: $(PROGS)
-	make -Cweb 
+	make DINSTRUMENT=$(DINSTRUMENT) -Cweb 
 
 bo-webtest: bo-webtest.tlcc proto/webapi.protoh /usr/include/trlitool/trlitool.h
 	cctlcc -Wall $(OPTIONS) bo-webtest.tlcc _dict.o -o bo-webtest $(LIBS) -lssl
