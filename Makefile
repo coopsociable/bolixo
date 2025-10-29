@@ -398,6 +398,9 @@ install: msg.eng msg.fr
 	mkdir -p $(RPM_BUILD_ROOT)/usr/share/bolixo/greetings
 	mkdir -p $(RPM_BUILD_ROOT)/etc/bash_completion.d
 	mkdir -p $(RPM_BUILD_ROOT)/etc/cron.hourly
+	mkdir -p $(RPM_BUILD_ROOT)/etc/yum.repos.d
+	install -m644 data/bolixo.test.repo $(RPM_BUILD_ROOT)/etc/yum.repos.d/bolixo.test.repo
+	install -m644 data/bolixo.stable.repo $(RPM_BUILD_ROOT)/etc/yum.repos.d/bolixo.stable.repo
 	install -m644 data/greetings/greetings.lst $(RPM_BUILD_ROOT)/etc/bolixo/greetings.lst
 	install -m644 data/default_interests.lst $(RPM_BUILD_ROOT)/etc/bolixo/default_interests.lst
 	install -m644 data/greetings/*.eng $(RPM_BUILD_ROOT)/usr/share/bolixo/greetings/.

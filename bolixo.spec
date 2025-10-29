@@ -32,6 +32,18 @@ Requires: tlmp >= TLMPVERSION
 Provide the bofs command line tool. This tool allows you to access and maintain
 Bolixo.
 
+%package repotest
+Summary: Bolixo dnf repository: test versions
+Group: Networking/util
+%description repotest
+Provides the definitions needed by dnf to retrieve Bolixo test versions
+
+%package repostable
+Summary: Bolixo dnf repository: stable versions
+Group: Networking/util
+%description repostable
+Provides the definitions needed by dnf to retrieve Bolixo stable versions
+
 %prep
 %setup 
 
@@ -180,3 +192,9 @@ id bolixo >/dev/null 2>/dev/null || useradd -r bolixo
 /usr/share/bolixo/calc-help.sh
 /usr/share/bolixo/word-help.sh
 /usr/share/bolixo/photos-help.sh
+
+%files repotest
+/etc/yum.repos.d/bolixo.test.repo
+
+%files repostable
+/etc/yum.repos.d/bolixo.stable.repo
