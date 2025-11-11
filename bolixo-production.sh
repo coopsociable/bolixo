@@ -815,11 +815,17 @@ elif [ "$1" = "genkeysdpass" ] ; then # config: Generate the bo-keysd passphrase
 elif [ "$1" = "install-sequence" ] ; then # config: Interative sequence to start a node from scratch
 	if [ ! -f /root/stracelogs/log.web -o ! -f /root/stracelogs/log.exim -o ! -f /root/stracelogs/log.mysql ] ; then
 		echo lxc0 log files are missing in /root/stracelogs
-		echo execute
-		echo "    " bolixo-production make-httpd-log
-		echo "    " bolixo-production make-mysql-log
-		echo "    " bolixo-production make-exim-log
-		exit 1
+		echo we must execute the following commands:
+		echo
+		echo "  " bolixo-production make-exim-log
+		bolixo-production make-httpd-log
+		echo
+		echo "  " bolixo-production make-mysql-log
+		bolixo-production make-mysql-log
+		echo
+		echo "  " bolixo-production make-httpd-log
+		bolixo-production make-exim-log
+		
 	fi
 	echo The host name is `hostname`
 	echo -n "Is this valid (y/n) ?"

@@ -1605,19 +1605,21 @@ elif [ "$1" = "make-httpd-log" ] ; then # config: httpd strace log for lxc0
 	mkdir -p /root/stracelogs
 	CONF=/etc/httpd/conf/httpd.conf
 	SSLCONF=/etc/httpd/conf.d/ssl.conf
-	echo Change listen directive in $CONF and $SSLCONF
-	echo rename $CONF to $CONF.original
+	echo "    "Change listen directive in $CONF and $SSLCONF
+	echo "    "rename $CONF to $CONF.original
 	mv $CONF $CONF.original
-	echo rename $SSLCONF to $SSLCONF.original
+	echo "    "rename $SSLCONF to $SSLCONF.original
 	mv $SSLCONF $SSLCONF.original
 	sed 's/Listen 80/Listen 81/' <$CONF.original >$CONF
 	sed 's/Listen 443/Listen 444/' <$SSLCONF.original >$SSLCONF
 	#grep Listen $CONF $SSLCONF
-	echo  httpd is started. Wait and killall httpd in another console
-	strace -f -o /root/stracelogs/log.web /usr/sbin/httpd 
-	echo Rename $CONF.original to $CONF
+	echo  "    "httpd is started. Waiting 5 seconds
+	(sleep 5; vkillall -n ROOT -q httpd) &
+	/usr/libexec/httpd-ssl-gencerts # Make sure localhost.crt exists
+	strace -f -o /root/stracelogs/log.web /usr/sbin/httpd 2>/dev/null 
+	echo "    "Rename $CONF.original to $CONF
 	mv -f $CONF.original $CONF
-	echo Rename $SSLCONF.original to $SSLCONF
+	echo "    "Rename $SSLCONF.original to $SSLCONF
 	mv -f $SSLCONF.original $SSLCONF
 	echo /root/stracelogs/log.web was produced
 elif [ "$1" = "lxc0-web" ]; then # prod:
@@ -1744,10 +1746,11 @@ elif [ "$1" = "lxc0-webssl" ]; then # prod:
 elif [ "$1" = "make-mysql-log" ] ; then # config: mysql strace log for lxc0
 	mkdir -p /root/stracelogs
 	if [ ! -d /var/lib/mysql/mysql ] ; then
-		echo Initialize base mysql tables
+		echo "    "Initialize base mysql tables
 		mysql_install_db --user=mysql
 	fi
-	echo "wait a bit and do 'mysqladmin shutdown' in another console"
+	echo "    mysql was started. Waiting 5 seconds."
+	(sleep 5; mysqladmin shutdown) &
 	strace -f -o /root/stracelogs/log.mysql /usr/libexec/mysqld --basedir=/usr --user=mysql
 	echo /root/stracelogs/log.mysql was produced
 elif [ "$1" = "lxc0-mysql" ]; then # config:
@@ -1810,10 +1813,25 @@ elif [ "$1" = "lxc0-mysql" ]; then # config:
 	fi
 elif [ "$1" = "make-exim-log" ] ; then # config: exim strace log for lxc0
 	mkdir -p /root/stracelogs
-	echo exim has been started and will be killed in 5 seconds
-	strace -f -o /root/stracelogs/log.exim /usr/sbin/exim -bd -q1h &
+	EXIMCONF=/etc/exim/exim.conf
+	if [ -f $EXIMCONF.original ] ; then
+		echo "$EXIMCONF.original already exist, can't continue"
+		exit 1
+	fi
+	# We make sure exim is listening on 127.0.0.1
+	# blackhole is already listening on the same port, but on eth0 only
+	# This way, we can perform make-exim-log while blackhole and exim are running
+	echo "    "Insert local_interfaces = 127.0.0.1 in $EXIMCONF
+	mv $EXIMCONF $EXIMCONF.original
+	echo local_interfaces = 127.0.0.1 >$EXIMCONF
+	cat $EXIMCONF.original >>$EXIMCONF
+	echo "    "exim has been started and will be killed in 5 seconds
+	strace -f -o /root/stracelogs/log.exim /usr/sbin/exim -bd -q1h  &
 	sleep 5
-	killall exim
+	vkillall -n ROOT -q exim 
+	echo "    "Replace the original $EXIMCONF
+	#cp $EXIMCONF /tmp/exim.conf
+	mv -f $EXIMCONF.original $EXIMCONF
 	echo /root/stracelogs/log.exim was produced
 elif [ "$1" = "lxc0-exim" ]; then # prod:
 	ROOTLOG=/root/stracelogs/log.exim
