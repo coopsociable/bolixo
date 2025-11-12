@@ -31,6 +31,7 @@
 #include <vector>
 #include <map>
 #include <set>
+#include <trlitool.h>
 #include <manager.h>
 #include "bolixo.m"
 #include <helper.h>
@@ -1540,6 +1541,17 @@ static void print_configs (
 					lxc_config ("documentd",ip_documentd,true);
 					lxc_status (project_path,"documentd","documentd",-1);
 					lxc_debug (project_path,"documentd","documentd",-1);
+					if (!file_exist("/etc/bolixo/vidconf.secret")){
+						// Create the static secret for the coturn server (video conference)
+						<call savefile>("/etc/bolixo/vidconf.secret",false);
+						<f dowrite>
+							char salt[33];
+							fdpass_makesalt(salt);
+							fprintf (fout,"%s\n",salt);
+							return 0;
+						</f>
+						</call>
+					}
 				}
 			}
 			// SERVICE publishd

@@ -61,7 +61,7 @@ check_loadfail(){
 step(){
 	echo -n bolixo-production $*" (n) "
 	read line
-	if [ "$line" != "n" ] ; then
+	if [ "$line" = "y" ] ; then
 		bolixo-production $*
 	else
 		echo skipped
@@ -129,33 +129,42 @@ elif [ "$1" = "checks" ]; then # A: Sanity checks blackhole
 		echo "*** Horizon not connected"
 	fi
 elif [ "$1" = "blackhole-start" ]; then # config: Starts blackholes service or reload
+	startserv(){
+		echo Start $1
+		if [ -x /etc/init.d/$1 ] ;then
+			/etc/init.d/$1 start
+		else
+			systemctl start $1
+		fi
+	}
+	reloadserv(){
+		echo Reload $1
+		if [ -x /etc/init.d/$1 ] ;then
+			/etc/init.d/$1 reload
+		else
+			systemctl reload $1
+		fi
+	}
 	if killall -0 conproxy 2>/dev/null
 	then
 		echo conproxy is running
 	else
-		echo Start conproxy
-		/etc/init.d/conproxy start
+		startserv conproxy
 	fi
 	if killall -0 horizon 2>/dev/null
 	then
-		echo Reload horizon
-		/etc/init.d/horizon reload
+		reloadserv horizon
 	else
-		echo Start horizon
-		/etc/init.d/horizon start
+		startserv horizon
 	fi
 	if killall -0 blackhole 2>/dev/null
 	then
-		echo Reload blackhole
-		/etc/init.d/blackhole reload
+		reloadserv blackhole
 	else
-		echo Start blackhole
-		/etc/init.d/blackhole start
+		startserv blackhole
 	fi
 elif [ "$1" = "blackhole-enable" ] ; then # config: Enable blackhole service at server start
-	chkconfig --add blackhole
-	chkconfig --add horizon
-	chkconfig --add conproxy
+	systemctl enable blackhole horizon conproxy
 elif [ "$1" = "secrets" ] ; then # config: Generate secrets
 	HOSTNAME=`hostname`
 	if [ ! -f /etc/bolixo/secrets.admin ] ; then
