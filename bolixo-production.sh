@@ -165,6 +165,8 @@ elif [ "$1" = "blackhole-start" ]; then # config: Starts blackholes service or r
 	fi
 elif [ "$1" = "blackhole-enable" ] ; then # config: Enable blackhole service at server start
 	systemctl enable blackhole horizon conproxy
+elif [ "$1" = "getmainip" ] ; then # config: Get public IP of this server
+	ifconfig eth0 | grep "inet " | ( read a b c; echo $b)
 elif [ "$1" = "secrets" ] ; then # config: Generate secrets
 	HOSTNAME=`hostname`
 	if [ ! -f /etc/bolixo/secrets.admin ] ; then
@@ -184,7 +186,7 @@ elif [ "$1" = "secrets" ] ; then # config: Generate secrets
 		echo Write /root/data/manager.conf
 		CLI=`head -1 /etc/bolixo/secrets.client | (read a b; echo $b)`
 		ADM=`head -1 /etc/bolixo/secrets.admin | (read a b; echo $b)`
-		MYIP=`ifconfig eth0 | grep "inet " | ( read a b c; echo $b)`
+		MYIP=`$0 getmainip`
 		sed "s/ #CLI/ $CLI/g" </usr/share/bolixo/manager.conf \
 			| sed "s/ #ADM/ $ADM/g" \
 			| sed "s/testhost/localhost/" \
@@ -202,6 +204,44 @@ elif [ "$1" = "secrets" ] ; then # config: Generate secrets
 	fi
 elif [ "$1" = "config" ] ; then # config: Generate config
 	/usr/lib/bolixo-test.sh prodconfig
+elif [ "$1" = "coturn-config" ] ; then # config: Install and configure the coturn server
+	COTURNCONF=/etc/coturn/turnserver.conf
+	if [ -f $COTURNCONF.original ] ; then
+		echo
+		echo coturn-config can only be used once
+		echo To rerun this command, move $COTURNCONF.original to $COTURNCONF
+		echo
+		exit 1
+	fi
+	if rpm -q coturn >/dev/null 2>/dev/null
+	then
+		echo "    "coturn is already installed
+	else
+		dnf install coturn
+	fi
+	cp $COTURNCONF $COTURNCONF.original
+	NAME=`hostname`
+	SECRET=`cat /etc/bolixo/vidconf.secret`
+	MYIP=`$0 getmainip`
+	cat <<-EOF >>$COTURNCONF
+response-origin-only-with-rfc5780
+realm=$NAME
+server-name=$NAME
+fingerprint
+
+listening-ip=$MYIP
+external-ip=$MYIP
+listening-port=3478
+min-port=10000
+max-port=20000
+
+use-auth-secret
+static-auth-secret=$SECRET
+log-file=/var/log/coturn/turnserver.log
+verbose
+EOF
+	echo "    "$COTURNCONF was updated
+	echo "    "A copy was done in $COTURNCONF.original
 elif [ "$1" = "make-mysql-log" ] ; then # config: mysql strace log for lxc0
 	/usr/lib/bolixo-test.sh make-mysql-log 
 elif [ "$1" = "make-httpd-log" ] ; then # config: httpd strace log for lxc0
@@ -791,7 +831,7 @@ elif [ "$1" = "install-required" ] ; then # config: install required packages
 		libvirt-daemon-config-network libvirt-client \
 		libvirt-daemon-driver-qemu bridge-utils \
 		time strace exim vim-enhanced certbot python3-certbot-apache \
-		bash-completion wget ImageMagick qqwing dnsmasq ebtables"
+		bash-completion wget ImageMagick qqwing dnsmasq ebtables net-tools"
 	echo The following packages must be installed
 	echo
 	echo $LIST
@@ -821,6 +861,18 @@ elif [ "$1" = "genkeysdpass" ] ; then # config: Generate the bo-keysd passphrase
 	echo
 	echo "You must do this now, as the passphrase will be erased at the next step"
 	echo
+elif [ "$1" = "disable-some-services" ] ; then # config: Disable services mariadb,exim and httpd
+	checkserv(){
+		if vkillall -n ROOT -t -q $2
+		then
+			echo "    "Service $1 is running, incompatible with Bolixo, stopped and disabled
+			systemctl stop $1
+			systemctl disable $1
+		fi
+	}
+	checkserv httpd httpd
+	checkserv exim exim
+	checkserv mariadb mariadbd
 elif [ "$1" = "install-sequence" ] ; then # config: Interative sequence to start a node from scratch
 	if [ ! -f /root/stracelogs/log.web -o ! -f /root/stracelogs/log.exim -o ! -f /root/stracelogs/log.mysql ] ; then
 		echo lxc0 log files are missing in /root/stracelogs
@@ -843,9 +895,11 @@ elif [ "$1" = "install-sequence" ] ; then # config: Interative sequence to start
 		echo aborting
 		exit 1
 	fi
+	step disable-some-services
 	step secrets
-	stepnote edit/configure /root/data/manager.conf /root/.bofs.conf
+	stepnote edit/configure /root/data/manager.conf /root/.bofs.conf, press enter when done
 	step config
+	step coturn-config
 	step blackhole-start
 	step blackhole-enable
 	step checks
