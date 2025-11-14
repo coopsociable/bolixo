@@ -1621,7 +1621,7 @@ elif [ "$1" = "make-httpd-log" ] ; then # config: httpd strace log for lxc0
 	mv -f $CONF.original $CONF
 	echo "    "Rename $SSLCONF.original to $SSLCONF
 	mv -f $SSLCONF.original $SSLCONF
-	echo /root/stracelogs/log.web was produced
+	echo "    "/root/stracelogs/log.web was produced
 elif [ "$1" = "lxc0-web" ]; then # prod:
 	#su - root -c "nohup strace -o /tmp/log.root -f /usr/sbin/httpd --daemon"
 	#su - root -c "killall httpd"
@@ -1752,7 +1752,7 @@ elif [ "$1" = "make-mysql-log" ] ; then # config: mysql strace log for lxc0
 	echo "    mysql was started. Waiting 5 seconds."
 	(sleep 5; mysqladmin shutdown) &
 	strace -f -o /root/stracelogs/log.mysql /usr/libexec/mysqld --basedir=/usr --user=mysql
-	echo /root/stracelogs/log.mysql was produced
+	echo "    "/root/stracelogs/log.mysql was produced
 elif [ "$1" = "lxc0-mysql" ]; then # config:
 	ROOTLOG=/root/stracelogs/log.mysql
 	LOG=/tmp/log.mysql
@@ -1832,7 +1832,7 @@ elif [ "$1" = "make-exim-log" ] ; then # config: exim strace log for lxc0
 	echo "    "Replace the original $EXIMCONF
 	#cp $EXIMCONF /tmp/exim.conf
 	mv -f $EXIMCONF.original $EXIMCONF
-	echo /root/stracelogs/log.exim was produced
+	echo "    "/root/stracelogs/log.exim was produced
 elif [ "$1" = "lxc0-exim" ]; then # prod:
 	ROOTLOG=/root/stracelogs/log.exim
 	LOG=/tmp/log.exim

@@ -14,6 +14,10 @@ then
 	echo USER variable wrongly set, ending
 	exit 1
 fi
+getmainip(){
+	ifconfig eth0 | grep "inet " | ( read a b c; echo $b)
+}
+
 if [ ! -f $HOME/bolixo.conf ] ; then
 	ROOTPASS=root`date +%N`
 	BODPASS=bod`date +%N`
@@ -21,14 +25,28 @@ if [ ! -f $HOME/bolixo.conf ] ; then
 	BOLIXODPASS=bolixod`date +%N`
 	ADMINPASS=admin`date +%N`
 	HOSTNAME=`hostname`
+	MYIP=`getmainip`
+	# By default, do not change anything
+	PREPROD1="s/#PREPROD/#PREPROD/"
+	PREPROD2="s/#THIS/#THIS/"
+	case $MYIP in
+	192.168.122.*)
+		PREPROD1="s/#PREPROD/PREPROD/"
+		PREPROD2="s/#THIS/THIS/"
+		echo Preproduction server detected
+		;;
+	esac
 	cat /usr/share/bolixo/bolixo.conf | \
 		sed "s/rootpass/$ROOTPASS/" | \
 		sed "s/bodpass/$BODPASS/" | \
 		sed "s/writedpass/$WRITEDPASS/" | \
 		sed "s/bolixodpass/$BOLIXODPASS/" | \
 		sed "s/adminpass/$ADMINPASS/" | \
-		sed "s/_HOSTNAME_/$HOSTNAME/" \
+		sed "s/_HOSTNAME_/$HOSTNAME/" | \
+		sed $PREPROD1 | \
+		sed $PREPROD2 \
 		>/root/bolixo.conf
+	echo /root/bolixo.conf was created from /usr/share/bolixo/bolixo.conf
 fi
 . ~/bolixo.conf
 BOD_SOCK=/var/lib/lxc/bod/rootfs/tmp/bod-0.sock
@@ -58,13 +76,15 @@ check_loadfail(){
 		echo "***" $1 $2 strange state
 	fi
 }
+STEPLOG=/var/log/bolixo-install.log
 step(){
+	echo "**********" bolixo-production $* >>$STEPLOG
 	echo -n bolixo-production $*" (n) "
 	read line
 	if [ "$line" = "y" ] ; then
-		bolixo-production $*
+		bolixo-production $* 2>&1 | tee -a $STEPLOG
 	else
-		echo skipped
+		echo skipped | tee -a $STEPLOG
 	fi
 }
 stepnote(){
@@ -166,7 +186,7 @@ elif [ "$1" = "blackhole-start" ]; then # config: Starts blackholes service or r
 elif [ "$1" = "blackhole-enable" ] ; then # config: Enable blackhole service at server start
 	systemctl enable blackhole horizon conproxy
 elif [ "$1" = "getmainip" ] ; then # config: Get public IP of this server
-	ifconfig eth0 | grep "inet " | ( read a b c; echo $b)
+	getmainip
 elif [ "$1" = "secrets" ] ; then # config: Generate secrets
 	HOSTNAME=`hostname`
 	if [ ! -f /etc/bolixo/secrets.admin ] ; then
@@ -831,7 +851,7 @@ elif [ "$1" = "install-required" ] ; then # config: install required packages
 		libvirt-daemon-config-network libvirt-client \
 		libvirt-daemon-driver-qemu bridge-utils \
 		time strace exim vim-enhanced certbot python3-certbot-apache \
-		bash-completion wget ImageMagick qqwing dnsmasq ebtables net-tools"
+		bash-completion wget ImageMagick qqwing dnsmasq ebtables net-tools iptables"
 	echo The following packages must be installed
 	echo
 	echo $LIST
@@ -871,31 +891,47 @@ elif [ "$1" = "disable-some-services" ] ; then # config: Disable services mariad
 		fi
 	}
 	checkserv httpd httpd
+	if systemctl is-active httpd.socket >/dev/null
+	then
+		echo "    "Stop httpd.socket
+		systemctl stop httpd.socket
+	fi
+	if systemctl is-enabled httpd.socket >/dev/null
+	then
+		echo "    "Disable httpd.socket
+		systemctl disable httpd.socket
+	fi
 	checkserv exim exim
 	checkserv mariadb mariadbd
-elif [ "$1" = "install-sequence" ] ; then # config: Interative sequence to start a node from scratch
+elif [ "$1" = "make-lxc0-logs" ] ; then # config: Produce lxc0 logs for exim, httpd and mariadb if needed
 	if [ ! -f /root/stracelogs/log.web -o ! -f /root/stracelogs/log.exim -o ! -f /root/stracelogs/log.mysql ] ; then
 		echo lxc0 log files are missing in /root/stracelogs
 		echo we must execute the following commands:
 		echo
-		echo "  " bolixo-production make-exim-log
+		echo "  "bolixo-production make-httpd-log
 		bolixo-production make-httpd-log
 		echo
-		echo "  " bolixo-production make-mysql-log
+		echo "  "bolixo-production make-mysql-log
 		bolixo-production make-mysql-log
 		echo
-		echo "  " bolixo-production make-httpd-log
+		echo "  "bolixo-production make-exim-log
 		bolixo-production make-exim-log
 		
 	fi
+elif [ "$1" = "install-sequence" ] ; then # config: Interative sequence to start a node from scratch
+	echo
+	echo "All messages logged to $STEPLOG"
+	echo
+	echo "#### install-sequence " `date` >>$STEPLOG
 	echo The host name is `hostname`
 	echo -n "Is this valid (y/n) ?"
 	read yes
 	if [ "$yes" != "y" ] ; then
-		echo aborting
+		echo PLease fix that and restart bolixo-production install-sequence. Aborting
 		exit 1
 	fi
 	step disable-some-services
+	step make-lxc0-logs
 	step secrets
 	stepnote edit/configure /root/data/manager.conf /root/.bofs.conf, press enter when done
 	step config
