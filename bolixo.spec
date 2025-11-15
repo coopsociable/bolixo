@@ -144,7 +144,7 @@ make install
 %config(noreplace) /etc/bolixo/default_interests.lst
 %config(noreplace) /etc/bolixo/greetings.lst
 /usr/share/bolixo/greetings/*
-/etc/share/bolixo/bolixoserv
+/usr/share/bolixo/bolixoserv
 /lib/systemd/system/bolixo.service
 /var/www/html/about.html
 /var/www/html/favicon.ico
