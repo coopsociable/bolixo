@@ -15,9 +15,12 @@ then
 	exit 1
 fi
 getmainip(){
-	ifconfig eth0 | grep "inet " | ( read a b c; echo $b)
+	# We must find the interface
+	DEV=`ifconfig | grep ^[a-z]. | grep -v lo: | grep -v veth | grep -v virbr | (read a b; echo $a | sed s/://)`
+	ifconfig $DEV | grep "inet " | ( read a b c; echo $b)
 }
 
+BOLIXOCONFCREATED=
 if [ ! -f $HOME/bolixo.conf ] ; then
 	ROOTPASS=root`date +%N`
 	BODPASS=bod`date +%N`
@@ -26,6 +29,8 @@ if [ ! -f $HOME/bolixo.conf ] ; then
 	ADMINPASS=admin`date +%N`
 	HOSTNAME=`hostname`
 	MYIP=`getmainip`
+	echo
+	echo /root/bolixo.conf was created from /usr/share/bolixo/bolixo.conf
 	# By default, do not change anything
 	PREPROD1="s/#PREPROD/#PREPROD/"
 	PREPROD2="s/#THIS/#THIS/"
@@ -46,7 +51,9 @@ if [ ! -f $HOME/bolixo.conf ] ; then
 		sed $PREPROD1 | \
 		sed $PREPROD2 \
 		>/root/bolixo.conf
-	echo /root/bolixo.conf was created from /usr/share/bolixo/bolixo.conf
+	echo
+	# Tell install-sequence that bolixo.conf was created
+	BOLIXOCONFCREATED=yes
 fi
 . ~/bolixo.conf
 BOD_SOCK=/var/lib/lxc/bod/rootfs/tmp/bod-0.sock
@@ -78,13 +85,30 @@ check_loadfail(){
 }
 STEPLOG=/var/log/bolixo-install.log
 step(){
-	echo "**********" bolixo-production $* >>$STEPLOG
-	echo -n bolixo-production $*" (n) "
-	read line
-	if [ "$line" = "y" ] ; then
-		bolixo-production $* 2>&1 | tee -a $STEPLOG
+	CMD=$1
+	
+	echo "**********" bolixo-production $CMD >>$STEPLOG
+	if [ "$STEPY" != "" ] ; then
+		echo bolixo-production $CMD
+		bolixo-production $CMD 2>&1 | tee -a $STEPLOG
 	else
-		echo skipped | tee -a $STEPLOG
+		if [ "$STEPy" != "" ]; then
+			echo -n bolixo-production $*" (y) "
+		else
+			echo -n bolixo-production $*" (n) "
+		fi
+		read line
+		if [ "$line" = "n" ] ; then
+			echo skipped | tee -a $STEPLOG
+		elif [ "$line" = "y" ] ; then
+			bolixo-production $CMD 2>&1 | tee -a $STEPLOG
+		else
+			if [ "$STEPy" != "" ]; then
+				bolixo-production $CMD 2>&1 | tee -a $STEPLOG
+			else
+				echo skipped | tee -a $STEPLOG
+			fi
+		fi
 	fi
 }
 stepnote(){
@@ -922,12 +946,36 @@ elif [ "$1" = "install-sequence" ] ; then # config: Interative sequence to start
 	echo
 	echo "All messages logged to $STEPLOG"
 	echo
+	STEPy=on
+	STEPY=
+	if [ "$2" = "-y" ] ; then
+		# Default for step() function is yes
+		STEPy=on
+	elif [ "$2" = "-n" ] ; then
+		# Default for step() function is no
+		STEPy=
+	elif [ "$2" = "-Y" ] ; then
+		# Batch mode: The step function default to yes
+		STEPY=on
+	elif [ "$2" != "" ] ; then
+		echo "bolixo-production install-sequence [ -n | -y | -Y ]"
+		echo "  -n: enter means don't do it"
+		echo "  -y: enter means do it"
+		echo "  -Y: batch mode, yes to all"
+		exit 1
+	fi
 	echo "#### install-sequence " `date` >>$STEPLOG
 	echo The host name is `hostname`
 	echo -n "Is this valid (y/n) ?"
 	read yes
 	if [ "$yes" != "y" ] ; then
+		echo
 		echo PLease fix that and restart bolixo-production install-sequence. Aborting
+		if [ "$BOLIXOCONFCREATED" != "" ] ; then
+			rm -f $HOME/bolixo.conf
+			echo $HOME/bolixo.conf was deleted, it will be created next time you lauch install-sequence
+		fi
+		echo
 		exit 1
 	fi
 	step disable-some-services
@@ -947,7 +995,7 @@ elif [ "$1" = "install-sequence" ] ; then # config: Interative sequence to start
 	step test-system
 	step generate-system-pubkey
 	step createadmin
-	step restart bod
+	step "restart bod"
 	step syslog-clear
 	step syslog-reset
 	step test-system

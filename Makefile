@@ -393,7 +393,7 @@ install: msg.eng msg.fr
 	mkdir -p $(RPM_BUILD_ROOT)/var/log/bolixo
 	mkdir -p $(RPM_BUILD_ROOT)/var/lib/bolixo
 	mkdir -p $(RPM_BUILD_ROOT)/var/lib/bolixod
-	mkdir -p $(RPM_BUILD_ROOT)/etc/init.d
+	mkdir -p $(RPM_BUILD_ROOT)/lib/systemd/system
 	mkdir -p $(RPM_BUILD_ROOT)/usr/share/bolixo
 	mkdir -p $(RPM_BUILD_ROOT)/usr/share/bolixo/greetings
 	mkdir -p $(RPM_BUILD_ROOT)/etc/bash_completion.d
@@ -463,7 +463,8 @@ install: msg.eng msg.fr
 	install -m644 web/webapi.openapi.yaml $(RPM_BUILD_ROOT)/var/www/html/webapi.openapi.yaml
 	install -m644 web/demo.js $(RPM_BUILD_ROOT)/var/www/html/demo.js
 	install -m644 data/http_check.conf $(RPM_BUILD_ROOT)/etc/bolixo/http_check.conf
-	install -m755 bolixoserv.sysv $(RPM_BUILD_ROOT)/etc/init.d/bolixoserv
+	install -m755 bolixoserv.sysv $(RPM_BUILD_ROOT)/usr/share/bolixo/bolixoserv
+	install -m644 bolixo.service $(RPM_BUILD_ROOT)/lib/systemd/system/bolixo.service
 	install -m755 bolixod $(RPM_BUILD_ROOT)/usr/sbin/bolixod
 	install -m755 bolixod-control $(RPM_BUILD_ROOT)/usr/sbin/bolixod-control
 	install -m755 bo-websocket $(RPM_BUILD_ROOT)/usr/sbin/bo-websocket
