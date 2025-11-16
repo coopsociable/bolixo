@@ -233,8 +233,6 @@ static const char *ip0_webssl = IP_PREFIX "8";
 static const char *ip_webssl = IP_PREFIX "8";
 static const char *ip_webssl_fail = IP_PREFIX "18";
 static const char *ip_preprod = IP_PREFIX "21";
-static const char *ip_preprod2 = IP_PREFIX "22";
-static const char *ip_preprod3 = IP_PREFIX "23";
 static const char *ip_bosqlduser = IP_PREFIX "9";
 static const char *ip_bosqlddata = IP_PREFIX "10";
 static const char *ip_bosqldbolixo = IP_PREFIX "14";
@@ -886,7 +884,23 @@ static void umount_needed(FILE *fout, const char *name, const char *dirname)
 	fprintf (fout,"fi\n");
 }
 
-
+struct PREPRODHOST{
+	string name;
+	string ip;
+	PREPRODHOST(const string &_name, const string &_ip)
+		: name(_name), ip(_ip){
+	}
+};
+/*
+	Add lines in the container start file to set some hosts in the LXC0 container /etc/hosts.
+*/
+static void preprods_print (FILE *fout, const char *hostname, const vector<PREPRODHOST> &preprods)
+{
+	for (auto &h:preprods){
+		fprintf (fout,"echo %s %s >>/var/lib/lxc/%s/rootfs/etc/hosts\n"
+			,h.ip.c_str(),h.name.c_str(),hostname);
+	}
+}
 /*
 	Print all configururation for services running on a given server
 */
@@ -895,8 +909,10 @@ static void print_configs (
 	const string &server,
 	const string &public_ip,
 	const CONFIG &config,
-	bool devmode)
+	bool devmode,
+	const vector<PREPRODHOST> &preprods)
 {
+	glocal preprods;
 	glocal const CONFIG *config = &config;
 	glocal bool devmode = devmode;
 	glocal const char *public_ip = public_ip.c_str();
@@ -1457,21 +1473,9 @@ static void print_configs (
 						fprintf (fout,"echo nameserver %s >/var/lib/lxc/%s/rootfs/etc/resolv.conf\n"
 							,horizon_ip,name);
 						if (glocal.devmode){
-							fprintf (fout,"echo %s test1.bolixo.org >>/var/lib/lxc/%s/rootfs/etc/hosts\n"
-								,ip_webssl,name);
-							fprintf (fout,"echo %s alpha.bolixo.org >>/var/lib/lxc/%s/rootfs/etc/hosts\n"
-								,ip_preprod,name);
+							preprods_print (fout,name,glocal.preprods);
 						}else if (preprodmode){
-							fprintf (fout,"echo %s alpha.bolixo.org >>/var/lib/lxc/%s/rootfs/etc/hosts\n"
-								,ip_preprod,name);
-							fprintf (fout,"echo %s preprod.bolixo.org >>/var/lib/lxc/%s/rootfs/etc/hosts\n"
-								,ip_preprod,name);
-							fprintf (fout,"echo %s preprod2.bolixo.org >>/var/lib/lxc/%s/rootfs/etc/hosts\n"
-								,ip_preprod2,name);
-							fprintf (fout,"echo %s preprod3.bolixo.org >>/var/lib/lxc/%s/rootfs/etc/hosts\n"
-								,ip_preprod3,name);
-							fprintf (fout,"echo %s bolixo.org >>/var/lib/lxc/%s/rootfs/etc/hosts\n"
-								,ip_preprod,name);
+							preprods_print (fout,name,glocal.preprods);
 						}
 					</f>
 					</call>
@@ -1606,27 +1610,9 @@ static void print_configs (
 						fprintf (fout,"echo nameserver %s >/var/lib/lxc/%s/rootfs/etc/resolv.conf\n"
 							,horizon_ip,name);
 						if (glocal.devmode){
-							fprintf (fout,"echo %s test1.bolixo.org >>/var/lib/lxc/%s/rootfs/etc/hosts\n"
-								,ip0_webssl,name);
-							fprintf (fout,"echo %s preprod.bolixo.org >>/var/lib/lxc/%s/rootfs/etc/hosts\n"
-								,ip_preprod,name);
-							fprintf (fout,"echo %s preprod2.bolixo.org >>/var/lib/lxc/%s/rootfs/etc/hosts\n"
-								,ip_preprod2,name);
-							fprintf (fout,"echo %s preprod3.bolixo.org >>/var/lib/lxc/%s/rootfs/etc/hosts\n"
-								,ip_preprod3,name);
+							preprods_print (fout,name,glocal.preprods);
 						}else if (preprodmode){
-							fprintf (fout,"echo %s test1.bolixo.org >>/var/lib/lxc/%s/rootfs/etc/hosts\n"
-								,ip0_webssl,name);
-							fprintf (fout,"echo %s alpha.bolixo.org >>/var/lib/lxc/%s/rootfs/etc/hosts\n"
-								,ip_preprod,name);
-							fprintf (fout,"echo %s preprod.bolixo.org >>/var/lib/lxc/%s/rootfs/etc/hosts\n"
-								,ip_preprod,name);
-							fprintf (fout,"echo %s preprod2.bolixo.org >>/var/lib/lxc/%s/rootfs/etc/hosts\n"
-								,ip_preprod2,name);
-							fprintf (fout,"echo %s preprod3.bolixo.org >>/var/lib/lxc/%s/rootfs/etc/hosts\n"
-								,ip_preprod3,name);
-							fprintf (fout,"echo %s bolixo.org >>/var/lib/lxc/%s/rootfs/etc/hosts\n"
-								,ip_preprod,name);
+							preprods_print (fout,name,glocal.preprods);
 						}
 					</f>
 					</call>
@@ -1846,27 +1832,9 @@ static void print_configs (
 						fprintf (fout,"echo nameserver %s >/var/lib/lxc/%s/rootfs/etc/resolv.conf\n"
 							,horizon_ip,name);
 						if (glocal.devmode){
-							fprintf (fout,"echo %s test1.bolixo.org >>/var/lib/lxc/bod/rootfs/etc/hosts\n"
-								,ip0_webssl);
-							fprintf (fout,"echo %s preprod.bolixo.org >>/var/lib/lxc/bod/rootfs/etc/hosts\n"
-								,ip_preprod);
-							fprintf (fout,"echo %s preprod2.bolixo.org >>/var/lib/lxc/%s/rootfs/etc/hosts\n"
-								,ip_preprod2,name);
-							fprintf (fout,"echo %s preprod3.bolixo.org >>/var/lib/lxc/%s/rootfs/etc/hosts\n"
-								,ip_preprod3,name);
+							preprods_print (fout,name,glocal.preprods);
 						}else if (preprodmode){
-							fprintf (fout,"echo %s test1.bolixo.org >>/var/lib/lxc/bod/rootfs/etc/hosts\n"
-								,ip0_webssl);
-							fprintf (fout,"echo %s alpha.bolixo.org >>/var/lib/lxc/bod/rootfs/etc/hosts\n"
-								,ip_preprod);
-							fprintf (fout,"echo %s preprod.bolixo.org >>/var/lib/lxc/bod/rootfs/etc/hosts\n"
-								,ip_preprod);
-							fprintf (fout,"echo %s preprod2.bolixo.org >>/var/lib/lxc/%s/rootfs/etc/hosts\n"
-								,ip_preprod2,name);
-							fprintf (fout,"echo %s preprod3.bolixo.org >>/var/lib/lxc/%s/rootfs/etc/hosts\n"
-								,ip_preprod3,name);
-							fprintf (fout,"echo %s bolixo.org >>/var/lib/lxc/bod/rootfs/etc/hosts\n"
-								,ip_preprod);
+							preprods_print (fout,name,glocal.preprods);
 						}
 					</f>
 					<f delayed>
@@ -2045,16 +2013,7 @@ static void print_configs (
 								fprintf (fout,"echo %s test1.bolixo.org >>/var/lib/lxc/%s/rootfs/etc/hosts\n"
 									,ip_webssl,name);
 							}else if (preprodmode){
-								fprintf (fout,"echo %s alpha.bolixo.org >>/var/lib/lxc/%s/rootfs/etc/hosts\n"
-									,ip_preprod,name);
-								fprintf (fout,"echo %s preprod.bolixo.org >>/var/lib/lxc/%s/rootfs/etc/hosts\n"
-									,ip_preprod,name);
-								fprintf (fout,"echo %s preprod2.bolixo.org >>/var/lib/lxc/%s/rootfs/etc/hosts\n"
-									,ip_preprod2,name);
-								fprintf (fout,"echo %s preprod3.bolixo.org >>/var/lib/lxc/%s/rootfs/etc/hosts\n"
-									,ip_preprod3,name);
-								fprintf (fout,"echo %s bolixo.org >>/var/lib/lxc/%s/rootfs/etc/hosts\n"
-									,ip_preprod,name);
+								preprods_print (fout,name,glocal.preprods);
 							}
 							if (!glocal.usecgi){
 								fprintf (fout,"cat <<-EOF >>/var/lib/lxc/%s/rootfs/etc/httpd/conf.d/tlmpweb.conf\n",glocal.w);
@@ -2641,6 +2600,7 @@ int main (int argc, char *argv[])
 	glocal bool devmode = false;
 	glocal vector<string> devip;	// List of services which requires a development IP
 	glocal bool inframode = false;
+	glocal const char *preprodhosts = "/etc/preprodhosts";
 	glocal.ret = <call tlmpprogram>(argc,argv,"bolixo");
 	<f init>
 		setproginfo ("bo-manager",VERSION,MSG_U(I_BOMANAGER
@@ -2656,6 +2616,7 @@ int main (int argc, char *argv[])
 		setarg (' ',"devmode","Sets various parameters to run on a workstation",glocal.devmode,false);
 		setarg (' ',"inframode","Generate config only for infrastructure",glocal.inframode,false);
 		setarg (' ',"preprodmode","Sets various parameters to run in pre-production",preprodmode,false);
+		setarg (' ',"preprodhosts","File holding list of preprod hosts with IP number",glocal.preprodhosts,false);
 		setgrouparg ("SQL");
 		setarg (' ',"boduser","SQL user for bod server",sql_bod_user,false);
 		setarg (' ',"bodpwd","SQL password for bod server",sql_bod_pwd,false);
@@ -2667,6 +2628,18 @@ int main (int argc, char *argv[])
 	<f main>
 		int ret = 0;
 		glocal CONFIG config;
+		glocal vector<PREPRODHOST> preprods;
+		<call loadfile>(glocal.preprodhosts,true);
+		<f oneline>
+			string name,ip;
+			if (splitline(line,ip,name)){
+				glocal.preprods.emplace_back(name,ip);
+			}
+			return 0;
+		</f>
+		<f missing>
+		</f>
+		</call>
 		if (getenv("BOD_PWD")!=NULL) sql_bod_pwd = getenv("BOD_PWD");
 		if (getenv("BOLIXOD_PWD")!=NULL) sql_bolixod_pwd = getenv("BOLIXOD_PWD");
 		if (getenv("PUBLISHD_PWD")!=NULL) sql_publishd_pwd = getenv("PUBLISHD_PWD");
@@ -2876,7 +2849,7 @@ int main (int argc, char *argv[])
 			if (s == glocal.config.servers.end()){
 				tlmp_error ("Server %s not found in configuration\n",server.c_str());
 			}else{
-				print_configs (server,s->second.public_ip,glocal.config,glocal.devmode);
+				print_configs (server,s->second.public_ip,glocal.config,glocal.devmode,glocal.preprods);
 			}
 		}
 		return ret;

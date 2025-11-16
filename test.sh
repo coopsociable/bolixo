@@ -1384,7 +1384,7 @@ elif [ "$1" = "fullconfig" ] ; then # config: Almost complete configuration for 
 	if [ "$2" != "" ]; then
 			BKPATH=$2
 	fi
-	./bo-manager -c data/manager.conf --blackhole_path $BKPATH \
+	./bo-manager --preprodhosts $HOME/preprodhosts -c data/manager.conf --blackhole_path $BKPATH \
 		--boduser $BOD_DBUSER --writeduser $BO_WRITED_DBUSER \
 		--devmode printconfig testhost
 	#cp alarm.sh /tmp

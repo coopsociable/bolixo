@@ -892,18 +892,24 @@ elif [ "$1" = "registernode" ] ; then # config: Register this node in the direct
 elif [ "$1" = "createadmin" ] ; then # config: Create the admin acccount
 	/usr/lib/bolixo-test.sh createadmin
 elif [ "$1" = "start-everything" ] ; then # config: Start all bolixo services
-	/root/bolixostart.sh
+	journalctl -u bolixo -f &
+	systemctl start bolixo
+	vkillall -n ROOT -q journalctl
 elif [ "$1" = "genkeysdpass" ] ; then # config: Generate the bo-keysd passphrase
 	echo -n `date +%N` >/root/keysd.pass
 	dd if=/dev/random count=8 bs=1 2>/dev/null | od -x | head -1 | (read a b c d e; echo $b$c$d$e) >>/root/keysd.pass 
+	cp -f /root/keysd.pass /root/keysd.pass.backup
 	echo
 	echo "**** Attention *****"
 	echo
 	echo "A pass phrase for the private keys management daemon bo-keysd"
-	echo "has been generated in file /root/keysd.pass"
+	echo "has been generated in file /root/keysd.pass.backup"
 	echo "You must retrieve this pass phrase and store it safely"
 	echo
-	echo "You must do this now, as the passphrase will be erased at the next step"
+	echo "Once stored, erase this file using the following command"
+	echo "    "shred -u /root/keysd.pass.backup
+	echo
+	echo "Leaving this file there won't make administration simpler"
 	echo
 elif [ "$1" = "disable-some-services" ] ; then # config: Disable services mariadb,exim and httpd
 	checkserv(){
@@ -993,12 +999,19 @@ elif [ "$1" = "install-sequence" ] ; then # config: Interative sequence to start
 	step createsqluser
 	step createdb
 	step test-system
+	echo
+	echo "There are errors with the bod service: adm_sess=0. This is normal"
+	echo "There are errors also in the syslog service: normal"
+	echo
 	step generate-system-pubkey
 	step createadmin
 	step "restart bod"
 	step syslog-clear
 	step syslog-reset
 	step test-system
+	echo
+	echo The should be no errors this time
+	echo
 elif [ "$1" = "load-timezones" ]; then # db: load timezone definitions
 	$0 calltest load-timezones
 elif [ "$1" = "install-sequence-publish" ] ; then # config: Complete install-sequence once everything is running
