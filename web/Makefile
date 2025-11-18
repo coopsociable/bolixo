@@ -7,19 +7,20 @@ all: webtabs.os util.os document.os document_fr.os index.os bolixoapi.os webapi.
 FLAGS=-Wall -Wno-unused-function
 
 index.hc: index.os /usr/lib64/trlitool/trlitool.pic.a util.os webtabs.os document.os document_fr.os \
-	techdoc.os webapi.proto.os webapi.demo.os config.os mail.os projects.os ../proto/webapi.protoh ../proto/bolixoapi.protoh \
+	techdoc.os webapi.proto.os webapi.demo.os bolixoapi.proto.os config.os mail.os projects.os ../proto/webapi.protoh ../proto/bolixoapi.protoh \
 	/usr/include/tlmp/tlmpweb.h /usr/include/tlmp/tlmpweb.p
 	@echo $@
 	@g++ $(OPTIONS) -g -shared -Wl,-soname,test.so.1 -o \
-		$@ $< ../_dict.os util.os webtabs.os techdoc.os webapi.proto.os webapi.demo.os document.os document_fr.os \
+		$@ $< ../_dict.os util.os webtabs.os techdoc.os webapi.proto.os webapi.demo.os bolixoapi.proto.os document.os document_fr.os \
 		config.os mail.os projects.os /usr/lib/tlmp/lib/tlmpdoc.so /usr/lib64/trlitool/trlitool.pic.a /usr/lib/tlmp/lib/tlmpwebsql.so -lcrypto
 
 %.hc: %.os /usr/lib64/trlitool/trlitool.pic.a util.os webtabs.os techdoc.os document.os document_fr.os webapi.proto.os webapi.demo.os \
-	../proto/webapi.protoh ../proto/bolixoapi.protoh \
+	bolixoapi.proto.os ../proto/webapi.protoh ../proto/bolixoapi.protoh \
 	/usr/include/tlmp/tlmpweb.h /usr/include/tlmp/tlmpweb.p
 	@echo $@
 	@g++ $(OPTIONS) -g -shared -Wl,-soname,test.so.1 -o \
-		$@ $< ../_dict.os /usr/lib64/trlitool/trlitool.pic.a util.os techdoc.os webapi.proto.os webapi.demo.os document.os document_fr.os \
+		$@ $< ../_dict.os /usr/lib64/trlitool/trlitool.pic.a util.os techdoc.os webapi.proto.os webapi.demo.os bolixoapi.proto.os \
+		document.os document_fr.os \
 		/usr/lib/tlmp/lib/tlmpdoc.so /usr/lib/tlmp/lib/tlmpwebsql.so -lcrypto
 
 document.os: document.hcc ../documentd_menu.h
@@ -29,6 +30,11 @@ webapi.proto.hcc: ../proto/webapi.proto ../proto/webapi.proto.doc ../proto/bod_c
 		--include techdoc.h --printdoc ../proto/webapi.proto --refdocs ../proto/bod_client.proto --tlmpdoc >webapi.proto.tmp
 	@mv -f webapi.proto.tmp webapi.proto.hcc
 	
+bolixoapi.proto.hcc: ../proto/bolixoapi.proto ../proto/bolixoapi.proto.doc ../proto/bod_client.proto ../proto/bod_client.proto.doc
+	unset LANG; build-protocol --name bolixoapi \
+		--include techdoc.h --printdoc ../proto/bolixoapi.proto --refdocs ../proto/bolixod_client.proto --refdocs ../proto/bod_client.proto --tlmpdoc >bolixoapi.proto.tmp
+	@mv -f bolixoapi.proto.tmp bolixoapi.proto.hcc
+
 webapi.demo.hcc: demo.js
 	@echo convert demo.js to webapi.demo.hcc
 	@echo "#include <tlmpweb.h>" >webapi.demo.hcc
@@ -74,7 +80,7 @@ install: all
 
 
 clean:
-	rm -f *.hc *.o *.os genbackground webapi.proto.hcc webapi.openapi.yaml webapi.demo.hcc *.tmp
+	rm -f *.hc *.o *.os genbackground webapi.proto.hcc webapi.openapi.yaml webapi.demo.hcc bolixoapi.proto.hcc *.tmp
 
 util.os: util.hcc util.h /usr/include/tlmp/tlmpweb.h /usr/include/tlmp/tlmpweb.p
 	@echo tlmpwebcc $< $@
