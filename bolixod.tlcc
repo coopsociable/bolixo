@@ -167,10 +167,17 @@ static void bolixod_test (CONNECT_INFO &con_sess, string &msg, bool &sessiond_ok
 }
 </mod>
 static bool nonstrict = false;
+/*
+	Retrieve the public key from a server.
+	Return -1 if any error.
+	Return 0 and the public key if ok.
+*/
 <mod>
-static void bolixod_getpubkey (bool use_ssl, const char *hostname, const char *nodename, string &msg)
+static int bolixod_getpubkey (bool use_ssl, const char *hostname, const char *nodename, string &pub_key, string &msg)
 {
-	glocal string *msg = &msg;
+	glocal int ret = -1;
+	glocal pub_key;
+	glocal msg;
 	glocal const char *nodename = nodename;
 	CONNECT_HTTP_INFO con;
 	if (nonstrict) con.setnonstrictmode();
@@ -186,36 +193,36 @@ static void bolixod_getpubkey (bool use_ssl, const char *hostname, const char *n
 	<call webapi_systempubkey>(con);
 	<f ok>
 		if (internal_error){
-			*glocal.msg = "internal_error webapi:systempubkey";
+			glocal.msg = "internal_error webapi:systempubkey";
 		}else if (pubkey[0] != '\0'){
 			if (fs_valid_pubkey(pubkey)==-1){
-				*glocal.msg = string_f("Invalid pubkey for nodename %s",glocal.nodename);
+				glocal.msg = string_f("Invalid pubkey for nodename %s",glocal.nodename);
 				tlmp_error ("Inalid pubkey for nodename %s\n",glocal.nodename);
 			}else{
-				if (sql_action("update nodes set created=now(),pub_key='%s' where nodename='%s'"
-					,pubkey,glocal.nodename)==-1){
-					*glocal.msg = "Internal error, inserting node pubkey";
-					tlmp_error ("Internal error, inserting node pubkey\n");
-				}
+				glocal.pub_key = pubkey;
+				glocal.ret = 0;
 			}
 		}else{
-			*glocal.msg = string_f("No pubkey for nodename %s",glocal.nodename);
+			glocal.msg = string_f("No pubkey for nodename %s",glocal.nodename);
 			tlmp_error ("No pubkey for nodename %s\n",glocal.nodename);
 		}
 	</f>
 	</call>
+	return glocal.ret;
 }
 </mod>
-static void bolixod_getpubkey (const char *nodename, string &msg)
+static int bolixod_getpubkey (const char *nodename, string &pub_key, string &msg)
 {
+	int ret = -1;
 	if (strncasecmp(nodename,"http://",7)==0){
-		bolixod_getpubkey(false,nodename+7,nodename,msg);
+		ret = bolixod_getpubkey(false,nodename+7,nodename,pub_key,msg);
 	}else if (strncasecmp(nodename,"https://",8)==0){
-		bolixod_getpubkey(true,nodename+8,nodename,msg);
+		ret = bolixod_getpubkey(true,nodename+8,nodename,pub_key,msg);
 	}else{
 		msg = string_f ("getpubkey invalid nodename: %s",nodename);
 		tlmp_error ("getpubkey invalid nodename: %s\n",nodename);
 	}
+	return ret;
 }
 <mod>
 // Get the information of this session.
@@ -576,19 +583,20 @@ int main (int argc, char *argv[])
 					}else if (bolixod_validnode (nodename,glocal.domain) == -1){
 						glocal.msg = "Invalid nodename";
 					}else{
-						<call sql_query>("select pub_key from nodes where nodename='%s'",nodename);
+						<call sql_query>("select 1 from nodes where nodename='%s'",nodename);
 						<f onerow>
-							if (row[0] == NULL){
-								bolixod_getpubkey (glocal.nodename,glocal.msg);	
-							}else{
-								glocal.msg = "Already registered";
-							}
+							glocal.msg = "Already registered";
 						</f>
 						<f empty>
-							if (sql_action("insert into nodes (nodename) value ('%s')",glocal.nodename)==-1){
-								glocal.msg = "Internal error (nodes table)";
+							// We connect back to the caller to retrieve its public key
+							string pub_key;
+							if (bolixod_getpubkey (glocal.nodename,pub_key,glocal.msg) != -1){	
+								if (sql_action("insert into nodes (nodename,pub_key) value ('%s','%s')"
+									,glocal.nodename,pub_key.c_str())==-1){
+									glocal.msg = "Internal error (nodes table)";
+								}
 							}else{
-								bolixod_getpubkey (glocal.nodename,glocal.msg);	
+								glocal.msg = "Can't get public key";
 							}
 						</f>
 						</call>
@@ -1184,10 +1192,16 @@ int main (int argc, char *argv[])
 						</f>
 						<f onerow>
 							glocal unsigned nodeid = atoi(row[0]);
-							<call sql_query>("select 1 from emails where nodeid=%u and email='%s'"
-								,glocal.nodeid,glocal.email);
+							<call sql_query>("select nodeid from emails where email='%s'",glocal.email);
 							<f onerow>
-								// Already there, ok
+								// The email is already there, ok
+								// We have to verify that the email is not associated with another nodeid.
+								// This would be a security risk. A user who have forgotten his bolixo server
+								// will go to bolixo.org and will be redirected to the wrong server.
+								unsigned nodeid = atoi(row[0]);
+								if (nodeid != glocal.nodeid){
+									glocal.msg = "Can't record this email for this node";
+								}
 							</f>
 							<f empty>
 								if (sql_action("insert into emails (email,userid,nodeid) values ('%s','%s',%u)"
@@ -1233,11 +1247,16 @@ int main (int argc, char *argv[])
 					}
 				</f>
 				<f newacct_findnode> // userid = success:b msg nodename
+					// Find an available server for a new account. We have the userid (nickname)
+					// The node must have a public key
+					// The node must have less than maxxaccts users
+					// The node must not have an account with the same userid 
+					// We return the node with the smallest nbuser.
 					glocal string msg;
 					glocal string nodename;
 					<call sql_query>("select distinct nodes.nodename,nodes.nbuser from nodes"
 						" left join emails on emails.nodeid=nodes.nodeid"
-						" where nodes.nbuser < %u and nodes.nodeid not in (select nodeid from emails where userid='%s')"
+						" where nodes.pub_key is not null and nodes.nbuser < %u and nodes.nodeid not in (select nodeid from emails where userid='%s')"
 						" order by nodes.nbuser asc limit 1"
 						,glocal.maxaccts,userid);
 					<f onerow>
