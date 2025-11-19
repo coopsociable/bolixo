@@ -16,6 +16,7 @@
 */
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 #include <tlmplib.h>
 #include <tlmpweb.h>
 #include "trlitool.h"
@@ -49,11 +50,13 @@ extern "C" void webmain_init()
 }
 static bool instrument = false;
 static bool showjson = false;	// Display the json received in the logs
+static int systempubkey_sleep = 0;	// Delay in the systempubkey for testing
 
 extern "C" void webmain_getprops(vector<WEB_PROPERTY> &tb)
 {
 	tb.emplace_back("instrument",instrument);
 	tb.emplace_back("showjson",showjson);
+	tb.emplace_back("systempubkey_sleep",systempubkey_sleep);
 }
 extern "C" int webmain_setprop(const WEB_PROPERTY &prop)
 {
@@ -62,6 +65,8 @@ extern "C" int webmain_setprop(const WEB_PROPERTY &prop)
 		ret = prop.apply(instrument);
 	}else if (prop.name == "showjson"){
 		ret = prop.apply(showjson);
+	}else if (prop.name == "systempubkey_sleep"){
+		ret = prop.apply(systempubkey_sleep);
 	}
 	return ret;
 }
@@ -561,6 +566,7 @@ static void webmain_real(int handle)
 		</call>
 	</f>
 	<f systempubkey>
+		if (systempubkey_sleep > 0) sleep (systempubkey_sleep);	// For testing
 		<call bod_client_systempubkey>(glocal.con_pubkey);
 		<f ok>
 			glocal.webapi.rep_systempubkey(pubkey);

@@ -1989,8 +1989,8 @@ static void print_configs (
 							return 0;
 						</f>
 						</call>
-						string startfile;	
-						<call lxc_start> (w,ip,startfile,"apache",48);
+						string startfile,delayfile;
+						<call lxc_start> (w,ip,startfile,delayfile,"apache",48);
 						<f horizon>
 							fprintf (fout,"%s/horizon-control -p %s/horizon.sock --bind unix,/dev/bod.sock:/var/lib/lxc/%s/rootfs/dev/bod.sock,%s\n"
 								,blackhole_path,sock_dir,name,name);
@@ -2058,8 +2058,14 @@ static void print_configs (
 								fprintf (fout,"echo private_site >>/var/lib/lxc/%s/rootfs/etc/bolixonode.conf\n",name);
 							}
 						</f>
+						<f delayed>
+							if (glocal.devmode){
+								fprintf (fout,"chmod 666 /var/lib/lxc/%s/rootfs/var/run/control-*.sock\n",name);
+							}
+						</f>
 						</call>
 						fprintf (glocal.all_fout,"%s\n",startfile.c_str());
+						glocal.delayed.push_back(delayfile);
 						string stopcmd;
 						<call lxc_stop> (w,NULL,NULL,-1,stopcmd);
 						<f horizon>

@@ -951,6 +951,16 @@ elif [ "$1" = "remote-project" ] ; then # test: project with remote members, cre
 	echo ----- Remove remote user from group public
 	./bofs -u jacques-A groups --set-member --groupname public --user jacquesg@preprod.bolixo.org --access -
 	showlists
+elif [ "$1" = "bolixod-registernode" ] ; then # test: various bolixoapi tests
+	echo "#### Deletenode and registernode with a timeout"
+	./test.sh deletenode 
+	webcgi-control webapi setprop systempubkey_sleep 20
+	./test.sh registernode 
+	webcgi-control webapi setprop systempubkey_sleep 0
+	echo "#### Deletenode and registernode"
+	# No need to delete the node, since the previous test failed
+	#./test.sh deletenode 
+	./test.sh registernode 
 else
 	echo command
 fi
