@@ -234,7 +234,7 @@ static int bolixod_sessionstate(
 	CONNECT_INFO &con_sess,
 	PARAM_STRING session,
 	unsigned expected_state,
-	string &nodename,
+	string &nodename,	// Will contain the client node name
 	string &msg)
 {
 	glocal CONNECT_INFO *con_sess = &con_sess;
@@ -1180,7 +1180,7 @@ int main (int argc, char *argv[])
 						rep_readfile(true,"",modified,content);
 					}
 				</f>
-				<f recordemail>		// session email userid = success:b msg
+				<f recordemail>		// session userid email = success:b msg
 					glocal const char *email = email;
 					glocal const char *userid = userid;
 					glocal string msg;
@@ -1226,6 +1226,34 @@ int main (int argc, char *argv[])
 						rep_recordemail(false,glocal.msg);
 					}else{
 						rep_recordemail(true,"");
+					}
+				</f>
+				<f deleteemail>		// session userid email = success:b msg
+					glocal userid;
+					glocal email;
+					glocal string msg;
+					glocal string nodename;
+					int state = bolixod_sessionstate(glocal.con_sess,session,2,glocal.nodename,glocal.msg);
+					if (state == 2){
+						<call sql_query>("select nodeid from nodes where nodename='%s'",glocal.nodename.c_str());
+						<f empty>
+							glocal.msg = "Unknown node";
+						</f>
+						<f onerow>
+							int nb = sql_action ("delete from emails where nodeid=%s and userid='%s' and email='%s'"
+								,row[0],glocal.userid,glocal.email);
+							if (nb == -1){
+								glocal.msg = "SQL error";
+							}else if (nb == 0){
+								glocal.msg = "No corresponding userid/email";
+							}
+						</f>
+						</call>
+					}
+					if (glocal.msg.size() > 0){
+						rep_deleteemail(false,glocal.msg);
+					}else{
+						rep_deleteemail(true,"");
 					}
 				</f>
 				<f getnode>	// email = success:b msg nodename

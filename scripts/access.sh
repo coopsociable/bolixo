@@ -951,7 +951,7 @@ elif [ "$1" = "remote-project" ] ; then # test: project with remote members, cre
 	echo ----- Remove remote user from group public
 	./bofs -u jacques-A groups --set-member --groupname public --user jacquesg@preprod.bolixo.org --access -
 	showlists
-elif [ "$1" = "bolixod-registernode" ] ; then # test: various bolixoapi tests
+elif [ "$1" = "bolixod-bolixoapi" ] ; then # test: various bolixoapi tests
 	echo "#### Deletenode and registernode with a timeout"
 	./test.sh deletenode 
 	webcgi-control webapi setprop systempubkey_sleep 20
@@ -961,6 +961,13 @@ elif [ "$1" = "bolixod-registernode" ] ; then # test: various bolixoapi tests
 	# No need to delete the node, since the previous test failed
 	#./test.sh deletenode 
 	./test.sh registernode 
+	echo "#### Recordemail from two servers"
+	echo "recordemail user user@bolixo.org associated to preprod2.bolixo.org"
+	ssh root@preprod2.bolixo.org bofs bolixoapi recordemail https://preprod2.bolixo.org user user@bolixo.org
+	echo "recordemail user user@bolixo.org associated to preprod3.bolixo.org, will fail"
+	ssh root@preprod3.bolixo.org bofs bolixoapi recordemail https://preprod3.bolixo.org user user@bolixo.org
+	echo "deleteemail user user@bolixo.org associated to preprod2.bolixo.org"
+	ssh root@preprod2.bolixo.org bofs bolixoapi deleteemail https://preprod2.bolixo.org user user@bolixo.org
 else
 	echo command
 fi
