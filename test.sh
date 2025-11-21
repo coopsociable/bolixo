@@ -6,6 +6,7 @@
 ## config: Configuration
 ## A: Development
 ## T: Individual tests
+## syslog: System logs
 . ~/bolixo.conf
 if [ "$BOLIXOPATH" = "" ] ; then
 	BOLIXOPATH=`pwd`
@@ -331,9 +332,9 @@ cmpsequence(){
 		echo NBREF=$NBREF NBTST=$NBTST
 	fi
 }
-if [ "$1" = "" ] ; then
+if [ "$1" = "" -o "$1" = "--tlmpdoc" -o "$1" = "--manpage" ] ; then
 	if [ -x /usr/sbin/menutest ] ; then
-		/usr/sbin/menutest -s $0
+		/usr/sbin/menutest -s $0 $1
 	else
 		echo "No menutest, can't display help"
 	fi

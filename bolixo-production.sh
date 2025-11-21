@@ -7,6 +7,8 @@
 ## config: Configuration
 ## A: Development
 ## T: Individual tests
+## syslog: System logs
+## accounts: User accounts
 export LANG=eng
 TESTSH=/usr/lib/bolixo-test.sh
 if ! id $USER 2>/dev/null >/dev/null
@@ -21,41 +23,53 @@ getmainip(){
 }
 
 BOLIXOCONFCREATED=
-if [ ! -f $HOME/bolixo.conf ] ; then
-	ROOTPASS=root`date +%N`
-	BODPASS=bod`date +%N`
-	WRITEDPASS=write`date +%N`
-	BOLIXODPASS=bolixod`date +%N`
-	ADMINPASS=admin`date +%N`
-	HOSTNAME=`hostname`
-	MYIP=`getmainip`
-	echo
-	echo /root/bolixo.conf was created from /usr/share/bolixo/bolixo.conf
-	# By default, do not change anything
-	PREPROD1="s/#PREPROD/#PREPROD/"
-	PREPROD2="s/#THIS/#THIS/"
-	case $MYIP in
-	192.168.122.*)
-		PREPROD1="s/#PREPROD/PREPROD/"
-		PREPROD2="s/#THIS/THIS/"
-		echo Preproduction server detected
-		;;
-	esac
-	cat /usr/share/bolixo/bolixo.conf | \
-		sed "s/rootpass/$ROOTPASS/" | \
-		sed "s/bodpass/$BODPASS/" | \
-		sed "s/writedpass/$WRITEDPASS/" | \
-		sed "s/bolixodpass/$BOLIXODPASS/" | \
-		sed "s/adminpass/$ADMINPASS/" | \
-		sed "s/_HOSTNAME_/$HOSTNAME/" | \
-		sed $PREPROD1 | \
-		sed $PREPROD2 \
-		>/root/bolixo.conf
-	echo
-	# Tell install-sequence that bolixo.conf was created
-	BOLIXOCONFCREATED=yes
+# For all other command, we create bolixo.conf on the fly
+if [ "$1" != "install-required" ] ; then
+	if [ ! -f $HOME/bolixo.conf ] ; then
+		echo
+		echo /root/bolixo.conf must be created from /usr/share/bolixo/bolixo.conf
+		if [ ! -x /usr/bin/ifconfig ] ; then
+			echo
+			echo "    "Attention creation failed
+			echo
+			echo "    "ifconfig utility not installed
+			echo "    "Make sure to run bolixo-production install-required
+			echo
+			exit 1
+		fi
+		ROOTPASS=root`date +%N`
+		BODPASS=bod`date +%N`
+		WRITEDPASS=write`date +%N`
+		BOLIXODPASS=bolixod`date +%N`
+		ADMINPASS=admin`date +%N`
+		HOSTNAME=`hostname`
+		MYIP=`getmainip`
+		# By default, do not change anything
+		PREPROD1="s/#PREPROD/#PREPROD/"
+		PREPROD2="s/#THIS/#THIS/"
+		case $MYIP in
+		192.168.122.*)
+			PREPROD1="s/#PREPROD/PREPROD/"
+			PREPROD2="s/#THIS/THIS/"
+			echo Preproduction server detected
+			;;
+		esac
+		cat /usr/share/bolixo/bolixo.conf | \
+			sed "s/rootpass/$ROOTPASS/" | \
+			sed "s/bodpass/$BODPASS/" | \
+			sed "s/writedpass/$WRITEDPASS/" | \
+			sed "s/bolixodpass/$BOLIXODPASS/" | \
+			sed "s/adminpass/$ADMINPASS/" | \
+			sed "s/_HOSTNAME_/$HOSTNAME/" | \
+			sed $PREPROD1 | \
+			sed $PREPROD2 \
+			>/root/bolixo.conf
+		echo
+		# Tell install-sequence that bolixo.conf was created
+		BOLIXOCONFCREATED=yes
+	fi
+	. ~/bolixo.conf
 fi
-. ~/bolixo.conf
 BOD_SOCK=/var/lib/lxc/bod/rootfs/tmp/bod-0.sock
 WRITED_SOCK=/var/lib/lxc/writed/rootfs/tmp/bo-writed-0.sock
 SESSIOND_SOCK=/var/lib/lxc/sessiond/rootfs/tmp/bo-sessiond.sock
@@ -115,8 +129,8 @@ stepnote(){
 	echo -n "$* "
 	read line
 }
-if [ "$1" = "" ] ; then
-	menutest -s $0
+if [ "$1" = ""  -o "$1" = "--manpage" -o "$1" = "--tlmpdoc" ] ; then
+	menutest -s $0 $1
 elif [ "$1" = "files" ] ; then	# db: Access files database
 	shift
 	mysql -S /var/lib/lxc/bosqlddata/rootfs/var/lib/mysql/mysql.sock $DBNAME $*
@@ -917,6 +931,10 @@ elif [ "$1" = "disable-some-services" ] ; then # config: Disable services mariad
 		then
 			echo "    "Service $1 is running, incompatible with Bolixo, stopped and disabled
 			systemctl stop $1
+			systemctl disable $1
+		elif systemctl is-enabled $1 >/dev/null
+		then
+			echo "    "Disable $1
 			systemctl disable $1
 		fi
 	}
