@@ -431,6 +431,17 @@ static void trli_mon_sendline (int fd, const string &s)
 	write (fd,s.c_str(),s.size());
 	write (fd,"\n",1);
 }
+static bool is_member(PARAM_STRING domain, PARAM_STRING parent_domain)
+{
+	bool ret = false;
+	const char *pt = strstr(domain.ptr,parent_domain.ptr);
+	if (pt != nullptr
+		&& strlen(pt) == strlen(parent_domain.ptr)	// Ok domain ends with parent_domain
+		&& (pt == domain.ptr || pt[-1] == '.')){	// domain == parent_domain or there is a . before pt
+		ret = true;
+	}
+	return ret;
+}
 <mod>
 static int trli_mon_sendmail (
 	const char *mailserver,
@@ -452,7 +463,14 @@ static int trli_mon_sendmail (
 	if (glocal.admin.size() > 0){
 		string body;
 		for (auto &s:out) body += string_f("%s\r\n",s.c_str());
-		ret = fdpass_sendmail (mailserver,mailport,"no-reply@bolixo.org",glocal.admin,subject,body);
+		char hostname[1014];
+		if (gethostname(hostname,sizeof(hostname))==-1){
+			tlmp_error ("Can't get hostname (%s)\n",strerror(errno));
+		}else{
+			string norep = "no-reply@bolixo.org";
+			if (!is_member(hostname,"bolixo.org")) norep = string_f("no-reply@%s",hostname);
+			ret = fdpass_sendmail (mailserver,mailport,norep.c_str(),glocal.admin,subject,body);
+		}
 	}
 	return ret;
 }

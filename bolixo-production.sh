@@ -626,6 +626,10 @@ elif [ "$1" = "syslog-logs" ] ; then # syslog: Shows the syslog lines
 elif [ "$1" = "syslog-logerrs" ] ; then # syslog: Shows the syslog error lines
 	trli-syslog-control logerrs
 elif [ "$1" = "writed-sendmail" ] ; then # S: writed will send a mail
+	if [ ! -f /etc/bolixo/admins.conf ] ; then
+		echo /etc/bolixo/admins.conf not configured
+		exit 1
+	fi
 	. /etc/bolixo/admins.conf
 	bo-writed-control -p /var/lib/lxc/writed/rootfs/var/run/blackhole/bo-writed-0.sock sendmail $ADMIN1 "This is title" "This is the body"
 elif [ "$1" = "mon-sendmail" ] ; then # S: bo-mon will send a mail
@@ -966,6 +970,26 @@ elif [ "$1" = "make-lxc0-logs" ] ; then # config: Produce lxc0 logs for exim, ht
 		bolixo-production make-exim-log
 		
 	fi
+elif [ "$1" = "config_admins_conf" ] ; then # config: Configure the file /etc/bolixo/admin.conf
+	CONF=/etc/bolixo/admins.conf
+	if [ -f $CONF ] ; then
+		ADMIN=`grep ^ADMIN1= $CONF | sed s/ADMIN1=//`
+		if [ "$ADMIN" != "" ] ; then
+			echo File $CONF already configured. Email will be sent to $ADMIN
+			exit 0
+		else
+			echo File $CONF exist, but does not contain the ADMIN1= line
+		fi
+	else
+		echo "# Enter the email of the person or group responsible for Bolixo alert" >$CONF
+		echo "ADMIN1=" >>$CONF
+		echo File $CONF has been created
+	fi
+	echo -n "Would you like to edit the file ? y/n "
+	read line
+	if [ "$line" = "y" ] ; then
+		vim $CONF
+	fi
 elif [ "$1" = "install-sequence" ] ; then # config: Interative sequence to start a node from scratch
 	echo
 	echo "All messages logged to $STEPLOG"
@@ -1013,6 +1037,7 @@ elif [ "$1" = "install-sequence" ] ; then # config: Interative sequence to start
 	step checks
 	step lxc0s
 	step genkeysdpass
+	step config_admins_conf
 	step start-everything
 	step createsqluser
 	step createdb

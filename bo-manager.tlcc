@@ -901,6 +901,17 @@ static void preprods_print (FILE *fout, const char *hostname, const vector<PREPR
 			,h.ip.c_str(),h.name.c_str(),hostname);
 	}
 }
+static bool is_member(PARAM_STRING domain, PARAM_STRING parent_domain)
+{
+	bool ret = false;
+	const char *pt = strstr(domain.ptr,parent_domain.ptr);
+	if (pt != nullptr
+		&& strlen(pt) == strlen(parent_domain.ptr)	// Ok domain ends with parent_domain
+		&& (pt == domain.ptr || pt[-1] == '.')){	// domain == parent_domain or there is a . before pt
+		ret = true;
+	}
+	return ret;
+}
 /*
 	Print all configururation for services running on a given server
 */
@@ -1656,7 +1667,11 @@ static void print_configs (
 								,horizon_ip,ip_writed
 								,glocal.secret,glocal.pubsecret,trli_user
 								,i,i);
-							fprintf (fout," --mailfrom no-reply@bolixo.org");
+							if (is_member(glocal.hostname,"bolixo.org")){
+								fprintf (fout," --mailfrom no-reply@bolixo.org");
+							}else{
+								fprintf (fout," --mailfrom no-reply@%s",glocal.hostname);
+							}
 							fprintf (fout," --nodename %s",glocal.nodename);
 							if (glocal.private_site) fprintf (fout," --private_site");
 							if (glocal.devmode){
@@ -2419,15 +2434,20 @@ static void print_configs (
 						// Make sure exim accepts the hostname as well as the bolixo.org domain.
 						string alias;
 						for (auto &s:glocal.p->alias) alias += string_f(" : %s",s.c_str());
+						const char *network = preprodmode ? "192.168.124.0" : "192.168.122.0";
 						fprintf (fout,"sed 's/localhost.localdomain/localhost.localdomain : %s%s/' </var/lib/lxc/%s/rootfs/etc/exim/exim.conf"
-							" >/var/lib/lxc/%s/rootfs/etc/exim/exim.conf.new\n",glocal.hostname,alias.c_str(),name,name);
+							" | sed 's-relay_from_hosts = localhost-relay_from_hosts = %s/24-'"
+							" >/var/lib/lxc/%s/rootfs/etc/exim/exim.conf.new\n",glocal.hostname,alias.c_str(),name
+							,network,name);
 						fprintf (fout,"mv -f /var/lib/lxc/%s/rootfs/etc/exim/exim.conf.new"
 							" /var/lib/lxc/%s/rootfs/etc/exim/exim.conf\n",name,name);
 					</f>
 					</call>
 					fprintf (glocal.all_fout,"%s\n",startfile.c_str());
 					lxc_stop ("exim",NULL,NULL,-1,glocal.stopexim);
-					lxc_config ("exim","bolixo.org",ip_exim,true);
+					const char *name = "bolixo.org";
+					if (!is_member(glocal.hostname,"bolixo.org")) name = glocal.hostname;
+					lxc_config ("exim",name,ip_exim,true);
 				}
 			}
 		}
