@@ -957,15 +957,18 @@ elif [ "$1" = "bolixod-bolixoapi" ] ; then # test: various bolixoapi tests
 	webcgi-control webapi setprop systempubkey_sleep 20
 	./test.sh registernode 
 	webcgi-control webapi setprop systempubkey_sleep 0
-	echo "#### Deletenode and registernode"
+	echo "#### registernode"
 	# No need to delete the node, since the previous test failed
-	#./test.sh deletenode 
 	./test.sh registernode 
+	echo "#### Failed nodelogin"
+	ssh root@preprod2.bolixo.org bofs bolixoapi recordemail https://preprod3.bolixo.org user user@bolixo.org
 	echo "#### Recordemail from two servers"
 	echo "recordemail user user@bolixo.org associated to preprod2.bolixo.org"
 	ssh root@preprod2.bolixo.org bofs bolixoapi recordemail https://preprod2.bolixo.org user user@bolixo.org
 	echo "recordemail user user@bolixo.org associated to preprod3.bolixo.org, will fail"
 	ssh root@preprod3.bolixo.org bofs bolixoapi recordemail https://preprod3.bolixo.org user user@bolixo.org
+	echo "deleteemail user user@bolixo.org associated to preprod2.bolixo.org, from preprod3, will fail"
+	ssh root@preprod3.bolixo.org bofs bolixoapi deleteemail https://preprod3.bolixo.org user user@bolixo.org
 	echo "deleteemail user user@bolixo.org associated to preprod2.bolixo.org"
 	ssh root@preprod2.bolixo.org bofs bolixoapi deleteemail https://preprod2.bolixo.org user user@bolixo.org
 else
