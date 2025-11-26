@@ -2598,6 +2598,87 @@ static void journey_selectinput()
 	?>
 }
 </mod>
+
+/*
+	How to display old style mail replies
+
+	> from jacques
+	> this is my first question
+	> bla bla bla
+	This is the answer
+	> this is my second question
+	This is the answer
+*/
+static void show_reply(int level, PARAM_STRING msg)
+{
+	///- <div style='display:flex; flex-flow:row; width:100%;'>
+	///- <div style='flex: 0 1 auto; padding-right: 20px;'>
+	/- <div class=reply>
+	/- <div class=reply_mark>
+	for (int i=0; i<level; i++) htmlout ("&gt;");
+	htmlout ("</div>\n");
+	///- <div style='flex: 0 1 auto;'>
+	/- <div class=reply_msg>
+	htmlout (msg);
+	htmlout ('\n');
+	/- </div>
+	/- </div>
+}
+static void show_reply_from(int level, const char *from)
+{
+	string tmp = string_f("%s wrote",from);
+	show_reply (level,tmp);
+}
+
+static void reply_pad()
+{
+	htmlout ("<div style='padding-top: 2px;'></div>\n");
+}
+		
+static void journey_reply()
+{
+	<?
+	<html>
+	<body>
+	<style>
+	.reply {
+		display:flex;
+		flex-flow:row;
+		width:100%;
+	}
+	.reply_mark {
+		flex: 0 1 auto;
+		padding-right: 20px;
+	}
+	.reply_msg {
+		flex: 0 1 auto;
+	}
+	.quoted-reply p::before{
+		content: ">  ";
+		color: #999;
+	}
+	</style>
+	<div style='width: 300px; height: 200px; border:2px solid black; overflow:auto;'>
+	/- show_reply_from (1,"Jack");
+	/- show_reply_from (2,"John");
+	/- show_reply (2,"This is the text This is the text This is the text This is the text This is the text This is the text This is the text");
+	/- reply_pad();
+	Yes but this is wrong
+	/- reply_pad();
+	/- show_reply (1,"This is the text This is the text");
+	/- show_reply (1,"This is the text This is the text This is the text This is the text");
+	/- show_reply (1," This is the text This is the text This is the text This is the text This is the text This is the text This is the text");
+	/- show_reply (2,"This is the text This is the text This is the text This is the text This is the text This is the text This is the text");
+	<p>
+	<div class=quoted-reply>
+	<p>Quoted: This is the text This is the text This is the text This is the text This is the text This is the text This is the text
+	</div>
+	</div>
+	
+	</body>
+	</html>
+	?>
+}
 extern "C" void webmain()
 {
 	tlmpweb_title ("This is the start of a long long journey");
@@ -2624,6 +2705,7 @@ extern "C" void webmain()
 	//journey_webcam();
 	//journey_webrtc();
 	//journey_manyvideos();
-	journey_selectinput();
+	//journey_selectinput();
+	journey_reply();
 }
 

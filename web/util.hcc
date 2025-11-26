@@ -703,6 +703,18 @@ void util_defstyles()
 		"	overflow-wrap: break-word;\n"
 		"	word-break: break-word;\n"
 		"}\n"
+		".reply {\n"
+		"	display:flex;\n"
+		"	flex-flow:row;\n"
+		"	width:100%;\n"
+		"}\n"
+		".reply_mark {\n"
+		"	flex: 0 1 auto;\n"
+		"	padding-right: 10px;\n"
+		"}\n"
+		".reply_msg {\n"
+		"	flex: 0 1 auto;\n"
+		"}\n"
 		);
 	htmlprintf (
 		".small {\n"
@@ -1378,6 +1390,10 @@ static void util_validate_doc (
 	Supports ? for URL
 
 	if validate is true, does some validation. Errors are reported in errmsg.
+
+	Support the quoted reply mode. In this mode, the message is a reply to another
+	message. The message contains part of the other message. The parts started with the
+	greatest than (>) character.
 */
 string util_format_shortmsg (
 	PARAM_STRING msg,
@@ -1396,12 +1412,59 @@ string util_format_shortmsg (
 	unsigned pos=0;
 	unsigned noline=0;
 	if (nblines == 0) nblines=(unsigned)-1;
+	bool last_is_reply = false;	// The last line (paragraph) started with a >, * or #
+	bool is_reply_open = false;	// Are we formatting a line starting with >, * or #
+	const int max_indent=2;
+	int item_number[max_indent+1] = {1,1,1};		// Item number for lines starting with #
 	while (*txt != '\0' && noline < nblines){
 		if (*txt == '\n'){
-			ret += "<br>\n";
+			if (is_reply_open){
+				ret += "</div>\n</div>\n";
+				is_reply_open = false;
+			}else{
+				ret += "<br>\n";
+			}
 			pos=0;
 			noline++;
 		}else{
+			if (pos == 0){
+				static const char *pad = "<div style='padding-top: 2px;'></div>\n";
+				if (is_any_of (*txt,'>','*','#')){
+					if (!last_is_reply) ret += pad;
+					last_is_reply = true;
+					is_reply_open = true;
+					ret += "<div class=reply>\n";
+					if (*txt == '>'){
+						ret += "<div class=reply_mark>";
+						while (*txt == '>'){
+							ret += "&gt;";
+							txt++;
+						}
+					}else if (is_any_of(*txt,'*','#')){
+						char first = *txt;
+						int nb = -1;
+						while (*txt == first){
+							nb++;
+							txt++;
+						}
+						if (nb > max_indent) nb = max_indent;
+						ret += string_f("<div class=reply_mark style='padding-left: %dpx'>",5+nb*10);
+						if (first == '*'){
+							static const char *tbht[]={"&bull;","&cir;","&squf;"};
+							ret += tbht[nb];
+						}else{
+							ret += string_f("%d.",item_number[nb]);
+							item_number[nb]++;
+							for (int i=nb+1; i<max_indent+1; i++) item_number[i] = 1;
+						}
+					}
+					ret += "</div>\n<div class=reply_msg>\n";
+				}else{
+					if (last_is_reply) ret += pad;
+					last_is_reply = false;
+					for (int i=0; i<max_indent+1; i++)  item_number[i] = 1;
+				}
+			}
 			const char *pt;
 			string url;
 			if (util_is_url(txt,pt,url)){
@@ -1547,6 +1610,7 @@ string util_format_shortmsg (
 		}
 		txt++;
 	}
+	if (is_reply_open) ret += "</div>\n</div>\n";
 	if (*txt != '\0' || (size != 0 && size != strlen(msg.ptr))){
 		truncated = true;
 	}

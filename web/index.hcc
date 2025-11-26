@@ -1096,12 +1096,29 @@ static void index_show_shortmsg(
 						}else{
 							/-#E_REPLYTOYOU Can't reply to yourself
 						}
-					}else if (glocal.dropmenu == MENU_EDITITEM){
+					}else if (is_any_of(glocal.dropmenu,MENU_EDITITEM,MENU_QUOTEREPLY)){
 						if (m.file_type != FILE_TEXT){
 							/-#E_CANTEDIT Can't edit this message
 						}else{
 							tlmpweb_forcevar(w_recipients2,m.recipients);
-							tlmpweb_forcevar(w_content,m.content);
+							if (glocal.dropmenu == MENU_QUOTEREPLY){
+								string tmp("> ");
+								tmp += string_f(MSG_U(I_WROTEBY,"%s wrote:\n"),m.from);
+								tmp += m.content[0] == '>' ? ">" : "> ";
+								tmp += copystring (m.content,[](auto &c, const char *pt){
+									if (*pt == '\n' && pt[1] != '\0'){
+										if (pt[1] == '>'){
+											// This is an already quoted line, so "> bla bla" becomes ">> bla bla"
+											c.replace(1,"\n>");
+										}else{
+											c.replace(1,"\n> ");
+										}
+									}
+								});
+								tlmpweb_forcevar(w_content,tmp);
+							}else{
+								tlmpweb_forcevar(w_content,m.content);
+							}
 						}
 					}else if (glocal.dropmenu == MENU_OPENINTAB){
 						const char *tabname = MSG_U(I_TEXT,"Text");
@@ -1132,6 +1149,7 @@ static void index_show_shortmsg(
 		if (!glocal.is_anonymous){
 			adddrop_opt (MENU_REPLY,glocal.is_inbox ? MSG_U(M_REPLY,"Reply") : MSG_U(M_PRIVATEREPLY,"Private reply"));
 		}
+		adddrop_opt (MENU_QUOTEREPLY,MSG_U(M_QUOTEREPLY,"Quoted reply"));
 		adddrop_opt (MENU_COPY,MSG_R(M_COPY));
 		index_setpastemenu(this,glocal.path);
 		adddrop_opt (MENU_DELETE,MSG_R(M_DELETE));
@@ -1202,8 +1220,10 @@ static void index_show_shortmsg(
 					}
 					if (m.file_type == FILE_TEXT){
 							glocal.webtable.setdrop_enable(MENU_EDITITEM);
+							glocal.webtable.setdrop_enable(MENU_QUOTEREPLY);
 					}else{
 							glocal.webtable.setdrop_disable(MENU_EDITITEM);
+							glocal.webtable.setdrop_disable(MENU_QUOTEREPLY);
 					}
 					const char *style = line_styles[line_style];
 					line_style++;
