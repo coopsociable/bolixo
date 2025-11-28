@@ -710,12 +710,62 @@ void util_defstyles()
 		"}\n"
 		".reply_mark {\n"
 		"	flex: 0 1 auto;\n"
+		"	white-space: nowrap;\n"
 		"	padding-right: 10px;\n"
 		"}\n"
 		".reply_msg {\n"
 		"	flex: 0 1 auto;\n"
 		"}\n"
 		);
+	if (ismobile){
+		htmlout(
+			".blackdot {\n"
+			"	margin-top: 15px;\n"
+			"	height: 15px;\n"
+			"	width: 15px;\n"
+			"	border-radius: 50%;\n"
+			"	background-color: black;\n"
+			"}\n"
+			".blacksq {\n"
+			"	margin-top: 15px;\n"
+			"	height: 15px;\n"
+			"	width: 15px;\n"
+			"	background-color: black;\n"
+			"}\n"
+			".hollowc {\n"
+			"	margin-top: 15px;\n"
+			"	height: 15px;\n"
+			"	width: 15px;\n"
+			"	border: 2px solid #000;\n"
+			"	border-radius: 50%;\n"
+			"	background-color: transparent;\n"
+			"}\n"
+		);
+	}else{
+		htmlout(
+			".blackdot {\n"
+			"	margin-top: 5px;\n"
+			"	height: 5px;\n"
+			"	width: 5px;\n"
+			"	border-radius: 50%;\n"
+			"	background-color: black;\n"
+			"}\n"
+			".blacksq {\n"
+			"	margin-top: 5px;\n"
+			"	height: 5px;\n"
+			"	width: 5px;\n"
+			"	background-color: black;\n"
+			"}\n"
+			".hollowc {\n"
+			"	margin-top: 5px;\n"
+			"	height: 5px;\n"
+			"	width: 5px;\n"
+			"	border: 1px solid #000;\n"
+			"	border-radius: 50%;\n"
+			"	background-color: transparent;\n"
+			"}\n"
+		);
+	}
 	htmlprintf (
 		".small {\n"
 		"	font-size: %0.2fem;\n"
@@ -1405,6 +1455,8 @@ string util_format_shortmsg (
 	string &errmsg,
 	bool &truncated)	// If true, the message was not all formatted/displayed
 {
+	bool is_mobile = tlmpweb_ismobile();
+	const int para_indent = is_mobile ? 40 : 20;	// Indentation for * and # sub-lists
 	truncated = false;
 	const char *txt = msg.ptr;
 	string ret;
@@ -1448,9 +1500,9 @@ string util_format_shortmsg (
 							txt++;
 						}
 						if (nb > max_indent) nb = max_indent;
-						ret += string_f("<div class=reply_mark style='padding-left: %dpx'>",5+nb*10);
+						ret += string_f("<div class=reply_mark style='padding-left: %dpx'>",5+nb*para_indent);
 						if (first == '*'){
-							static const char *tbht[]={"&bull;","&cir;","&squf;"};
+							static const char *tbht[]={"<div class=blackdot></div>","<div class=hollowc></div>","<div class=blacksq></div>"};
 							ret += tbht[nb];
 						}else{
 							ret += string_f("%d.",item_number[nb]);
@@ -1588,7 +1640,7 @@ string util_format_shortmsg (
 						ret += "<img src=/public/admin/project/mini-photo.jpg>";
 					}else{
 						string dir = string_f("/projects/%s/public",user.c_str());
-						unsigned mini_image_width = tlmpweb_ismobile() ? 60 : 40;
+						unsigned mini_image_width = is_mobile ? 60 : 40;
 						ret += util_mini_img(step_image,mini_image_width,dir,"mini-photo.jpg","");
 					}
 					string add = string_f("webstep=%d&webtab_add=1:%s:inbox~%s&recipients2=%s"
