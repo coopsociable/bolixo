@@ -1012,6 +1012,39 @@ static void append_more_less(PARAM_STRING uuid, bool truncated, string &content,
 	webtable.setclickopt (true,"",string_f("fullt=%s",uuid.ptr));
 }
 
+static string index_findrecipients(const SHORTMSG_receive &m)
+{
+	auto tb = str_splitline(m.recipients);
+	string tmp;
+	if (userinfo.name != m.from) tmp = m.from;
+	for (auto &t:tb){
+		if (t != m.from && t != userinfo.name){
+			if (tmp.size() > 0) tmp += " ";
+			tmp += t;
+		}
+	}
+	return tmp;
+}
+/*
+	Applies the quote reply formatting to the current message and place this in the form
+*/
+static void index_quotereply(const SHORTMSG_receive &m)
+{
+	string tmp("> ");
+	tmp += string_f(MSG_U(I_WROTEBY,"%s wrote:\n"),m.from);
+	tmp += m.content[0] == '>' ? ">" : "> ";
+	tmp += copystring (m.content,[](auto &c, const char *pt){
+		if (*pt == '\n' && !is_any_of(pt[1],'\n','\0')){
+			if (pt[1] == '>'){
+				// This is an already quoted line, so "> bla bla" becomes ">> bla bla"
+				c.replace(1,"\n>");
+			}else{
+				c.replace(1,"\n> ");
+			}
+		}
+	});
+	tlmpweb_forcevar(w_content,tmp);
+}
 
 <mod>
 static void index_show_shortmsg(
@@ -1080,19 +1113,14 @@ static void index_show_shortmsg(
 					}else if (glocal.dropmenu == MENU_DOWNLOAD){
 						index_download (glocal.con,m.file_type,glocal.fname);
 					}else if (glocal.dropmenu == MENU_REPLY){
-						vector<string> tb;
-						str_splitline(m.recipients,' ',tb);
-						string tmp;
-						if (userinfo.name != m.from) tmp = m.from;
-						for (auto &t:tb){
-							if (t != m.from && t != userinfo.name){
-								if (tmp.size() > 0) tmp += " ";
-								tmp += t;
-							}
-						}
+						string tmp = index_findrecipients(m);
 						if (!glocal.is_anonymous && tmp.size() > 0){
 							tlmpweb_forcevar(w_recipients2,tmp);
-							if (!glocal.is_inbox) glocal.webtabs.addtab (string_f("1:%s:inbox",userinfo.name.c_str()),MSG_R(I_SHORTINBOX));
+							if (!glocal.is_inbox){
+								// When doing a private reply in a group, we defer to quote reply mode
+								index_quotereply(m);
+								glocal.webtabs.addtab (string_f("1:%s:inbox",userinfo.name.c_str()),MSG_R(I_SHORTINBOX));
+							}
 						}else{
 							/-#E_REPLYTOYOU Can't reply to yourself
 						}
@@ -1100,22 +1128,9 @@ static void index_show_shortmsg(
 						if (m.file_type != FILE_TEXT){
 							/-#E_CANTEDIT Can't edit this message
 						}else{
-							tlmpweb_forcevar(w_recipients2,m.recipients);
+							tlmpweb_forcevar(w_recipients2,index_findrecipients(m));
 							if (glocal.dropmenu == MENU_QUOTEREPLY){
-								string tmp("> ");
-								tmp += string_f(MSG_U(I_WROTEBY,"%s wrote:\n"),m.from);
-								tmp += m.content[0] == '>' ? ">" : "> ";
-								tmp += copystring (m.content,[](auto &c, const char *pt){
-									if (*pt == '\n' && !is_any_of(pt[1],'\n','\0')){
-										if (pt[1] == '>'){
-											// This is an already quoted line, so "> bla bla" becomes ">> bla bla"
-											c.replace(1,"\n>");
-										}else{
-											c.replace(1,"\n> ");
-										}
-									}
-								});
-								tlmpweb_forcevar(w_content,tmp);
+								index_quotereply(m);
 							}else{
 								tlmpweb_forcevar(w_content,m.content);
 							}
@@ -1146,10 +1161,10 @@ static void index_show_shortmsg(
 	<f load>
 		glocal unsigned rownum = nbskip;
 		// Defines all posible options for dropdown
+		adddrop_opt (MENU_QUOTEREPLY,MSG_U(M_QUOTEREPLY,"Quoted reply"));
 		if (!glocal.is_anonymous){
 			adddrop_opt (MENU_REPLY,glocal.is_inbox ? MSG_U(M_REPLY,"Reply") : MSG_U(M_PRIVATEREPLY,"Private reply"));
 		}
-		adddrop_opt (MENU_QUOTEREPLY,MSG_U(M_QUOTEREPLY,"Quoted reply"));
 		adddrop_opt (MENU_COPY,MSG_R(M_COPY));
 		index_setpastemenu(this,glocal.path);
 		adddrop_opt (MENU_DELETE,MSG_R(M_DELETE));
