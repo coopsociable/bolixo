@@ -471,6 +471,7 @@ elif [ "$1" = "restart-nolock" ] ; then # prod: restart without locking some ser
 		echo "    " internals "(restart everything except the databases, web and exim)"
 		echo "    " sqls "(restart all databases)"
 		echo "    " webs "(All four web... services)"
+		echo "    " blackhole conproxy
 		echo "    " horizon "(may loose few connections)"
 		echo "    " bo-mon bod bolixod keysd protocheck publishd sessiond trli-syslog writed
 		echo "    " exim
@@ -550,11 +551,18 @@ elif [ "$1" = "restart-nolock" ] ; then # prod: restart without locking some ser
 					keysd_restarted=true
 				fi
 				if [ "$serv" = "horizon" ] ; then
-					/etc/init.d/horizon restart
+					systemctl restart horizon
 					for file in /var/lib/lxc/*/horizon-start.sh
 					do
 						$file
 					done
+					/var/lib/lxc/bo-mon-stop.sh
+					/var/lib/lxc/bo-mon-start.sh
+					bo-mon-control autotest 0
+				elif [ "$serv" = "blackhole" ] ; then
+					systemctl restart blackhole
+				elif [ "$serv" = "conproxy" ] ; then
+					systemctl restart conproxy
 				elif [ "$serv" = "web" -o "$serv" = "webssl" ] ; then
 					echo "   Can't restart web or webssl, use webs"
 				elif [ "$serv" = "bo-mon" ] ; then
