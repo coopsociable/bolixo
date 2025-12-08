@@ -33,6 +33,7 @@ EXTERN DOC_ID section_publish;
 EXTERN DOC_ID section_photos;
 EXTERN DOC_ID section_vidconf;
 EXTERN DOC_ID section_msgformat;
+EXTERN DOC_ID section_quoted_reply;
 
 #define SECTION_NONE 0
 #define SECTION_TALK 1

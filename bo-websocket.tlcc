@@ -178,6 +178,7 @@ enum class WORKER_REPLY{
 };
 struct WORKER_RESULT{
 	WORKER_REPLY ret;
+	char sessionid[100];
 };
 
 static void bo_websocket_send (_F_TCPSERVER_V1 *c, int fd, unsigned opcode, PARAM_STRING msg)
@@ -379,6 +380,8 @@ static void bo_websocket (_F_bo_websocket &c, int fd, int waitfd, CONNECT_INFO &
 					}
 					WORKER_RESULT rep;
 					rep.ret = WORKER_REPLY::REPLY_OK;
+					rep.sessionid[0] = '\0';
+					if (glocal.session.size() < sizeof(rep.sessionid)-1) strcpy(rep.sessionid,glocal.session.c_str());
 					send (&rep,sizeof(rep));
 				}
 			}else{
@@ -887,6 +890,15 @@ unsigned docnum = 0;
 }
 </mod>
 
+struct WORKER_INFO{
+	pid_t pid;
+	int fd;
+	bool pending = false;
+	string sessionid;
+	WORKER_INFO(pid_t _pid, int _fd): pid(_pid), fd(_fd){
+	}
+};
+
 <mod>
 int main (int argc, char *argv[])
 {
@@ -938,7 +950,7 @@ int main (int argc, char *argv[])
 		glocal vector<REQUEST> requests;
 		glocal bool paused = false;
 		glocal unsigned expect_replies = 0;
-		glocal vector<int> workers;
+		glocal vector<WORKER_INFO> workers;
 		glocal CONNECT_INFO con_bod;
 		glocal CONNECT_INFO con_sessiond;
 		glocal CONNECT_INFO con_waitevent;
@@ -979,7 +991,7 @@ int main (int argc, char *argv[])
 						HANDLE_INFO *nn = new HANDLE_INFO;
 						nn->type = TYPE_WORKER;
 						inject (tb[0],nn);
-						glocal.workers.push_back(tb[0]);
+						glocal.workers.emplace_back(pid,tb[0]);
 						endclient = true;
 					}
 				}
@@ -990,7 +1002,7 @@ int main (int argc, char *argv[])
 			HANDLE_INFO *n = (HANDLE_INFO*)info.data;
 			if (n->type == TYPE_WORKER){
 				for (auto p=glocal.workers.begin(); p != glocal.workers.end(); p++){
-					if (*p == no){
+					if (p->fd == no){
 						glocal.workers.erase(p);
 						break;
 					}
@@ -1009,8 +1021,9 @@ int main (int argc, char *argv[])
 						WORKER_REQUEST req;
 						req.cmd = first->cmd;
 						glocal.expect_replies = glocal.workers.size();
-						for (auto fd:glocal.workers){
-							glocal.TCPSERVER.sendto(fd,&req,sizeof(req));
+						for (auto &w:glocal.workers){
+							glocal.TCPSERVER.sendto(w.fd,&req,sizeof(req));
+							w.pending = true;
 						}
 						break;
 					}
@@ -1036,7 +1049,31 @@ int main (int argc, char *argv[])
 						pending = glocal.requests.size()-1;
 					}
 					tb.push_back(string_f("worker-command: running=%s pending=%u",running,pending));
+					for (auto &w:glocal.workers){
+						if (w.pending) tb.push_back(string_f("worker pending pid=%u session=%s",w.pid,w.sessionid.c_str()));
+					}
 					rep_status (tb);
+				</f>
+				<f listsessions>
+					vector<WEBSESSION> tb;
+					for (auto &w:glocal.workers){
+						WEBSESSION sess;
+						sess.pid = w.pid;
+						sess.sessionid = w.sessionid;
+						sess.pending = w.pending;
+						tb.push_back(sess);
+					}
+					rep_listsessions(tb);
+				</f>
+				<f killpendings>
+					unsigned nb=0;
+					for (auto &w:glocal.workers){
+						if (w.pending){
+							kill (w.pid,SIGTERM);
+							nb++;
+						}
+					}
+					rep_killpendings(nb);
 				</f>
 				<f quit>
 					endserver = true;
@@ -1065,8 +1102,8 @@ int main (int argc, char *argv[])
 				<f disconnectworkers>
 					WORKER_REQUEST req;
 					req.cmd = WORKER_COMMAND::REQ_END;
-					for (auto fd:glocal.workers){
-						glocal.TCPSERVER.sendto(fd,&req,sizeof(req));
+					for (auto &w:glocal.workers){
+						glocal.TCPSERVER.sendto(w.fd,&req,sizeof(req));
 					}
 				</f>
 				<f pause>
@@ -1102,11 +1139,19 @@ int main (int argc, char *argv[])
 			}else if (n->type == TYPE_CLIENT){
 				// Not possible
 			}else if (n->type == TYPE_WORKER){
-				if (glocal.expect_replies > 0){
+				if (glocal.expect_replies > 0
+					&& info.linelen == sizeof(WORKER_RESULT)){
+					WORKER_RESULT *res = (WORKER_RESULT*)line;
+					for (auto &w:glocal.workers){
+						if (w.fd == no){
+							w.pending = false;
+							w.sessionid = res->sessionid;
+						}
+					}
 					glocal.expect_replies--;
 					/*
-						We have received all replies for the current request.
-						So we reply.
+						If we have received all replies for the current request,
+						we reply to the caller.
 						At the end, we submit another request using ptsub->exec();
 						if the caller of the next request has quit, or if there are no workers anymore
 						then ptsub->exec() won't do much and expect_replies will be 0.
